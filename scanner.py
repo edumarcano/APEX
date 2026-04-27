@@ -1,0 +1,61 @@
+import psutil
+import subprocess
+import os
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+import database
+import speaker
+
+load_dotenv()
+
+
+def get_current_ssid():
+    """
+    Gets the current SSID of the wifi connection.
+    Returns:
+        str: The current SSID, or None if the connection is not found.
+    """
+    try:
+        results = subprocess.check_output(["netsh", "wlan", "show", "interfaces"]).decode("utf-8")
+        for line in results.split("\n"):
+            if "SSID" in line and "BSSID" not in line:
+                return line.split(":")[1].strip()
+    except Exception:
+        return None
+    return None
+
+
+def check_power() -> bool:
+    """
+    Checks if the computer is plugged in.
+    Returns:
+        bool: True if the computer is plugged in, False otherwise.
+    """
+    battery = psutil.sensors_battery()
+    return battery.power_plugged if battery else False
+
+
+def should_run() -> bool:
+    """
+    Checks if the computer should run.
+    Returns:
+        bool: True if the computer should run, False otherwise.
+    """
+    database.initialize_db() 
+    
+    current_wifi = get_current_ssid()
+    target_wifi = os.getenv("HOME_SSID")
+    is_plugged = check_power()
+    
+    last_run = database.get_last_run()
+    cooldown_period = timedelta(hours=6)
+    
+    on_cooldown = last_run and (datetime.now() - last_run) < cooldown_period
+
+    return current_wifi == target_wifi and is_plugged and not on_cooldown
+
+if __name__ == "__main__":
+    if should_run():
+        print("✅ Checks passed.")
+    else:
+        print("❌ Checks failed.")
