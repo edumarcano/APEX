@@ -1,5 +1,5 @@
 import os
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,9 +13,7 @@ def process_flow(raw_data: str) -> str:
     if not api_key:
         return "Error: Brain module offline. Missing API key."
 
-    genai.configure(api_key=api_key)
-    
-    model = genai.GenerativeModel('models/gemini-2.5-flash')
+    client = genai.Client(api_key=api_key)
 
     prompt = f"""You are APEX (Automated Personal Environment Xylem). 
     You are an authoritative, high-ranking AI assistant. 
@@ -28,7 +26,10 @@ def process_flow(raw_data: str) -> str:
     {raw_data}"""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt]
+        )
         if response.text:
             return response.text.strip()
         else:
