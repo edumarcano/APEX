@@ -8,7 +8,13 @@ load_dotenv()
 def process_flow(raw_data: str) -> str:
     """
     Configures the Gemini API, injects the provided telemetry data into the system prompt, and returns a formatted briefing.
+    Bypasses Gemini API if TEST_MODE is enabled.
     """
+    TEST_MODE = os.getenv("TEST_MODE")
+    if TEST_MODE == "True":
+        print("TEST MODE ENABLED. Bypassing Gemini API.")
+        return f"System in TEST MODE. {raw_data}"
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return "Error: Brain module offline. Missing API key."

@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from a few sources, feeds it to Gemini 2.5 Flash, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen.
+When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from a few sources, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen.
 
 ```
 scanner.py  →  weather.py + sports.py + database.py  →  brain.py  →  speaker.py + gui.py
@@ -24,13 +24,16 @@ Before any API calls are made, the scanner checks three things: whether you're o
 Weather comes from the OpenWeatherMap API. F1 race data comes from the Ergast/Jolpica API. Each connector is in its own module, so adding new sources (Google Calendar, GitHub activity, news headlines) means writing one new file and a single line in `main.py`.
 
 **AI-generated briefings (`brain.py`)**  
-Raw data strings from the connectors are passed directly to Gemini 2.5 Flash with a persona prompt. The model turns everything into a briefing under 40 words with a consistent voice and tone, no templating or string formatting involved. The wording changes based on whatever the data actually says.
+Raw data strings from the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK, using the `genai.Client` architecture. The model turns everything into a briefing under 40 words with a consistent voice and tone, no templating or string formatting involved. The wording changes based on whatever the data actually says.
 
 **Latency masking with threading (`main.py`)**  
-Gemini API calls take a second or two. Rather than stalling in silence, a filler phrase ("Analyzing telemetry... Stand by...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
+Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Analyzing telemetry... Stand by...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
 
 **Persistent reminders and session logging (`database.py`)**  
 A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after being surfaced so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
+
+**Testing Mode (`brain.py`)**  
+A `TEST_MODE` flag in the `.env` file bypasses the Gemini API entirely and returns a mock briefing with the live telemetry data instead. Useful when working on the UI or data connectors without burning API calls or running into rate limits and 503 errors.
 
 **Floating HUD (`gui.py`)**  
 A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database.
@@ -42,7 +45,7 @@ A borderless, semi-transparent window built with CustomTkinter that appears in t
 | Layer | Tool |
 |---|---|
 | Language | Python 3.10+ |
-| AI Engine | Google Generative AI (Gemini 2.5 Flash) |
+| AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
 | GUI | CustomTkinter |
 | Database | SQLite3 |
 | TTS | pyttsx3 |
@@ -61,6 +64,7 @@ cd apex
 **2. Install dependencies**
 ```bash
 pip install -r requirements.txt
+pip install google-genai
 ```
 
 **3. Configure environment variables**
@@ -86,7 +90,7 @@ python main.py
 apex/
 ├── main.py          # Entry point and execution flow
 ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
-├── brain.py         # Gemini API integration and briefing synthesis
+├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
 ├── weather.py       # OpenWeatherMap connector
 ├── sports.py        # F1 race data connector (Ergast API)
 ├── speaker.py       # Text-to-speech output via pyttsx3

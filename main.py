@@ -16,8 +16,10 @@ def start_apex():
     """
     if not scanner.should_run():
         return
+        
+    database.log_run()
 
-    speaker.speak("Environment scanned. Apex is online, Chief.")
+    speaker.speak("Environment scanned. APEX is online.")
 
     print("Establishing data roots...")
     weather_report = weather.fetch_weather_root()

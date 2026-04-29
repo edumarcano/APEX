@@ -52,6 +52,16 @@ def should_run() -> bool:
     
     on_cooldown = last_run and (datetime.now() - last_run) < cooldown_period
 
+    if not current_wifi == target_wifi:
+        print(f"❌ Checks failed. Unauthorized WiFi connection detected.")
+        return False
+    if not is_plugged:
+        print(f"❌ Checks failed. AC power not detected.")
+        return False
+    if on_cooldown:
+        print(f"❌ Checks failed. System still on cooldown. Time since last run: {datetime.now() - last_run}")
+        return False
+
     return current_wifi == target_wifi and is_plugged and not on_cooldown
 
 if __name__ == "__main__":
