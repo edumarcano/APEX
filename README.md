@@ -32,11 +32,26 @@ Google GenAI SDK calls take a second or two. Rather than stalling in silence, a 
 **Persistent reminders and session logging (`database.py`)**  
 A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after being surfaced so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
 
-**Testing Mode (`brain.py`)**  
-A `TEST_MODE` flag in the `.env` file bypasses the Gemini API entirely and returns a mock briefing with the live telemetry data instead. Useful when working on the UI or data connectors without burning API calls or running into rate limits and 503 errors.
+**Testing Mode (`TEST_MODE`)**  
+Bypasses all hardware checks, the 6-hour cooldown, and the Gemini API call, returning a mock briefing with the live telemetry data instead. It also skips `database.log_run()` so rapid testing doesn't pollute the session history or interfere with the cooldown cycle.
+
+**Showcase Mode (`SHOWCASE_MODE`)**  
+Bypasses all hardware and cooldown checks so the system runs in any environment, but keeps the live Gemini API call intact so the briefing is real. Like `TEST_MODE`, it also skips `database.log_run()` so that running a demo doesn't reset the actual daily cooldown.
 
 **Floating HUD (`gui.py`)**  
 A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database.
+
+---
+
+## Environment Modes
+
+Both flags are read from `.env` and default to `"false"` if the key is missing entirely, so the system won't crash with an `AttributeError` if either variable is left out of the config. All values are normalized to lowercase at read time, so `True`, `true`, and `TRUE` all work the same way.
+
+| Flag | Scanner | Cooldown | Gemini API | Logs Run |
+|---|---|---|---|---|
+| Neither (production) | ✅ enforced | ✅ enforced | ✅ live | ✅ yes |
+| `TEST_MODE=True` | ⬜ bypassed | ⬜ bypassed | ⬜ mock | ⬜ no |
+| `SHOWCASE_MODE=True` | ⬜ bypassed | ⬜ bypassed | ✅ live | ⬜ no |
 
 ---
 
@@ -75,6 +90,8 @@ GEMINI_API_KEY=your_gemini_api_key
 OPENWEATHER_API_KEY=your_openweather_api_key
 TARGET_LOCATION=your_city_name
 HOME_SSID=your_home_wifi_name
+TEST_MODE=False
+SHOWCASE_MODE=False
 ```
 
 **4. Run**

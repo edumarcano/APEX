@@ -42,11 +42,21 @@ def should_run() -> bool:
         bool: True if the computer should run, False otherwise.
     """
     database.initialize_db() 
+
+    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE").lower()
+    if SHOWCASE_MODE == "true":
+        print("SHOWCASE MODE ENABLED. Bypassing all checks.")
+        return True
     
     current_wifi = get_current_ssid()
     target_wifi = os.getenv("HOME_SSID")
     is_plugged = check_power()
     
+    TEST_MODE = os.getenv("TEST_MODE").lower()
+    if TEST_MODE == "true":
+        print("TEST MODE ENABLED. Bypassing cooldown.")
+        return True
+
     last_run = database.get_last_run()
     cooldown_period = timedelta(hours=6)
     

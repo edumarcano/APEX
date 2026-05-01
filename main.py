@@ -6,7 +6,7 @@ import sports
 import gui
 import threading
 import database
-
+import os
 
 def start_apex():
     """
@@ -16,8 +16,11 @@ def start_apex():
     """
     if not scanner.should_run():
         return
-        
-    database.log_run()
+    
+    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
+    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
+    if TEST_MODE == "false" and SHOWCASE_MODE == "false":
+        database.log_run()
 
     speaker.speak("Environment scanned. APEX is online.")
 
