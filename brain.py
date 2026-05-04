@@ -10,7 +10,7 @@ def process_flow(raw_data: str) -> str:
     Configures the Gemini API, injects the provided telemetry data into the system prompt, and returns a formatted briefing.
     Bypasses Gemini API if TEST_MODE is enabled.
     """
-    TEST_MODE = os.getenv("TEST_MODE").lower()
+    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
     if TEST_MODE == "true":
         print("TEST MODE ENABLED. Bypassing Gemini API.")
         return f"System in TEST MODE. {raw_data}"
@@ -41,7 +41,7 @@ def process_flow(raw_data: str) -> str:
         else:
             return "Flow anomaly: Gemini returned an empty response."
     except Exception as e:
-        print(f"DEBUG ERROR: {e}")
+        print(f"[BRAIN]: Anomaly detected ({e}).")
         return "Flow interrupted. Brain module failed to synthesize data."
 
 if __name__ == "__main__":

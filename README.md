@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from a few sources, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen.
+When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from a few sources, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen. For development and testing, the Gemini call is bypassed and replaced with a mock briefing to preserve API quota.
 
 ```
 scanner.py  →  weather.py + sports.py + database.py  →  brain.py  →  speaker.py + gui.py
@@ -18,7 +18,7 @@ scanner.py  →  weather.py + sports.py + database.py  →  brain.py  →  speak
 ## Features
 
 **Context-aware gating (`scanner.py`)**  
-Before any API calls are made, the scanner checks three things: whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 6 hours since the last run. All three have to pass, or the system stops there. This prevents it from firing on battery at a coffee shop or spamming you with briefings throughout the day.
+Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 6 hours since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
 
 **Live data connectors (`weather.py`, `sports.py`)**  
 Weather comes from the OpenWeatherMap API. F1 race data comes from the Ergast/Jolpica API. Each connector is in its own module, so adding new sources (Google Calendar, GitHub activity, news headlines) means writing one new file and a single line in `main.py`.
@@ -33,7 +33,7 @@ Google GenAI SDK calls take a second or two. Rather than stalling in silence, a 
 A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after being surfaced so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
 
 **Testing Mode (`TEST_MODE`)**  
-Bypasses all hardware checks, the 6-hour cooldown, and the Gemini API call, returning a mock briefing with the live telemetry data instead. It also skips `database.log_run()` so rapid testing doesn't pollute the session history or interfere with the cooldown cycle.
+Designed for rapid backend and UI development. Bypasses the 6-hour cooldown and the Gemini API call, returning a mock briefing with the live telemetry data instead. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips `database.log_run()` so session history stays clean during testing.
 
 **Showcase Mode (`SHOWCASE_MODE`)**  
 Bypasses all hardware and cooldown checks so the system runs in any environment, but keeps the live Gemini API call intact so the briefing is real. Like `TEST_MODE`, it also skips `database.log_run()` so that running a demo doesn't reset the actual daily cooldown.
@@ -47,10 +47,10 @@ A borderless, semi-transparent window built with CustomTkinter that appears in t
 
 Both flags are read from `.env` and default to `"false"` if the key is missing entirely, so the system won't crash with an `AttributeError` if either variable is left out of the config. All values are normalized to lowercase at read time, so `True`, `true`, and `TRUE` all work the same way.
 
-| Flag | Scanner | Cooldown | Gemini API | Logs Run |
+| Flag | Wi-Fi + Power | Cooldown | Gemini API | Logs Run |
 |---|---|---|---|---|
 | Neither (production) | ✅ enforced | ✅ enforced | ✅ live | ✅ yes |
-| `TEST_MODE=True` | ⬜ bypassed | ⬜ bypassed | ⬜ mock | ⬜ no |
+| `TEST_MODE=True` | ✅ enforced | ⬜ bypassed | ⬜ mock | ⬜ no |
 | `SHOWCASE_MODE=True` | ⬜ bypassed | ⬜ bypassed | ✅ live | ⬜ no |
 
 ---

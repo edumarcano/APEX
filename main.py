@@ -47,8 +47,6 @@ def start_apex():
     final_briefing = brain.process_flow(combined_raw_data)
 
     filler_thread.join()
-    
-    print(f"\n[AI GENERATED BRIEFING]: {final_briefing}\n")
 
     voice_thread = threading.Thread(target=speaker.speak, args=(final_briefing,))
     voice_thread.start()

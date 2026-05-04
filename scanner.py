@@ -43,7 +43,7 @@ def should_run() -> bool:
     """
     database.initialize_db() 
 
-    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE").lower()
+    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
     if SHOWCASE_MODE == "true":
         print("SHOWCASE MODE ENABLED. Bypassing all checks.")
         return True
@@ -52,7 +52,14 @@ def should_run() -> bool:
     target_wifi = os.getenv("HOME_SSID")
     is_plugged = check_power()
     
-    TEST_MODE = os.getenv("TEST_MODE").lower()
+    if not current_wifi == target_wifi:
+        print(f"❌ Checks failed. Unauthorized WiFi connection detected.")
+        return False
+    if not is_plugged:
+        print(f"❌ Checks failed. AC power not detected.")
+        return False
+
+    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
     if TEST_MODE == "true":
         print("TEST MODE ENABLED. Bypassing cooldown.")
         return True
@@ -62,20 +69,12 @@ def should_run() -> bool:
     
     on_cooldown = last_run and (datetime.now() - last_run) < cooldown_period
 
-    if not current_wifi == target_wifi:
-        print(f"❌ Checks failed. Unauthorized WiFi connection detected.")
-        return False
-    if not is_plugged:
-        print(f"❌ Checks failed. AC power not detected.")
-        return False
     if on_cooldown:
         print(f"❌ Checks failed. System still on cooldown. Time since last run: {datetime.now() - last_run}")
         return False
 
-    return current_wifi == target_wifi and is_plugged and not on_cooldown
+    return True
 
 if __name__ == "__main__":
     if should_run():
         print("✅ Checks passed.")
-    else:
-        print("❌ Checks failed.")
