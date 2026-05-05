@@ -8,6 +8,7 @@ import threading
 import database
 import os
 
+
 def start_apex():
     """
     Starts the primary execution loop of the APEX system, validates system state via the scanner,
@@ -32,11 +33,11 @@ def start_apex():
     memory_report = ""
     if unread_notes:
         notes_str = "\n".join(unread_notes)
-        memory_report = f"Chief's Pending Reminders: {notes_str}"
+        memory_report = f"Pending Reminders: {notes_str}"
     else:
         memory_report = "No pending reminders."
     
-    combined_raw_data = f"{weather_report} {sports_report}"
+    combined_raw_data = f"{weather_report} {sports_report} {memory_report}"
 
     print("Processing Flow...")
 
@@ -51,6 +52,9 @@ def start_apex():
     voice_thread = threading.Thread(target=speaker.speak, args=(final_briefing,))
     voice_thread.start()
     gui.launch_environment(final_briefing)
+
+    if unread_notes:
+        database.mark_all_reminders_read()
     
     print("\n--- Briefing Complete ---")
 

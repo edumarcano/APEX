@@ -54,18 +54,24 @@ def save_reminder(note: str) -> None:
 
 def fetch_unread_reminders() -> list[str]:
     """
-    Fetches all unread reminders from the database.
+    Fetches all unread reminders from the database and returns them as a list of tuples.
     """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
     cursor.execute("SELECT id, note FROM reminders WHERE is_read = 0")
     records = cursor.fetchall()
-    
-    for record in records:
-        cursor.execute("UPDATE reminders SET is_read = 1 WHERE id = ?", (record[0],))
-        
+
+    conn.close()
+    return [record[1] for record in records]
+
+
+def mark_all_reminders_read() -> None:
+    """
+    Marks all reminders as read in the database.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE reminders SET is_read = 1 WHERE is_read = 0")
     conn.commit()
     conn.close()
-    
-    return [record[1] for record in records]
