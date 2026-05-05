@@ -21,7 +21,7 @@ def fetch_sports_root():
         intel.append("F1 race telemetry unavailable.")
 
     # TODO: Integrate live API for FC Barcelona fixtures
-    intel.append("Barcelona's next fixture against Real Madrid. Location: Camp Nou.")
+    #intel.append("Barcelona's next fixture against Real Madrid. Location: Camp Nou.")
 
     return " ".join(intel)
 

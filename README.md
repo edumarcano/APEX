@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from a few sources, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen. For development and testing, the Gemini call is bypassed and replaced with a mock briefing to preserve API quota.
+When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from various sources, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen. In the case that Gemini is unavailable, the system automatically engages a fallback protocol to deliver a raw telemetry readout, ensuring the briefing never fails. For development and testing, the Gemini call is bypassed and replaced with a similar raw telemetry readout to preserve API quota.
 
 ```
 scanner.py  →  weather.py + sports.py + database.py  →  brain.py  →  speaker.py + gui.py
@@ -24,7 +24,7 @@ Before any API calls are made, the scanner checks whether you're on your home Wi
 Weather comes from the OpenWeatherMap API. F1 race data comes from the Ergast/Jolpica API. Each connector is in its own module, so adding new sources (Google Calendar, GitHub activity, news headlines) means writing one new file and a single line in `main.py`.
 
 **AI-generated briefings (`brain.py`)**  
-Raw data strings from the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK, using the `genai.Client` architecture. The model turns everything into a briefing under 40 words with a consistent voice and tone, no templating or string formatting involved. The wording changes based on whatever the data actually says.
+Raw data strings from the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK, using the genai.Client architecture. The model turns everything into a briefing under 40 words with a consistent voice and tone, no templating or string formatting involved. If the API call fails, the module catches the exception and falls back to reading the raw telemetry data directly to the user, ensuring the run never crashes.
 
 **Latency masking with threading (`main.py`)**  
 Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Analyzing telemetry... Stand by...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
@@ -33,7 +33,7 @@ Google GenAI SDK calls take a second or two. Rather than stalling in silence, a 
 A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after being surfaced so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
 
 **Testing Mode (`TEST_MODE`)**  
-Designed for rapid backend and UI development. Bypasses the 6-hour cooldown and the Gemini API call, returning a mock briefing with the live telemetry data instead. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips `database.log_run()` so session history stays clean during testing.
+Designed for rapid backend and UI development. Bypasses the 6-hour cooldown and the Gemini API call, returning a raw telemetry readout with the live data instead to preserve API quota. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips database.log_run() so session history stays clean during testing.
 
 **Showcase Mode (`SHOWCASE_MODE`)**  
 Bypasses all hardware and cooldown checks so the system runs in any environment, but keeps the live Gemini API call intact so the briefing is real. Like `TEST_MODE`, it also skips `database.log_run()` so that running a demo doesn't reset the actual daily cooldown.
@@ -49,9 +49,9 @@ Both flags are read from `.env` and default to `"false"` if the key is missing e
 
 | Flag | Wi-Fi + Power | Cooldown | Gemini API | Logs Run |
 |---|---|---|---|---|
-| Neither (production) | ✅ enforced | ✅ enforced | ✅ live | ✅ yes |
-| `TEST_MODE=True` | ✅ enforced | ⬜ bypassed | ⬜ mock | ⬜ no |
-| `SHOWCASE_MODE=True` | ⬜ bypassed | ⬜ bypassed | ✅ live | ⬜ no |
+| Neither (production) | ✅ enforced | ✅ enforced | ✅ live (w/ fallback) | ✅ yes |
+| `TEST_MODE=True` | ✅ enforced | ⬜ bypassed | ⬜ bypassed | ⬜ no |
+| `SHOWCASE_MODE=True` | ⬜ bypassed | ⬜ bypassed | ✅ live (w/ fallback) | ⬜ no |
 
 ---
 
@@ -137,3 +137,4 @@ Some decisions that might not be obvious from the code alone:
 - **Why Gemini over a template?** Templated output gets repetitive fast and requires manual updates whenever a data source changes format. Passing raw strings to the model and letting it figure out the sentence structure turned out to be simpler and more flexible.
 - **Why pyttsx3 over a cloud TTS?** Fully offline, no API key, no latency. For a local morning tool that tradeoff made sense as a starting point, but the robotic voice is a known limitation. Switching to a cloud TTS (ElevenLabs, Google Cloud TTS, etc.) for a more natural-sounding voice is planned.
 - **Why SQLite over a flat file?** The reminder feature needs read/write with state (marking items as read). SQLite handles that cleanly without pulling in anything external.
+- **Why an offline fallback instead of a secondary API?** The original plan was to route failed Gemini calls to an OpenAI or Anthropic fallback. However, because developer API credits expire after 12 months, paying to fund a secondary account that rarely triggers isn't cost-effective for a personal automation tool. Using an approach where the system simply reads the raw JSON data during an outage, guarantees 100% uptime with zero costs.
