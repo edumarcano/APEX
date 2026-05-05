@@ -29,10 +29,13 @@ def start_apex():
     weather_report = weather.fetch_weather_root()
     sports_report = sports.fetch_sports_root()
 
-    unread_notes = database.fetch_unread_reminders()
+    unread_records = database.fetch_unread_reminders()
+    ids = []
     memory_report = ""
-    if unread_notes:
-        notes_str = "\n".join(unread_notes)
+    if unread_records:
+        ids = [id for id, _ in unread_records]
+        notes = [note for _, note in unread_records]
+        notes_str = ", ".join(notes)
         memory_report = f"Pending Reminders: {notes_str}"
     else:
         memory_report = "No pending reminders."
@@ -53,8 +56,8 @@ def start_apex():
     voice_thread.start()
     gui.launch_environment(final_briefing)
 
-    if unread_notes:
-        database.mark_all_reminders_read()
+    if ids:
+        database.mark_reminders_read(ids)
     
     print("\n--- Briefing Complete ---")
 
