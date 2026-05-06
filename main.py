@@ -4,7 +4,7 @@ import speaker
 import brain
 import sports_client
 import gui
-import email_client
+import gmail_client
 import threading
 import database
 import os
@@ -37,8 +37,8 @@ def start_apex():
         email_report = "Email Telemetry: MOCKED (Bypass active)"
     else:
         try:
-            credentials = email_client.authenticate_gmail()
-            email_data = email_client.get_unread_gmail_data(credentials)
+            credentials = gmail_client.authenticate_gmail()
+            email_data = gmail_client.get_unread_gmail_data(credentials)
 
             count = email_data.get("count", 0)
             items = email_data.get("emails", [])
