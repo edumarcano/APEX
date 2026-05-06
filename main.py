@@ -5,6 +5,8 @@ import brain
 import sports_client
 import gui
 import gmail_client
+import calendar_client
+import google_auth
 import threading
 import database
 import os
@@ -34,25 +36,32 @@ def start_apex():
     sports_report = sports_client.fetch_sports_root()
 
     if is_test_mode or is_showcase_mode:
-        email_report = "Email Telemetry: MOCKED (Bypass active)"
+        email_report = "Email data: BYPASSED"
+        calendar_report = "Calendar data: BYPASSED"
     else:
         try:
-            credentials = gmail_client.authenticate_gmail()
-            email_data = gmail_client.get_unread_gmail_data(credentials)
+            email_service = google_auth.get_service('gmail', 'v1')
+            calendar_service = google_auth.get_service('calendar', 'v3')
+            
+            email_data = gmail_client.get_unread_gmail_data(email_service)
+            calendar_data = calendar_client.get_upcoming_calendar_events(calendar_service)
 
             count = email_data.get("count", 0)
             items = email_data.get("emails", [])
 
-            if items:
-                summary_list = [f"'{e['subject']}' at {e['time']}" for e in items]
-                recent_emails_str = ", ".join(summary_list)
-            else:
-                recent_emails_str = "None"
+            recent_emails_str = ", ".join(
+                [f"'{e['subject']}' at {e['time']}" for e in items]
+            ) if items else "Email Telemetry (24h): No unread emails"
+            
+            calendar_report = (
+                "Calendar Telemetry (48h): "
+                + " | ".join([f"'{event['summary']}' at {event['start']}" for event in calendar_data])
+            ) if calendar_data else "Calendar Telemetry (48h): No upcoming events"
 
             email_report = f"Email Telemetry: {count} unread primary emails. Most recent: {recent_emails_str}"
         except Exception as e:
-            print(f"[SYSTEM]: Email fetch failed: ({e})")
-            email_report = "Email Telemetry: ERROR (Check connection)"
+            print(f"[SYSTEM]: Email and Calendar fetch failed: ({e})")
+            email_report = calendar_report = "ERROR: Check connection"
 
     unread_records = database.fetch_unread_reminders()
     ids = []
@@ -65,7 +74,7 @@ def start_apex():
     else:
         memory_report = "No pending reminders."
     
-    combined_raw_data = f"{weather_report} {sports_report} {email_report} {memory_report}"
+    combined_raw_data = f"{weather_report} | {sports_report} | {email_report} | {calendar_report} | {memory_report}"
 
     print("Processing Flow...")
 
