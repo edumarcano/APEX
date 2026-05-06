@@ -4,6 +4,7 @@ import speaker
 import brain
 import sports_client
 import gui
+import email_client
 import threading
 import database
 import os
@@ -12,7 +13,7 @@ import os
 def start_apex():
     """
     Starts the primary execution loop of the APEX system, validates system state via the scanner,
-    aggregates telemetry data from weather, sports, and database, and processes the data through
+    aggregates telemetry data from weather, sports, email, and database, and processes the data through
     the Gemini brain model to output a synchronized audio and visual briefing.
     """
     if not scanner.should_run():
@@ -20,7 +21,10 @@ def start_apex():
     
     TEST_MODE = os.getenv("TEST_MODE", "false").lower()
     SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
-    if TEST_MODE == "false" and SHOWCASE_MODE == "false":
+    is_test_mode = TEST_MODE == "true"
+    is_showcase_mode = SHOWCASE_MODE == "true"
+
+    if not is_test_mode and not is_showcase_mode:
         database.log_run()
 
     speaker.speak("Environment scanned. APEX is online.")
@@ -28,6 +32,27 @@ def start_apex():
     print("Establishing data roots...")
     weather_report = weather_client.fetch_weather_root()
     sports_report = sports_client.fetch_sports_root()
+
+    if is_test_mode or is_showcase_mode:
+        email_report = "Email Telemetry: MOCKED (Bypass active)"
+    else:
+        try:
+            credentials = email_client.authenticate_gmail()
+            email_data = email_client.get_unread_gmail_data(credentials)
+
+            count = email_data.get("count", 0)
+            items = email_data.get("emails", [])
+
+            if items:
+                summary_list = [f"'{e['subject']}' at {e['time']}" for e in items]
+                recent_emails_str = ", ".join(summary_list)
+            else:
+                recent_emails_str = "None"
+
+            email_report = f"Email Telemetry: {count} unread primary emails. Most recent: {recent_emails_str}"
+        except Exception as e:
+            print(f"[SYSTEM]: Email fetch failed: ({e})")
+            email_report = "Email Telemetry: ERROR (Check connection)"
 
     unread_records = database.fetch_unread_reminders()
     ids = []
@@ -40,7 +65,7 @@ def start_apex():
     else:
         memory_report = "No pending reminders."
     
-    combined_raw_data = f"{weather_report} {sports_report} {memory_report}"
+    combined_raw_data = f"{weather_report} {sports_report} {email_report} {memory_report}"
 
     print("Processing Flow...")
 

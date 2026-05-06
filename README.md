@@ -9,8 +9,8 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from various sources, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen. In the case that Gemini is unavailable, the system automatically engages a fallback protocol to deliver a raw telemetry readout, ensuring the briefing never fails. For development and testing, the Gemini call is bypassed and replaced with a similar raw telemetry readout to preserve API quota.
 
 ```
-scanner.py  →  weather.py + sports.py + database.py  →  brain.py  →  speaker.py + gui.py
-  (gate)              (data collection)                  (synthesis)     (output)
+scanner.py  →  weather_client.py + sports_client.py + email_client.py + database.py  →  brain.py  →  speaker.py + gui.py
+  (gate)                                (data collection)                             (synthesis)        (output)
 ```
 
 ---
@@ -20,8 +20,8 @@ scanner.py  →  weather.py + sports.py + database.py  →  brain.py  →  speak
 **Context-aware gating (`scanner.py`)**  
 Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 6 hours since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
 
-**Live data connectors (`weather.py`, `sports.py`)**  
-Weather comes from the OpenWeatherMap API. F1 race data comes from the Ergast/Jolpica API. Each connector is in its own module, so adding new sources (Google Calendar, GitHub activity, news headlines) means writing one new file and a single line in `main.py`.
+**Live data connectors (`weather_client.py`, `sports_client.py`, `email_client.py`)**  
+Weather comes from the OpenWeatherMap API. F1 race data comes from the Ergast/Jolpica API. Unread Primary inbox emails come from the Gmail API v1. Each connector is in its own module, so adding new sources means writing one new file and a single line in `main.py`.
 
 **AI-generated briefings (`brain.py`)**  
 Raw data strings from the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK, using the genai.Client architecture. The model turns everything into a briefing under 40 words with a consistent voice and tone, no templating or string formatting involved. If the API call fails, the module catches the exception and falls back to reading the raw telemetry data directly to the user, ensuring the run never crashes.
@@ -64,7 +64,7 @@ Both flags are read from `.env` and default to `"false"` if the key is missing e
 | GUI | CustomTkinter |
 | Database | SQLite3 |
 | TTS | pyttsx3 |
-| Key Libraries | `psutil`, `requests`, `python-dotenv` |
+| Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client` |
 
 ---
 
@@ -80,6 +80,7 @@ cd apex
 ```bash
 pip install -r requirements.txt
 pip install google-genai
+pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 ```
 
 **3. Configure environment variables**
@@ -94,7 +95,14 @@ TEST_MODE=False
 SHOWCASE_MODE=False
 ```
 
-**4. Run**
+**4. Configure Gmail API credentials (BYOK)**
+
+- Go to the Google Cloud Console.
+- Create an OAuth client ID credential for a desktop application.
+- Download the file as `credentials.json`.
+- Place `credentials.json` in the project root directory.
+
+**5. Run**
 ```bash
 python main.py
 ```
@@ -108,12 +116,15 @@ apex/
 ├── main.py          # Entry point and execution flow
 ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
 ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
-├── weather.py       # OpenWeatherMap connector
-├── sports.py        # F1 race data connector (Ergast API)
+├── weather_client.py # OpenWeatherMap connector
+├── sports_client.py  # F1 race data connector (Ergast API)
+├── email_client.py   # Gmail API v1 extraction and timestamp parsing
 ├── speaker.py       # Text-to-speech output via pyttsx3
 ├── gui.py           # CustomTkinter HUD display
 ├── database.py      # SQLite session logging and reminder management
 ├── apex_memory.db   # Auto-generated on first run
+├── credentials.json # Google Cloud OAuth client ID (BYOK - not committed)
+├── token.json       # Auto-generated user access token (not committed)
 └── .env             # Local environment variables (not committed)
 ```
 
