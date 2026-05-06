@@ -1,4 +1,5 @@
 import os
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from google.auth.transport.requests import Request
@@ -35,21 +36,27 @@ def authenticate_gmail():
     return creds
 
 
-def get_unread_gmail_data(creds: Credentials) -> dict[str, int | list[str]]:
+def get_unread_gmail_data(
+    creds: Credentials,
+) -> dict[str, int | list[dict[str, str]]]:
     """
-    Fetches the total unread email count and the subject lines of the first three unread messages.
+    Fetches unread email data excluding promotions, social, and updates categories.
 
     Args:
         creds: Authorized OAuth2 credentials for Gmail API access.
 
     Returns:
-        A dictionary with the total unread count and a list of up to three subject lines.
+        A dictionary containing the total unread count and a list of up to three
+        emails with subject and formatted time.
     """
     service = build('gmail', 'v1', credentials=creds)
     list_resp: dict[str, Any] = (
         service.users()
         .messages()
-        .list(userId='me', q='is:unread')
+        .list(
+            userId='me',
+            q='is:unread -category:promotions -category:social -category:updates' 'newer_than:1d',
+        )
         .execute()
     )
 
@@ -59,7 +66,7 @@ def get_unread_gmail_data(creds: Credentials) -> dict[str, int | list[str]]:
 
     id_slice = [m['id'] for m in messages_meta[:3]]
 
-    subjects: list[str] = []
+    emails: list[dict[str, str]] = []
     for msg_id in id_slice:
         msg: dict[str, Any] = (
             service.users()
@@ -68,13 +75,30 @@ def get_unread_gmail_data(creds: Credentials) -> dict[str, int | list[str]]:
             .execute()
         )
         subject: str | None = None
+        date_value: str | None = None
         for header in msg.get('payload', {}).get('headers', []):
-            if header.get('name', '').lower() == 'subject':
+            header_name = header.get('name', '').lower()
+            if header_name == 'subject':
                 subject = header.get('value')
-                break
-        subjects.append(subject if subject is not None else '')
+            elif header_name == 'date':
+                date_value = header.get('value')
 
-    return {'count': count, 'subjects': subjects}
+        time_str = ''
+        if date_value:
+            try:
+                parsed_datetime = parsedate_to_datetime(date_value)
+                time_str = parsed_datetime.strftime('%I:%M %p').lstrip('0')
+            except (TypeError, ValueError):
+                time_str = ''
+
+        emails.append(
+            {
+                'subject': subject if subject is not None else '',
+                'time': time_str,
+            }
+        )
+
+    return {'count': count, 'emails': emails}
 
 
 if __name__ == "__main__":
