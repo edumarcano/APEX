@@ -1,8 +1,8 @@
 import scanner
-import weather
+import weather_client
 import speaker
 import brain
-import sports
+import sports_client
 import gui
 import threading
 import database
@@ -26,8 +26,8 @@ def start_apex():
     speaker.speak("Environment scanned. APEX is online.")
 
     print("Establishing data roots...")
-    weather_report = weather.fetch_weather_root()
-    sports_report = sports.fetch_sports_root()
+    weather_report = weather_client.fetch_weather_root()
+    sports_report = sports_client.fetch_sports_root()
 
     unread_records = database.fetch_unread_reminders()
     ids = []
