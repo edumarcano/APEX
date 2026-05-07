@@ -66,6 +66,15 @@ Both flags are read from `.env` and default to `"false"` if the key is missing e
 | TTS | pyttsx3 |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client` |
 
+### AI-Augmented Development
+
+The project uses a set of custom agent rules in `.cursor/rules/`. A shared global config (`global.mdc`) pins the two non-negotiables — TTS output compatibility and PEP-8 compliance — across every agent. Four roles divide the work:
+
+- **Auditor** — security vulnerabilities, edge cases, and PEP-8 violations.
+- **Builder** — structural scaffolding and imports, core logic left blank for manual implementation.
+- **Mechanic** — targeted syntax fixes and boilerplate generation.
+- **Communicator** — documentation synthesis, README updates, and change summarization for architectural review.
+
 ---
 
 ## Setup
@@ -79,8 +88,6 @@ cd apex
 **2. Install dependencies**
 ```bash
 pip install -r requirements.txt
-pip install google-genai
-pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 ```
 
 **3. Configure environment variables**
