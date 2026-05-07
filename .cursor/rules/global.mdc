@@ -1,0 +1,14 @@
+---
+alwaysApply: true
+---
+# APEX
+
+## System Architecture Context:
+- **Data Extraction:** Individual Python modules responsible for fetching third-party API data (e.g., weather, sports, email).
+- **Processing Flow:** The main execution layer (`brain.py`) that standardizes raw data and handles LLM integration.
+- **Output Layer:** The local interface, consisting of the floating GUI and the text-to-speech (TTS) engine.
+
+## Execution Constraints:
+- **TTS Compatibility:** NEVER use emojis, asterisks (*), or markdown formatting in string outputs destined for the audio briefing. This will break the `pyttsx3` engine.
+- **Code Standards:** Enforce PEP-8 compliance, strict Python type hinting, and standard docstrings for all functions. 
+- **Decoupled Identity:** The underlying logic must remain neutral. Do not hardcode persona-specific traits into core operational variables.

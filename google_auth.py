@@ -1,4 +1,6 @@
 import os
+from typing import Any
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -7,7 +9,7 @@ from googleapiclient.discovery import build
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.readonly"]
 
 
-def get_service(api_name, api_version):
+def get_service(api_name: str, api_version: str) -> Any:
     """Get a service object for the given API name and version."""
     creds = None
     if os.path.exists('token.json'):
