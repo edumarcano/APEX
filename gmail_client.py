@@ -20,7 +20,7 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
         .messages()
         .list(
             userId='me',
-            q='is:unread -category:promotions -category:social -category:updates' 'newer_than:1d',
+            q='is:unread -category:promotions -category:social -category:updates newer_than:1d',
         )
         .execute()
     )

@@ -21,6 +21,8 @@ def initialize_db() -> None:
 def get_last_run() -> datetime | None:
     """
     Retrieves the timestamp of the last run from the database.
+
+    Returns None when the runs table has no rows (no prior run logged).
     """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -66,7 +68,7 @@ def fetch_unread_reminders() -> list[tuple[int, str]]:
     return records
 
 
-def mark_reminders_read( ids: list[int]) -> None:
+def mark_reminders_read(ids: list[int]) -> None:
     """
     Marks the reminders with the given IDs as read in the database.
     Args:
@@ -74,7 +76,7 @@ def mark_reminders_read( ids: list[int]) -> None:
     """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    for id in ids:
-        cursor.execute("UPDATE reminders SET is_read = 1 WHERE id = ?", (id,))
+    for reminder_id in ids:
+        cursor.execute("UPDATE reminders SET is_read = 1 WHERE id = ?", (reminder_id,))
     conn.commit()
     conn.close()

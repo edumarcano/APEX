@@ -16,8 +16,20 @@ Do not use emojis, asterisks, or markdown formatting (TTS compatibility).
 
 def process_flow(raw_data: str) -> str:
     """
-    Configures the Gemini API, injects the provided telemetry data into the system prompt, and returns a formatted briefing.
-    Bypasses Gemini API if TEST_MODE is enabled.
+    Configure Gemini with system prompt plus telemetry and return a briefing string.
+
+    Args:
+        raw_data: Raw telemetry text injected after the system prompt.
+
+    Returns:
+        Model output (stripped), or TEST MODE / fallback text when the model is not used.
+
+    Behavior:
+        If TEST_MODE is ``true``, skips the API and returns a TEST MODE wrapper plus raw_data.
+        Otherwise loads GEMINI_API_KEY; missing key raises and is caught by the handler below.
+        Empty or whitespace-only model responses raise and are caught the same way.
+        On any exception (including missing key and empty response), prints diagnostics and
+        returns the offline fallback message embedding raw_data.
     """
     TEST_MODE = os.getenv("TEST_MODE", "false").lower()
     if TEST_MODE == "true":
@@ -33,8 +45,8 @@ def process_flow(raw_data: str) -> str:
         full_prompt = f"{APEX_SYSTEM_PROMPT}\n\nDATA TO ANALYZE: {raw_data}"
 
         response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[full_prompt]
+            model="gemini-2.5-flash",
+            contents=[full_prompt],
         )
         if response.text and response.text.strip():
             return response.text.strip()
@@ -46,6 +58,7 @@ def process_flow(raw_data: str) -> str:
         print("[BRAIN]: Engaging offline fallback protocol...")
 
         return f"""Chief, the primary neural link is experiencing an anomaly. Initiating raw telemetry readout: {raw_data}"""
+
 
 if __name__ == "__main__":
     test_data = "Environment stabilized at 82 degrees with scattered clouds."
