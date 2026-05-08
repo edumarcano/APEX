@@ -36,20 +36,24 @@ def start_apex():
     if FEATURE_WEATHER:
         weather_report = weather_client.fetch_weather_root()
     else:
-        weather_report = "Weather data: BYPASSED"
+        print("[SYSTEM]: Weather module bypassed via user preference")
+        weather_report = ""
 
     if FEATURE_SPORTS:
         sports_report = sports_client.fetch_sports_data()
     else:
-        sports_report = "Sports data: BYPASSED"
+        print("[SYSTEM]: Sports module bypassed via user preference")
+        sports_report = ""
 
     if FEATURE_NEWS:
         news_report = news_client.fetch_news_data()
     else:
-        news_report = "News data: BYPASSED"
+        print("[SYSTEM]: News module bypassed via user preference")
+        news_report = ""
 
     if is_test_mode or is_showcase_mode or not FEATURE_EMAIL:
-        email_report = "Email data: BYPASSED"
+        print("[SYSTEM]: Email module bypassed via user preference")
+        email_report = ""
     else:
         try:
             email_service = google_auth.get_service('gmail', 'v1')
@@ -68,7 +72,8 @@ def start_apex():
             email_report = "ERROR: Check connection"
 
     if is_test_mode or is_showcase_mode or not FEATURE_CALENDAR:
-        calendar_report = "Calendar data: BYPASSED"
+        print("[SYSTEM]: Calendar module bypassed via user preference")
+        calendar_report = ""
     else:
         try:
             calendar_service = google_auth.get_service('calendar', 'v3')
