@@ -21,7 +21,7 @@ scanner.py  →  [Data Roots (Clients & DB)]  →  brain.py       →  [Output D
 Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 6 hours since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
 
 **Live data connectors (`weather_client.py`, `sports_client.py`, `gmail_client.py`, `calendar_client.py`)**  
-Weather comes from the OpenWeatherMap API. F1 race data comes from the Ergast/Jolpica API. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients go through `google_auth.py` so they share the same OAuth2 flow and token. Each connector is its own module, so adding a new source means writing one new file and a single line in `main.py`.
+Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `main.py`.
 
 **AI-generated briefings (`brain.py`)**  
 Raw data strings from all the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK. Pipe (`|`) delimiters separate each source in the raw string to keep context clean for the model. It turns everything into a briefing under 40 words with a consistent voice and tone, no templates and no manual string formatting. If the API call fails, it catches the exception and falls back to reading the raw data directly, so the run never crashes.
@@ -96,6 +96,7 @@ Create a `.env` file in the project root:
 ```
 GEMINI_API_KEY=your_gemini_api_key
 OPENWEATHER_API_KEY=your_openweather_api_key
+FOOTBALL_API_KEY=your_football_data_api_key
 TARGET_LOCATION=your_city_name
 HOME_SSID=your_home_wifi_name
 TEST_MODE=False
@@ -125,7 +126,7 @@ apex/
 ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
 ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
 ├── weather_client.py  # OpenWeatherMap connector
-├── sports_client.py   # F1 race data connector (Ergast API)
+├── sports_client.py   # F1 (Ergast/Jolpica) and FC Barcelona fixture connector (football-data.org)
 ├── gmail_client.py    # Gmail API v1 extraction and timestamp parsing
 ├── calendar_client.py # Google Calendar 48-hour schedule extractor
 ├── google_auth.py     # Centralized OAuth2 utility for Google APIs

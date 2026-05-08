@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -42,7 +43,34 @@ def fetch_sports_data() -> str:
             if response.status_code == 429:
                 intel.append("Barcelona fixture telemetry throttled")
             elif response.status_code == 200:
-                print(json.dumps(response.json(), indent=2))
+                matches = response.json().get('matches', [])
+                if not matches:
+                    intel.append("Barcelona fixture telemetry unavailable.")
+                else:
+                    match = matches[0]
+                    if str(match['homeTeam']['id']) == '81':
+                        opponent = match['awayTeam']['name']
+                    else:
+                        opponent = match['homeTeam']['name']
+
+                    match_dt = datetime.fromisoformat(
+                        match['utcDate'].replace('Z', '+00:00')
+                    )
+                    day = match_dt.day
+                    if 11 <= day <= 13:
+                        suffix = 'th'
+                    else:
+                        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(
+                            day % 10, 'th'
+                        )
+                    fixture_date = (
+                        match_dt.strftime('%A, %B ')
+                        + f"{day}{suffix}"
+                    )
+
+                    intel.append(
+                        f"Barcelona plays {opponent} on {fixture_date}."
+                    )
             else:
                 intel.append("Barcelona fixture telemetry unavailable.")
     except Exception:
