@@ -11,7 +11,7 @@ import google_auth
 import threading
 import database
 import os
-
+from config import FEATURE_WEATHER, FEATURE_SPORTS, FEATURE_NEWS, FEATURE_EMAIL, FEATURE_CALENDAR
 
 def start_apex():
     """
@@ -33,20 +33,27 @@ def start_apex():
     speaker.speak("Environment scanned. APEX is online.")
 
     print("Establishing data roots...")
-    weather_report = weather_client.fetch_weather_root()
-    sports_report = sports_client.fetch_sports_data()
-    news_report = news_client.fetch_news_data()
+    if FEATURE_WEATHER:
+        weather_report = weather_client.fetch_weather_root()
+    else:
+        weather_report = "Weather data: BYPASSED"
 
-    if is_test_mode or is_showcase_mode:
+    if FEATURE_SPORTS:
+        sports_report = sports_client.fetch_sports_data()
+    else:
+        sports_report = "Sports data: BYPASSED"
+
+    if FEATURE_NEWS:
+        news_report = news_client.fetch_news_data()
+    else:
+        news_report = "News data: BYPASSED"
+
+    if is_test_mode or is_showcase_mode or not FEATURE_EMAIL:
         email_report = "Email data: BYPASSED"
-        calendar_report = "Calendar data: BYPASSED"
     else:
         try:
             email_service = google_auth.get_service('gmail', 'v1')
-            calendar_service = google_auth.get_service('calendar', 'v3')
-            
             email_data = gmail_client.get_unread_gmail_data(email_service)
-            calendar_data = calendar_client.get_upcoming_calendar_events(calendar_service)
 
             count = email_data.get("count", 0)
             items = email_data.get("emails", [])
@@ -54,16 +61,25 @@ def start_apex():
             recent_emails_str = ", ".join(
                 [f"'{e['subject']}' at {e['time']}" for e in items]
             ) if items else "Email Telemetry (24h): No unread emails"
-            
+
+            email_report = f"Email Telemetry: {count} unread primary emails. Most recent: {recent_emails_str}"
+        except Exception as e:
+            print(f"[SYSTEM]: Email fetch failed: ({e})")
+            email_report = "ERROR: Check connection"
+
+    if is_test_mode or is_showcase_mode or not FEATURE_CALENDAR:
+        calendar_report = "Calendar data: BYPASSED"
+    else:
+        try:
+            calendar_service = google_auth.get_service('calendar', 'v3')
+            calendar_data = calendar_client.get_upcoming_calendar_events(calendar_service)
             calendar_report = (
                 "Calendar Telemetry (48h): "
                 + " | ".join([f"'{event['summary']}' at {event['start']}" for event in calendar_data])
             ) if calendar_data else "Calendar Telemetry (48h): No upcoming events"
-
-            email_report = f"Email Telemetry: {count} unread primary emails. Most recent: {recent_emails_str}"
         except Exception as e:
-            print(f"[SYSTEM]: Email and Calendar fetch failed: ({e})")
-            email_report = calendar_report = "ERROR: Check connection"
+            print(f"[SYSTEM]: Calendar fetch failed: ({e})")
+            calendar_report = "ERROR: Check connection"
 
     unread_records = database.fetch_unread_reminders()
     ids = []
