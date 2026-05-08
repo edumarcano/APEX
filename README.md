@@ -1,6 +1,6 @@
 # APEX — Automated Personal Environment Xylem
 
-A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. The idea came from wanting a real-world analog to Jarvis from Iron Man: a system that wakes up, reads the room, and gives you a situational briefing without you having to ask. The name and personality of the system come from a separate set of personal preferences around nature imagery, which is why it feels more like a specialist briefing you than a butler waiting on you. Along the way it became a practical tool for automating the morning routine of checking weather, sports updates, and personal reminders.
+A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. The idea came from wanting a real-world analog to Jarvis from Iron Man: a system that wakes up, reads the room, and gives you a situational briefing without you having to ask. The name and personality of the system come from a separate set of personal preferences around nature imagery, which is why it feels more like a specialist briefing you than a butler waiting on you. Along the way it became a practical tool for automating the morning routine of checking weather, sports updates, news headlines, and personal reminders.
 
 ---
 
@@ -20,11 +20,11 @@ scanner.py  →  [Data Roots (Clients & DB)]  →  brain.py       →  [Output D
 **Context-aware gating (`scanner.py`)**  
 Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 6 hours since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
 
-**Live data connectors (`weather_client.py`, `sports_client.py`, `gmail_client.py`, `calendar_client.py`)**  
-Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `main.py`.
+**Live data connectors (`weather_client.py`, `sports_client.py`, `news_client.py`, `gmail_client.py`, `calendar_client.py`)**  
+Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `main.py`.
 
 **AI-generated briefings (`brain.py`)**  
-Raw data strings from all the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK. Pipe (`|`) delimiters separate each source in the raw string to keep context clean for the model. It turns everything into a briefing under 40 words with a consistent voice and tone, no templates and no manual string formatting. If the API call fails, it catches the exception and falls back to reading the raw data directly, so the run never crashes.
+Raw data strings from all the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK. Pipe (`|`) delimiters separate each source in the raw string to keep context clean for the model. It turns everything into a briefing under 75 words with a consistent voice and tone, no templates and no manual string formatting. If the API call fails, it catches the exception and falls back to reading the raw data directly, so the run never crashes.
 
 **Latency masking with threading (`main.py`)**  
 Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Analyzing telemetry... Stand by...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
@@ -68,9 +68,10 @@ Both flags are read from `.env` and default to `"false"` if the key is missing e
 
 ### AI-Augmented Development
 
-The project uses a set of custom agent rules in `.cursor/rules/`. A shared global config (`global.mdc`) pins the two non-negotiables — TTS output compatibility and PEP-8 compliance — across every agent. Four roles divide the work:
+The project uses a set of custom agent rules in `.cursor/rules/`. A shared global config (`global.mdc`) pins the two non-negotiables across every agent, TTS output compatibility and PEP-8 compliance. Five roles divide the work:
 
 - **Auditor** — security vulnerabilities, edge cases, and PEP-8 violations.
+- **Analyst** — codebase exploration, tracing data flow, and answering questions about how things work.
 - **Builder** — structural scaffolding and imports, core logic left blank for manual implementation.
 - **Mechanic** — targeted syntax fixes and boilerplate generation.
 - **Communicator** — documentation synthesis, README updates, and change summarization for architectural review.
@@ -92,16 +93,19 @@ pip install -r requirements.txt
 
 **3. Configure environment variables**
 
-Create a `.env` file in the project root:
+Copy the included template and fill in your values:
+
+macOS / Linux:
+```bash
+cp .env.example .env
 ```
-GEMINI_API_KEY=your_gemini_api_key
-OPENWEATHER_API_KEY=your_openweather_api_key
-FOOTBALL_API_KEY=your_football_data_api_key
-TARGET_LOCATION=your_city_name
-HOME_SSID=your_home_wifi_name
-TEST_MODE=False
-SHOWCASE_MODE=False
+
+Windows:
+```powershell
+copy .env.example .env
 ```
+
+`.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control.
 
 **4. Set up Google API credentials**
 
@@ -127,6 +131,7 @@ apex/
 ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
 ├── weather_client.py  # OpenWeatherMap connector
 ├── sports_client.py   # F1 (Ergast/Jolpica) and FC Barcelona fixture connector (football-data.org)
+├── news_client.py     # GNews API connector for AI and Global Events headlines
 ├── gmail_client.py    # Gmail API v1 extraction and timestamp parsing
 ├── calendar_client.py # Google Calendar 48-hour schedule extractor
 ├── google_auth.py     # Centralized OAuth2 utility for Google APIs
@@ -136,7 +141,8 @@ apex/
 ├── apex_memory.db   # Auto-generated on first run
 ├── credentials.json # Google Cloud OAuth client ID (BYOK - not committed)
 ├── token.json       # Auto-generated user access token (not committed)
-└── .env             # Local environment variables (not committed)
+├── .env             # Local environment variables (not committed)
+└── .env.example     # Environment variable template with placeholder values
 ```
 
 ---
@@ -145,7 +151,7 @@ apex/
 
 Development is tracked via GitHub Issues and milestones. For the latest on what's planned, in progress, or recently shipped, check the live project board:
 
-**[👉 View Live Development Roadmap](https://github.com/yourusername/apex/projects)**
+**[👉 View Live Development Roadmap](https://github.com/edumarcano/apex/projects)**
 
 ---
 

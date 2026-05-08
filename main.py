@@ -6,6 +6,7 @@ import sports_client
 import gui
 import gmail_client
 import calendar_client
+import news_client
 import google_auth
 import threading
 import database
@@ -34,6 +35,7 @@ def start_apex():
     print("Establishing data roots...")
     weather_report = weather_client.fetch_weather_root()
     sports_report = sports_client.fetch_sports_data()
+    news_report = news_client.fetch_news_data()
 
     if is_test_mode or is_showcase_mode:
         email_report = "Email data: BYPASSED"
@@ -74,7 +76,7 @@ def start_apex():
     else:
         memory_report = "No pending reminders."
     
-    combined_raw_data = f"{weather_report} | {sports_report} | {email_report} | {calendar_report} | {memory_report}"
+    combined_raw_data = f"{weather_report} | {sports_report} | {email_report} | {calendar_report} | {news_report} | {memory_report}"
 
     print("Processing Flow...")
 
