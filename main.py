@@ -33,7 +33,7 @@ def start_apex():
 
     print("Establishing data roots...")
     weather_report = weather_client.fetch_weather_root()
-    sports_report = sports_client.fetch_sports_root()
+    sports_report = sports_client.fetch_sports_data()
 
     if is_test_mode or is_showcase_mode:
         email_report = "Email data: BYPASSED"
