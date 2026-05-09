@@ -16,6 +16,7 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
+    "SYSTEM_PROMPT",
     "load_feature_flags",
 ]
 
@@ -32,55 +33,40 @@ _FEATURE_KEYS: Final[tuple[str, ...]] = (
     "calendar",
 )
 
+try:
+    _CONFIG_DATA: dict[str, Any] = json.loads(_DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    if not isinstance(_CONFIG_DATA, dict):
+        _LOGGER.warning("Config root must be a JSON object; using defaults.")
+        _CONFIG_DATA = {}
+except FileNotFoundError:
+    _CONFIG_DATA = {}
+except (OSError, json.JSONDecodeError) as exc:
+    _LOGGER.warning("Unable to load config from %s: %s", _DEFAULT_CONFIG_PATH, exc)
+    _CONFIG_DATA = {}
+
+_DEFAULT_SYSTEM_PROMPT: Final[str] = (
+    "You are a helpful system assistant. Summarize the following data into a clean, "
+    "concise audio briefing under 75 words. Do not use emojis or markdown."
+)
+_configured_prompt = _CONFIG_DATA.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
+if isinstance(_configured_prompt, str):
+    SYSTEM_PROMPT: Final[str] = _configured_prompt
+else:
+    _LOGGER.warning("Config key 'system_prompt' must be a string; using default.")
+    SYSTEM_PROMPT = _DEFAULT_SYSTEM_PROMPT
 
 def _all_features_false() -> dict[str, bool]:
     """Return a map of every known feature key set to ``False``."""
     return dict.fromkeys(_FEATURE_KEYS, False)
 
 
-def load_feature_flags(config_path: Path | None = None) -> dict[str, bool]:
-    """Load feature toggles from ``config.json``.
-
-    Looks beside this module (project root) unless ``config_path`` is given.
-
-    If the file is missing, unreadable, invalid JSON, or structurally wrong,
-    returns all ``False`` so callers avoid crashes. Individual keys that are
-    absent or non-boolean are treated as ``False``.
-
-    Args:
-        config_path: Optional explicit path to a JSON file. Defaults to
-            ``<project_root>/config.json``.
-
-    Returns:
-        Mapping of internal feature names to boolean enabled flags.
-    """
-    path = _DEFAULT_CONFIG_PATH if config_path is None else Path(config_path)
-    path = path.expanduser().resolve()
+def load_feature_flags() -> dict[str, bool]:
+    """Load feature toggles from module-level ``_CONFIG_DATA``."""
     result = _all_features_false()
-
-    if not path.is_file():
-        _LOGGER.warning("Config file not found at %s; feature flags default to False.", path)
-        return result
-
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        _LOGGER.warning("Could not read config file %s: %s", path, exc)
-        return result
-
-    try:
-        data: Any = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        _LOGGER.warning("Invalid JSON in %s: %s", path, exc)
-        return result
-
-    if not isinstance(data, dict):
-        _LOGGER.warning("Config root must be a JSON object; got %s.", type(data).__name__)
-        return result
-
-    features = data.get("features")
+    features = _CONFIG_DATA.get("features")
     if not isinstance(features, dict):
-        _LOGGER.warning('Config must contain a JSON object at key "features".')
+        if features is not None:
+            _LOGGER.warning('Config key "features" must be a JSON object.')
         return result
 
     for key in _FEATURE_KEYS:
@@ -89,14 +75,13 @@ def load_feature_flags(config_path: Path | None = None) -> dict[str, bool]:
             result[key] = value
         elif value is not None:
             _LOGGER.warning('Feature %r must be a boolean; ignoring invalid value.', key)
-
     return result
 
 
 _feature_map = load_feature_flags()
 
-FEATURE_WEATHER: Final[bool] = _feature_map["weather"]
-FEATURE_SPORTS: Final[bool] = _feature_map["sports"]
-FEATURE_NEWS: Final[bool] = _feature_map["news"]
-FEATURE_EMAIL: Final[bool] = _feature_map["email"]
-FEATURE_CALENDAR: Final[bool] = _feature_map["calendar"]
+FEATURE_WEATHER: Final[bool] = bool(_feature_map.get("weather", False))
+FEATURE_SPORTS: Final[bool] = bool(_feature_map.get("sports", False))
+FEATURE_NEWS: Final[bool] = bool(_feature_map.get("news", False))
+FEATURE_EMAIL: Final[bool] = bool(_feature_map.get("email", False))
+FEATURE_CALENDAR: Final[bool] = bool(_feature_map.get("calendar", False))
