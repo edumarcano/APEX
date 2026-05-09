@@ -80,4 +80,4 @@ def fetch_sports_data() -> str:
 
 
 if __name__ == "__main__":
-    print(fetch_sports_data())
+    print(f"[SPORTS]: {fetch_sports_data()}")

@@ -55,15 +55,15 @@ def get_upcoming_calendar_events(service: Any) -> list[dict[str, str]]:
     return events
 
 if __name__ == "__main__":
-    print("[SYSTEM]: Initializing Calendar Service...")
+    print("[CALENDAR]: Initializing Calendar Service...")
     service = get_service('calendar', 'v3')
     if service:
-        print("[SYSTEM]: Fetching upcoming events...")
+        print("[CALENDAR]: Fetching upcoming events...")
         events = get_upcoming_calendar_events(service)
 
         if not events:
-            print("[SYSTEM]: No upcoming events found for the next 48 hours.")
+            print("[CALENDAR]: No upcoming events found for the next 48 hours.")
         else:
-            print(f"[SYSTEM]: Extraction Complete. Data: {events}")
+            print(f"[CALENDAR]: Extraction Complete. Data: {events}")
     else:
-        print("[ERROR]: Failed to initialize Calendar Service.")
+        print("[CALENDAR][ERROR]: Failed to initialize Calendar Service.")

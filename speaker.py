@@ -25,10 +25,10 @@ def speak(text: str) -> None:
     """
     engine = initialize_engine()
     
-    print(f"\n[APEX]: {text}")
+    print(f"\n[SPEAKER]: {text}")
     
     engine.say(text)
     engine.runAndWait()
 
 if __name__ == "__main__":
-    speak("Good morning Chief. All systems are operational. I am ready to begin your briefing.")
+    speak("System audio test. Speaker operational.")

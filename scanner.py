@@ -45,7 +45,7 @@ def should_run() -> bool:
 
     SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
     if SHOWCASE_MODE == "true":
-        print("SHOWCASE MODE ENABLED. Bypassing all checks.")
+        print("[SCANNER]: Showcase mode enabled. Bypassing all checks.")
         return True
     
     current_wifi = get_current_ssid()
@@ -53,15 +53,15 @@ def should_run() -> bool:
     is_plugged = check_power()
     
     if not current_wifi == target_wifi:
-        print(f"❌ Checks failed. Unauthorized WiFi connection detected.")
+        print("[SCANNER]: Checks failed. Unauthorized WiFi connection detected.")
         return False
     if not is_plugged:
-        print(f"❌ Checks failed. AC power not detected.")
+        print("[SCANNER]: Checks failed. AC power not detected.")
         return False
 
     TEST_MODE = os.getenv("TEST_MODE", "false").lower()
     if TEST_MODE == "true":
-        print("TEST MODE ENABLED. Bypassing cooldown.")
+        print("[SCANNER]: Test mode enabled. Bypassing cooldown.")
         return True
 
     last_run = database.get_last_run()
@@ -70,11 +70,14 @@ def should_run() -> bool:
     on_cooldown = last_run and (datetime.now() - last_run) < cooldown_period
 
     if on_cooldown:
-        print(f"❌ Checks failed. System still on cooldown. Time since last run: {datetime.now() - last_run}")
+        print(
+            "[SCANNER]: Checks failed. System still on cooldown. "
+            f"Time since last run: {datetime.now() - last_run}"
+        )
         return False
 
     return True
 
 if __name__ == "__main__":
     if should_run():
-        print("✅ Checks passed.")
+        print("[SCANNER]: Checks passed.")
