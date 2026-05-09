@@ -1,0 +1,9 @@
+{
+  "features": {
+    "weather": true,
+    "sports": true,
+    "news": true,
+    "email": true,
+    "calendar": true
+  }
+}
