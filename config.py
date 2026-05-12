@@ -16,6 +16,9 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
+    "GOOGLE_VOICE_ID",
+    "INWORLD_VOICE_ID",
+    "PRIMARY_TTS",
     "SYSTEM_PROMPT",
     "load_feature_flags",
 ]
@@ -54,6 +57,12 @@ if isinstance(_configured_prompt, str):
 else:
     _LOGGER.warning("Config key 'system_prompt' must be a string; using default.")
     SYSTEM_PROMPT = _DEFAULT_SYSTEM_PROMPT
+
+tts_settings = _CONFIG_DATA.get("tts_settings", {})
+PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
+INWORLD_VOICE_ID: Final[str] = tts_settings.get("inworld_voice_id", "")
+GOOGLE_VOICE_ID: Final[str] = tts_settings.get("google_voice_id", "")
+
 
 def _all_features_false() -> dict[str, bool]:
     """Return a map of every known feature key set to ``False``."""
