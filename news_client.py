@@ -42,6 +42,6 @@ def fetch_news_data():
     return final_report
 
 if __name__ == "__main__":
-    print('Initializing News Service Test...')
+    print("[NEWS]: Initializing news service test...")
     test_data = fetch_news_data()
-    print(f'Test Data: {test_data}')
+    print(f"[NEWS]: Test data: {test_data}")

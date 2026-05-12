@@ -30,11 +30,11 @@ def start_apex():
     if not is_test_mode and not is_showcase_mode:
         database.log_run()
 
-    speaker.speak("Environment scanned. APEX is online.")
+    speaker.speak("System initialized. All modules online.")
 
-    print("Establishing data roots...")
+    print("[SYSTEM]: Fetching data...")
     if FEATURE_WEATHER:
-        weather_report = weather_client.fetch_weather_root()
+        weather_report = weather_client.fetch_weather_data()
     else:
         print("[SYSTEM]: Weather module bypassed via user preference")
         weather_report = ""
@@ -99,24 +99,24 @@ def start_apex():
     
     combined_raw_data = f"{weather_report} | {sports_report} | {email_report} | {calendar_report} | {news_report} | {memory_report}"
 
-    print("Processing Flow...")
+    print("[SYSTEM]: Synthesizing briefing...")
 
     # Execute filler audio concurrently to hide the Gemini processing time
-    filler_thread = threading.Thread(target=speaker.speak, args=("Analyzing telemetry... Stand by...",))
+    filler_thread = threading.Thread(target=speaker.speak, args=("Generating briefing... Please wait...",))
     filler_thread.start()
 
-    final_briefing = brain.process_flow(combined_raw_data)
+    final_briefing = brain.process_telemetry(combined_raw_data)
 
     filler_thread.join()
 
     voice_thread = threading.Thread(target=speaker.speak, args=(final_briefing,))
     voice_thread.start()
-    gui.launch_environment(final_briefing)
+    gui.launch_gui(final_briefing)
 
     if ids:
         database.mark_reminders_read(ids)
     
-    print("\n--- Briefing Complete ---")
+    print("[SYSTEM]: Briefing complete.")
 
 if __name__ == "__main__":
     start_apex()

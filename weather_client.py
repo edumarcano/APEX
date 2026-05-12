@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def fetch_weather_root():
+def fetch_weather_data():
     """
     Connects to the OpenWeatherMap API to retrieve current weather data.
 
@@ -17,7 +17,7 @@ def fetch_weather_root():
     location = os.getenv("TARGET_LOCATION")
     
     if not api_key or not location:
-        return "Weather Root offline: Missing environment variables."
+        return "Weather API offline: Missing API key or location."
 
     url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}&units=imperial"
     
@@ -29,13 +29,13 @@ def fetch_weather_root():
             temp = round(data["main"]["temp"])
             condition = data["weather"][0]["description"]
             
-            return f"Environment stabilized at {temp} degrees with {condition}."
+            return f"Current temperature is {temp} degrees with {condition}."
         else:
-            return f"Weather Root anomaly: {data.get('message', 'Unknown error')}."
+            return f"Weather API error: {data.get('message', 'Unknown error')}."
             
     except Exception as e:
-        return "Weather Root failed to establish connection."
+        return "Failed to connect to Weather API."
 
 if __name__ == "__main__":
-    print(f"--- APEX Root Diagnostics ---")
-    print(fetch_weather_root())
+    print("[WEATHER]: Weather client diagnostics")
+    print(f"[WEATHER]: {fetch_weather_data()}")

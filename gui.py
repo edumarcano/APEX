@@ -3,9 +3,9 @@ import psutil
 import database
 
 
-def launch_environment(briefing_text: str) -> None:
+def launch_gui(briefing_text: str) -> None:
     """
-    Launches the display GUI with the given briefing text, and live.
+    Launches the display GUI with the given briefing text, and live diagnostics.
     Args:
         briefing_text (str): The text to display in the GUI.
     """
@@ -74,7 +74,7 @@ def launch_environment(briefing_text: str) -> None:
         note = reminder_entry.get()
         if note.strip():
             database.save_reminder(note)
-            print(f"DEBUG - Saved to DB: {note}")
+            print(f"[GUI]: Saved reminder to DB: {note}")
             reminder_entry.delete(0, 'end')
 
     save_btn = ctk.CTkButton(master=reminder_frame, text="LOG", width=50, command=log_reminder, fg_color="#1f538d", hover_color="#14375e")
@@ -86,4 +86,4 @@ def launch_environment(briefing_text: str) -> None:
     root.mainloop()
 
 if __name__ == "__main__":
-    launch_environment("SYSTEM ONLINE. Data streams synchronized. Awaiting command, Chief.")
+    launch_gui("System GUI test. Data display active. Awaiting input.")

@@ -67,12 +67,12 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
 
 
 if __name__ == "__main__":
-    print("[SYSTEM]: Attempting Gmail authentication...")
+    print("[GMAIL]: Attempting Gmail authentication...")
     service = get_service('gmail', 'v1')
 
     if service:
-        print("[SYSTEM]: Authentication successful! fetching data...")
+        print("[GMAIL]: Authentication successful! fetching data...")
         inbox_data = get_unread_gmail_data(service)
-        print(f"[SYSTEM]: Extraction Complete. Data: {inbox_data}")
+        print(f"[GMAIL]: Extraction Complete. Data: {inbox_data}")
     else:
-        print("[ERROR]: Gmail authentication failed.")
+        print("[GMAIL][ERROR]: Gmail authentication failed.")
