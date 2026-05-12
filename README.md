@@ -1,6 +1,6 @@
 # APEX — Automated Personal Environment Xylem
 
-A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. The idea came from wanting a real-world analog to Jarvis from Iron Man: a system that wakes up, reads the room, and gives you a situational briefing without you having to ask. The name and personality of the system come from a separate set of personal preferences around nature imagery, which is why it feels more like a specialist briefing you than a butler waiting on you. Along the way it became a practical tool for automating the morning routine of checking weather, sports updates, news headlines, and personal reminders.
+A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. The idea came from wanting a real-world analog to Jarvis from Iron Man: a system that wakes up, reads the room, and gives you a situational briefing without you having to ask. Along the way it became a practical tool for automating the morning routine of checking weather, sports updates, news headlines, and personal reminders. Out of the box, APEX ships with a 'Nature Specialist' persona that leans into this imagery, but the core engine is built to be a completely blank slate where the name, voice, and attitude are fully configurable.
 
 ---
 
@@ -9,8 +9,8 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from whichever sources are enabled in `config.json`, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen. If Gemini is unavailable, it falls back to reading the raw data out loud so the briefing never fails. In dev/test mode, the Gemini call is skipped entirely to save API quota and it just reads the raw data instead.
 
 ```
-scanner.py  →  [Data Roots (Clients & DB)]  →  brain.py       →  [Output Drivers (Speaker & GUI)]
-  (Gate)             (Collection)            (Synthesis)              (Delivery)
+scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py       →  [Output Drivers (Speaker & GUI)]
+  (Gate)               (Collection)              (Synthesis)              (Delivery)
 ```
 
 ---
@@ -23,17 +23,17 @@ Before any API calls are made, the scanner checks whether you're on your home Wi
 **Live data connectors (`weather_client.py`, `sports_client.py`, `news_client.py`, `gmail_client.py`, `calendar_client.py`)**  
 Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `main.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
 
-**Config-driven feature flags (`config.json`, `config.py`)**  
-`config.py` reads `config.json` at startup and exposes a boolean constant for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`). If the file is missing, unreadable, or malformed, everything defaults to `False` and a warning is logged so the run doesn't crash. `config.json` is committed to the repo with all flags set to `true`, making the defaults work out of the box. This is also where the project draws a hard line between user preferences and secrets: `config.json` holds non-sensitive settings (safe to commit), while API keys stay in `.env` (gitignored).
+**Config-driven feature flags and persona (`config.json`, `config.py`)**  
+`config.py` reads `config.json` at startup and exposes a boolean for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`) plus `SYSTEM_PROMPT`, the string that sets the AI's voice, persona name, and how it addresses the user. If the file is missing or broken, flags default to `False` and `SYSTEM_PROMPT` falls back to a generic placeholder so nothing crashes. `config.json` ships committed with all flags on. It also keeps preferences and secrets separate: toggles and the persona prompt live here (safe to commit), API keys go in `.env` (gitignored).
 
 **AI-generated briefings (`brain.py`)**  
-Raw data strings from all the connectors are passed directly to Gemini 2.5 Flash via the Google GenAI SDK. Pipe (`|`) delimiters separate each source in the raw string to keep context clean for the model. It turns everything into a briefing under 75 words with a consistent voice and tone, no templates and no manual string formatting. If the API call fails, it catches the exception and falls back to reading the raw data directly, so the run never crashes.
+Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` has no persona baked into it. It pulls `SYSTEM_PROMPT` from `config.py` and prepends it to the request, so the voice is entirely driven by `config.json`. Pipe (`|`) delimiters separate each source in the raw string to keep the model's context clean. If the API call fails for any reason, it catches the exception and falls back to reading the raw data directly so the run never crashes.
 
 **Latency masking with threading (`main.py`)**  
-Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Analyzing telemetry... Stand by...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
+Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Generating briefing... Please wait...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
 
 **Persistent reminders and session logging (`database.py`)**  
-A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after being surfaced so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
+A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after they've been read out so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
 
 **Testing Mode (`TEST_MODE`)**  
 For active development. Bypasses the 6-hour cooldown and the Gemini API call, returning a raw data readout instead to preserve API quota. Gmail and Calendar are also skipped regardless of `config.json` to keep personal data out of test runs. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips `database.log_run()` so session history stays clean during testing.
@@ -46,9 +46,17 @@ A borderless, semi-transparent window built with CustomTkinter that appears in t
 
 ---
 
+## The Default Configuration (Nature-Themed Tone)
+
+The briefing voice, the AI's name, and how it addresses the user are all set by the `system_prompt` field in `config.json`. Nothing about that is hardcoded. Change the value and the whole personality changes.
+
+The default persona that ships with the project is nature-themed, a deliberate personal choice. Just as xylem tissue carries nutrients through a tree, APEX moves your personal data through its processing layers, a parallel too good to leave at just the name. That imagery is carried over into the briefing voice and is reflected in the tone, and the word choices.
+
+---
+
 ## Environment Modes
 
-Both flags are read from `.env` and default to `"false"` if the key is missing entirely, so the system won't crash with an `AttributeError` if either variable is left out of the config. All values are normalized to lowercase at read time, so `True`, `true`, and `TRUE` all work the same way.
+Both flags are read from `.env` and default to `"false"` if the key is absent. All values are normalized to lowercase at read time, so `True`, `true`, and `TRUE` all work the same way.
 
 | Flag | Wi-Fi + Power | Cooldown | Gemini API | Gmail + Calendar (PII) | Logs Run |
 |---|---|---|---|---|---|
@@ -60,24 +68,12 @@ Both flags are read from `.env` and default to `"false"` if the key is missing e
 
 Individual data connectors can be switched on or off in `config.json` without touching any code. This is useful when you don't hold a particular API key, want to speed up development runs by cutting unused sources, or just don't need a connector for a period of time.
 
-```json
-{
-  "features": {
-    "weather": true,
-    "sports": true,
-    "news": true,
-    "email": true,
-    "calendar": true
-  }
-}
-```
+Set any `features` value to `false` to disable that connector. When a connector is off, no API call or authentication attempt is made, the module is excluded from the Gemini context window, and a bypass notice is logged to the terminal.
 
-Set any value to `false` to disable that connector. When a connector is off, no API call or authentication attempt is made, the module is excluded from the Gemini context window, while a bypass notice is logged to the terminal.
-
-A few things worth knowing about the priority order:
+Two edge cases worth knowing:
 
 - `TEST_MODE` and `SHOWCASE_MODE` always force-bypass Gmail and Calendar regardless of `config.json`. Feature flags are an additional layer of control that only matters in a normal production run.
-- If `config.json` is missing or broken, `config.py` logs a warning and defaults every flag to `False` so the system doesn't crash, it just runs with everything disabled until you fix the file.
+- If `config.json` is missing or broken, `config.py` logs a warning and defaults every feature flag to `False` and `SYSTEM_PROMPT` to a neutral generic fallback so the system doesn't crash.
 
 ---
 
@@ -94,7 +90,7 @@ A few things worth knowing about the priority order:
 
 ### AI-Augmented Development
 
-The project uses a set of custom agent rules in `.cursor/rules/`. A shared global config (`global.mdc`) pins the two non-negotiables across every agent, TTS output compatibility and PEP-8 compliance. Five roles divide the work:
+The project uses a set of custom agent rules in `.cursor/rules/`. A shared global config (`global.mdc`) enforces two rules across every agent: TTS output compatibility and PEP-8 compliance. The roles are:
 
 - **Auditor** — security vulnerabilities, edge cases, and PEP-8 violations.
 - **Analyst** — codebase exploration, tracing data flow, and answering questions about how things work.
@@ -133,9 +129,11 @@ copy .env.example .env
 
 `.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control.
 
-**4. Configure feature toggles (optional)**
+**4. Configure persona and feature toggles (optional)**
 
-`config.json` ships with all five connectors enabled. If you don't have a particular API key or just want to cut a connector out of your runs, set its flag to `false`:
+`config.json` ships with all five connectors enabled and the default Xylem persona set as the system prompt. Both can be customized without touching any code.
+
+To change the briefing voice, tone, or persona, edit the `system_prompt` field. To disable a connector, set its flag to `false`:
 
 ```json
 {
@@ -145,11 +143,14 @@ copy .env.example .env
     "news": true,
     "email": false,
     "calendar": false
-  }
+  },
+  "system_prompt": "You are APEX. Deliver a sharp, neutral briefing in under 75 words. No emojis or markdown."
 }
 ```
 
-This is the right place to handle missing API keys gracefully. For example, if you skip the `FOOTBALL_API_KEY` setup, just set `"sports": false` here instead of getting a fetch error every run. The briefing will still generate with whatever data is enabled.
+This is also the right way to handle a missing API key. If you skip the `FOOTBALL_API_KEY` setup, set `"sports": false` here instead of getting a fetch error every run. The briefing will still generate with whatever data is enabled.
+
+`config.py` validates both the `features` object and the `system_prompt` string at startup. If either is missing or malformed, it falls back to safe defaults and logs a warning rather than crashing.
 
 **5. Set up Google API credentials**
 
@@ -182,8 +183,8 @@ apex/
 ├── speaker.py       # Text-to-speech output via pyttsx3
 ├── gui.py           # CustomTkinter HUD display
 ├── database.py      # SQLite session logging and reminder management
-├── config.py        # Feature flag loader and validation
-├── config.json      # Per-connector on/off toggles (user preferences, committed)
+├── config.py        # Feature flag and system prompt loader with validation
+├── config.json      # Persona prompt and per-connector on/off toggles (user preferences, committed)
 ├── apex_memory.db   # Auto-generated on first run
 ├── credentials.json # Google Cloud OAuth client ID (BYOK - not committed)
 ├── token.json       # Auto-generated user access token (not committed)
@@ -203,11 +204,16 @@ Development is tracked via GitHub Issues and milestones. For the latest on what'
 
 ## Notes on Design
 
-Some decisions that might not be obvious from the code alone:
+A few things that aren't obvious just from reading the code:
 
-- **Why split `.env` and `config.json` instead of putting everything in one place?** `.env` is for secrets: API keys, OAuth tokens, anything you'd never commit to a public repo. `config.json` is for preferences: which features to run, what behavior to opt in or out of. Keeping them separate means the defaults are visible in version control (`config.json` is committed), collaborators can clone the repo and immediately see the expected shape of the config, and `.env.example` stays focused on secrets without getting cluttered with toggles. It also means you can change a feature flag without touching anything near your credentials.
+- **Why split `.env` and `config.json` instead of putting everything in one place?** `.env` is for secrets: API keys, OAuth tokens, anything you'd never commit to a public repo. `config.json` is for preferences: which features to run, the persona prompt, what behavior to opt in or out of. Keeping them separate means the defaults are visible in version control (`config.json` is committed), collaborators can clone the repo and immediately see the expected shape of the config, and `.env.example` stays focused on secrets without getting cluttered with toggles. It also means you can change the persona or a feature flag without touching anything near your credentials.
 
 - **Why Gemini over a template?** Templated output gets repetitive fast and requires manual updates whenever a data source changes format. Passing raw strings to the model and letting it figure out the sentence structure turned out to be simpler and more flexible.
+
 - **Why pyttsx3 over a cloud TTS?** Fully offline, no API key, no latency. For a local morning tool that tradeoff made sense as a starting point, but the robotic voice is a known limitation. Switching to a cloud TTS (ElevenLabs, Google Cloud TTS, etc.) for a more natural-sounding voice is planned.
+
 - **Why SQLite over a flat file?** The reminder feature needs read/write with state (marking items as read). SQLite handles that cleanly without pulling in anything external.
+
 - **Why an offline fallback instead of a secondary API?** The original plan was to route failed Gemini calls to an OpenAI or Anthropic fallback. But developer API credits expire after 12 months, and paying to fund a secondary account that rarely triggers isn't worth it for a personal tool. Just reading the raw data out loud during an outage gets to 100% uptime at zero cost.
+
+- **Logging conventions.** Every module prefixes its terminal output with a bracketed tag: `[BRAIN]`, `[SCANNER]`, `[SPEAKER]`, `[GUI]`, `[WEATHER]`, `[SPORTS]`, `[NEWS]`, `[GMAIL]`, `[CALENDAR]`, `[SYSTEM]`. It makes it easy to tell which module produced a given line when watching a full run scroll past.
