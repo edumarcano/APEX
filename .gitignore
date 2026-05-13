@@ -4,3 +4,4 @@ __pycache__/
 *.db
 credentials.json
 token.json
+service_account.json
