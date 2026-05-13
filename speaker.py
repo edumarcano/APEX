@@ -1,4 +1,10 @@
+import base64
+import binascii
+import os
+from typing import Any
+
 import pyttsx3
+import requests
 
 
 def _infer_language_code(voice_id: str) -> str:
@@ -28,6 +34,35 @@ def fetch_google_audio(text: str, voice_id: str) -> bytes:
         audio_config=audio_config,
     )
     return response.audio_content
+
+
+def fetch_inworld_audio(text: str, voice_id: str) -> bytes:
+    """Synthesize text using Inworld TTS and return decoded audio bytes."""
+    api_key = os.getenv("INWORLD_API_KEY")
+    if not api_key:
+        raise RuntimeError("INWORLD_API_KEY is not set.")
+
+    response = requests.post(
+        "https://api.inworld.ai/tts/v1/voice",
+        auth=(api_key, ""),
+        json={
+            "text": text,
+            "voiceId": voice_id,
+            "modelId": "inworld-tts-1.5-max",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    data: dict[str, Any] = response.json()
+    audio_content = data.get("audioContent")
+    if not isinstance(audio_content, str):
+        raise ValueError("Inworld response did not include a valid audioContent field.")
+
+    try:
+        return base64.b64decode(audio_content, validate=True)
+    except binascii.Error as exc:
+        raise ValueError("Inworld audioContent is not valid base64.") from exc
 
 
 def initialize_engine():
