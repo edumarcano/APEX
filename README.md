@@ -1,12 +1,12 @@
-# APEX — Automated Personal Environment Xylem
+# APEX: Automated Personal Environment Xylem
 
-A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. The idea came from wanting a real-world analog to Jarvis from Iron Man: a system that wakes up, reads the room, and gives you a situational briefing without you having to ask. Along the way it became a practical tool for automating the morning routine of checking weather, sports updates, news headlines, and personal reminders. Out of the box, APEX ships with a 'Nature Specialist' persona that leans into this imagery, but the core engine is built to be a completely blank slate where the name, voice, and attitude are fully configurable.
+A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. The idea came from wanting a real-world analog to Jarvis from Iron Man: a system that wakes up, reads the room, and gives you a situational briefing without you having to ask. Along the way it became a practical tool for automating the morning routine of checking weather, sports updates, news headlines, and personal reminders. Out of the box, APEX ships with a nature-themed persona that leans into this imagery, but the core engine is built to be a completely blank slate where the name, voice, and attitude are fully configurable.
 
 ---
 
 ## How It Works
 
-When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from whichever sources are enabled in `config.json`, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through text-to-speech while displaying a floating HUD in the corner of the screen. If Gemini is unavailable, it falls back to reading the raw data out loud so the briefing never fails. In dev/test mode, the Gemini call is skipped entirely to save API quota and it just reads the raw data instead.
+When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from whichever sources are enabled in `config.json`, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through a tiered TTS engine (Google Cloud TTS by default, with Inworld AI and pyttsx3 as fallbacks) while displaying a floating HUD in the corner of the screen. If Gemini is unavailable, it falls back to reading the raw data out loud so the briefing never fails. In dev/test mode, the Gemini call is skipped entirely to save API quota and it just reads the raw data instead.
 
 ```
 scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py       →  [Output Drivers (Speaker & GUI)]
@@ -24,7 +24,7 @@ Before any API calls are made, the scanner checks whether you're on your home Wi
 Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `main.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
 
 **Config-driven feature flags and persona (`config.json`, `config.py`)**  
-`config.py` reads `config.json` at startup and exposes a boolean for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`) plus `SYSTEM_PROMPT`, the string that sets the AI's voice, persona name, and how it addresses the user. If the file is missing or broken, flags default to `False` and `SYSTEM_PROMPT` falls back to a generic placeholder so nothing crashes. `config.json` ships committed with all flags on. It also keeps preferences and secrets separate: toggles and the persona prompt live here (safe to commit), API keys go in `.env` (gitignored).
+`config.py` reads `config.json` at startup and exposes a boolean for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`), `SYSTEM_PROMPT`, and three TTS constants: `PRIMARY_TTS`, `GOOGLE_VOICE_ID`, and `INWORLD_VOICE_ID`. If the file is missing or broken, flags default to `False`, `SYSTEM_PROMPT` falls back to a generic placeholder, and `PRIMARY_TTS` defaults to `"pyttsx3"` so nothing crashes. `config.json` ships committed with all flags on and Google Cloud TTS configured as the active engine. It also keeps preferences and secrets separate: toggles, the persona prompt, and TTS voice settings live here (safe to commit), API keys go in `.env` (gitignored).
 
 **AI-generated briefings (`brain.py`)**  
 Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` has no persona baked into it. It pulls `SYSTEM_PROMPT` from `config.py` and prepends it to the request, so the voice is entirely driven by `config.json`. Pipe (`|`) delimiters separate each source in the raw string to keep the model's context clean. If the API call fails for any reason, it catches the exception and falls back to reading the raw data directly so the run never crashes.
@@ -44,13 +44,16 @@ Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps
 **Floating HUD (`gui.py`)**  
 A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database.
 
+**Text-to-speech engine (`speaker.py`)**  
+Three engines in a fallback chain. Google Cloud TTS is the primary path: text goes to the Cloud TTS API and the returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If Google fails or isn't configured, Inworld AI is tried next via its REST API. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
+
 ---
 
 ## The Default Configuration (Nature-Themed Tone)
 
 The briefing voice, the AI's name, and how it addresses the user are all set by the `system_prompt` field in `config.json`. Nothing about that is hardcoded. Change the value and the whole personality changes.
 
-The default persona that ships with the project is nature-themed, a deliberate personal choice. Just as xylem tissue carries nutrients through a tree, APEX moves your personal data through its processing layers, a parallel too good to leave at just the name. That imagery is carried over into the briefing voice and is reflected in the tone, and the word choices.
+The default persona is a deliberate personal choice. Just as xylem tissue carries nutrients through a tree, APEX moves your personal data through its processing layers, a parallel too good to leave at just the name. That imagery is carried over into the briefing voice and is reflected in the tone, and the word choices.
 
 ---
 
@@ -85,8 +88,8 @@ Two edge cases worth knowing:
 | AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
 | GUI | CustomTkinter |
 | Database | SQLite3 |
-| TTS | pyttsx3 |
-| Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client` |
+| TTS | Google Cloud TTS (primary), Inworld AI (secondary, inactive by default), pyttsx3 (offline fallback) |
+| Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-cloud-texttospeech`, `pygame-ce` |
 
 ### AI-Augmented Development
 
@@ -127,7 +130,7 @@ Windows:
 copy .env.example .env
 ```
 
-`.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control.
+`.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control. Two keys are worth calling out: `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to your `service_account.json` file, not the contents of the file. `INWORLD_API_KEY` needs to be a pre-Base64-encoded `client_id:client_secret` pair, exactly as formatted in the Inworld AI console.
 
 **4. Configure persona and feature toggles (optional)**
 
@@ -144,9 +147,16 @@ To change the briefing voice, tone, or persona, edit the `system_prompt` field. 
     "email": false,
     "calendar": false
   },
+  "tts_settings": {
+    "primary_tts": "google",
+    "google_voice_id": "en-US-Chirp3-HD-Gacrux",
+    "inworld_voice_id": ""
+  },
   "system_prompt": "You are APEX. Deliver a sharp, neutral briefing in under 75 words. No emojis or markdown."
 }
 ```
+
+`primary_tts` accepts `"google"`, `"inworld"`, or `"pyttsx3"`. Leave `google_voice_id` or `inworld_voice_id` blank to skip that engine regardless of the `primary_tts` setting.
 
 This is also the right way to handle a missing API key. If you skip the `FOOTBALL_API_KEY` setup, set `"sports": false` here instead of getting a fetch error every run. The briefing will still generate with whatever data is enabled.
 
@@ -160,7 +170,24 @@ This is also the right way to handle a missing API key. If you skip the `FOOTBAL
 - Place `credentials.json` in the project root directory.
 - If you change API scopes later, delete `token.json` and re-authenticate to get a fresh token.
 
-**6. Run**
+**6. Set up Google Cloud TTS credentials**
+
+- Go to the Google Cloud Console.
+- Enable the **Cloud Text-to-Speech API** for your project.
+- Create a **service account**, grant it the `Cloud Text-to-Speech User` role, and download the JSON key.
+- Save the key file as `service_account.json` in the project root (it is gitignored).
+- Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` to the **absolute file path** of that file (e.g., `C:\Users\you\projects\apex\service_account.json`).
+
+**7. (Optional) Configure Inworld AI**
+
+Inworld AI is wired in as a secondary TTS engine but is inactive by default. To enable it:
+
+- Create an Inworld AI account and obtain your `client_id` and `client_secret`.
+- Base64-encode the pair (`base64("client_id:client_secret")`) and paste the result as `INWORLD_API_KEY` in `.env`.
+- Set `"inworld_voice_id"` in `config.json` to a valid Inworld voice ID.
+- Set `"primary_tts"` to `"inworld"` if you want it to be tried before Google.
+
+**8. Run**
 ```bash
 python main.py
 ```
@@ -180,14 +207,15 @@ apex/
 ├── gmail_client.py    # Gmail API v1 extraction and timestamp parsing
 ├── calendar_client.py # Google Calendar 48-hour schedule extractor
 ├── google_auth.py     # Centralized OAuth2 utility for Google APIs
-├── speaker.py       # Text-to-speech output via pyttsx3
+├── speaker.py       # TTS fallback chain: Google Cloud TTS → Inworld AI → pyttsx3, MP3 played from memory via pygame
 ├── gui.py           # CustomTkinter HUD display
 ├── database.py      # SQLite session logging and reminder management
 ├── config.py        # Feature flag and system prompt loader with validation
-├── config.json      # Persona prompt and per-connector on/off toggles (user preferences, committed)
+├── config.json      # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
 ├── apex_memory.db   # Auto-generated on first run
-├── credentials.json # Google Cloud OAuth client ID (BYOK - not committed)
-├── token.json       # Auto-generated user access token (not committed)
+├── credentials.json    # Google Cloud OAuth client ID for Gmail/Calendar (BYOK - not committed)
+├── service_account.json # Google Cloud TTS service account key (BYOK - not committed)
+├── token.json          # Auto-generated user access token (not committed)
 ├── .env             # Local environment variables (not committed)
 └── .env.example     # Environment variable template with placeholder values
 ```
@@ -210,10 +238,10 @@ A few things that aren't obvious just from reading the code:
 
 - **Why Gemini over a template?** Templated output gets repetitive fast and requires manual updates whenever a data source changes format. Passing raw strings to the model and letting it figure out the sentence structure turned out to be simpler and more flexible.
 
-- **Why pyttsx3 over a cloud TTS?** Fully offline, no API key, no latency. For a local morning tool that tradeoff made sense as a starting point, but the robotic voice is a known limitation. Switching to a cloud TTS (ElevenLabs, Google Cloud TTS, etc.) for a more natural-sounding voice is planned.
+- **Why this specific TTS setup?** Inworld AI was the original primary engine. It was integrated under the assumption that it had a usable free tier for REST API access. It doesn't. After implementation it became clear that Inworld runs on a finite promotional credit model (a $1.00 grant that debits per synthesis request), which isn't practical for a personal tool. Google Cloud TTS replaced it as the primary engine because its 1-million-character monthly free tier is actually sustainable for a daily briefing tool long-term. The Inworld code in `speaker.py` was left in on purpose rather than deleted. When its credits eventually run out and the API starts returning HTTP 403s, it gives a real test of whether the fallback chain holds. If `pyttsx3` takes over cleanly with no crash, the circuit breaker logic is proven. It's a live integration test that costs nothing to run.
 
 - **Why SQLite over a flat file?** The reminder feature needs read/write with state (marking items as read). SQLite handles that cleanly without pulling in anything external.
 
-- **Why an offline fallback instead of a secondary API?** The original plan was to route failed Gemini calls to an OpenAI or Anthropic fallback. But developer API credits expire after 12 months, and paying to fund a secondary account that rarely triggers isn't worth it for a personal tool. Just reading the raw data out loud during an outage gets to 100% uptime at zero cost.
+- **Why an offline fallback instead of a secondary LLM?** For the briefing synthesis layer specifically, the original plan was to route failed Gemini calls to an OpenAI or Anthropic fallback. But developer API credits expire after 12 months, and paying to fund a secondary account that rarely triggers isn't worth it for a personal tool. Just reading the raw data out loud during an outage gets to 100% uptime at zero cost. (The TTS layer is covered in the note above.)
 
 - **Logging conventions.** Every module prefixes its terminal output with a bracketed tag: `[BRAIN]`, `[SCANNER]`, `[SPEAKER]`, `[GUI]`, `[WEATHER]`, `[SPORTS]`, `[NEWS]`, `[GMAIL]`, `[CALENDAR]`, `[SYSTEM]`. It makes it easy to tell which module produced a given line when watching a full run scroll past.
