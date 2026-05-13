@@ -6,11 +6,18 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-When triggered, APEX runs a series of environment checks before doing anything. If it passes, it pulls live data from whichever sources are enabled in `config.json`, feeds it to Gemini 2.5 Flash via the Google GenAI SDK, and plays back the AI-generated briefing through a tiered TTS engine (Google Cloud TTS by default, with Inworld AI and pyttsx3 as fallbacks) while displaying a floating HUD in the corner of the screen. If Gemini is unavailable, it falls back to reading the raw data out loud so the briefing never fails. In dev/test mode, the Gemini call is skipped entirely to save API quota and it just reads the raw data instead.
+APEX runs as a local FastAPI service. `api.py` starts a uvicorn server on `127.0.0.1:8000`, and a `POST` to `/api/v1/trigger` kicks off a four-stage pipeline:
+
+1. **Gate** — `scanner.py` checks the environment before anything else: home Wi-Fi by SSID, wall power, and a 6-hour cooldown since the last run. If any check fails, the request is rejected with a `403` and nothing runs.
+2. **Collection** — each enabled data connector fetches its feed in sequence: weather, sports, news, email, calendar, and pending reminders from the local database. Disabled connectors are skipped with no API call made.
+3. **Synthesis** — the raw outputs are joined into a single pipe-delimited string and passed to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` prepends the persona prompt from `config.json` and returns the generated briefing text. A filler phrase plays on a background thread while the model processes to avoid dead air. If the Gemini call fails for any reason, the raw data string is read out directly so the run never crashes.
+4. **Output** — `speaker.py` plays the final briefing through the TTS fallback chain. The endpoint also returns the briefing text and raw telemetry as JSON.
+
+In `TEST_MODE`, the Gemini call and Gmail and Calendar connectors are skipped to save API quota during development. `SHOWCASE_MODE` keeps Gemini live but bypasses the hardware checks and skips Gmail and Calendar so the system runs anywhere.
 
 ```
-scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py       →  [Output Drivers (Speaker & GUI)]
-  (Gate)               (Collection)              (Synthesis)              (Delivery)
+api.py  →  scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py  →  speaker.py
+(Entry)      (Gate)              (Collection)               (Synthesis)   (Delivery)
 ```
 
 ---
@@ -29,8 +36,8 @@ Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: t
 **AI-generated briefings (`brain.py`)**  
 Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` has no persona baked into it. It pulls `SYSTEM_PROMPT` from `config.py` and prepends it to the request, so the voice is entirely driven by `config.json`. Pipe (`|`) delimiters separate each source in the raw string to keep the model's context clean. If the API call fails for any reason, it catches the exception and falls back to reading the raw data directly so the run never crashes.
 
-**Latency masking with threading (`main.py`)**  
-Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Generating briefing... Please wait...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready.
+**Latency masking with threading (`main.py`) — Legacy/Maintenance**  
+Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Generating briefing... Please wait...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready. This logic is also present in the `api.py` trigger endpoint, which is now the active execution path.
 
 **Persistent reminders and session logging (`database.py`)**  
 A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after they've been read out so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
@@ -41,8 +48,8 @@ For active development. Bypasses the 6-hour cooldown and the Gemini API call, re
 **Showcase Mode (`SHOWCASE_MODE`)**  
 Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps the live Gemini call intact so the briefing is real. Gmail and Calendar are skipped here as well regardless of `config.json` to keep personal data out of demos. Like `TEST_MODE`, it also skips `database.log_run()` so running a demo doesn't reset the actual daily cooldown.
 
-**Floating HUD (`gui.py`)**  
-A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database.
+**Floating HUD (`gui.py`) — Legacy/Maintenance**  
+A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database. The HUD is launched by `main.py` and is not currently wired into the `api.py` execution path.
 
 **Text-to-speech engine (`speaker.py`)**  
 Three engines in a fallback chain. Google Cloud TTS is the primary path: text goes to the Cloud TTS API and the returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If Google fails or isn't configured, Inworld AI is tried next via its REST API. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
@@ -189,8 +196,40 @@ Inworld AI is wired in as a secondary TTS engine but is inactive by default. To 
 
 **8. Run**
 ```bash
-python main.py
+python api.py
 ```
+
+This starts a local uvicorn server on `127.0.0.1:8000`. Keep the process running to accept requests — see the **API Usage** section below for how to trigger a briefing.
+
+> **Legacy path:** `python main.py` still works as a direct one-shot run with no server required, but it is not the active development path.
+
+---
+
+## API Usage
+
+With the server running (`python api.py`), two endpoints are available:
+
+**Health check**
+```
+GET http://127.0.0.1:8000/
+```
+Returns `{"status": "online", "system": "APEX Nexus"}`. Useful for confirming the server came up cleanly before sending a trigger.
+
+**Trigger a briefing**
+```
+POST http://127.0.0.1:8000/api/v1/trigger
+```
+Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS playback. On success, returns a JSON payload with three fields:
+
+```json
+{
+  "status": "success",
+  "briefing": "...",
+  "telemetry": "..."
+}
+```
+
+`briefing` is the AI-generated text that was read aloud. `telemetry` is the raw pipe-delimited data string that was passed to Gemini. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
 
 ---
 
@@ -198,7 +237,8 @@ python main.py
 
 ```
 apex/
-├── main.py          # Entry point and execution flow
+├── api.py           # REST API entry point — FastAPI app + uvicorn server (port 8000)
+├── main.py          # Direct script entry point (Legacy/Maintenance)
 ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
 ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
 ├── weather_client.py  # OpenWeatherMap connector
@@ -208,7 +248,7 @@ apex/
 ├── calendar_client.py # Google Calendar 48-hour schedule extractor
 ├── google_auth.py     # Centralized OAuth2 utility for Google APIs
 ├── speaker.py       # TTS fallback chain: Google Cloud TTS → Inworld AI → pyttsx3, MP3 played from memory via pygame
-├── gui.py           # CustomTkinter HUD display
+├── gui.py           # CustomTkinter HUD display (Legacy/Maintenance)
 ├── database.py      # SQLite session logging and reminder management
 ├── config.py        # Feature flag and system prompt loader with validation
 ├── config.json      # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
