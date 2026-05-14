@@ -1,0 +1,335 @@
+/* ==========================================================================
+   APEX HUD Theme — Monochrome dark
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   Custom properties
+   -------------------------------------------------------------------------- */
+
+:root {
+  --hud-bg: #0a0a0a;
+  --hud-panel-bg: #1c1c1c;
+  --hud-border-color: #333333;
+  --hud-text: #f3f4f6;
+  --hud-accent: #ffffff;
+  --hud-radius: 15px;
+  --hud-panel-pad: 1.25rem;
+}
+
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--hud-bg);
+  color: var(--hud-text);
+  font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+}
+
+h1,
+h2 {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  color: var(--hud-accent);
+}
+
+
+/* --------------------------------------------------------------------------
+   Shell layout (bento grid)
+   -------------------------------------------------------------------------- */
+
+.hud-shell {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto repeat(3, minmax(0, 1fr));
+  min-height: 100vh;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+  gap: clamp(0.75rem, 2vw, 1.25rem);
+}
+
+.hud-shell > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+.briefing {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+}
+
+.module--weather {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.module--news {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.module--calendar {
+  grid-column: 1;
+  grid-row: 4;
+}
+
+.module--sports {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.module--email {
+  grid-column: 3;
+  grid-row: 3;
+}
+
+.module--reminders {
+  grid-column: 3;
+  grid-row: 4;
+}
+
+.diagnostics {
+  grid-column: 2;
+  grid-row: 4;
+}
+
+
+/* --------------------------------------------------------------------------
+   Header (full-width rail)
+   -------------------------------------------------------------------------- */
+
+.hud-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hud-text);
+  animation: panel-slide-up 0.65s ease-out both;
+}
+
+.hud-header__mark {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--hud-accent);
+}
+
+.hud-header__status {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--hud-text);
+}
+
+
+/* --------------------------------------------------------------------------
+   Data-root modules
+   -------------------------------------------------------------------------- */
+
+.module {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--hud-radius);
+  border: 1px solid var(--hud-border-color);
+  background: var(--hud-panel-bg);
+  padding: var(--hud-panel-pad);
+  color: var(--hud-text);
+  animation: panel-slide-up 0.65s ease-out both;
+}
+
+.module h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hud-accent);
+  border-bottom: 1px solid var(--hud-border-color);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.module--weather {
+  animation-delay: 0.08s;
+}
+
+.module--sports {
+  animation-delay: 0.12s;
+}
+
+.module--news {
+  animation-delay: 0.16s;
+}
+
+.module--email {
+  animation-delay: 0.2s;
+}
+
+.module--calendar {
+  animation-delay: 0.24s;
+}
+
+.module--reminders {
+  animation-delay: 0.28s;
+}
+
+
+/* --------------------------------------------------------------------------
+   Central briefing (pulse highlight)
+   -------------------------------------------------------------------------- */
+
+.briefing {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--hud-radius);
+  border: 1px solid var(--hud-border-color);
+  background: var(--hud-panel-bg);
+  padding: var(--hud-panel-pad);
+  color: var(--hud-text);
+  animation: briefing-pulse 2.4s ease-in-out infinite;
+}
+
+.briefing h1 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hud-accent);
+  border-bottom: 1px solid var(--hud-border-color);
+  padding-bottom: 0.6rem;
+  text-align: center;
+}
+
+
+/* --------------------------------------------------------------------------
+   System diagnostics
+   -------------------------------------------------------------------------- */
+
+.diagnostics {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  border-radius: var(--hud-radius);
+  border: 1px solid var(--hud-border-color);
+  background: var(--hud-panel-bg);
+  padding: var(--hud-panel-pad);
+  color: var(--hud-text);
+  animation: panel-slide-up 0.65s ease-out both;
+  animation-delay: 0.32s;
+}
+
+.diagnostics h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hud-accent);
+  width: 100%;
+  border-bottom: 1px solid var(--hud-border-color);
+  padding-bottom: 0.5rem;
+}
+
+
+/* --------------------------------------------------------------------------
+   Keyframes
+   -------------------------------------------------------------------------- */
+
+@keyframes panel-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes briefing-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 14px rgba(255, 255, 255, 0.06),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  50% {
+    box-shadow:
+      0 0 26px rgba(255, 255, 255, 0.12),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .hud-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+  }
+
+  .hud-header {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .briefing {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .diagnostics {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .module--weather {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .module--sports {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
+  .module--news {
+    grid-column: 1;
+    grid-row: 6;
+  }
+
+  .module--email {
+    grid-column: 1;
+    grid-row: 7;
+  }
+
+  .module--calendar {
+    grid-column: 1;
+    grid-row: 8;
+  }
+
+  .module--reminders {
+    grid-column: 1;
+    grid-row: 9;
+  }
+}

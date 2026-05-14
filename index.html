@@ -4,76 +4,57 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>APEX — HUD</title>
-    <style>
-      /* Structural layout only; no final theme or polish */
-      body {
-        margin: 0;
-        min-height: 100vh;
-      }
-
-      .hud-shell {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
-        grid-template-rows: 1fr auto;
-        min-height: 100vh;
-        box-sizing: border-box;
-      }
-
-      .hud-shell > * {
-        min-width: 0;
-        min-height: 0;
-      }
-
-      .telemetry--left {
-        grid-column: 1;
-        grid-row: 1;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .briefing {
-        grid-column: 2;
-        grid-row: 1;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .telemetry--right {
-        grid-column: 3;
-        grid-row: 1;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .diagnostics {
-        grid-column: 1 / -1;
-        grid-row: 2;
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: flex-start;
-      }
-    </style>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div class="hud-shell">
-      <aside
-        class="telemetry telemetry--left"
-        aria-labelledby="telemetry-left-heading"
-      >
-        <h2 id="telemetry-left-heading">Telemetry</h2>
-      </aside>
+      <header class="hud-header" role="banner">
+        <p class="hud-header__mark" aria-label="Application mark">APEX</p>
+        <p class="hud-header__status">Operational status</p>
+      </header>
 
       <main class="briefing" aria-labelledby="briefing-heading">
-        <h1 id="briefing-heading">AI Briefing</h1>
+        <h1 id="briefing-heading">Briefing</h1>
       </main>
 
-      <aside
-        class="telemetry telemetry--right"
-        aria-labelledby="telemetry-right-heading"
+      <section
+        class="module module--weather"
+        aria-labelledby="module-weather-heading"
       >
-        <h2 id="telemetry-right-heading">Telemetry</h2>
-      </aside>
+        <h2 id="module-weather-heading">Weather</h2>
+      </section>
+
+      <section
+        class="module module--sports"
+        aria-labelledby="module-sports-heading"
+      >
+        <h2 id="module-sports-heading">Sports</h2>
+      </section>
+
+      <section class="module module--news" aria-labelledby="module-news-heading">
+        <h2 id="module-news-heading">News</h2>
+      </section>
+
+      <section
+        class="module module--email"
+        aria-labelledby="module-email-heading"
+      >
+        <h2 id="module-email-heading">Email</h2>
+      </section>
+
+      <section
+        class="module module--calendar"
+        aria-labelledby="module-calendar-heading"
+      >
+        <h2 id="module-calendar-heading">Calendar</h2>
+      </section>
+
+      <section
+        class="module module--reminders"
+        aria-labelledby="module-reminders-heading"
+      >
+        <h2 id="module-reminders-heading">Reminders</h2>
+      </section>
 
       <footer class="diagnostics" aria-labelledby="diagnostics-heading">
         <h2 id="diagnostics-heading">System Diagnostics</h2>
