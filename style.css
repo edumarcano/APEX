@@ -140,6 +140,10 @@ h2 {
   color: var(--hud-text);
 }
 
+.hud-header__status--offline {
+  color: hsl(0, 14%, 48%);
+}
+
 
 /* --------------------------------------------------------------------------
    Data-root modules

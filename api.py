@@ -12,6 +12,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 import brain
 import calendar_client
@@ -32,6 +33,34 @@ from config import (
 )
 
 app = FastAPI(title="APEX Nexus")
+
+
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+)
+
+
+def get_allowed_origins() -> list[str]:
+    """Return allowed CORS origins from env, or local defaults."""
+    configured_origins = os.getenv("APEX_ALLOWED_ORIGINS", "").strip()
+    if not configured_origins:
+        return list(DEFAULT_ALLOWED_ORIGINS)
+
+    parsed_origins = [origin.strip() for origin in configured_origins.split(",")]
+    filtered_origins = [origin for origin in parsed_origins if origin]
+    return filtered_origins or list(DEFAULT_ALLOWED_ORIGINS)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_allowed_origins(),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -147,10 +176,17 @@ def trigger_briefing() -> dict[str, Any]:
         database.mark_reminders_read(ids)
     
     return {
-    "status": "success",
-    "briefing": final_briefing,
-    "telemetry": combined_raw_data
-}
+        "status": "success",
+        "briefing": final_briefing,
+        "telemetry": {
+            "weather": weather_report,
+            "sports": sports_report,
+            "news": news_report,
+            "email": email_report,
+            "calendar": calendar_report,
+            "reminders": memory_report,
+        },
+    }
 
 
 def main() -> None:
