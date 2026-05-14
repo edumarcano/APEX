@@ -11,7 +11,7 @@ APEX runs as a local FastAPI service. `api.py` starts a uvicorn server on `127.0
 1. **Gate** — `scanner.py` checks the environment before anything else: home Wi-Fi by SSID, wall power, and a 6-hour cooldown since the last run. If any check fails, the request is rejected with a `403` and nothing runs.
 2. **Collection** — each enabled data connector fetches its feed in sequence: weather, sports, news, email, calendar, and pending reminders from the local database. Disabled connectors are skipped with no API call made.
 3. **Synthesis** — the raw outputs are joined into a single pipe-delimited string and passed to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` prepends the persona prompt from `config.json` and returns the generated briefing text. A filler phrase plays on a background thread while the model processes to avoid dead air. If the Gemini call fails for any reason, the raw data string is read out directly so the run never crashes.
-4. **Output** — `speaker.py` plays the final briefing through the TTS fallback chain. The endpoint also returns the briefing text and raw telemetry as JSON.
+4. **Output** — `speaker.py` plays the final briefing through the TTS fallback chain. The endpoint also returns the briefing text and a telemetry object as JSON, which the web HUD reads to fill each module slot on the page.
 
 In `TEST_MODE`, the Gemini call and Gmail and Calendar connectors are skipped to save API quota during development. `SHOWCASE_MODE` keeps Gemini live but bypasses the hardware checks and skips Gmail and Calendar so the system runs anywhere.
 
@@ -47,6 +47,9 @@ For active development. Bypasses the 6-hour cooldown and the Gemini API call, re
 
 **Showcase Mode (`SHOWCASE_MODE`)**  
 Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps the live Gemini call intact so the briefing is real. Gmail and Calendar are skipped here as well regardless of `config.json` to keep personal data out of demos. Like `TEST_MODE`, it also skips `database.log_run()` so running a demo doesn't reset the actual daily cooldown.
+
+**Web HUD (`index.html`, `style.css`, `app.js`)**  
+Three static files served from the project root. On page load, `app.js` fires a `POST` to `/api/v1/trigger` and fills six module slots from the `telemetry` response: weather, sports, news, email, calendar, and reminders. The center panel shows the briefing text with a looping pulse. The header toggles between `SYSTEM ONLINE` and `SYSTEM OFFLINE` based on whether the request came back clean. Layout is a three-column CSS Grid bento that collapses to a single column below 900px. No build step, no framework.
 
 **Floating HUD (`gui.py`) — Legacy/Maintenance**  
 A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database. The HUD is launched by `main.py` and is not currently wired into the `api.py` execution path.
@@ -93,7 +96,7 @@ Two edge cases worth knowing:
 |---|---|
 | Language | Python 3.10+ |
 | AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
-| GUI | CustomTkinter |
+| GUI | Web HUD (`index.html`, `style.css`, `app.js`) · active. `gui.py` via CustomTkinter · legacy/maintenance |
 | Database | SQLite3 |
 | TTS | Google Cloud TTS (primary), Inworld AI (secondary, inactive by default), pyttsx3 (offline fallback) |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-cloud-texttospeech`, `pygame-ce` |
@@ -138,6 +141,8 @@ copy .env.example .env
 ```
 
 `.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control. Two keys are worth calling out: `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to your `service_account.json` file, not the contents of the file. `INWORLD_API_KEY` needs to be a pre-Base64-encoded `client_id:client_secret` pair, exactly as formatted in the Inworld AI console.
+
+`APEX_ALLOWED_ORIGINS` is an optional comma-separated list of origins allowed to make cross-origin requests to the API. If it's not set, `api.py` defaults to `http://127.0.0.1:8000`, `http://localhost:8000`, `http://127.0.0.1:5500`, and `http://localhost:5500`. If you're serving the web HUD from a different port, set this key. Note that a custom value replaces the defaults entirely rather than adding to them.
 
 **4. Configure persona and feature toggles (optional)**
 
@@ -195,11 +200,20 @@ Inworld AI is wired in as a secondary TTS engine but is inactive by default. To 
 - Set `"primary_tts"` to `"inworld"` if you want it to be tried before Google.
 
 **8. Run**
+
+Two processes are required. Open them in separate terminals:
+
+**Terminal 1 (API server):**
 ```bash
-python api.py
+python -m uvicorn api:app
 ```
 
-This starts a local uvicorn server on `127.0.0.1:8000`. Keep the process running to accept requests — see the **API Usage** section below for how to trigger a briefing.
+**Terminal 2 (static file server):**
+```bash
+python -m http.server 5500
+```
+
+Then open `http://127.0.0.1:5500` in a browser. Run the static server from the project root so the files resolve correctly and the origin lines up with the CORS allowlist in `api.py`. `app.js` fires the trigger automatically on load.
 
 > **Legacy path:** `python main.py` still works as a direct one-shot run with no server required, but it is not the active development path.
 
@@ -207,7 +221,7 @@ This starts a local uvicorn server on `127.0.0.1:8000`. Keep the process running
 
 ## API Usage
 
-With the server running (`python api.py`), two endpoints are available:
+With both processes running, two endpoints are available:
 
 **Health check**
 ```
@@ -225,11 +239,18 @@ Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS p
 {
   "status": "success",
   "briefing": "...",
-  "telemetry": "..."
+  "telemetry": {
+    "weather": "...",
+    "sports": "...",
+    "news": "...",
+    "email": "...",
+    "calendar": "...",
+    "reminders": "..."
+  }
 }
 ```
 
-`briefing` is the AI-generated text that was read aloud. `telemetry` is the raw pipe-delimited data string that was passed to Gemini. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
+`briefing` is the AI-generated text that was read aloud. `telemetry` is a JSON object with one string field per connector, not the raw pipe-delimited string passed to Gemini internally. The web HUD reads these keys to fill each module slot. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
 
 ---
 
@@ -238,6 +259,9 @@ Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS p
 ```
 apex/
 ├── api.py           # REST API entry point — FastAPI app + uvicorn server (port 8000)
+├── index.html       # Web HUD entry point — Bento-grid shell with named data slots
+├── style.css        # HUD theme — monochrome dark, CSS Grid layout, animation keyframes
+├── app.js           # HUD client — fetch trigger, telemetry injection, status toggling
 ├── main.py          # Direct script entry point (Legacy/Maintenance)
 ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
 ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash

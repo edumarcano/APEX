@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>APEX — HUD</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="hud-shell">
+      <header class="hud-header" role="banner">
+        <p class="hud-header__mark" aria-label="Application mark">APEX</p>
+        <p class="hud-header__status" role="status" aria-live="polite">
+          Operational status
+        </p>
+      </header>
+
+      <main class="briefing" aria-labelledby="briefing-heading">
+        <h1 id="briefing-heading">Briefing</h1>
+        <div id="data-briefing" aria-live="polite"></div>
+      </main>
+
+      <section
+        class="module module--weather"
+        aria-labelledby="module-weather-heading"
+      >
+        <h2 id="module-weather-heading">Weather</h2>
+        <div id="data-weather"></div>
+      </section>
+
+      <section
+        class="module module--sports"
+        aria-labelledby="module-sports-heading"
+      >
+        <h2 id="module-sports-heading">Sports</h2>
+        <div id="data-sports"></div>
+      </section>
+
+      <section class="module module--news" aria-labelledby="module-news-heading">
+        <h2 id="module-news-heading">News</h2>
+        <div id="data-news"></div>
+      </section>
+
+      <section
+        class="module module--email"
+        aria-labelledby="module-email-heading"
+      >
+        <h2 id="module-email-heading">Email</h2>
+        <div id="data-email"></div>
+      </section>
+
+      <section
+        class="module module--calendar"
+        aria-labelledby="module-calendar-heading"
+      >
+        <h2 id="module-calendar-heading">Calendar</h2>
+        <div id="data-calendar"></div>
+      </section>
+
+      <section
+        class="module module--reminders"
+        aria-labelledby="module-reminders-heading"
+      >
+        <h2 id="module-reminders-heading">Reminders</h2>
+        <div id="data-reminders"></div>
+      </section>
+
+      <footer class="diagnostics" aria-labelledby="diagnostics-heading">
+        <h2 id="diagnostics-heading">System Diagnostics</h2>
+      </footer>
+    </div>
+    <script src="app.js" defer></script>
+  </body>
+</html>
