@@ -205,17 +205,17 @@ Two processes are required. Open them in separate terminals:
 
 **Terminal 1 (API server):**
 ```bash
-python -m uvicorn api:app
+python -m uvicorn core.api:app --reload
 ```
 
 **Terminal 2 (static file server):**
 ```bash
-python -m http.server 5500
+python -m http.server -d frontend 5500
 ```
 
-Then open `http://127.0.0.1:5500` in a browser. Run the static server from the project root so the files resolve correctly and the origin lines up with the CORS allowlist in `api.py`. `app.js` fires the trigger automatically on load.
+Then open `http://127.0.0.1:5500` in a browser. Both commands are run from the project root. The `-d frontend` flag points the file server directly at the `frontend/` directory, so all assets resolve correctly without navigating into the folder. `app.js` fires the trigger automatically on load.
 
-> **Legacy path:** `python main.py` still works as a direct one-shot run with no server required, but it is not the active development path.
+> **Legacy path:** `legacy/main.py` and `legacy/gui.py` have not had their imports updated to match the new package structure (`core.*`, `clients.*`) and will not run as-is. They are preserved for reference only.
 
 ---
 
@@ -258,30 +258,36 @@ Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS p
 
 ```
 apex/
-├── api.py           # REST API entry point — FastAPI app + uvicorn server (port 8000)
-├── index.html       # Web HUD entry point — Bento-grid shell with named data slots
-├── style.css        # HUD theme — monochrome dark, CSS Grid layout, animation keyframes
-├── app.js           # HUD client — fetch trigger, telemetry injection, status toggling
-├── main.py          # Direct script entry point (Legacy/Maintenance)
-├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
-├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
-├── weather_client.py  # OpenWeatherMap connector
-├── sports_client.py   # F1 (Ergast/Jolpica) and FC Barcelona fixture connector (football-data.org)
-├── news_client.py     # GNews API connector for AI and Global Events headlines
-├── gmail_client.py    # Gmail API v1 extraction and timestamp parsing
-├── calendar_client.py # Google Calendar 48-hour schedule extractor
-├── google_auth.py     # Centralized OAuth2 utility for Google APIs
-├── speaker.py       # TTS fallback chain: Google Cloud TTS → Inworld AI → pyttsx3, MP3 played from memory via pygame
-├── gui.py           # CustomTkinter HUD display (Legacy/Maintenance)
-├── database.py      # SQLite session logging and reminder management
-├── config.py        # Feature flag and system prompt loader with validation
-├── config.json      # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
-├── apex_memory.db   # Auto-generated on first run
-├── credentials.json    # Google Cloud OAuth client ID for Gmail/Calendar (BYOK - not committed)
+├── core/
+│   ├── api.py           # REST API entry point — FastAPI app + uvicorn server (port 8000)
+│   ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
+│   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
+│   ├── speaker.py       # TTS fallback chain: Google Cloud TTS → Inworld AI → pyttsx3, MP3 played from memory via pygame
+│   ├── database.py      # SQLite session logging and reminder management
+│   ├── config.py        # Feature flag and system prompt loader with validation
+│   └── __init__.py
+├── clients/
+│   ├── weather_client.py    # OpenWeatherMap connector
+│   ├── sports_client.py     # F1 (Ergast/Jolpica) and FC Barcelona fixture connector (football-data.org)
+│   ├── news_client.py       # GNews API connector for AI and Global Events headlines
+│   ├── gmail_client.py      # Gmail API v1 extraction and timestamp parsing
+│   ├── calendar_client.py   # Google Calendar 48-hour schedule extractor
+│   ├── google_auth.py       # Centralized OAuth2 utility for Google APIs
+│   └── __init__.py
+├── frontend/
+│   ├── index.html       # Web HUD entry point — Bento-grid shell with named data slots
+│   ├── style.css        # HUD theme — monochrome dark, CSS Grid layout, animation keyframes
+│   └── app.js           # HUD client — fetch trigger, telemetry injection, status toggling
+├── legacy/
+│   ├── main.py          # Direct script entry point (Legacy/Maintenance)
+│   └── gui.py           # CustomTkinter HUD display (Legacy/Maintenance)
+├── config.json          # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
+├── apex_memory.db       # Auto-generated on first run
+├── credentials.json     # Google Cloud OAuth client ID for Gmail/Calendar (BYOK - not committed)
 ├── service_account.json # Google Cloud TTS service account key (BYOK - not committed)
-├── token.json          # Auto-generated user access token (not committed)
-├── .env             # Local environment variables (not committed)
-└── .env.example     # Environment variable template with placeholder values
+├── token.json           # Auto-generated user access token (not committed)
+├── .env                 # Local environment variables (not committed)
+└── .env.example         # Environment variable template with placeholder values
 ```
 
 ---

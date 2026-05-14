@@ -1,15 +1,17 @@
-import psutil
-import subprocess
 import os
+import subprocess
 from datetime import datetime, timedelta
+
+import psutil
 from dotenv import load_dotenv
-import database
-import speaker
 
-load_dotenv()
+from core import database
+from core.config import ENV_PATH
+
+load_dotenv(dotenv_path=ENV_PATH)
 
 
-def get_current_ssid():
+def get_current_ssid() -> str | None:
     """
     Gets the current SSID of the wifi connection.
     Returns:
@@ -19,7 +21,7 @@ def get_current_ssid():
         results = subprocess.check_output(["netsh", "wlan", "show", "interfaces"]).decode("utf-8")
         for line in results.split("\n"):
             if "SSID" in line and "BSSID" not in line:
-                return line.split(":")[1].strip()
+                return line.split(":", 1)[1].strip()
     except Exception:
         return None
     return None
@@ -41,18 +43,18 @@ def should_run() -> bool:
     Returns:
         bool: True if the computer should run, False otherwise.
     """
-    database.initialize_db() 
+    database.initialize_db()
 
     SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
     if SHOWCASE_MODE == "true":
         print("[SCANNER]: Showcase mode enabled. Bypassing all checks.")
         return True
-    
+
     current_wifi = get_current_ssid()
     target_wifi = os.getenv("HOME_SSID")
     is_plugged = check_power()
-    
-    if not current_wifi == target_wifi:
+
+    if not target_wifi or current_wifi != target_wifi:
         print("[SCANNER]: Checks failed. Unauthorized WiFi connection detected.")
         return False
     if not is_plugged:
@@ -66,7 +68,7 @@ def should_run() -> bool:
 
     last_run = database.get_last_run()
     cooldown_period = timedelta(hours=6)
-    
+
     on_cooldown = last_run and (datetime.now() - last_run) < cooldown_period
 
     if on_cooldown:
@@ -77,6 +79,7 @@ def should_run() -> bool:
         return False
 
     return True
+
 
 if __name__ == "__main__":
     if should_run():

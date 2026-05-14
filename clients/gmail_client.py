@@ -1,7 +1,7 @@
 from email.utils import parsedate_to_datetime
 from typing import Any
 
-from google_auth import get_service
+from clients.google_auth import get_service
 
 
 def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]:

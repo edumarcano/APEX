@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Final
 
 __all__ = [
+    "CONFIG_PATH",
+    "ENV_PATH",
     "FEATURE_CALENDAR",
     "FEATURE_EMAIL",
     "FEATURE_NEWS",
@@ -19,14 +21,16 @@ __all__ = [
     "GOOGLE_VOICE_ID",
     "INWORLD_VOICE_ID",
     "PRIMARY_TTS",
+    "PROJECT_ROOT",
     "SYSTEM_PROMPT",
     "load_feature_flags",
 ]
 
 _LOGGER = logging.getLogger(__name__)
 
-_PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent
-_DEFAULT_CONFIG_PATH: Final[Path] = _PROJECT_ROOT / "config.json"
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+CONFIG_PATH: Final[Path] = PROJECT_ROOT / "config.json"
+ENV_PATH: Final[Path] = PROJECT_ROOT / ".env"
 
 _FEATURE_KEYS: Final[tuple[str, ...]] = (
     "weather",
@@ -37,14 +41,15 @@ _FEATURE_KEYS: Final[tuple[str, ...]] = (
 )
 
 try:
-    _CONFIG_DATA: dict[str, Any] = json.loads(_DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+        _CONFIG_DATA: dict[str, Any] = json.load(config_file)
     if not isinstance(_CONFIG_DATA, dict):
         _LOGGER.warning("Config root must be a JSON object; using defaults.")
         _CONFIG_DATA = {}
 except FileNotFoundError:
     _CONFIG_DATA = {}
 except (OSError, json.JSONDecodeError) as exc:
-    _LOGGER.warning("Unable to load config from %s: %s", _DEFAULT_CONFIG_PATH, exc)
+    _LOGGER.warning("Unable to load config from %s: %s", CONFIG_PATH, exc)
     _CONFIG_DATA = {}
 
 _DEFAULT_SYSTEM_PROMPT: Final[str] = (

@@ -6,16 +6,18 @@ import io
 import os
 from typing import Any
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy") # prevent pygame from crashing on a headless/no-display environment
+os.environ.setdefault(
+    "SDL_VIDEODRIVER", "dummy"
+)  # prevent pygame from crashing on a headless/no-display environment
 
 import pygame
 import pyttsx3
 import requests
 from dotenv import load_dotenv
 
-import config
+from core import config
 
-load_dotenv()
+load_dotenv(dotenv_path=config.ENV_PATH)
 
 
 def _infer_language_code(voice_id: str) -> str:
@@ -103,12 +105,12 @@ def initialize_engine():
         pyttsx3.Engine: The initialized engine.
     """
     engine = pyttsx3.init()
-    
-    engine.setProperty('rate', 175) 
-    
-    voices = engine.getProperty('voices')
-    engine.setProperty('voice', voices[0].id) 
-    
+
+    engine.setProperty("rate", 175)
+
+    voices = engine.getProperty("voices")
+    engine.setProperty("voice", voices[0].id)
+
     return engine
 
 
@@ -206,6 +208,7 @@ def speak(text: str) -> None:
         "(expected inworld, google, or pyttsx3), using pyttsx3 only."
     )
     _speak_pyttsx3_local(text)
+
 
 if __name__ == "__main__":
     speak("System audio test. Speaker operational.")
