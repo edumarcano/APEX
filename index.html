@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>APEX — HUD</title>
+    <style>
+      /* Structural layout only; no final theme or polish */
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+
+      .hud-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+        grid-template-rows: 1fr auto;
+        min-height: 100vh;
+        box-sizing: border-box;
+      }
+
+      .hud-shell > * {
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .telemetry--left {
+        grid-column: 1;
+        grid-row: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .briefing {
+        grid-column: 2;
+        grid-row: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .telemetry--right {
+        grid-column: 3;
+        grid-row: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .diagnostics {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hud-shell">
+      <aside
+        class="telemetry telemetry--left"
+        aria-labelledby="telemetry-left-heading"
+      >
+        <h2 id="telemetry-left-heading">Telemetry</h2>
+      </aside>
+
+      <main class="briefing" aria-labelledby="briefing-heading">
+        <h1 id="briefing-heading">AI Briefing</h1>
+      </main>
+
+      <aside
+        class="telemetry telemetry--right"
+        aria-labelledby="telemetry-right-heading"
+      >
+        <h2 id="telemetry-right-heading">Telemetry</h2>
+      </aside>
+
+      <footer class="diagnostics" aria-labelledby="diagnostics-heading">
+        <h2 id="diagnostics-heading">System Diagnostics</h2>
+      </footer>
+    </div>
+  </body>
+</html>
