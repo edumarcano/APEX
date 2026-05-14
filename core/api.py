@@ -11,26 +11,29 @@ import threading
 from typing import Any
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-import brain
-import calendar_client
-import database
-import gmail_client
-import google_auth
-import news_client
-import scanner
-import speaker
-import sports_client
-import weather_client
-from config import (
+from clients import (
+    calendar_client,
+    gmail_client,
+    google_auth,
+    news_client,
+    sports_client,
+    weather_client,
+)
+from core import brain, database, scanner, speaker
+from core.config import (
+    ENV_PATH,
     FEATURE_CALENDAR,
     FEATURE_EMAIL,
     FEATURE_NEWS,
     FEATURE_SPORTS,
     FEATURE_WEATHER,
 )
+
+load_dotenv(dotenv_path=ENV_PATH)
 
 app = FastAPI(title="APEX Nexus")
 
@@ -81,7 +84,7 @@ def trigger_briefing() -> dict[str, Any]:
             status_code=403,
             detail="System gate failed: scanner.should_run() is False.",
         )
-    
+
     TEST_MODE = os.getenv("TEST_MODE", "false").lower()
     SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
     is_test_mode = TEST_MODE == "true"
@@ -156,7 +159,7 @@ def trigger_briefing() -> dict[str, Any]:
         memory_report = f"Pending Reminders: {notes_str}"
     else:
         memory_report = "No pending reminders."
-    
+
     combined_raw_data = f"{weather_report} | {sports_report} | {email_report} | {calendar_report} | {news_report} | {memory_report}"
 
     print("[SYSTEM]: Synthesizing briefing...")
@@ -174,7 +177,7 @@ def trigger_briefing() -> dict[str, Any]:
 
     if ids:
         database.mark_reminders_read(ids)
-    
+
     return {
         "status": "success",
         "briefing": final_briefing,

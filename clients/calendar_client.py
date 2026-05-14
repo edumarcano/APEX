@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-from google_auth import get_service
+from clients.google_auth import get_service
 
 
 def get_upcoming_calendar_events(service: Any) -> list[dict[str, str]]:
@@ -53,6 +53,7 @@ def get_upcoming_calendar_events(service: Any) -> list[dict[str, str]]:
         events.append({"summary": summary, "start": start_str})
 
     return events
+
 
 if __name__ == "__main__":
     print("[CALENDAR]: Initializing Calendar Service...")

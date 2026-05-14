@@ -1,9 +1,11 @@
 import os
-from config import SYSTEM_PROMPT
-from google import genai
-from dotenv import load_dotenv
 
-load_dotenv()
+from dotenv import load_dotenv
+from google import genai
+
+from core.config import ENV_PATH, SYSTEM_PROMPT
+
+load_dotenv(dotenv_path=ENV_PATH)
 
 
 def process_telemetry(raw_data: str) -> str:
