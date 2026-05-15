@@ -6,7 +6,9 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-APEX runs as a local FastAPI service. `api.py` starts a uvicorn server on `127.0.0.1:8000`, and a `POST` to `/api/v1/trigger` kicks off a four-stage pipeline:
+`launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes, waits for both to bind their ports, then opens the frontend in a kiosk window using the first Chromium browser binary it finds. `atexit` hooks and signal handlers bring both processes down on exit.
+
+With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST` to `/api/v1/trigger` kicks off a four-stage pipeline:
 
 1. **Gate** — `scanner.py` checks the environment before anything else: home Wi-Fi by SSID, wall power, and a 6-hour cooldown since the last run. If any check fails, the request is rejected with a `403` and nothing runs.
 2. **Collection** — each enabled data connector fetches its feed in sequence: weather, sports, news, email, calendar, and pending reminders from the local database. Disabled connectors are skipped with no API call made.
@@ -16,6 +18,7 @@ APEX runs as a local FastAPI service. `api.py` starts a uvicorn server on `127.0
 In `TEST_MODE`, the Gemini call and Gmail and Calendar connectors are skipped to save API quota during development. `SHOWCASE_MODE` keeps Gemini live but bypasses the hardware checks and skips Gmail and Calendar so the system runs anywhere.
 
 ```
+launcher.py  →  [uvicorn (port 8000) + http.server (port 5500)]  →  Browser (kiosk window)
 api.py  →  scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py  →  speaker.py
 (Entry)      (Gate)              (Collection)               (Synthesis)   (Delivery)
 ```
@@ -144,6 +147,8 @@ copy .env.example .env
 
 `APEX_ALLOWED_ORIGINS` is an optional comma-separated list of origins allowed to make cross-origin requests to the API. If it's not set, `api.py` defaults to `http://127.0.0.1:8000`, `http://localhost:8000`, `http://127.0.0.1:5500`, and `http://localhost:5500`. If you're serving the web HUD from a different port, set this key. Note that a custom value replaces the defaults entirely rather than adding to them.
 
+`CUSTOM_BROWSER_PATH` points `launcher.py` at a specific browser executable for the kiosk window. If you use Vivaldi, Brave, or any other Chromium-based browser that is not Chrome or Edge, set the full path here (e.g., `C:\Users\you\AppData\Local\Vivaldi\Application\vivaldi.exe`). It gets checked first. If it is not set, `launcher.py` looks for Chrome then Edge under the default `PROGRAMFILES` paths.
+
 **4. Configure persona and feature toggles (optional)**
 
 `config.json` ships with all five connectors enabled and the default Xylem persona set as the system prompt. Both can be customized without touching any code.
@@ -201,7 +206,15 @@ Inworld AI is wired in as a secondary TTS engine but is inactive by default. To 
 
 **8. Run**
 
-Two processes are required. Open them in separate terminals:
+The recommended way to start is with the orchestrator:
+
+```bash
+python launcher.py
+```
+
+This starts uvicorn and `http.server` in the background, waits for both to come up, then opens the frontend in a kiosk window automatically. `Ctrl+C` shuts both down.
+
+To run the processes separately:
 
 **Terminal 1 (API server):**
 ```bash
@@ -216,6 +229,26 @@ python -m http.server -d frontend 5500
 Then open `http://127.0.0.1:5500` in a browser. Both commands are run from the project root. The `-d frontend` flag points the file server directly at the `frontend/` directory, so all assets resolve correctly without navigating into the folder. `app.js` fires the trigger automatically on load.
 
 > **Legacy path:** `legacy/main.py` and `legacy/gui.py` have not had their imports updated to match the new package structure (`core.*`, `clients.*`) and will not run as-is. They are preserved for reference only.
+
+---
+
+## Deployment & Launch
+
+`launch_apex.bat` is in the project root. Double-click it, or run it from a terminal:
+
+```powershell
+.\launch_apex.bat
+```
+
+It runs `launcher.py` and holds the window open on exit so errors don't disappear before you can read them.
+
+**Creating a Windows Desktop Shortcut**
+
+Right-click `launch_apex.bat` → **Create shortcut**, then drop it on the Desktop. One extra step: right-click the shortcut, open **Properties**, and set the **Start in** field to the full project path (e.g., `C:\Users\you\Documents\APEX`). Without this, `launcher.py` can't resolve its relative paths and the run will fail immediately.
+
+**Why this exists**
+
+The long-term plan is a physical button that cold-starts the whole system without touching a keyboard. This `.bat` file is the software stand-in for that same single-trigger behavior, just from the desktop instead of a hardware input. When that integration gets built, this is what it calls.
 
 ---
 
@@ -281,6 +314,7 @@ apex/
 ├── legacy/
 │   ├── main.py          # Direct script entry point (Legacy/Maintenance)
 │   └── gui.py           # CustomTkinter HUD display (Legacy/Maintenance)
+├── launcher.py          # Master orchestrator — starts uvicorn and http.server in parallel, opens browser kiosk
 ├── config.json          # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
 ├── apex_memory.db       # Auto-generated on first run
 ├── credentials.json     # Google Cloud OAuth client ID for Gmail/Calendar (BYOK - not committed)
@@ -315,3 +349,5 @@ A few things that aren't obvious just from reading the code:
 - **Why an offline fallback instead of a secondary LLM?** For the briefing synthesis layer specifically, the original plan was to route failed Gemini calls to an OpenAI or Anthropic fallback. But developer API credits expire after 12 months, and paying to fund a secondary account that rarely triggers isn't worth it for a personal tool. Just reading the raw data out loud during an outage gets to 100% uptime at zero cost. (The TTS layer is covered in the note above.)
 
 - **Logging conventions.** Every module prefixes its terminal output with a bracketed tag: `[BRAIN]`, `[SCANNER]`, `[SPEAKER]`, `[GUI]`, `[WEATHER]`, `[SPORTS]`, `[NEWS]`, `[GMAIL]`, `[CALENDAR]`, `[SYSTEM]`. It makes it easy to tell which module produced a given line when watching a full run scroll past.
+
+- **Environment isolation.** `launcher.py` intentionally gives each child process a different environment. Uvicorn gets the full environment, including all `.env` keys. The static file server and browser each get a stripped copy with only `PATH`, `SYSTEMROOT`, `TEMP`, `TMP`, and `PYTHONPATH`. API keys never reach the browser process. There is no reason they should.
