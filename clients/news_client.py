@@ -33,8 +33,8 @@ def fetch_news_data():
                 formatted_headlines.append(f"[{topic}] {headline}")
             else:
                 formatted_headlines.append(f"[{topic}] No major headlines found.")
-        except requests.exceptions.RequestException as e:
-            print(f"[NEWS]: Error fetching {topic}: {e}")
+        except requests.exceptions.RequestException:
+            print("[NEWS] Error: Failed to fetch headline telemetry for a topic.")
             formatted_headlines.append(f"[{topic}]: Telemetry unavailable.")
 
     final_report = '[NEWS TELEMETRY]\n' + ' | '.join(formatted_headlines)
@@ -42,6 +42,6 @@ def fetch_news_data():
     return final_report
 
 if __name__ == "__main__":
-    print("[NEWS]: Initializing news service test...")
-    test_data = fetch_news_data()
-    print(f"[NEWS]: Test data: {test_data}")
+    print("[NEWS] Initializing news service test.")
+    fetch_news_data()
+    print("[NEWS] News service test completed.")
