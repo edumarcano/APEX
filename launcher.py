@@ -72,9 +72,7 @@ def launch_background_servers() -> tuple[
     Returns:
         Tuple of (uvicorn process, http.server process).
     """
-    # Full environment for backend service: includes API keys and IDs.
     uvicorn_env = os.environ.copy()
-    # Restricted environment for static/frontend process.
     static_env = _get_sanitized_env()
 
     # Stable PYTHONPATH from project root for package imports.

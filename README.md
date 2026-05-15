@@ -10,7 +10,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST` to `/api/v1/trigger` kicks off a four-stage pipeline:
 
-1. **Gate** — `scanner.py` checks the environment before anything else: home Wi-Fi by SSID, wall power, and a 6-hour cooldown since the last run. If any check fails, the request is rejected with a `403` and nothing runs.
+1. **Gate** — `scanner.py` checks the environment before anything else: home Wi-Fi by SSID, wall power, and a 1-hour cooldown since the last run. If any check fails, the request is rejected with a `403` and nothing runs.
 2. **Collection** — each enabled data connector fetches its feed in sequence: weather, sports, news, email, calendar, and pending reminders from the local database. Disabled connectors are skipped with no API call made.
 3. **Synthesis** — the raw outputs are joined into a single pipe-delimited string and passed to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` prepends the persona prompt from `config.json` and returns the generated briefing text. A filler phrase plays on a background thread while the model processes to avoid dead air. If the Gemini call fails for any reason, the raw data string is read out directly so the run never crashes.
 4. **Output** — `speaker.py` plays the final briefing through the TTS fallback chain. The endpoint also returns the briefing text and a telemetry object as JSON, which the web HUD reads to fill each module slot on the page.
@@ -28,10 +28,10 @@ api.py  →  scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py  �
 ## Features
 
 **Context-aware gating (`scanner.py`)**  
-Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 6 hours since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
+Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 1 hour since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
 
 **Live data connectors (`weather_client.py`, `sports_client.py`, `news_client.py`, `gmail_client.py`, `calendar_client.py`)**  
-Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `main.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
+Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `api.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
 
 **Config-driven feature flags and persona (`config.json`, `config.py`)**  
 `config.py` reads `config.json` at startup and exposes a boolean for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`), `SYSTEM_PROMPT`, and three TTS constants: `PRIMARY_TTS`, `GOOGLE_VOICE_ID`, and `INWORLD_VOICE_ID`. If the file is missing or broken, flags default to `False`, `SYSTEM_PROMPT` falls back to a generic placeholder, and `PRIMARY_TTS` defaults to `"pyttsx3"` so nothing crashes. `config.json` ships committed with all flags on and Google Cloud TTS configured as the active engine. It also keeps preferences and secrets separate: toggles, the persona prompt, and TTS voice settings live here (safe to commit), API keys go in `.env` (gitignored).
@@ -39,23 +39,17 @@ Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: t
 **AI-generated briefings (`brain.py`)**  
 Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` has no persona baked into it. It pulls `SYSTEM_PROMPT` from `config.py` and prepends it to the request, so the voice is entirely driven by `config.json`. Pipe (`|`) delimiters separate each source in the raw string to keep the model's context clean. If the API call fails for any reason, it catches the exception and falls back to reading the raw data directly so the run never crashes.
 
-**Latency masking with threading (`main.py`) — Legacy/Maintenance**  
-Google GenAI SDK calls take a second or two. Rather than stalling in silence, a filler phrase ("Generating briefing... Please wait...") plays on a separate thread while the model processes. The briefing starts as soon as it's ready. This logic is also present in the `api.py` trigger endpoint, which is now the active execution path.
-
 **Persistent reminders and session logging (`database.py`)**  
-A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after they've been read out so they don't repeat across sessions. The run log is what the scanner queries to enforce the 6-hour cooldown.
+A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after they've been read out so they don't repeat across sessions. The run log is what the scanner queries to enforce the 1-hour cooldown.
 
 **Testing Mode (`TEST_MODE`)**  
-For active development. Bypasses the 6-hour cooldown and the Gemini API call, returning a raw data readout instead to preserve API quota. Gmail and Calendar are also skipped regardless of `config.json` to keep personal data out of test runs. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips `database.log_run()` so session history stays clean during testing.
+For active development. Bypasses the 1-hour cooldown and the Gemini API call, returning a raw data readout instead to preserve API quota. Gmail and Calendar are also skipped regardless of `config.json` to keep personal data out of test runs. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips `database.log_run()` so session history stays clean during testing.
 
 **Showcase Mode (`SHOWCASE_MODE`)**  
 Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps the live Gemini call intact so the briefing is real. Gmail and Calendar are skipped here as well regardless of `config.json` to keep personal data out of demos. Like `TEST_MODE`, it also skips `database.log_run()` so running a demo doesn't reset the actual daily cooldown.
 
 **Web HUD (`index.html`, `style.css`, `app.js`)**  
 Three static files served from the project root. On page load, `app.js` fires a `POST` to `/api/v1/trigger` and fills six module slots from the `telemetry` response: weather, sports, news, email, calendar, and reminders. The center panel shows the briefing text with a looping pulse. The header toggles between `SYSTEM ONLINE` and `SYSTEM OFFLINE` based on whether the request came back clean. Layout is a three-column CSS Grid bento that collapses to a single column below 900px. No build step, no framework.
-
-**Floating HUD (`gui.py`) — Legacy/Maintenance**  
-A borderless, semi-transparent window built with CustomTkinter that appears in the top-right corner of the screen. It shows the briefing text, live CPU and RAM usage via `psutil`, and a text field for logging new reminders directly into the database. The HUD is launched by `main.py` and is not currently wired into the `api.py` execution path.
 
 **Text-to-speech engine (`speaker.py`)**  
 Three engines in a fallback chain. Google Cloud TTS is the primary path: text goes to the Cloud TTS API and the returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If Google fails or isn't configured, Inworld AI is tried next via its REST API. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
@@ -99,7 +93,7 @@ Two edge cases worth knowing:
 |---|---|
 | Language | Python 3.10+ |
 | AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
-| GUI | Web HUD (`index.html`, `style.css`, `app.js`) · active. `gui.py` via CustomTkinter · legacy/maintenance |
+| GUI | Web HUD (`index.html`, `style.css`, `app.js`) |
 | Database | SQLite3 |
 | TTS | Google Cloud TTS (primary), Inworld AI (secondary, inactive by default), pyttsx3 (offline fallback) |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-cloud-texttospeech`, `pygame-ce` |
@@ -228,8 +222,6 @@ python -m http.server -d frontend 5500
 
 Then open `http://127.0.0.1:5500` in a browser. Both commands are run from the project root. The `-d frontend` flag points the file server directly at the `frontend/` directory, so all assets resolve correctly without navigating into the folder. `app.js` fires the trigger automatically on load.
 
-> **Legacy path:** `legacy/main.py` and `legacy/gui.py` have not had their imports updated to match the new package structure (`core.*`, `clients.*`) and will not run as-is. They are preserved for reference only.
-
 ---
 
 ## Deployment & Launch
@@ -311,9 +303,6 @@ apex/
 │   ├── index.html       # Web HUD entry point — Bento-grid shell with named data slots
 │   ├── style.css        # HUD theme — monochrome dark, CSS Grid layout, animation keyframes
 │   └── app.js           # HUD client — fetch trigger, telemetry injection, status toggling
-├── legacy/
-│   ├── main.py          # Direct script entry point (Legacy/Maintenance)
-│   └── gui.py           # CustomTkinter HUD display (Legacy/Maintenance)
 ├── launcher.py          # Master orchestrator — starts uvicorn and http.server in parallel, opens browser kiosk
 ├── config.json          # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
 ├── apex_memory.db       # Auto-generated on first run
@@ -348,6 +337,6 @@ A few things that aren't obvious just from reading the code:
 
 - **Why an offline fallback instead of a secondary LLM?** For the briefing synthesis layer specifically, the original plan was to route failed Gemini calls to an OpenAI or Anthropic fallback. But developer API credits expire after 12 months, and paying to fund a secondary account that rarely triggers isn't worth it for a personal tool. Just reading the raw data out loud during an outage gets to 100% uptime at zero cost. (The TTS layer is covered in the note above.)
 
-- **Logging conventions.** Every module prefixes its terminal output with a bracketed tag: `[BRAIN]`, `[SCANNER]`, `[SPEAKER]`, `[GUI]`, `[WEATHER]`, `[SPORTS]`, `[NEWS]`, `[GMAIL]`, `[CALENDAR]`, `[SYSTEM]`. It makes it easy to tell which module produced a given line when watching a full run scroll past.
+- **Logging conventions.** Every module prefixes its terminal output with a bracketed tag: `[BRAIN]`, `[SCANNER]`, `[SPEAKER]`, `[WEATHER]`, `[SPORTS]`, `[NEWS]`, `[GMAIL]`, `[CALENDAR]`, `[SYSTEM]`. It makes it easy to tell which module produced a given line when watching a full run scroll past.
 
 - **Environment isolation.** `launcher.py` intentionally gives each child process a different environment. Uvicorn gets the full environment, including all `.env` keys. The static file server and browser each get a stripped copy with only `PATH`, `SYSTEMROOT`, `TEMP`, `TMP`, and `PYTHONPATH`. API keys never reach the browser process. There is no reason they should.
