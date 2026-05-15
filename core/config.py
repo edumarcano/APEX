@@ -7,11 +7,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Final
 
+from dotenv import load_dotenv
+
 __all__ = [
     "CONFIG_PATH",
+    "CUSTOM_BROWSER_PATH",
     "ENV_PATH",
     "FEATURE_CALENDAR",
     "FEATURE_EMAIL",
@@ -31,6 +35,8 @@ _LOGGER = logging.getLogger(__name__)
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 CONFIG_PATH: Final[Path] = PROJECT_ROOT / "config.json"
 ENV_PATH: Final[Path] = PROJECT_ROOT / ".env"
+
+load_dotenv(dotenv_path=ENV_PATH)
 
 _FEATURE_KEYS: Final[tuple[str, ...]] = (
     "weather",
@@ -67,6 +73,7 @@ tts_settings = _CONFIG_DATA.get("tts_settings", {})
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
 INWORLD_VOICE_ID: Final[str] = tts_settings.get("inworld_voice_id", "")
 GOOGLE_VOICE_ID: Final[str] = tts_settings.get("google_voice_id", "")
+CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")
 
 
 def _all_features_false() -> dict[str, bool]:

@@ -67,12 +67,17 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
 
 
 if __name__ == "__main__":
-    print("[GMAIL]: Attempting Gmail authentication...")
+    print("[GMAIL] Attempting Gmail authentication.")
     service = get_service('gmail', 'v1')
 
     if service:
-        print("[GMAIL]: Authentication successful! fetching data...")
+        print("[GMAIL] Authentication successful. Fetching data.")
         inbox_data = get_unread_gmail_data(service)
-        print(f"[GMAIL]: Extraction Complete. Data: {inbox_data}")
+        unread_count = int(inbox_data.get("count", 0))
+        sampled_count = len(inbox_data.get("emails", []))
+        print(
+            f"[GMAIL] Successfully fetched {unread_count} unread messages "
+            f"(sampled {sampled_count})."
+        )
     else:
-        print("[GMAIL][ERROR]: Gmail authentication failed.")
+        print("[GMAIL] Error: Gmail authentication failed.")

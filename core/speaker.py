@@ -118,7 +118,6 @@ def _speak_pyttsx3_local(text: str) -> None:
     """Synthesize locally with pyttsx3 (offline fallback)."""
     print("[SPEAKER] Initializing local pyttsx3 engine.")
     engine = initialize_engine()
-    print(f"[SPEAKER] Local pyttsx3 output: {text}")
     print("[SPEAKER] Queuing pyttsx3 speech and starting run loop.")
     engine.say(text)
     engine.runAndWait()
@@ -138,7 +137,7 @@ def _try_google_tts(content: str) -> bool:
         print("[SPEAKER] Google TTS playback completed.")
         return True
     except Exception as exc:  # noqa: BLE001 - broad catch so any cloud error drops to the next fallback
-        print(f"[SPEAKER] Google TTS failed: {exc}.")
+        print(f"[SPEAKER] Error: Google TTS failed ({type(exc).__name__}).")
         return False
 
 
@@ -155,7 +154,7 @@ def _try_inworld_tts(content: str) -> bool:
         print("[SPEAKER] Inworld TTS playback completed.")
         return True
     except Exception as exc:  # noqa: BLE001 - broad catch so any cloud error drops to the next fallback
-        print(f"[SPEAKER] Inworld TTS failed: {exc}.")
+        print(f"[SPEAKER] Error: Inworld TTS failed ({type(exc).__name__}).")
         return False
 
 
