@@ -52,7 +52,9 @@ def get_allowed_origins() -> list[str]:
     if not configured_origins:
         return list(DEFAULT_ALLOWED_ORIGINS)
 
-    parsed_origins = [origin.strip() for origin in configured_origins.split(",")]
+    parsed_origins = [
+        origin.strip() for origin in configured_origins.split(",")
+    ]
     filtered_origins = [origin for origin in parsed_origins if origin]
     return filtered_origins or list(DEFAULT_ALLOWED_ORIGINS)
 
@@ -77,7 +79,9 @@ def health_check() -> dict[str, Any]:
 @app.post("/api/v1/trigger")
 def trigger_briefing() -> dict[str, Any]:
     """
-    HTTP entry point for a full APEX run. Mirrors main.start_apex execution order.
+    HTTP entry point for a full APEX run.
+
+    Mirrors main.start_apex execution order.
     """
     if not scanner.should_run():
         raise HTTPException(
@@ -85,10 +89,10 @@ def trigger_briefing() -> dict[str, Any]:
             detail="System gate failed: scanner.should_run() is False.",
         )
 
-    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
-    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
-    is_test_mode = TEST_MODE == "true"
-    is_showcase_mode = SHOWCASE_MODE == "true"
+    test_mode = os.getenv("TEST_MODE", "false").lower()
+    showcase_mode = os.getenv("SHOWCASE_MODE", "false").lower()
+    is_test_mode = test_mode == "true"
+    is_showcase_mode = showcase_mode == "true"
 
     if not is_test_mode and not is_showcase_mode:
         database.log_run()
@@ -119,19 +123,29 @@ def trigger_briefing() -> dict[str, Any]:
         email_report = ""
     else:
         try:
-            email_service = google_auth.get_service('gmail', 'v1')
+            email_service = google_auth.get_service("gmail", "v1")
             email_data = gmail_client.get_unread_gmail_data(email_service)
 
             count = email_data.get("count", 0)
             items = email_data.get("emails", [])
 
-            recent_emails_str = ", ".join(
-                [f"'{e['subject']}' at {e['time']}" for e in items]
-            ) if items else "Email Telemetry (24h): No unread emails"
+            if items:
+                recent_emails = [
+                    f"'{email['subject']}' at {email['time']}"
+                    for email in items
+                ]
+                recent_emails_str = ", ".join(recent_emails)
+            else:
+                recent_emails_str = (
+                    "Email Telemetry (24h): No unread emails"
+                )
 
-            email_report = f"Email Telemetry: {count} unread primary emails. Most recent: {recent_emails_str}"
-        except Exception as e:
-            print(f"[SYSTEM]: Email fetch failed: ({e})")
+            email_report = (
+                f"Email Telemetry: {count} unread primary emails. "
+                f"Most recent: {recent_emails_str}"
+            )
+        except Exception as exc:
+            print(f"[SYSTEM]: Email fetch failed: ({exc})")
             email_report = "ERROR: Check connection"
 
     if is_test_mode or is_showcase_mode or not FEATURE_CALENDAR:
@@ -139,40 +153,60 @@ def trigger_briefing() -> dict[str, Any]:
         calendar_report = ""
     else:
         try:
-            calendar_service = google_auth.get_service('calendar', 'v3')
-            calendar_data = calendar_client.get_upcoming_calendar_events(calendar_service)
-            calendar_report = (
-                "Calendar Telemetry (48h): "
-                + " | ".join([f"'{event['summary']}' at {event['start']}" for event in calendar_data])
-            ) if calendar_data else "Calendar Telemetry (48h): No upcoming events"
-        except Exception as e:
-            print(f"[SYSTEM]: Calendar fetch failed: ({e})")
+            calendar_service = google_auth.get_service("calendar", "v3")
+            calendar_data = calendar_client.get_upcoming_calendar_events(
+                calendar_service
+            )
+            if calendar_data:
+                calendar_entries = [
+                    f"'{event['summary']}' at {event['start']}"
+                    for event in calendar_data
+                ]
+                calendar_report = (
+                    "Calendar Telemetry (48h): "
+                    + " | ".join(calendar_entries)
+                )
+            else:
+                calendar_report = (
+                    "Calendar Telemetry (48h): No upcoming events"
+                )
+        except Exception as exc:
+            print(f"[SYSTEM]: Calendar fetch failed: ({exc})")
             calendar_report = "ERROR: Check connection"
 
     unread_records = database.fetch_unread_reminders()
     ids = []
     memory_report = ""
     if unread_records:
-        ids = [id for id, _ in unread_records]
+        ids = [record_id for record_id, _ in unread_records]
         notes = [note for _, note in unread_records]
         notes_str = ", ".join(notes)
         memory_report = f"Pending Reminders: {notes_str}"
     else:
         memory_report = "No pending reminders."
 
-    combined_raw_data = f"{weather_report} | {sports_report} | {email_report} | {calendar_report} | {news_report} | {memory_report}"
+    combined_raw_data = (
+        f"{weather_report} | {sports_report} | {email_report} | "
+        f"{calendar_report} | {news_report} | {memory_report}"
+    )
 
     print("[SYSTEM]: Synthesizing briefing...")
 
     # Execute filler audio concurrently to hide the Gemini processing time
-    filler_thread = threading.Thread(target=speaker.speak, args=("Generating briefing... Please wait...",))
+    filler_thread = threading.Thread(
+        target=speaker.speak,
+        args=("Generating briefing... Please wait...",),
+    )
     filler_thread.start()
 
     final_briefing = brain.process_telemetry(combined_raw_data)
 
     filler_thread.join()
 
-    voice_thread = threading.Thread(target=speaker.speak, args=(final_briefing,))
+    voice_thread = threading.Thread(
+        target=speaker.speak,
+        args=(final_briefing,),
+    )
     voice_thread.start()
 
     if ids:

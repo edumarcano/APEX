@@ -48,8 +48,8 @@ For active development. Bypasses the 1-hour cooldown and the Gemini API call, re
 **Showcase Mode (`SHOWCASE_MODE`)**  
 Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps the live Gemini call intact so the briefing is real. Gmail and Calendar are skipped here as well regardless of `config.json` to keep personal data out of demos. Like `TEST_MODE`, it also skips `database.log_run()` so running a demo doesn't reset the actual daily cooldown.
 
-**Web HUD (`index.html`, `style.css`, `app.js`)**  
-Three static files served from the project root. On page load, `app.js` fires a `POST` to `/api/v1/trigger` and fills six module slots from the `telemetry` response: weather, sports, news, email, calendar, and reminders. The center panel shows the briefing text with a looping pulse. The header toggles between `SYSTEM ONLINE` and `SYSTEM OFFLINE` based on whether the request came back clean. Layout is a three-column CSS Grid bento that collapses to a single column below 900px. No build step, no framework.
+**Web HUD (`frontend/`)**  
+A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger`, manages the full `idle | loading | success | error` lifecycle in a single piece of state, and distributes the `TelemetryPayload` to six module slots: weather, sports, news, email, calendar, and reminders. The center panel renders the briefing text with a looping pulse animation. The header toggles between `SYSTEM ONLINE` and `SYSTEM OFFLINE` based on the resolved request state. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
 
 **Text-to-speech engine (`speaker.py`)**  
 Three engines in a fallback chain. Google Cloud TTS is the primary path: text goes to the Cloud TTS API and the returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If Google fails or isn't configured, Inworld AI is tried next via its REST API. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
@@ -93,7 +93,7 @@ Two edge cases worth knowing:
 |---|---|
 | Language | Python 3.10+ |
 | AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
-| GUI | Web HUD (`index.html`, `style.css`, `app.js`) |
+| GUI | React, TypeScript, Vite, Tailwind CSS |
 | Database | SQLite3 |
 | TTS | Google Cloud TTS (primary), Inworld AI (secondary, inactive by default), pyttsx3 (offline fallback) |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-cloud-texttospeech`, `pygame-ce` |
@@ -217,10 +217,10 @@ python -m uvicorn core.api:app --reload
 
 **Terminal 2 (static file server):**
 ```bash
-python -m http.server -d frontend 5500
+python -m http.server -d dist 5500
 ```
 
-Then open `http://127.0.0.1:5500` in a browser. Both commands are run from the project root. The `-d frontend` flag points the file server directly at the `frontend/` directory, so all assets resolve correctly without navigating into the folder. `app.js` fires the trigger automatically on load.
+Then open `http://127.0.0.1:5500` in a browser. Both commands are run from the project root. The `-d dist` flag points the file server at the compiled Vite build output directory. Run `npm run build` inside `frontend/` first to produce that output before starting the static server.
 
 ---
 
@@ -299,10 +299,19 @@ apex/
 │   ├── calendar_client.py   # Google Calendar 48-hour schedule extractor
 │   ├── google_auth.py       # Centralized OAuth2 utility for Google APIs
 │   └── __init__.py
-├── frontend/
-│   ├── index.html       # Web HUD entry point — Bento-grid shell with named data slots
-│   ├── style.css        # HUD theme — monochrome dark, CSS Grid layout, animation keyframes
-│   └── app.js           # HUD client — fetch trigger, telemetry injection, status toggling
+├── frontend/                # React/TypeScript source — compiled by Vite
+│   ├── src/
+│   │   ├── hooks/
+│   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution
+│   │   ├── types/
+│   │   │   └── telemetry.ts     # TelemetryPayload type definition
+│   │   ├── App.tsx              # Root component
+│   │   └── main.tsx             # Vite entry point
+│   ├── index.html               # Vite HTML shell
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig.json
+├── dist/                    # Compiled Vite build output — served by http.server in production
 ├── launcher.py          # Master orchestrator — starts uvicorn and http.server in parallel, opens browser kiosk
 ├── config.json          # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
 ├── apex_memory.db       # Auto-generated on first run
