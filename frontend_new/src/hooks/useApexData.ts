@@ -14,6 +14,15 @@ function errorMessageFromBody(body: unknown): string | null {
   return null
 }
 
+function getStringField(
+  source: Record<string, unknown>,
+  key: string,
+  fallback = '',
+): string {
+  const value = source[key]
+  return typeof value === 'string' ? value : fallback
+}
+
 export function useApexData(): ApexDataState {
   const [state, setState] = useState<ApexDataState>({
     data: null,
@@ -33,7 +42,7 @@ export function useApexData(): ApexDataState {
 
     void (async () => {
       try {
-        const response = await fetch('/api/v1/trigger', {
+        const response = await fetch('http://127.0.0.1:8000/api/v1/trigger', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
@@ -61,8 +70,19 @@ export function useApexData(): ApexDataState {
           return
         }
 
-        const telemetry = (body as { telemetry?: TelemetryPayload }).telemetry
-        if (!telemetry) {
+        if (!body || typeof body !== 'object') {
+          setState({
+            data: null,
+            status: 'error',
+            error: 'Invalid response: missing payload body',
+          })
+          return
+        }
+
+        const payload = body as { briefing?: unknown; telemetry?: unknown }
+        const telemetry = payload.telemetry
+
+        if (!telemetry || typeof telemetry !== 'object') {
           setState({
             data: null,
             status: 'error',
@@ -71,8 +91,19 @@ export function useApexData(): ApexDataState {
           return
         }
 
+        const telemetryRecord = telemetry as Record<string, unknown>
+        const mergedData: TelemetryPayload = {
+          briefing: typeof payload.briefing === 'string' ? payload.briefing : '',
+          weather: getStringField(telemetryRecord, 'weather'),
+          sports: getStringField(telemetryRecord, 'sports'),
+          news: getStringField(telemetryRecord, 'news'),
+          email: getStringField(telemetryRecord, 'email'),
+          calendar: getStringField(telemetryRecord, 'calendar'),
+          reminders: getStringField(telemetryRecord, 'reminders'),
+        }
+
         setState({
-          data: telemetry,
+          data: mergedData,
           status: 'success',
           error: null,
         })
