@@ -100,13 +100,17 @@ Two edge cases worth knowing:
 
 ### AI-Augmented Development
 
-The project uses a set of custom agent rules in `.cursor/rules/`. A shared global config (`global.mdc`) enforces two rules across every agent: TTS output compatibility and PEP-8 compliance. The roles are:
+The project uses a set of custom agent rules in `.cursor/rules/`. Each rule is scoped to a file glob so the right agent activates automatically based on what file is open. `global.mdc` runs across all of them and sets the universal constraints: port constants, the scaffolding-only mandate (all function bodies stubbed with `# TODO: User to implement`), TTS output restrictions, and keeping persona language out of code comments and logs.
 
-- **Auditor** — security vulnerabilities, edge cases, and PEP-8 violations.
-- **Analyst** — codebase exploration, tracing data flow, and answering questions about how things work.
-- **Builder** — structural scaffolding and imports, core logic left blank for manual implementation.
-- **Mechanic** — targeted syntax fixes and boilerplate generation.
-- **Communicator** — documentation synthesis, README updates, and change summarization for architectural review.
+- **Global** (`*`) covers port constants, the scaffolding mandate, TTS output restrictions, and log/comment tone. Always active.
+- **Analyst** (`clients/**/*.py`) maps API parameters, traces nested JSON payloads, and flags edge cases. It never touches application code and delivers everything in Markdown tables or raw JSON blocks.
+- **Auditor** reviews code for PEP-8 compliance, async violations, hardcoded secrets, and unhandled exceptions. It reads and reports only, no file edits.
+- **Backend** (`core/**/*.py`) covers FastAPI routes and async data pipelines. All external requests must use `httpx.AsyncClient` or `aiohttp`. Synchronous blocking calls are banned.
+- **Builder** generates the project skeleton: directory layouts, class frames, typed stubs, and imports. Core logic is always left blank.
+- **Communicator** handles documentation and commit logs. It writes conventional commit messages (imperative subject lines, past-tense body bullets) and keeps README content accurate.
+- **DevOps** (`config.json`, `.env*`, `launcher.py`, `*.bat`) manages launchers, dependencies, and the hard wall between `config.json` (application state) and `.env` (credentials). It never writes real keys or paths into example files.
+- **Frontend** (`frontend/**/*.{ts,tsx,css,html}`) builds the HUD layout. Hardcoded pixel sizes are out, responsive Tailwind units are in. All data goes through the `useApexData()` hook.
+- **Mechanic** fixes targeted syntax errors and linting violations within the reported scope only. It scaffolds test files but leaves all assertion logic for the developer to fill in.
 
 ---
 
