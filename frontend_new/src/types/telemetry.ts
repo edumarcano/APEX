@@ -1,5 +1,6 @@
 export interface TelemetryPayload {
   weather: string
+  briefing: string
   sports: string
   news: string
   email: string
