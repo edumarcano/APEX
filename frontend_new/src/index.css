@@ -1,0 +1,37 @@
+@import 'tailwindcss';
+@config '../tailwind.config.js';
+
+/* Legacy APEX HUD custom properties (frontend/style.css) */
+@layer base {
+  :root {
+    --hud-bg: #0a0a0a;
+    --hud-panel-bg: #1c1c1c;
+    --hud-border-color: #333333;
+    --hud-text: #f3f4f6;
+    --hud-accent: #ffffff;
+    --hud-radius: 15px;
+    --hud-panel-pad: 1.25rem;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--hud-bg);
+    color: var(--hud-text);
+    font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+
+  h1,
+  h2 {
+    margin: 0 0 0.75rem;
+    font-weight: 600;
+    color: var(--hud-accent);
+  }
+}
