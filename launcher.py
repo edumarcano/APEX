@@ -102,7 +102,7 @@ def launch_background_servers() -> tuple[
         "http.server",
         "5500",
         "--directory",
-        "frontend",
+        "dist",
     ]
 
     uvicorn_proc = subprocess.Popen(
