@@ -1,3 +1,9 @@
+export interface PipelineState {
+  step: number
+  label: string
+  timestamp: string
+}
+
 export interface TelemetryPayload {
   weather: string
   briefing: string

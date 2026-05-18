@@ -2,6 +2,7 @@ import { Calendar, CloudSun, Terminal } from 'lucide-react'
 import type { ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
+import { DiagnosticProgress } from './components/DiagnosticProgress'
 import { TelemetryCard } from './components/TelemetryCard'
 import { useApexData } from './hooks/useApexData'
 
@@ -60,11 +61,14 @@ export default function App(): ReactElement {
               aria-label="Briefing panel"
               data-slot="briefing-panel"
             >
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-                {isBusy(status)
-                  ? 'Fetching briefing stream…'
-                  : (error ?? 'Briefing unavailable.')}
-              </p>
+              <div className="flex flex-col gap-6 h-full justify-between">
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+                  {isBusy(status)
+                    ? 'Fetching briefing stream…'
+                    : (error ?? 'Briefing unavailable.')}
+                </p>
+                <DiagnosticProgress isLoading={status === 'loading'} />
+              </div>
             </TelemetryCard>
           )}
         </div>
