@@ -13,10 +13,12 @@ const PIPELINE_STEPS = [
 
 export type DiagnosticProgressProps = {
   isLoading: boolean
+  onStepChange?: (step: number | null) => void
 }
 
 export function DiagnosticProgress({
   isLoading,
+  onStepChange,
 }: DiagnosticProgressProps): ReactElement {
   const [pipelineState, setPipelineState] = useState<PipelineState | null>(
     null,
@@ -33,6 +35,7 @@ export function DiagnosticProgress({
 
         if (response.status === 404) {
           setPipelineState(null)
+          onStepChange?.(null)
           return
         }
 
@@ -42,6 +45,7 @@ export function DiagnosticProgress({
 
         const payload = (await response.json()) as PipelineState
         setPipelineState(payload)
+        onStepChange?.(payload.step)
       } catch {
         setPipelineState(null)
       }
@@ -53,8 +57,9 @@ export function DiagnosticProgress({
 
     return () => {
       window.clearInterval(intervalId)
+      onStepChange?.(null)
     }
-  }, [isLoading])
+  }, [isLoading, onStepChange])
 
   const activeStep = pipelineState?.step ?? 0
 

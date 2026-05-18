@@ -1,5 +1,5 @@
 import { Calendar, CloudSun, Terminal } from 'lucide-react'
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
@@ -11,8 +11,14 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 }
 
 export default function App(): ReactElement {
+  const [activeStep, setActiveStep] = useState<number | null>(null)
   const { data, status, error } = useApexData()
   const hasSuccessfulData = status === 'success' && Boolean(data)
+
+  const weatherDimmed = activeStep === 1
+  const scheduleDimmed = activeStep === 1 || activeStep === 2
+  const staggerTransition =
+    'transition-opacity duration-700 ease-in-out'
 
   const weatherBody = (() => {
     if (hasSuccessfulData) {
@@ -43,7 +49,11 @@ export default function App(): ReactElement {
   return (
     <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
       <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-        <TelemetryCard title="Weather" icon={CloudSun} className="min-h-40">
+        <TelemetryCard
+          title="Weather"
+          icon={CloudSun}
+          className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+        >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
             {weatherBody}
           </p>
@@ -67,7 +77,10 @@ export default function App(): ReactElement {
                     ? 'Fetching briefing stream…'
                     : (error ?? 'Briefing unavailable.')}
                 </p>
-                <DiagnosticProgress isLoading={status === 'loading'} />
+                <DiagnosticProgress
+                  isLoading={status === 'loading'}
+                  onStepChange={setActiveStep}
+                />
               </div>
             </TelemetryCard>
           )}
@@ -76,7 +89,7 @@ export default function App(): ReactElement {
         <TelemetryCard
           title="Schedule"
           icon={Calendar}
-          className="min-h-40 opacity-95"
+          className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
         >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
             {scheduleBody}
