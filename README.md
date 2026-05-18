@@ -23,6 +23,48 @@ api.py  →  scanner.py  →  [Data Connectors (Clients & DB)]  →  brain.py  �
 (Entry)      (Gate)              (Collection)               (Synthesis)   (Delivery)
 ```
 
+### FastAPI Pipeline Telemetry & Polling
+
+A full briefing run is a blocking HTTP call. The trigger request stays open until all four stages finish, which takes long enough that the HUD needs something to show while it waits. Rather than streaming partial JSON out of the trigger response, the design keeps execution and observation separate. `useApexData` fires a single `POST` to `/api/v1/trigger` and holds it open, while `DiagnosticProgress` runs a separate `setInterval` loop at **500 ms** that polls `GET /api/v1/status` to find out where the pipeline is at.
+
+When the hook fires on mount it sets `status` to `loading`, which is what tells `App.tsx` to render `DiagnosticProgress` in the center card. The status component starts polling immediately. Each response comes back with `{ step, label, timestamp }` read out of `PipelineState.get_state()` under a `threading.Lock`. The step integer gets handed back up to `App.tsx` through the `onStepChange` callback, which uses it to control opacity on the flanking cards: step **1** (Gate) drops Weather to 25% opacity, and steps **1 and 2** (Gate and Collection) do the same to Schedule. Inside the progress component itself the same step value drives the highlight state, connector fill, and label opacity across the four-step rail (Gate, Collection, Synthesis, Delivery).
+
+On the backend, `core/api.py` calls `global_pipeline_state.update(step, label)` at each stage boundary to keep the state current. The whole collection and synthesis block lives inside a `try...finally` so `global_pipeline_state.reset()` always runs at the end regardless of whether the run succeeded or threw. Once that reset fires, `_is_active` goes false and the next poll to `/api/v1/status` gets a 404 back. The component treats a 404 as idle, clears the interval, and calls `onStepChange(null)`. By that point the trigger `POST` has already resolved and the HUD fills the telemetry cards from the response body.
+
+```mermaid
+sequenceDiagram
+    participant App as Frontend: Main App Layout
+    participant Diag as Frontend: DiagnosticProgress Component
+    participant Trigger as Backend: API Router (/api/v1/trigger)
+    participant Store as Backend: PipelineState State Store (Thread Lock)
+    participant Status as Backend: Status Router (/api/v1/status)
+
+    App->>Trigger: POST /api/v1/trigger (useApexData on mount)
+    Trigger->>Store: update(1, GATE) [acquire lock]
+    App->>Diag: isLoading=true, mount poller
+
+    loop Every 500ms while loading
+        Diag->>Status: GET /api/v1/status
+        Status->>Store: get_state() [acquire lock]
+        Store-->>Status: { step, label, timestamp }
+        Status-->>Diag: 200 JSON snapshot
+        Diag->>App: onStepChange(step)
+        Note over App: Step 1: Weather opacity-25<br/>Steps 1-2: Schedule opacity-25<br/>Diag rail: active/past/future opacity
+    end
+
+    Trigger->>Store: update(2, COLLECTION)
+    Trigger->>Store: update(3, SYNTHESIS)
+    Trigger->>Store: update(4, DELIVERY)
+    Trigger-->>App: 200 { briefing, telemetry }
+
+    Trigger->>Store: reset() in finally [acquire lock]
+    Store-->>Status: _is_active=false
+    Diag->>Status: GET /api/v1/status
+    Status-->>Diag: 404 OFFLINE
+    Diag->>App: onStepChange(null), clearInterval
+    App->>App: status=success, render telemetry cards
+```
+
 ---
 
 ## Features
@@ -49,7 +91,7 @@ For active development. Bypasses the 1-hour cooldown and the Gemini API call, re
 Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps the live Gemini call intact so the briefing is real. Gmail and Calendar are skipped here as well regardless of `config.json` to keep personal data out of demos. Like `TEST_MODE`, it also skips `database.log_run()` so running a demo doesn't reset the actual daily cooldown.
 
 **Web HUD (`frontend/`)**  
-A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger`, manages the full `idle | loading | success | error` lifecycle in a single piece of state, and distributes the `TelemetryPayload` to six module slots: weather, sports, news, email, calendar, and reminders. The center panel renders the briefing text with a looping pulse animation. The header toggles between `SYSTEM ONLINE` and `SYSTEM OFFLINE` based on the resolved request state. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
+A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger` and manages the full `idle | loading | success | error` lifecycle in a single piece of state. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail along with staggered opacity on the Weather and Schedule cards. Full detail on that flow is in the **FastAPI Pipeline Telemetry & Polling** section. After success, the center panel renders the briefing text with a looping pulse animation. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
 
 **Text-to-speech engine (`speaker.py`)**  
 Three engines in a fallback chain. Google Cloud TTS is the primary path: text goes to the Cloud TTS API and the returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If Google fails or isn't configured, Inworld AI is tried next via its REST API. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
@@ -281,6 +323,22 @@ Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS p
 
 `briefing` is the AI-generated text that was read aloud. `telemetry` is a JSON object with one string field per connector, not the raw pipe-delimited string passed to Gemini internally. The web HUD reads these keys to fill each module slot. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
 
+**Pipeline diagnostic status**
+```
+GET http://127.0.0.1:8000/api/v1/status
+```
+Readable only while a trigger run is active. Returns the current stage as a step integer, a short label, and a UTC timestamp:
+
+```json
+{
+  "step": 2,
+  "label": "COLLECTION",
+  "timestamp": "2026-05-18T12:34:56.789012+00:00"
+}
+```
+
+`step` runs **1 through 4** and maps to Gate, Collection, Synthesis, and Delivery in that order. If nothing is running the route returns **404**. The HUD polls this during `loading` to drive the progress rail and card opacity. It does not carry the final telemetry data and is not a substitute for reading the trigger response.
+
 ---
 
 ## Project Structure
@@ -309,7 +367,9 @@ apex/
 │   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution
 │   │   ├── types/
 │   │   │   └── telemetry.ts     # TelemetryPayload type definition
-│   │   ├── App.tsx              # Root component
+│   │   ├── components/
+│   │   │   └── DiagnosticProgress.tsx  # 500ms status poller + four-step progress rail
+│   │   ├── App.tsx              # Root layout; step-driven card opacity
 │   │   └── main.tsx             # Vite entry point
 │   ├── index.html               # Vite HTML shell
 │   ├── package.json
