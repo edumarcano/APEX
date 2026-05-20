@@ -15,3 +15,18 @@ export interface TelemetryPayload {
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
+
+export type AtmosphericCondition = 'neutral' | 'stormy' | 'clear'
+
+export interface AtmosphericTheme {
+  condition: AtmosphericCondition
+  isStormy: boolean
+  bgColors: string
+  textColor: string
+  accentColor: string
+}
+
+export interface AtmosphericThemeContextType {
+  theme: AtmosphericTheme
+  updateThemeFromTelemetry: (weatherReport?: string) => void
+}
