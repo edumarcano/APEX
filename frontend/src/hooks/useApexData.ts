@@ -23,6 +23,35 @@ function getStringField(
   return typeof value === 'string' ? value : fallback
 }
 
+/**
+ * Variable Typography Engine - Telemetry Extractor
+ * Parses the integer Fahrenheit token out of the raw atmospheric string.
+ * Format: "Current temperature is {temp} degrees with {condition}."
+ */
+export function resolvePipelineTemperatureF(weatherReport: string | undefined | null): number | null {
+  if (!weatherReport) return null
+
+  const tempMatch = weatherReport.match(/Current temperature is\s+(-?\d+)\s+degrees/)
+  if (!tempMatch) return null
+
+  const parsedTemp = parseInt(tempMatch[1], 10)
+  return isNaN(parsedTemp) ? null : parsedTemp
+}
+
+/**
+ * Variable Typography Engine - Description Extractor
+ * Isolates the atmospheric condition clause, stripping structural padding.
+ * Format: "Current temperature is {temp} degrees with {condition}."
+ */
+export function resolveWeatherDetail(weatherReport: string | undefined | null): string {
+  if (!weatherReport) return 'No Atmospheric Data'
+
+  const conditionMatch = weatherReport.match(/with\s+([^.]+)/)
+  if (!conditionMatch) return weatherReport
+
+  return conditionMatch[1].trim()
+}
+
 export function useApexData(): ApexDataState {
   const [state, setState] = useState<ApexDataState>({
     data: null,
@@ -92,9 +121,12 @@ export function useApexData(): ApexDataState {
         }
 
         const telemetryRecord = telemetry as Record<string, unknown>
+        const weatherReport = getStringField(telemetryRecord, 'weather')
         const mergedData: TelemetryPayload = {
           briefing: typeof payload.briefing === 'string' ? payload.briefing : '',
-          weather: getStringField(telemetryRecord, 'weather'),
+          weather: weatherReport,
+          temperatureF: resolvePipelineTemperatureF(weatherReport),
+          weatherDetail: resolveWeatherDetail(weatherReport),
           sports: getStringField(telemetryRecord, 'sports'),
           news: getStringField(telemetryRecord, 'news'),
           email: getStringField(telemetryRecord, 'email'),

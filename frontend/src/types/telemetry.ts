@@ -6,6 +6,10 @@ export interface PipelineState {
 
 export interface TelemetryPayload {
   weather: string
+  /** Integer °F for VTE primary readout; null when unavailable. */
+  temperatureF: number | null
+  /** Condition or summary text excluding the primary temperature numeral. */
+  weatherDetail: string
   briefing: string
   sports: string
   news: string
