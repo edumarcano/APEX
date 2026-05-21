@@ -30,6 +30,11 @@ def _infer_language_code(voice_id: str) -> str:
 
 def fetch_google_audio(text: str, voice_id: str) -> bytes:
     """Synthesize ``text`` with Google Cloud TTS and return MP3 bytes."""
+    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        raise ValueError(
+            "GOOGLE_APPLICATION_CREDENTIALS env variable is missing or unconfigured."
+        )
+
     from google.cloud import texttospeech
 
     client = texttospeech.TextToSpeechClient()

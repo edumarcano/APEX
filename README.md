@@ -93,6 +93,41 @@ Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps
 **Web HUD (`frontend/`)**  
 A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger` and manages the full `idle | loading | success | error` lifecycle in a single piece of state. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail along with staggered opacity on the Weather and Schedule cards. Full detail on that flow is in the **FastAPI Pipeline Telemetry & Polling** section. After success, the center panel renders the briefing text with a looping pulse animation. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
 
+**Atmospheric Theme Provider (`AtmosphericThemeContext.tsx`)**  
+A React context provider that reads the raw weather string from `useApexData` and scans it for exact substring tokens to update CSS variables on `document.documentElement`. The scan runs in priority order on each data change and applies the matching theme profile:
+
+| Token | `--hud-bg` | `--hud-text` | `--hud-accent` | Condition |
+|---|---|---|---|---|
+| `"Thunderstorm"` | `#1a202c` (dark charcoal) | `#e2e8f0` | `#06b6d4` (cyan) | `stormy` |
+| `"Clear"` | `#020617` (deep night) | `#f8fafc` | `#eab308` (amber) | `clear` |
+| _(no match)_ | `#0a0f1d` (default navy) | `#c8d3f5` | `#3b82f6` (blue) | `neutral` |
+
+The variables are written synchronously inside `updateThemeFromTelemetry` before the next render cycle, so there is no flash between the default state and the resolved profile. `useAtmosphericTheme()` exposes `{ theme, updateThemeFromTelemetry }` to any descendant that needs to read the resolved condition or re-evaluate the theme against an arbitrary string. The `isStormy` boolean on `AtmosphericTheme` is a convenience flag for components that need a binary storm branch without re-checking the condition string.
+
+**Variable Typography Engine (`TelemetryCard.tsx`)**  
+Maps ambient temperature in Fahrenheit to a CSS `font-weight` integer for the primary temperature readout via linear interpolation over two closed intervals:
+
+- **Temperature domain:** \[40°F, 90°F\] — clamped before interpolation
+- **Font weight range:** \[300, 800\] — `300` at the cold bound, `800` at the hot bound
+- **Formula:** `weight = 300 + ((clampedTemp − 40) / 50) × 500`, rounded to the nearest integer
+
+The weight is applied as an inline `style` on the readout `<p>` element (tagged `data-vte="primary-temperature-readout"`) so it overrides Tailwind's static utilities without a class conflict. `resolveTemperatureFontWeight(input: VariableTypographyInput): number` is exported as a named function for unit testing.
+
+**Pipeline String Format Contract (`useApexData.ts`)**  
+Two named parser functions in `useApexData.ts` extract structured fields from the fixed-format string that `weather_client.py` produces. Both return safe fallbacks (`null` or `'No Atmospheric Data'`) when the input does not match rather than throwing into the render tree.
+
+Upstream string format:
+```
+Current temperature is {temp} degrees with {condition}.
+```
+
+| Field | Function | Regex | Return type |
+|---|---|---|---|
+| Integer °F | `resolvePipelineTemperatureF` | `/Current temperature is\s+(-?\d+)\s+degrees/` | `number \| null` |
+| Condition text | `resolveWeatherDetail` | `/with\s+([^.]+)/` | `string` |
+
+The parsed values are stored on `TelemetryPayload` as `temperatureF` and `weatherDetail`. If an upstream format change breaks either regex, the temperature readout goes blank and VTE interpolation is skipped cleanly. The condition field falls back to the full raw string. Both failures are immediately visible in the HUD, making format regressions easy to catch without a crash.
+
 **Text-to-speech engine (`speaker.py`)**  
 Three engines in a fallback chain. Google Cloud TTS is the primary path: text goes to the Cloud TTS API and the returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If Google fails or isn't configured, Inworld AI is tried next via its REST API. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
 
@@ -151,7 +186,7 @@ The project uses a set of custom agent rules in `.cursor/rules/`. Each rule is s
 - **Builder** generates the project skeleton: directory layouts, class frames, typed stubs, and imports. Core logic is always left blank.
 - **Communicator** handles documentation and commit logs. It writes conventional commit messages (imperative subject lines, past-tense body bullets) and keeps README content accurate.
 - **DevOps** (`config.json`, `.env*`, `launcher.py`, `*.bat`) manages launchers, dependencies, and the hard wall between `config.json` (application state) and `.env` (credentials). It never writes real keys or paths into example files.
-- **Frontend** (`frontend/**/*.{ts,tsx,css,html}`) builds the HUD layout. Hardcoded pixel sizes are out, responsive Tailwind units are in. All data goes through the `useApexData()` hook.
+- **Frontend** (`frontend/**/*.{ts,tsx,css,html}`) builds the HUD layout. Hardcoded pixel sizes are out, responsive Tailwind units are in. All data goes through the `useApexData()` hook. Atmospheric theme mutations are isolated to `AtmosphericThemeContext`. VTE interpolation logic is isolated to `TelemetryCard`.
 - **Mechanic** fixes targeted syntax errors and linting violations within the reported scope only. It scaffolds test files but leaves all assertion logic for the developer to fill in.
 
 ---
@@ -364,10 +399,13 @@ apex/
 ├── frontend/                # React/TypeScript source — compiled by Vite
 │   ├── src/
 │   │   ├── hooks/
-│   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution
+│   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution; VTE string parser
 │   │   ├── types/
-│   │   │   └── telemetry.ts     # TelemetryPayload type definition
+│   │   │   └── telemetry.ts     # TelemetryPayload, AtmosphericTheme, AtmosphericCondition type definitions
+│   │   ├── context/
+│   │   │   └── AtmosphericThemeContext.tsx  # CSS variable theme provider — condition token scan, --hud-* variable injection
 │   │   ├── components/
+│   │   │   ├── TelemetryCard.tsx       # Shared card frame + Variable Typography Engine interpolation
 │   │   │   └── DiagnosticProgress.tsx  # 500ms status poller + four-step progress rail
 │   │   ├── App.tsx              # Root layout; step-driven card opacity
 │   │   └── main.tsx             # Vite entry point

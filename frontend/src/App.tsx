@@ -22,14 +22,17 @@ export default function App(): ReactElement {
 
   const weatherBody = (() => {
     if (hasSuccessfulData) {
-      const weather = data?.weather?.trim() ?? ''
-      return weather.length > 0 ? weather : 'No weather data.'
+      const detail = data?.weatherDetail?.trim() ?? ''
+      return detail.length > 0 ? detail : 'No weather data.'
     }
     if (isBusy(status)) {
       return 'Loading weather…'
     }
     return error ?? 'Weather unavailable.'
   })()
+
+  const primaryTemperatureF =
+    hasSuccessfulData && data?.temperatureF != null ? data.temperatureF : null
 
   const scheduleBody = (() => {
     if (hasSuccessfulData) {
@@ -52,6 +55,7 @@ export default function App(): ReactElement {
         <TelemetryCard
           title="Weather"
           icon={CloudSun}
+          primaryTemperatureF={primaryTemperatureF}
           className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
         >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
