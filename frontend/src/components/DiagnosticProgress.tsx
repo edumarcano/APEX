@@ -150,10 +150,14 @@ function resolveDiagnostics(
 }
 
 export function DiagnosticProgress(): ReactElement {
-  const { data, status } = useApexData()
+  const { diagnostics, status } = useApexData()
   const isLoading = status === 'loading' || status === 'idle'
-  const diagnostics = resolveDiagnostics(data?.diagnostics)
-  const isDisconnected = isLoading || data == null
+  const resolvedDiagnostics = resolveDiagnostics(diagnostics)
+  const isDisconnected =
+    isLoading &&
+    resolvedDiagnostics.cpu === null &&
+    resolvedDiagnostics.ram === null &&
+    resolvedDiagnostics.disk === null
 
   return (
     <section
@@ -169,7 +173,7 @@ export function DiagnosticProgress(): ReactElement {
           >
             <div className="aspect-square w-full max-w-[7rem] sm:max-w-[8rem]">
               <RingGauge
-                percentage={diagnostics[key]}
+                percentage={resolvedDiagnostics[key]}
                 label={label}
                 isDisconnected={isDisconnected}
               />

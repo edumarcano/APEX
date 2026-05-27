@@ -28,7 +28,7 @@ export interface TelemetryPayload {
   email: string
   calendar: string
   reminders: string
-  diagnostics: SystemDiagnostics
+  diagnostics?: SystemDiagnostics | null
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'

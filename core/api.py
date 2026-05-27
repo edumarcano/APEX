@@ -148,6 +148,14 @@ def get_pipeline_diagnostic_status() -> dict[str, Any]:
     return snapshot
 
 
+@app.get("/api/v1/diagnostics")
+def get_system_diagnostics() -> dict[str, float]:
+    """
+    Hardware utilization snapshot for operators and HUD diagnostics panels.
+    """
+    return scanner.sample_system_vitals()
+
+
 @app.post("/api/v1/trigger")
 def trigger_briefing() -> dict[str, Any]:
     """

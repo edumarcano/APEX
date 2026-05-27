@@ -9,6 +9,7 @@ export type ApexDataState = {
   data: TelemetryPayload | null
   status: 'idle' | 'loading' | 'success' | 'error'
   error: string | null
+  diagnostics: SystemDiagnostics
 }
 
 function errorMessageFromBody(body: unknown): string | null {
@@ -35,19 +36,13 @@ function getNumericField(
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function resolveDiagnostics(
-  telemetryRecord: Record<string, unknown>,
+function mapDiagnosticsRecord(
+  source: Record<string, unknown>,
 ): SystemDiagnostics {
-  const raw = telemetryRecord.diagnostics
-  if (!raw || typeof raw !== 'object') {
-    return { ...DEFAULT_SYSTEM_DIAGNOSTICS }
-  }
-
-  const diagnosticsRecord = raw as Record<string, unknown>
   return {
-    cpu: getNumericField(diagnosticsRecord, 'cpu'),
-    ram: getNumericField(diagnosticsRecord, 'ram'),
-    disk: getNumericField(diagnosticsRecord, 'disk'),
+    cpu: getNumericField(source, 'cpu'),
+    ram: getNumericField(source, 'ram'),
+    disk: getNumericField(source, 'disk'),
   }
 }
 
@@ -81,11 +76,51 @@ export function resolveWeatherDetail(weatherReport: string | undefined | null): 
 }
 
 export function useApexData(): ApexDataState {
-  const [state, setState] = useState<ApexDataState>({
+  const [state, setState] = useState<Omit<ApexDataState, 'diagnostics'>>({
     data: null,
     status: 'idle',
     error: null,
   })
+  const [diagnostics, setDiagnostics] = useState<SystemDiagnostics>({
+    ...DEFAULT_SYSTEM_DIAGNOSTICS,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+
+    const pollDiagnostics = async (): Promise<void> => {
+      try {
+        const response = await fetch(
+          'http://127.0.0.1:8000/api/v1/diagnostics',
+        )
+
+        if (!response.ok || cancelled) return
+
+        let body: unknown = null
+        try {
+          body = await response.json()
+        } catch {
+          return
+        }
+
+        if (cancelled || !body || typeof body !== 'object') return
+
+        setDiagnostics(mapDiagnosticsRecord(body as Record<string, unknown>))
+      } catch {
+        return
+      }
+    }
+
+    void pollDiagnostics()
+    const intervalId = window.setInterval(() => {
+      void pollDiagnostics()
+    }, 1000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -160,7 +195,6 @@ export function useApexData(): ApexDataState {
           email: getStringField(telemetryRecord, 'email'),
           calendar: getStringField(telemetryRecord, 'calendar'),
           reminders: getStringField(telemetryRecord, 'reminders'),
-          diagnostics: resolveDiagnostics(telemetryRecord),
         }
 
         setState({
@@ -189,5 +223,5 @@ export function useApexData(): ApexDataState {
     }
   }, [])
 
-  return state
+  return { ...state, diagnostics }
 }
