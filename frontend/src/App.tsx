@@ -1,5 +1,5 @@
-import { Activity, Calendar, CloudSun, Terminal } from 'lucide-react'
-import { useEffect, useState, type ReactElement } from 'react'
+import { Activity, Calendar, CloudSun, Flag, Terminal } from 'lucide-react'
+import { type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
@@ -16,13 +16,9 @@ export default function App(): ReactElement {
   const apexData = useApexData()
   const { data, status, error, pipelineState, isPipelinePolling } = apexData
 
-  const [activeStep, setActiveStep] = useState<number | null>(null)
+  const activeStep = pipelineState?.step ?? null
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
-
-  useEffect(() => {
-    setActiveStep(pipelineState?.step ?? null)
-  }, [pipelineState?.step])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -56,12 +52,14 @@ export default function App(): ReactElement {
     return error ?? 'Schedule unavailable.'
   })()
 
+  const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
+
   const centerMinHeight = 'min-h-56 md:min-h-72'
 
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
-        <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+        <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           <TelemetryCard
             title="Weather"
             icon={CloudSun}
@@ -93,6 +91,13 @@ export default function App(): ReactElement {
           </TelemetryCard>
 
           <TelemetryCard
+            title="F1 Schedule"
+            icon={Flag}
+            rawScheduleText={f1ScheduleTelemetryText}
+            className="min-h-40"
+          />
+
+          <TelemetryCard
             title="Pipeline Progress"
             icon={Terminal}
             className="border-2 border-[color:var(--hud-accent)] md:col-span-1"
@@ -110,7 +115,7 @@ export default function App(): ReactElement {
           <TelemetryCard
             title="System Diagnostics"
             icon={Activity}
-            className="border-2 border-[color:var(--hud-accent)] md:col-span-2"
+            className="border-2 border-[color:var(--hud-accent)] md:col-span-2 xl:col-span-2"
             role="region"
             aria-label="System diagnostics"
             data-slot="system-diagnostics-card"

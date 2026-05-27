@@ -73,7 +73,7 @@ sequenceDiagram
 Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 1 hour since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
 
 **Live data connectors (`weather_client.py`, `sports_client.py`, `news_client.py`, `gmail_client.py`, `calendar_client.py`)**  
-Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API, and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `api.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
+Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API (cached locally at `clients/.f1_cache.json` with a 24-hour TTL), and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `api.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
 
 **Config-driven feature flags and persona (`config.json`, `config.py`)**  
 `config.py` reads `config.json` at startup and exposes a boolean for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`), `SYSTEM_PROMPT`, and three TTS constants: `PRIMARY_TTS`, `GOOGLE_VOICE_ID`, and `INWORLD_VOICE_ID`. If the file is missing or broken, flags default to `False`, `SYSTEM_PROMPT` falls back to a generic placeholder, and `PRIMARY_TTS` defaults to `"pyttsx3"` so nothing crashes. `config.json` ships committed with all flags on and Google Cloud TTS configured as the active engine. It also keeps preferences and secrets separate: toggles, the persona prompt, and TTS voice settings live here (safe to commit), API keys go in `.env` (gitignored).
@@ -390,11 +390,12 @@ apex/
 │   └── __init__.py
 ├── clients/
 │   ├── weather_client.py    # OpenWeatherMap connector
-│   ├── sports_client.py     # F1 (Ergast/Jolpica) and FC Barcelona fixture connector (football-data.org)
+│   ├── sports_client.py     # F1 (Ergast/Jolpica) + 24-hr cache, FC Barcelona fixture connector (football-data.org)
 │   ├── news_client.py       # GNews API connector for AI and Global Events headlines
 │   ├── gmail_client.py      # Gmail API v1 extraction and timestamp parsing
 │   ├── calendar_client.py   # Google Calendar 48-hour schedule extractor
 │   ├── google_auth.py       # Centralized OAuth2 utility for Google APIs
+│   ├── .f1_cache.json       # Auto-generated F1 telemetry cache — 24-hour TTL (not committed)
 │   └── __init__.py
 ├── frontend/                # React/TypeScript source — compiled by Vite
 │   ├── src/
@@ -423,6 +424,83 @@ apex/
 ├── .env                 # Local environment variables (not committed)
 └── .env.example         # Environment variable template with placeholder values
 ```
+
+---
+
+## F1 Minimalist Intake Engine & HUD Synthesis Contract
+
+This covers the full data contract between the F1 ingestion layer in `clients/sports_client.py` and the rendering layer in `frontend/src/components/TelemetryCard.tsx`.
+
+### File-Backed Local Cache & 24-Hour TTL
+
+The F1 connector writes a local cache at `clients/.f1_cache.json` to cut down on unnecessary network calls. Race schedules don't change often, so 24 hours is a reasonable TTL. The logic each run:
+
+1. `_read_f1_cache()` tries to load the file from disk. If it's missing, unreadable, or malformed, it returns `None` and the network fetch runs unconditionally.
+2. `_is_f1_cache_fresh()` checks the `cached_at` ISO timestamp against the current UTC clock. The window is exactly **24 hours** (`timedelta(hours=24)`). An invalid or timezone-naive timestamp counts as stale.
+3. Fresh cache hit: the stored `f1_map` dict is used and no HTTP request is made.
+4. Stale or missing: a `GET` goes out to `https://api.jolpi.ca/ergast/f1/current/next.json`. On success, `_write_f1_cache()` writes the new map to disk with compact separators (`(",", ":")`), plus a fresh `cached_at` UTC timestamp.
+5. Network failure with a stale map on disk: the stale map is used as a fallback. If there's nothing on disk at all, the connector emits the plain string `"F1 race telemetry unavailable."`.
+
+The cache file is gitignored and created automatically on first run.
+
+### F1_DATA Payload Format
+
+The F1 map doesn't go into the pipeline as a plain English sentence. It's emitted as a compact JSON object with a named prefix tag that keeps it compatible with the pipe-delimited string `brain.py` already expects:
+
+```
+F1_DATA:{"raceName":"...","round":"...","country":"...","raceDateTimeEST":"...","relativeWeek":"...","sprintScheduled":true,"sprintDateTimeEST":"..."}
+```
+
+The `F1_DATA:` prefix is what `TelemetryCard.tsx` scans for. It lets the component pull the JSON object out of the raw `sports` string regardless of what else is in there. The compact separators keep the payload small.
+
+`extractF1DataJson()` finds the prefix, skips any whitespace, and hands the rest off to `extractBalancedJsonObject()`, a balanced-brace walker that tracks depth and handles escaped characters inside strings correctly. That's more reliable than a naive `indexOf('}')` approach. The extracted string goes through `JSON.parse()` and a type check before any field is read. A parse failure returns `null` and the card renders nothing instead of crashing.
+
+### Pipeline Variables
+
+`_build_f1_map_from_race()` flattens the Jolpica response into a fixed-shape map. These seven fields are always present:
+
+| Field | Type | Source | Fallback |
+|---|---|---|---|
+| `raceName` | `string` | `race["raceName"]` | `"Unknown"` |
+| `round` | `string` | `race["round"]` | `"Unknown"` |
+| `country` | `string` | `race["Circuit"]["Location"]["country"]` | `"Unknown"` |
+| `raceDateTimeEST` | `string` | UTC race datetime converted via `_format_est_edt()` | `"Unscheduled"` |
+| `relativeWeek` | `string` | Week offset from current Eastern date | `"Unscheduled"` |
+| `sprintScheduled` | `boolean` | `True` when a valid sprint datetime is present | `False` |
+| `sprintDateTimeEST` | `string` | UTC sprint datetime converted via `_format_est_edt()` | `"Unscheduled"` |
+
+All datetimes use `ZoneInfo("America/New_York")` and format to `"%A, %B %d at %I:%M %p %Z"` (e.g., `Sunday, June 01 at 3:00 PM EDT`). If `ZoneInfo` isn't available on the host, the module falls back to `timezone.utc` at import time so it doesn't blow up on startup.
+
+`relativeWeek` produces one of three strings: `"This week"`, `"Next week"`, or `"In N weeks"`, based on Monday-aligned ISO week boundaries in Eastern time.
+
+### Frontend Rendering
+
+`TelemetryCard.tsx` turns on the F1 block when the `title` prop trims and lowercases to `"f1 schedule"`. That's the only condition checked.
+
+**Country flag lookup.** `COUNTRY_FLAG_MAP` is a plain object keyed by lowercase country name and mapped to the ISO 3166-1 alpha-2 code. The incoming `country` string is lowercased before the lookup. The current table covers the full active F1 calendar:
+
+| Country | Code | Country | Code |
+|---|---|---|---|
+| Australia | `au` | Italy | `it` |
+| Bahrain | `bh` | Japan | `jp` |
+| Belgium | `be` | Mexico | `mx` |
+| Brazil | `br` | Monaco | `mc` |
+| Canada | `ca` | Netherlands | `nl` |
+| China | `cn` | Qatar | `qa` |
+| Hungary | `hu` | Saudi Arabia | `sa` |
+| Singapore | `sg` | Spain | `es` |
+| United Arab Emirates | `ae` | United Kingdom | `gb` |
+| United States / USA | `us` | | |
+
+**Flag image delivery.** When a code resolves, the flag renders as an `<img>` pulled from the `flag-icon-css` package on the Cloudflare CDN:
+
+```
+https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/{code}.svg
+```
+
+`loading="lazy"` and `decoding="async"` are set to keep it off the critical path. The image renders at `h-4 w-6` with `rounded` and `shadow-sm`.
+
+**Checkered flag fallback.** If the country string doesn't match anything in the table, `resolveCountryFlag()` returns the `🏁` emoji instead of a code. The render branch checks for strict equality against the `CHECKERED_FALLBACK_FLAG` constant and swaps the `<img>` for an inline `<span>` at `text-xl`. The card always shows something, no network required.
 
 ---
 

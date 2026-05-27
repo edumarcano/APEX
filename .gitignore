@@ -7,3 +7,4 @@ token.json
 service_account.json
 dist/
 frontend/node_modules/
+clients/.f1_cache.json

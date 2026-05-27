@@ -6,6 +6,10 @@
     "email": true,
     "calendar": true
   },
+  "modules": {
+    "football": false,
+    "f1": true
+  },
   "tts_settings": {
     "primary_tts": "pyttsx3",
     "inworld_voice_id": "default-anchtyc3ujph-pt88wpp-q__design-voice-6747124f",
