@@ -1,10 +1,11 @@
 import { Activity, Calendar, CloudSun, Terminal } from 'lucide-react'
-import { useState, type ReactElement } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
+import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
@@ -12,9 +13,16 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 }
 
 export default function App(): ReactElement {
+  const apexData = useApexData()
+  const { data, status, error, pipelineState, isPipelinePolling } = apexData
+
   const [activeStep, setActiveStep] = useState<number | null>(null)
-  const { data, status, error } = useApexData()
   const hasSuccessfulData = status === 'success' && Boolean(data)
+  const isTriggerLoading = status === 'loading'
+
+  useEffect(() => {
+    setActiveStep(pipelineState?.step ?? null)
+  }, [pipelineState?.step])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -51,75 +59,66 @@ export default function App(): ReactElement {
   const centerMinHeight = 'min-h-56 md:min-h-72'
 
   return (
-    <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
-      <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-        <TelemetryCard
-          title="Weather"
-          icon={CloudSun}
-          primaryTemperatureF={primaryTemperatureF}
-          className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
-        >
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-            {weatherBody}
-          </p>
-        </TelemetryCard>
+    <AtmosphericThemeProvider weatherReport={data?.weather}>
+      <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
+        <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+          <TelemetryCard
+            title="Weather"
+            icon={CloudSun}
+            primaryTemperatureF={primaryTemperatureF}
+            className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+          >
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+              {weatherBody}
+            </p>
+          </TelemetryCard>
 
-        <div className={`min-w-0 ${centerMinHeight}`}>
-          {hasSuccessfulData ? (
-            <BriefingPanel briefing={data?.briefing ?? ''} />
-          ) : (
-            <TelemetryCard
-              title="Core Briefing"
-              icon={Terminal}
-              className="h-full min-h-56 md:min-h-72"
-              role="region"
-              aria-label="Briefing panel"
-              data-slot="briefing-panel"
-            >
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-                {isBusy(status)
-                  ? 'Fetching briefing stream…'
-                  : (error ?? 'Briefing unavailable.')}
-              </p>
-            </TelemetryCard>
-          )}
+          <div className={`min-w-0 ${centerMinHeight}`}>
+            <BriefingPanel
+              briefing={data?.briefing ?? ''}
+              status={status}
+              error={error}
+              isLoading={isTriggerLoading}
+            />
+          </div>
+
+          <TelemetryCard
+            title="Schedule"
+            icon={Calendar}
+            className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+          >
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+              {scheduleBody}
+            </p>
+          </TelemetryCard>
+
+          <TelemetryCard
+            title="Pipeline Progress"
+            icon={Terminal}
+            className="border-2 border-[color:var(--hud-accent)] md:col-span-1"
+            role="region"
+            aria-label="Pipeline progress"
+            data-slot="pipeline-progress-card"
+          >
+            <DiagnosticProgress
+              pipelineState={pipelineState}
+              isPipelinePolling={isPipelinePolling}
+              isTriggerLoading={isTriggerLoading}
+            />
+          </TelemetryCard>
+
+          <TelemetryCard
+            title="System Diagnostics"
+            icon={Activity}
+            className="border-2 border-[color:var(--hud-accent)] md:col-span-2"
+            role="region"
+            aria-label="System diagnostics"
+            data-slot="system-diagnostics-card"
+          >
+            <SystemDiagnostics />
+          </TelemetryCard>
         </div>
-
-        <TelemetryCard
-          title="Schedule"
-          icon={Calendar}
-          className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
-        >
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-            {scheduleBody}
-          </p>
-        </TelemetryCard>
-
-        <TelemetryCard
-          title="Pipeline Progress"
-          icon={Terminal}
-          className="border-2 border-[color:var(--hud-accent)] md:col-span-1"
-          role="region"
-          aria-label="Pipeline progress"
-          data-slot="pipeline-progress-card"
-        >
-          <DiagnosticProgress
-            isLoading={status === 'loading'}
-            onStepChange={setActiveStep}
-          />
-        </TelemetryCard>
-
-        <TelemetryCard
-          title="System Diagnostics"
-          icon={Activity}
-          className="border-2 border-[color:var(--hud-accent)] md:col-span-2"
-          role="region"
-          aria-label="System diagnostics"
-          data-slot="system-diagnostics-card"
-        >
-          <SystemDiagnostics />
-        </TelemetryCard>
-      </div>
-    </main>
+      </main>
+    </AtmosphericThemeProvider>
   )
 }
