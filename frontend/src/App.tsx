@@ -1,5 +1,5 @@
 import { Calendar, CloudSun, Terminal } from 'lucide-react'
-import { useState, type ReactElement } from 'react'
+import { type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
@@ -11,14 +11,8 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 }
 
 export default function App(): ReactElement {
-  const [activeStep, setActiveStep] = useState<number | null>(null)
   const { data, status, error } = useApexData()
   const hasSuccessfulData = status === 'success' && Boolean(data)
-
-  const weatherDimmed = activeStep === 1
-  const scheduleDimmed = activeStep === 1 || activeStep === 2
-  const staggerTransition =
-    'transition-opacity duration-700 ease-in-out'
 
   const weatherBody = (() => {
     if (hasSuccessfulData) {
@@ -56,7 +50,7 @@ export default function App(): ReactElement {
           title="Weather"
           icon={CloudSun}
           primaryTemperatureF={primaryTemperatureF}
-          className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+          className="min-h-40"
         >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
             {weatherBody}
@@ -81,10 +75,7 @@ export default function App(): ReactElement {
                     ? 'Fetching briefing stream…'
                     : (error ?? 'Briefing unavailable.')}
                 </p>
-                <DiagnosticProgress
-                  isLoading={status === 'loading'}
-                  onStepChange={setActiveStep}
-                />
+                <DiagnosticProgress />
               </div>
             </TelemetryCard>
           )}
@@ -93,7 +84,7 @@ export default function App(): ReactElement {
         <TelemetryCard
           title="Schedule"
           icon={Calendar}
-          className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+          className="min-h-40"
         >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
             {scheduleBody}

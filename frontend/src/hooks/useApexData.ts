@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { TelemetryPayload } from '../types/telemetry'
+import {
+  DEFAULT_SYSTEM_DIAGNOSTICS,
+  type SystemDiagnostics,
+  type TelemetryPayload,
+} from '../types/telemetry'
 
 export type ApexDataState = {
   data: TelemetryPayload | null
@@ -21,6 +25,30 @@ function getStringField(
 ): string {
   const value = source[key]
   return typeof value === 'string' ? value : fallback
+}
+
+function getNumericField(
+  source: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = source[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function resolveDiagnostics(
+  telemetryRecord: Record<string, unknown>,
+): SystemDiagnostics {
+  const raw = telemetryRecord.diagnostics
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_SYSTEM_DIAGNOSTICS }
+  }
+
+  const diagnosticsRecord = raw as Record<string, unknown>
+  return {
+    cpu: getNumericField(diagnosticsRecord, 'cpu'),
+    ram: getNumericField(diagnosticsRecord, 'ram'),
+    disk: getNumericField(diagnosticsRecord, 'disk'),
+  }
 }
 
 /**
@@ -132,6 +160,7 @@ export function useApexData(): ApexDataState {
           email: getStringField(telemetryRecord, 'email'),
           calendar: getStringField(telemetryRecord, 'calendar'),
           reminders: getStringField(telemetryRecord, 'reminders'),
+          diagnostics: resolveDiagnostics(telemetryRecord),
         }
 
         setState({
