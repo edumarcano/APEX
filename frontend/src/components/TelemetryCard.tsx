@@ -111,16 +111,7 @@ function extractF1DataJson(source: string): string | null {
     jsonStartIndex += 1
   }
 
-  const balancedObject = extractBalancedJsonObject(source, jsonStartIndex)
-  if (balancedObject) return balancedObject
-
-  const lineEndIndex = source.indexOf('\n', jsonStartIndex)
-  return source
-    .slice(
-      jsonStartIndex,
-      lineEndIndex >= 0 ? lineEndIndex : source.length,
-    )
-    .trim()
+  return extractBalancedJsonObject(source, jsonStartIndex)
 }
 
 function parseF1SchedulePayload(source: string): F1SchedulePayload | null {
@@ -291,6 +282,11 @@ export function TelemetryCard({
                     className="h-4 w-6 rounded object-cover shadow-sm"
                     loading="lazy"
                     decoding="async"
+                    onError={(event) => {
+                      const flagContainer = event.currentTarget.parentElement
+                      if (!flagContainer) return
+                      flagContainer.textContent = CHECKERED_FALLBACK_FLAG
+                    }}
                   />
                 )}
               </span>

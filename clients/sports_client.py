@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
@@ -70,13 +71,16 @@ def _write_f1_cache(f1_map: Dict[str, Any]) -> None:
         OSError: If the cache file cannot be written.
         TypeError: If `f1_map` contains non-serializable values.
     """
-    cache_payload = {
-        "cached_at": datetime.now(timezone.utc).isoformat(),
-        "f1_map": f1_map,
-    }
-    cache_path = _get_f1_cache_path()
-    with open(cache_path, "w", encoding="utf-8") as cache_file:
-        json.dump(cache_payload, cache_file, separators=(",", ":"))
+    try:
+        cache_payload = {
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "f1_map": f1_map,
+        }
+        cache_path = _get_f1_cache_path()
+        with open(cache_path, "w", encoding="utf-8") as cache_file:
+            json.dump(cache_payload, cache_file, separators=(",", ":"))
+    except (OSError, TypeError) as exc:
+        sys.stderr.write(f"[SPORTS][F1][CACHE] {exc}\n")
 
 
 def _is_f1_cache_fresh(cache_payload: Dict[str, Any]) -> bool:
@@ -224,12 +228,18 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def fetch_sports_data() -> str:
-    """
-    Connect to sports APIs and retrieve current sports telemetry.
+    """Connect to sports APIs and retrieve current sports telemetry.
+
+    Args:
+        None
 
     Returns:
-        str: A formatted string containing sports updates, or error
-        messages if connections fail.
+        str: A formatted string containing sports updates or fallback
+            telemetry unavailable messages.
+
+    Raises:
+        None: All transport and parsing failures are handled internally and
+            converted to fallback telemetry strings.
     """
     intel = []
 
@@ -254,7 +264,8 @@ def fetch_sports_data() -> str:
                 f1_map = _build_f1_map_from_race(race)
                 _write_f1_cache(f1_map)
             intel.append(f"F1_DATA:{json.dumps(f1_map, separators=(',', ':'))}")
-        except Exception:
+        except Exception as exc:
+            sys.stderr.write(f"[SPORTS][F1] {exc}\n")
             if cached_map:
                 intel.append(f"F1_DATA:{json.dumps(cached_map, separators=(',', ':'))}")
             else:
@@ -306,7 +317,8 @@ def fetch_sports_data() -> str:
                         )
                 else:
                     intel.append("Barcelona fixture telemetry unavailable.")
-        except Exception:
+        except Exception as exc:
+            sys.stderr.write(f"[SPORTS][FOOTBALL] {exc}\n")
             intel.append("Barcelona fixture telemetry unavailable.")
 
     return " ".join(intel)

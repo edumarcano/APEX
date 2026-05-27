@@ -1,5 +1,5 @@
 import { Activity, Calendar, CloudSun, Flag, Terminal } from 'lucide-react'
-import { useEffect, useState, type ReactElement } from 'react'
+import { type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
@@ -16,13 +16,9 @@ export default function App(): ReactElement {
   const apexData = useApexData()
   const { data, status, error, pipelineState, isPipelinePolling } = apexData
 
-  const [activeStep, setActiveStep] = useState<number | null>(null)
+  const activeStep = pipelineState?.step ?? null
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
-
-  useEffect(() => {
-    setActiveStep(pipelineState?.step ?? null)
-  }, [pipelineState?.step])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
