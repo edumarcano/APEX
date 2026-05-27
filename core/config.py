@@ -28,6 +28,7 @@ __all__ = [
     "PROJECT_ROOT",
     "SYSTEM_PROMPT",
     "load_feature_flags",
+    "load_module_flags",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,6 +45,11 @@ _FEATURE_KEYS: Final[tuple[str, ...]] = (
     "news",
     "email",
     "calendar",
+)
+
+_MODULE_KEYS: Final[tuple[str, ...]] = (
+    "football",
+    "f1",
 )
 
 try:
@@ -98,6 +104,27 @@ def load_feature_flags() -> dict[str, bool]:
             _LOGGER.warning('Feature %r must be a boolean; ignoring invalid value.', key)
     return result
 
+def _all_modules_false() -> dict[str, bool]:
+    """Return a map of every known module key set to ``False``."""
+    return dict.fromkeys(_MODULE_KEYS, False)
+
+def load_module_flags() -> dict[str, bool]:
+    """Load granular sub-module toggles from module-level ``_CONFIG_DATA``."""
+    result = _all_modules_false()
+    modules = _CONFIG_DATA.get("modules")
+    if not isinstance(modules, dict):
+        if modules is not None:
+            _LOGGER.warning('Config key "modules" must be a JSON object.')
+        return result
+
+    for key in _MODULE_KEYS:
+        value = modules.get(key)
+        if isinstance(value, bool):
+            result[key] = value
+        elif value is not None:
+            _LOGGER.warning('Module %r must be a boolean; ignoring invalid value.', key)
+    return result
+
 
 _feature_map = load_feature_flags()
 
@@ -106,3 +133,8 @@ FEATURE_SPORTS: Final[bool] = bool(_feature_map.get("sports", False))
 FEATURE_NEWS: Final[bool] = bool(_feature_map.get("news", False))
 FEATURE_EMAIL: Final[bool] = bool(_feature_map.get("email", False))
 FEATURE_CALENDAR: Final[bool] = bool(_feature_map.get("calendar", False))
+
+_module_map = load_module_flags()
+
+MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
+MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
