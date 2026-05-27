@@ -22,19 +22,15 @@ export type VariableTypographyInput = {
 
 const F1_DATA_PREFIX = 'F1_DATA:'
 const CHECKERED_FALLBACK_FLAG = '🏁'
-const ET_TIMEZONE = 'America/New_York'
 
 type F1SchedulePayload = {
   raceName?: unknown
   round?: unknown
   country?: unknown
-  raceDateTimeUtc?: unknown
-  raceDateUtc?: unknown
-  dateUtc?: unknown
-  sessionTimeUtc?: unknown
-  raceTimeUtc?: unknown
+  raceDateTimeEST?: unknown
+  relativeWeek?: unknown
   sprintScheduled?: unknown
-  sprintTimeUtc?: unknown
+  sprintDateTimeEST?: unknown
 }
 
 const COUNTRY_FLAG_MAP: Record<string, string> = {
@@ -156,23 +152,6 @@ function resolveCountryFlag(country: string): string {
   return COUNTRY_FLAG_MAP[normalizedCountry] ?? CHECKERED_FALLBACK_FLAG
 }
 
-function toEasternTimeLabel(utcDateTime: string): string {
-  if (!utcDateTime) return 'Time TBD'
-
-  const parsedDate = new Date(utcDateTime)
-  if (Number.isNaN(parsedDate.getTime())) return 'Time TBD'
-
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: ET_TIMEZONE,
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZoneName: 'short',
-  }).format(parsedDate)
-}
-
 /**
  * Variable Typography Engine interpolation entry point.
  * Maps temperatureFahrenheit on [VTE_TEMP_MIN_F, VTE_TEMP_MAX_F] to font weight
@@ -215,7 +194,7 @@ export function TelemetryCard({
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
-  const isScheduleCard = title.trim().toLowerCase() === 'schedule'
+  const isScheduleCard = title.trim().toLowerCase() === 'f1 schedule'
 
   const headingId = useId()
   const panelClassName = [
@@ -242,22 +221,18 @@ export function TelemetryCard({
     const raceName = asString(payload.raceName) || 'Upcoming Grand Prix'
     const round = asString(payload.round) || 'TBD'
     const country = asString(payload.country)
-    const raceDateTimeUtc =
-      asString(payload.raceDateTimeUtc) ||
-      asString(payload.raceDateUtc) ||
-      asString(payload.dateUtc) ||
-      asString(payload.sessionTimeUtc) ||
-      asString(payload.raceTimeUtc)
+    const raceDateTimeEST = asString(payload.raceDateTimeEST)
+    const relativeWeek = asString(payload.relativeWeek)
     const sprintScheduled = asBoolean(payload.sprintScheduled)
-    const sprintTimeUtc = asString(payload.sprintTimeUtc)
+    const sprintDateTimeEST = asString(payload.sprintDateTimeEST)
 
     return {
       raceName,
       round,
       country,
-      raceEtLabel: toEasternTimeLabel(raceDateTimeUtc),
+      raceEtLabel: `${relativeWeek} — ${raceDateTimeEST}`,
       sprintScheduled,
-      sprintEtLabel: toEasternTimeLabel(sprintTimeUtc),
+      sprintEtLabel: sprintDateTimeEST,
       countryFlag: resolveCountryFlag(country),
     }
   }, [isScheduleCard, rawScheduleText])
