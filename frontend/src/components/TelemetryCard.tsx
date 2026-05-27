@@ -34,26 +34,26 @@ type F1SchedulePayload = {
 }
 
 const COUNTRY_FLAG_MAP: Record<string, string> = {
-  australia: '🇦🇺',
-  bahrain: '🇧🇭',
-  belgium: '🇧🇪',
-  brazil: '🇧🇷',
-  canada: '🇨🇦',
-  china: '🇨🇳',
-  hungary: '🇭🇺',
-  italy: '🇮🇹',
-  japan: '🇯🇵',
-  mexico: '🇲🇽',
-  monaco: '🇲🇨',
-  netherlands: '🇳🇱',
-  qatar: '🇶🇦',
-  'saudi arabia': '🇸🇦',
-  singapore: '🇸🇬',
-  spain: '🇪🇸',
-  'united arab emirates': '🇦🇪',
-  'united kingdom': '🇬🇧',
-  'united states': '🇺🇸',
-  usa: '🇺🇸',
+  australia: 'au',
+  bahrain: 'bh',
+  belgium: 'be',
+  brazil: 'br',
+  canada: 'ca',
+  china: 'cn',
+  hungary: 'hu',
+  italy: 'it',
+  japan: 'jp',
+  mexico: 'mx',
+  monaco: 'mc',
+  netherlands: 'nl',
+  qatar: 'qa',
+  'saudi arabia': 'sa',
+  singapore: 'sg',
+  spain: 'es',
+  'united arab emirates': 'ae',
+  'united kingdom': 'gb',
+  'united states': 'us',
+  usa: 'us',
 }
 
 function extractBalancedJsonObject(source: string, startIndex: number): string | null {
@@ -280,9 +280,19 @@ export function TelemetryCard({
               </div>
               <span
                 aria-label={`Race country flag ${f1Schedule.country || 'unknown'}`}
-                className="shrink-0 text-xl leading-none"
+                className="shrink-0 leading-none"
               >
-                {f1Schedule.countryFlag}
+                {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
+                  <span className="text-xl">{f1Schedule.countryFlag}</span>
+                ) : (
+                  <img
+                    src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
+                    alt={`${f1Schedule.country || 'Unknown'} flag`}
+                    className="h-4 w-6 rounded object-cover shadow-sm"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                )}
               </span>
             </div>
 
