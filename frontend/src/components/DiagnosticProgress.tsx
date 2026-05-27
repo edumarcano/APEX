@@ -1,8 +1,6 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import type { ReactElement } from 'react'
 
 import type { PipelineState } from '../types/telemetry'
-
-const STATUS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/status'
 
 const PIPELINE_STEPS = [
   { step: 1, label: 'Gate' },
@@ -12,64 +10,27 @@ const PIPELINE_STEPS = [
 ] as const
 
 export type DiagnosticProgressProps = {
-  isLoading: boolean
-  onStepChange?: (step: number | null) => void
+  pipelineState: PipelineState | null
+  isPipelinePolling: boolean
+  isTriggerLoading: boolean
 }
 
 export function DiagnosticProgress({
-  isLoading,
-  onStepChange,
+  pipelineState,
+  isPipelinePolling,
+  isTriggerLoading,
 }: DiagnosticProgressProps): ReactElement {
-  const [pipelineState, setPipelineState] = useState<PipelineState | null>(
-    null,
-  )
-
-  useEffect(() => {
-    if (!isLoading) {
-      return
-    }
-
-    const fetchStatus = async (): Promise<void> => {
-      try {
-        const response = await fetch(STATUS_ENDPOINT)
-
-        if (response.status === 404) {
-          setPipelineState(null)
-          onStepChange?.(null)
-          return
-        }
-
-        if (!response.ok) {
-          return
-        }
-
-        const payload = (await response.json()) as PipelineState
-        setPipelineState(payload)
-        onStepChange?.(payload.step)
-      } catch {
-        setPipelineState(null)
-      }
-    }
-
-    const intervalId = window.setInterval(() => {
-      void fetchStatus()
-    }, 500)
-
-    return () => {
-      window.clearInterval(intervalId)
-      onStepChange?.(null)
-    }
-  }, [isLoading, onStepChange])
-
   const activeStep = pipelineState?.step ?? 0
+  const isTracking = isPipelinePolling || isTriggerLoading
 
   return (
     <nav
       className="w-full"
       aria-label="Pipeline diagnostic progress"
+      aria-busy={isTracking}
       data-slot="diagnostic-progress"
     >
-      <ol className="flex w-full list-none items-start justify-between gap-1 p-0 m-0">
+      <ol className="m-0 flex w-full list-none items-start justify-between gap-1 p-0">
         {PIPELINE_STEPS.map(({ step, label }, index) => {
           const isActive = activeStep === step
           const isPast = activeStep > step

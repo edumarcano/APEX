@@ -39,6 +39,40 @@ def check_power() -> bool:
     return battery.power_plugged if battery else False
 
 
+def sample_system_vitals() -> dict[str, float]:
+    """
+    Sample CPU, memory, and root-disk utilization as percentage floats.
+
+    Each psutil query is isolated; failures fall back to 0.0 and emit
+    a diagnostic line for operator visibility.
+
+    Returns:
+        Mapping with keys cpu, ram, and disk.
+    """
+    vitals: dict[str, float] = {}
+
+    try:
+        vitals["cpu"] = float(psutil.cpu_percent(interval=None))
+    except Exception as exc:
+        print(f"[SCANNER]: CPU vitals query failed: {exc}")
+        vitals["cpu"] = 0.0
+
+    try:
+        vitals["ram"] = float(psutil.virtual_memory().percent)
+    except Exception as exc:
+        print(f"[SCANNER]: Memory vitals query failed: {exc}")
+        vitals["ram"] = 0.0
+
+    try:
+        root_path = os.path.abspath(os.sep)
+        vitals["disk"] = float(psutil.disk_usage(root_path).percent)
+    except Exception as exc:
+        print(f"[SCANNER]: Disk vitals query failed: {exc}")
+        vitals["disk"] = 0.0
+
+    return vitals
+
+
 def should_run() -> bool:
     """
     Checks if the computer should run.

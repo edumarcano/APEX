@@ -4,6 +4,18 @@ export interface PipelineState {
   timestamp: string
 }
 
+export interface SystemDiagnostics {
+  cpu: number | null
+  ram: number | null
+  disk: number | null
+}
+
+export const DEFAULT_SYSTEM_DIAGNOSTICS: SystemDiagnostics = {
+  cpu: null,
+  ram: null,
+  disk: null,
+}
+
 export interface TelemetryPayload {
   weather: string
   /** Integer °F for VTE primary readout; null when unavailable. */
@@ -16,6 +28,7 @@ export interface TelemetryPayload {
   email: string
   calendar: string
   reminders: string
+  diagnostics?: SystemDiagnostics | null
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
