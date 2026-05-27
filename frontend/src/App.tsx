@@ -1,8 +1,9 @@
-import { Calendar, CloudSun, Terminal } from 'lucide-react'
-import { type ReactElement } from 'react'
+import { Activity, Calendar, CloudSun, Terminal } from 'lucide-react'
+import { useState, type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
+import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { useApexData } from './hooks/useApexData'
 
@@ -11,8 +12,14 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 }
 
 export default function App(): ReactElement {
+  const [activeStep, setActiveStep] = useState<number | null>(null)
   const { data, status, error } = useApexData()
   const hasSuccessfulData = status === 'success' && Boolean(data)
+
+  const weatherDimmed = activeStep === 1
+  const scheduleDimmed = activeStep === 1 || activeStep === 2
+  const staggerTransition =
+    'transition-opacity duration-700 ease-in-out'
 
   const weatherBody = (() => {
     if (hasSuccessfulData) {
@@ -50,7 +57,7 @@ export default function App(): ReactElement {
           title="Weather"
           icon={CloudSun}
           primaryTemperatureF={primaryTemperatureF}
-          className="min-h-40"
+          className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
         >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
             {weatherBody}
@@ -69,14 +76,11 @@ export default function App(): ReactElement {
               aria-label="Briefing panel"
               data-slot="briefing-panel"
             >
-              <div className="flex flex-col gap-6 h-full justify-between">
-                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-                  {isBusy(status)
-                    ? 'Fetching briefing stream…'
-                    : (error ?? 'Briefing unavailable.')}
-                </p>
-                <DiagnosticProgress />
-              </div>
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+                {isBusy(status)
+                  ? 'Fetching briefing stream…'
+                  : (error ?? 'Briefing unavailable.')}
+              </p>
             </TelemetryCard>
           )}
         </div>
@@ -84,11 +88,36 @@ export default function App(): ReactElement {
         <TelemetryCard
           title="Schedule"
           icon={Calendar}
-          className="min-h-40"
+          className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
         >
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
             {scheduleBody}
           </p>
+        </TelemetryCard>
+
+        <TelemetryCard
+          title="Pipeline Progress"
+          icon={Terminal}
+          className="border-2 border-[color:var(--hud-accent)] md:col-span-1"
+          role="region"
+          aria-label="Pipeline progress"
+          data-slot="pipeline-progress-card"
+        >
+          <DiagnosticProgress
+            isLoading={status === 'loading'}
+            onStepChange={setActiveStep}
+          />
+        </TelemetryCard>
+
+        <TelemetryCard
+          title="System Diagnostics"
+          icon={Activity}
+          className="border-2 border-[color:var(--hud-accent)] md:col-span-2"
+          role="region"
+          aria-label="System diagnostics"
+          data-slot="system-diagnostics-card"
+        >
+          <SystemDiagnostics />
         </TelemetryCard>
       </div>
     </main>

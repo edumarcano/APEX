@@ -109,6 +109,14 @@ def initialize_engine():
     Returns:
         pyttsx3.Engine: The initialized engine.
     """
+    if os.name == "nt":
+        import ctypes
+
+        try:
+            ctypes.windll.ole32.CoInitialize(None)
+        except OSError:
+            pass
+
     engine = pyttsx3.init()
 
     engine.setProperty("rate", 175)

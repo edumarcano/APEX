@@ -43,33 +43,47 @@ function computeStrokeDashoffset(
   return circumference * (1 - clampedPercentage / 100)
 }
 
+function isValidPercentage(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 /**
- * Props contract for the reusable sports metric ring gauge graphic.
+ * Props contract for the reusable circular ring gauge graphic.
  */
 export interface RingGaugeProps {
-  /** Percentage fill value on the closed interval [0, 100]. */
-  percentage: number
+  /** Percentage fill value on the closed interval [0, 100]; null when unavailable. */
+  percentage: number | null | undefined
   /** Human-readable metric label rendered beneath the numeric readout. */
   label: string
+  /** When true, renders N/A fallback with dashed indicator stroke. */
+  isUnavailable?: boolean
   /** Optional utility classes merged onto the root SVG wrapper. */
   className?: string
 }
 
 /**
- * Stateless circular ring gauge for sports metric visualization.
+ * Stateless circular ring gauge for system metric visualization.
  * Applies defensive percentage clamping before stroke offset calculation.
  */
 export function RingGauge({
   percentage,
   label,
+  isUnavailable = false,
   className,
 }: RingGaugeProps): ReactElement {
-  const clampedPercentage = clampPercentage(percentage)
   const circumference = computeRingCircumference(RING_RADIUS)
+  const hasValidPercentage = isValidPercentage(percentage)
+  const showFallback = isUnavailable || !hasValidPercentage
+  const clampedPercentage = hasValidPercentage
+    ? clampPercentage(percentage)
+    : 0
   const strokeDashoffset = computeStrokeDashoffset(
     circumference,
     clampedPercentage,
   )
+  const displayValue = showFallback
+    ? 'N/A%'
+    : `${Math.round(clampedPercentage)}%`
 
   const svgClassName = ['relative h-full w-full', className]
     .filter(Boolean)
@@ -77,12 +91,24 @@ export function RingGauge({
 
   const ringTransform = `rotate(-90 ${RING_CENTER} ${RING_CENTER})`
 
+  const indicatorStrokeDasharray = showFallback ? '4, 4' : `${circumference}`
+
+  const indicatorStrokeDashoffset = showFallback ? 0 : strokeDashoffset
+
+  const indicatorClassName = showFallback
+    ? 'stroke-[color:var(--hud-text)] opacity-35'
+    : 'stroke-[color:var(--hud-accent)]'
+
   return (
     <svg
       className={svgClassName}
       viewBox="0 0 100 100"
       role="img"
-      aria-label={`${label}: ${clampedPercentage} percent`}
+      aria-label={
+        showFallback
+          ? `${label}: unavailable`
+          : `${label}: ${clampedPercentage} percent`
+      }
     >
       <circle
         cx={RING_CENTER}
@@ -99,10 +125,10 @@ export function RingGauge({
         r={RING_RADIUS}
         fill="none"
         strokeWidth={RING_STROKE_WIDTH}
-        strokeDasharray={circumference}
-        strokeDashoffset={strokeDashoffset}
-        strokeLinecap="round"
-        className="stroke-[color:var(--hud-accent)]"
+        strokeDasharray={indicatorStrokeDasharray}
+        strokeDashoffset={indicatorStrokeDashoffset}
+        strokeLinecap={showFallback ? 'butt' : 'round'}
+        className={indicatorClassName}
         transform={ringTransform}
       />
       <text
@@ -110,9 +136,14 @@ export function RingGauge({
         y={RING_CENTER - 2}
         textAnchor="middle"
         dominantBaseline="middle"
-        className="fill-[color:var(--hud-accent)] text-[1.125rem] font-semibold tabular-nums"
+        className={[
+          'text-[1.125rem] font-semibold tabular-nums',
+          showFallback
+            ? 'fill-[color:var(--hud-text)] opacity-50'
+            : 'fill-[color:var(--hud-accent)]',
+        ].join(' ')}
       >
-        {Math.round(clampedPercentage)}%
+        {displayValue}
       </text>
       <text
         x={RING_CENTER}

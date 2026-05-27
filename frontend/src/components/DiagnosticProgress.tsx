@@ -1,186 +1,127 @@
-import type { ReactElement } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 
-import { useApexData } from '../hooks/useApexData'
-import {
-  DEFAULT_SYSTEM_DIAGNOSTICS,
-  type SystemDiagnostics,
-} from '../types/telemetry'
+import type { PipelineState } from '../types/telemetry'
 
-/** Fixed ring radius in viewBox coordinate units. */
-const RING_RADIUS = 35
+const STATUS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/status'
 
-/** Ring center anchor in viewBox coordinate units. */
-const RING_CENTER = 50
-
-/** Stroke width applied to track and indicator paths. */
-const RING_STROKE_WIDTH = 6
-
-const METRIC_GAUGES = [
-  { key: 'cpu' as const, label: 'CPU Use' },
-  { key: 'ram' as const, label: 'RAM Alloc' },
-  { key: 'disk' as const, label: 'Disk Pres' },
+const PIPELINE_STEPS = [
+  { step: 1, label: 'Gate' },
+  { step: 2, label: 'Collection' },
+  { step: 3, label: 'Synthesis' },
+  { step: 4, label: 'Delivery' },
 ] as const
 
-function computeRingCircumference(radius: number): number {
-  return 2 * Math.PI * radius
+export type DiagnosticProgressProps = {
+  isLoading: boolean
+  onStepChange?: (step: number | null) => void
 }
 
-function clampPercentage(value: number): number {
-  return Math.max(0, Math.min(100, value))
-}
-
-function computeStrokeDashoffset(
-  circumference: number,
-  clampedPercentage: number,
-): number {
-  return circumference * (1 - clampedPercentage / 100)
-}
-
-function isValidPercentage(value: number | null | undefined): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-interface RingGaugeProps {
-  percentage: number | null | undefined
-  label: string
-  isDisconnected: boolean
-  className?: string
-}
-
-function RingGauge({
-  percentage,
-  label,
-  isDisconnected,
-  className,
-}: RingGaugeProps): ReactElement {
-  const circumference = computeRingCircumference(RING_RADIUS)
-  const hasValidPercentage = isValidPercentage(percentage)
-  const clampedPercentage = hasValidPercentage
-    ? clampPercentage(percentage)
-    : 0
-  const strokeDashoffset = computeStrokeDashoffset(
-    circumference,
-    clampedPercentage,
+export function DiagnosticProgress({
+  isLoading,
+  onStepChange,
+}: DiagnosticProgressProps): ReactElement {
+  const [pipelineState, setPipelineState] = useState<PipelineState | null>(
+    null,
   )
-  const displayValue = isDisconnected || !hasValidPercentage
-    ? 'N/A%'
-    : `${Math.round(clampedPercentage)}%`
 
-  const svgClassName = ['relative h-full w-full', className]
-    .filter(Boolean)
-    .join(' ')
+  useEffect(() => {
+    if (!isLoading) {
+      return
+    }
 
-  const ringTransform = `rotate(-90 ${RING_CENTER} ${RING_CENTER})`
+    const fetchStatus = async (): Promise<void> => {
+      try {
+        const response = await fetch(STATUS_ENDPOINT)
 
-  const indicatorStrokeDasharray = isDisconnected || !hasValidPercentage
-    ? '4, 4'
-    : `${circumference}`
+        if (response.status === 404) {
+          setPipelineState(null)
+          onStepChange?.(null)
+          return
+        }
 
-  const indicatorStrokeDashoffset = isDisconnected || !hasValidPercentage
-    ? 0
-    : strokeDashoffset
+        if (!response.ok) {
+          return
+        }
 
-  const indicatorClassName = isDisconnected || !hasValidPercentage
-    ? 'stroke-[color:var(--hud-text)] opacity-35'
-    : 'stroke-[color:var(--hud-accent)]'
-
-  return (
-    <svg
-      className={svgClassName}
-      viewBox="0 0 100 100"
-      role="img"
-      aria-label={
-        isDisconnected || !hasValidPercentage
-          ? `${label}: unavailable`
-          : `${label}: ${clampedPercentage} percent`
+        const payload = (await response.json()) as PipelineState
+        setPipelineState(payload)
+        onStepChange?.(payload.step)
+      } catch {
+        setPipelineState(null)
       }
-    >
-      <circle
-        cx={RING_CENTER}
-        cy={RING_CENTER}
-        r={RING_RADIUS}
-        fill="none"
-        strokeWidth={RING_STROKE_WIDTH}
-        className="stroke-[color:var(--hud-border-color)] opacity-60"
-        transform={ringTransform}
-      />
-      <circle
-        cx={RING_CENTER}
-        cy={RING_CENTER}
-        r={RING_RADIUS}
-        fill="none"
-        strokeWidth={RING_STROKE_WIDTH}
-        strokeDasharray={indicatorStrokeDasharray}
-        strokeDashoffset={indicatorStrokeDashoffset}
-        strokeLinecap={isDisconnected || !hasValidPercentage ? 'butt' : 'round'}
-        className={indicatorClassName}
-        transform={ringTransform}
-      />
-      <text
-        x={RING_CENTER}
-        y={RING_CENTER - 2}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        className={[
-          'text-[1.125rem] font-semibold tabular-nums',
-          isDisconnected || !hasValidPercentage
-            ? 'fill-[color:var(--hud-text)] opacity-50'
-            : 'fill-[color:var(--hud-accent)]',
-        ].join(' ')}
-      >
-        {displayValue}
-      </text>
-      <text
-        x={RING_CENTER}
-        y={RING_CENTER + 14}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        className="fill-[color:var(--hud-text)] text-[0.5rem] font-medium uppercase tracking-wide opacity-80"
-      >
-        {label}
-      </text>
-    </svg>
-  )
-}
+    }
 
-function resolveDiagnostics(
-  diagnostics: SystemDiagnostics | null | undefined,
-): SystemDiagnostics {
-  return diagnostics ?? DEFAULT_SYSTEM_DIAGNOSTICS
-}
+    void fetchStatus()
 
-export function DiagnosticProgress(): ReactElement {
-  const { diagnostics, status } = useApexData()
-  const isLoading = status === 'loading' || status === 'idle'
-  const resolvedDiagnostics = resolveDiagnostics(diagnostics)
-  const isDisconnected =
-    isLoading &&
-    resolvedDiagnostics.cpu === null &&
-    resolvedDiagnostics.ram === null &&
-    resolvedDiagnostics.disk === null
+    const intervalId = window.setInterval(() => {
+      void fetchStatus()
+    }, 500)
+
+    return () => {
+      window.clearInterval(intervalId)
+      onStepChange?.(null)
+    }
+  }, [isLoading, onStepChange])
+
+  const activeStep = pipelineState?.step ?? 0
 
   return (
-    <section
+    <nav
       className="w-full"
-      aria-label="System resource utilization"
+      aria-label="Pipeline diagnostic progress"
       data-slot="diagnostic-progress"
     >
-      <div className="grid w-full grid-cols-3 gap-2 sm:gap-4">
-        {METRIC_GAUGES.map(({ key, label }) => (
-          <div
-            key={key}
-            className="flex min-w-0 flex-col items-center justify-center"
-          >
-            <div className="aspect-square w-full max-w-[7rem] sm:max-w-[8rem]">
-              <RingGauge
-                percentage={resolvedDiagnostics[key]}
-                label={label}
-                isDisconnected={isDisconnected}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
+      <ol className="m-0 flex w-full list-none items-start justify-between gap-1 p-0">
+        {PIPELINE_STEPS.map(({ step, label }, index) => {
+          const isActive = activeStep === step
+          const isPast = activeStep > step
+          const showConnector = index < PIPELINE_STEPS.length - 1
+
+          const nodeClassName = [
+            'flex size-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors',
+            isActive
+              ? 'border-[color:var(--hud-accent)] bg-[color:var(--hud-accent)] text-[color:var(--hud-bg)]'
+              : isPast
+                ? 'border-[color:var(--hud-text)] text-[color:var(--hud-text)] opacity-80'
+                : 'border-[color:var(--hud-border-color)] text-[color:var(--hud-text)] opacity-35',
+          ].join(' ')
+
+          const labelClassName = [
+            'mt-2 text-center text-xs font-medium uppercase tracking-wide transition-colors',
+            isActive
+              ? 'text-[color:var(--hud-accent)]'
+              : isPast
+                ? 'text-[color:var(--hud-text)] opacity-70'
+                : 'text-[color:var(--hud-text)] opacity-35',
+          ].join(' ')
+
+          return (
+            <li
+              key={step}
+              className="flex min-w-0 flex-1 flex-col items-center"
+              aria-current={isActive ? 'step' : undefined}
+            >
+              <div className="flex w-full items-center">
+                <span className={nodeClassName} aria-hidden>
+                  {step}
+                </span>
+                {showConnector ? (
+                  <span
+                    className={[
+                      'mx-1 h-0.5 min-w-2 flex-1 rounded-full transition-colors',
+                      isPast || isActive
+                        ? 'bg-[color:var(--hud-text)] opacity-50'
+                        : 'bg-[color:var(--hud-border-color)] opacity-60',
+                    ].join(' ')}
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
+              <span className={labelClassName}>{label}</span>
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
   )
 }
