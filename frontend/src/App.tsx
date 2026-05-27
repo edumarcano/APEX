@@ -56,6 +56,8 @@ export default function App(): ReactElement {
     return error ?? 'Schedule unavailable.'
   })()
 
+  const scheduleRawTelemetryText = `${data?.calendar ?? ''}\n${data?.reminders ?? ''}`
+
   const centerMinHeight = 'min-h-56 md:min-h-72'
 
   return (
@@ -85,6 +87,7 @@ export default function App(): ReactElement {
           <TelemetryCard
             title="Schedule"
             icon={Calendar}
+            rawScheduleText={scheduleRawTelemetryText}
             className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
           >
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
