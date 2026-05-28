@@ -33,6 +33,15 @@ def _infer_language_code(voice_id: str) -> str:
     return "en-US"
 
 
+def _warm_system_subsystems() -> None:
+    """Initialize and hold the pygame hardware mixer channel at import time."""
+    try:
+        pygame.mixer.init()
+        print("[SPEAKER] Pygame hardware mixer channel pre-warmed successfully.")
+    except Exception as exc:
+        print(f"[SPEAKER] Pygame mixer pre-warm failed ({type(exc).__name__}).")
+
+
 def _warm_cloud_clients() -> None:
     """Initialize Google Cloud TTS client at import when credentials are present."""
     global _GOOGLE_TTS_CLIENT
@@ -118,8 +127,10 @@ def _play_audio_bytes(data: bytes) -> None:
     if not data:
         raise ValueError("Cannot play empty audio bytes sequence context.")
 
+    if pygame.mixer.get_init() is None:
+        raise RuntimeError("Pygame mixer is not initialized; system pre-warm did not complete.")
+
     stream = io.BytesIO(data)
-    pygame.mixer.init()
     pygame.mixer.music.load(stream)
     pygame.mixer.music.play()
     try:
@@ -130,7 +141,6 @@ def _play_audio_bytes(data: bytes) -> None:
         unload = getattr(pygame.mixer.music, "unload", None)
         if callable(unload):
             unload()
-        pygame.mixer.quit()
 
 
 def _speak_pyttsx3_local(text: str) -> None:
@@ -239,6 +249,7 @@ def speak(text: str) -> None:
         _speak_pyttsx3_local(text)
 
 
+_warm_system_subsystems()
 _warm_cloud_clients()
 
 
