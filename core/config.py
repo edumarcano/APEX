@@ -9,13 +9,14 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal, cast
 
 from dotenv import load_dotenv
 
 __all__ = [
     "CONFIG_PATH",
     "CUSTOM_BROWSER_PATH",
+    "DEV_AI_SYNTHESIS",
     "ENABLE_STARTUP_GATE",
     "ENV_PATH",
     "FEATURE_CALENDAR",
@@ -43,6 +44,8 @@ load_dotenv(dotenv_path=ENV_PATH)
 
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
+_VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"slm", "llm", "raw"})
+DevAiSynthesisMode = Literal["slm", "llm", "raw"]
 
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
@@ -79,6 +82,31 @@ def is_dev_mode() -> bool:
     """Return whether unified development mode is active (``DEV_MODE=true``)."""
     return _parse_env_bool(os.getenv("DEV_MODE"), key="DEV_MODE", default=False)
 
+
+def _parse_dev_ai_synthesis(raw: str | None) -> DevAiSynthesisMode:
+    """
+    Normalize ``DEV_AI_SYNTHESIS`` for development-mode briefing routing.
+
+    Defaults to ``raw`` when unset. Malformed values log a warning and fall
+    back to ``raw``.
+    """
+    if raw is None:
+        return "raw"
+
+    normalized = raw.strip().lower().strip("'\"")
+    if normalized in _VALID_DEV_AI_SYNTHESIS:
+        return cast(DevAiSynthesisMode, normalized)
+
+    _LOGGER.warning(
+        "Invalid DEV_AI_SYNTHESIS=%r; using default raw.",
+        raw,
+    )
+    return "raw"
+
+
+DEV_AI_SYNTHESIS: Final[DevAiSynthesisMode] = _parse_dev_ai_synthesis(
+    os.getenv("DEV_AI_SYNTHESIS", "raw"),
+)
 
 ENABLE_STARTUP_GATE: Final[bool] = _parse_env_bool(
     os.getenv("ENABLE_STARTUP_GATE"),
