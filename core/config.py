@@ -27,6 +27,7 @@ __all__ = [
     "PRIMARY_TTS",
     "PROJECT_ROOT",
     "SYSTEM_PROMPT",
+    "is_dev_mode",
     "load_feature_flags",
     "load_module_flags",
 ]
@@ -38,6 +39,12 @@ CONFIG_PATH: Final[Path] = PROJECT_ROOT / "config.json"
 ENV_PATH: Final[Path] = PROJECT_ROOT / ".env"
 
 load_dotenv(dotenv_path=ENV_PATH)
+
+
+def is_dev_mode() -> bool:
+    """Return whether unified development mode is active (``DEV_MODE=true``)."""
+    return os.getenv("DEV_MODE", "false").strip().lower() == "true"
+
 
 _FEATURE_KEYS: Final[tuple[str, ...]] = (
     "weather",

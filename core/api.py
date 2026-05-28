@@ -32,6 +32,7 @@ from core.config import (
     FEATURE_NEWS,
     FEATURE_SPORTS,
     FEATURE_WEATHER,
+    is_dev_mode,
 )
 
 load_dotenv(dotenv_path=ENV_PATH)
@@ -173,12 +174,9 @@ def trigger_briefing() -> dict[str, Any]:
         )
 
     try:
-        test_mode = os.getenv("TEST_MODE", "false").lower()
-        showcase_mode = os.getenv("SHOWCASE_MODE", "false").lower()
-        is_test_mode = test_mode == "true"
-        is_showcase_mode = showcase_mode == "true"
+        dev_mode = is_dev_mode()
 
-        if not is_test_mode and not is_showcase_mode:
+        if not dev_mode:
             database.log_run()
 
         speaker.speak("System initialized. All modules online.")
@@ -203,7 +201,13 @@ def trigger_briefing() -> dict[str, Any]:
             print("[SYSTEM]: News module bypassed via user preference")
             news_report = ""
 
-        if is_test_mode or is_showcase_mode or not FEATURE_EMAIL:
+        if dev_mode:
+            print(
+                "[SYSTEM]: DEV_MODE active — skipping Gmail API "
+                "(personal productivity boundary)."
+            )
+            email_report = ""
+        elif not FEATURE_EMAIL:
             print("[SYSTEM]: Email module bypassed via user preference")
             email_report = ""
         else:
@@ -233,7 +237,13 @@ def trigger_briefing() -> dict[str, Any]:
                 print(f"[SYSTEM]: Email fetch failed: ({exc})")
                 email_report = "ERROR: Check connection"
 
-        if is_test_mode or is_showcase_mode or not FEATURE_CALENDAR:
+        if dev_mode:
+            print(
+                "[SYSTEM]: DEV_MODE active — skipping Google Calendar API "
+                "(personal productivity boundary)."
+            )
+            calendar_report = ""
+        elif not FEATURE_CALENDAR:
             print("[SYSTEM]: Calendar module bypassed via user preference")
             calendar_report = ""
         else:
@@ -296,8 +306,13 @@ def trigger_briefing() -> dict[str, Any]:
         )
         voice_thread.start()
 
-        if ids:
+        if ids and not dev_mode:
             database.mark_reminders_read(ids)
+        elif ids and dev_mode:
+            print(
+                "[SYSTEM]: DEV_MODE active — reminders left unread "
+                "(is_read unchanged for local testing)."
+            )
 
         return {
             "status": "success",

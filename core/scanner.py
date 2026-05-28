@@ -6,7 +6,7 @@ import psutil
 from dotenv import load_dotenv
 
 from core import database
-from core.config import ENV_PATH
+from core.config import ENV_PATH, is_dev_mode
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -81,9 +81,11 @@ def should_run() -> bool:
     """
     database.initialize_db()
 
-    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
-    if SHOWCASE_MODE == "true":
-        print("[SCANNER]: Showcase mode enabled. Bypassing all checks.")
+    if is_dev_mode():
+        print(
+            "[SCANNER]: DEV_MODE active — bypassing Wi-Fi SSID validation, "
+            "AC power connectivity check, and 1-hour execution cooldown."
+        )
         return True
 
     current_wifi = get_current_ssid()
@@ -98,11 +100,6 @@ def should_run() -> bool:
     if not is_plugged:
         print("[SCANNER]: Checks failed. AC power not detected.")
         return False
-
-    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
-    if TEST_MODE == "true":
-        print("[SCANNER]: Test mode enabled. Bypassing cooldown.")
-        return True
 
     last_successful_run = database.get_last_run()
     cooldown_period = timedelta(seconds=COOLDOWN_SECONDS)
