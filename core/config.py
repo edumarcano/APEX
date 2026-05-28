@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 __all__ = [
     "CONFIG_PATH",
     "CUSTOM_BROWSER_PATH",
+    "ENABLE_STARTUP_GATE",
     "ENV_PATH",
     "FEATURE_CALENDAR",
     "FEATURE_EMAIL",
@@ -40,10 +41,50 @@ ENV_PATH: Final[Path] = PROJECT_ROOT / ".env"
 
 load_dotenv(dotenv_path=ENV_PATH)
 
+_TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
+_FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
+
+
+def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
+    """
+    Normalize an environment string into a boolean with bounded retries.
+
+    Strips whitespace and optional surrounding quotes on each pass. Unknown
+    values log a warning and return ``default``.
+    """
+    if raw is None:
+        return default
+
+    candidate = raw
+    for _ in range(3):
+        normalized = candidate.strip().lower().strip("'\"")
+        if normalized in _TRUTHY_ENV_VALUES:
+            return True
+        if normalized in _FALSY_ENV_VALUES:
+            return False
+        if normalized == candidate.strip().lower():
+            break
+        candidate = normalized
+
+    _LOGGER.warning(
+        "Invalid %s=%r; using default %s.",
+        key,
+        raw,
+        default,
+    )
+    return default
+
 
 def is_dev_mode() -> bool:
     """Return whether unified development mode is active (``DEV_MODE=true``)."""
-    return os.getenv("DEV_MODE", "false").strip().lower() == "true"
+    return _parse_env_bool(os.getenv("DEV_MODE"), key="DEV_MODE", default=False)
+
+
+ENABLE_STARTUP_GATE: Final[bool] = _parse_env_bool(
+    os.getenv("ENABLE_STARTUP_GATE"),
+    key="ENABLE_STARTUP_GATE",
+    default=True,
+)
 
 
 _FEATURE_KEYS: Final[tuple[str, ...]] = (
