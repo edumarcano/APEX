@@ -17,6 +17,7 @@ __all__ = [
     "CONFIG_PATH",
     "CUSTOM_BROWSER_PATH",
     "DEV_AI_SYNTHESIS",
+    "DEV_TTS_PLAYBACK",
     "ENABLE_STARTUP_GATE",
     "ENV_PATH",
     "FEATURE_CALENDAR",
@@ -25,7 +26,6 @@ __all__ = [
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
     "GOOGLE_VOICE_ID",
-    "INWORLD_VOICE_ID",
     "PRIMARY_TTS",
     "PROJECT_ROOT",
     "SYSTEM_PROMPT",
@@ -45,7 +45,9 @@ load_dotenv(dotenv_path=ENV_PATH)
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
 _VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"slm", "llm", "raw"})
+_VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "elevenlabs"})
 DevAiSynthesisMode = Literal["slm", "llm", "raw"]
+DevTtsPlaybackMode = Literal["pyttsx3", "google", "elevenlabs"]
 
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
@@ -104,8 +106,33 @@ def _parse_dev_ai_synthesis(raw: str | None) -> DevAiSynthesisMode:
     return "raw"
 
 
+def _parse_dev_tts_playback(raw: str | None) -> DevTtsPlaybackMode:
+    """
+    Normalize ``DEV_TTS_PLAYBACK`` for development-mode TTS routing.
+
+    Defaults to ``pyttsx3`` when unset. Malformed values log a warning and fall
+    back to ``pyttsx3``.
+    """
+    if raw is None:
+        return "pyttsx3"
+
+    normalized = raw.strip().lower().strip("'\"")
+    if normalized in _VALID_DEV_TTS_PLAYBACK:
+        return cast(DevTtsPlaybackMode, normalized)
+
+    _LOGGER.warning(
+        "Invalid DEV_TTS_PLAYBACK=%r; using default pyttsx3.",
+        raw,
+    )
+    return "pyttsx3"
+
+
 DEV_AI_SYNTHESIS: Final[DevAiSynthesisMode] = _parse_dev_ai_synthesis(
     os.getenv("DEV_AI_SYNTHESIS", "raw"),
+)
+
+DEV_TTS_PLAYBACK: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
+    os.getenv("DEV_TTS_PLAYBACK"),
 )
 
 ENABLE_STARTUP_GATE: Final[bool] = _parse_env_bool(
@@ -153,7 +180,6 @@ else:
 
 tts_settings = _CONFIG_DATA.get("tts_settings", {})
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
-INWORLD_VOICE_ID: Final[str] = tts_settings.get("inworld_voice_id", "")
 GOOGLE_VOICE_ID: Final[str] = tts_settings.get("google_voice_id", "")
 CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")
 
