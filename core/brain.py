@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from google import genai
 
-from core.config import ENV_PATH, SYSTEM_PROMPT
+from core.config import ENV_PATH, SYSTEM_PROMPT, is_dev_mode
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -16,19 +16,18 @@ def process_telemetry(raw_data: str) -> str:
         raw_data: Raw telemetry text injected after the system prompt.
 
     Returns:
-        Model output (stripped), or TEST MODE / fallback text when the model is not used.
+        Model output (stripped), or DEV_MODE / fallback text when the model is not used.
 
     Behavior:
-        If TEST_MODE is ``true``, skips the API and returns a TEST MODE wrapper plus raw_data.
+        If DEV_MODE is ``true``, skips the API and returns a DEV_MODE wrapper plus raw_data.
         Otherwise loads GEMINI_API_KEY; missing key raises and is caught by the handler below.
         Empty or whitespace-only model responses raise and are caught the same way.
         On any exception (including missing key and empty response), prints diagnostics and
         returns the offline fallback message embedding raw_data.
     """
-    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
-    if TEST_MODE == "true":
-        print("[BRAIN]: Test mode enabled. Bypassing model call.")
-        return f"TEST MODE ACTIVE. Model call bypassed.\n\n{raw_data}"
+    if is_dev_mode():
+        print("[BRAIN]: DEV_MODE active — bypassing live Gemini API call.")
+        return f"DEV MODE ACTIVE. Model call bypassed.\n\n{raw_data}"
 
     try:
         gemini_key = os.getenv("GEMINI_API_KEY")

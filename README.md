@@ -15,7 +15,7 @@ With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST` to `/api/v1
 3. **Synthesis** — the raw outputs are joined into a single pipe-delimited string and passed to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` prepends the persona prompt from `config.json` and returns the generated briefing text. A filler phrase plays on a background thread while the model processes to avoid dead air. If the Gemini call fails for any reason, the raw data string is read out directly so the run never crashes.
 4. **Output** — `speaker.py` plays the final briefing through the TTS fallback chain. The endpoint also returns the briefing text and a telemetry object as JSON, which the web HUD reads to fill each module slot on the page.
 
-In `TEST_MODE`, the Gemini call and Gmail and Calendar connectors are skipped to save API quota during development. `SHOWCASE_MODE` keeps Gemini live but bypasses the hardware checks and skips Gmail and Calendar so the system runs anywhere.
+With `DEV_MODE=true` in `.env`, the scanner bypasses hardware and cooldown gates, live Gemini, Gmail and Calendar, run logging, and reminder read-marking. Servers, weather/sports/news connectors, and the database remain active.
 
 ```
 launcher.py  →  [uvicorn (port 8000) + http.server (port 5500)]  →  Browser (kiosk window)
@@ -70,7 +70,7 @@ sequenceDiagram
 ## Features
 
 **Context-aware gating (`scanner.py`)**  
-Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 1 hour since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. However, .env flags can bypass specific checks depending on whether you're testing or showcasing, without disabling the entire gate.
+Before any API calls are made, the scanner checks whether you're on your home Wi-Fi (by SSID), whether the machine is plugged in, and whether it's been at least 1 hour since the last run. All three have to pass for a standard run to prevent it from activating on every login or while away from home. Two `.env` flags control this gate: `DEV_MODE=true` bypasses all three checks and also disables live Gemini, Gmail, Calendar, run logging, and reminder read-marking for local development. `ENABLE_STARTUP_GATE=false` (with `DEV_MODE=false`) bypasses only the hardware and cooldown checks while leaving all live API pipelines intact, for use cases where the system needs to run outside the home environment without compromising live data.
 
 **Live data connectors (`weather_client.py`, `sports_client.py`, `news_client.py`, `gmail_client.py`, `calendar_client.py`)**  
 Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API (cached locally at `clients/.f1_cache.json` with a 24-hour TTL), and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `api.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
@@ -84,11 +84,11 @@ Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the 
 **Persistent reminders and session logging (`database.py`)**  
 A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after they've been read out so they don't repeat across sessions. The run log is what the scanner queries to enforce the 1-hour cooldown.
 
-**Testing Mode (`TEST_MODE`)**  
-For active development. Bypasses the 1-hour cooldown and the Gemini API call, returning a raw data readout instead to preserve API quota. Gmail and Calendar are also skipped regardless of `config.json` to keep personal data out of test runs. The Wi-Fi and power checks still run to keep the environment consistent with production. Skips `database.log_run()` so session history stays clean during testing.
+**Unified development mode (`DEV_MODE`)**  
+Set `DEV_MODE=true` in `.env` for local work. Bypasses Wi-Fi SSID validation, AC power check, and the 1-hour cooldown; skips live Gemini, Gmail, and Calendar; does not call `database.log_run()` or mark reminders read (`is_read` stays `0`). Weather, sports, news, SQLite, FastAPI, and the kiosk launcher are unchanged.
 
-**Showcase Mode (`SHOWCASE_MODE`)**  
-Bypasses all hardware and cooldown checks so the system runs anywhere, but keeps the live Gemini call intact so the briefing is real. Gmail and Calendar are skipped here as well regardless of `config.json` to keep personal data out of demos. Like `TEST_MODE`, it also skips `database.log_run()` so running a demo doesn't reset the actual daily cooldown.
+**Production startup gate (`ENABLE_STARTUP_GATE`)**  
+Controls whether hardware and cooldown checks run under a production setup (`DEV_MODE=false`). Defaults to `true` when the key is absent, so the gate is always enforced unless explicitly disabled. Set to `false` to bypass the Wi-Fi SSID check, AC power check, and 1-hour cooldown while keeping all live API clients active. Useful for running APEX from an untrusted network or without wall power without switching to `DEV_MODE`.
 
 **Web HUD (`frontend/`)**  
 A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger` and manages the full `idle | loading | success | error` lifecycle in a single piece of state. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail along with staggered opacity on the Weather and Schedule cards. Full detail on that flow is in the **FastAPI Pipeline Telemetry & Polling** section. After success, the center panel renders the briefing text with a looping pulse animation. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
@@ -143,13 +143,13 @@ The default persona is a deliberate personal choice. Just as xylem tissue carrie
 
 ## Environment Modes
 
-Both flags are read from `.env` and default to `"false"` if the key is absent. All values are normalized to lowercase at read time, so `True`, `true`, and `TRUE` all work the same way.
+Both flags are read from `.env`. Values are normalized at read time, so `True`, `true`, and `TRUE` all work the same way. `DEV_MODE` defaults to `false` if absent. `ENABLE_STARTUP_GATE` defaults to `true` if absent, keeping the gate enforced in any environment where the key is not explicitly set.
 
-| Flag | Wi-Fi + Power | Cooldown | Gemini API | Gmail + Calendar (PII) | Logs Run |
-|---|---|---|---|---|---|
-| Neither (production) | ✅ enforced | ✅ enforced | ✅ live (w/ fallback) | ✅ enabled | ✅ yes |
-| `TEST_MODE=True` | ✅ enforced | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ no |
-| `SHOWCASE_MODE=True` | ⬜ bypassed | ⬜ bypassed | ✅ live (w/ fallback) | ⬜ bypassed | ⬜ no |
+| Configuration | Wi-Fi + Power | Cooldown | Gemini API | Gmail + Calendar (PII) | Logs Run | Marks Reminders Read |
+|---|---|---|---|---|---|---|
+| Production (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=true`) | ✅ enforced | ✅ 1-hour | ✅ live (w/ fallback) | ✅ per `config.json` | ✅ yes | ✅ yes |
+| Gate off (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=false`) | ⬜ bypassed | ⬜ bypassed | ✅ live (w/ fallback) | ✅ per `config.json` | ✅ yes | ✅ yes |
+| `DEV_MODE=true` | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ no | ⬜ no |
 
 ## Feature Toggles
 
@@ -159,7 +159,7 @@ Set any `features` value to `false` to disable that connector. When a connector 
 
 Two edge cases worth knowing:
 
-- `TEST_MODE` and `SHOWCASE_MODE` always force-bypass Gmail and Calendar regardless of `config.json`. Feature flags are an additional layer of control that only matters in a normal production run.
+- `DEV_MODE=true` always force-bypasses Gmail and Calendar regardless of `config.json`. Feature flags are an additional layer of control that only matters in a normal production run.
 - If `config.json` is missing or broken, `config.py` logs a warning and defaults every feature flag to `False` and `SYSTEM_PROMPT` to a neutral generic fallback so the system doesn't crash.
 
 ---

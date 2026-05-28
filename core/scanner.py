@@ -6,7 +6,7 @@ import psutil
 from dotenv import load_dotenv
 
 from core import database
-from core.config import ENV_PATH
+from core.config import ENABLE_STARTUP_GATE, ENV_PATH, is_dev_mode
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -73,36 +73,18 @@ def sample_system_vitals() -> dict[str, float]:
     return vitals
 
 
-def should_run() -> bool:
-    """
-    Checks if the computer should run.
-    Returns:
-        bool: True if the computer should run, False otherwise.
-    """
-    database.initialize_db()
-
-    SHOWCASE_MODE = os.getenv("SHOWCASE_MODE", "false").lower()
-    if SHOWCASE_MODE == "true":
-        print("[SCANNER]: Showcase mode enabled. Bypassing all checks.")
-        return True
-
+def _enforce_production_gate() -> bool:
+    """Run Wi-Fi, AC power, and cooldown checks when the startup gate is enabled."""
     current_wifi = get_current_ssid()
     target_wifi = os.getenv("HOME_SSID")
     is_plugged = check_power()
 
-    # TODO: Implement 'Ambient Mode' to allow limited briefings on untrusted networks.
     if not target_wifi or current_wifi != target_wifi:
         print("[SCANNER]: Checks failed. Unauthorized WiFi connection detected.")
         return False
-    # TODO: Implement config-level toggle for flexible deployment.
     if not is_plugged:
         print("[SCANNER]: Checks failed. AC power not detected.")
         return False
-
-    TEST_MODE = os.getenv("TEST_MODE", "false").lower()
-    if TEST_MODE == "true":
-        print("[SCANNER]: Test mode enabled. Bypassing cooldown.")
-        return True
 
     last_successful_run = database.get_last_run()
     cooldown_period = timedelta(seconds=COOLDOWN_SECONDS)
@@ -112,7 +94,6 @@ def should_run() -> bool:
         and (datetime.now() - last_successful_run) < cooldown_period
     )
 
-    # TODO: Transition to hardware debounce logic and user-configurable bypass.
     if on_cooldown:
         print(
             "[SCANNER]: Checks failed. System still on cooldown. "
@@ -121,6 +102,32 @@ def should_run() -> bool:
         return False
 
     return True
+
+
+def should_run() -> bool:
+    """
+    Checks if the computer should run.
+    Returns:
+        bool: True if the computer should run, False otherwise.
+    """
+    database.initialize_db()
+
+    if is_dev_mode():
+        print(
+            "[SCANNER]: DEV_MODE active — bypassing Wi-Fi SSID validation, "
+            "AC power connectivity check, and execution cooldown."
+        )
+        return True
+
+    if not ENABLE_STARTUP_GATE:
+        print(
+            "[SCANNER]: Production setup with ENABLE_STARTUP_GATE=false — "
+            "skipping Wi-Fi SSID validation, AC power connectivity check, "
+            "and execution cooldown. Live API pipelines remain enabled."
+        )
+        return True
+
+    return _enforce_production_gate()
 
 
 if __name__ == "__main__":
