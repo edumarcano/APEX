@@ -171,6 +171,115 @@ The HUD now responds visually to live weather conditions.
 
 ---
 
-## v1.2.0 and earlier
+## v1.2.0 — HUD-Renaissance: Pipeline State Visibility
 
-See git history for prior release notes.
+**Released:** May 18, 2026
+
+This release upgrades the APEX dashboard by transforming static loading screens into a real-time, interactive telemetry experience. The system now actively communicates its internal execution state, drastically improving user experience and perceived latency without triggering layout shifts.
+
+### New Features
+
+* **Live Progress Tracking:** Introduced a new `DiagnosticProgress` HUD component that polls the backend every 500ms during an active fetch.
+  * Visualizes the 4 core pipeline phases (Gate → Collection → Synthesis → Delivery) via a dynamically lit horizontal step indicator.
+* **Staggered Reactive Layouts:** * The dashboard layout now reacts to the live pipeline steps. Secondary modules (like Weather and Schedule) dim to 25% opacity when data is stale, and smoothly transition back to 100% visibility the exact moment their specific backend processing finishes.
+* **Thread-Safe Telemetry Backend:** * Added a dedicated `PipelineState` class utilizing a `threading.Lock()` to ensure high-frequency frontend status polls do not interfere with the long-running worker loops.
+  * Exposed a new `GET /api/v1/status` endpoint to serve secure, microsecond-latency state snapshots.
+
+### Documentation
+
+* Updated the project `README.md` to reflect the v1.2.0 architecture.
+* Integrated a comprehensive Mermaid sequence diagram mapping the asynchronous polling flow, thread-locking, and automated 404 teardown sequences.
+
+---
+
+## v1.1.1 — AI Workforce Calibration Patch
+
+**Released:** May 17, 2026
+
+## What's Changed
+- **Rule Configurations Updated:** Revised the operational profiles for the `analyst`, `auditor`, `builder`, `communicator`, and `mechanic` rules.
+- **New Scopes Added:** Created directory-bound rules for the `frontend`, `backend`, and `devops` scopes.
+- **Documentation Updated:** Modified `README.md` to map and display the new rules along with their targeted directory scopes.
+
+---
+
+## v1.1.0 — The Foundation (React/TypeScript Migration)
+
+**Released:** May 17, 2026
+
+This release replaces the original web interface with a modern dashboard built using React, TypeScript, Vite, and Tailwind CSS.
+
+### Key Enhancements
+
+* **Responsive Layout:** Built a grid interface that automatically adjusts to look great on different screen sizes.
+* **Centralized Data Fetching:** Added a single data hook (`useApexData`) to handle all backend requests and manage the loading state in one place instead of using multiple loading places.
+* **Text Streaming Panel:** Created a component that displays incoming text updates from the server with a smooth character-by-character text animation.
+* **Project Cleanup:** Removed all old web files and renamed the development folder to keep the repository structure organized.
+* **Configuration Sync:** Updated paths across configuration files, development rules, and `.gitignore` to match the new directory layout.
+
+### Tech Stack Summary
+* **Tools:** React, TypeScript, Vite, Tailwind CSS
+* **Structure:** Source code is located in `/frontend` and builds production output to `/dist`
+
+---
+
+## v1.0.0 — The Core Foundation
+
+**Released:** May 15, 2026
+
+APEX is a Python-based personal HUD and automated briefing system — a real-world 
+analog to sci-fi AI assistants. It evaluates its environment, pulls live telemetry 
+from multiple sources, synthesizes everything through Gemini 2.5 Flash, and 
+delivers a spoken audio briefing through a local web dashboard on demand.
+
+### Core Capabilities
+
+**AI-Synthesized Briefings:** Raw telemetry is synthesized into a concise, 
+persona-driven audio briefing. The voice, tone, and identity are fully 
+configurable via `config.json` without touching core logic.
+
+**Context-Aware Gating:** Before anything runs, the system checks home Wi-Fi 
+by SSID, AC power connection, and a 1-hour cooldown to protect API quotas.
+
+**Live Data Connectors:** Modular extractors pull real-time data from OpenWeatherMap 
+(local conditions), F1 schedules via Ergast/Jolpica, FC Barcelona fixtures via 
+football-data.org, GNews for AI and Global Events headlines, Google Workspace 
+(unread Primary Gmail and a 48-hour Calendar window via OAuth2), and a local 
+SQLite database for persistent reminders.
+
+**Resilient Audio Engine:** TTS runs a fallback chain — Google Cloud TTS → 
+Inworld AI → pyttsx3 offline. Audio is played directly from memory via pygame, 
+no temp files written to disk.
+
+### Architecture
+
+**FastAPI Backend:** All gating, extraction, and synthesis logic runs as an 
+isolated REST API on `127.0.0.1:8000`.
+
+**Web HUD:** A plain HTML/CSS/JS frontend with no framework or build step, 
+using CSS Grid for a responsive bento-grid dashboard.
+
+**Launcher Orchestrator:** `launcher.py` starts the backend and static file 
+server as parallel child processes and opens the HUD in a kiosk browser window 
+automatically. `launch_apex.bat` wraps this for one-click Windows startup.
+
+### Configuration
+
+`config.json` controls feature flags, TTS settings, and the persona prompt. 
+`.env` holds secrets, kept strictly separate from preferences. Each data 
+connector can be toggled independently, and safe defaults apply if `config.json` 
+is missing or malformed.
+
+### Environment Modes
+
+| Mode | Wi-Fi + Power | Cooldown | Gemini | Gmail + Calendar |
+|------|--------------|----------|--------|-----------------|
+| Production | ✅ | ✅ | ✅ | ✅ |
+| `TEST_MODE` | ✅ | ⬜ | ⬜ | ⬜ |
+| `SHOWCASE_MODE` | ⬜ | ⬜ | ✅ | ⬜ |
+
+---
+
+## Pre-v1.0.0
+
+- Check commit history between April 27 and May 15, 2026 for more detailed alpha development information.
