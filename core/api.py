@@ -201,13 +201,7 @@ def trigger_briefing() -> dict[str, Any]:
             print("[SYSTEM]: News module bypassed via user preference")
             news_report = ""
 
-        if dev_mode:
-            print(
-                "[SYSTEM]: DEV_MODE active — skipping Gmail API "
-                "(personal productivity boundary)."
-            )
-            email_report = ""
-        elif not FEATURE_EMAIL:
+        if not FEATURE_EMAIL:
             print("[SYSTEM]: Email module bypassed via user preference")
             email_report = ""
         else:
@@ -237,13 +231,7 @@ def trigger_briefing() -> dict[str, Any]:
                 print(f"[SYSTEM]: Email fetch failed: ({exc})")
                 email_report = "ERROR: Check connection"
 
-        if dev_mode:
-            print(
-                "[SYSTEM]: DEV_MODE active — skipping Google Calendar API "
-                "(personal productivity boundary)."
-            )
-            calendar_report = ""
-        elif not FEATURE_CALENDAR:
+        if not FEATURE_CALENDAR:
             print("[SYSTEM]: Calendar module bypassed via user preference")
             calendar_report = ""
         else:
