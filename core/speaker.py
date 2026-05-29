@@ -52,9 +52,9 @@ def _warm_cloud_clients() -> None:
     try:
         from google.cloud import texttospeech
         _GOOGLE_TTS_CLIENT = texttospeech.TextToSpeechClient()
-        print("[SPEAKER] Cloud Text-to-Speech Client eagerly pre-warmed successfully.")
+        print("[SPEAKER] Cloud Text-to-Speech Client pre-warmed successfully.")
     except Exception as exc:  # noqa: BLE001
-        print(f"[SPEAKER] Eager Google TTS pre-warm bypassed or failed ({type(exc).__name__}).")
+        print(f"[SPEAKER] Google TTS client pre-warm bypassed or failed ({type(exc).__name__}).")
         _GOOGLE_TTS_CLIENT = None
 
 
