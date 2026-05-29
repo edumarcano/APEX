@@ -11,7 +11,7 @@
     "f1": true
   },
   "tts_settings": {
-    "primary_tts": "pyttsx3",
+    "primary_tts": "google",
     "inworld_voice_id": "default-anchtyc3ujph-pt88wpp-q__design-voice-6747124f",
     "google_voice_id": "en-US-Chirp3-HD-Gacrux"
   },

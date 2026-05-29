@@ -2,6 +2,12 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from clients.google_auth import get_service
+from core.config import is_dev_mode
+
+_DEV_MASKED_SUBJECT = "[HIDDEN] Message content masked due to DEV_MODE"
+_DEV_OFFLINE_SUBJECT = (
+    "[HIDDEN] Local sandbox: Gmail unavailable (offline / token missing)"
+)
 
 
 def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]:
@@ -15,55 +21,78 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
         A dictionary containing the total unread count and a list of up to three
         emails with subject and formatted time.
     """
-    list_resp: dict[str, Any] = (
-        service.users()
-        .messages()
-        .list(
-            userId='me',
-            q='is:unread -category:promotions -category:social -category:updates newer_than:1d',
-        )
-        .execute()
-    )
-
-    messages_meta: list[dict[str, Any]] = list_resp.get('messages') or []
-    estimate = list_resp.get('resultSizeEstimate')
-    count: int = len(messages_meta) if estimate is None else int(estimate)
-
-    id_slice = [m['id'] for m in messages_meta[:3]]
-
-    emails: list[dict[str, str]] = []
-    for msg_id in id_slice:
-        msg: dict[str, Any] = (
+    try:
+        list_resp: dict[str, Any] = (
             service.users()
             .messages()
-            .get(userId='me', id=msg_id, format='full')
+            .list(
+                userId='me',
+                q=(
+                    'is:unread -category:promotions -category:social '
+                    '-category:updates newer_than:1d'
+                ),
+            )
             .execute()
         )
-        subject: str | None = None
-        date_value: str | None = None
-        for header in msg.get('payload', {}).get('headers', []):
-            header_name = header.get('name', '').lower()
-            if header_name == 'subject':
-                subject = header.get('value')
-            elif header_name == 'date':
-                date_value = header.get('value')
 
-        time_str = ''
-        if date_value:
-            try:
-                parsed_datetime = parsedate_to_datetime(date_value)
-                time_str = parsed_datetime.strftime('%I:%M %p').lstrip('0')
-            except (TypeError, ValueError):
-                time_str = ''
+        messages_meta: list[dict[str, Any]] = list_resp.get('messages') or []
+        estimate = list_resp.get('resultSizeEstimate')
+        count: int = len(messages_meta) if estimate is None else int(estimate)
 
-        emails.append(
-            {
-                'subject': subject if subject is not None else '',
-                'time': time_str,
+        id_slice = [m['id'] for m in messages_meta[:3]]
+
+        emails: list[dict[str, str]] = []
+        for msg_id in id_slice:
+            msg: dict[str, Any] = (
+                service.users()
+                .messages()
+                .get(userId='me', id=msg_id, format='full')
+                .execute()
+            )
+            subject: str | None = None
+            date_value: str | None = None
+            for header in msg.get('payload', {}).get('headers', []):
+                header_name = header.get('name', '').lower()
+                if header_name == 'subject':
+                    subject = header.get('value')
+                elif header_name == 'date':
+                    date_value = header.get('value')
+
+            time_str = ''
+            if date_value:
+                try:
+                    parsed_datetime = parsedate_to_datetime(date_value)
+                    time_str = parsed_datetime.strftime('%I:%M %p').lstrip('0')
+                except (TypeError, ValueError):
+                    time_str = ''
+
+            emails.append(
+                {
+                    'subject': subject if subject is not None else '',
+                    'time': time_str,
+                }
+            )
+
+        if is_dev_mode():
+            return {
+                'count': count,
+                'emails': [
+                    {
+                        'subject': _DEV_MASKED_SUBJECT,
+                        'time': email.get('time', ''),
+                    }
+                    for email in emails
+                ],
             }
-        )
 
-    return {'count': count, 'emails': emails}
+        return {'count': count, 'emails': emails}
+    except Exception:
+        if is_dev_mode():
+            return {
+                'count': 0,
+                'emails': [{'subject': _DEV_OFFLINE_SUBJECT, 'time': ''}],
+            }
+        raise
 
 
 if __name__ == "__main__":

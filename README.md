@@ -75,6 +75,8 @@ Before any API calls are made, the scanner checks whether you're on your home Wi
 **Live data connectors (`weather_client.py`, `sports_client.py`, `news_client.py`, `gmail_client.py`, `calendar_client.py`)**  
 Weather comes from the OpenWeatherMap API. `sports_client.py` pulls two feeds: the next F1 race from the Ergast/Jolpica API (cached locally at `clients/.f1_cache.json` with a 24-hour TTL), and the next FC Barcelona fixture from the football-data.org API (authenticated via `FOOTBALL_API_KEY`). `news_client.py` fetches one headline each for Artificial Intelligence and Global Events from the GNews API (authenticated via `GNEWS_API_KEY`), with a short sleep between requests to stay inside the free-tier rate limit. Unread Primary inbox emails come from the Gmail API. Calendar data comes from the Google Calendar API as a rolling 48-hour window. Both Google clients share the same OAuth2 flow through `google_auth.py`. Each connector is its own module, so adding a new source is mostly isolated to one new file and a few lines in `api.py`. Every connector can be individually toggled on or off via `config.json`. When a connector is disabled, the API call is skipped entirely and the module is excluded from the briefing.
 
+When `DEV_MODE=true`, both `gmail_client.py` and `calendar_client.py` apply active PII masking. Gmail replaces all subject lines with a fixed `[HIDDEN]` sentinel. Calendar replaces all event summaries with a `[HIDDEN]` sentinel. Both clients suppress authentication exceptions in `DEV_MODE` and return the offline sentinel instead. This ensures that raw email subjects and calendar titles never appear in terminal output or HUD telemetry during local development.
+
 **Config-driven feature flags and persona (`config.json`, `config.py`)**  
 `config.py` reads `config.json` at startup and exposes a boolean for each connector (`FEATURE_WEATHER`, `FEATURE_SPORTS`, `FEATURE_NEWS`, `FEATURE_EMAIL`, `FEATURE_CALENDAR`), `SYSTEM_PROMPT`, and three TTS constants: `PRIMARY_TTS`, `GOOGLE_VOICE_ID`, and `INWORLD_VOICE_ID`. If the file is missing or broken, flags default to `False`, `SYSTEM_PROMPT` falls back to a generic placeholder, and `PRIMARY_TTS` defaults to `"pyttsx3"` so nothing crashes. `config.json` ships committed with all flags on and Google Cloud TTS configured as the active engine. It also keeps preferences and secrets separate: toggles, the persona prompt, and TTS voice settings live here (safe to commit), API keys go in `.env` (gitignored).
 
@@ -129,7 +131,9 @@ Current temperature is {temp} degrees with {condition}.
 The parsed values are stored on `TelemetryPayload` as `temperatureF` and `weatherDetail`. If an upstream format change breaks either regex, the temperature readout goes blank and VTE interpolation is skipped cleanly. The condition field falls back to the full raw string. Both failures are immediately visible in the HUD, making format regressions easy to catch without a crash.
 
 **Text-to-speech engine (`speaker.py`)**  
-Three engines in a fallback chain. At module import, `_warm_cloud_clients()` checks for `GOOGLE_APPLICATION_CREDENTIALS` and, if present, instantiates a `TextToSpeechClient` singleton. This avoids constructing a new client on every `speak` call and logs a skip message instead of raising when credentials are absent. `fetch_google_audio` uses that singleton directly. If it is `None` at call time, a `RuntimeError` is raised. All calls to `speak()` are serialized through a module-level `threading.Lock`, preventing audio interleaving across concurrent invocations. The returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. Inworld requests use a shared `requests.Session` rather than a bare `requests.post`. If both cloud paths are down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then Inworld, then pyttsx3. `"inworld"` reverses that order. `"pyttsx3"` skips cloud entirely.
+Two engines in a fallback chain. At module import, `_warm_cloud_clients()` checks for `GOOGLE_APPLICATION_CREDENTIALS` and, if present, instantiates a `TextToSpeechClient` singleton. This avoids constructing a new client on every `speak` call and logs a skip message instead of raising when credentials are absent. `fetch_google_audio` uses that singleton directly. If it is `None` at call time, a `RuntimeError` is raised. All calls to `speak()` are serialized through a module-level `_SPEAK_LOCK` (`threading.Lock`), preventing audio interleaving across concurrent invocations. The returned MP3 bytes are played directly from memory via `pygame.mixer` with no disk writes. `SDL_VIDEODRIVER=dummy` is set at import time so pygame doesn't crash if there's no display attached. If the cloud path is down, `pyttsx3` runs locally with no network dependency. The active engine is set by `primary_tts` in `config.json`. `"google"` tries Google first, then falls back to `pyttsx3`. `"pyttsx3"` skips cloud entirely.
+
+When `DEV_MODE=true`, the `speak()` function checks `DEV_TTS_PLAYBACK` before consulting `primary_tts`. `"pyttsx3"` routes directly to the local engine. `"google"` falls through to the live Google TTS client with a logged network-leakage warning. `"elevenlabs"` is a registered placeholder that logs a notice and returns immediately. The ElevenLabs pipeline is not yet deployed (tracked as APEX-V1.7.0).
 
 ---
 
@@ -172,7 +176,7 @@ Two edge cases worth knowing:
 | AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
 | GUI | React, TypeScript, Vite, Tailwind CSS |
 | Database | SQLite3 |
-| TTS | Google Cloud TTS (primary), Inworld AI (secondary, inactive by default), pyttsx3 (offline fallback) |
+| TTS | Google Cloud TTS (primary), pyttsx3 (offline fallback); ElevenLabs wired as `DEV_TTS_PLAYBACK` placeholder (APEX-V1.7.0) |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-cloud-texttospeech`, `pygame-ce` |
 
 ### AI-Augmented Development
@@ -218,9 +222,15 @@ Windows:
 copy .env.example .env
 ```
 
-`.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control. Two keys are worth calling out: `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to your `service_account.json` file, not the contents of the file. `INWORLD_API_KEY` needs to be a pre-Base64-encoded `client_id:client_secret` pair, exactly as formatted in the Inworld AI console.
+`.env.example` contains all required keys with descriptive placeholders and comments explaining each group. The `.env` file is excluded from version control. One key worth calling out: `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to your `service_account.json` file, not the contents of the file.
 
 `APEX_ALLOWED_ORIGINS` is an optional comma-separated list of origins allowed to make cross-origin requests to the API. If it's not set, `api.py` defaults to `http://127.0.0.1:8000`, `http://localhost:8000`, `http://127.0.0.1:5500`, and `http://localhost:5500`. If you're serving the web HUD from a different port, set this key. Note that a custom value replaces the defaults entirely rather than adding to them.
+
+Three additional keys control local development routing and are only read when `DEV_MODE=true`:
+
+- `DEV_AI_SYNTHESIS` — sets the briefing synthesis backend for the dev run. Accepts `raw` (read collected data directly, no LLM call), `slm` (route to a small local model), or `llm` (route to the configured Gemini endpoint). Defaults to `raw` when unset.
+- `DEV_TTS_PLAYBACK` — sets the TTS engine for the dev run. Accepts `pyttsx3` (offline local engine, default), `google` (live Google Cloud TTS, logs a network-leakage warning), or `elevenlabs` (placeholder, logs a notice and returns without audio; pipeline not yet deployed).
+- Both values are normalized at read time and validated against their respective allowed sets. Unrecognized values log a warning and fall back to the defaults above.
 
 `CUSTOM_BROWSER_PATH` points `launcher.py` at a specific browser executable for the kiosk window. If you use Vivaldi, Brave, or any other Chromium-based browser that is not Chrome or Edge, set the full path here (e.g., `C:\Users\you\AppData\Local\Vivaldi\Application\vivaldi.exe`). It gets checked first. If it is not set, `launcher.py` looks for Chrome then Edge under the default `PROGRAMFILES` paths.
 
@@ -241,14 +251,13 @@ To change the briefing voice, tone, or persona, edit the `system_prompt` field. 
   },
   "tts_settings": {
     "primary_tts": "google",
-    "google_voice_id": "en-US-Chirp3-HD-Gacrux",
-    "inworld_voice_id": ""
+    "google_voice_id": "en-US-Chirp3-HD-Gacrux"
   },
   "system_prompt": "You are APEX. Deliver a sharp, neutral briefing in under 75 words. No emojis or markdown."
 }
 ```
 
-`primary_tts` accepts `"google"`, `"inworld"`, or `"pyttsx3"`. Leave `google_voice_id` or `inworld_voice_id` blank to skip that engine regardless of the `primary_tts` setting.
+`primary_tts` accepts `"google"` or `"pyttsx3"`. Leave `google_voice_id` blank to skip Google TTS and fall through directly to `pyttsx3` regardless of the `primary_tts` setting.
 
 This is also the right way to handle a missing API key. If you skip the `FOOTBALL_API_KEY` setup, set `"sports": false` here instead of getting a fetch error every run. The briefing will still generate with whatever data is enabled.
 
@@ -270,14 +279,13 @@ This is also the right way to handle a missing API key. If you skip the `FOOTBAL
 - Save the key file as `service_account.json` in the project root (it is gitignored).
 - Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` to the **absolute file path** of that file (e.g., `C:\Users\you\projects\apex\service_account.json`).
 
-**7. (Optional) Configure Inworld AI**
+**7. (Optional) Configure development TTS and synthesis overrides**
 
-Inworld AI is wired in as a secondary TTS engine but is inactive by default. To enable it:
+These variables are only read when `DEV_MODE=true`. They are not required for production operation.
 
-- Create an Inworld AI account and obtain your `client_id` and `client_secret`.
-- Base64-encode the pair (`base64("client_id:client_secret")`) and paste the result as `INWORLD_API_KEY` in `.env`.
-- Set `"inworld_voice_id"` in `config.json` to a valid Inworld voice ID.
-- Set `"primary_tts"` to `"inworld"` if you want it to be tried before Google.
+- Set `DEV_AI_SYNTHESIS` in `.env` to one of `raw`, `slm`, or `llm` to control which synthesis path runs during a development session.
+- Set `DEV_TTS_PLAYBACK` in `.env` to one of `pyttsx3`, `google`, or `elevenlabs` to control which TTS engine is used during a development session. `pyttsx3` is the safe default for offline work. `google` routes to the live cloud API and will consume quota. `elevenlabs` is a registered placeholder that logs a notice and exits without playing audio.
+- Both keys default to their offline values (`raw` and `pyttsx3`) when absent from `.env`.
 
 **8. Run**
 
@@ -339,7 +347,7 @@ Returns `{"status": "online", "system": "APEX Nexus"}`. Useful for confirming th
 ```
 POST http://127.0.0.1:8000/api/v1/trigger
 ```
-Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS playback. On success, returns a JSON payload with three fields:
+Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS playback. On success, returns a JSON payload validated against the `BriefingResponse` Pydantic model:
 
 ```json
 {
@@ -352,11 +360,22 @@ Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS p
     "email": "...",
     "calendar": "...",
     "reminders": "..."
+  },
+  "metadata": {
+    "dev_mode_active": false,
+    "synthesis_strategy": "llm",
+    "tts_strategy": "google"
   }
 }
 ```
 
-`briefing` is the AI-generated text that was read aloud. `telemetry` is a JSON object with one string field per connector, not the raw pipe-delimited string passed to Gemini internally. The web HUD reads these keys to fill each module slot. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
+`briefing` is the synthesized text that was read aloud. `telemetry` (`TelemetryPayload`) is a Pydantic model with one string field per connector; the web HUD reads these keys to fill each module slot. `metadata` (`RuntimeMetadata`) carries the routing decisions that were in effect for the run: whether `DEV_MODE` was active, which synthesis backend was used (`raw`, `slm`, or `llm`), and which TTS engine was selected (`pyttsx3`, `google`, or `elevenlabs`). In production (`DEV_MODE=false`), `synthesis_strategy` is always `"llm"` and `tts_strategy` reflects `primary_tts` from `config.json`. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
+
+**Hardware diagnostics**
+```
+GET http://127.0.0.1:8000/api/v1/diagnostics
+```
+Returns a real-time hardware utilization snapshot sampled by `scanner.sample_system_vitals()`. Available at any time regardless of pipeline state. Response is a flat JSON object of float values (CPU percentage, memory percentage, etc.). Used by HUD diagnostics panels to display ambient system health.
 
 **Pipeline diagnostic status**
 ```
@@ -520,7 +539,7 @@ A few things that aren't obvious just from reading the code:
 
 - **Why Gemini over a template?** Templated output gets repetitive fast and requires manual updates whenever a data source changes format. Passing raw strings to the model and letting it figure out the sentence structure turned out to be simpler and more flexible.
 
-- **Why this specific TTS setup?** Inworld AI was the original primary engine. It was integrated under the assumption that it had a usable free tier for REST API access. It doesn't. After implementation it became clear that Inworld runs on a finite promotional credit model (a $1.00 grant that debits per synthesis request), which isn't practical for a personal tool. Google Cloud TTS replaced it as the primary engine because its 1-million-character monthly free tier is actually sustainable for a daily briefing tool long-term. The Inworld code in `speaker.py` was left in on purpose rather than deleted. When its credits eventually run out and the API starts returning HTTP 403s, it gives a real test of whether the fallback chain holds. If `pyttsx3` takes over cleanly with no crash, the circuit breaker logic is proven. It's a live integration test that costs nothing to run.
+- **Why this specific TTS setup?** Inworld AI was the original primary engine. It was integrated under the assumption that it had a usable free tier for REST API access. It doesn't. After implementation it became clear that Inworld runs on a finite promotional credit model (a $1.00 grant that debits per synthesis request), which isn't practical for a personal tool. Google Cloud TTS replaced it as the primary engine because its 1-million-character monthly free tier is actually sustainable for a daily briefing tool long-term. The Inworld integration was removed entirely from `speaker.py` once its credits were exhausted and the fallback to `pyttsx3` was confirmed working. ElevenLabs is the next candidate for a secondary cloud engine and is registered as a `DEV_TTS_PLAYBACK` option, but the synthesis pipeline for it has not been deployed yet (APEX-V1.7.0).
 
 - **Why SQLite over a flat file?** The reminder feature needs read/write with state (marking items as read). SQLite handles that cleanly without pulling in anything external.
 
