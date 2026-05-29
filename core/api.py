@@ -15,6 +15,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from clients import (
     calendar_client,
@@ -26,6 +27,8 @@ from clients import (
 )
 from core import brain, database, scanner, speaker
 from core.config import (
+    DEV_AI_SYNTHESIS,
+    DEV_TTS_PLAYBACK,
     ENV_PATH,
     FEATURE_CALENDAR,
     FEATURE_EMAIL,
@@ -127,6 +130,38 @@ class PipelineState:
 global_pipeline_state = PipelineState()
 
 
+class RuntimeMetadata(BaseModel):
+    dev_mode_active: bool = Field(
+        description="Whether unified DEV_MODE is active for this run.",
+    )
+    synthesis_strategy: str = Field(
+        description="Active briefing synthesis backend (dev config or production default).",
+    )
+    tts_strategy: str = Field(
+        description="Active text-to-speech backend (dev config or production default).",
+    )
+
+
+class TelemetryPayload(BaseModel):
+    weather: str = Field(description="Weather module telemetry string.")
+    sports: str = Field(description="Sports module telemetry string.")
+    news: str = Field(description="News module telemetry string.")
+    email: str = Field(description="Email module telemetry string.")
+    calendar: str = Field(description="Calendar module telemetry string.")
+    reminders: str = Field(description="Reminders module telemetry string.")
+
+
+class BriefingResponse(BaseModel):
+    status: str = Field(description="Run outcome label.")
+    briefing: str = Field(description="Synthesized briefing text.")
+    telemetry: TelemetryPayload = Field(
+        description="Per-module raw telemetry captured before synthesis.",
+    )
+    metadata: RuntimeMetadata = Field(
+        description="Runtime routing metadata for synthesis and TTS.",
+    )
+
+
 @app.get("/")
 def health_check() -> dict[str, Any]:
     """
@@ -157,8 +192,8 @@ def get_system_diagnostics() -> dict[str, float]:
     return scanner.sample_system_vitals()
 
 
-@app.post("/api/v1/trigger")
-def trigger_briefing() -> dict[str, Any]:
+@app.post("/api/v1/trigger", response_model=BriefingResponse)
+def trigger_briefing() -> BriefingResponse:
     """
     HTTP entry point for a full APEX run.
 
@@ -302,18 +337,30 @@ def trigger_briefing() -> dict[str, Any]:
                 "(is_read unchanged for local testing)."
             )
 
-        return {
-            "status": "success",
-            "briefing": final_briefing,
-            "telemetry": {
-                "weather": weather_report,
-                "sports": sports_report,
-                "news": news_report,
-                "email": email_report,
-                "calendar": calendar_report,
-                "reminders": memory_report,
-            },
-        }
+        if dev_mode:
+            synthesis_strategy = DEV_AI_SYNTHESIS
+            tts_strategy = DEV_TTS_PLAYBACK
+        else:
+            synthesis_strategy = "llm"
+            tts_strategy = "google"
+
+        return BriefingResponse(
+            status="success",
+            briefing=final_briefing,
+            telemetry=TelemetryPayload(
+                weather=weather_report,
+                sports=sports_report,
+                news=news_report,
+                email=email_report,
+                calendar=calendar_report,
+                reminders=memory_report,
+            ),
+            metadata=RuntimeMetadata(
+                dev_mode_active=dev_mode,
+                synthesis_strategy=synthesis_strategy,
+                tts_strategy=tts_strategy,
+            ),
+        )
     finally:
         global_pipeline_state.reset()
 
