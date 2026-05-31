@@ -43,15 +43,23 @@ def log_run() -> None:
     conn.close()
 
 
-def save_reminder(note: str) -> None:
+def save_reminder(note: str) -> int:
     """
-    Saves a reminder to the database.
+    Persist a reminder note and return its SQLite row identifier.
+
+    Args:
+        note: Sanitized reminder text to store.
+
+    Returns:
+        The ``lastrowid`` assigned to the newly inserted reminder row.
     """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("INSERT INTO reminders (note) VALUES (?)", (note,))
     conn.commit()
+    row_id = int(cursor.lastrowid)
     conn.close()
+    return row_id
 
 
 def fetch_unread_reminders() -> list[tuple[int, str]]:
