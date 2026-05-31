@@ -7,13 +7,14 @@ Standalone HTTP surface; briefing trigger mirrors main.start_apex flow.
 from __future__ import annotations
 
 import os
+import re
 import threading
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -162,6 +163,92 @@ class BriefingResponse(BaseModel):
     )
 
 
+class CreateReminderRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=4096,
+        description="Raw reminder text; sanitized before persistence.",
+    )
+
+
+class CreateReminderResponse(BaseModel):
+    id: int = Field(
+        ...,
+        ge=1,
+        description="SQLite row ID of the persisted reminder.",
+    )
+
+
+class ReminderRecord(BaseModel):
+    id: int = Field(..., ge=1, description="SQLite row ID of the reminder.")
+    note: str = Field(..., description="Sanitized reminder text.")
+
+
+class MarkReadRequest(BaseModel):
+    ids: list[Annotated[int, Field(ge=1)]] = Field(
+        ...,
+        min_length=1,
+        description="Reminder row IDs to mark as read.",
+    )
+
+
+class MarkReadResponse(BaseModel):
+    status: str = Field(
+        default="success",
+        description="Outcome label for the mark-read operation.",
+    )
+
+
+_MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
+_MARKDOWN_HEADER_PATTERN = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+_MARKDOWN_BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_MARKDOWN_ITALIC_PATTERN = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)")
+_MARKDOWN_STRIKE_PATTERN = re.compile(r"~~(.+?)~~")
+_MARKDOWN_CODE_BLOCK_PATTERN = re.compile(r"```[\s\S]*?```")
+_MARKDOWN_INLINE_CODE_PATTERN = re.compile(r"`([^`]+)`")
+_MARKDOWN_BLOCKQUOTE_PATTERN = re.compile(r"^>\s?", re.MULTILINE)
+_MARKDOWN_HRULE_PATTERN = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
+_MARKDOWN_LIST_MARKER_PATTERN = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
+_MARKDOWN_ORDERED_LIST_PATTERN = re.compile(r"^\s*\d+\.\s+", re.MULTILINE)
+_NON_ASCII_PATTERN = re.compile(r"[^\x00-\x7F]+")
+
+
+def clean_for_tts(text: str) -> str:
+    """
+    Strip markdown constructs and non-ASCII characters for TTS-safe output.
+
+    Args:
+        text: Source string that may contain markdown or emoji.
+
+    Returns:
+        ASCII-only plain text with collapsed whitespace.
+    """
+    cleaned = text
+    cleaned = _MARKDOWN_CODE_BLOCK_PATTERN.sub(" ", cleaned)
+    cleaned = _MARKDOWN_IMAGE_PATTERN.sub(r"\1", cleaned)
+    cleaned = _MARKDOWN_LINK_PATTERN.sub(r"\1", cleaned)
+    cleaned = _MARKDOWN_INLINE_CODE_PATTERN.sub(r"\1", cleaned)
+    cleaned = _MARKDOWN_HEADER_PATTERN.sub("", cleaned)
+    cleaned = _MARKDOWN_BLOCKQUOTE_PATTERN.sub("", cleaned)
+    cleaned = _MARKDOWN_HRULE_PATTERN.sub(" ", cleaned)
+    cleaned = _MARKDOWN_LIST_MARKER_PATTERN.sub("", cleaned)
+    cleaned = _MARKDOWN_ORDERED_LIST_PATTERN.sub("", cleaned)
+    cleaned = _MARKDOWN_BOLD_PATTERN.sub(
+        lambda match: match.group(1) or match.group(2) or "",
+        cleaned,
+    )
+    cleaned = _MARKDOWN_ITALIC_PATTERN.sub(
+        lambda match: match.group(1) or match.group(2) or "",
+        cleaned,
+    )
+    cleaned = _MARKDOWN_STRIKE_PATTERN.sub(r"\1", cleaned)
+    cleaned = _NON_ASCII_PATTERN.sub(" ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
 @app.get("/")
 def health_check() -> dict[str, Any]:
     """
@@ -293,10 +380,7 @@ def trigger_briefing() -> BriefingResponse:
                 calendar_report = "ERROR: Check connection"
 
         unread_records = database.fetch_unread_reminders()
-        ids = []
-        memory_report = ""
         if unread_records:
-            ids = [record_id for record_id, _ in unread_records]
             notes = [note for _, note in unread_records]
             notes_str = ", ".join(notes)
             memory_report = f"Pending Reminders: {notes_str}"
@@ -329,14 +413,6 @@ def trigger_briefing() -> BriefingResponse:
         )
         voice_thread.start()
 
-        if ids and not dev_mode:
-            database.mark_reminders_read(ids)
-        elif ids and dev_mode:
-            print(
-                "[SYSTEM]: DEV_MODE active — reminders left unread "
-                "(is_read unchanged for local testing)."
-            )
-
         if dev_mode:
             synthesis_strategy = DEV_AI_SYNTHESIS
             tts_strategy = DEV_TTS_PLAYBACK
@@ -363,6 +439,65 @@ def trigger_briefing() -> BriefingResponse:
         )
     finally:
         global_pipeline_state.reset()
+
+
+@app.get("/api/v1/reminders", response_model=list[ReminderRecord])
+def list_unread_reminders() -> list[ReminderRecord]:
+    """
+    Return all unread reminders as structured records for HUD refresh.
+
+    Returns:
+        List of reminder row IDs paired with their note text.
+    """
+    records = database.fetch_unread_reminders()
+    return [{"id": row_id, "note": note} for row_id, note in records]
+
+
+@app.post(
+    "/api/v1/reminders",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CreateReminderResponse,
+)
+def create_reminder(payload: CreateReminderRequest) -> CreateReminderResponse:
+    """
+    Persist a sanitized reminder for inclusion in future briefings.
+
+    Args:
+        payload: Request body containing the raw reminder text.
+
+    Returns:
+        The database row ID assigned to the new reminder.
+
+    Raises:
+        HTTPException: When sanitization yields empty text.
+    """
+    sanitized_text = clean_for_tts(payload.text)
+    if not sanitized_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Reminder text is empty after TTS sanitization.",
+        )
+    row_id = database.save_reminder(sanitized_text)
+    return CreateReminderResponse(id=row_id)
+
+
+@app.post(
+    "/api/v1/reminders/read",
+    status_code=status.HTTP_200_OK,
+    response_model=MarkReadResponse,
+)
+def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
+    """
+    Mark one or more reminders as read by SQLite row ID.
+
+    Args:
+        payload: Request body listing reminder IDs to update.
+
+    Returns:
+        Success outcome label after the database write completes.
+    """
+    database.mark_reminders_read(payload.ids)
+    return MarkReadResponse()
 
 
 def main() -> None:

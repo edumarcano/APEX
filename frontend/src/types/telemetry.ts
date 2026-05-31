@@ -16,6 +16,11 @@ export const DEFAULT_SYSTEM_DIAGNOSTICS: SystemDiagnostics = {
   disk: null,
 }
 
+export interface ActiveReminder {
+  id: number
+  note: string
+}
+
 export interface TelemetryPayload {
   weather: string
   /** Integer °F for VTE primary readout; null when unavailable. */
@@ -28,7 +33,17 @@ export interface TelemetryPayload {
   email: string
   calendar: string
   reminders: string
+  activeReminders: ActiveReminder[]
   diagnostics?: SystemDiagnostics | null
+}
+
+export interface ApexDataState {
+  data: TelemetryPayload | null
+  status: 'idle' | 'loading' | 'success' | 'error'
+  error: string | null
+  pipelineState: PipelineState | null
+  isPipelinePolling: boolean
+  activeReminders: ActiveReminder[]
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
