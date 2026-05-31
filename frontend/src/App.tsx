@@ -1,8 +1,9 @@
-import { Activity, Calendar, CloudSun, Flag, Terminal } from 'lucide-react'
+import { Activity, Calendar, CheckSquare, CloudSun, Flag, Terminal } from 'lucide-react'
 import { type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
+import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
@@ -15,8 +16,16 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 
 export default function App(): ReactElement {
   const apexData = useApexData()
-  const { data, status, error, pipelineState, isPipelinePolling, refreshReminders } =
-    apexData
+  const {
+    data,
+    status,
+    error,
+    pipelineState,
+    isPipelinePolling,
+    activeReminders,
+    refreshReminders,
+    markReminderAsRead,
+  } = apexData
 
   const activeStep = pipelineState?.step ?? null
   const hasSuccessfulData = status === 'success' && Boolean(data)
@@ -44,15 +53,17 @@ export default function App(): ReactElement {
   const scheduleBody = (() => {
     if (hasSuccessfulData) {
       const calendar = data?.calendar?.trim() ?? ''
-      const reminders = data?.reminders?.trim() ?? ''
-      const blocks = [calendar, reminders].filter((block) => block.length > 0)
-      return blocks.length > 0 ? blocks.join('\n\n') : 'No schedule entries.'
+      return calendar.length > 0 ? calendar : 'No schedule entries.'
     }
     if (isBusy(status)) {
       return 'Loading schedule…'
     }
     return error ?? 'Schedule unavailable.'
   })()
+
+  const handleMarkReminderRead = (id: number): void => {
+    void markReminderAsRead(id)
+  }
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
 
@@ -98,6 +109,31 @@ export default function App(): ReactElement {
             rawScheduleText={f1ScheduleTelemetryText}
             className="min-h-40"
           />
+
+          <TelemetryCard
+            title="Reminders"
+            icon={CheckSquare}
+            className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+            role="region"
+            aria-label="Active reminders"
+            data-slot="reminders-card"
+          >
+            {activeReminders.length === 0 ? (
+              <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+                No pending reminders.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {activeReminders.map((reminder) => (
+                  <ReminderListRow
+                    key={reminder.id}
+                    reminder={reminder}
+                    onMarkRead={handleMarkReminderRead}
+                  />
+                ))}
+              </ul>
+            )}
+          </TelemetryCard>
 
           <TelemetryCard
             title="Pipeline Progress"
