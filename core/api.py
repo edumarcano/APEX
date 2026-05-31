@@ -180,6 +180,11 @@ class CreateReminderResponse(BaseModel):
     )
 
 
+class ReminderRecord(BaseModel):
+    id: int = Field(..., ge=1, description="SQLite row ID of the reminder.")
+    note: str = Field(..., description="Sanitized reminder text.")
+
+
 class MarkReadRequest(BaseModel):
     ids: list[Annotated[int, Field(ge=1)]] = Field(
         ...,
@@ -434,6 +439,18 @@ def trigger_briefing() -> BriefingResponse:
         )
     finally:
         global_pipeline_state.reset()
+
+
+@app.get("/api/v1/reminders", response_model=list[ReminderRecord])
+def list_unread_reminders() -> list[ReminderRecord]:
+    """
+    Return all unread reminders as structured records for HUD refresh.
+
+    Returns:
+        List of reminder row IDs paired with their note text.
+    """
+    records = database.fetch_unread_reminders()
+    return [{"id": row_id, "note": note} for row_id, note in records]
 
 
 @app.post(

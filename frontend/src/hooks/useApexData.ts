@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import type { PipelineState, TelemetryPayload } from '../types/telemetry'
 
-const STATUS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/status'
+const API_BASE = 'http://127.0.0.1:8000'
+const STATUS_ENDPOINT = `${API_BASE}/api/v1/status`
+const REMINDERS_ENDPOINT = `${API_BASE}/api/v1/reminders`
 const PIPELINE_COMPLETE_STEP = 4
 
 export type ApexDataState = {
@@ -11,6 +13,24 @@ export type ApexDataState = {
   error: string | null
   pipelineState: PipelineState | null
   isPipelinePolling: boolean
+}
+
+export type UseApexDataReturn = ApexDataState & {
+  refreshReminders: () => Promise<void>
+}
+
+type ReminderRecord = {
+  id: number
+  note: string
+}
+
+function assembleRemindersTelemetry(records: ReminderRecord[]): string {
+  if (records.length === 0) {
+    return 'No pending reminders.'
+  }
+
+  const notes = records.map((record) => record.note).join(', ')
+  return `Pending Reminders: ${notes}`
 }
 
 
@@ -104,7 +124,7 @@ export function resolveWeatherDetail(weatherReport: string | undefined | null): 
 
 
 
-export function useApexData(): ApexDataState {
+export function useApexData(): UseApexDataReturn {
   const [state, setState] = useState<ApexDataState>({
     data: null,
     status: 'idle',
@@ -112,6 +132,39 @@ export function useApexData(): ApexDataState {
     pipelineState: null,
     isPipelinePolling: false,
   })
+
+  const refreshReminders = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch(REMINDERS_ENDPOINT)
+
+      if (!response.ok) {
+        return
+      }
+
+      const records = (await response.json()) as ReminderRecord[]
+      if (!Array.isArray(records)) {
+        return
+      }
+
+      const remindersTelemetry = assembleRemindersTelemetry(records)
+
+      setState((prev) => {
+        if (!prev.data) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            reminders: remindersTelemetry,
+          },
+        }
+      })
+    } catch {
+      // Reminder refresh is best-effort; preserve existing HUD state on failure.
+    }
+  }, [])
 
 
   useEffect(() => {
@@ -138,7 +191,7 @@ export function useApexData(): ApexDataState {
 
       try {
 
-        const response = await fetch('http://127.0.0.1:8000/api/v1/trigger', {
+        const response = await fetch(`${API_BASE}/api/v1/trigger`, {
 
           method: 'POST',
 
@@ -383,6 +436,6 @@ export function useApexData(): ApexDataState {
     }
   }, [state.status, state.pipelineState?.step])
 
-  return state
+  return { ...state, refreshReminders }
 }
 

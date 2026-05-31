@@ -3,6 +3,7 @@ import { type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { DiagnosticProgress } from './components/DiagnosticProgress'
+import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
@@ -14,7 +15,8 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 
 export default function App(): ReactElement {
   const apexData = useApexData()
-  const { data, status, error, pipelineState, isPipelinePolling } = apexData
+  const { data, status, error, pipelineState, isPipelinePolling, refreshReminders } =
+    apexData
 
   const activeStep = pipelineState?.step ?? null
   const hasSuccessfulData = status === 'success' && Boolean(data)
@@ -123,6 +125,7 @@ export default function App(): ReactElement {
             <SystemDiagnostics />
           </TelemetryCard>
         </div>
+        <ReminderTerminal refreshReminders={refreshReminders} />
       </main>
     </AtmosphericThemeProvider>
   )
