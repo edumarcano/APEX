@@ -9,6 +9,8 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 from core.config import CUSTOM_BROWSER_PATH
@@ -192,7 +194,22 @@ def main() -> None:
     register_shutdown_hooks(uvicorn_proc, static_proc)
 
     # Allow uvicorn and the static server time to bind ports before opening UI.
-    time.sleep(3)
+    # Poll the health check endpoint until the API is online
+    print("[LAUNCHER] Waiting for APEX Nexus API to come online...", flush=True)
+    api_ready = False
+    
+    for _ in range(30): 
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8000/", timeout=1) as response:
+                if response.getcode() == 200:
+                    api_ready = True
+                    break
+        except (urllib.error.URLError, ConnectionResetError):
+            pass
+        time.sleep(0.5)
+
+    if not api_ready:
+        print("[LAUNCHER] WARNING: API timed out. Launching browser anyway...", flush=True)
 
     launch_kiosk_browser(FRONTEND_URL)
 
