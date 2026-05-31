@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-`launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes, waits for both to bind their ports, then opens the frontend in a kiosk window using the first Chromium browser binary it finds. `atexit` hooks and signal handlers bring both processes down on exit.
+`launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes, then polls `GET /` on the API up to 30 times at 500 ms intervals before opening the frontend in a kiosk window. The browser does not launch until the health check returns `200`. `atexit` hooks and signal handlers bring both processes down on exit.
 
 With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST` to `/api/v1/trigger` kicks off a four-stage pipeline:
 
@@ -84,7 +84,7 @@ When `DEV_MODE=true`, both `gmail_client.py` and `calendar_client.py` apply acti
 Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` has no persona baked into it. It pulls `SYSTEM_PROMPT` from `config.py` and prepends it to the request, so the voice is entirely driven by `config.json`. Pipe (`|`) delimiters separate each source in the raw string to keep the model's context clean. If the API call fails for any reason, it catches the exception and falls back to reading the raw data directly so the run never crashes.
 
 **Persistent reminders and session logging (`database.py`)**  
-A local SQLite database tracks user reminders and run timestamps. Reminders are marked as read after they've been read out so they don't repeat across sessions. The run log is what the scanner queries to enforce the 1-hour cooldown.
+A local SQLite database tracks user reminders and run timestamps. The run log is what the scanner queries to enforce the 1-hour cooldown. Reminder management is handled through three dedicated API endpoints: `GET /api/v1/reminders` returns all unread records as structured `ReminderRecord` objects, `POST /api/v1/reminders` persists a new reminder (raw input is run through `clean_for_tts` to strip markdown and non-ASCII characters before it is saved, and the endpoint returns the inserted row ID), and `POST /api/v1/reminders/read` marks one or more reminders read by row ID. Dismissal is an explicit HUD action.
 
 **Unified development mode (`DEV_MODE`)**  
 Set `DEV_MODE=true` in `.env` for local work. Bypasses Wi-Fi SSID validation, AC power check, and the 1-hour cooldown; skips live Gemini, Gmail, and Calendar; does not call `database.log_run()` or mark reminders read (`is_read` stays `0`). Weather, sports, news, SQLite, FastAPI, and the kiosk launcher are unchanged.
@@ -93,7 +93,7 @@ Set `DEV_MODE=true` in `.env` for local work. Bypasses Wi-Fi SSID validation, AC
 Controls whether hardware and cooldown checks run under a production setup (`DEV_MODE=false`). Defaults to `true` when the key is absent, so the gate is always enforced unless explicitly disabled. Set to `false` to bypass the Wi-Fi SSID check, AC power check, and 1-hour cooldown while keeping all live API clients active. Useful for running APEX from an untrusted network or without wall power without switching to `DEV_MODE`.
 
 **Web HUD (`frontend/`)**  
-A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger` and manages the full `idle | loading | success | error` lifecycle in a single piece of state. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail along with staggered opacity on the Weather and Schedule cards. Full detail on that flow is in the **FastAPI Pipeline Telemetry & Polling** section. After success, the center panel renders the briefing text with a looping pulse animation. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
+A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger` and manages the full `idle | loading | success | error` lifecycle in a single piece of state. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail along with staggered opacity on the Weather and Schedule cards. Full detail on that flow is in the **FastAPI Pipeline Telemetry & Polling** section. After success, the center panel renders the briefing text with a looping pulse animation. The `ReminderTerminal` component provides inline reminder input and submission, calling `POST /api/v1/reminders` and triggering a best-effort sync via `refreshReminders` after each successful write. `ReminderListRow` handles per-item display and dismissal: each row fires `POST /api/v1/reminders/read`, applies optimistic local state removal, and rolls back on API failure. The `activeReminders` field on `ApexDataState` holds the structured list of unread `ReminderRecord` objects. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
 
 **Atmospheric Theme Provider (`AtmosphericThemeContext.tsx`)**  
 A React context provider that reads the raw weather string from `useApexData` and scans it for exact substring tokens to update CSS variables on `document.documentElement`. The scan runs in priority order on each data change and applies the matching theme profile:
@@ -149,11 +149,11 @@ The default persona is a deliberate personal choice. Just as xylem tissue carrie
 
 Both flags are read from `.env`. Values are normalized at read time, so `True`, `true`, and `TRUE` all work the same way. `DEV_MODE` defaults to `false` if absent. `ENABLE_STARTUP_GATE` defaults to `true` if absent, keeping the gate enforced in any environment where the key is not explicitly set.
 
-| Configuration | Wi-Fi + Power | Cooldown | Gemini API | Gmail + Calendar (PII) | Logs Run | Marks Reminders Read |
-|---|---|---|---|---|---|---|
-| Production (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=true`) | ✅ enforced | ✅ 1-hour | ✅ live (w/ fallback) | ✅ per `config.json` | ✅ yes | ✅ yes |
-| Gate off (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=false`) | ⬜ bypassed | ⬜ bypassed | ✅ live (w/ fallback) | ✅ per `config.json` | ✅ yes | ✅ yes |
-| `DEV_MODE=true` | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ no | ⬜ no |
+| Configuration | Wi-Fi + Power | Cooldown | Gemini API | Gmail + Calendar (PII) | Logs Run |
+|---|---|---|---|---|---|
+| Production (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=true`) | ✅ enforced | ✅ 1-hour | ✅ live (w/ fallback) | ✅ per `config.json` | ✅ yes |
+| Gate off (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=false`) | ⬜ bypassed | ⬜ bypassed | ✅ live (w/ fallback) | ✅ per `config.json` | ✅ yes |
+| `DEV_MODE=true` | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ no |
 
 ## Feature Toggles
 
@@ -371,6 +371,35 @@ Kicks off a full run: scanner gate, data collection, Gemini synthesis, and TTS p
 
 `briefing` is the synthesized text that was read aloud. `telemetry` (`TelemetryPayload`) is a Pydantic model with one string field per connector; the web HUD reads these keys to fill each module slot. `metadata` (`RuntimeMetadata`) carries the routing decisions that were in effect for the run: whether `DEV_MODE` was active, which synthesis backend was used (`raw`, `slm`, or `llm`), and which TTS engine was selected (`pyttsx3`, `google`, or `elevenlabs`). In production (`DEV_MODE=false`), `synthesis_strategy` is always `"llm"` and `tts_strategy` reflects `primary_tts` from `config.json`. If the scanner gate fails (wrong network, no power, or inside the cooldown window), the endpoint returns a `403` with a detail message instead of running.
 
+**Reminder management**
+```
+GET  http://127.0.0.1:8000/api/v1/reminders
+POST http://127.0.0.1:8000/api/v1/reminders
+POST http://127.0.0.1:8000/api/v1/reminders/read
+```
+`GET /api/v1/reminders` returns all unread reminders as a list of `ReminderRecord` objects:
+
+```json
+[
+  { "id": 1, "note": "Call the bank before 3pm." },
+  { "id": 2, "note": "Pick up package from front desk." }
+]
+```
+
+`POST /api/v1/reminders` accepts a JSON body with a `text` field (1–4096 characters). The raw input is run through `clean_for_tts` to strip markdown syntax and non-ASCII characters before the record is written. Returns the inserted row ID:
+
+```json
+{ "id": 3 }
+```
+
+`POST /api/v1/reminders/read` accepts a list of reminder row IDs and marks each one as read. The HUD fires this on explicit per-item dismissal and applies an optimistic local removal that rolls back if the call fails:
+
+```json
+{ "ids": [1, 2] }
+```
+
+Returns `{ "status": "success" }` on completion.
+
 **Hardware diagnostics**
 ```
 GET http://127.0.0.1:8000/api/v1/diagnostics
@@ -403,7 +432,7 @@ apex/
 │   ├── api.py           # REST API entry point — FastAPI app + uvicorn server (port 8000)
 │   ├── brain.py         # Briefing synthesis via genai.Client and Gemini 2.5 Flash
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown)
-│   ├── speaker.py       # TTS fallback chain: Google Cloud TTS → Inworld AI → pyttsx3, MP3 played from memory via pygame
+│   ├── speaker.py       # TTS fallback chain: Google Cloud TTS → pyttsx3, MP3 played from memory via pygame
 │   ├── database.py      # SQLite session logging and reminder management
 │   ├── config.py        # Feature flag and system prompt loader with validation
 │   └── __init__.py
@@ -419,14 +448,16 @@ apex/
 ├── frontend/                # React/TypeScript source — compiled by Vite
 │   ├── src/
 │   │   ├── hooks/
-│   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution; VTE string parser
+│   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution; VTE string parser; reminder CRUD and optimistic state
 │   │   ├── types/
 │   │   │   └── telemetry.ts     # TelemetryPayload, AtmosphericTheme, AtmosphericCondition type definitions
 │   │   ├── context/
 │   │   │   └── AtmosphericThemeContext.tsx  # CSS variable theme provider — condition token scan, --hud-* variable injection
 │   │   ├── components/
 │   │   │   ├── TelemetryCard.tsx       # Shared card frame + Variable Typography Engine interpolation
-│   │   │   └── DiagnosticProgress.tsx  # 500ms status poller + four-step progress rail
+│   │   │   ├── DiagnosticProgress.tsx  # 500ms status poller + four-step progress rail
+│   │   │   ├── ReminderTerminal.tsx    # Inline reminder input and submission — calls POST /api/v1/reminders
+│   │   │   └── ReminderListRow.tsx     # Per-item reminder display and dismissal — calls POST /api/v1/reminders/read
 │   │   ├── App.tsx              # Root layout; step-driven card opacity
 │   │   └── main.tsx             # Vite entry point
 │   ├── index.html               # Vite HTML shell
