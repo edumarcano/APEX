@@ -2,6 +2,99 @@
 
 ---
 
+## v1.5.0 — HUD-Renaissance: The Control Deck
+
+**Released:** May 31, 2026
+
+This release adds a full reminder management system to the HUD, covering API persistence, interactive input, per-item dismissal, and optimistic UI state. The launcher was hardened with a backend readiness gate that eliminates startup race conditions, and the orchestrator gained browser lifecycle awareness so closing the HUD window cleanly shuts down the backend.
+
+---
+
+### What's New
+
+#### Reminder Management System
+
+Active reminders are now a first-class data surface in the HUD, with full lifecycle support from creation through dismissal.
+
+- `GET /api/v1/reminders` was added to `core/api.py`. It returns all unread reminders from the database as a typed `RemindersResponse` containing a list of `ReminderItem` objects (each carrying `id`, `text`, and `created_at`).
+- `POST /api/v1/reminders` was added. It accepts a `ReminderCreateRequest` payload, runs the text through `clean_for_tts()` to strip markdown and non-ASCII characters, persists the result via `database.save_reminder()`, and returns a `ReminderCreateResponse` with the new row ID.
+- `POST /api/v1/reminders/read` was added. It marks a single reminder as read by ID and returns a `RemindersReadResponse` confirming the operation.
+- Auto-mark-read behavior was removed from the `POST /api/v1/trigger` briefing endpoint. Reminders are now only dismissed on explicit user action.
+- `database.save_reminder()` was updated to return the inserted row ID instead of `None`.
+- `activeReminders` was added to `ApexDataState` and `TelemetryPayload` as a structured list, making reminder state available to all HUD consumers through the unified `useApexData()` hook.
+
+#### Reminder Terminal Input Component
+
+A persistent, fixed-position input field was added to the HUD bottom edge for submitting new reminders without leaving the dashboard.
+
+- `ReminderTerminal.tsx` implements a `POST /api/v1/reminders` form. On successful submission the input clears, a brief emerald glow pulses on the container border, and a `refreshReminders` callback re-syncs the list.
+- A global keyboard shortcut registers a `/` keydown listener. Pressing `/` from anywhere on the dashboard focuses the input unless the user is already inside an editable field.
+- Submitting while a previous request is in flight is blocked by an `isSubmitting` guard.
+- The component is mounted in `App.tsx` as a floating overlay with `z-50` stacking, centered horizontally at the bottom of the viewport.
+
+#### Reminder List Row Component
+
+Individual reminder entries are now interactive, with per-item dismissal directly from the HUD.
+
+- `ReminderListRow.tsx` renders each `ReminderItem` with its text and a dismiss button.
+- `markReminderAsRead` in `useApexData.ts` performs optimistic removal: the item is removed from local state immediately, a `POST /api/v1/reminders/read` call is issued in the background, and the original state is restored on API failure.
+- `refreshReminders` was added to `useApexData.ts` as a best-effort sync callback, called after new reminder submissions to ensure the list reflects the latest persisted state.
+- The reminders string was removed from the schedule panel in `App.tsx`. The calendar section now renders calendar entries only; reminder data surfaces exclusively through the new reminder list.
+
+---
+
+### Fixes
+
+#### Launcher Backend Readiness Gate
+
+The `launcher.py` orchestrator previously used a hardcoded three-second delay before opening the browser. This caused intermittent `Failed to fetch` errors when the API had not finished binding its port.
+
+- The fixed delay was removed from `main()`.
+- A polling loop was added that issues `GET http://127.0.0.1:8000/` every 500ms for up to 30 attempts (15 seconds maximum). The browser opens immediately after the first `200` response.
+- If all 30 attempts time out, a warning is printed and the browser opens regardless, preserving the original fallback behavior.
+- `urllib.request` and `urllib.error` were added as imports to support the polling loop without additional dependencies.
+
+---
+
+### Refactors
+
+#### Browser Window Lifecycle Binding
+
+The orchestrator now treats the browser window as the authoritative signal for APEX shutdown.
+
+- `main()` in `launcher.py` was updated to call `browser_proc.wait()` after the kiosk window opens. When the user closes the browser window, the orchestrator prints a shutdown message, terminates the `uvicorn` process, and exits cleanly.
+- This behavior applies only when the browser was launched via `subprocess.Popen` (i.e., Chrome or Edge with `--app=`). The `webbrowser` fallback path retains the previous `Ctrl+C` loop behavior since a `Popen` handle is not available in that case.
+- The `digest.txt` working file was added to `.gitignore`.
+
+---
+
+### Files Changed
+
+| Area | Files |
+|---|---|
+| Backend API | `core/api.py` |
+| Backend Database | `core/database.py` |
+| Launcher Orchestrator | `launcher.py` |
+| Frontend Components | `frontend/src/components/ReminderTerminal.tsx`, `frontend/src/components/ReminderListRow.tsx` |
+| Frontend Data Hook | `frontend/src/hooks/useApexData.ts` |
+| Frontend Types | `frontend/src/types/telemetry.ts` |
+| Frontend Layout | `frontend/src/App.tsx` |
+| Repo Config | `.gitignore` |
+| Docs | `README.md` |
+
+---
+
+### Summary Stats
+
+- **4 commits** merged into `v1.5.0`
+- **~680 lines added**, **~160 lines removed** across 10 files
+- **3 new API endpoints** (`GET /api/v1/reminders`, `POST /api/v1/reminders`, `POST /api/v1/reminders/read`)
+- **2 new UI components** (`ReminderTerminal`, `ReminderListRow`)
+- **1 startup race condition eliminated** (hardcoded delay replaced with polling readiness gate)
+- **1 browser lifecycle binding** added (uvicorn exits on HUD window close)
+
+---
+
 ## v1.4.0 — Developer Experience & Local Sandbox Recalibration
 
 **Released:** May 28, 2026
