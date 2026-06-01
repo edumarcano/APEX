@@ -63,11 +63,6 @@ export function AtmosphericThemeProvider({
       textColor,
       accentColor,
     })
-
-    const root = document.documentElement
-    root.style.setProperty('--hud-bg', bgColors)
-    root.style.setProperty('--hud-text', textColor)
-    root.style.setProperty('--hud-accent', accentColor)
   }, [weatherReport])
 
   useEffect(() => {

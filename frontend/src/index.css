@@ -4,7 +4,7 @@
 /* Legacy APEX HUD custom properties (frontend/style.css) */
 @layer base {
   :root {
-    --hud-bg: #0a0a0a;
+    --hud-bg: #000000;
     --hud-panel-bg: #1c1c1c;
     --hud-border-color: #333333;
     --hud-text: #f3f4f6;
@@ -72,4 +72,19 @@
 .briefing-curtain--revealed {
   clip-path: inset(0 0 0 0);
   transform: translate3d(0, 0, 0);
+}
+
+@keyframes risingWave {
+  0% {
+    transform: translate3d(0, 100%, 0);
+  }
+  100% {
+    transform: translate3d(0, -100%, 0);
+  }
+}
+
+.animate-rising-wave {
+  animation: risingWave 6s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
 }
