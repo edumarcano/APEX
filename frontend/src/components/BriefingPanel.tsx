@@ -7,6 +7,7 @@ export type BriefingPanelProps = {
   status: SystemState
   error: string | null
   isLoading: boolean
+  isSpeaking: boolean
 }
 
 function BriefingStream({
@@ -14,18 +15,22 @@ function BriefingStream({
   status,
   error,
   isLoading,
+  isSpeaking,
 }: BriefingPanelProps): ReactElement {
   const labelId = useId()
   const rawText = briefing.trim()
   const [revealed, setRevealed] = useState(false)
+  const [curtainComplete, setCurtainComplete] = useState(false)
 
   useEffect(() => {
     if (status !== 'success' || rawText.length === 0) {
       setRevealed(false)
+      setCurtainComplete(false)
       return undefined
     }
 
     setRevealed(false)
+    setCurtainComplete(false)
     const frameId = window.requestAnimationFrame(() => {
       setRevealed(true)
     })
@@ -34,6 +39,16 @@ function BriefingStream({
       window.cancelAnimationFrame(frameId)
     }
   }, [status, rawText])
+
+  const handleCurtainTransitionEnd = (
+    event: React.TransitionEvent<HTMLDivElement>,
+  ): void => {
+    if (event.propertyName !== 'clip-path' || !revealed) {
+      return
+    }
+
+    setCurtainComplete(true)
+  }
 
   if (isLoading || status === 'idle') {
     return (
@@ -105,11 +120,16 @@ function BriefingStream({
         Briefing
       </h2>
       <div
-        className={`briefing-curtain min-h-[4.5rem] whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]${revealed ? ' briefing-curtain--revealed' : ''}`}
+        className={`briefing-curtain min-h-[4.5rem]${revealed ? ' briefing-curtain--revealed' : ''}`}
+        onTransitionEnd={handleCurtainTransitionEnd}
         aria-live="polite"
         aria-atomic="true"
       >
-        {rawText}
+        <span
+          className={`block whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]${curtainComplete && isSpeaking ? ' animate-speech-pulse' : ''}`}
+        >
+          {rawText}
+        </span>
       </div>
     </section>
   )

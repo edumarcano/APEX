@@ -125,6 +125,7 @@ export default function App(): ReactElement {
               status={status}
               error={error}
               isLoading={isTriggerLoading}
+              isSpeaking={isPipelinePolling && activeStep === 4}
             />
           </div>
 

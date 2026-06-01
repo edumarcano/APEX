@@ -73,3 +73,27 @@
   clip-path: inset(0 0 0 0);
   transform: translate3d(0, 0, 0);
 }
+
+@keyframes speechPulse {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.animate-speech-pulse {
+  background: linear-gradient(
+    90deg,
+    var(--hud-text) 0%,
+    var(--hud-accent) 45%,
+    var(--hud-text) 55%,
+    var(--hud-accent) 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: speechPulse 2.4s linear infinite;
+}
