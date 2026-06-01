@@ -82,6 +82,24 @@ function getStringField(
   return typeof value === 'string' ? value : fallback
 }
 
+function parsePipelineStatus(body: unknown): PipelineState | null {
+  if (!body || typeof body !== 'object') {
+    return null
+  }
+
+  const record = body as Record<string, unknown>
+  if (typeof record.step !== 'number' || typeof record.label !== 'string') {
+    return null
+  }
+
+  return {
+    step: record.step,
+    label: record.label,
+    timestamp: typeof record.timestamp === 'string' ? record.timestamp : '',
+    is_speaking: record.is_speaking === true,
+  }
+}
+
 /**
  * Variable Typography Engine - Telemetry Extractor
  * Parses the integer Fahrenheit token out of the raw atmospheric string.
@@ -128,6 +146,7 @@ export function useApexData(): UseApexDataReturn {
     error: null,
     pipelineState: null,
     isPipelinePolling: false,
+    isSpeaking: false,
     activeReminders: [],
   })
 
@@ -272,6 +291,7 @@ export function useApexData(): UseApexDataReturn {
               fromBody ??
               (response.statusText || `Request failed with status ${response.status}`),
             isPipelinePolling: false,
+            isSpeaking: false,
             activeReminders: [],
           }))
 
@@ -285,6 +305,7 @@ export function useApexData(): UseApexDataReturn {
             status: 'error',
             error: 'Invalid response: missing payload body',
             isPipelinePolling: false,
+            isSpeaking: false,
             activeReminders: [],
           }))
 
@@ -301,6 +322,7 @@ export function useApexData(): UseApexDataReturn {
             status: 'error',
             error: 'Invalid response: missing telemetry',
             isPipelinePolling: false,
+            isSpeaking: false,
             activeReminders: [],
           }))
 
@@ -353,6 +375,7 @@ export function useApexData(): UseApexDataReturn {
           status: 'error',
           error: err instanceof Error ? err.message : 'Unknown error',
           isPipelinePolling: false,
+          isSpeaking: false,
           activeReminders: [],
         }))
       }
@@ -393,6 +416,7 @@ export function useApexData(): UseApexDataReturn {
             ...prev,
             pipelineState: null,
             isPipelinePolling: false,
+            isSpeaking: false,
           }))
           return
         }
@@ -401,11 +425,16 @@ export function useApexData(): UseApexDataReturn {
           return
         }
 
-        const payload = (await response.json()) as PipelineState
+        const body: unknown = await response.json()
+        const payload = parsePipelineStatus(body)
+        if (!payload) {
+          return
+        }
 
         setState((prev) => ({
           ...prev,
           pipelineState: payload,
+          isSpeaking: payload.is_speaking,
           isPipelinePolling:
             prev.status === 'loading' || prev.status === 'success',
         }))

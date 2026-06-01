@@ -12,12 +12,10 @@ export function VocalOrb({
   const filterId = useId().replace(/:/g, '')
   const glowFilter = `url(#${filterId})`
 
-  const rootClassName = [
-    'flex items-center justify-center',
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ')
+  const svgClassName = [
+    'overflow-visible fill-none',
+    className ?? 'h-24 w-24',
+  ].join(' ')
 
   const stasisClassName = [
     'transition-all duration-700 ease-in-out',
@@ -49,10 +47,10 @@ export function VocalOrb({
   ].join(' ')
 
   return (
-    <div className={rootClassName} aria-hidden="true">
+    <div className="flex items-center justify-center" aria-hidden="true">
       <svg
         viewBox="0 0 100 100"
-        className="h-24 w-24 overflow-visible fill-none"
+        className={svgClassName}
       >
         <defs>
           <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
@@ -75,7 +73,7 @@ export function VocalOrb({
             y2={50}
             strokeWidth={2}
             strokeLinecap="round"
-            className="stroke-[color:var(--hud-accent)]"
+            className="stroke-neutral-500/50"
           />
         </g>
 

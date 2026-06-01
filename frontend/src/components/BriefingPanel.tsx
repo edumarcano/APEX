@@ -1,23 +1,18 @@
 import { useEffect, useId, useState, type ReactElement } from 'react'
 
 import type { SystemState } from '../types/telemetry'
-import { VocalOrb } from './VocalOrb'
 
 export type BriefingPanelProps = {
   briefing: string
   status: SystemState
   error: string | null
   isLoading: boolean
-  isSpeaking: boolean
 }
 
-function sectionShellClassName(glowActive: boolean, extra = ''): string {
+function sectionShellClassName(extra = ''): string {
   return [
-    'rounded-2xl border bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
-    'transition-all duration-1000 ease-in-out',
-    glowActive
-      ? 'border-[color:var(--hud-accent)] shadow-[0_0_24px_-4px_var(--hud-accent)]'
-      : 'border-[color:var(--hud-border-color)] shadow-none',
+    'rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
+    'transition-all duration-1000 ease-in-out shadow-none',
     extra,
   ]
     .filter(Boolean)
@@ -29,12 +24,10 @@ function BriefingStream({
   status,
   error,
   isLoading,
-  isSpeaking,
 }: BriefingPanelProps): ReactElement {
   const labelId = useId()
   const rawText = briefing.trim()
   const [revealed, setRevealed] = useState(false)
-  const [glowActive, setGlowActive] = useState(false)
 
   useEffect(() => {
     if (status !== 'success' || rawText.length === 0) {
@@ -52,26 +45,10 @@ function BriefingStream({
     }
   }, [status, rawText])
 
-  useEffect(() => {
-    if (!isSpeaking) {
-      setGlowActive(false)
-      return undefined
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setGlowActive(true)
-    }, 50)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [isSpeaking])
-
   if (isLoading || status === 'idle') {
     return (
       <section
         className={sectionShellClassName(
-          glowActive,
           'flex h-full min-h-56 flex-col justify-center md:min-h-72',
         )}
         aria-labelledby={labelId}
@@ -94,7 +71,6 @@ function BriefingStream({
     return (
       <section
         className={sectionShellClassName(
-          glowActive,
           'flex h-full min-h-56 flex-col justify-center md:min-h-72',
         )}
         aria-labelledby={labelId}
@@ -114,10 +90,7 @@ function BriefingStream({
 
   if (rawText.length === 0) {
     return (
-      <section
-        className={sectionShellClassName(glowActive)}
-        aria-labelledby={labelId}
-      >
+      <section className={sectionShellClassName()} aria-labelledby={labelId}>
         <h2
           id={labelId}
           className="mb-3 text-xs font-semibold uppercase tracking-widest text-[color:var(--hud-accent)] opacity-80"
@@ -132,19 +105,13 @@ function BriefingStream({
   }
 
   return (
-    <section
-      className={sectionShellClassName(glowActive)}
-      aria-labelledby={labelId}
-    >
+    <section className={sectionShellClassName()} aria-labelledby={labelId}>
       <h2
         id={labelId}
         className="mb-3 text-xs font-semibold uppercase tracking-widest text-[color:var(--hud-accent)] opacity-80"
       >
         Briefing
       </h2>
-      <div className="mb-3 flex h-24 w-full shrink-0 items-center justify-center">
-        <VocalOrb isSpeaking={isSpeaking} />
-      </div>
       <div
         className={`briefing-curtain min-h-[4.5rem]${revealed ? ' briefing-curtain--revealed' : ''}`}
         aria-live="polite"

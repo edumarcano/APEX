@@ -125,6 +125,7 @@ class PipelineState:
                 "step": self._step,
                 "label": self._label,
                 "timestamp": self._timestamp,
+                "is_speaking": speaker.is_speaking(),
             }
 
 
@@ -208,6 +209,15 @@ class MarkReadResponse(BaseModel):
     )
 
 
+class PipelineStatusSnapshot(BaseModel):
+    step: int = Field(description="Monotonic pipeline step index for the active run.")
+    label: str = Field(description="Short stage label for dashboards and probes.")
+    timestamp: str = Field(description="UTC ISO-8601 timestamp of the last stage update.")
+    is_speaking: bool = Field(
+        description="True when the speaker subsystem lock is held or audio playback is active.",
+    )
+
+
 _MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
 _MARKDOWN_HEADER_PATTERN = re.compile(r"^#{1,6}\s+", re.MULTILINE)
@@ -265,8 +275,8 @@ def health_check() -> dict[str, Any]:
     return {"status": "online", "system": "APEX Nexus"}
 
 
-@app.get("/api/v1/status")
-def get_pipeline_diagnostic_status() -> dict[str, Any]:
+@app.get("/api/v1/status", response_model=PipelineStatusSnapshot)
+def get_pipeline_diagnostic_status() -> PipelineStatusSnapshot:
     """
     Diagnostic snapshot keyed off global_pipeline_state for operators and probes.
     """
@@ -276,7 +286,7 @@ def get_pipeline_diagnostic_status() -> dict[str, Any]:
             status_code=404,
             detail="No active pipeline run. System is OFFLINE.",
         )
-    return snapshot
+    return PipelineStatusSnapshot(**snapshot)
 
 
 @app.get("/api/v1/diagnostics")

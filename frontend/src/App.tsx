@@ -6,6 +6,7 @@ import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
+import { VocalOrb } from './components/VocalOrb'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
 
@@ -21,6 +22,7 @@ export default function App(): ReactElement {
     error,
     pipelineState,
     isPipelinePolling,
+    isSpeaking,
     activeReminders,
     refreshReminders,
     markReminderAsRead,
@@ -30,7 +32,6 @@ export default function App(): ReactElement {
   const isProcessing =
     status === 'loading' ||
     (activeStep !== null && activeStep >= 1 && activeStep <= 3)
-  const isSpeaking = isPipelinePolling && activeStep === 4
   const showGlow = isProcessing || isSpeaking
 
   const glowColor = isProcessing
@@ -145,8 +146,8 @@ export default function App(): ReactElement {
     </>
   )}
 </div>
-        <header className="relative z-10 mb-6 flex w-full items-center justify-between border-b border-[color:var(--hud-border-color)] pb-4">
-          <div className="flex items-baseline">
+        <header className="relative z-10 mb-6 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
+          <div className="flex items-baseline justify-self-start">
             <h1
               className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
                 isPipelinePolling
@@ -160,8 +161,11 @@ export default function App(): ReactElement {
               AUTOMATED PERSONAL ENVIRONMENT XYLEM
             </span>
           </div>
+          <div className="flex justify-center justify-self-center">
+            <VocalOrb isSpeaking={isSpeaking} className="h-12 w-auto" />
+          </div>
           <p
-            className={`m-0 font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
+            className={`m-0 justify-self-end font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
             aria-live="polite"
             data-slot="header-status-ticker"
           >
@@ -187,7 +191,6 @@ export default function App(): ReactElement {
               status={status}
               error={error}
               isLoading={isTriggerLoading}
-              isSpeaking={isSpeaking}
             />
           </div>
 

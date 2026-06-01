@@ -152,6 +152,18 @@ def _try_google_tts(content: str) -> bool:
         return False
 
 
+def is_speaking() -> bool:
+    """Return True when speech is in progress (lock held or mixer active)."""
+    if _SPEAK_LOCK.locked():
+        return True
+    try:
+        if pygame.mixer.get_init() is not None and pygame.mixer.music.get_busy():
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def speak(text: str) -> None:
     """Speak text parameters using pre-warmed cloud structures, defaulting to dynamic local thread loops.
 
