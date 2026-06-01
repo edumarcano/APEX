@@ -33,9 +33,11 @@ export default function App(): ReactElement {
   const isSpeaking = isPipelinePolling && activeStep === 4
   const showGlow = isProcessing || isSpeaking
 
-  const waveGradient = isProcessing
-    ? 'linear-gradient(to top, rgba(16, 185, 129, 0.22) 0%, rgba(16, 185, 129, 0.08) 40%, rgba(16, 185, 129, 0) 100%)'
-    : 'linear-gradient(to top, rgba(234, 179, 8, 0.22) 0%, rgba(234, 179, 8, 0.08) 40%, rgba(234, 179, 8, 0) 100%)'
+  const glowColor = isProcessing
+    ? '16, 185, 129' // Emerald Green for Stages 1–3
+    : isSpeaking
+      ? '234, 179, 8' // Amber Gold for Stage 4
+      : '0, 0, 0'
 
   const weatherCardStyle = useMemo((): CSSProperties | undefined => {
     const weatherText = data?.weather ?? ''
@@ -116,15 +118,33 @@ export default function App(): ReactElement {
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main className="relative min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6">
-        <div
-          className={`pointer-events-none absolute inset-0 z-0 overflow-hidden transition-opacity duration-1000 ease-in-out ${showGlow ? 'opacity-100' : 'opacity-0'}`}
-          aria-hidden
-        >
-          <div
-            className={`h-[80dvh] w-full ${showGlow ? 'animate-rising-wave' : ''}`}
-            style={{ background: waveGradient }}
-          />
-        </div>
+<div 
+  className="pointer-events-none absolute inset-0 z-0 overflow-hidden transition-opacity duration-1000 ease-in-out"
+  style={{
+    opacity: showGlow ? 1 : 0,
+    '--glow-color': glowColor,
+  } as React.CSSProperties}
+>
+  {showGlow && (
+    <>
+      {/* Nebula 1: Top-Right */}
+      <div 
+        className="hud-nebula-blob animate-nebula-1 top-[-35%] right-[-35%] w-[110%] h-[110%]"
+        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)' }}
+      />
+      {/* Nebula 2: Bottom-Left */}
+      <div 
+        className="hud-nebula-blob animate-nebula-2 bottom-[-35%] left-[-35%] w-[110%] h-[110%]"
+        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)' }}
+      />
+      {/* Nebula 3: Center-Slicing Diagonal */}
+      <div 
+        className="hud-nebula-blob animate-nebula-3 top-[10%] left-[10%] w-[100%] h-[100%]"
+        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.08) 45%, rgba(var(--glow-color), 0.02) 75%, rgba(0,0,0,0) 100%)' }}
+      />
+    </>
+  )}
+</div>
         <header className="relative z-10 mb-6 flex w-full items-center justify-between border-b border-[color:var(--hud-border-color)] pb-4">
           <div className="flex items-baseline">
             <h1

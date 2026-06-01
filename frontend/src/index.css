@@ -88,3 +88,43 @@
   will-change: transform;
   backface-visibility: hidden;
 }
+
+@keyframes nebulaAlternating1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  5% { transform: translate3d(5%, -5%, 0) scale(1.05); opacity: 0.75; }
+  25% { transform: translate3d(-5%, 5%, 0) scale(0.95); opacity: 0.75; }
+  30% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  40% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+  90% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+}
+@keyframes nebulaAlternating2 {
+  0%, 23% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+  33% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  38% { transform: translate3d(-5%, 5%, 0) scale(1.08); opacity: 0.75; }
+  58% { transform: translate3d(5%, -5%, 0) scale(0.92); opacity: 0.75; }
+  63% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  73% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+}
+@keyframes nebulaAlternating3 {
+  0% { transform: translate3d(-40%, -40%, 0) scale(0.8); opacity: 0.35; }
+  7% { transform: translate3d(-40%, -40%, 0) scale(0.8); opacity: 0; }
+  56% { transform: translate3d(40%, 40%, 0) scale(0.8); opacity: 0; }
+  66% { transform: translate3d(30%, 30%, 0) scale(0.9); opacity: 0.65; }
+  78% { transform: translate3d(0, 0, 0) scale(1.1); opacity: 0.65; }
+  90% { transform: translate3d(-30%, -30%, 0) scale(0.9); opacity: 0.65; }
+  100% { transform: translate3d(-40%, -40%, 0) scale(0.8); opacity: 0.35; }
+}
+
+.animate-nebula-1 { animation: nebulaAlternating1 24s ease-in-out infinite; }
+.animate-nebula-2 { animation: nebulaAlternating2 24s infinite; }
+.animate-nebula-3 { animation: nebulaAlternating3 24s infinite; }
+
+.hud-nebula-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(160px); /* Increased blur for a softer, more integrated look */
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+}
