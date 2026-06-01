@@ -122,20 +122,24 @@ def launch_background_servers() -> tuple[
     return uvicorn_proc, static_proc
 
 
-def launch_kiosk_browser(url: str) -> None:
+def launch_kiosk_browser(url: str) -> subprocess.Popen[bytes] | None:
     """
     Open the frontend in an application window (no tabs or URL bar) when possible.
 
     On Windows, tries ``CUSTOM_BROWSER_PATH`` from the environment first (if
     set), then Chrome or Edge with ``--app=``. Falls back to the default handler
     via ``webbrowser`` if no suitable browser binary is found.
+
+    Returns:
+        The browser subprocess handle when launched via Popen, else ``None`` when
+        the ``webbrowser`` fallback is used.
     """
     app_flag = f"--app={url}"
 
     if sys.platform == "win32":
         for browser_bin in _resolve_windows_browser_bins():
             if browser_bin.is_file():
-                subprocess.Popen(
+                browser_proc = subprocess.Popen(
                     [str(browser_bin), app_flag],
                     cwd=ROOT_DIR,
                     env=_get_sanitized_env(),
@@ -144,11 +148,12 @@ def launch_kiosk_browser(url: str) -> None:
                     stderr=subprocess.DEVNULL,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
-                return
+                return browser_proc
 
     import webbrowser
 
     webbrowser.open(url)
+    return None
 
 
 def _terminate_process(proc: subprocess.Popen[bytes]) -> None:
@@ -211,26 +216,37 @@ def main() -> None:
     if not api_ready:
         print("[LAUNCHER] WARNING: API timed out. Launching browser anyway...", flush=True)
 
-    launch_kiosk_browser(FRONTEND_URL)
+    browser_proc = launch_kiosk_browser(FRONTEND_URL)
 
-    print(
-        "APEX local services are running. Press Ctrl+C to stop uvicorn and "
-        "http.server.",
-        flush=True,
-    )
     try:
-        while True:
-            if uvicorn_proc.poll() is not None:
-                print("uvicorn exited unexpectedly.", file=sys.stderr, flush=True)
-                break
-            if static_proc.poll() is not None:
-                print(
-                    "Static http.server exited unexpectedly.",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                break
-            time.sleep(1)
+        if browser_proc is not None:
+            browser_proc.wait()
+            print(
+                "[LAUNCHER] Browser window closed. Spinning down background services...",
+                flush=True,
+            )
+            if uvicorn_proc.poll() is None:
+                uvicorn_proc.terminate()
+                uvicorn_proc.wait()
+            print("[LAUNCHER] APEX shutdown complete.", flush=True)
+        else:
+            print(
+                "APEX local services are running. Press Ctrl+C to stop uvicorn and "
+                "http.server.",
+                flush=True,
+            )
+            while True:
+                if uvicorn_proc.poll() is not None:
+                    print("uvicorn exited unexpectedly.", file=sys.stderr, flush=True)
+                    break
+                if static_proc.poll() is not None:
+                    print(
+                        "Static http.server exited unexpectedly.",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    break
+                time.sleep(1)
     except KeyboardInterrupt:
         pass
     finally:
