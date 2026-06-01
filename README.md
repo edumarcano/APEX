@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## How It Works
 
-`launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes, then polls `GET /` on the API up to 30 times at 500 ms intervals before opening the frontend in a kiosk window. The browser does not launch until the health check returns `200`. `atexit` hooks and signal handlers bring both processes down on exit.
+`launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes and polls `GET /` on the API up to 30 times at 500 ms intervals. The browser kiosk window opens only after that health check returns `200`. When the browser window is closed, `launcher.py` detects the exit and terminates uvicorn automatically. `atexit` hooks and signal handlers are also registered for `Ctrl+C` and `SIGTERM`.
 
 With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST` to `/api/v1/trigger` kicks off a four-stage pipeline:
 
@@ -84,7 +84,7 @@ When `DEV_MODE=true`, both `gmail_client.py` and `calendar_client.py` apply acti
 Raw data from all the connectors is passed straight to Gemini 2.5 Flash via the Google GenAI SDK. `brain.py` has no persona baked into it. It pulls `SYSTEM_PROMPT` from `config.py` and prepends it to the request, so the voice is entirely driven by `config.json`. Pipe (`|`) delimiters separate each source in the raw string to keep the model's context clean. If the API call fails for any reason, it catches the exception and falls back to reading the raw data directly so the run never crashes.
 
 **Persistent reminders and session logging (`database.py`)**  
-A local SQLite database tracks user reminders and run timestamps. The run log is what the scanner queries to enforce the 1-hour cooldown. Reminder management is handled through three dedicated API endpoints: `GET /api/v1/reminders` returns all unread records as structured `ReminderRecord` objects, `POST /api/v1/reminders` persists a new reminder (raw input is run through `clean_for_tts` to strip markdown and non-ASCII characters before it is saved, and the endpoint returns the inserted row ID), and `POST /api/v1/reminders/read` marks one or more reminders read by row ID. Dismissal is an explicit HUD action.
+A local SQLite database tracks reminders and run timestamps. The run log is what the scanner checks to enforce the 1-hour cooldown. Three API endpoints handle reminder management: `GET /api/v1/reminders` returns all unread records as `ReminderRecord` objects, `POST /api/v1/reminders` saves a new reminder after stripping markdown and non-ASCII characters from the input text and returns the new row ID, and `POST /api/v1/reminders/read` marks one or more reminders as read by row ID. Dismissal is always an explicit action from the HUD.
 
 **Unified development mode (`DEV_MODE`)**  
 Set `DEV_MODE=true` in `.env` for local work. Bypasses Wi-Fi SSID validation, AC power check, and the 1-hour cooldown; skips live Gemini, Gmail, and Calendar; does not call `database.log_run()` or mark reminders read (`is_read` stays `0`). Weather, sports, news, SQLite, FastAPI, and the kiosk launcher are unchanged.
@@ -93,7 +93,7 @@ Set `DEV_MODE=true` in `.env` for local work. Bypasses Wi-Fi SSID validation, AC
 Controls whether hardware and cooldown checks run under a production setup (`DEV_MODE=false`). Defaults to `true` when the key is absent, so the gate is always enforced unless explicitly disabled. Set to `false` to bypass the Wi-Fi SSID check, AC power check, and 1-hour cooldown while keeping all live API clients active. Useful for running APEX from an untrusted network or without wall power without switching to `DEV_MODE`.
 
 **Web HUD (`frontend/`)**  
-A React/TypeScript application bundled with Vite. On mount, the `useApexData` hook fires a `POST` to `/api/v1/trigger` and manages the full `idle | loading | success | error` lifecycle in a single piece of state. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail along with staggered opacity on the Weather and Schedule cards. Full detail on that flow is in the **FastAPI Pipeline Telemetry & Polling** section. After success, the center panel renders the briefing text with a looping pulse animation. The `ReminderTerminal` component provides inline reminder input and submission, calling `POST /api/v1/reminders` and triggering a best-effort sync via `refreshReminders` after each successful write. `ReminderListRow` handles per-item display and dismissal: each row fires `POST /api/v1/reminders/read`, applies optimistic local state removal, and rolls back on API failure. The `activeReminders` field on `ApexDataState` holds the structured list of unread `ReminderRecord` objects. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` at the project root, which `http.server` serves directly.
+A React/TypeScript app built with Vite. On mount, `useApexData` fires a `POST` to `/api/v1/trigger` and tracks the full `idle > loading > success > error` lifecycle in a single state object. While that request is open, `DiagnosticProgress` polls `/api/v1/status` every 500 ms and drives a four-step progress rail with staggered opacity on the Weather and Schedule cards. The full polling flow is documented in the **FastAPI Pipeline Telemetry & Polling** section. After a successful run the center panel renders the briefing text with a looping pulse animation. `ReminderTerminal` handles reminder input and submission, calling `POST /api/v1/reminders` and refreshing the list after each successful write. `ReminderListRow` renders each unread reminder and handles dismissal by calling `POST /api/v1/reminders/read`, removing the item from local state immediately and putting it back if the server call fails. Unread reminders are stored as a list of `ReminderRecord` objects in `activeReminders` on `ApexDataState`. The calendar connector is the sole data source for the schedule panel. Layout is a Tailwind CSS bento grid that collapses to a single column on smaller viewports. Production output is compiled by Vite into `/dist` and served by `http.server`.
 
 **Atmospheric Theme Provider (`AtmosphericThemeContext.tsx`)**  
 A React context provider that reads the raw weather string from `useApexData` and scans it for exact substring tokens to update CSS variables on `document.documentElement`. The scan runs in priority order on each data change and applies the matching theme profile:
@@ -295,7 +295,7 @@ The recommended way to start is with the orchestrator:
 python launcher.py
 ```
 
-This starts uvicorn and `http.server` in the background, waits for both to come up, then opens the frontend in a kiosk window automatically. `Ctrl+C` shuts both down.
+This starts uvicorn and `http.server` in the background, waits for the API to pass a health check, then opens the frontend in a kiosk window. Closing the browser window shuts everything down automatically. `Ctrl+C` also works.
 
 To run the processes separately:
 
@@ -386,13 +386,13 @@ POST http://127.0.0.1:8000/api/v1/reminders/read
 ]
 ```
 
-`POST /api/v1/reminders` accepts a JSON body with a `text` field (1–4096 characters). The raw input is run through `clean_for_tts` to strip markdown syntax and non-ASCII characters before the record is written. Returns the inserted row ID:
+`POST /api/v1/reminders` accepts a JSON body with a `text` field (1 to 4096 characters). The input is cleaned of markdown syntax and non-ASCII characters before being written to the database. Returns the new row ID:
 
 ```json
 { "id": 3 }
 ```
 
-`POST /api/v1/reminders/read` accepts a list of reminder row IDs and marks each one as read. The HUD fires this on explicit per-item dismissal and applies an optimistic local removal that rolls back if the call fails:
+`POST /api/v1/reminders/read` accepts a list of row IDs and marks each one as read. The HUD calls this when a reminder is dismissed and removes the item from local state immediately, putting it back if the call fails:
 
 ```json
 { "ids": [1, 2] }
@@ -448,7 +448,7 @@ apex/
 ├── frontend/                # React/TypeScript source — compiled by Vite
 │   ├── src/
 │   │   ├── hooks/
-│   │   │   └── useApexData.ts   # Central data hook — trigger, lifecycle state, telemetry distribution; VTE string parser; reminder CRUD and optimistic state
+│   │   │   └── useApexData.ts   # Central data hook: trigger, lifecycle state, telemetry, VTE parser, reminder management
 │   │   ├── types/
 │   │   │   └── telemetry.ts     # TelemetryPayload, AtmosphericTheme, AtmosphericCondition type definitions
 │   │   ├── context/
@@ -456,8 +456,8 @@ apex/
 │   │   ├── components/
 │   │   │   ├── TelemetryCard.tsx       # Shared card frame + Variable Typography Engine interpolation
 │   │   │   ├── DiagnosticProgress.tsx  # 500ms status poller + four-step progress rail
-│   │   │   ├── ReminderTerminal.tsx    # Inline reminder input and submission — calls POST /api/v1/reminders
-│   │   │   └── ReminderListRow.tsx     # Per-item reminder display and dismissal — calls POST /api/v1/reminders/read
+│   │   │   ├── ReminderTerminal.tsx    # Reminder input and submission (POST /api/v1/reminders)
+│   │   │   └── ReminderListRow.tsx     # Per-item reminder display and dismissal (POST /api/v1/reminders/read)
 │   │   ├── App.tsx              # Root layout; step-driven card opacity
 │   │   └── main.tsx             # Vite entry point
 │   ├── index.html               # Vite HTML shell
@@ -465,7 +465,7 @@ apex/
 │   ├── vite.config.ts
 │   └── tsconfig.json
 ├── dist/                    # Compiled Vite build output — served by http.server in production
-├── launcher.py          # Master orchestrator — starts uvicorn and http.server in parallel, opens browser kiosk
+├── launcher.py          # Master orchestrator: starts uvicorn and http.server, polls for API readiness, opens browser kiosk, shuts down on window close
 ├── config.json          # Persona prompt, feature toggles, and TTS engine settings (user preferences, committed)
 ├── apex_memory.db       # Auto-generated on first run
 ├── credentials.json     # Google Cloud OAuth client ID for Gmail/Calendar (BYOK - not committed)
