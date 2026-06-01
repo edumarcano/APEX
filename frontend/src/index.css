@@ -58,3 +58,18 @@
   background-clip: text;
   animation: textShimmer 3s linear infinite;
 }
+
+.briefing-curtain {
+  clip-path: inset(0 0 100% 0);
+  transform: translate3d(0, 0.5rem, 0);
+  will-change: clip-path, transform;
+  backface-visibility: hidden;
+  transition:
+    clip-path 1000ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 1000ms cubic-bezier(0.4, 0, 0.2, 1) 120ms;
+}
+
+.briefing-curtain--revealed {
+  clip-path: inset(0 0 0 0);
+  transform: translate3d(0, 0, 0);
+}

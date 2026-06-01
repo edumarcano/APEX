@@ -1,26 +1,12 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  type ReactElement,
-} from 'react'
+import { useEffect, useId, useState, type ReactElement } from 'react'
 
 import type { SystemState } from '../types/telemetry'
-
-const WORD_REVEAL_INTERVAL_MS = 72
 
 export type BriefingPanelProps = {
   briefing: string
   status: SystemState
   error: string | null
   isLoading: boolean
-}
-
-function wordsFromPayload(source: string): string[] {
-  const trimmed = source.trim()
-  if (trimmed.length === 0) return []
-  return trimmed.split(/\s+/).filter((segment) => segment.length > 0)
 }
 
 function BriefingStream({
@@ -30,34 +16,24 @@ function BriefingStream({
   isLoading,
 }: BriefingPanelProps): ReactElement {
   const labelId = useId()
-  const words = useMemo(() => wordsFromPayload(briefing), [briefing])
-  const [visibleCount, setVisibleCount] = useState(0)
-
-  const visibleText = useMemo(
-    () => words.slice(0, visibleCount).join(' '),
-    [words, visibleCount],
-  )
+  const rawText = briefing.trim()
+  const [revealed, setRevealed] = useState(false)
 
   useEffect(() => {
-    if (words.length === 0) {
+    if (status !== 'success' || rawText.length === 0) {
+      setRevealed(false)
       return undefined
     }
 
-    let revealed = 0
-    const intervalId = window.setInterval(() => {
-      revealed += 1
-      setVisibleCount(revealed)
-      if (revealed >= words.length) {
-        window.clearInterval(intervalId)
-      }
-    }, WORD_REVEAL_INTERVAL_MS)
+    setRevealed(false)
+    const frameId = window.requestAnimationFrame(() => {
+      setRevealed(true)
+    })
 
     return () => {
-      window.clearInterval(intervalId)
+      window.cancelAnimationFrame(frameId)
     }
-  }, [words])
-
-  const showCaret = visibleCount < words.length
+  }, [status, rawText])
 
   if (isLoading || status === 'idle') {
     return (
@@ -98,7 +74,7 @@ function BriefingStream({
     )
   }
 
-  if (words.length === 0) {
+  if (rawText.length === 0) {
     return (
       <section
         className="rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]"
@@ -129,17 +105,11 @@ function BriefingStream({
         Briefing
       </h2>
       <div
-        className="min-h-[4.5rem] whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]"
+        className={`briefing-curtain min-h-[4.5rem] whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]${revealed ? ' briefing-curtain--revealed' : ''}`}
         aria-live="polite"
-        aria-atomic="false"
+        aria-atomic="true"
       >
-        {visibleText}
-        {showCaret ? (
-          <span
-            className="ml-0.5 inline-block h-4 w-px translate-y-0.5 bg-[color:var(--hud-accent)] opacity-60 animate-pulse"
-            aria-hidden
-          />
-        ) : null}
+        {rawText}
       </div>
     </section>
   )
