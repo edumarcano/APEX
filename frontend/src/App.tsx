@@ -72,6 +72,23 @@ export default function App(): ReactElement {
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
+        <header className="mb-6 flex w-full items-center justify-between border-b border-[color:var(--hud-border-color)] pb-4">
+          <div className="flex items-baseline">
+            <h1
+              className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
+                isPipelinePolling
+                  ? 'animate-shimmer'
+                  : 'text-[color:var(--hud-accent)]'
+              }`}
+            >
+              APEX
+            </h1>
+            <span className="mb-1 ml-3 hidden self-end text-xs uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
+              AUTOMATED PERSONAL ENVIRONMENT XYLEM
+            </span>
+          </div>
+          <div className="flex" />
+        </header>
         <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           <TelemetryCard
             title="Weather"
