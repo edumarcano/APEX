@@ -1,26 +1,26 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  type ReactElement,
-} from 'react'
+import { useEffect, useId, useState, type ReactElement } from 'react'
 
 import type { SystemState } from '../types/telemetry'
-
-const WORD_REVEAL_INTERVAL_MS = 72
 
 export type BriefingPanelProps = {
   briefing: string
   status: SystemState
   error: string | null
   isLoading: boolean
+  isSpeaking: boolean
 }
 
-function wordsFromPayload(source: string): string[] {
-  const trimmed = source.trim()
-  if (trimmed.length === 0) return []
-  return trimmed.split(/\s+/).filter((segment) => segment.length > 0)
+function sectionShellClassName(glowActive: boolean, extra = ''): string {
+  return [
+    'rounded-2xl border bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
+    'transition-all duration-1000 ease-in-out',
+    glowActive
+      ? 'border-[color:var(--hud-accent)] shadow-[0_0_24px_-4px_var(--hud-accent)]'
+      : 'border-[color:var(--hud-border-color)] shadow-none',
+    extra,
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function BriefingStream({
@@ -28,41 +28,51 @@ function BriefingStream({
   status,
   error,
   isLoading,
+  isSpeaking,
 }: BriefingPanelProps): ReactElement {
   const labelId = useId()
-  const words = useMemo(() => wordsFromPayload(briefing), [briefing])
-  const [visibleCount, setVisibleCount] = useState(0)
-
-  const visibleText = useMemo(
-    () => words.slice(0, visibleCount).join(' '),
-    [words, visibleCount],
-  )
+  const rawText = briefing.trim()
+  const [revealed, setRevealed] = useState(false)
+  const [glowActive, setGlowActive] = useState(false)
 
   useEffect(() => {
-    if (words.length === 0) {
+    if (status !== 'success' || rawText.length === 0) {
+      setRevealed(false)
       return undefined
     }
 
-    let revealed = 0
-    const intervalId = window.setInterval(() => {
-      revealed += 1
-      setVisibleCount(revealed)
-      if (revealed >= words.length) {
-        window.clearInterval(intervalId)
-      }
-    }, WORD_REVEAL_INTERVAL_MS)
+    setRevealed(false)
+    const frameId = window.requestAnimationFrame(() => {
+      setRevealed(true)
+    })
 
     return () => {
-      window.clearInterval(intervalId)
+      window.cancelAnimationFrame(frameId)
     }
-  }, [words])
+  }, [status, rawText])
 
-  const showCaret = visibleCount < words.length
+  useEffect(() => {
+    if (!isSpeaking) {
+      setGlowActive(false)
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setGlowActive(true)
+    }, 50)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isSpeaking])
 
   if (isLoading || status === 'idle') {
     return (
       <section
-        className="flex h-full min-h-56 flex-col justify-center rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)] md:min-h-72"
+        className={sectionShellClassName(
+          glowActive,
+          'flex h-full min-h-56 flex-col justify-center md:min-h-72',
+        )}
         aria-labelledby={labelId}
         aria-busy="true"
       >
@@ -82,7 +92,10 @@ function BriefingStream({
   if (status === 'error') {
     return (
       <section
-        className="flex h-full min-h-56 flex-col justify-center rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)] md:min-h-72"
+        className={sectionShellClassName(
+          glowActive,
+          'flex h-full min-h-56 flex-col justify-center md:min-h-72',
+        )}
         aria-labelledby={labelId}
       >
         <h2
@@ -98,10 +111,10 @@ function BriefingStream({
     )
   }
 
-  if (words.length === 0) {
+  if (rawText.length === 0) {
     return (
       <section
-        className="rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]"
+        className={sectionShellClassName(glowActive)}
         aria-labelledby={labelId}
       >
         <h2
@@ -119,7 +132,7 @@ function BriefingStream({
 
   return (
     <section
-      className="rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]"
+      className={sectionShellClassName(glowActive)}
       aria-labelledby={labelId}
     >
       <h2
@@ -129,17 +142,13 @@ function BriefingStream({
         Briefing
       </h2>
       <div
-        className="min-h-[4.5rem] whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]"
+        className={`briefing-curtain min-h-[4.5rem]${revealed ? ' briefing-curtain--revealed' : ''}`}
         aria-live="polite"
-        aria-atomic="false"
+        aria-atomic="true"
       >
-        {visibleText}
-        {showCaret ? (
-          <span
-            className="ml-0.5 inline-block h-4 w-px translate-y-0.5 bg-[color:var(--hud-accent)] opacity-60 animate-pulse"
-            aria-hidden
-          />
-        ) : null}
+        <span className="block whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+          {rawText}
+        </span>
       </div>
     </section>
   )

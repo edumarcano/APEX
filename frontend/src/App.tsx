@@ -1,5 +1,5 @@
 import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
-import { type ReactElement } from 'react'
+import { useMemo, type CSSProperties, type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -27,6 +27,40 @@ export default function App(): ReactElement {
   } = apexData
 
   const activeStep = pipelineState?.step ?? null
+  const isProcessing =
+    status === 'loading' ||
+    (activeStep !== null && activeStep >= 1 && activeStep <= 3)
+  const isSpeaking = isPipelinePolling && activeStep === 4
+  const showGlow = isProcessing || isSpeaking
+
+  const glowColor = isProcessing
+    ? '16, 185, 129' // Emerald Green for Stages 1–3
+    : isSpeaking
+      ? '234, 179, 8' // Amber Gold for Stage 4
+      : '0, 0, 0'
+
+  const weatherCardStyle = useMemo((): CSSProperties | undefined => {
+    const weatherText = data?.weather ?? ''
+
+    if (weatherText.includes('Thunderstorm')) {
+      return {
+        '--hud-panel-bg': '#1a202c',
+        '--hud-border-color': '#0e7490',
+        '--hud-accent': '#06b6d4',
+      } as CSSProperties
+    }
+
+    if (weatherText.includes('Clear')) {
+      return {
+        '--hud-panel-bg': '#020617',
+        '--hud-border-color': '#854d0e',
+        '--hud-accent': '#eab308',
+      } as CSSProperties
+    }
+
+    return undefined
+  }, [data?.weather])
+
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
 
@@ -83,8 +117,35 @@ export default function App(): ReactElement {
 
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
-      <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
-        <header className="mb-6 flex w-full items-center justify-between border-b border-[color:var(--hud-border-color)] pb-4">
+      <main className="relative min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6">
+<div 
+  className="pointer-events-none absolute inset-0 z-0 overflow-hidden transition-opacity duration-1000 ease-in-out"
+  style={{
+    opacity: showGlow ? 1 : 0,
+    '--glow-color': glowColor,
+  } as React.CSSProperties}
+>
+  {showGlow && (
+    <>
+      {/* Nebula 1: Top-Right */}
+      <div 
+        className="hud-nebula-blob animate-nebula-1 top-[-35%] right-[-35%] w-[110%] h-[110%]"
+        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)' }}
+      />
+      {/* Nebula 2: Bottom-Left */}
+      <div 
+        className="hud-nebula-blob animate-nebula-2 bottom-[-35%] left-[-35%] w-[110%] h-[110%]"
+        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)' }}
+      />
+      {/* Nebula 3: Center-Slicing Diagonal */}
+      <div 
+        className="hud-nebula-blob animate-nebula-3 top-[10%] left-[10%] w-[100%] h-[100%]"
+        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.08) 45%, rgba(var(--glow-color), 0.02) 75%, rgba(0,0,0,0) 100%)' }}
+      />
+    </>
+  )}
+</div>
+        <header className="relative z-10 mb-6 flex w-full items-center justify-between border-b border-[color:var(--hud-border-color)] pb-4">
           <div className="flex items-baseline">
             <h1
               className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
@@ -107,11 +168,12 @@ export default function App(): ReactElement {
             {headerTicker.text}
           </p>
         </header>
-        <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
+        <div className="relative z-10 mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           <TelemetryCard
             title="Weather"
             icon={CloudSun}
             primaryTemperatureF={primaryTemperatureF}
+            style={weatherCardStyle}
             className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
           >
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
@@ -125,6 +187,7 @@ export default function App(): ReactElement {
               status={status}
               error={error}
               isLoading={isTriggerLoading}
+              isSpeaking={isSpeaking}
             />
           </div>
 

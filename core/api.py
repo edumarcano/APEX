@@ -131,6 +131,14 @@ class PipelineState:
 global_pipeline_state = PipelineState()
 
 
+def _speak_and_cleanup(text: str) -> None:
+    """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
+    try:
+        speaker.speak(text)
+    finally:
+        global_pipeline_state.reset()
+
+
 class RuntimeMetadata(BaseModel):
     dev_mode_active: bool = Field(
         description="Whether unified DEV_MODE is active for this run.",
@@ -286,6 +294,7 @@ def trigger_briefing() -> BriefingResponse:
 
     Mirrors main.start_apex execution order.
     """
+    voice_thread_started = False
     global_pipeline_state.update(1, "GATE")
 
     if not scanner.should_run():
@@ -408,10 +417,11 @@ def trigger_briefing() -> BriefingResponse:
 
         global_pipeline_state.update(4, "DELIVERY")
         voice_thread = threading.Thread(
-            target=speaker.speak,
+            target=_speak_and_cleanup,
             args=(final_briefing,),
         )
         voice_thread.start()
+        voice_thread_started = True
 
         if dev_mode:
             synthesis_strategy = DEV_AI_SYNTHESIS
@@ -438,7 +448,8 @@ def trigger_briefing() -> BriefingResponse:
             ),
         )
     finally:
-        global_pipeline_state.reset()
+        if not voice_thread_started:
+            global_pipeline_state.reset()
 
 
 @app.get("/api/v1/reminders", response_model=list[ReminderRecord])

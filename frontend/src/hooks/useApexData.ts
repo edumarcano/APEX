@@ -11,7 +11,6 @@ const API_BASE = 'http://127.0.0.1:8000'
 const STATUS_ENDPOINT = `${API_BASE}/api/v1/status`
 const REMINDERS_ENDPOINT = `${API_BASE}/api/v1/reminders`
 const REMINDERS_READ_ENDPOINT = `${API_BASE}/api/v1/reminders/read`
-const PIPELINE_COMPLETE_STEP = 4
 
 export type { ApexDataState } from '../types/telemetry'
 
@@ -373,15 +372,11 @@ export function useApexData(): UseApexDataReturn {
       return undefined
     }
 
-    const pipelineComplete =
-      state.pipelineState != null &&
-      state.pipelineState.step >= PIPELINE_COMPLETE_STEP
-
-    if (pipelineComplete) {
-      setState((prev) => ({
-        ...prev,
-        isPipelinePolling: false,
-      }))
+    if (
+      state.status === 'success' &&
+      state.pipelineState === null &&
+      !state.isPipelinePolling
+    ) {
       return undefined
     }
 
@@ -397,7 +392,7 @@ export function useApexData(): UseApexDataReturn {
           setState((prev) => ({
             ...prev,
             pipelineState: null,
-            isPipelinePolling: prev.status === 'loading',
+            isPipelinePolling: false,
           }))
           return
         }
@@ -407,14 +402,12 @@ export function useApexData(): UseApexDataReturn {
         }
 
         const payload = (await response.json()) as PipelineState
-        const pipelineComplete = payload.step >= PIPELINE_COMPLETE_STEP
 
         setState((prev) => ({
           ...prev,
           pipelineState: payload,
           isPipelinePolling:
-            prev.status === 'loading' ||
-            (!pipelineComplete && prev.status === 'success'),
+            prev.status === 'loading' || prev.status === 'success',
         }))
       } catch {
         if (!cancelled) {
