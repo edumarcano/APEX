@@ -1,8 +1,7 @@
-import { Activity, Calendar, CheckSquare, CloudSun, Flag, Terminal } from 'lucide-react'
+import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
 import { type ReactElement } from 'react'
 
 import { BriefingPanel } from './components/BriefingPanel'
-import { DiagnosticProgress } from './components/DiagnosticProgress'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -67,11 +66,47 @@ export default function App(): ReactElement {
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
 
+  const headerTicker = (() => {
+    if (status === 'error') {
+      return { text: 'SYSTEM FAULT', className: 'text-red-500 animate-pulse' }
+    }
+    if (status === 'loading' && pipelineState !== null) {
+      return {
+        text: pipelineState.label,
+        className: 'text-[color:var(--hud-accent)]',
+      }
+    }
+    return { text: 'SYSTEM OPERATIONAL', className: 'text-emerald-500 opacity-80' }
+  })()
+
   const centerMinHeight = 'min-h-56 md:min-h-72'
 
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main className="min-h-dvh w-full bg-[var(--hud-bg)] p-4 md:p-6">
+        <header className="mb-6 flex w-full items-center justify-between border-b border-[color:var(--hud-border-color)] pb-4">
+          <div className="flex items-baseline">
+            <h1
+              className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
+                isPipelinePolling
+                  ? 'animate-shimmer'
+                  : 'text-[color:var(--hud-accent)]'
+              }`}
+            >
+              APEX
+            </h1>
+            <span className="mb-1 ml-3 hidden self-end text-xs uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
+              AUTOMATED PERSONAL ENVIRONMENT XYLEM
+            </span>
+          </div>
+          <p
+            className={`m-0 font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
+            aria-live="polite"
+            data-slot="header-status-ticker"
+          >
+            {headerTicker.text}
+          </p>
+        </header>
         <div className="mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           <TelemetryCard
             title="Weather"
@@ -133,21 +168,7 @@ export default function App(): ReactElement {
                 ))}
               </ul>
             )}
-          </TelemetryCard>
-
-          <TelemetryCard
-            title="Pipeline Progress"
-            icon={Terminal}
-            className="border-2 border-[color:var(--hud-accent)] md:col-span-1"
-            role="region"
-            aria-label="Pipeline progress"
-            data-slot="pipeline-progress-card"
-          >
-            <DiagnosticProgress
-              pipelineState={pipelineState}
-              isPipelinePolling={isPipelinePolling}
-              isTriggerLoading={isTriggerLoading}
-            />
+            <ReminderTerminal refreshReminders={refreshReminders} />
           </TelemetryCard>
 
           <TelemetryCard
@@ -161,7 +182,6 @@ export default function App(): ReactElement {
             <SystemDiagnostics />
           </TelemetryCard>
         </div>
-        <ReminderTerminal refreshReminders={refreshReminders} />
       </main>
     </AtmosphericThemeProvider>
   )
