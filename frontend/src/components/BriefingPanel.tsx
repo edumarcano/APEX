@@ -10,6 +10,19 @@ export type BriefingPanelProps = {
   isSpeaking: boolean
 }
 
+function sectionShellClassName(glowActive: boolean, extra = ''): string {
+  return [
+    'rounded-2xl border bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
+    'transition-all duration-1000 ease-in-out',
+    glowActive
+      ? 'border-[color:var(--hud-accent)] shadow-[0_0_24px_-4px_var(--hud-accent)]'
+      : 'border-[color:var(--hud-border-color)] shadow-none',
+    extra,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 function BriefingStream({
   briefing,
   status,
@@ -20,17 +33,15 @@ function BriefingStream({
   const labelId = useId()
   const rawText = briefing.trim()
   const [revealed, setRevealed] = useState(false)
-  const [curtainComplete, setCurtainComplete] = useState(false)
+  const [glowActive, setGlowActive] = useState(false)
 
   useEffect(() => {
     if (status !== 'success' || rawText.length === 0) {
       setRevealed(false)
-      setCurtainComplete(false)
       return undefined
     }
 
     setRevealed(false)
-    setCurtainComplete(false)
     const frameId = window.requestAnimationFrame(() => {
       setRevealed(true)
     })
@@ -40,20 +51,28 @@ function BriefingStream({
     }
   }, [status, rawText])
 
-  const handleCurtainTransitionEnd = (
-    event: React.TransitionEvent<HTMLDivElement>,
-  ): void => {
-    if (event.propertyName !== 'clip-path' || !revealed) {
-      return
+  useEffect(() => {
+    if (!isSpeaking) {
+      setGlowActive(false)
+      return undefined
     }
 
-    setCurtainComplete(true)
-  }
+    const timeoutId = window.setTimeout(() => {
+      setGlowActive(true)
+    }, 50)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isSpeaking])
 
   if (isLoading || status === 'idle') {
     return (
       <section
-        className="flex h-full min-h-56 flex-col justify-center rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)] md:min-h-72"
+        className={sectionShellClassName(
+          glowActive,
+          'flex h-full min-h-56 flex-col justify-center md:min-h-72',
+        )}
         aria-labelledby={labelId}
         aria-busy="true"
       >
@@ -73,7 +92,10 @@ function BriefingStream({
   if (status === 'error') {
     return (
       <section
-        className="flex h-full min-h-56 flex-col justify-center rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)] md:min-h-72"
+        className={sectionShellClassName(
+          glowActive,
+          'flex h-full min-h-56 flex-col justify-center md:min-h-72',
+        )}
         aria-labelledby={labelId}
       >
         <h2
@@ -92,7 +114,7 @@ function BriefingStream({
   if (rawText.length === 0) {
     return (
       <section
-        className="rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]"
+        className={sectionShellClassName(glowActive)}
         aria-labelledby={labelId}
       >
         <h2
@@ -110,7 +132,7 @@ function BriefingStream({
 
   return (
     <section
-      className="rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]"
+      className={sectionShellClassName(glowActive)}
       aria-labelledby={labelId}
     >
       <h2
@@ -121,13 +143,10 @@ function BriefingStream({
       </h2>
       <div
         className={`briefing-curtain min-h-[4.5rem]${revealed ? ' briefing-curtain--revealed' : ''}`}
-        onTransitionEnd={handleCurtainTransitionEnd}
         aria-live="polite"
         aria-atomic="true"
       >
-        <span
-          className={`block whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]${curtainComplete && isSpeaking ? ' animate-speech-pulse' : ''}`}
-        >
+        <span className="block whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
           {rawText}
         </span>
       </div>
