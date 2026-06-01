@@ -128,3 +128,31 @@
   mix-blend-mode: screen;
   will-change: transform, opacity;
 }
+
+@keyframes gyroClockwise {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gyroCounter {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-gyro-clockwise {
+  animation: gyroClockwise 4s linear infinite;
+  will-change: transform;
+}
+
+.animate-gyro-counter {
+  animation: gyroCounter 2s linear infinite;
+  will-change: transform;
+}

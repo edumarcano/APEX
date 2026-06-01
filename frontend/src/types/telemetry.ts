@@ -2,6 +2,7 @@ export interface PipelineState {
   step: number
   label: string
   timestamp: string
+  is_speaking: boolean
 }
 
 export interface SystemDiagnostics {
@@ -43,6 +44,7 @@ export interface ApexDataState {
   error: string | null
   pipelineState: PipelineState | null
   isPipelinePolling: boolean
+  isSpeaking: boolean
   activeReminders: ActiveReminder[]
 }
 
