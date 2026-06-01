@@ -168,6 +168,7 @@ export default function App(): ReactElement {
                 ))}
               </ul>
             )}
+            <ReminderTerminal refreshReminders={refreshReminders} />
           </TelemetryCard>
 
           <TelemetryCard
@@ -181,7 +182,6 @@ export default function App(): ReactElement {
             <SystemDiagnostics />
           </TelemetryCard>
         </div>
-        <ReminderTerminal refreshReminders={refreshReminders} />
       </main>
     </AtmosphericThemeProvider>
   )
