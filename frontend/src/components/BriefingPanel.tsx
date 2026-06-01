@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactElement } from 'react'
 
 import type { SystemState } from '../types/telemetry'
+import { VocalOrb } from './VocalOrb'
 
 export type BriefingPanelProps = {
   briefing: string
@@ -141,6 +142,9 @@ function BriefingStream({
       >
         Briefing
       </h2>
+      <div className="mb-3 flex h-24 w-full shrink-0 items-center justify-center">
+        <VocalOrb isSpeaking={isSpeaking} />
+      </div>
       <div
         className={`briefing-curtain min-h-[4.5rem]${revealed ? ' briefing-curtain--revealed' : ''}`}
         aria-live="polite"
