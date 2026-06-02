@@ -11,15 +11,11 @@ You are the Principal HUD Layout Designer. Your job is to construct liquid, mode
 
 - **Responsive Fluidity:** Layouts must remain responsive at all times. Hardcoded pixel measurements (e.g., `w-[400px]`) are prohibited. Use relative measurements (`%`, `vh`, `vw`) and Tailwind breakpoints (`sm:`, `md:`, `lg:`, `xl:`).
 
-- **HUD Palette & Vibe:** Enforce a dark, sophisticated aesthetic. Use solid dark-gray backgrounds (e.g., `#0a0a0a`), balanced neutral panels, rounded borders (`rounded-xl` or `rounded-2xl`), spacious padding, and high-contrast typography (white/off-white text on dark backgrounds).
-
-  
-
 ## 2. Telemetry Hook Standards
 
 - **Unified Pipeline Hook:** All HUD modules must subscribe to backend state updates strictly via the custom, unified `useApexData()` React hook (Unified application state entrypoint). Do not build independent fetch loops inside isolated UI components.
 
-- **Sequential Pipeline State:** Monitor and render backend telemetry pipeline state transitions as a single sequential loop (`Idle -> Loading -> Delivered`).
+- **Sequential Pipeline State:** Monitor and render backend telemetry pipeline state transitions as a single sequential loop (`Idle -> Processing -> Delivered`).
 
 - **No Fragmented Spinners:** Individual component-level loading spinners on separate visual cells are prohibited. The HUD should indicate a global or unified telemetry fetch state.
 
@@ -30,3 +26,228 @@ You are the Principal HUD Layout Designer. Your job is to construct liquid, mode
 - Keep telemetry rendering observable and debuggable.
 - Avoid unnecessary animation abstractions or hidden state containers.
 - Maintain compatibility with offline and DEV_MODE execution flows.
+
+
+# Frontend Visual Design Guidelines
+
+## Purpose
+
+These guidelines establish the default visual language of the application while remaining intentionally flexible. They are meant to create consistency across the dashboard, telemetry views, and intelligence workflows without preventing future design experimentation or user-directed styling changes.
+
+---
+
+# Core Visual Direction
+
+The application should feel like a modern intelligence, analytics, or operations platform.
+
+Key characteristics:
+
+- Dark environment
+- High contrast
+- Atmospheric lighting
+- Layered glow effects
+- Premium telemetry presentation
+- Clean information hierarchy
+- Minimal visual clutter
+
+The preferred dashboard background is black or near-black to maximize contrast and allow glow effects to be visually effective.
+
+---
+
+# Primary Color Palette
+
+## Primary Indigo
+
+```css
+--color-primary: #4338CA;
+```
+
+### Primary Usage
+
+- Dashboard accents
+- Navigation
+- Active controls
+- Charts and graphs
+- Interactive elements
+- Default telemetry presentation
+- General UI identity
+- Ambient glow effects
+
+Indigo serves as the application's primary identity color and should be the most commonly used accent color throughout the interface.
+
+---
+
+## Deep Indigo
+
+```css
+--color-primary-deep: #312E81;
+```
+
+### Primary Usage
+
+- Secondary glow layers
+- Panel backgrounds
+- Atmospheric lighting
+- Elevated surfaces
+- Depth and visual hierarchy
+
+Deep Indigo works alongside Primary Indigo to create richer lighting and more dimensional interfaces.
+
+---
+
+## Processing Green
+
+```css
+--color-processing: #39FF88;
+```
+
+### Primary Usage
+
+- Active processing states
+- Data ingestion
+- Telemetry collection
+- Analysis in progress
+- Loading workflows
+- Pipeline activity
+
+Green generally communicates that work is currently being performed.
+
+---
+
+## Ready Gold
+
+```css
+--color-ready: #FBBF24;
+```
+
+### Primary Usage
+
+- Completed analysis
+- Ready states
+- Intelligence briefings
+- Successful pipeline completion
+- Highlighted results
+- Important outcomes
+
+Gold generally communicates that information is prepared, available, or complete.
+
+---
+
+## Error Red
+
+```css
+--color-error: #DC2626;
+```
+
+### Primary Usage
+
+- Errors
+- Fault conditions
+- Failed telemetry
+- Critical alerts
+- Pipeline interruptions
+
+Red should typically communicate problems requiring attention.
+
+---
+
+# Glow System
+
+Glow effects are encouraged throughout the application and may be applied to:
+
+- Telemetry cards
+- Dashboard panels
+- Status indicators
+- Charts
+- Modals
+- Widgets
+- Navigation elements
+- Intelligence summaries
+
+Glow effects are not limited to borders.
+
+Background glows, ambient glows, layered shadows, and illuminated surfaces are all acceptable design patterns.
+
+---
+
+# Telemetry Cards
+
+Telemetry cards may use:
+
+- Border glows
+- Background glows
+- Ambient lighting
+- Gradient fills
+- Layered shadows
+- State-driven color transitions
+
+Cards do not need to remain visually neutral.
+
+They may reflect system state, workflow progress, or data significance when appropriate.
+
+---
+
+# State-Based Color Usage
+
+As a general convention:
+
+```text
+Indigo = Platform Identity
+Green = Processing
+Gold = Ready
+Red = Error
+```
+
+These are guidelines rather than strict rules.
+
+Designs may adapt, extend, or override these conventions when a specific user request, workflow, or visual objective requires a different approach.
+
+---
+
+# Flexibility
+
+These colors establish the default design language of the application.
+
+They should guide implementation decisions but should not prevent:
+
+- User-requested color changes
+- Theme experimentation
+- Special visual treatments
+- Context-specific styling
+- Future design evolution
+- Custom dashboard experiences
+
+The palette provides consistency, not limitation.
+
+---
+
+# Design Priority
+
+When making visual decisions, prioritize:
+
+1. Clarity
+2. Readability
+3. Information hierarchy
+4. Visual consistency
+5. Effective use of glow and lighting
+6. Aesthetic quality
+7. User intent
+
+If a user explicitly requests a different visual treatment, that request should take precedence over these guidelines.
+
+---
+
+# Summary
+
+Default visual language:
+
+```text
+Background      → Black
+Primary UI      → Indigo (#4338CA)
+Depth/Atmosphere→ Deep Indigo (#312E81)
+Processing      → Green (#39FF88)
+Ready           → Gold (#FBBF24)
+Error           → Red (#DC2626)
+```
+
+These colors establish the application's visual identity while leaving room for customization, experimentation, and future design refinement.

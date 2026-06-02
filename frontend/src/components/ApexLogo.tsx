@@ -33,9 +33,9 @@ export function ApexLogo({
   // DYNAMIC STATE STYLING MATRICES
   // =========================================================
 
-  const baseBlue = 'fill-blue-950/40'
-  const activeBlue = 'fill-blue-600 drop-shadow-[0_0_12px_rgba(37,99,235,0.75)]'
-  const surgeBlue = 'fill-blue-400 drop-shadow-[0_0_24px_rgba(59,130,246,1)]'
+  const baseBlue = 'fill-[#4338CA]/30'
+  const activeBlue = 'fill-[#4338CA] drop-shadow-[0_0_12px_rgba(67,56,202,0.75)]'
+  const surgeBlue = 'fill-[#4338CA] drop-shadow-[0_0_24px_rgba(67,56,202,1)]'
   
   const getBlueSegmentClass = (segmentStep: number) => {
     if (pulseActive && (segmentStep === 1 || segmentStep === 2)) {
@@ -47,7 +47,7 @@ export function ApexLogo({
     }`
   }
 
-  const surgeGold = 'fill-amber-300 drop-shadow-[0_0_24px_rgba(252,211,77,1)]'
+  const surgeGold = 'fill-[#FBBF24] drop-shadow-[0_0_24px_rgba(251,191,36,1)]'
 
   const getGoldSegmentClass = (segmentStep: number) => {
     if (pulseActive) {
@@ -57,12 +57,12 @@ export function ApexLogo({
     let fillClass = 'fill-amber-950/20'
 
     if (isError) {
-      fillClass = 'fill-red-500 drop-shadow-[0_0_14px_rgba(239,68,68,0.8)]'
+      fillClass = 'fill-[#DC2626] drop-shadow-[0_0_14px_rgba(220,38,38,0.8)]'
     } else if (activeStep >= segmentStep) {
       if (isComplete) {
-        fillClass = 'fill-amber-400 drop-shadow-[0_0_14px_rgba(245,158,11,0.85)] animate-[pulse_3s_ease-in-out_infinite]'
+        fillClass = 'fill-[#FBBF24] drop-shadow-[0_0_14px_rgba(251,191,36,0.85)] animate-[pulse_3s_ease-in-out_infinite]'
       } else {
-        fillClass = 'fill-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.8)]'
+        fillClass = 'fill-[#39FF88] drop-shadow-[0_0_12px_rgba(57,255,136,0.8)]'
       }
     }
 
