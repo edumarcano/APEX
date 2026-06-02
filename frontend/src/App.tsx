@@ -1,6 +1,7 @@
 import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
-import { useMemo, type CSSProperties, type ReactElement } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
 
+import { ApexLogo } from './components/ApexLogo'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
@@ -15,6 +16,7 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 }
 
 export default function App(): ReactElement {
+  const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const apexData = useApexData()
   const {
     data,
@@ -99,6 +101,10 @@ export default function App(): ReactElement {
     void markReminderAsRead(id)
   }
 
+  const handleReminderSaved = (): void => {
+    setReminderPulseCount((prev) => prev + 1)
+  }
+
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
 
   const headerTicker = (() => {
@@ -114,11 +120,12 @@ export default function App(): ReactElement {
     return { text: 'SYSTEM OPERATIONAL', className: 'text-emerald-500 opacity-80' }
   })()
 
-  const centerMinHeight = 'min-h-56 md:min-h-72'
-
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
-      <main className="relative min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6">
+      <main
+        className="relative min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
+        style={{ '--glow-color': glowColor } as CSSProperties}
+      >
 <div 
   className="pointer-events-none absolute inset-0 z-0 overflow-hidden transition-opacity duration-1000 ease-in-out"
   style={{
@@ -173,74 +180,96 @@ export default function App(): ReactElement {
           </p>
         </header>
         <div className="relative z-10 mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
-          <TelemetryCard
-            title="Weather"
-            icon={CloudSun}
-            primaryTemperatureF={primaryTemperatureF}
-            style={weatherCardStyle}
-            className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
-          >
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-              {weatherBody}
-            </p>
-          </TelemetryCard>
+          {/* COLUMN 1: LEFT WING */}
+          <div className="flex flex-col gap-4 md:gap-6 xl:contents">
+            <TelemetryCard
+              title="Weather"
+              icon={CloudSun}
+              primaryTemperatureF={primaryTemperatureF}
+              style={weatherCardStyle}
+              className={`min-h-40 xl:order-1 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+            >
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+                {weatherBody}
+              </p>
+            </TelemetryCard>
 
-          <div className={`min-w-0 ${centerMinHeight}`}>
-            <BriefingPanel
-              briefing={data?.briefing ?? ''}
-              status={status}
-              error={error}
-              isLoading={isTriggerLoading}
+            <TelemetryCard
+              title="F1 Schedule"
+              icon={Flag}
+              rawScheduleText={f1ScheduleTelemetryText}
+              className="min-h-40 xl:order-4"
             />
           </div>
 
-          <TelemetryCard
-            title="Schedule"
-            icon={Calendar}
-            className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
-          >
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
-              {scheduleBody}
-            </p>
-          </TelemetryCard>
+          {/* COLUMN 2: CENTER CORE */}
+          <div className="flex flex-col items-center justify-center gap-4 md:gap-6 xl:contents">
+            <div className="flex min-h-40 items-center justify-center xl:order-5">
+              <ApexLogo
+                step={activeStep}
+                status={status}
+                reminderPulseCount={reminderPulseCount}
+                className="h-32 w-auto filter drop-shadow-[0_0_16px_rgba(var(--glow-color),0.2)]"
+              />
+            </div>
 
-          <TelemetryCard
-            title="F1 Schedule"
-            icon={Flag}
-            rawScheduleText={f1ScheduleTelemetryText}
-            className="min-h-40"
-          />
+            <div className="flex min-h-40 w-full items-center justify-center xl:order-2 xl:col-span-1">
+              <BriefingPanel
+                briefing={data?.briefing ?? ''}
+                status={status}
+                error={error}
+                isLoading={isTriggerLoading}
+              />
+            </div>
+          </div>
 
-          <TelemetryCard
-            title="Reminders"
-            icon={CheckSquare}
-            className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
-            role="region"
-            aria-label="Active reminders"
-            data-slot="reminders-card"
-          >
-            {activeReminders.length === 0 ? (
-              <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                No pending reminders.
+          {/* COLUMN 3: RIGHT WING */}
+          <div className="flex flex-col gap-4 md:gap-6 xl:contents">
+            <TelemetryCard
+              title="Schedule"
+              icon={Calendar}
+              className={`min-h-40 xl:order-3 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+            >
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+                {scheduleBody}
               </p>
-            ) : (
-              <ul className="space-y-2">
-                {activeReminders.map((reminder) => (
-                  <ReminderListRow
-                    key={reminder.id}
-                    reminder={reminder}
-                    onMarkRead={handleMarkReminderRead}
-                  />
-                ))}
-              </ul>
-            )}
-            <ReminderTerminal refreshReminders={refreshReminders} />
-          </TelemetryCard>
+            </TelemetryCard>
 
+            <TelemetryCard
+              title="Reminders"
+              icon={CheckSquare}
+              className={`min-h-40 xl:order-6 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              role="region"
+              aria-label="Active reminders"
+              data-slot="reminders-card"
+            >
+              {activeReminders.length === 0 ? (
+                <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+                  No pending reminders.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {activeReminders.map((reminder) => (
+                    <ReminderListRow
+                      key={reminder.id}
+                      reminder={reminder}
+                      onMarkRead={handleMarkReminderRead}
+                    />
+                  ))}
+                </ul>
+              )}
+              <ReminderTerminal
+                refreshReminders={refreshReminders}
+                onReminderSaved={handleReminderSaved}
+              />
+            </TelemetryCard>
+          </div>
+
+          {/* FULL DECK FOOTER */}
           <TelemetryCard
             title="System Diagnostics"
             icon={Activity}
-            className="border-2 border-[color:var(--hud-accent)] md:col-span-2 xl:col-span-2"
+            className="border-2 border-[color:var(--hud-accent)] md:col-span-2 xl:order-7 xl:col-span-3"
             role="region"
             aria-label="System diagnostics"
             data-slot="system-diagnostics-card"
