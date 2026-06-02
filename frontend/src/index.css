@@ -156,3 +156,102 @@
   animation: gyroCounter 2s linear infinite;
   will-change: transform;
 }
+
+@keyframes weatherSolar {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.52;
+    transform: translate3d(0, -3%, 0) scale(1.06);
+  }
+}
+
+@keyframes weatherNight {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translate3d(-4%, 0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.44;
+    transform: translate3d(4%, -2%, 0) scale(1.04);
+  }
+}
+
+@keyframes weatherHover {
+  0%,
+  100% {
+    opacity: 0.36;
+    transform: translate3d(-5%, 1%, 0) scale(1);
+  }
+  50% {
+    opacity: 0.48;
+    transform: translate3d(5%, -1%, 0) scale(1.03);
+  }
+}
+
+@keyframes weatherBreath {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.58;
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+}
+
+@keyframes weatherSurge {
+  0%,
+  88%,
+  100% {
+    opacity: 0.26;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  6% {
+    opacity: 0.72;
+    transform: translate3d(2%, -2%, 0) scale(1.1);
+  }
+  14% {
+    opacity: 0.38;
+    transform: translate3d(-1%, 1%, 0) scale(0.97);
+  }
+  22% {
+    opacity: 0.64;
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+}
+
+.animate-weather-solar {
+  animation: weatherSolar 9s ease-in-out infinite;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.animate-weather-night {
+  animation: weatherNight 14s ease-in-out infinite;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.animate-weather-hover {
+  animation: weatherHover 18s ease-in-out infinite;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.animate-weather-breath {
+  animation: weatherBreath 5s ease-in-out infinite;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.animate-weather-surge {
+  animation: weatherSurge 7s ease-in-out infinite;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}

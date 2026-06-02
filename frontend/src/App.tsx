@@ -10,6 +10,7 @@ import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
+import type { WeatherConditionArchetype } from './types/telemetry'
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
@@ -42,27 +43,21 @@ export default function App(): ReactElement {
       ? '251, 191, 36' // Ready Gold for Stage 4
       : '0, 0, 0'
 
+  const weatherBorderByCondition: Record<WeatherConditionArchetype, string> = {
+    clear_day: '#1E6BFF',
+    clear_night: '#0F4DB8',
+    clouds: '#6E88AB',
+    rain: '#1E6BFF',
+    thunderstorm: '#7EB3FF',
+  }
+
   const weatherCardStyle = useMemo((): CSSProperties | undefined => {
-    const weatherText = data?.weather ?? ''
+    const condition = data?.weatherCondition
+    if (!condition) return undefined
 
-    if (weatherText.includes('Thunderstorm')) {
-      return {
-        '--hud-panel-bg': '#1a202c',
-        '--hud-border-color': '#0e7490',
-        '--hud-accent': '#06b6d4',
-      } as CSSProperties
-    }
-
-    if (weatherText.includes('Clear')) {
-      return {
-        '--hud-panel-bg': '#020617',
-        '--hud-border-color': '#854d0e',
-        '--hud-accent': '#eab308',
-      } as CSSProperties
-    }
-
-    return undefined
-  }, [data?.weather])
+    const borderColor = weatherBorderByCondition[condition]
+    return { '--hud-border-color': borderColor } as CSSProperties
+  }, [data?.weatherCondition])
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
@@ -186,6 +181,7 @@ export default function App(): ReactElement {
               title="Weather"
               icon={CloudSun}
               primaryTemperatureF={primaryTemperatureF}
+              weatherCondition={data?.weatherCondition}
               style={weatherCardStyle}
               className={`min-h-40 xl:order-1 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
             >

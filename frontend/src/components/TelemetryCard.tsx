@@ -1,4 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
+
+import type { WeatherConditionArchetype } from '../types/telemetry'
 import {
   useId,
   useMemo,
@@ -166,6 +168,37 @@ export function resolveTemperatureFontWeight(
   return Math.round(interpolatedWeight)
 }
 
+const WEATHER_GLOW_BY_CONDITION: Record<
+  WeatherConditionArchetype,
+  { bgClass: string; opacityClass: string; animateClass: string }
+> = {
+  clear_day: {
+    bgClass: 'bg-[#F4B22A]',
+    opacityClass: 'opacity-25',
+    animateClass: 'animate-weather-solar',
+  },
+  clear_night: {
+    bgClass: 'bg-[#4F8FFF]',
+    opacityClass: 'opacity-24',
+    animateClass: 'animate-weather-night',
+  },
+  clouds: {
+    bgClass: 'bg-[#8EA7C7]',
+    opacityClass: 'opacity-16',
+    animateClass: 'animate-weather-hover',
+  },
+  rain: {
+    bgClass: 'bg-[#37A6FF]',
+    opacityClass: 'opacity-30',
+    animateClass: 'animate-weather-breath',
+  },
+  thunderstorm: {
+    bgClass: 'bg-[#4F8FFF]',
+    opacityClass: 'opacity-20',
+    animateClass: 'animate-weather-surge',
+  },
+}
+
 export type TelemetryCardProps = {
   title: string
   icon: LucideIcon
@@ -174,6 +207,8 @@ export type TelemetryCardProps = {
   primaryTemperatureF?: number | null
   /** Optional raw schedule text source used for F1_DATA parsing. */
   rawScheduleText?: string
+  /** Micro-climate archetype for scoped atmospheric background glow. */
+  weatherCondition?: WeatherConditionArchetype | null
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -182,14 +217,18 @@ export function TelemetryCard({
   children,
   primaryTemperatureF,
   rawScheduleText,
+  weatherCondition,
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
   const isScheduleCard = title.trim().toLowerCase() === 'f1 schedule'
 
   const headingId = useId()
+  const weatherGlow =
+    weatherCondition != null ? WEATHER_GLOW_BY_CONDITION[weatherCondition] : null
+
   const panelClassName = [
-    'rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
+    'relative z-0 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)]',
     className,
   ]
     .filter(Boolean)
@@ -234,6 +273,20 @@ export function TelemetryCard({
       className={panelClassName}
       aria-labelledby={headingId}
     >
+      <div className="pointer-events-none absolute inset-0 -z-20 rounded-2xl bg-[color:var(--hud-panel-bg)]" />
+      {weatherGlow ? (
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl">
+          <div
+            className={[
+              'absolute inset-0 blur-[64px]',
+              weatherGlow.bgClass,
+              weatherGlow.opacityClass,
+              weatherGlow.animateClass,
+            ].join(' ')}
+            aria-hidden
+          />
+        </div>
+      ) : null}
       <header className="mb-4 flex min-h-9 items-center gap-3">
         <Icon
           className="size-5 shrink-0 text-[color:var(--hud-accent)]"
