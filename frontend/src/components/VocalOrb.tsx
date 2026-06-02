@@ -31,18 +31,18 @@ export function VocalOrb({
 
   const outerGyroClassName = [
     gyroActiveClassName,
-    isSpeaking ? 'animate-gyro-clockwise stroke-amber-500/80' : 'stroke-amber-500/80',
+    isSpeaking ? 'animate-gyro-clockwise stroke-[#FBBF24]/80' : 'stroke-[#FBBF24]/80',
   ].join(' ')
 
   const innerGyroClassName = [
     gyroActiveClassName,
-    isSpeaking ? 'animate-gyro-counter stroke-amber-400/90' : 'stroke-amber-400/90',
+    isSpeaking ? 'animate-gyro-counter stroke-[#FBBF24]/90' : 'stroke-[#FBBF24]/90',
   ].join(' ')
 
   const coreClassName = [
-    'fill-amber-300 transition-all duration-700 ease-in-out origin-center',
+    'fill-[#FBBF24] transition-all duration-700 ease-in-out origin-center',
     isSpeaking
-      ? 'scale-150 opacity-100 drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]'
+      ? 'scale-150 opacity-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]'
       : 'scale-100 opacity-60',
   ].join(' ')
 
@@ -73,7 +73,7 @@ export function VocalOrb({
             y2={50}
             strokeWidth={2}
             strokeLinecap="round"
-            className="stroke-neutral-500/50"
+            className="stroke-zinc-600/50"
           />
         </g>
 

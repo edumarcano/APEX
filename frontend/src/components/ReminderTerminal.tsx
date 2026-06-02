@@ -23,10 +23,12 @@ function delay(ms: number): Promise<void> {
 
 type ReminderTerminalProps = {
   refreshReminders: () => Promise<void>
+  onReminderSaved?: () => void
 }
 
 export function ReminderTerminal({
   refreshReminders,
+  onReminderSaved,
 }: ReminderTerminalProps): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -108,6 +110,7 @@ export function ReminderTerminal({
           return
         }
 
+        onReminderSaved?.()
         setValue('')
         setSuccessPulse(true)
         await refreshReminders()
@@ -121,7 +124,7 @@ export function ReminderTerminal({
         setIsSubmitting(false)
       }
     },
-    [isSubmitting, refreshReminders, value],
+    [isSubmitting, onReminderSaved, refreshReminders, value],
   )
 
   const handleInputKeyDown = useCallback(
@@ -154,8 +157,8 @@ export function ReminderTerminal({
   const containerClassName = [
     'bg-zinc-950/40 backdrop-blur-md border rounded-xl shadow-2xl transition-all duration-300',
     successPulse
-      ? 'border-emerald-500/80 shadow-[0_0_24px_rgba(16,185,129,0.35)]'
-      : 'border-white/10 focus-within:border-emerald-500/50',
+      ? 'border-[#FBBF24]/80 shadow-[0_0_24px_rgba(251,191,36,0.35)]'
+      : 'border-white/10 focus-within:border-[#4338CA]/50',
   ].join(' ')
 
   if (!isOpen) {
@@ -167,7 +170,7 @@ export function ReminderTerminal({
         aria-label="Add a reminder. Press slash to focus."
       >
         <Terminal
-          className="size-4 shrink-0 text-emerald-500/50"
+          className="size-4 shrink-0 text-[#39FF88]/50"
           strokeWidth={1.75}
           aria-hidden
         />
@@ -196,7 +199,7 @@ export function ReminderTerminal({
       >
         <div className="flex items-center gap-3 px-4 py-3">
           <Terminal
-            className="size-4 shrink-0 text-emerald-500/70"
+            className="size-4 shrink-0 text-[#39FF88]/70"
             strokeWidth={1.75}
             aria-hidden
           />
