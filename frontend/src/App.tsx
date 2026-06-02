@@ -37,9 +37,9 @@ export default function App(): ReactElement {
   const showGlow = isProcessing || isSpeaking
 
   const glowColor = isProcessing
-    ? '16, 185, 129' // Emerald Green for Stages 1–3
+    ? '57, 255, 136' // Processing Green for Stages 1–3
     : isSpeaking
-      ? '234, 179, 8' // Amber Gold for Stage 4
+      ? '251, 191, 36' // Ready Gold for Stage 4
       : '0, 0, 0'
 
   const weatherCardStyle = useMemo((): CSSProperties | undefined => {
@@ -109,7 +109,7 @@ export default function App(): ReactElement {
 
   const headerTicker = (() => {
     if (status === 'error') {
-      return { text: 'SYSTEM FAULT', className: 'text-red-500 animate-pulse' }
+      return { text: 'SYSTEM FAULT', className: 'text-[#DC2626] animate-pulse' }
     }
     if (status === 'loading' && pipelineState !== null) {
       return {
@@ -117,7 +117,7 @@ export default function App(): ReactElement {
         className: 'text-[color:var(--hud-accent)]',
       }
     }
-    return { text: 'SYSTEM OPERATIONAL', className: 'text-emerald-500 opacity-80' }
+    return { text: 'SYSTEM OPERATIONAL', className: 'text-[#39FF88] opacity-80' }
   })()
 
   return (

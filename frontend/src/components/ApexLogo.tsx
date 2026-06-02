@@ -33,9 +33,9 @@ export function ApexLogo({
   // DYNAMIC STATE STYLING MATRICES
   // =========================================================
 
-  const baseBlue = 'fill-[#4338CA]/30'
-  const activeBlue = 'fill-[#4338CA] drop-shadow-[0_0_12px_rgba(67,56,202,0.75)]'
-  const surgeBlue = 'fill-[#4338CA] drop-shadow-[0_0_24px_rgba(67,56,202,1)]'
+  const baseBlue = 'apex-blue-metal apex-blue-metal--base'
+  const activeBlue = 'apex-blue-metal apex-blue-metal--active'
+  const surgeBlue = 'apex-blue-metal apex-blue-metal--surge'
   
   const getBlueSegmentClass = (segmentStep: number) => {
     if (pulseActive && (segmentStep === 1 || segmentStep === 2)) {
@@ -47,22 +47,22 @@ export function ApexLogo({
     }`
   }
 
-  const surgeGold = 'fill-[#FBBF24] drop-shadow-[0_0_24px_rgba(251,191,36,1)]'
+  const surgeGold = 'apex-core-metal apex-core-metal--gold-surge'
 
   const getGoldSegmentClass = (segmentStep: number) => {
     if (pulseActive) {
       return `transition-all duration-300 ease-out ${surgeGold}`
     }
 
-    let fillClass = 'fill-amber-950/20'
+    let fillClass = 'apex-core-metal apex-core-metal--dormant'
 
     if (isError) {
-      fillClass = 'fill-[#DC2626] drop-shadow-[0_0_14px_rgba(220,38,38,0.8)]'
+      fillClass = 'apex-core-metal apex-core-metal--red'
     } else if (activeStep >= segmentStep) {
       if (isComplete) {
-        fillClass = 'fill-[#FBBF24] drop-shadow-[0_0_14px_rgba(251,191,36,0.85)] animate-[pulse_3s_ease-in-out_infinite]'
+        fillClass = 'apex-core-metal apex-core-metal--gold-active animate-[pulse_3s_ease-in-out_infinite]'
       } else {
-        fillClass = 'fill-[#39FF88] drop-shadow-[0_0_12px_rgba(57,255,136,0.8)]'
+        fillClass = 'apex-core-metal apex-core-metal--green'
       }
     }
 
@@ -76,6 +76,135 @@ export function ApexLogo({
         className="h-full w-full overflow-visible select-none"
         xmlns="http://www.w3.org/2000/svg"
       >
+        <defs>
+          <linearGradient
+            id="apexBlueMetal"
+            x1="620"
+            y1="560"
+            x2="4520"
+            y2="4920"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#6EA8FF" />
+            <stop offset="12%" stopColor="#1F6FE5" />
+            <stop offset="30%" stopColor="#0F4DB8" />
+            <stop offset="55%" stopColor="#082F7A" />
+            <stop offset="78%" stopColor="#041C51" />
+            <stop offset="100%" stopColor="#164FC2" />
+          </linearGradient>
+
+          <linearGradient
+            id="apexGoldMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#FFF3B0" />
+            <stop offset="16%" stopColor="#FFD166" />
+            <stop offset="34%" stopColor="#FBBF24" />
+            <stop offset="56%" stopColor="#D97706" />
+            <stop offset="74%" stopColor="#92400E" />
+            <stop offset="100%" stopColor="#F59E0B" />
+          </linearGradient>
+
+          <linearGradient
+            id="apexGreenMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#D1FAE5" />
+            <stop offset="18%" stopColor="#6EE7B7" />
+            <stop offset="38%" stopColor="#39FF88" />
+            <stop offset="60%" stopColor="#10B981" />
+            <stop offset="80%" stopColor="#047857" />
+            <stop offset="100%" stopColor="#A7F3D0" />
+          </linearGradient>
+
+          <linearGradient
+            id="apexRedMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#FECACA" />
+            <stop offset="18%" stopColor="#F87171" />
+            <stop offset="40%" stopColor="#DC2626" />
+            <stop offset="62%" stopColor="#991B1B" />
+            <stop offset="82%" stopColor="#450A0A" />
+            <stop offset="100%" stopColor="#EF4444" />
+          </linearGradient>
+
+          <linearGradient
+            id="apexDormantMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#92400E" />
+            <stop offset="35%" stopColor="#78350F" />
+            <stop offset="68%" stopColor="#451A03" />
+            <stop offset="100%" stopColor="#B45309" />
+          </linearGradient>
+        </defs>
+
+        <style>
+          {`
+            .apex-blue-metal {
+              fill: url(#apexBlueMetal);
+            }
+
+            .apex-blue-metal--base {
+              opacity: 0.3;
+            }
+
+            .apex-blue-metal--active {
+              filter: drop-shadow(0 0 12px rgba(79, 143, 255, 0.75));
+            }
+
+            .apex-blue-metal--surge {
+              filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
+            }
+
+            .apex-core-metal {
+              fill: url(#apexGoldMetal);
+            }
+
+            .apex-core-metal--dormant {
+              fill: url(#apexDormantMetal);
+              opacity: 0.2;
+            }
+
+            .apex-core-metal--green {
+              fill: url(#apexGreenMetal);
+              filter: drop-shadow(0 0 12px rgba(57, 255, 136, 0.8));
+            }
+
+            .apex-core-metal--red {
+              fill: url(#apexRedMetal);
+              filter: drop-shadow(0 0 14px rgba(220, 38, 38, 0.8));
+            }
+
+            .apex-core-metal--gold-active {
+              fill: url(#apexGoldMetal);
+              filter: drop-shadow(0 0 14px rgba(251, 191, 36, 0.85));
+            }
+
+            .apex-core-metal--gold-surge {
+              fill: url(#apexGoldMetal);
+              filter: drop-shadow(0 0 24px rgba(251, 191, 36, 1));
+            }
+          `}
+        </style>
+
         {/* =========================================================
             OUTER BLUE SHELL LAYER
            ========================================================= */}

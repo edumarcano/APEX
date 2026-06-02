@@ -5,10 +5,10 @@
 @layer base {
   :root {
     --hud-bg: #000000;
-    --hud-panel-bg: #1c1c1c;
-    --hud-border-color: #333333;
-    --hud-text: #f3f4f6;
-    --hud-accent: #ffffff;
+    --hud-panel-bg: #07070a;
+    --hud-border-color: #082F7A;
+    --hud-accent: #0F4DB8;
+    --hud-text: #e2e8f0;
     --hud-radius: 15px;
     --hud-panel-pad: 1.25rem;
   }

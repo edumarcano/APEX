@@ -56,10 +56,10 @@ The preferred dashboard background is black or near-black to maximize contrast a
 
 # Primary Color Palette
 
-## Primary Indigo
+## Primary Blue
 
 ```css
---color-primary: #4338CA;
+--color-primary: #0F4DB8;
 ```
 
 ### Primary Usage
@@ -73,14 +73,14 @@ The preferred dashboard background is black or near-black to maximize contrast a
 - General UI identity
 - Ambient glow effects
 
-Indigo serves as the application's primary identity color and should be the most commonly used accent color throughout the interface.
+Blue serves as the application's primary identity color and should be the most commonly used accent color throughout the interface.
 
 ---
 
-## Deep Indigo
+## Deep Blue
 
 ```css
---color-primary-deep: #312E81;
+--color-primary-deep: #082F7A;
 ```
 
 ### Primary Usage
@@ -91,7 +91,7 @@ Indigo serves as the application's primary identity color and should be the most
 - Elevated surfaces
 - Depth and visual hierarchy
 
-Deep Indigo works alongside Primary Indigo to create richer lighting and more dimensional interfaces.
+Deep Blue works alongside Primary Blue to create richer lighting and more dimensional interfaces.
 
 ---
 
@@ -192,7 +192,7 @@ They may reflect system state, workflow progress, or data significance when appr
 As a general convention:
 
 ```text
-Indigo = Platform Identity
+Blue = Platform Identity
 Green = Processing
 Gold = Ready
 Red = Error
@@ -243,8 +243,8 @@ Default visual language:
 
 ```text
 Background      → Black
-Primary UI      → Indigo (#4338CA)
-Depth/Atmosphere→ Deep Indigo (#312E81)
+Primary UI      → Blue (#0F4DB8)
+Depth/Atmosphere→ Deep Blue (#082F7A)
 Processing      → Green (#39FF88)
 Ready           → Gold (#FBBF24)
 Error           → Red (#DC2626)
