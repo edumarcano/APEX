@@ -4,7 +4,6 @@ import type { SystemState } from '../types/telemetry'
 export interface ApexLogoProps {
   step: number | null
   status: SystemState
-  /** Increment this integer when a reminder successfully POSTs to trigger the pulse */
   reminderPulseCount?: number
   className?: string
 }
@@ -17,7 +16,7 @@ export function ApexLogo({
 }: ApexLogoProps): ReactElement {
   const [pulseActive, setPulseActive] = useState(false)
 
-  // Trigger the 800ms brightness surge when a reminder is saved
+  // Listen to reminder submission events to trigger an 800ms system-wide flash
   useEffect(() => {
     if (reminderPulseCount > 0) {
       setPulseActive(true)
@@ -28,73 +27,138 @@ export function ApexLogo({
 
   const isError = status === 'error'
   const activeStep = step ?? 0
-  const isBreathing = activeStep >= 4
+  const isComplete = activeStep >= 4
 
+  // =========================================================
+  // DYNAMIC STATE STYLING MATRICES
+  // =========================================================
+
+  const baseBlue = 'fill-blue-950/40'
+  const activeBlue = 'fill-blue-600 drop-shadow-[0_0_12px_rgba(37,99,235,0.75)]'
+  const surgeBlue = 'fill-blue-400 drop-shadow-[0_0_24px_rgba(59,130,246,1)]'
   
-  // Base colors with Error State Override (#ff4444)
-  const baseBlue = isError ? 'fill-red-500' : 'fill-blue-900'
-  const activeBlue = isError ? 'fill-red-400' : 'fill-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.8)]'
-  
-  const baseGold = isError ? 'fill-red-500' : 'fill-amber-500'
-  const pulseGold = isError ? 'fill-red-400' : 'fill-amber-300 drop-shadow-[0_0_12px_rgba(252,211,77,1)]'
-  
-  // Staggered Pipeline Illuminations
-  const getSegmentClass = (segmentStep: number) => {
+  const getBlueSegmentClass = (segmentStep: number) => {
+    if (pulseActive && (segmentStep === 1 || segmentStep === 2)) {
+      return `transition-all duration-300 ease-out ${surgeBlue}`
+    }
+
     return `transition-all duration-700 ease-in-out ${
       activeStep >= segmentStep ? activeBlue : baseBlue
     }`
   }
 
-  // Core Animation States
-  const coreAnimation = isBreathing && !isError 
-    ? 'animate-[pulse_3s_ease-in-out_infinite]' 
-    : ''
-    
-  const trunkPulse = pulseActive && !isError
-    ? pulseGold
-    : baseGold
+  const surgeGold = 'fill-amber-300 drop-shadow-[0_0_24px_rgba(252,211,77,1)]'
+
+  const getGoldSegmentClass = (segmentStep: number) => {
+    if (pulseActive) {
+      return `transition-all duration-300 ease-out ${surgeGold}`
+    }
+
+    let fillClass = 'fill-amber-950/20'
+
+    if (isError) {
+      fillClass = 'fill-red-500 drop-shadow-[0_0_14px_rgba(239,68,68,0.8)]'
+    } else if (activeStep >= segmentStep) {
+      if (isComplete) {
+        fillClass = 'fill-amber-400 drop-shadow-[0_0_14px_rgba(245,158,11,0.85)] animate-[pulse_3s_ease-in-out_infinite]'
+      } else {
+        fillClass = 'fill-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.8)]'
+      }
+    }
+
+    return `transition-all duration-700 ease-in-out ${fillClass}`
+  }
 
   return (
     <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true">
       <svg 
-        viewBox="0 0 100 100" 
-        className="h-full w-full overflow-visible"
+        viewBox="0 0 5208 5420" 
+        className="h-full w-full overflow-visible select-none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* =========================================
-            OUTER SHELL (BLUE SEGMENTS)
-        ========================================= */}
+        {/* =========================================================
+            OUTER BLUE SHELL LAYER
+           ========================================================= */}
         
         {/* Stage 4: Crown */}
-        <g id="apex-crown" className={getSegmentClass(4)}>
-          <path d="M 50 0 L 38 24 C 42 23 45 22 46.5 21 L 43 21 L 50 3 L 57 21 L 53.5 21 C 55 22 58 23 62 24 Z" />
-        </g>
+        <path 
+          id="blue-crown-top"
+          className={getBlueSegmentClass(4)}
+          d="M2336.38 954.065L2463.38 757.565C2492.21 711.398 2556.68 607.664 2583.88 562.064C2611.08 516.464 2626.88 527.564 2644.88 553.064L2765.38 754.065L2889.88 954.065C2896.88 982.565 2890.14 1014.8 2847.38 1008.07C2793.38 999.565 2762.88 960.066 2730.38 1036.07L2725.38 1070.57L2719.88 1210.07C2730.38 1229.07 2739.38 1241.92 2805.88 1210.07C2881.88 1173.67 3054.88 1110.23 3136.88 1083.07C3152.38 1077.93 3194.38 1062.57 3173.38 1014.07C3145.54 949.776 2842.74 337.35 2680.77 37.0637C2648.38 -12.4355 2613.38 -10.9349 2575.88 37.0651C2414.38 336.065 2083.08 949.565 2049.88 1011.57C2016.68 1073.57 2061.38 1090.93 2076.88 1096.07C2158.88 1123.23 2341.88 1186.67 2417.88 1223.07C2493.88 1259.47 2489.88 1244.57 2506.38 1210.07V1070.07L2495.88 1036.07C2463.38 960.066 2430.38 1005.49 2377.88 1021.07C2336.38 1033.38 2329.38 982.565 2336.38 954.065Z"
+        />
 
         {/* Stage 3: Upper Roots */}
-        <g id="apex-upper-roots" className={getSegmentClass(3)}>
-          <path d="M 35 28 L 26 48 C 36 46 41 45 44 43 C 44 38 41 33 28 27 C 31 27 33 27 35 28 Z" />
-          <path d="M 65 28 L 74 48 C 64 46 59 45 56 43 C 56 38 59 33 72 27 C 69 27 67 27 65 28 Z" />
+        <g id="blue-upper-roots">
+          <path 
+            id="blue-upper-left"
+            className={getBlueSegmentClass(3)}
+            d="M1670.88 1812.56L1822.38 1519.56L1972.38 1237.06C2025.38 1144.56 2071.88 1168.06 2130.38 1189.56C2195.51 1213.5 2361.88 1321.06 2415.38 1419.56C2472.88 1551.06 2506.88 1780.06 2439.88 1969.06C2397.43 2088.81 2359.88 2116.06 2276.38 2103.06C2121.38 2046.73 1834.38 1935.56 1720.88 1903.06C1647.31 1882 1657.38 1832.4 1670.88 1812.56Z"
+          />
+          <path 
+            id="blue-upper-right"
+            className={getBlueSegmentClass(3)}
+            d="M3543.38 1814.06L3396.88 1523.06L3245.78 1237.06C3192.78 1144.56 3143.88 1161.06 3085.38 1182.56C3020.24 1206.5 2843.88 1309.56 2802.78 1419.56C2738.88 1521.06 2711.88 1808.56 2766.38 1971.56C2806.67 2092.06 2835.98 2117.06 2936.88 2097.56C3085.88 2025.56 3319.38 1935.89 3489.88 1887.06C3554.48 1868.57 3551.38 1839.06 3543.38 1814.06Z"
+          />
         </g>
 
         {/* Stage 2: Lower Roots */}
-        <g id="apex-lower-roots" className={getSegmentClass(2)}>
-          <path d="M 23 52 L 13 76 C 26 73 35 72 41 68 C 42 61 38 56 16 52 C 18 52 20 52 23 52 Z" />
-          <path d="M 77 52 L 87 76 C 74 73 65 72 59 68 C 58 61 62 56 84 52 C 82 52 80 52 77 52 Z" />
+        <g id="blue-lower-roots">
+          <path 
+            id="blue-lower-left"
+            className={getBlueSegmentClass(2)}
+            d="M1193.88 2741.56L1389.88 2348.06C1421.21 2286.06 1495.88 2139.16 1543.88 2047.56C1591.88 1955.96 1678.55 1960.06 1715.88 1973.56C1733.55 1981.4 1809.88 2018.66 1973.88 2105.06C2137.88 2191.46 2264.55 2316.73 2307.38 2368.56C2442.38 2517.06 2456.88 2895.06 2389.88 3016.56C2326.17 3132.1 2323.38 3129.56 2191.38 3123.56C1948.38 3030.06 1471.88 2881.06 1295.88 2857.06C1172.41 2840.23 1183.68 2788.43 1193.63 2742.71L1193.88 2741.56Z"
+          />
+          <path 
+            id="blue-lower-right"
+            className={getBlueSegmentClass(2)}
+            d="M4020.32 2741.56L3824.32 2348.06C3792.98 2286.06 3718.32 2139.16 3670.32 2047.56C3618.44 1948.56 3559.38 1946.49 3498.31 1973.56C3480.65 1981.4 3398.38 2011.66 3234.38 2098.06C3070.38 2184.46 2933.21 2319.73 2890.38 2371.56C2755.38 2520.06 2764.32 2892.96 2811.38 3022.56C2841.88 3106.56 2890.81 3129.56 3022.81 3123.56C3265.81 3030.06 3731.88 2859.56 3899.38 2827.56C3993.8 2809.53 4020.31 2797.06 4020.32 2741.56Z"
+          />
         </g>
 
-        {/* Stage 1: Trunk Base */}
-        <g id="apex-trunk" className={getSegmentClass(1)}>
-          <path d="M 10 80 L 2 97 L 18 97 C 28 92 36 86 42 74 C 34 76 22 78 10 80 Z" />
-          <path d="M 90 80 L 98 97 L 82 97 C 72 92 64 86 58 74 C 66 76 78 78 90 80 Z" />
+        {/* Stage 1: Trunk Base Legs */}
+        <g id="blue-trunk-shell">
+          <path 
+            id="blue-base-left"
+            className={getBlueSegmentClass(1)}
+            d="M1855.38 3842.56L2237.38 3837.06C2403.38 3837.06 2346.88 3842.06 2280.38 3636.06L2222.88 3535.06L2146.38 3440.56C2021.38 3288.56 1776.52 3147.64 1482.88 3014.56C1178.38 2876.56 1148.38 2877.56 1082.38 2984.06L12.3775 5246.56C-19.6218 5304.06 12.3776 5375.56 116.378 5410.56C219.878 5422.06 387.713 5417.06 674.378 5417.06C965.378 5417.06 1009.38 5446.06 1101.88 5300.56C1266.21 4923.9 1612.28 4135.36 1671.88 3996.56C1731.48 3857.76 1804.38 3855.06 1855.38 3842.56Z"
+          />
+          <path 
+            id="blue-base-right"
+            className={getBlueSegmentClass(1)}
+            d="M3357.14 3842.56H3004.38C2838.38 3842.56 2865.64 3842.06 2932.14 3636.06L2989.64 3535.06L3066.14 3440.56C3191.14 3288.56 3436 3147.64 3729.64 3014.56C4034.14 2876.56 4070.38 2879.06 4136.38 2985.56L5193.88 5244.56C5225.88 5302.06 5200.14 5375.56 5096.14 5410.56C4992.64 5422.06 4824.8 5417.06 4538.14 5417.06C4247.14 5417.06 4203.14 5446.06 4110.64 5300.56C3946.31 4923.9 3600.24 4135.36 3540.64 3996.56C3481.04 3857.76 3408.14 3855.06 3357.14 3842.56Z"
+          />
         </g>
 
-        {/* =========================================
-            INNER CORE (GOLD XYLEM NETWORK)
-        ========================================= */}
-        <path
-          id="apex-gold-core"
-          className={`transition-all duration-500 ease-in-out ${trunkPulse} ${coreAnimation}`}
-          d="M 50 5 L 42 20 L 47 20 C 47 20 38 25 30 25 C 40 25 46 32 46 40 C 46 40 32 50 18 50 C 32 50 44 60 44 70 C 44 85 30 95 20 95 L 80 95 C 70 95 56 85 56 70 C 56 60 68 50 82 50 C 68 50 54 40 54 40 C 54 32 60 25 70 25 C 62 25 53 20 53 20 L 58 20 Z"
+        {/* =========================================================
+            INTERNAL CORE (4 BRANCH SECTIONS)
+           ========================================================= */}
+        
+        {/* Gold Stage 1: Trunk Base */}
+        <path 
+          id="gold-stage-1"
+          className={getGoldSegmentClass(1)}
+          d="M2256.38 4639.56C2365.38 4389.56 2404.88 4050.06 2365.38 3843.56H2677.38H2856.88C2841.88 4054.06 2856.88 4389.56 2965.88 4639.56C3091.66 4928.06 3357.88 5174.56 3553.88 5310.06C3567.38 5338.4 3599.88 5397.22 3460.88 5405.06C3325.54 5412.7 2944.19 5411 2751.12 5410.13L2735.88 5410.06C2548.38 5410.9 1892.18 5412.06 1765.38 5410.06C1638.58 5410.06 1633.88 5350.9 1647.38 5322.56C1841.88 5200.56 2137.7 4911.76 2256.38 4639.56Z"
+        />
+
+        {/* Gold Stage 2: Lower Branches */}
+        <path 
+          id="gold-stage-2"
+          className={getGoldSegmentClass(2)}
+          d="M2200.38 3157.06H2298.38H2904.88H3002.88C3394.88 3006.56 3948.38 2805.06 3948.38 2843.56C3948.38 2912.69 3836.88 2921.06 3691.38 3006.56C3565.55 3056.9 3313.07 3190.85 3207.88 3273.56C3090.88 3365.56 2871.88 3617.56 2859.88 3843.06H2364.88C2352.88 3617.56 2127.38 3365.06 2010.38 3273.06C1905.18 3190.35 1637.71 3056.9 1511.88 3006.56C1366.38 2921.06 1261.27 2940.06 1265.37 2871.06C1266.24 2856.56 1819.88 3006.56 2200.38 3157.06Z"
+        />
+
+        {/* Gold Stage 3: Upper Branches */}
+        <path 
+          id="gold-stage-3"
+          className={getGoldSegmentClass(3)}
+          d="M1806.38 1998.56C1714.46 1959.84 1729.88 1951.06 1729.88 1925.06L2049.38 2037.56L2278.88 2130.06H2601.88H2904.88L2978.38 2105.56L3172.38 2020.06L3318.38 1963.06L3489.88 1904.06H3496.38C3496.38 1938.56 3487.3 1959.84 3395.38 1998.56C3001.38 2164.56 2828.3 2341.42 2774.88 2558.56C2712.88 2810.56 2773.88 3093.56 2902.38 3156.56H2571.88H2298.38C2426.88 3089.56 2496.82 2803.06 2426.88 2558.56C2365.38 2343.56 2200.38 2164.56 1806.38 1998.56Z"
+        />
+
+        {/* Gold Stage 4: Arrow Peak */}
+        <path 
+          id="gold-stage-4"
+          className={getGoldSegmentClass(4)}
+          d="M2371.88 1003.56C2351.88 1014.36 2346.88 982.064 2346.88 964.564L2608.88 555.064L2618.38 550.564L2627.38 555.064L2880.38 964.564C2882.38 982.064 2878.18 1012.76 2845.38 995.564C2812.58 978.364 2776.88 964.564 2776.88 964.564C2735.88 977.064 2714.38 1018.06 2703.88 1039.56V1223.06C2705.38 1239.4 2737.9 1259.56 2776.88 1243.06C2815.85 1226.56 2995.05 1156.4 3069.88 1127.56C3136.88 1101.75 3117.38 1127.56 3094.38 1162.56C3003.38 1196.06 2880.38 1259.56 2820.88 1340.06C2776.88 1373.56 2730.37 1537.45 2719.38 1642.06C2704.48 1783.83 2718.22 2115.89 2875.57 2129.06H2895.38C2888.54 2129.61 2881.93 2129.6 2875.57 2129.06H2331.88C2455.38 2129.06 2519.8 1805.43 2495.88 1642.06C2472.38 1481.56 2468.88 1485.06 2426.38 1393.56C2383.88 1302.06 2169.88 1188.06 2129.38 1170.56C2096.98 1156.56 2102.88 1136.06 2109.88 1127.56C2209.55 1165.73 2418.18 1245.56 2455.38 1259.56C2492.58 1273.56 2514.88 1241.06 2521.38 1223.06C2522.71 1167.4 2524.58 1049.86 2521.38 1025.06C2518.18 1000.26 2476.05 974.398 2455.38 964.564C2435.88 973.064 2391.88 992.764 2371.88 1003.56Z"
         />
       </svg>
     </div>
