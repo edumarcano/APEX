@@ -260,7 +260,7 @@ export function TelemetryCard({
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
-  const isScheduleCard = title.trim().toLowerCase() === 'f1 schedule'
+  const isScheduleCard = title.trim().toLowerCase() === 'next f1 race'
 
   const headingId = useId()
   const weatherGlow =
