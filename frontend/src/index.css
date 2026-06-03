@@ -323,3 +323,12 @@
 .hover-diagnostics-neutral:hover {
   border-color: rgba(255, 255, 255, 0.15) !important;
 }
+
+@keyframes borderSpin {
+  100% { transform: rotate(360deg); }
+}
+
+.animate-border-spin {
+  animation: borderSpin 4s linear infinite;
+  will-change: transform;
+}

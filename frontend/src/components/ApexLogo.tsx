@@ -50,7 +50,7 @@ export function ApexLogo({
     return `transition-all duration-700 ease-in-out ${blueMetal}`
   }
 
-  const surgeGold = 'apex-core-metal apex-core-metal--gold-surge'
+  const surgeBlueCore = 'apex-core-metal apex-core-metal--blue-surge'
   const dormantCore = 'apex-core-metal apex-core-metal--dormant'
   const greenCore = 'apex-core-metal apex-core-metal--green'
   const redCore = 'apex-core-metal apex-core-metal--red'
@@ -59,7 +59,7 @@ export function ApexLogo({
 
   const getGoldSegmentClass = (segmentStep: number): string => {
     if (pulseActive) {
-      return `transition-all duration-300 ease-out ${surgeGold}`
+      return `transition-all duration-300 ease-out ${surgeBlueCore}`
     }
 
     let fillClass = dormantCore
@@ -160,6 +160,19 @@ export function ApexLogo({
             <stop offset="68%" stopColor="#451A03" />
             <stop offset="100%" stopColor="#B45309" />
           </linearGradient>
+
+          <linearGradient
+            id="apexBlueSurgeMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#4F8FFF" />
+            <stop offset="50%" stopColor="#1E6BFF" />
+            <stop offset="100%" stopColor="#0F4DB8" />
+          </linearGradient>
         </defs>
 
         <style>
@@ -207,6 +220,11 @@ export function ApexLogo({
             .apex-core-metal--gold-surge {
               fill: url(#apexGoldMetal);
               filter: drop-shadow(0 0 24px rgba(251, 191, 36, 1));
+            }
+
+            .apex-core-metal--blue-surge {
+              fill: url(#apexBlueSurgeMetal);
+              filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
             }
           `}
         </style>

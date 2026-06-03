@@ -229,6 +229,7 @@ export default function App(): ReactElement {
                 status={status}
                 error={error}
                 isLoading={isTriggerLoading}
+                isSpeaking={isSpeaking}
               />
             </div>
 
