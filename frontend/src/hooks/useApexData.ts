@@ -5,6 +5,7 @@ import type {
   ApexDataState,
   PipelineState,
   TelemetryPayload,
+  WeatherConditionArchetype,
 } from '../types/telemetry'
 
 const API_BASE = 'http://127.0.0.1:8000'
@@ -127,6 +128,35 @@ export function resolveWeatherDetail(weatherReport: string | undefined | null): 
   if (!conditionMatch) return weatherReport
 
   return conditionMatch[1].trim()
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+}
+
+/**
+ * Micro-climate archetype resolver for scoped Weather card glow and border theming.
+ * Matches condition tokens in the atmospheric detail clause (case-insensitive).
+ */
+export function resolveWeatherCondition(detail: string): WeatherConditionArchetype | null {
+  const normalized = detail.trim().toLowerCase()
+  if (!normalized) return null
+
+  if (normalized.includes('thunderstorm')) return 'thunderstorm'
+  if (
+    normalized.includes('rain') ||
+    normalized.includes('drizzle') ||
+    normalized.includes('shower')
+  ) {
+    return 'rain'
+  }
+  if (normalized.includes('cloud') || normalized.includes('overcast')) return 'clouds'
+  if (normalized.includes('clear')) {
+    const hour = new Date().getHours()
+    if (hour < 6 || hour >= 18) return 'clear_night'
+    return 'clear_day'
+  }
+
+  return null
 }
 
 async function fetchUnreadReminderRecords(): Promise<ReminderRecord[]> {
@@ -341,11 +371,14 @@ export function useApexData(): UseApexDataReturn {
 
         const { activeReminders, reminders } = remindersFromRecords(reminderRecords)
 
+        const weatherDetail = resolveWeatherDetail(weatherReport)
+
         const mergedData: TelemetryPayload = {
           briefing: typeof payload.briefing === 'string' ? payload.briefing : '',
           weather: weatherReport,
           temperatureF: resolvePipelineTemperatureF(weatherReport),
-          weatherDetail: resolveWeatherDetail(weatherReport),
+          weatherDetail,
+          weatherCondition: resolveWeatherCondition(weatherDetail),
           sports: getStringField(telemetryRecord, 'sports'),
           news: getStringField(telemetryRecord, 'news'),
           email: getStringField(telemetryRecord, 'email'),

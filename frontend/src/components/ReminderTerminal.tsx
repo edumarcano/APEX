@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 const REMINDERS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/reminders'
 const SUCCESS_PULSE_MS = 500
@@ -158,7 +159,7 @@ export function ReminderTerminal({
     'bg-zinc-950/40 backdrop-blur-md border rounded-xl shadow-2xl transition-all duration-300',
     successPulse
       ? 'border-[#FBBF24]/80 shadow-[0_0_24px_rgba(251,191,36,0.35)]'
-      : 'border-white/10 focus-within:border-[#4338CA]/50',
+      : 'border-white/10 focus-within:border-[#39FF88]/50',
   ].join(' ')
 
   if (!isOpen) {
@@ -179,7 +180,7 @@ export function ReminderTerminal({
     )
   }
 
-  return (
+  return createPortal(
     <div
       className={[
         'fixed bottom-6 left-1/2 z-50 w-full max-w-xl px-4 transition-all duration-200 ease-out',
@@ -220,6 +221,7 @@ export function ReminderTerminal({
           />
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }

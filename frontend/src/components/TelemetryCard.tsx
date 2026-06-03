@@ -1,4 +1,14 @@
-import type { LucideIcon } from 'lucide-react'
+import {
+  Cloud,
+  CloudLightning,
+  CloudRain,
+  Moon,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react'
+import type * as React from 'react'
+
+import type { WeatherConditionArchetype } from '../types/telemetry'
 import {
   useId,
   useMemo,
@@ -166,6 +176,68 @@ export function resolveTemperatureFontWeight(
   return Math.round(interpolatedWeight)
 }
 
+const WEATHER_GLOW_BY_CONDITION: Record<
+  WeatherConditionArchetype,
+  { bgClass: string; opacityClass: string; animateClass: string }
+> = {
+  clear_day: {
+    bgClass: 'bg-[#F4B22A]',
+    opacityClass: 'opacity-25',
+    animateClass: 'animate-weather-solar',
+  },
+  clear_night: {
+    bgClass: 'bg-[#4F8FFF]',
+    opacityClass: 'opacity-24',
+    animateClass: 'animate-weather-night',
+  },
+  clouds: {
+    bgClass: 'bg-[#8EA7C7]',
+    opacityClass: 'opacity-16',
+    animateClass: 'animate-weather-hover',
+  },
+  rain: {
+    bgClass: 'bg-[#37A6FF]',
+    opacityClass: 'opacity-30',
+    animateClass: 'animate-weather-breath',
+  },
+  thunderstorm: {
+    bgClass: 'bg-[#4F8FFF]',
+    opacityClass: 'opacity-20',
+    animateClass: 'animate-weather-surge',
+  },
+}
+
+const WEATHER_ICON_BY_CONDITION: Record<WeatherConditionArchetype, LucideIcon> = {
+  clear_day: Sun,
+  clear_night: Moon,
+  clouds: Cloud,
+  rain: CloudRain,
+  thunderstorm: CloudLightning,
+}
+
+const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> = {
+  clear_day: {
+    color: '#FFD166',
+    filter: 'drop-shadow(0 0 6px rgba(255, 209, 102, 0.4))',
+  },
+  clear_night: {
+    color: '#A8C8FF',
+    filter: 'drop-shadow(0 0 6px rgba(168, 200, 255, 0.4))',
+  },
+  clouds: {
+    color: '#D0D8E8',
+    filter: 'drop-shadow(0 0 5px rgba(208, 216, 232, 0.3))',
+  },
+  rain: {
+    color: '#7DD3FC',
+    filter: 'drop-shadow(0 0 6px rgba(125, 211, 252, 0.45))',
+  },
+  thunderstorm: {
+    color: '#FFE082',
+    filter: 'drop-shadow(0 0 8px rgba(255, 224, 130, 0.5))',
+  },
+}
+
 export type TelemetryCardProps = {
   title: string
   icon: LucideIcon
@@ -174,6 +246,8 @@ export type TelemetryCardProps = {
   primaryTemperatureF?: number | null
   /** Optional raw schedule text source used for F1_DATA parsing. */
   rawScheduleText?: string
+  /** Micro-climate archetype for scoped atmospheric background glow. */
+  weatherCondition?: WeatherConditionArchetype | null
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -182,14 +256,22 @@ export function TelemetryCard({
   children,
   primaryTemperatureF,
   rawScheduleText,
+  weatherCondition,
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
-  const isScheduleCard = title.trim().toLowerCase() === 'f1 schedule'
+  const isScheduleCard = title.trim().toLowerCase() === 'next f1 race'
 
   const headingId = useId()
+  const weatherGlow =
+    weatherCondition != null ? WEATHER_GLOW_BY_CONDITION[weatherCondition] : null
+  const WeatherConditionIcon =
+    weatherCondition != null
+      ? WEATHER_ICON_BY_CONDITION[weatherCondition]
+      : null
+
   const panelClassName = [
-    'rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
+    'relative z-0 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)]',
     className,
   ]
     .filter(Boolean)
@@ -234,6 +316,20 @@ export function TelemetryCard({
       className={panelClassName}
       aria-labelledby={headingId}
     >
+      <div className="pointer-events-none absolute inset-0 -z-20 rounded-2xl bg-[color:var(--hud-panel-bg)]" />
+      {weatherGlow ? (
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl">
+          <div
+            className={[
+              'absolute inset-0 blur-[64px]',
+              weatherGlow.bgClass,
+              weatherGlow.opacityClass,
+              weatherGlow.animateClass,
+            ].join(' ')}
+            aria-hidden
+          />
+        </div>
+      ) : null}
       <header className="mb-4 flex min-h-9 items-center gap-3">
         <Icon
           className="size-5 shrink-0 text-[color:var(--hud-accent)]"
@@ -249,14 +345,24 @@ export function TelemetryCard({
       </header>
       <div className="min-w-0">
         {primaryTemperatureF != null ? (
-          <p
-            className="mb-3 tabular-nums text-4xl leading-none tracking-tight text-[color:var(--hud-accent)]"
-            style={primaryTemperatureStyle}
-            data-vte="primary-temperature-readout"
-            aria-label="Current temperature"
-          >
-            {primaryTemperatureF}°
-          </p>
+          <div className="mb-3 flex items-center gap-4">
+            <p
+              className="tabular-nums text-4xl leading-none tracking-tight text-white"
+              style={primaryTemperatureStyle}
+              data-vte="primary-temperature-readout"
+              aria-label="Current temperature"
+            >
+              {primaryTemperatureF}°
+            </p>
+            {weatherCondition != null && WeatherConditionIcon != null ? (
+              <WeatherConditionIcon
+                className="size-8 shrink-0 transition-all duration-1000 ease-in-out"
+                style={weatherIconStyles[weatherCondition]}
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+            ) : null}
+          </div>
         ) : null}
         {isScheduleCard && f1Schedule ? (
           <div className="space-y-3 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-4 text-[color:var(--hud-text)]">

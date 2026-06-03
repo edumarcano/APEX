@@ -22,12 +22,21 @@ export interface ActiveReminder {
   note: string
 }
 
+export type WeatherConditionArchetype =
+  | 'clear_day'
+  | 'clear_night'
+  | 'clouds'
+  | 'rain'
+  | 'thunderstorm'
+
 export interface TelemetryPayload {
   weather: string
   /** Integer °F for VTE primary readout; null when unavailable. */
   temperatureF: number | null
   /** Condition or summary text excluding the primary temperature numeral. */
   weatherDetail: string
+  /** Parsed micro-climate archetype for scoped card glow and border theming. */
+  weatherCondition?: WeatherConditionArchetype | null
   briefing: string
   sports: string
   news: string

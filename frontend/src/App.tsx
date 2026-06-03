@@ -10,6 +10,7 @@ import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
+import type { WeatherConditionArchetype } from './types/telemetry'
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
@@ -42,27 +43,21 @@ export default function App(): ReactElement {
       ? '251, 191, 36' // Ready Gold for Stage 4
       : '0, 0, 0'
 
+  const weatherBorderByCondition: Record<WeatherConditionArchetype, string> = {
+    clear_day: '#1E6BFF',
+    clear_night: '#0F4DB8',
+    clouds: '#6E88AB',
+    rain: '#1E6BFF',
+    thunderstorm: '#7EB3FF',
+  }
+
   const weatherCardStyle = useMemo((): CSSProperties | undefined => {
-    const weatherText = data?.weather ?? ''
+    const condition = data?.weatherCondition
+    if (!condition) return undefined
 
-    if (weatherText.includes('Thunderstorm')) {
-      return {
-        '--hud-panel-bg': '#1a202c',
-        '--hud-border-color': '#0e7490',
-        '--hud-accent': '#06b6d4',
-      } as CSSProperties
-    }
-
-    if (weatherText.includes('Clear')) {
-      return {
-        '--hud-panel-bg': '#020617',
-        '--hud-border-color': '#854d0e',
-        '--hud-accent': '#eab308',
-      } as CSSProperties
-    }
-
-    return undefined
-  }, [data?.weather])
+    const borderColor = weatherBorderByCondition[condition]
+    return { '--hud-border-color': borderColor } as CSSProperties
+  }, [data?.weatherCondition])
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
@@ -181,13 +176,14 @@ export default function App(): ReactElement {
         </header>
         <div className="relative z-10 mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           {/* COLUMN 1: LEFT WING */}
-          <div className="flex flex-col gap-4 md:gap-6 xl:contents">
+          <div className="flex flex-col gap-4 md:gap-6">
             <TelemetryCard
               title="Weather"
               icon={CloudSun}
               primaryTemperatureF={primaryTemperatureF}
+              weatherCondition={data?.weatherCondition}
               style={weatherCardStyle}
-              className={`min-h-40 xl:order-1 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
                 {weatherBody}
@@ -195,40 +191,9 @@ export default function App(): ReactElement {
             </TelemetryCard>
 
             <TelemetryCard
-              title="F1 Schedule"
-              icon={Flag}
-              rawScheduleText={f1ScheduleTelemetryText}
-              className="min-h-40 xl:order-4"
-            />
-          </div>
-
-          {/* COLUMN 2: CENTER CORE */}
-          <div className="flex flex-col items-center justify-center gap-4 md:gap-6 xl:contents">
-            <div className="flex min-h-40 items-center justify-center xl:order-5">
-              <ApexLogo
-                step={activeStep}
-                status={status}
-                reminderPulseCount={reminderPulseCount}
-                className="h-32 w-auto filter drop-shadow-[0_0_16px_rgba(var(--glow-color),0.2)]"
-              />
-            </div>
-
-            <div className="flex min-h-40 w-full items-center justify-center xl:order-2 xl:col-span-1">
-              <BriefingPanel
-                briefing={data?.briefing ?? ''}
-                status={status}
-                error={error}
-                isLoading={isTriggerLoading}
-              />
-            </div>
-          </div>
-
-          {/* COLUMN 3: RIGHT WING */}
-          <div className="flex flex-col gap-4 md:gap-6 xl:contents">
-            <TelemetryCard
-              title="Schedule"
+              title="Events"
               icon={Calendar}
-              className={`min-h-40 xl:order-3 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
                 {scheduleBody}
@@ -236,9 +201,40 @@ export default function App(): ReactElement {
             </TelemetryCard>
 
             <TelemetryCard
+              title="Next F1 Race"
+              icon={Flag}
+              rawScheduleText={f1ScheduleTelemetryText}
+              className="min-h-40"
+            />
+          </div>
+
+          {/* COLUMN 2: CENTER REACTOR */}
+          <div className="flex flex-col items-center justify-center h-full py-6 min-h-[30rem] xl:col-span-1">
+            <div className="flex h-full w-full items-center justify-center">
+              <ApexLogo
+                step={activeStep}
+                status={status}
+                reminderPulseCount={reminderPulseCount}
+                className="h-64 xl:h-72 w-auto filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)]"
+              />
+            </div>
+          </div>
+
+          {/* COLUMN 3: RIGHT WING */}
+          <div className="flex flex-col gap-4 md:gap-6">
+            <div className="flex min-h-40 w-full items-center justify-center">
+              <BriefingPanel
+                briefing={data?.briefing ?? ''}
+                status={status}
+                error={error}
+                isLoading={isTriggerLoading}
+              />
+            </div>
+
+            <TelemetryCard
               title="Reminders"
               icon={CheckSquare}
-              className={`min-h-40 xl:order-6 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               role="region"
               aria-label="Active reminders"
               data-slot="reminders-card"
