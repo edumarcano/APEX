@@ -238,6 +238,16 @@ const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> 
   },
 }
 
+function resolveCardHoverClass(title: string): string {
+  const normalized = title.trim()
+  if (normalized === 'Weather') return 'hover-weather-bright'
+  if (normalized === 'Events' || normalized === 'Next F1 Race') {
+    return 'hover-warm-medium'
+  }
+  if (normalized === 'Reminders') return 'hover-warm-strong'
+  return 'hover-warm-subtle'
+}
+
 export type TelemetryCardProps = {
   title: string
   icon: LucideIcon
@@ -271,7 +281,8 @@ export function TelemetryCard({
       : null
 
   const panelClassName = [
-    'relative z-0 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)]',
+    'relative z-0 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)] hud-glass',
+    resolveCardHoverClass(title),
     className,
   ]
     .filter(Boolean)
@@ -316,12 +327,11 @@ export function TelemetryCard({
       className={panelClassName}
       aria-labelledby={headingId}
     >
-      <div className="pointer-events-none absolute inset-0 -z-20 rounded-2xl bg-[color:var(--hud-panel-bg)]" />
       {weatherGlow ? (
         <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl">
           <div
             className={[
-              'absolute inset-0 blur-[64px]',
+              'weather-glow-core absolute inset-0 blur-[64px] transition-opacity duration-500',
               weatherGlow.bgClass,
               weatherGlow.opacityClass,
               weatherGlow.animateClass,

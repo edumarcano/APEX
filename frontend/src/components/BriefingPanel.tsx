@@ -11,7 +11,7 @@ export type BriefingPanelProps = {
 
 function sectionShellClassName(extra = ''): string {
   return [
-    'rounded-2xl border border-[color:var(--hud-border-color)] bg-[color:var(--hud-panel-bg)] p-[var(--hud-panel-pad)]',
+    'rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)] hud-glass hover-warm-subtle',
     'transition-all duration-1000 ease-in-out shadow-none',
     extra,
   ]
