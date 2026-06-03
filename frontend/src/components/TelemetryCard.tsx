@@ -1,4 +1,12 @@
-import type { LucideIcon } from 'lucide-react'
+import {
+  Cloud,
+  CloudLightning,
+  CloudRain,
+  Moon,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react'
+import type * as React from 'react'
 
 import type { WeatherConditionArchetype } from '../types/telemetry'
 import {
@@ -199,6 +207,37 @@ const WEATHER_GLOW_BY_CONDITION: Record<
   },
 }
 
+const WEATHER_ICON_BY_CONDITION: Record<WeatherConditionArchetype, LucideIcon> = {
+  clear_day: Sun,
+  clear_night: Moon,
+  clouds: Cloud,
+  rain: CloudRain,
+  thunderstorm: CloudLightning,
+}
+
+const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> = {
+  clear_day: {
+    color: '#FFD166',
+    filter: 'drop-shadow(0 0 6px rgba(255, 209, 102, 0.4))',
+  },
+  clear_night: {
+    color: '#A8C8FF',
+    filter: 'drop-shadow(0 0 6px rgba(168, 200, 255, 0.4))',
+  },
+  clouds: {
+    color: '#D0D8E8',
+    filter: 'drop-shadow(0 0 5px rgba(208, 216, 232, 0.3))',
+  },
+  rain: {
+    color: '#7DD3FC',
+    filter: 'drop-shadow(0 0 6px rgba(125, 211, 252, 0.45))',
+  },
+  thunderstorm: {
+    color: '#FFE082',
+    filter: 'drop-shadow(0 0 8px rgba(255, 224, 130, 0.5))',
+  },
+}
+
 export type TelemetryCardProps = {
   title: string
   icon: LucideIcon
@@ -226,6 +265,10 @@ export function TelemetryCard({
   const headingId = useId()
   const weatherGlow =
     weatherCondition != null ? WEATHER_GLOW_BY_CONDITION[weatherCondition] : null
+  const WeatherConditionIcon =
+    weatherCondition != null
+      ? WEATHER_ICON_BY_CONDITION[weatherCondition]
+      : null
 
   const panelClassName = [
     'relative z-0 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)]',
@@ -302,14 +345,24 @@ export function TelemetryCard({
       </header>
       <div className="min-w-0">
         {primaryTemperatureF != null ? (
-          <p
-            className="mb-3 tabular-nums text-4xl leading-none tracking-tight text-[color:var(--hud-accent)]"
-            style={primaryTemperatureStyle}
-            data-vte="primary-temperature-readout"
-            aria-label="Current temperature"
-          >
-            {primaryTemperatureF}°
-          </p>
+          <div className="mb-3 flex items-center gap-4">
+            <p
+              className="tabular-nums text-4xl leading-none tracking-tight text-white"
+              style={primaryTemperatureStyle}
+              data-vte="primary-temperature-readout"
+              aria-label="Current temperature"
+            >
+              {primaryTemperatureF}°
+            </p>
+            {weatherCondition != null && WeatherConditionIcon != null ? (
+              <WeatherConditionIcon
+                className="size-8 shrink-0 transition-all duration-1000 ease-in-out"
+                style={weatherIconStyles[weatherCondition]}
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+            ) : null}
+          </div>
         ) : null}
         {isScheduleCard && f1Schedule ? (
           <div className="space-y-3 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-4 text-[color:var(--hud-text)]">

@@ -128,6 +128,9 @@ export function resolveWeatherDetail(weatherReport: string | undefined | null): 
   if (!conditionMatch) return weatherReport
 
   return conditionMatch[1].trim()
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
 }
 
 /**
