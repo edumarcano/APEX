@@ -146,7 +146,7 @@ export function RingGauge({
       />
       <text
         x={RING_CENTER}
-        y={RING_CENTER - 2}
+        y={RING_CENTER - 5}
         textAnchor="middle"
         dominantBaseline="middle"
         className={[
@@ -160,18 +160,18 @@ export function RingGauge({
       </text>
       {subText != null && subText !== '' ? (
         <text
-          x={50}
-          y={62}
+          x={RING_CENTER}
+          y={RING_CENTER + 8}
           textAnchor="middle"
           dominantBaseline="middle"
-          className="fill-[color:var(--hud-text)] text-[0.38rem] opacity-60 uppercase tracking-wider"
+          className="fill-[color:var(--hud-text)] text-[0.34rem] opacity-60 uppercase tracking-wider"
         >
           {subText}
         </text>
       ) : null}
       <text
         x={RING_CENTER}
-        y={RING_CENTER + 14}
+        y={RING_CENTER + 22}
         textAnchor="middle"
         dominantBaseline="middle"
         className="fill-[color:var(--hud-text)] text-[0.5rem] font-medium uppercase tracking-wide opacity-80"

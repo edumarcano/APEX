@@ -240,6 +240,9 @@ const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> 
 
 function resolveCardHoverClass(title: string): string {
   const normalized = title.trim()
+  if (normalized.toLowerCase() === 'system diagnostics') {
+    return 'hover-diagnostics-neutral'
+  }
   if (normalized === 'Weather') return 'hover-weather-bright'
   if (normalized === 'Events' || normalized === 'Next F1 Race') {
     return 'hover-warm-medium'

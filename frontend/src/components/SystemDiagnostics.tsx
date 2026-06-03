@@ -122,11 +122,11 @@ export function SystemDiagnostics(): ReactElement {
       data-slot="system-diagnostics"
     >
       <div
-        className={`pointer-events-none absolute inset-0 -z-10 blur-xl opacity-[0.06] transition-colors duration-1000 ${severityGlowClass(severity)}`}
+        className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 -z-10 rounded-full blur-[80px] opacity-[0.25] transition-all duration-1000 ease-in-out ${severityGlowClass(severity)}`}
         aria-hidden
       />
       <div
-        className="-z-10 absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#39FF88]/40 to-transparent animate-sensor-sweep"
+        className="pointer-events-none absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#39FF88]/60 to-transparent animate-sensor-sweep"
         aria-hidden
       />
       <div className="relative z-0 grid w-full grid-cols-3 gap-2 sm:gap-4">
