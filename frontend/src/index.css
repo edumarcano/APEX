@@ -303,3 +303,15 @@
   border-color: rgba(244, 178, 42, 0.65);
   box-shadow: 0 0 18px rgba(244, 178, 42, 0.12);
 }
+
+@keyframes diagnosticsScan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10%, 90% { opacity: 0.12; }
+  50% { transform: translateY(120%); opacity: 0.12; }
+  100% { transform: translateY(220%); opacity: 0; }
+}
+
+.animate-sensor-sweep {
+  animation: diagnosticsScan 20s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}

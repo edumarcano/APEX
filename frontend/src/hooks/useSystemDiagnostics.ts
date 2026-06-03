@@ -25,8 +25,13 @@ function mapDiagnosticsRecord(
 ): SystemDiagnostics {
   return {
     cpu: getNumericField(source, 'cpu'),
+    cpu_freq: getNumericField(source, 'cpu_freq'),
     ram: getNumericField(source, 'ram'),
+    ram_used: getNumericField(source, 'ram_used'),
+    ram_total: getNumericField(source, 'ram_total'),
     disk: getNumericField(source, 'disk'),
+    disk_used: getNumericField(source, 'disk_used'),
+    disk_total: getNumericField(source, 'disk_total'),
   }
 }
 
