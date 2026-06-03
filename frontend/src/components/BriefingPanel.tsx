@@ -25,9 +25,13 @@ function SpeakingBorderMask(): ReactElement {
   )
 }
 
-function sectionShellClassName(extra = ''): string {
+function sectionShellClassName(isSpeakingActive: boolean, extra = ''): string {
+  const borderClass = isSpeakingActive
+    ? 'border-amber-500/80 shadow-[0_0_12px_rgba(251,191,36,0.15)]'
+    : 'border-[color:var(--hud-border-color)]'
+
   return [
-    'rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)] hud-glass hover-warm-subtle',
+    `rounded-2xl border ${borderClass} p-[var(--hud-panel-pad)] hud-glass hover-warm-subtle`,
     'transition-all duration-1000 ease-in-out shadow-none',
     extra,
   ]
@@ -66,6 +70,7 @@ function BriefingStream({
     return (
       <section
         className={sectionShellClassName(
+          isSpeaking,
           'relative overflow-hidden group flex h-full min-h-56 flex-col justify-center md:min-h-72',
         )}
         aria-labelledby={labelId}
@@ -91,6 +96,7 @@ function BriefingStream({
     return (
       <section
         className={sectionShellClassName(
+          isSpeaking,
           'relative overflow-hidden group flex h-full min-h-56 flex-col justify-center md:min-h-72',
         )}
         aria-labelledby={labelId}
@@ -113,7 +119,7 @@ function BriefingStream({
   if (rawText.length === 0) {
     return (
       <section
-        className={sectionShellClassName('relative overflow-hidden group')}
+        className={sectionShellClassName(isSpeaking, 'relative overflow-hidden group')}
         aria-labelledby={labelId}
       >
         {isSpeaking ? <SpeakingBorderMask /> : null}
@@ -134,7 +140,7 @@ function BriefingStream({
 
   return (
     <section
-      className={sectionShellClassName('relative overflow-hidden group')}
+      className={sectionShellClassName(isSpeaking, 'relative overflow-hidden group')}
       aria-labelledby={labelId}
     >
       {isSpeaking ? <SpeakingBorderMask /> : null}

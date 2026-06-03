@@ -229,7 +229,7 @@ export default function App(): ReactElement {
                 status={status}
                 error={error}
                 isLoading={isTriggerLoading}
-                isSpeaking={isSpeaking}
+                isSpeaking={isSpeaking && activeStep === 4}
               />
             </div>
 
