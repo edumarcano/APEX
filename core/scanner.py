@@ -39,15 +39,21 @@ def check_power() -> bool:
     return battery.power_plugged if battery else False
 
 
+def _bytes_to_gb(value: int | float) -> float:
+    """Convert byte count to gigabytes rounded to one decimal place."""
+    return round(float(value) / (1024**3), 1)
+
+
 def sample_system_vitals() -> dict[str, float]:
     """
-    Sample CPU, memory, and root-disk utilization as percentage floats.
+    Sample CPU, memory, and root-disk utilization with percentages and raw values.
 
     Each psutil query is isolated; failures fall back to 0.0 and emit
     a diagnostic line for operator visibility.
 
     Returns:
-        Mapping with keys cpu, ram, and disk.
+        Mapping with keys cpu, cpu_freq, ram, ram_used, ram_total, disk,
+        disk_used, and disk_total.
     """
     vitals: dict[str, float] = {}
 
@@ -58,17 +64,34 @@ def sample_system_vitals() -> dict[str, float]:
         vitals["cpu"] = 0.0
 
     try:
-        vitals["ram"] = float(psutil.virtual_memory().percent)
+        freq = psutil.cpu_freq()
+        vitals["cpu_freq"] = round(float(freq.current) / 1000.0, 1) if freq else 0.0
+    except Exception as exc:
+        print(f"[SCANNER]: CPU frequency query failed: {exc}")
+        vitals["cpu_freq"] = 0.0
+
+    try:
+        mem = psutil.virtual_memory()
+        vitals["ram"] = float(mem.percent)
+        vitals["ram_used"] = _bytes_to_gb(mem.used)
+        vitals["ram_total"] = _bytes_to_gb(mem.total)
     except Exception as exc:
         print(f"[SCANNER]: Memory vitals query failed: {exc}")
         vitals["ram"] = 0.0
+        vitals["ram_used"] = 0.0
+        vitals["ram_total"] = 0.0
 
     try:
         root_path = os.path.abspath(os.sep)
-        vitals["disk"] = float(psutil.disk_usage(root_path).percent)
+        disk = psutil.disk_usage(root_path)
+        vitals["disk"] = float(disk.percent)
+        vitals["disk_used"] = _bytes_to_gb(disk.used)
+        vitals["disk_total"] = _bytes_to_gb(disk.total)
     except Exception as exc:
         print(f"[SCANNER]: Disk vitals query failed: {exc}")
         vitals["disk"] = 0.0
+        vitals["disk_used"] = 0.0
+        vitals["disk_total"] = 0.0
 
     return vitals
 

@@ -10,3 +10,4 @@ pyttsx3
 requests
 fastapi
 uvicorn[standard]
+tzdata

@@ -35,12 +35,12 @@ export default function App(): ReactElement {
   const isProcessing =
     status === 'loading' ||
     (activeStep !== null && activeStep >= 1 && activeStep <= 3)
-  const showGlow = isProcessing || isSpeaking
+  const showGlow = isProcessing || isSpeaking || status === 'success'
 
   const glowColor = isProcessing
     ? '57, 255, 136' // Processing Green for Stages 1–3
-    : isSpeaking
-      ? '251, 191, 36' // Ready Gold for Stage 4
+    : isSpeaking || status === 'success'
+      ? '251, 191, 36' // Ready Gold for Stage 4 and delivered state
       : '0, 0, 0'
 
   const weatherBorderByCondition: Record<WeatherConditionArchetype, string> = {
@@ -214,6 +214,7 @@ export default function App(): ReactElement {
               <ApexLogo
                 step={activeStep}
                 status={status}
+                isSpeaking={isSpeaking}
                 reminderPulseCount={reminderPulseCount}
                 className="h-64 xl:h-72 w-auto filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)]"
               />
@@ -228,6 +229,7 @@ export default function App(): ReactElement {
                 status={status}
                 error={error}
                 isLoading={isTriggerLoading}
+                isSpeaking={isSpeaking && activeStep === 4}
               />
             </div>
 

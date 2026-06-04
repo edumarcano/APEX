@@ -158,8 +158,8 @@ export function ReminderTerminal({
   const containerClassName = [
     'bg-zinc-950/40 backdrop-blur-md border rounded-xl shadow-2xl transition-all duration-300',
     successPulse
-      ? 'border-[#FBBF24]/80 shadow-[0_0_24px_rgba(251,191,36,0.35)]'
-      : 'border-white/10 focus-within:border-[#39FF88]/50',
+      ? 'border-[#0F4DB8]/80 shadow-[0_0_24px_rgba(15,77,184,0.35)]'
+      : 'border-white/10 focus-within:border-[#FBBF24]/50',
   ].join(' ')
 
   if (!isOpen) {
@@ -171,7 +171,7 @@ export function ReminderTerminal({
         aria-label="Add a reminder. Press slash to focus."
       >
         <Terminal
-          className="size-4 shrink-0 text-[#39FF88]/50"
+          className="size-4 shrink-0 text-[#0F4DB8]"
           strokeWidth={1.75}
           aria-hidden
         />
@@ -200,7 +200,7 @@ export function ReminderTerminal({
       >
         <div className="flex items-center gap-3 px-4 py-3">
           <Terminal
-            className="size-4 shrink-0 text-[#39FF88]/70"
+            className="size-4 shrink-0 text-[#0F4DB8]"
             strokeWidth={1.75}
             aria-hidden
           />

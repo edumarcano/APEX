@@ -55,10 +55,22 @@ export interface RingGaugeProps {
   percentage: number | null | undefined
   /** Human-readable metric label rendered beneath the numeric readout. */
   label: string
+  /** Optional subtitle rendered below the percentage inside the SVG. */
+  subText?: string
   /** When true, renders N/A fallback with dashed indicator stroke. */
   isUnavailable?: boolean
   /** Optional utility classes merged onto the root SVG wrapper. */
   className?: string
+}
+
+function gaugeStrokeClass(clampedPercentage: number): string {
+  if (clampedPercentage >= 90) {
+    return 'stroke-[#ef4444] drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]'
+  }
+  if (clampedPercentage >= 80) {
+    return 'stroke-[#f59e0b] drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]'
+  }
+  return 'stroke-[#3b82f6] drop-shadow-[0_0_6px_rgba(59,130,246,0.3)]'
 }
 
 /**
@@ -68,6 +80,7 @@ export interface RingGaugeProps {
 export function RingGauge({
   percentage,
   label,
+  subText,
   isUnavailable = false,
   className,
 }: RingGaugeProps): ReactElement {
@@ -97,7 +110,7 @@ export function RingGauge({
 
   const indicatorClassName = showFallback
     ? 'stroke-[color:var(--hud-text)] opacity-35'
-    : 'stroke-[color:var(--hud-accent)]'
+    : gaugeStrokeClass(clampedPercentage)
 
   return (
     <svg
@@ -133,7 +146,7 @@ export function RingGauge({
       />
       <text
         x={RING_CENTER}
-        y={RING_CENTER - 2}
+        y={RING_CENTER - 5}
         textAnchor="middle"
         dominantBaseline="middle"
         className={[
@@ -145,9 +158,20 @@ export function RingGauge({
       >
         {displayValue}
       </text>
+      {subText != null && subText !== '' ? (
+        <text
+          x={RING_CENTER}
+          y={RING_CENTER + 8}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="fill-[color:var(--hud-text)] text-[0.34rem] opacity-60 uppercase tracking-wider"
+        >
+          {subText}
+        </text>
+      ) : null}
       <text
         x={RING_CENTER}
-        y={RING_CENTER + 14}
+        y={RING_CENTER + 22}
         textAnchor="middle"
         dominantBaseline="middle"
         className="fill-[color:var(--hud-text)] text-[0.5rem] font-medium uppercase tracking-wide opacity-80"

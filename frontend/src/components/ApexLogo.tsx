@@ -4,6 +4,7 @@ import type { SystemState } from '../types/telemetry'
 export interface ApexLogoProps {
   step: number | null
   status: SystemState
+  isSpeaking?: boolean
   reminderPulseCount?: number
   className?: string
 }
@@ -11,6 +12,7 @@ export interface ApexLogoProps {
 export function ApexLogo({
   step,
   status,
+  isSpeaking = false,
   reminderPulseCount = 0,
   className = '',
 }: ApexLogoProps): ReactElement {
@@ -27,7 +29,7 @@ export function ApexLogo({
 
   const isError = status === 'error'
   const activeStep = step ?? 0
-  const isComplete = activeStep >= 4
+  const hasDelivered = status === 'success' || activeStep >= 4
 
   // =========================================================
   // DYNAMIC STATE STYLING MATRICES
@@ -36,34 +38,38 @@ export function ApexLogo({
   const baseBlue = 'apex-blue-metal apex-blue-metal--base'
   const activeBlue = 'apex-blue-metal apex-blue-metal--active'
   const surgeBlue = 'apex-blue-metal apex-blue-metal--surge'
-  
-  const getBlueSegmentClass = (segmentStep: number) => {
-    if (pulseActive && (segmentStep === 1 || segmentStep === 2)) {
+
+  const getBlueSegmentClass = (segmentStep: number): string => {
+    if (pulseActive) {
       return `transition-all duration-300 ease-out ${surgeBlue}`
     }
 
-    return `transition-all duration-700 ease-in-out ${
-      activeStep >= segmentStep ? activeBlue : baseBlue
-    }`
+    const blueMetal =
+      activeStep >= segmentStep || hasDelivered ? activeBlue : baseBlue
+
+    return `transition-all duration-700 ease-in-out ${blueMetal}`
   }
 
-  const surgeGold = 'apex-core-metal apex-core-metal--gold-surge'
+  const surgeBlueCore = 'apex-core-metal apex-core-metal--blue-surge'
+  const dormantCore = 'apex-core-metal apex-core-metal--dormant'
+  const greenCore = 'apex-core-metal apex-core-metal--green'
+  const redCore = 'apex-core-metal apex-core-metal--red'
+  const goldActiveCore = 'apex-core-metal apex-core-metal--gold-active'
+  const goldActiveBreathing = `${goldActiveCore} animate-[pulse_3s_ease-in-out_infinite]`
 
-  const getGoldSegmentClass = (segmentStep: number) => {
+  const getGoldSegmentClass = (segmentStep: number): string => {
     if (pulseActive) {
-      return `transition-all duration-300 ease-out ${surgeGold}`
+      return `transition-all duration-300 ease-out ${surgeBlueCore}`
     }
 
-    let fillClass = 'apex-core-metal apex-core-metal--dormant'
+    let fillClass = dormantCore
 
     if (isError) {
-      fillClass = 'apex-core-metal apex-core-metal--red'
+      fillClass = redCore
+    } else if (hasDelivered) {
+      fillClass = isSpeaking ? goldActiveBreathing : goldActiveCore
     } else if (activeStep >= segmentStep) {
-      if (isComplete) {
-        fillClass = 'apex-core-metal apex-core-metal--gold-active animate-[pulse_3s_ease-in-out_infinite]'
-      } else {
-        fillClass = 'apex-core-metal apex-core-metal--green'
-      }
+      fillClass = greenCore
     }
 
     return `transition-all duration-700 ease-in-out ${fillClass}`
@@ -154,6 +160,19 @@ export function ApexLogo({
             <stop offset="68%" stopColor="#451A03" />
             <stop offset="100%" stopColor="#B45309" />
           </linearGradient>
+
+          <linearGradient
+            id="apexBlueSurgeMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#4F8FFF" />
+            <stop offset="50%" stopColor="#1E6BFF" />
+            <stop offset="100%" stopColor="#0F4DB8" />
+          </linearGradient>
         </defs>
 
         <style>
@@ -201,6 +220,11 @@ export function ApexLogo({
             .apex-core-metal--gold-surge {
               fill: url(#apexGoldMetal);
               filter: drop-shadow(0 0 24px rgba(251, 191, 36, 1));
+            }
+
+            .apex-core-metal--blue-surge {
+              fill: url(#apexBlueSurgeMetal);
+              filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
             }
           `}
         </style>

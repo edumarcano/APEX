@@ -7,14 +7,24 @@ export interface PipelineState {
 
 export interface SystemDiagnostics {
   cpu: number | null
+  cpu_freq: number | null
   ram: number | null
+  ram_used: number | null
+  ram_total: number | null
   disk: number | null
+  disk_used: number | null
+  disk_total: number | null
 }
 
 export const DEFAULT_SYSTEM_DIAGNOSTICS: SystemDiagnostics = {
   cpu: null,
+  cpu_freq: null,
   ram: null,
+  ram_used: null,
+  ram_total: null,
   disk: null,
+  disk_used: null,
+  disk_total: null,
 }
 
 export interface ActiveReminder {

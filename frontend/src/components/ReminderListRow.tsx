@@ -14,10 +14,17 @@ export function ReminderListRow({
 }: ReminderListRowProps): ReactElement {
   const [isDismissing, setIsDismissing] = useState(false)
 
-  const handleComplete = useCallback((): void => {
+const handleComplete = useCallback((): void => {
     if (isDismissing) return
     setIsDismissing(true)
-  }, [isDismissing])
+
+    // Tell the database to mark it read before the animation finishes
+    fetch('http://127.0.0.1:8000/api/v1/reminders/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [reminder.id] })
+    }).catch(() => {})
+}, [isDismissing, reminder.id])
 
   const handleTransitionEnd = useCallback(
     (event: React.TransitionEvent<HTMLLIElement>): void => {
