@@ -322,3 +322,50 @@
   animation: borderSpin 4s linear infinite;
   will-change: transform;
 }
+
+@layer utilities {
+  @keyframes twinkleSlow {
+    0%,
+    100% {
+      opacity: 0.1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes twinkleMedium {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  @keyframes twinkleFast {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  .animate-twinkle-slow {
+    animation: twinkleSlow 15s ease-in-out infinite;
+    will-change: opacity;
+  }
+
+  .animate-twinkle-medium {
+    animation: twinkleMedium 8s ease-in-out infinite;
+    will-change: opacity;
+  }
+
+  .animate-twinkle-fast {
+    animation: twinkleFast 4s ease-in-out infinite;
+    will-change: opacity;
+  }
+}

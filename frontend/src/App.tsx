@@ -2,6 +2,7 @@ import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
+import { CelestialBackground } from './components/CelestialBackground'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
@@ -121,6 +122,8 @@ export default function App(): ReactElement {
         className="relative isolate min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)]"
         style={{ '--glow-color': glowColor } as CSSProperties}
       >
+        <CelestialBackground />
+
         <div
           className="pointer-events-none absolute inset-0 z-[var(--z-reactive-glow)] overflow-hidden transition-opacity duration-1000 ease-in-out"
           style={{
