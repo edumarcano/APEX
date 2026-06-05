@@ -118,37 +118,48 @@ export default function App(): ReactElement {
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main
-        className="relative min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
+        className="relative isolate min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)]"
         style={{ '--glow-color': glowColor } as CSSProperties}
       >
-<div 
-  className="pointer-events-none absolute inset-0 z-0 overflow-hidden transition-opacity duration-1000 ease-in-out"
-  style={{
-    opacity: showGlow ? 1 : 0,
-    '--glow-color': glowColor,
-  } as React.CSSProperties}
->
-  {showGlow && (
-    <>
-      {/* Nebula 1: Top-Right */}
-      <div 
-        className="hud-nebula-blob animate-nebula-1 top-[-35%] right-[-35%] w-[110%] h-[110%]"
-        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)' }}
-      />
-      {/* Nebula 2: Bottom-Left */}
-      <div 
-        className="hud-nebula-blob animate-nebula-2 bottom-[-35%] left-[-35%] w-[110%] h-[110%]"
-        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)' }}
-      />
-      {/* Nebula 3: Center-Slicing Diagonal */}
-      <div 
-        className="hud-nebula-blob animate-nebula-3 top-[10%] left-[10%] w-[100%] h-[100%]"
-        style={{ background: 'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.08) 45%, rgba(var(--glow-color), 0.02) 75%, rgba(0,0,0,0) 100%)' }}
-      />
-    </>
-  )}
-</div>
-        <header className="relative z-10 mb-6 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
+        <div
+          className="pointer-events-none absolute inset-0 z-[var(--z-reactive-glow)] overflow-hidden transition-opacity duration-1000 ease-in-out"
+          style={{
+            opacity: showGlow ? 1 : 0,
+            '--glow-color': glowColor,
+          } as CSSProperties}
+        >
+          {showGlow && (
+            <>
+              {/* Nebula 1: Top-Right */}
+              <div
+                className="hud-nebula-blob animate-nebula-1 top-[-35%] right-[-35%] h-[110%] w-[110%] will-change-transform will-change-[opacity]"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)',
+                }}
+              />
+              {/* Nebula 2: Bottom-Left */}
+              <div
+                className="hud-nebula-blob animate-nebula-2 bottom-[-35%] left-[-35%] h-[110%] w-[110%] will-change-transform will-change-[opacity]"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)',
+                }}
+              />
+              {/* Nebula 3: Center-Slicing Diagonal */}
+              <div
+                className="hud-nebula-blob animate-nebula-3 top-[10%] left-[10%] h-[100%] w-[100%] will-change-transform will-change-[opacity]"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.08) 45%, rgba(var(--glow-color), 0.02) 75%, rgba(0,0,0,0) 100%)',
+                }}
+              />
+            </>
+          )}
+        </div>
+
+        <div className="relative z-[var(--z-bento-hud)] p-4 md:p-6">
+          <header className="relative mb-6 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
           <div className="flex items-baseline justify-self-start">
             <h1
               className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
@@ -173,8 +184,8 @@ export default function App(): ReactElement {
           >
             {headerTicker.text}
           </p>
-        </header>
-        <div className="relative z-10 mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
+          </header>
+          <div className="relative mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           {/* COLUMN 1: LEFT WING */}
           <div className="flex flex-col gap-4 md:gap-6">
             <TelemetryCard
@@ -209,14 +220,14 @@ export default function App(): ReactElement {
           </div>
 
           {/* COLUMN 2: CENTER REACTOR */}
-          <div className="flex flex-col items-center justify-center h-full py-6 min-h-[30rem] xl:col-span-1">
+          <div className="relative isolate z-[var(--z-core-logo)] flex h-full min-h-[30rem] flex-col items-center justify-center py-6 xl:col-span-1">
             <div className="flex h-full w-full items-center justify-center">
               <ApexLogo
                 step={activeStep}
                 status={status}
                 isSpeaking={isSpeaking}
                 reminderPulseCount={reminderPulseCount}
-                className="h-64 xl:h-72 w-auto filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)]"
+                className="h-64 w-auto filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] xl:h-72"
               />
             </div>
           </div>
@@ -274,6 +285,7 @@ export default function App(): ReactElement {
           >
             <SystemDiagnostics />
           </TelemetryCard>
+          </div>
         </div>
       </main>
     </AtmosphericThemeProvider>

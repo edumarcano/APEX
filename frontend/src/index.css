@@ -11,6 +11,11 @@
     --hud-text: #e2e8f0;
     --hud-radius: 15px;
     --hud-panel-pad: 1.25rem;
+    --z-space-gradient: 0;
+    --z-celestial-stars: 10;
+    --z-reactive-glow: 20;
+    --z-core-logo: 30;
+    --z-bento-hud: 40;
   }
 
   *,
