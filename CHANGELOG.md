@@ -2,6 +2,168 @@
 
 ---
 
+## v1.6.0 — HUD-Renaissance: Atmospheric Resonance
+
+**Released:** June 5, 2026
+
+This release transforms the APEX HUD from a functional dashboard into a fully animated, state-reactive interface. Seven commits introduce a persistent animated header, a pipeline-driven nebula background layer, a live-speaker orbital component, an SVG vector logo with segment-gated activation, a weather condition archetype system, glass-panel surface treatment across all cards, and a speaking border animation on briefing delivery. The backend gained a real speaker state query, extended system vitals, and a typed pipeline status model. Legacy diagnostic components were removed and replaced with cleaner header-integrated equivalents.
+
+---
+
+### What's New
+
+#### Animated HUD Header and Status Ticker
+
+A persistent header bar was added to the top of the dashboard with integrated pipeline and system state feedback.
+
+- A `<header>` element was added to `App.tsx` with a live `headerTicker` indicator that reflects `status` and the active pipeline step label in real time.
+- A CSS shimmer animation was added to the APEX title in `index.css`. The gradient sweep fires while pipeline polling is active and stops on completion.
+- `DiagnosticProgress.tsx` was deleted. The pipeline step label it previously rendered is now surfaced through the header ticker, reducing the component count without losing visibility.
+
+#### Pipeline-Driven Nebula Background
+
+The HUD background layer now reacts to pipeline execution state with animated radial-gradient blobs.
+
+- Three animated nebula blobs were added to `App.tsx` as CSS radial-gradient layers that appear when a pipeline run is active.
+- Blob color shifts by stage: emerald for stages 1–3 (gate, collection, synthesis) and amber for stage 4 (delivery). On `status === 'success'`, the nebula color persists at gold.
+- `--hud-bg` was updated to `#000000` to increase contrast against the nebula layer.
+
+#### VocalOrb — Live Speaker State Component
+
+A new SVG component was added to the header that reflects real-time audio playback state.
+
+- `VocalOrb.tsx` was created. When `isSpeaking` is false it renders a static stasis line; when true it transitions to two counter-rotating gyro rings with a glow filter.
+- `gyroClockwise` and `gyroCounter` keyframe animations were added to `index.css`.
+- `is_speaking()` was added to `core/speaker.py`. It checks the threading lock and `pygame.mixer` busy state to determine whether audio is actively playing.
+- `is_speaking` was added to the `PipelineState` snapshot in `core/api.py` and exposed through `GET /api/v1/status` via a new `PipelineStatusSnapshot` Pydantic model.
+- `is_speaking` was added to the `PipelineState` and `ApexDataState` TypeScript interfaces in `telemetry.ts`.
+- The frontend-side derived calculation `isSpeaking = isPipelinePolling && activeStep === 4` was removed. Speaker state is now sourced directly from the backend.
+- `VocalOrb` is mounted in the header center column. The header layout was converted to a three-column CSS grid to keep the orb visually centered between the title and the ticker.
+
+#### APEX Vector Logo with Pipeline Segment Activation
+
+A multi-layer SVG logo was added to the HUD center column with pipeline-reactive rendering.
+
+- `ApexLogo.tsx` was created with five inline gradient definitions and step-gated segment activation tied to the pipeline state integer.
+- A `--glow-color`-driven drop-shadow filter reflects the active pipeline stage through the logo.
+- An `isSpeaking` prop was added to `ApexLogo`. The gold core persists after `status === 'success'` and pulses during audio delivery at stage 4.
+- `reminderPulseCount` state was added in `App.tsx` with an 800 ms pulse flash triggered by successful reminder submission, routed through an `onReminderSaved` callback on `ReminderTerminal`.
+
+#### Weather Condition Archetype System
+
+Weather card rendering is now driven by a typed condition classification system rather than raw string comparisons.
+
+- `WeatherConditionArchetype` union type was added to `telemetry.ts` and extended into `TelemetryPayload` as `weatherCondition`.
+- `resolveWeatherCondition()` was added to `useApexData.ts`. It derives the archetype from the weather detail string and branches on time of day for clear conditions (`"ClearDay"` vs `"ClearNight"`).
+- `TelemetryCard.tsx` received per-archetype animated background glow, border color, and a condition icon rendered from the archetype value.
+- Five CSS keyframe animations and `animate-weather-*` utility classes were added to `index.css` to back the per-condition visual treatments.
+- The Weather `TelemetryCard` in `App.tsx` was updated from inline string logic to a `weatherBorderByCondition` record keyed on `WeatherConditionArchetype`.
+- The "Schedule" card label was renamed to "Events" and the "F1 Schedule" card label was renamed to "Next F1 Race".
+
+#### Glass Panel Surface Treatment and Animated Diagnostics
+
+All telemetry cards received a visual finish pass and the system diagnostics component was significantly expanded.
+
+- A `.hud-glass` backdrop-blur utility class and per-card hover color classes were applied to all telemetry card panels in `index.css` and `TelemetryCard.tsx`.
+- `SpeakingBorderMask` was implemented in `BriefingPanel.tsx` as a spinning conic-gradient border overlay that activates at pipeline stage 4 during audio delivery.
+- `RingGauge.tsx` received a `subText` prop for secondary label rendering and severity-driven ring colors: blue for normal load, amber for elevated, red for critical.
+- `SystemDiagnostics.tsx` was expanded with a severity-driven radial glow and a looping scan sweep animation that fires continuously in the background.
+- `sample_system_vitals()` in `core/scanner.py` was extended to emit `cpu_freq`, raw RAM bytes, and raw disk bytes alongside the existing percentage fields.
+- Corresponding fields were added to `telemetry.ts` and consumed by `useSystemDiagnostics.ts`.
+- `tzdata` was added to `requirements.txt` for reliable timezone resolution.
+
+#### Collapsible Reminder Terminal
+
+The reminder input component was refactored from a fixed full-page overlay into an inline collapsible dock inside the Reminders card.
+
+- `ReminderTerminal` was relocated from a fixed overlay in `App.tsx` into the Reminders `TelemetryCard`.
+- `isOpen` and `dockVisible` state was added to manage a dock-button-to-form transition.
+- Auto-collapse fires after successful submission. `Escape` key press and focus-out events also collapse the terminal.
+- `ReminderTerminal` was wrapped in `createPortal` to resolve z-index stacking issues against the HUD grid.
+- Success-pulse and icon color was changed from green to blue for consistency with the unified HUD palette.
+
+---
+
+### Fixes
+
+#### Pipeline Polling Through Stage 4
+
+- The early `PIPELINE_COMPLETE_STEP` exit guard was removed from `useApexData.ts`. The polling loop now remains active through stage 4, ensuring speaker state and nebula glow receive their final update before the run is marked complete.
+
+#### Speaker Cleanup Ordering
+
+- `_speak_and_cleanup()` was extracted in `core/api.py` to defer `global_pipeline_state.reset()` until after audio playback completes. Previously, the pipeline state could reset before the frontend had polled the speaking stage, causing the speaking border and orb animation to be skipped.
+
+#### Duplicate Theme Writes
+
+- Redundant `document.documentElement.style.setProperty` calls were removed from `AtmosphericThemeContext.tsx`. CSS variable writes now originate from a single location.
+
+#### ReminderListRow Dismiss Race Condition
+
+- `ReminderListRow` was updated to fire `POST /api/v1/reminders/read` before the dismiss animation starts rather than after. The previous order allowed the animation to complete and the component to unmount before the API call returned, causing intermittent state drift.
+
+#### Weather Detail Capitalization
+
+- `resolveWeatherDetail()` was fixed to capitalize extracted condition words. Previously, raw lowercase strings from the weather API were surfaced directly into the HUD.
+
+---
+
+### Refactors
+
+#### HUD Grid Structure
+
+- The dashboard grid was restructured in `App.tsx` into explicit left-wing, center-core, and right-wing column groups using `xl:order-*` utilities. `xl:contents` overrides were removed.
+- `SystemDiagnostics` was expanded to full three-column width at `xl` breakpoint.
+- `ApexLogo` was scaled to `h-64 xl:h-72`.
+
+#### BriefingPanel Simplification
+
+- The word-by-word interval reveal was removed from `BriefingPanel`. Section class construction was consolidated into a `sectionShellClassName` helper.
+- The `isSpeaking` prop and glow-pulse side effect were removed from `BriefingPanel`; speaking state is now derived from `useApexData` directly.
+- A `clip-path` curtain reveal animation was added that fires once on briefing delivery.
+
+#### Typed Pipeline Status Model
+
+- `PipelineStatusSnapshot` was added to `core/api.py` as a typed Pydantic response model for `GET /api/v1/status`, replacing the previously untyped dict return.
+- `parsePipelineStatus()` was added on the frontend side in `useApexData.ts` to validate the response before assignment, replacing the previous unguarded `response.json()` cast.
+
+---
+
+### Files Changed
+
+| Area | Files |
+|---|---|
+| Backend API | `core/api.py` |
+| Backend Speaker | `core/speaker.py` |
+| Backend Scanner | `core/scanner.py` |
+| Frontend Components | `ApexLogo.tsx` (new), `VocalOrb.tsx` (new), `BriefingPanel.tsx`, `TelemetryCard.tsx`, `SystemDiagnostics.tsx`, `RingGauge.tsx`, `ReminderTerminal.tsx`, `ReminderListRow.tsx` |
+| Frontend Hooks | `useApexData.ts`, `useSystemDiagnostics.ts` |
+| Frontend Context | `AtmosphericThemeContext.tsx` |
+| Frontend Types | `telemetry.ts` |
+| Frontend Styles | `index.css` |
+| App Shell | `App.tsx` |
+| Frontend Entry | `index.html` |
+| Deleted | `DiagnosticProgress.tsx` |
+| Dependencies | `requirements.txt` |
+| Repo Config | `.cursor/rules/frontend.mdc`, `.cursor/rules/auditor.mdc` |
+| Docs | `README.md` |
+
+---
+
+### Summary Stats
+
+- **7 commits** merged into `v1.6.0`
+- **~1,906 lines added**, **~399 lines removed** across 24 files
+- **2 new React components** (`ApexLogo`, `VocalOrb`)
+- **1 component deleted** (`DiagnosticProgress`)
+- **1 new backend function** (`is_speaking()` in `speaker.py`)
+- **1 new Pydantic model** (`PipelineStatusSnapshot`)
+- **1 new typed archetype system** (`WeatherConditionArchetype`)
+- **1 race condition fixed** (reminder dismiss ordering)
+- **1 pipeline polling gap closed** (stage 4 speaker state propagation)
+
+---
+
 ## v1.5.0 — HUD-Renaissance: The Control Deck
 
 **Released:** May 31, 2026
