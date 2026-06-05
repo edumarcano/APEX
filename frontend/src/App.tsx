@@ -223,15 +223,17 @@ export default function App(): ReactElement {
           </div>
 
           {/* COLUMN 2: CENTER REACTOR */}
-          <div className="relative isolate z-[var(--z-core-logo)] flex h-full min-h-[30rem] flex-col items-center justify-center py-6 xl:col-span-1">
+          <div className="relative z-[var(--z-core-logo)] flex h-full min-h-[30rem] flex-col items-center justify-center py-6 xl:col-span-1">
             <div className="flex h-full w-full items-center justify-center">
-              <ApexLogo
-                step={activeStep}
-                status={status}
-                isSpeaking={isSpeaking}
-                reminderPulseCount={reminderPulseCount}
-                className="h-64 w-auto filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] xl:h-72"
-              />
+              <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
+                <ApexLogo
+                  step={activeStep}
+                  status={status}
+                  isSpeaking={isSpeaking}
+                  reminderPulseCount={reminderPulseCount}
+                  className="h-64 w-auto xl:h-72"
+                />
+              </div>
             </div>
           </div>
 

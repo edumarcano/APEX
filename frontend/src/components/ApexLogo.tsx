@@ -187,6 +187,7 @@ export function ApexLogo({
 
             .apex-blue-metal--active {
               filter: drop-shadow(0 0 12px rgba(79, 143, 255, 0.75));
+              transition: all 1000ms ease-in-out;
             }
 
             .apex-blue-metal--surge {
@@ -215,6 +216,7 @@ export function ApexLogo({
             .apex-core-metal--gold-active {
               fill: url(#apexGoldMetal);
               filter: drop-shadow(0 0 14px rgba(251, 191, 36, 0.85));
+              transition: all 1000ms ease-in-out;
             }
 
             .apex-core-metal--gold-surge {
