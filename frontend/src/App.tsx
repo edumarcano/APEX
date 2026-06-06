@@ -28,6 +28,7 @@ export default function App(): ReactElement {
     isPipelinePolling,
     isSpeaking,
     activeReminders,
+    demoModeActive,
     refreshReminders,
     markReminderAsRead,
   } = apexData
@@ -180,13 +181,23 @@ export default function App(): ReactElement {
           <div className="flex justify-center justify-self-center">
             <VocalOrb isSpeaking={isSpeaking} className="h-12 w-auto" />
           </div>
-          <p
-            className={`m-0 justify-self-end font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
-            aria-live="polite"
-            data-slot="header-status-ticker"
-          >
-            {headerTicker.text}
-          </p>
+          <div className="flex items-center justify-end gap-2 justify-self-end">
+            {demoModeActive && (
+              <span
+                className="border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite]"
+                data-slot="demo-mode-badge"
+              >
+                DEMO MODE ACTIVE
+              </span>
+            )}
+            <p
+              className={`m-0 font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
+              aria-live="polite"
+              data-slot="header-status-ticker"
+            >
+              {headerTicker.text}
+            </p>
+          </div>
           </header>
           <div className="relative mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           {/* COLUMN 1: LEFT WING */}

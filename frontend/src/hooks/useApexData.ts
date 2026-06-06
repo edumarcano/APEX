@@ -178,6 +178,7 @@ export function useApexData(): UseApexDataReturn {
     isPipelinePolling: false,
     isSpeaking: false,
     activeReminders: [],
+    demoModeActive: false,
   })
 
   const applyReminderRecords = useCallback((records: ReminderRecord[]): void => {
@@ -291,6 +292,7 @@ export function useApexData(): UseApexDataReturn {
       ...prev,
       status: 'loading',
       error: null,
+      demoModeActive: false,
     }))
 
     void (async () => {
@@ -323,6 +325,7 @@ export function useApexData(): UseApexDataReturn {
             isPipelinePolling: false,
             isSpeaking: false,
             activeReminders: [],
+            demoModeActive: false,
           }))
 
           return
@@ -337,13 +340,23 @@ export function useApexData(): UseApexDataReturn {
             isPipelinePolling: false,
             isSpeaking: false,
             activeReminders: [],
+            demoModeActive: false,
           }))
 
           return
         }
 
-        const payload = body as { briefing?: unknown; telemetry?: unknown }
+        const payload = body as {
+          briefing?: unknown
+          telemetry?: unknown
+          metadata?: unknown
+        }
         const telemetry = payload.telemetry
+        const metadata =
+          payload.metadata && typeof payload.metadata === 'object'
+            ? (payload.metadata as Record<string, unknown>)
+            : null
+        const demoModeActive = metadata?.demo_mode_active === true
 
         if (!telemetry || typeof telemetry !== 'object') {
           setState((prev) => ({
@@ -354,6 +367,7 @@ export function useApexData(): UseApexDataReturn {
             isPipelinePolling: false,
             isSpeaking: false,
             activeReminders: [],
+            demoModeActive: false,
           }))
 
           return
@@ -393,6 +407,7 @@ export function useApexData(): UseApexDataReturn {
           status: 'success',
           error: null,
           activeReminders,
+          demoModeActive,
         }))
       } catch (err) {
         if (
@@ -410,6 +425,7 @@ export function useApexData(): UseApexDataReturn {
           isPipelinePolling: false,
           isSpeaking: false,
           activeReminders: [],
+          demoModeActive: false,
         }))
       }
     })()

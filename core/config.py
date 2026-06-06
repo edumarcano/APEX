@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 __all__ = [
     "CONFIG_PATH",
     "CUSTOM_BROWSER_PATH",
+    "DEMO_MODE",
+    "DEMO_TTS",
     "DEV_AI_SYNTHESIS",
     "DEV_TTS_PLAYBACK",
     "ENABLE_STARTUP_GATE",
@@ -133,6 +135,16 @@ DEV_AI_SYNTHESIS: Final[DevAiSynthesisMode] = _parse_dev_ai_synthesis(
 
 DEV_TTS_PLAYBACK: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
     os.getenv("DEV_TTS_PLAYBACK"),
+)
+
+DEMO_MODE: Final[bool] = _parse_env_bool(
+    os.getenv("DEMO_MODE"),
+    key="DEMO_MODE",
+    default=False,
+)
+
+DEMO_TTS: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
+    os.getenv("DEMO_TTS"),
 )
 
 ENABLE_STARTUP_GATE: Final[bool] = _parse_env_bool(
