@@ -6,7 +6,7 @@
   :root {
     --hud-bg: #000000;
     --hud-panel-bg: #07070a;
-    --hud-border-color: #082F7A;
+    --hud-border-color: rgba(255, 255, 255, 0.08);
     --hud-accent: #0F4DB8;
     --hud-text: #e2e8f0;
     --hud-radius: 15px;
@@ -267,6 +267,33 @@
 
 .hover-weather-bright:hover .weather-glow-core {
   opacity: 0.5 !important;
+}
+
+.hover-blue-subtle {
+  transition: border-color 500ms ease, box-shadow 500ms ease;
+}
+
+.hover-blue-subtle:hover {
+  border-color: rgba(31, 111, 229, 0.25) !important;
+  box-shadow: 0 0 12px rgba(31, 111, 229, 0.05) !important;
+}
+
+.hover-blue-medium {
+  transition: border-color 500ms ease, box-shadow 500ms ease;
+}
+
+.hover-blue-medium:hover {
+  border-color: rgba(31, 111, 229, 0.45) !important;
+  box-shadow: 0 0 14px rgba(31, 111, 229, 0.10) !important;
+}
+
+.hover-blue-strong {
+  transition: border-color 500ms ease, box-shadow 500ms ease;
+}
+
+.hover-blue-strong:hover {
+  border-color: rgba(31, 111, 229, 0.65) !important;
+  box-shadow: 0 0 18px rgba(31, 111, 229, 0.15) !important;
 }
 
 .hover-warm-subtle {

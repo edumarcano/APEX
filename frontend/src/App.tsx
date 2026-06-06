@@ -283,7 +283,7 @@ export default function App(): ReactElement {
           <TelemetryCard
             title="System Diagnostics"
             icon={Activity}
-            className="border-2 border-[color:var(--hud-accent)] md:col-span-2 xl:order-7 xl:col-span-3"
+            className="md:col-span-2 xl:order-7 xl:col-span-3"
             role="region"
             aria-label="System diagnostics"
             data-slot="system-diagnostics-card"
