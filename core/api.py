@@ -152,6 +152,9 @@ class RuntimeMetadata(BaseModel):
     dev_mode_active: bool = Field(
         description="Whether unified DEV_MODE is active for this run.",
     )
+    demo_mode_active: bool = Field(
+        description="Whether DEMO_MODE simulation controls are active for this run.",
+    )
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
@@ -253,6 +256,7 @@ def _run_demo_briefing() -> BriefingResponse:
             telemetry=telemetry,
             metadata=RuntimeMetadata(
                 dev_mode_active=True,
+                demo_mode_active=True,
                 synthesis_strategy="slm",
                 tts_strategy=DEMO_TTS,
             ),
@@ -547,6 +551,7 @@ def trigger_briefing() -> BriefingResponse:
             ),
             metadata=RuntimeMetadata(
                 dev_mode_active=dev_mode,
+                demo_mode_active=False,
                 synthesis_strategy=synthesis_strategy,
                 tts_strategy=tts_strategy,
             ),

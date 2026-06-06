@@ -65,6 +65,7 @@ export interface ApexDataState {
   isPipelinePolling: boolean
   isSpeaking: boolean
   activeReminders: ActiveReminder[]
+  demoModeActive: boolean
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'

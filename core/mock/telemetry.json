@@ -1,4 +1,7 @@
 {
+  "metadata": {
+    "demo_mode_active": true
+  },
   "weather": "Current temperature is 72 degrees with clear sky.",
   "sports": "F1_DATA:{\"raceName\":\"Simulation Grand Prix\",\"round\":\"99\",\"country\":\"Monaco\",\"raceDateTimeEST\":\"Sunday, June 01 at 3:00 PM EDT\",\"relativeWeek\":\"This week\",\"sprintScheduled\":false,\"sprintDateTimeEST\":\"Unscheduled\"}",
   "news": "News Telemetry: Top headline — Global markets steady amid tech sector rally.",
