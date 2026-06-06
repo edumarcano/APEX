@@ -164,60 +164,65 @@ def is_speaking() -> bool:
     return False
 
 
-def speak(text: str) -> None:
+def _route_tts_playback(text: str, tts_strategy: str) -> None:
+    """Route speech to the engine named by ``tts_strategy``."""
+    normalized = tts_strategy.strip().lower()
+
+    if normalized == "pyttsx3":
+        print("[SPEAKER] Routing directly to local pyttsx3 execution.")
+        _speak_pyttsx3_local(text)
+        return
+
+    if normalized == "google":
+        print("[SPEAKER] Routing to Google Cloud TTS client API.")
+        if _try_google_tts(text):
+            return
+        print("[SPEAKER] Google TTS failed; falling back to local pyttsx3.")
+        _speak_pyttsx3_local(text)
+        return
+
+    if normalized == "elevenlabs":
+        print(
+            "[SPEAKER] elevenlabs routing placeholder — "
+            "ElevenLabs pipeline not yet deployed."
+        )
+        return
+
+    print(
+        f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
+        "defaulting to local pyttsx3."
+    )
+    _speak_pyttsx3_local(text)
+
+
+def speak(text: str, *, tts_override: str | None = None) -> None:
     """Speak text parameters using pre-warmed cloud structures, defaulting to dynamic local thread loops.
 
     Protects and linearizes all executing threads via a universal lock block to guarantee
     thread-safe audio routing across asynchronous invocation checkpoints.
+
+    Args:
+        text: Plain-text payload for playback.
+        tts_override: When set, bypasses DEV_MODE and PRIMARY_TTS routing for this call.
     """
     with _SPEAK_LOCK:
         print(f"[SPEAKER] Speak request received (chars={len(text)}).")
+
+        if tts_override is not None:
+            print(f"[SPEAKER] TTS override active; routing vector is {tts_override!r}.")
+            _route_tts_playback(text, tts_override)
+            return
 
         if config.is_dev_mode():
             dev_tts = config.DEV_TTS_PLAYBACK
             print(f"[SPEAKER] DEV_MODE active; DEV_TTS_PLAYBACK routing vector is {dev_tts!r}.")
 
-            if dev_tts == "pyttsx3":
-                print("[SPEAKER] DEV_TTS_PLAYBACK is pyttsx3; routing directly to local execution.")
-                _speak_pyttsx3_local(text)
-                return
-
-            if dev_tts == "google":
-                print(
-                    "[SPEAKER] DEV_TTS_PLAYBACK is google; network leakage warning — "
-                    "falling through to live cloud Google TTS client API."
-                )
-            elif dev_tts == "elevenlabs":
-                # TODO: APEX-V1.7.0 — Deploy ElevenLabs engine streaming pipeline with free tier monthly limits.
-                print(
-                    "[SPEAKER] DEV_TTS_PLAYBACK is elevenlabs; "
-                    "placeholder routing — ElevenLabs pipeline not yet deployed."
-                )
-                return
+            _route_tts_playback(text, dev_tts)
+            return
 
         primary_raw = getattr(config, "PRIMARY_TTS", "pyttsx3")
-        primary = str(primary_raw).strip().lower()
-
         print(f"[SPEAKER] Configured PRIMARY_TTS routing vector is {primary_raw!r}.")
-
-        if primary == "pyttsx3":
-            print("[SPEAKER] PRIMARY_TTS is pyttsx3, bypassing network paths, routing directly to local execution.")
-            _speak_pyttsx3_local(text)
-            return
-
-        if primary == "google":
-            print("[SPEAKER] Cloud priority sequence active: Google -> pyttsx3 offline fallback.")
-            if _try_google_tts(text):
-                return
-            print("[SPEAKER] Network paths fully exhausted. Deploying local thread-isolated fallback.")
-            _speak_pyttsx3_local(text)
-            return
-
-        print(
-            f"[SPEAKER] Unrecognized PRIMARY_TTS keyword context {primary_raw!r} "
-            "(expected google or pyttsx3), defaulting directly to local loop fallback bounds."
-        )
-        _speak_pyttsx3_local(text)
+        _route_tts_playback(text, str(primary_raw))
 
 
 _warm_system_subsystems()

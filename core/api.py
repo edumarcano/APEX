@@ -6,10 +6,13 @@ Standalone HTTP surface; briefing trigger mirrors main.start_apex flow.
 
 from __future__ import annotations
 
+import json
 import os
+import time
 import re
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated, Any
 
 import uvicorn
@@ -28,6 +31,8 @@ from clients import (
 )
 from core import brain, database, scanner, speaker
 from core.config import (
+    DEMO_MODE,
+    DEMO_TTS,
     DEV_AI_SYNTHESIS,
     DEV_TTS_PLAYBACK,
     ENV_PATH,
@@ -131,11 +136,14 @@ class PipelineState:
 
 global_pipeline_state = PipelineState()
 
+_MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.json"
+_DEMO_STAGE_DELAY_SECONDS = 1.5
 
-def _speak_and_cleanup(text: str) -> None:
+
+def _speak_and_cleanup(text: str, *, tts_override: str | None = None) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
     try:
-        speaker.speak(text)
+        speaker.speak(text, tts_override=tts_override)
     finally:
         global_pipeline_state.reset()
 
@@ -170,6 +178,88 @@ class BriefingResponse(BaseModel):
     metadata: RuntimeMetadata = Field(
         description="Runtime routing metadata for synthesis and TTS.",
     )
+
+
+def _load_mock_telemetry() -> TelemetryPayload:
+    """Load static demo telemetry from ``core/mock/telemetry.json``."""
+    try:
+        with open(_MOCK_TELEMETRY_PATH, encoding="utf-8") as mock_file:
+            payload = json.load(mock_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demo telemetry payload unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo telemetry payload must be a JSON object.",
+        )
+
+    try:
+        return TelemetryPayload(**payload)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demo telemetry payload failed schema validation: {exc}",
+        ) from exc
+
+
+def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
+    """Compose a deterministic briefing string from mock telemetry fields."""
+    combined_raw_data = (
+        f"{telemetry.weather} | {telemetry.sports} | {telemetry.email} | "
+        f"{telemetry.calendar} | {telemetry.news} | {telemetry.reminders}"
+    )
+    return (
+        "Greetings Chief. APEX simulation controls are operational. "
+        "Atmospheric sensors report seventy-two degrees with clear skies. "
+        "The Monaco Grand Prix is scheduled for this week, with the main race running on Sunday. "
+        "Your inbox has two unread primary messages, and your next calendar item, "
+        "Demo Presentation, begins at three PM. All local databases are fully synchronized."
+    )
+
+
+def _run_demo_briefing() -> BriefingResponse:
+    """Execute the staged simulation path when ``DEMO_MODE`` is active."""
+    voice_thread_started = False
+
+    try:
+        global_pipeline_state.update(1, "GATE")
+        time.sleep(_DEMO_STAGE_DELAY_SECONDS)
+
+        global_pipeline_state.update(2, "COLLECTION")
+        time.sleep(_DEMO_STAGE_DELAY_SECONDS)
+
+        telemetry = _load_mock_telemetry()
+
+        global_pipeline_state.update(3, "SYNTHESIS")
+        time.sleep(_DEMO_STAGE_DELAY_SECONDS)
+
+        final_briefing = _build_demo_briefing(telemetry)
+
+        global_pipeline_state.update(4, "DELIVERY")
+        voice_thread = threading.Thread(
+            target=_speak_and_cleanup,
+            kwargs={"text": final_briefing, "tts_override": DEMO_TTS},
+        )
+        voice_thread.start()
+        voice_thread_started = True
+
+        return BriefingResponse(
+            status="success",
+            briefing=final_briefing,
+            telemetry=telemetry,
+            metadata=RuntimeMetadata(
+                dev_mode_active=True,
+                synthesis_strategy="slm",
+                tts_strategy=DEMO_TTS,
+            ),
+        )
+    finally:
+        if not voice_thread_started:
+            global_pipeline_state.reset()
 
 
 class CreateReminderRequest(BaseModel):
@@ -302,8 +392,12 @@ def trigger_briefing() -> BriefingResponse:
     """
     HTTP entry point for a full APEX run.
 
-    Mirrors main.start_apex execution order.
+    Mirrors main.start_apex execution order. When ``DEMO_MODE`` is active,
+    serves static mock telemetry through a staged simulation loop.
     """
+    if DEMO_MODE:
+        return _run_demo_briefing()
+
     voice_thread_started = False
     global_pipeline_state.update(1, "GATE")
 
