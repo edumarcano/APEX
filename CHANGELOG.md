@@ -2,6 +2,86 @@
 
 ---
 
+## v1.7.0 — HUD-Renaissance: Productization
+
+**Released:** June 6, 2026
+
+This release moves APEX from a feature-complete prototype into a shareable, documented product. Three commits introduce a star-field celestial background with explicit HUD z-index layering, a full demo mode that stages the pipeline with mock telemetry and zero live API calls, and a documentation split that extracts architecture, API contracts, and engineering decisions from the README into dedicated reference files.
+
+---
+
+### What's New
+
+#### Celestial Background and HUD Z-Index Layer System
+
+The HUD now renders on top of a static star field with a formalized layer stack.
+
+- `CelestialBackground.tsx` was created. It generates 80 seeded stars distributed across three twinkle-speed tiers using a deterministic pseudo-random sequence. The component mounts behind all HUD content with no dependency on runtime state.
+- Five CSS custom properties (`--z-stars`, `--z-nebula`, `--z-bento-hud`, `--z-header`, `--z-portal`) were added to `index.css` to define the full HUD render stack explicitly. All previously hardcoded `z-index` values were replaced with these named properties.
+- `isolate` was applied to `<main>` in `App.tsx` to establish a stacking context boundary. Bento grid content was wrapped in a `z-[var(--z-bento-hud)]` container to sit above the nebula layer.
+- `hud-glass` was strengthened: backdrop blur increased to `blur(20px)`, opacity reduced, and layered inset shadows added to increase depth.
+- `TelemetryCard` was split into an outer shell and an inner glass content wrapper to allow the blur to apply correctly through the z-stack.
+- Card hover classes (`hover-warm-*`) were replaced with `hover-blue-subtle`, `hover-blue-medium`, and `hover-blue-strong` across all telemetry cards, aligning the palette with the unified HUD blue accent.
+- `--hud-border-color` was changed from a warm-tinted value to a neutral white-alpha value.
+- `ApexLogo` received a hover scale and `drop-shadow` transition. Active metal states gained an explicit `transition` property.
+- `repomix-output.xml` was added to `.gitignore`.
+
+#### Demo Mode
+
+A self-contained demo mode was added that runs the full pipeline against static fixture data without touching any live API or credentials.
+
+- `DEMO_MODE` and `DEMO_TTS` environment variables were added to `core/config.py` and documented in `.env.example`. `DEMO_MODE` activates the mock pipeline path; `DEMO_TTS` selects the TTS engine used during demo playback.
+- `core/mock/telemetry.json` was created as a static fixture shaped to match `TelemetryPayload`. It carries representative values for all telemetry fields without live data.
+- `_run_demo_briefing()` was added to `core/api.py`. It advances the pipeline through all four stages with fixed inter-stage delays, serves the mock telemetry fixture at `/api/v1/trigger`, and exits without calling any external client.
+- `RuntimeMetadata` was extended with a `demo_mode_active` boolean field. The field propagates `false` in the live briefing path so the frontend always has a reliable signal.
+- `_route_tts_playback()` was extracted in `core/speaker.py` to eliminate duplicated TTS branch logic that previously existed across the dev-mode and production code paths. A `tts_override` keyword argument was added to `speaker.speak()` for per-call engine selection without touching global routing.
+- `demoModeActive` was added to `ApexDataState` in `telemetry.ts` and extracted from the briefing response metadata in `useApexData.ts`.
+- A pulsing amber `DEMO MODE ACTIVE` badge renders in the HUD header when `demoModeActive` is `true`.
+
+#### Documentation Split
+
+The monolithic `README.md` was broken apart into three dedicated reference documents.
+
+- `docs/architecture.md` was created, containing the full system architecture walkthrough previously embedded in the README: data flow, component relationships, backend subsystems, and the launcher orchestration model.
+- `docs/api.md` was created, containing all API endpoint contracts: route signatures, request and response shapes, error behavior, and polling semantics.
+- `docs/decisions.md` was created, containing the engineering decision log: `.env` vs `config.json` separation, TTS fallback design, synchronous trigger rationale, speaker state authority, and launcher environment isolation.
+- `README.md` was rewritten as a concise project overview (631 → 185 lines) with cross-links to the new files.
+- The dead `inworld_api_key` field was removed from `config.json`.
+
+---
+
+### Files Changed
+
+| Area | Files |
+|---|---|
+| Frontend Components | `CelestialBackground.tsx` (new), `TelemetryCard.tsx`, `ApexLogo.tsx`, `App.tsx` |
+| Frontend Styles | `index.css` |
+| Frontend Hooks | `useApexData.ts` |
+| Frontend Types | `telemetry.ts` |
+| Backend API | `core/api.py` |
+| Backend Config | `core/config.py` |
+| Backend Speaker | `core/speaker.py` |
+| Mock Fixtures | `core/mock/telemetry.json` (new) |
+| Config & Env | `config.json`, `.env.example` |
+| Docs | `docs/architecture.md` (new), `docs/api.md` (new), `docs/decisions.md` (new), `README.md` |
+| Repo Config | `.gitignore` |
+
+---
+
+### Summary Stats
+
+- **3 commits** merged into `v1.7.0`
+- **~1,383 lines added**, **~657 lines removed** across 19 files
+- **1 new React component** (`CelestialBackground`)
+- **1 new mock fixture** (`core/mock/telemetry.json`)
+- **3 new documentation files** (`architecture.md`, `api.md`, `decisions.md`)
+- **1 named z-index layer system** added (5 CSS custom properties)
+- **1 full demo mode pipeline** added (`DEMO_MODE` + `_run_demo_briefing()`)
+- **1 TTS refactor** (`_route_tts_playback()` extraction eliminating duplicated branch logic)
+- **1 dead config field removed** (`inworld_api_key`)
+
+---
+
 ## v1.6.0 — HUD-Renaissance: Atmospheric Resonance
 
 **Released:** June 5, 2026
