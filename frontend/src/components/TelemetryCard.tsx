@@ -240,15 +240,12 @@ const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> 
 
 function resolveCardHoverClass(title: string): string {
   const normalized = title.trim()
-  if (normalized.toLowerCase() === 'system diagnostics') {
-    return 'hover-diagnostics-neutral'
-  }
   if (normalized === 'Weather') return 'hover-weather-bright'
   if (normalized === 'Events' || normalized === 'Next F1 Race') {
-    return 'hover-warm-medium'
+    return 'hover-blue-medium'
   }
-  if (normalized === 'Reminders') return 'hover-warm-strong'
-  return 'hover-warm-subtle'
+  if (normalized === 'Reminders') return 'hover-blue-strong'
+  return 'hover-blue-subtle'
 }
 
 export type TelemetryCardProps = {
@@ -283,13 +280,16 @@ export function TelemetryCard({
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
       : null
 
-  const panelClassName = [
-    'relative z-0 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)] hud-glass',
+  const shellClassName = [
+    'relative overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)]',
     resolveCardHoverClass(title),
     className,
   ]
     .filter(Boolean)
     .join(' ')
+
+  const glassContentClassName =
+    'relative z-10 hud-glass p-[var(--hud-panel-pad)]'
 
   const primaryTemperatureStyle: CSSProperties | undefined =
     primaryTemperatureF != null
@@ -327,11 +327,11 @@ export function TelemetryCard({
   return (
     <section
       {...sectionProps}
-      className={panelClassName}
+      className={shellClassName}
       aria-labelledby={headingId}
     >
       {weatherGlow ? (
-        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl">
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
           <div
             className={[
               'weather-glow-core absolute inset-0 blur-[64px] transition-opacity duration-500',
@@ -343,6 +343,7 @@ export function TelemetryCard({
           />
         </div>
       ) : null}
+      <div className={glassContentClassName}>
       <header className="mb-4 flex min-h-9 items-center gap-3">
         <Icon
           className="size-5 shrink-0 text-[color:var(--hud-accent)]"
@@ -424,6 +425,7 @@ export function TelemetryCard({
         ) : (
           children
         )}
+      </div>
       </div>
     </section>
   )

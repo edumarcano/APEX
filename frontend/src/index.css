@@ -6,11 +6,16 @@
   :root {
     --hud-bg: #000000;
     --hud-panel-bg: #07070a;
-    --hud-border-color: #082F7A;
+    --hud-border-color: rgba(255, 255, 255, 0.08);
     --hud-accent: #0F4DB8;
     --hud-text: #e2e8f0;
     --hud-radius: 15px;
     --hud-panel-pad: 1.25rem;
+    --z-space-gradient: 0;
+    --z-celestial-stars: 10;
+    --z-reactive-glow: 20;
+    --z-core-logo: 30;
+    --z-bento-hud: 40;
   }
 
   *,
@@ -109,8 +114,8 @@
 .hud-nebula-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(160px); /* Increased blur for a softer, more integrated look */
   mix-blend-mode: screen;
+  filter: blur(160px);
   will-change: transform, opacity;
 }
 
@@ -242,16 +247,18 @@
 }
 
 .hud-glass {
-  background: rgba(8, 14, 28, 0.75) !important;
-  backdrop-filter: blur(8px) !important;
-  -webkit-backdrop-filter: blur(8px) !important;
+  background: rgba(10, 12, 18, 0.55) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 0 40px rgba(15, 77, 184, 0.05) !important;
+    inset 0 1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 12px 40px rgba(0, 0, 0, 0.50) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 .hover-weather-bright {
-  transition: all 500ms ease;
+  transition: border-color 500ms ease;
 }
 
 .hover-weather-bright:hover {
@@ -262,31 +269,55 @@
   opacity: 0.5 !important;
 }
 
+.hover-blue-subtle {
+  transition: border-color 500ms ease, box-shadow 500ms ease;
+}
+
+.hover-blue-subtle:hover {
+  border-color: rgba(31, 111, 229, 0.25) !important;
+  box-shadow: 0 0 12px rgba(31, 111, 229, 0.05) !important;
+}
+
+.hover-blue-medium {
+  transition: border-color 500ms ease, box-shadow 500ms ease;
+}
+
+.hover-blue-medium:hover {
+  border-color: rgba(31, 111, 229, 0.45) !important;
+  box-shadow: 0 0 14px rgba(31, 111, 229, 0.10) !important;
+}
+
+.hover-blue-strong {
+  transition: border-color 500ms ease, box-shadow 500ms ease;
+}
+
+.hover-blue-strong:hover {
+  border-color: rgba(31, 111, 229, 0.65) !important;
+  box-shadow: 0 0 18px rgba(31, 111, 229, 0.15) !important;
+}
+
 .hover-warm-subtle {
-  transition: all 500ms ease;
+  transition: border-color 500ms ease;
 }
 
 .hover-warm-subtle:hover {
   border-color: rgba(244, 178, 42, 0.25);
-  box-shadow: 0 0 12px rgba(244, 178, 42, 0.04);
 }
 
 .hover-warm-medium {
-  transition: all 500ms ease;
+  transition: border-color 500ms ease;
 }
 
 .hover-warm-medium:hover {
   border-color: rgba(244, 178, 42, 0.45);
-  box-shadow: 0 0 14px rgba(244, 178, 42, 0.08);
 }
 
 .hover-warm-strong {
-  transition: all 500ms ease;
+  transition: border-color 500ms ease;
 }
 
 .hover-warm-strong:hover {
   border-color: rgba(244, 178, 42, 0.65);
-  box-shadow: 0 0 18px rgba(244, 178, 42, 0.12);
 }
 
 @keyframes diagnosticsScan {
@@ -316,4 +347,51 @@
 .animate-border-spin {
   animation: borderSpin 4s linear infinite;
   will-change: transform;
+}
+
+@layer utilities {
+  @keyframes twinkleSlow {
+    0%,
+    100% {
+      opacity: 0.1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes twinkleMedium {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  @keyframes twinkleFast {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  .animate-twinkle-slow {
+    animation: twinkleSlow 15s ease-in-out infinite;
+    will-change: opacity;
+  }
+
+  .animate-twinkle-medium {
+    animation: twinkleMedium 8s ease-in-out infinite;
+    will-change: opacity;
+  }
+
+  .animate-twinkle-fast {
+    animation: twinkleFast 4s ease-in-out infinite;
+    will-change: opacity;
+  }
 }
