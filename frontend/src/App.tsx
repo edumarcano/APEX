@@ -125,7 +125,7 @@ export default function App(): ReactElement {
         <CelestialBackground />
 
         <div
-          className="pointer-events-none absolute inset-0 z-[var(--z-reactive-glow)] overflow-hidden transition-opacity duration-1000 ease-in-out"
+          className="absolute inset-0 z-[var(--z-reactive-glow)] pointer-events-none overflow-hidden transition-opacity duration-1000 ease-in-out"
           style={{
             opacity: showGlow ? 1 : 0,
             '--glow-color': glowColor,
