@@ -170,9 +170,13 @@ Then open `http://127.0.0.1:5500`. Run both commands from the project root.
 
 ---
 
-## Roadmap
+## Project Planning
 
-Active development is tracked on [GitHub Projects](https://github.com/edumarcano/apex/projects). Full version history is in [CHANGELOG.md](CHANGELOG.md).
+Active development is tracked on [GitHub Projects](https://github.com/edumarcano/apex/projects).
+
+Long-term architecture planning and milestone progression are documented in [roadmap.md](docs/roadmap.md).
+
+Full version history is available in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
