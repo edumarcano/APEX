@@ -172,19 +172,77 @@ class TelemetryPayload(BaseModel):
     reminders: str = Field(description="Reminders module telemetry string.")
 
 
+class DigestPayload(BaseModel):
+    weather_archetype: str | None = Field(
+        default=None,
+        description="Normalized weather condition label for HUD display.",
+    )
+    unread_emails_count: int = Field(
+        default=0,
+        description="Count of unread primary inbox messages.",
+    )
+    upcoming_events_count: int = Field(
+        default=0,
+        description="Count of calendar events within the briefing window.",
+    )
+    f1_sprint_active: bool = Field(
+        default=False,
+        description="Whether an F1 sprint session is scheduled this week.",
+    )
+    reminders_pending_count: int = Field(
+        default=0,
+        description="Count of unread reminders awaiting briefing inclusion.",
+    )
+    confidence_score: float = Field(
+        description="Aggregate trust score for connector telemetry (0–100).",
+    )
+    failed_connectors: list[str] = Field(
+        default_factory=list,
+        description="Connector module names that failed during collection.",
+    )
+
+
 class BriefingResponse(BaseModel):
     status: str = Field(description="Run outcome label.")
     briefing: str = Field(description="Synthesized briefing text.")
     telemetry: TelemetryPayload = Field(
         description="Per-module raw telemetry captured before synthesis.",
     )
+    digest: DigestPayload = Field(
+        description="Structured telemetry data summaries and trust scoring metrics.",
+    )
     metadata: RuntimeMetadata = Field(
         description="Runtime routing metadata for synthesis and TTS.",
     )
 
 
-def _load_mock_telemetry() -> TelemetryPayload:
-    """Load static demo telemetry from ``core/mock/telemetry.json``."""
+def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
+    """Safely parse a digest sub-object with fallback defaults for missing keys."""
+    if not isinstance(raw_digest, dict):
+        return DigestPayload(confidence_score=0.0)
+
+    failed_connectors = raw_digest.get("failed_connectors", [])
+    if not isinstance(failed_connectors, list):
+        failed_connectors = []
+
+    return DigestPayload(
+        weather_archetype=raw_digest.get("weather_archetype"),
+        unread_emails_count=int(raw_digest.get("unread_emails_count", 0)),
+        upcoming_events_count=int(raw_digest.get("upcoming_events_count", 0)),
+        f1_sprint_active=bool(raw_digest.get("f1_sprint_active", False)),
+        reminders_pending_count=int(raw_digest.get("reminders_pending_count", 0)),
+        confidence_score=float(raw_digest.get("confidence_score", 0.0)),
+        failed_connectors=[str(name) for name in failed_connectors],
+    )
+
+
+def _static_live_digest() -> DigestPayload:
+    """Placeholder digest for live runs until connector summaries are wired."""
+    return DigestPayload(confidence_score=0.0)
+
+
+def _load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
+    """Load static demo telemetry and digest from ``core/mock/telemetry.json``."""
     try:
         with open(_MOCK_TELEMETRY_PATH, encoding="utf-8") as mock_file:
             payload = json.load(mock_file)
@@ -200,13 +258,17 @@ def _load_mock_telemetry() -> TelemetryPayload:
             detail="Demo telemetry payload must be a JSON object.",
         )
 
+    digest = _parse_digest_payload(payload.get("digest"))
+
     try:
-        return TelemetryPayload(**payload)
+        telemetry = TelemetryPayload(**payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Demo telemetry payload failed schema validation: {exc}",
         ) from exc
+
+    return telemetry, digest
 
 
 def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
@@ -235,7 +297,7 @@ def _run_demo_briefing() -> BriefingResponse:
         global_pipeline_state.update(2, "COLLECTION")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
-        telemetry = _load_mock_telemetry()
+        telemetry, digest = _load_mock_telemetry()
 
         global_pipeline_state.update(3, "SYNTHESIS")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
@@ -254,6 +316,7 @@ def _run_demo_briefing() -> BriefingResponse:
             status="success",
             briefing=final_briefing,
             telemetry=telemetry,
+            digest=digest,
             metadata=RuntimeMetadata(
                 dev_mode_active=True,
                 demo_mode_active=True,
@@ -549,6 +612,7 @@ def trigger_briefing() -> BriefingResponse:
                 calendar=calendar_report,
                 reminders=memory_report,
             ),
+            digest=_static_live_digest(),
             metadata=RuntimeMetadata(
                 dev_mode_active=dev_mode,
                 demo_mode_active=False,

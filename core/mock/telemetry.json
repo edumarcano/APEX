@@ -7,5 +7,14 @@
   "news": "News Telemetry: Top headline — Global markets steady amid tech sector rally.",
   "email": "Email Telemetry: 2 unread primary emails. Most recent: 'Project APEX Demo' at 9:00 AM",
   "calendar": "Calendar Telemetry (48h): 'Demo Presentation' at 2026-06-06T15:00:00",
-  "reminders": "Pending Reminders: Review demo script, charge laptop"
+  "reminders": "Pending Reminders: Review demo script, charge laptop",
+  "digest": {
+    "weather_archetype": "clear_day",
+    "unread_emails_count": 2,
+    "upcoming_events_count": 1,
+    "f1_sprint_active": false,
+    "reminders_pending_count": 2,
+    "confidence_score": 100.0,
+    "failed_connectors": []
+  }
 }
