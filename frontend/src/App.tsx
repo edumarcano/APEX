@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
 import { ApexLogo } from './components/ApexLogo'
 import { ConfidenceBadge } from './components/ConfidenceBadge'
 import { CelestialBackground } from './components/CelestialBackground'
+import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
@@ -258,6 +259,12 @@ export default function App(): ReactElement {
 
           {/* COLUMN 3: RIGHT WING */}
           <div className="flex flex-col gap-4 md:gap-6">
+            <BriefingDigest
+              insights={data?.digest?.insights ?? []}
+              status={status}
+              isLoading={isTriggerLoading}
+            />
+
             <div className="flex min-h-40 w-full items-center justify-center">
               <BriefingPanel
                 briefing={data?.briefing ?? ''}

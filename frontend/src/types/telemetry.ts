@@ -39,6 +39,10 @@ export type WeatherConditionArchetype =
   | 'rain'
   | 'thunderstorm'
 
+export interface DigestPayload {
+  insights: string[]
+}
+
 export interface TelemetryPayload {
   weather: string
   /** Integer °F for VTE primary readout; null when unavailable. */
@@ -57,6 +61,7 @@ export interface TelemetryPayload {
   diagnostics?: SystemDiagnostics | null
   confidenceScore: number
   failedConnectors: string[]
+  digest?: DigestPayload
 }
 
 export interface ApexDataState {
@@ -70,6 +75,7 @@ export interface ApexDataState {
   demoModeActive: boolean
   confidenceScore: number
   failedConnectors: string[]
+  insights: string[]
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
