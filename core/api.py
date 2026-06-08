@@ -229,6 +229,10 @@ class DigestPayload(BaseModel):
         default_factory=list,
         description="Connector module names that failed during collection.",
     )
+    insights: list[str] = Field(
+        default_factory=list,
+        description="Cross-correlated action-oriented insight bullets for HUD display.",
+    )
 
 
 class BriefingResponse(BaseModel):
@@ -254,6 +258,10 @@ def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
     if not isinstance(failed_connectors, list):
         failed_connectors = []
 
+    raw_insights = raw_digest.get("insights", [])
+    if not isinstance(raw_insights, list):
+        raw_insights = []
+
     return DigestPayload(
         weather_archetype=raw_digest.get("weather_archetype"),
         unread_emails_count=int(raw_digest.get("unread_emails_count", 0)),
@@ -262,6 +270,7 @@ def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
         reminders_pending_count=int(raw_digest.get("reminders_pending_count", 0)),
         confidence_score=float(raw_digest.get("confidence_score", 0.0)),
         failed_connectors=[str(name) for name in failed_connectors],
+        insights=[str(line) for line in raw_insights],
     )
 
 
@@ -493,6 +502,11 @@ def _run_demo_briefing() -> BriefingResponse:
             update={
                 "confidence_score": 100.0,
                 "failed_connectors": [],
+                "insights": [
+                    "Demo sandbox environment synchronized.",
+                    "Calendar: Presentation starting at 3:00 PM.",
+                    "Sports: GP scheduled for Sunday.",
+                ],
             }
         )
 
@@ -798,7 +812,9 @@ def trigger_briefing() -> BriefingResponse:
         )
         filler_thread.start()
 
-        final_briefing = brain.process_telemetry(combined_raw_data)
+        brain_output = brain.process_telemetry(combined_raw_data)
+        final_briefing = brain_output["briefing"]
+        briefing_insights = brain_output["insights"]
 
         filler_thread.join()
 
@@ -823,6 +839,7 @@ def trigger_briefing() -> BriefingResponse:
         digest_payload = DigestPayload(
             confidence_score=confidence_score,
             failed_connectors=failed_connectors,
+            insights=briefing_insights,
         )
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
