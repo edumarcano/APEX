@@ -140,8 +140,26 @@ _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.jso
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 
 
-def _speak_and_cleanup(text: str, *, tts_override: str | None = None) -> None:
+def _speak_and_cleanup(
+    text: str,
+    *,
+    tts_override: str | None = None,
+    digest: DigestPayload | None = None,
+) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
+    if digest is not None and not is_dev_mode():
+        try:
+            print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
+            digest_dict = (
+                digest.model_dump()
+                if hasattr(digest, "model_dump")
+                else digest.dict()
+            )
+            database.save_briefing(text, digest_dict)
+            database.prune_historical_ledger()
+        except Exception as exc:
+            print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+
     try:
         speaker.speak(text, tts_override=tts_override)
     finally:
@@ -172,19 +190,77 @@ class TelemetryPayload(BaseModel):
     reminders: str = Field(description="Reminders module telemetry string.")
 
 
+class DigestPayload(BaseModel):
+    weather_archetype: str | None = Field(
+        default=None,
+        description="Normalized weather condition label for HUD display.",
+    )
+    unread_emails_count: int = Field(
+        default=0,
+        description="Count of unread primary inbox messages.",
+    )
+    upcoming_events_count: int = Field(
+        default=0,
+        description="Count of calendar events within the briefing window.",
+    )
+    f1_sprint_active: bool = Field(
+        default=False,
+        description="Whether an F1 sprint session is scheduled this week.",
+    )
+    reminders_pending_count: int = Field(
+        default=0,
+        description="Count of unread reminders awaiting briefing inclusion.",
+    )
+    confidence_score: float = Field(
+        description="Aggregate trust score for connector telemetry (0–100).",
+    )
+    failed_connectors: list[str] = Field(
+        default_factory=list,
+        description="Connector module names that failed during collection.",
+    )
+
+
 class BriefingResponse(BaseModel):
     status: str = Field(description="Run outcome label.")
     briefing: str = Field(description="Synthesized briefing text.")
     telemetry: TelemetryPayload = Field(
         description="Per-module raw telemetry captured before synthesis.",
     )
+    digest: DigestPayload = Field(
+        description="Structured telemetry data summaries and trust scoring metrics.",
+    )
     metadata: RuntimeMetadata = Field(
         description="Runtime routing metadata for synthesis and TTS.",
     )
 
 
-def _load_mock_telemetry() -> TelemetryPayload:
-    """Load static demo telemetry from ``core/mock/telemetry.json``."""
+def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
+    """Safely parse a digest sub-object with fallback defaults for missing keys."""
+    if not isinstance(raw_digest, dict):
+        return DigestPayload(confidence_score=0.0)
+
+    failed_connectors = raw_digest.get("failed_connectors", [])
+    if not isinstance(failed_connectors, list):
+        failed_connectors = []
+
+    return DigestPayload(
+        weather_archetype=raw_digest.get("weather_archetype"),
+        unread_emails_count=int(raw_digest.get("unread_emails_count", 0)),
+        upcoming_events_count=int(raw_digest.get("upcoming_events_count", 0)),
+        f1_sprint_active=bool(raw_digest.get("f1_sprint_active", False)),
+        reminders_pending_count=int(raw_digest.get("reminders_pending_count", 0)),
+        confidence_score=float(raw_digest.get("confidence_score", 0.0)),
+        failed_connectors=[str(name) for name in failed_connectors],
+    )
+
+
+def _static_live_digest() -> DigestPayload:
+    """Placeholder digest for live runs until connector summaries are wired."""
+    return DigestPayload(confidence_score=0.0)
+
+
+def _load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
+    """Load static demo telemetry and digest from ``core/mock/telemetry.json``."""
     try:
         with open(_MOCK_TELEMETRY_PATH, encoding="utf-8") as mock_file:
             payload = json.load(mock_file)
@@ -200,13 +276,79 @@ def _load_mock_telemetry() -> TelemetryPayload:
             detail="Demo telemetry payload must be a JSON object.",
         )
 
+    digest = _parse_digest_payload(payload.get("digest"))
+
     try:
-        return TelemetryPayload(**payload)
+        telemetry = TelemetryPayload(**payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Demo telemetry payload failed schema validation: {exc}",
         ) from exc
+
+    return telemetry, digest
+
+
+def _mock_briefing_history() -> list[dict[str, Any]]:
+    """Static briefing ledger for DEMO_MODE history responses."""
+    return [
+        {
+            "id": 3,
+            "timestamp": "2026-06-08T08:15:00",
+            "briefing": (
+                "Greetings Chief. APEX simulation controls are operational. "
+                "Atmospheric sensors report seventy-two degrees with clear skies. "
+                "Your inbox has two unread primary messages, and your next calendar item, "
+                "Demo Presentation, begins at three PM."
+            ),
+            "digest": {
+                "weather_archetype": "clear_day",
+                "unread_emails_count": 2,
+                "upcoming_events_count": 1,
+                "f1_sprint_active": False,
+                "reminders_pending_count": 2,
+                "confidence_score": 100.0,
+                "failed_connectors": [],
+            },
+        },
+        {
+            "id": 2,
+            "timestamp": "2026-06-07T07:30:00",
+            "briefing": (
+                "Morning briefing. Overnight precipitation cleared; current conditions are "
+                "partly cloudy at sixty-eight degrees. Three unread emails require attention, "
+                "including a budget review thread. Sprint qualifying for the Monaco Grand Prix "
+                "is scheduled this afternoon."
+            ),
+            "digest": {
+                "weather_archetype": "partly_cloudy",
+                "unread_emails_count": 3,
+                "upcoming_events_count": 2,
+                "f1_sprint_active": True,
+                "reminders_pending_count": 1,
+                "confidence_score": 92.5,
+                "failed_connectors": ["news"],
+            },
+        },
+        {
+            "id": 1,
+            "timestamp": "2026-06-06T06:45:00",
+            "briefing": (
+                "System status nominal. Light rain expected through mid-morning with temperatures "
+                "near sixty-one degrees. Calendar is clear until afternoon stand-up. One reminder "
+                "pending: submit quarterly metrics before end of day."
+            ),
+            "digest": {
+                "weather_archetype": "light_rain",
+                "unread_emails_count": 0,
+                "upcoming_events_count": 0,
+                "f1_sprint_active": False,
+                "reminders_pending_count": 1,
+                "confidence_score": 78.0,
+                "failed_connectors": ["email", "calendar"],
+            },
+        },
+    ]
 
 
 def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
@@ -235,7 +377,7 @@ def _run_demo_briefing() -> BriefingResponse:
         global_pipeline_state.update(2, "COLLECTION")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
-        telemetry = _load_mock_telemetry()
+        telemetry, digest = _load_mock_telemetry()
 
         global_pipeline_state.update(3, "SYNTHESIS")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
@@ -245,7 +387,11 @@ def _run_demo_briefing() -> BriefingResponse:
         global_pipeline_state.update(4, "DELIVERY")
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
-            kwargs={"text": final_briefing, "tts_override": DEMO_TTS},
+            kwargs={
+                "text": final_briefing,
+                "tts_override": DEMO_TTS,
+                "digest": digest,
+            },
         )
         voice_thread.start()
         voice_thread_started = True
@@ -254,6 +400,7 @@ def _run_demo_briefing() -> BriefingResponse:
             status="success",
             briefing=final_briefing,
             telemetry=telemetry,
+            digest=digest,
             metadata=RuntimeMetadata(
                 dev_mode_active=True,
                 demo_mode_active=True,
@@ -301,6 +448,13 @@ class MarkReadResponse(BaseModel):
         default="success",
         description="Outcome label for the mark-read operation.",
     )
+
+
+class BriefingHistoryRecord(BaseModel):
+    id: int
+    timestamp: str
+    briefing: str
+    digest: DigestPayload
 
 
 class PipelineStatusSnapshot(BaseModel):
@@ -524,9 +678,10 @@ def trigger_briefing() -> BriefingResponse:
         filler_thread.join()
 
         global_pipeline_state.update(4, "DELIVERY")
+        digest_payload = _static_live_digest()
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
-            args=(final_briefing,),
+            kwargs={"text": final_briefing, "digest": digest_payload},
         )
         voice_thread.start()
         voice_thread_started = True
@@ -549,6 +704,7 @@ def trigger_briefing() -> BriefingResponse:
                 calendar=calendar_report,
                 reminders=memory_report,
             ),
+            digest=digest_payload,
             metadata=RuntimeMetadata(
                 dev_mode_active=dev_mode,
                 demo_mode_active=False,
@@ -559,6 +715,28 @@ def trigger_briefing() -> BriefingResponse:
     finally:
         if not voice_thread_started:
             global_pipeline_state.reset()
+
+
+@app.get("/api/v1/briefings/history", response_model=list[BriefingHistoryRecord])
+def get_briefing_history() -> list[dict[str, Any]]:
+    """
+    Return recent briefing ledger entries for HUD history panels.
+
+    When ``DEMO_MODE`` is active, serves a static mock ledger without querying SQLite.
+    """
+    if DEMO_MODE:
+        return _mock_briefing_history()
+
+    rows = database.fetch_briefing_history(limit=50)
+    return [
+        {
+            "id": row["id"],
+            "timestamp": row["timestamp"],
+            "briefing": row["briefing"],
+            "digest": _parse_digest_payload(row["digest"]),
+        }
+        for row in rows
+    ]
 
 
 @app.get("/api/v1/reminders", response_model=list[ReminderRecord])
