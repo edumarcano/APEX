@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from datetime import datetime
+from typing import Any
 
 DB_NAME = "apex_memory.db"
 
@@ -108,6 +109,43 @@ def save_briefing(briefing: str, digest_dict: dict) -> None:
     conn.commit()
     conn.close()
     print("[SYSTEM]: Briefing run persisted to SQLite ledger.")
+
+
+def fetch_briefing_history(limit: int = 50) -> list[dict[str, Any]]:
+    """
+    Retrieve recent briefing ledger rows ordered by timestamp descending.
+
+    Args:
+        limit: Maximum number of rows to return.
+
+    Returns:
+        List of briefing records with parsed digest payloads.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, timestamp, briefing, digest_json "
+        "FROM briefings ORDER BY timestamp DESC LIMIT ?",
+        (limit,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            parsed_digest = json.loads(row[3])
+        except (json.JSONDecodeError, TypeError):
+            parsed_digest = {}
+        records.append(
+            {
+                "id": row[0],
+                "timestamp": row[1],
+                "briefing": row[2],
+                "digest": parsed_digest,
+            }
+        )
+    return records
 
 
 def prune_historical_ledger() -> None:

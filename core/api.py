@@ -289,6 +289,68 @@ def _load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
     return telemetry, digest
 
 
+def _mock_briefing_history() -> list[dict[str, Any]]:
+    """Static briefing ledger for DEMO_MODE history responses."""
+    return [
+        {
+            "id": 3,
+            "timestamp": "2026-06-08T08:15:00",
+            "briefing": (
+                "Greetings Chief. APEX simulation controls are operational. "
+                "Atmospheric sensors report seventy-two degrees with clear skies. "
+                "Your inbox has two unread primary messages, and your next calendar item, "
+                "Demo Presentation, begins at three PM."
+            ),
+            "digest": {
+                "weather_archetype": "clear_day",
+                "unread_emails_count": 2,
+                "upcoming_events_count": 1,
+                "f1_sprint_active": False,
+                "reminders_pending_count": 2,
+                "confidence_score": 100.0,
+                "failed_connectors": [],
+            },
+        },
+        {
+            "id": 2,
+            "timestamp": "2026-06-07T07:30:00",
+            "briefing": (
+                "Morning briefing. Overnight precipitation cleared; current conditions are "
+                "partly cloudy at sixty-eight degrees. Three unread emails require attention, "
+                "including a budget review thread. Sprint qualifying for the Monaco Grand Prix "
+                "is scheduled this afternoon."
+            ),
+            "digest": {
+                "weather_archetype": "partly_cloudy",
+                "unread_emails_count": 3,
+                "upcoming_events_count": 2,
+                "f1_sprint_active": True,
+                "reminders_pending_count": 1,
+                "confidence_score": 92.5,
+                "failed_connectors": ["news"],
+            },
+        },
+        {
+            "id": 1,
+            "timestamp": "2026-06-06T06:45:00",
+            "briefing": (
+                "System status nominal. Light rain expected through mid-morning with temperatures "
+                "near sixty-one degrees. Calendar is clear until afternoon stand-up. One reminder "
+                "pending: submit quarterly metrics before end of day."
+            ),
+            "digest": {
+                "weather_archetype": "light_rain",
+                "unread_emails_count": 0,
+                "upcoming_events_count": 0,
+                "f1_sprint_active": False,
+                "reminders_pending_count": 1,
+                "confidence_score": 78.0,
+                "failed_connectors": ["email", "calendar"],
+            },
+        },
+    ]
+
+
 def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
     """Compose a deterministic briefing string from mock telemetry fields."""
     combined_raw_data = (
@@ -386,6 +448,13 @@ class MarkReadResponse(BaseModel):
         default="success",
         description="Outcome label for the mark-read operation.",
     )
+
+
+class BriefingHistoryRecord(BaseModel):
+    id: int
+    timestamp: str
+    briefing: str
+    digest: DigestPayload
 
 
 class PipelineStatusSnapshot(BaseModel):
@@ -646,6 +715,28 @@ def trigger_briefing() -> BriefingResponse:
     finally:
         if not voice_thread_started:
             global_pipeline_state.reset()
+
+
+@app.get("/api/v1/briefings/history", response_model=list[BriefingHistoryRecord])
+def get_briefing_history() -> list[dict[str, Any]]:
+    """
+    Return recent briefing ledger entries for HUD history panels.
+
+    When ``DEMO_MODE`` is active, serves a static mock ledger without querying SQLite.
+    """
+    if DEMO_MODE:
+        return _mock_briefing_history()
+
+    rows = database.fetch_briefing_history(limit=50)
+    return [
+        {
+            "id": row["id"],
+            "timestamp": row["timestamp"],
+            "briefing": row["briefing"],
+            "digest": _parse_digest_payload(row["digest"]),
+        }
+        for row in rows
+    ]
 
 
 @app.get("/api/v1/reminders", response_model=list[ReminderRecord])
