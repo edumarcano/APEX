@@ -196,6 +196,7 @@ export default function App(): ReactElement {
             <ConfidenceBadge
               confidenceScore={confidenceScore}
               failedConnectors={failedConnectors}
+              status={status}
             />
             <p
               className={`m-0 font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}

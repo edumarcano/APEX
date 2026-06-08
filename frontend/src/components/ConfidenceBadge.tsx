@@ -1,8 +1,11 @@
 import { useState, type ReactElement } from 'react'
 
+import type { SystemState } from '../types/telemetry'
+
 export type ConfidenceBadgeProps = {
   confidenceScore: number
   failedConnectors: string[]
+  status: SystemState
   className?: string
 }
 
@@ -46,16 +49,25 @@ function resolveConfidenceTier(score: number): {
   }
 }
 
+const PENDING_BADGE_CLASS =
+  'border-white/10 bg-zinc-950/30 text-zinc-500'
+
 export function ConfidenceBadge({
   confidenceScore,
   failedConnectors,
+  status,
   className = '',
 }: ConfidenceBadgeProps): ReactElement {
   const [tooltipOpen, setTooltipOpen] = useState(false)
+  const isCalculated = status === 'success'
   const tier = resolveConfidenceTier(confidenceScore)
-  const formattedScore = Number.isFinite(confidenceScore)
-    ? confidenceScore.toFixed(1)
-    : '100.0'
+  const displayScore = isCalculated
+    ? `${Math.round(confidenceScore)}%`
+    : '—%'
+  const badgeClass = isCalculated ? tier.badgeClass : PENDING_BADGE_CLASS
+  const ariaLabel = isCalculated
+    ? `Sync health ${Math.round(confidenceScore)} percent. ${tier.label}.`
+    : 'Sync health pending calculation.'
 
   const showTooltip = (): void => {
     setTooltipOpen(true)
@@ -76,13 +88,13 @@ export function ConfidenceBadge({
       <span
         tabIndex={0}
         role="status"
-        aria-label={`System confidence ${formattedScore} percent. ${tier.label}.`}
-        className={`inline-flex cursor-default items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-white/20 ${tier.badgeClass}`}
+        aria-label={ariaLabel}
+        className={`inline-flex cursor-default items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest outline-none transition-colors duration-500 ease-in-out focus-visible:ring-2 focus-visible:ring-white/20 ${badgeClass}`}
         data-slot="confidence-badge"
       >
-        <span aria-hidden="true">{formattedScore}%</span>
+        <span aria-hidden="true">{displayScore}</span>
         <span className="hidden sm:inline" aria-hidden="true">
-          Data Confidence
+          Sync Health
         </span>
       </span>
 
