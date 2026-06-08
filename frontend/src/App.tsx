@@ -2,6 +2,7 @@ import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
+import { ConfidenceBadge } from './components/ConfidenceBadge'
 import { CelestialBackground } from './components/CelestialBackground'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -29,6 +30,8 @@ export default function App(): ReactElement {
     isSpeaking,
     activeReminders,
     demoModeActive,
+    confidenceScore,
+    failedConnectors,
     refreshReminders,
     markReminderAsRead,
   } = apexData
@@ -190,6 +193,10 @@ export default function App(): ReactElement {
                 DEMO MODE ACTIVE
               </span>
             )}
+            <ConfidenceBadge
+              confidenceScore={confidenceScore}
+              failedConnectors={failedConnectors}
+            />
             <p
               className={`m-0 font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
               aria-live="polite"
