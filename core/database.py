@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 
@@ -13,7 +14,20 @@ def initialize_db() -> None:
     cursor.execute('''CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY, timestamp TEXT)''')
     
     cursor.execute('''CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)''')
-    
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS briefings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            briefing TEXT NOT NULL,
+            digest_json TEXT NOT NULL
+        )
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_briefings_timestamp "
+        "ON briefings(timestamp DESC)"
+    )
+
     conn.commit()
     conn.close()
 
@@ -74,6 +88,47 @@ def fetch_unread_reminders() -> list[tuple[int, str]]:
 
     conn.close()
     return records
+
+
+def save_briefing(briefing: str, digest_dict: dict) -> None:
+    """
+    Persist a briefing run and its structured digest payload to the ledger.
+
+    Args:
+        briefing: Synthesized briefing text delivered to TTS.
+        digest_dict: Serialized digest fields captured at run time.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    digest_json = json.dumps(digest_dict, separators=(",", ":"))
+    cursor.execute(
+        "INSERT INTO briefings (timestamp, briefing, digest_json) VALUES (?, ?, ?)",
+        (datetime.now().isoformat(), briefing, digest_json),
+    )
+    conn.commit()
+    conn.close()
+    print("[SYSTEM]: Briefing run persisted to SQLite ledger.")
+
+
+def prune_historical_ledger() -> None:
+    """
+    Retain only the 50 most recent briefing rows ordered by timestamp.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("BEGIN")
+        cursor.execute(
+            "DELETE FROM briefings WHERE id NOT IN "
+            "(SELECT id FROM briefings ORDER BY timestamp DESC LIMIT 50)"
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    print("[SYSTEM]: Historical briefing ledger pruned to 50 rows.")
 
 
 def mark_reminders_read(ids: list[int]) -> None:

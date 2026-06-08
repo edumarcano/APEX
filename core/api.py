@@ -140,8 +140,26 @@ _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.jso
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 
 
-def _speak_and_cleanup(text: str, *, tts_override: str | None = None) -> None:
+def _speak_and_cleanup(
+    text: str,
+    *,
+    tts_override: str | None = None,
+    digest: DigestPayload | None = None,
+) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
+    if digest is not None and not is_dev_mode():
+        try:
+            print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
+            digest_dict = (
+                digest.model_dump()
+                if hasattr(digest, "model_dump")
+                else digest.dict()
+            )
+            database.save_briefing(text, digest_dict)
+            database.prune_historical_ledger()
+        except Exception as exc:
+            print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+
     try:
         speaker.speak(text, tts_override=tts_override)
     finally:
@@ -307,7 +325,11 @@ def _run_demo_briefing() -> BriefingResponse:
         global_pipeline_state.update(4, "DELIVERY")
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
-            kwargs={"text": final_briefing, "tts_override": DEMO_TTS},
+            kwargs={
+                "text": final_briefing,
+                "tts_override": DEMO_TTS,
+                "digest": digest,
+            },
         )
         voice_thread.start()
         voice_thread_started = True
@@ -587,9 +609,10 @@ def trigger_briefing() -> BriefingResponse:
         filler_thread.join()
 
         global_pipeline_state.update(4, "DELIVERY")
+        digest_payload = _static_live_digest()
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
-            args=(final_briefing,),
+            kwargs={"text": final_briefing, "digest": digest_payload},
         )
         voice_thread.start()
         voice_thread_started = True
@@ -612,7 +635,7 @@ def trigger_briefing() -> BriefingResponse:
                 calendar=calendar_report,
                 reminders=memory_report,
             ),
-            digest=_static_live_digest(),
+            digest=digest_payload,
             metadata=RuntimeMetadata(
                 dev_mode_active=dev_mode,
                 demo_mode_active=False,
