@@ -55,6 +55,8 @@ export interface TelemetryPayload {
   reminders: string
   activeReminders: ActiveReminder[]
   diagnostics?: SystemDiagnostics | null
+  confidenceScore: number
+  failedConnectors: string[]
 }
 
 export interface ApexDataState {
@@ -66,6 +68,8 @@ export interface ApexDataState {
   isSpeaking: boolean
   activeReminders: ActiveReminder[]
   demoModeActive: boolean
+  confidenceScore: number
+  failedConnectors: string[]
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'

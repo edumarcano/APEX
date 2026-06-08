@@ -179,6 +179,8 @@ export function useApexData(): UseApexDataReturn {
     isSpeaking: false,
     activeReminders: [],
     demoModeActive: false,
+    confidenceScore: 100.0,
+    failedConnectors: [],
   })
 
   const applyReminderRecords = useCallback((records: ReminderRecord[]): void => {
@@ -350,7 +352,25 @@ export function useApexData(): UseApexDataReturn {
           briefing?: unknown
           telemetry?: unknown
           metadata?: unknown
+          digest?: unknown
         }
+        const digest = payload.digest
+        const confidenceScore =
+          digest &&
+          typeof digest === 'object' &&
+          typeof (digest as { confidence_score?: unknown }).confidence_score ===
+            'number'
+            ? (digest as { confidence_score: number }).confidence_score
+            : 100.0
+        const rawFailedConnectors =
+          digest &&
+          typeof digest === 'object' &&
+          Array.isArray(
+            (digest as { failed_connectors?: unknown }).failed_connectors,
+          )
+            ? (digest as { failed_connectors: unknown[] }).failed_connectors
+            : []
+        const failedConnectors = rawFailedConnectors.map(String)
         const telemetry = payload.telemetry
         const metadata =
           payload.metadata && typeof payload.metadata === 'object'
@@ -399,6 +419,8 @@ export function useApexData(): UseApexDataReturn {
           calendar: getStringField(telemetryRecord, 'calendar'),
           reminders,
           activeReminders,
+          confidenceScore,
+          failedConnectors,
         }
 
         setState((prev) => ({
@@ -408,6 +430,8 @@ export function useApexData(): UseApexDataReturn {
           error: null,
           activeReminders,
           demoModeActive,
+          confidenceScore,
+          failedConnectors,
         }))
       } catch (err) {
         if (

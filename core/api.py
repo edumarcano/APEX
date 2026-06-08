@@ -41,10 +41,21 @@ from core.config import (
     FEATURE_NEWS,
     FEATURE_SPORTS,
     FEATURE_WEATHER,
+    MODULE_F1,
+    MODULE_FOOTBALL,
     is_dev_mode,
 )
 
 load_dotenv(dotenv_path=ENV_PATH)
+
+WEATHER_FAILED_RE = re.compile(r"(offline|error|failed)", re.IGNORECASE)
+SPORTS_F1_FAILED_RE = re.compile(r"(telemetry unavailable)", re.IGNORECASE)
+SPORTS_FB_FAILED_RE = re.compile(r"(telemetry unavailable|throttled)", re.IGNORECASE)
+NEWS_FAILED_RE = re.compile(r"(telemetry unavailable|offline)", re.IGNORECASE)
+EMAIL_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
+CALENDAR_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
+
+_F1_CACHE_PATH = Path(__file__).resolve().parent.parent / "clients" / ".f1_cache.json"
 
 app = FastAPI(title="APEX Nexus")
 
@@ -254,9 +265,109 @@ def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
     )
 
 
-def _static_live_digest() -> DigestPayload:
-    """Placeholder digest for live runs until connector summaries are wired."""
-    return DigestPayload(confidence_score=0.0)
+def _split_sports_report(sports_report: str) -> tuple[str, str]:
+    """Split combined sports telemetry into F1 and football segments."""
+    marker = " Barcelona "
+    if marker in sports_report:
+        f1_part, remainder = sports_report.split(marker, 1)
+        return f1_part, f"Barcelona {remainder}"
+    if sports_report.startswith("Barcelona "):
+        return "", sports_report
+    return sports_report, ""
+
+
+def _evaluate_sports_trust(
+    sports_report: str,
+) -> tuple[float, float, bool]:
+    """
+    Return earned weight, total weight, and whether any sports subdivision failed.
+
+    Sports weight is 1.0 when a single sub-module is active, or 0.5 per sub-module
+    when both F1 and football are enabled.
+    """
+    earned_weight = 0.0
+    total_weight = 0.0
+    sports_failed = False
+
+    if MODULE_F1 and MODULE_FOOTBALL:
+        f1_part, fb_part = _split_sports_report(sports_report)
+        total_weight = 1.0
+        if not SPORTS_F1_FAILED_RE.search(f1_part):
+            earned_weight += 0.5
+        else:
+            sports_failed = True
+        if not SPORTS_FB_FAILED_RE.search(fb_part):
+            earned_weight += 0.5
+        else:
+            sports_failed = True
+    elif MODULE_F1:
+        total_weight = 1.0
+        if SPORTS_F1_FAILED_RE.search(sports_report):
+            sports_failed = True
+        else:
+            earned_weight = 1.0
+    elif MODULE_FOOTBALL:
+        total_weight = 1.0
+        if SPORTS_FB_FAILED_RE.search(sports_report):
+            sports_failed = True
+        else:
+            earned_weight = 1.0
+    else:
+        total_weight = 1.0
+        earned_weight = 1.0
+
+    return earned_weight, total_weight, sports_failed
+
+
+def _compute_confidence_and_failures(
+    *,
+    weather_report: str,
+    sports_report: str,
+    news_report: str,
+    email_report: str,
+    calendar_report: str,
+    f1_cache_penalty: bool,
+) -> tuple[float, list[str]]:
+    """Evaluate active connector telemetry and derive trust score plus failures."""
+    failed_connectors: list[str] = []
+    earned_weight = 0.0
+    total_weight = 0.0
+
+    connector_checks: list[tuple[str, bool, str, re.Pattern[str]]] = [
+        ("weather", FEATURE_WEATHER, weather_report, WEATHER_FAILED_RE),
+        ("news", FEATURE_NEWS, news_report, NEWS_FAILED_RE),
+        ("email", FEATURE_EMAIL, email_report, EMAIL_FAILED_RE),
+        ("calendar", FEATURE_CALENDAR, calendar_report, CALENDAR_FAILED_RE),
+    ]
+
+    for connector_name, enabled, report, failure_pattern in connector_checks:
+        if not enabled:
+            continue
+        total_weight += 1.0
+        if failure_pattern.search(report):
+            failed_connectors.append(connector_name)
+        else:
+            earned_weight += 1.0
+
+    if FEATURE_SPORTS:
+        sports_earned, sports_total, sports_failed = _evaluate_sports_trust(
+            sports_report
+        )
+        total_weight += sports_total
+        earned_weight += sports_earned
+        if sports_failed:
+            failed_connectors.append("sports")
+
+    if total_weight == 0.0:
+        confidence_score = 100.0
+    else:
+        confidence_score = (earned_weight / total_weight) * 100.0
+
+    if f1_cache_penalty:
+        confidence_score *= 0.90
+
+    confidence_score = round(max(0.0, min(100.0, confidence_score)), 1)
+    return confidence_score, failed_connectors
 
 
 def _load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
@@ -378,6 +489,12 @@ def _run_demo_briefing() -> BriefingResponse:
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
         telemetry, digest = _load_mock_telemetry()
+        digest = digest.model_copy(
+            update={
+                "confidence_score": 100.0,
+                "failed_connectors": [],
+            }
+        )
 
         global_pipeline_state.update(3, "SYNTHESIS")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
@@ -582,8 +699,16 @@ def trigger_briefing() -> BriefingResponse:
             print("[SYSTEM]: Weather module bypassed via user preference")
             weather_report = ""
 
+        f1_cache_existed_before = False
+        f1_mtime_before: float | None = None
+        f1_mtime_after: float | None = None
         if FEATURE_SPORTS:
+            f1_cache_existed_before = _F1_CACHE_PATH.exists()
+            if f1_cache_existed_before:
+                f1_mtime_before = os.path.getmtime(_F1_CACHE_PATH)
             sports_report = sports_client.fetch_sports_data()
+            if _F1_CACHE_PATH.exists():
+                f1_mtime_after = os.path.getmtime(_F1_CACHE_PATH)
         else:
             print("[SYSTEM]: Sports module bypassed via user preference")
             sports_report = ""
@@ -677,8 +802,28 @@ def trigger_briefing() -> BriefingResponse:
 
         filler_thread.join()
 
+        f1_cache_penalty = False
+        if FEATURE_SPORTS and MODULE_F1 and f1_cache_existed_before:
+            f1_cache_penalty = (
+                f1_mtime_before is not None
+                and f1_mtime_after is not None
+                and f1_mtime_after == f1_mtime_before
+            )
+
+        confidence_score, failed_connectors = _compute_confidence_and_failures(
+            weather_report=weather_report,
+            sports_report=sports_report,
+            news_report=news_report,
+            email_report=email_report,
+            calendar_report=calendar_report,
+            f1_cache_penalty=f1_cache_penalty,
+        )
+
         global_pipeline_state.update(4, "DELIVERY")
-        digest_payload = _static_live_digest()
+        digest_payload = DigestPayload(
+            confidence_score=confidence_score,
+            failed_connectors=failed_connectors,
+        )
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
             kwargs={"text": final_briefing, "digest": digest_payload},
