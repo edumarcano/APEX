@@ -6,19 +6,20 @@ export interface BriefingDigestProps {
   insights: string[]
   status: SystemState
   isLoading: boolean
+  className?: string
 }
 
-export function BriefingDigest({ insights, status, isLoading }: BriefingDigestProps): ReactElement {
+export function BriefingDigest({ insights, status, isLoading, className }: BriefingDigestProps): ReactElement {
   const labelId = "briefing-digest-title";
 
   return (
     <section
-      className="relative overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none min-h-40 flex flex-col justify-center"
+      className={`relative overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none min-h-40 flex flex-col justify-start${className ? ` ${className}` : ''}`}
       aria-labelledby={labelId}
     >
       <header className="mb-4 flex min-h-9 items-center gap-3">
         <FileText className="size-5 shrink-0 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
-        <h2 id={labelId} className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]">
+        <h2 id={labelId} className="min-w-0 text-sm font-semibold leading-normal tracking-tight text-[color:var(--hud-text)]">
           Briefing Highlights
         </h2>
       </header>

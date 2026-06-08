@@ -243,7 +243,16 @@ export default function App(): ReactElement {
           </div>
 
           {/* COLUMN 2: CENTER REACTOR */}
-          <div className="relative z-[var(--z-core-logo)] flex h-full min-h-[30rem] flex-col items-center justify-center py-6 xl:col-span-1">
+          <div className="relative z-[var(--z-core-logo)] flex h-full flex-col items-center justify-between py-6 gap-4 xl:gap-6 xl:col-span-1">
+            <BriefingDigest
+              insights={data?.activeReminders ? (data.activeReminders.length > 0 ? [
+                ...data.activeReminders.map(r => `Reminder: ${r.note}`),
+                ...(data.digest?.insights ?? [])
+              ] : (data.digest?.insights ?? [])) : (data?.digest?.insights ?? [])}
+              status={status}
+              isLoading={isTriggerLoading}
+              className="w-full"
+            />
             <div className="flex h-full w-full items-center justify-center">
               <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
                 <ApexLogo
@@ -251,7 +260,7 @@ export default function App(): ReactElement {
                   status={status}
                   isSpeaking={isSpeaking}
                   reminderPulseCount={reminderPulseCount}
-                  className="h-64 w-auto xl:h-72"
+                  className="h-56 w-auto xl:h-60"
                 />
               </div>
             </div>
@@ -259,12 +268,6 @@ export default function App(): ReactElement {
 
           {/* COLUMN 3: RIGHT WING */}
           <div className="flex flex-col gap-4 md:gap-6">
-            <BriefingDigest
-              insights={data?.digest?.insights ?? []}
-              status={status}
-              isLoading={isTriggerLoading}
-            />
-
             <div className="flex min-h-40 w-full items-center justify-center">
               <BriefingPanel
                 briefing={data?.briefing ?? ''}
