@@ -271,6 +271,7 @@ export function TelemetryCard({
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
   const isScheduleCard = title.trim().toLowerCase() === 'next f1 race'
+  const showHeader = title.trim().length > 0
 
   const headingId = useId()
   const weatherGlow =
@@ -280,16 +281,13 @@ export function TelemetryCard({
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
       : null
 
-  const shellClassName = [
-    'relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)]',
+  const sectionClassName = [
+    'relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
     resolveCardHoverClass(title),
     className,
   ]
     .filter(Boolean)
     .join(' ')
-
-  const glassContentClassName =
-    'relative z-10 flex min-h-0 flex-1 flex-col hud-glass p-[var(--hud-panel-pad)]'
 
   const primaryTemperatureStyle: CSSProperties | undefined =
     primaryTemperatureF != null
@@ -327,8 +325,8 @@ export function TelemetryCard({
   return (
     <section
       {...sectionProps}
-      className={shellClassName}
-      aria-labelledby={headingId}
+      className={sectionClassName}
+      aria-labelledby={showHeader ? headingId : undefined}
     >
       {weatherGlow ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
@@ -343,20 +341,22 @@ export function TelemetryCard({
           />
         </div>
       ) : null}
-      <div className={glassContentClassName}>
-      <header className="mb-4 flex min-h-9 shrink-0 items-center gap-3">
-        <Icon
-          className="size-5 shrink-0 text-[color:var(--hud-accent)]"
-          strokeWidth={1.75}
-          aria-hidden
-        />
-        <h2
-          id={headingId}
-          className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
-        >
-          {title}
-        </h2>
-      </header>
+      <div className="relative z-10 flex h-full flex-col justify-between">
+      {showHeader ? (
+        <header className="mb-4 flex min-h-9 shrink-0 items-center gap-3">
+          <Icon
+            className="size-5 shrink-0 text-[color:var(--hud-accent)]"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          <h2
+            id={headingId}
+            className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
+          >
+            {title}
+          </h2>
+        </header>
+      ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {primaryTemperatureF != null ? (
           <div className="mb-3 flex shrink-0 items-center gap-4">

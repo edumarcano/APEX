@@ -39,7 +39,7 @@ function formatPercentage(
   return `${Math.round(clampPercentage(value!))}%`
 }
 
-function progressBarClass(percentage: number): string {
+function getBarColorClass(percentage: number): string {
   if (percentage >= 90) {
     return 'bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse'
   }
@@ -102,10 +102,49 @@ function metricSubText(
   }
 }
 
-export function SystemDiagnostics(): ReactElement {
+type SystemDiagnosticsProps = {
+  isCompact?: boolean
+}
+
+export function SystemDiagnostics({
+  isCompact = false,
+}: SystemDiagnosticsProps): ReactElement {
   const { diagnostics, status } = useSystemDiagnostics()
   const resolvedDiagnostics = resolveDiagnostics(diagnostics)
   const isInitializing = status === 'idle' || status === 'loading'
+
+  if (isCompact) {
+    return (
+      <section
+        className="relative w-full"
+        aria-label="System resource utilization"
+        data-slot="system-diagnostics"
+        data-compact="true"
+      >
+        <div className="relative w-full z-0 grid grid-cols-3 gap-4 text-[color:var(--hud-text)] select-none">
+          {METRICS.map(({ key }) => {
+            const rawValue = resolvedDiagnostics[key]
+            const unavailable = isMetricUnavailable(rawValue, isInitializing)
+            const clampedPct = unavailable
+              ? 0
+              : clampPercentage(rawValue as number)
+
+            return (
+              <div
+                key={key}
+                className="h-1 min-w-0 overflow-hidden rounded-full border border-white/5 bg-white/5"
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ease-in-out ${unavailable ? 'bg-white/10' : getBarColorClass(clampedPct)}`}
+                  style={{ width: `${clampedPct}%` }}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section
@@ -134,7 +173,7 @@ export function SystemDiagnostics(): ReactElement {
               <div className="flex items-center gap-3">
                 <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full border border-white/5 bg-white/5">
                   <div
-                    className={`h-full rounded-full transition-all duration-1000 ease-in-out ${unavailable ? 'bg-white/10' : progressBarClass(clampedPct)}`}
+                    className={`h-full rounded-full transition-all duration-1000 ease-in-out ${unavailable ? 'bg-white/10' : getBarColorClass(clampedPct)}`}
                     style={{ width: `${clampedPct}%` }}
                   />
                 </div>

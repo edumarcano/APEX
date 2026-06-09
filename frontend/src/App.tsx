@@ -221,10 +221,10 @@ export default function App(): ReactElement {
         </div>
 
         <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col">
-          <header className="relative mb-4 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
+          <header className="relative mb-3 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
           <div className="flex items-baseline justify-self-start">
             <h1
-              className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
+              className={`m-0 text-2xl font-extrabold tracking-widest md:text-3xl ${
                 isPipelinePolling
                   ? 'animate-shimmer'
                   : 'text-[color:var(--hud-accent)]'
@@ -232,7 +232,7 @@ export default function App(): ReactElement {
             >
               APEX
             </h1>
-            <span className="mb-1 ml-3 hidden self-end text-xs uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
+            <span className="mb-1 ml-3 hidden self-end text-[10px] uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
               AUTOMATED PERSONAL ENVIRONMENT XYLEM
             </span>
           </div>
@@ -457,12 +457,17 @@ export default function App(): ReactElement {
               title={showSubtitleBar ? '' : 'System Diagnostics'}
               icon={Activity}
               className="md:col-span-2 xl:order-7 xl:col-span-3 transition-all duration-700"
-              style={{ padding: '0.75rem 1.25rem' } as CSSProperties}
+              style={{
+                padding: showSubtitleBar ? '0.25rem 1rem' : 'var(--hud-panel-pad)',
+                ...(showSubtitleBar
+                  ? ({ '--hud-panel-pad': '0.25rem 1rem' } as CSSProperties)
+                  : {}),
+              } as CSSProperties}
               role="region"
               aria-label="System diagnostics"
               data-slot="system-diagnostics-card"
             >
-              <SystemDiagnostics />
+              <SystemDiagnostics isCompact={showSubtitleBar} />
             </TelemetryCard>
           </div>
           </div>
