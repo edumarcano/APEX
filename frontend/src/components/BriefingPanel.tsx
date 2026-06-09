@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react'
 import { useEffect, useId, useState, type ReactElement } from 'react'
 
 import type { SystemState } from '../types/telemetry'
@@ -49,6 +50,7 @@ function BriefingStream({
   const labelId = useId()
   const rawText = briefing.trim()
   const [revealed, setRevealed] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     if (status !== 'success' || rawText.length === 0) {
@@ -160,6 +162,25 @@ function BriefingStream({
             {rawText}
           </span>
         </div>
+        {status === 'success' && !isSpeaking ? (
+          <>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs font-medium text-[color:var(--hud-text)] transition-colors hover:border-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+              >
+                <Clock className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={2} />
+                <span>View History Ledger</span>
+              </button>
+            </div>
+            {isModalOpen ? (
+              <p className="mt-2 text-right text-xs text-[color:var(--hud-accent)]">
+                Modal Doorway Open
+              </p>
+            ) : null}
+          </>
+        ) : null}
       </div>
     </section>
   )
