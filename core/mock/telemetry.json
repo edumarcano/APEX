@@ -15,6 +15,11 @@
     "f1_sprint_active": false,
     "reminders_pending_count": 2,
     "confidence_score": 100.0,
-    "failed_connectors": []
+    "failed_connectors": [],
+    "insights": [
+      "Demo sandbox environment synchronized.",
+      "Calendar: Presentation starting at 3:00 PM.",
+      "Sports: GP scheduled for Sunday."
+    ]
   }
 }

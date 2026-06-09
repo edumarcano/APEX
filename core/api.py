@@ -498,17 +498,6 @@ def _run_demo_briefing() -> BriefingResponse:
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
         telemetry, digest = _load_mock_telemetry()
-        digest = digest.model_copy(
-            update={
-                "confidence_score": 100.0,
-                "failed_connectors": [],
-                "insights": [
-                    "Demo sandbox environment synchronized.",
-                    "Calendar: Presentation starting at 3:00 PM.",
-                    "Sports: GP scheduled for Sunday.",
-                ],
-            }
-        )
 
         global_pipeline_state.update(3, "SYNTHESIS")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
