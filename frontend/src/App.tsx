@@ -208,6 +208,23 @@ export default function App(): ReactElement {
             </p>
           </div>
           </header>
+
+          <div
+            className={`w-full overflow-hidden transition-all duration-700 ease-in-out ${
+              isSpeaking
+                ? 'mb-6 max-h-24 translate-y-0 scale-100 opacity-100'
+                : 'pointer-events-none mb-0 max-h-0 -translate-y-4 scale-95 opacity-0'
+            }`}
+          >
+            <BriefingPanel
+              briefing={data?.briefing ?? ''}
+              status={status}
+              error={error}
+              isLoading={isTriggerLoading}
+              isSpeaking={isSpeaking}
+            />
+          </div>
+
           <div className="relative mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           {/* COLUMN 1: LEFT WING */}
           <div className="flex flex-col gap-4 md:gap-6">
@@ -268,16 +285,6 @@ export default function App(): ReactElement {
 
           {/* COLUMN 3: RIGHT WING */}
           <div className="flex flex-col gap-4 md:gap-6">
-            <div className="flex min-h-40 w-full items-center justify-center">
-              <BriefingPanel
-                briefing={data?.briefing ?? ''}
-                status={status}
-                error={error}
-                isLoading={isTriggerLoading}
-                isSpeaking={isSpeaking && activeStep === 4}
-              />
-            </div>
-
             <TelemetryCard
               title="Reminders"
               icon={CheckSquare}
