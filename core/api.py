@@ -898,6 +898,12 @@ def list_unread_reminders() -> list[ReminderRecord]:
     Returns:
         List of reminder row IDs paired with their note text.
     """
+    if DEMO_MODE:
+        return [
+            ReminderRecord(id=991, note="Review APEX demo script"),
+            ReminderRecord(id=992, note="Charge backup operations hardware"),
+        ]
+
     records = database.fetch_unread_reminders()
     return [{"id": row_id, "note": note} for row_id, note in records]
 
@@ -926,6 +932,8 @@ def create_reminder(payload: CreateReminderRequest) -> CreateReminderResponse:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Reminder text is empty after TTS sanitization.",
         )
+    if DEMO_MODE:
+        return CreateReminderResponse(id=999)
     row_id = database.save_reminder(sanitized_text)
     return CreateReminderResponse(id=row_id)
 
@@ -945,6 +953,8 @@ def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
     Returns:
         Success outcome label after the database write completes.
     """
+    if DEMO_MODE:
+        return MarkReadResponse()
     database.mark_reminders_read(payload.ids)
     return MarkReadResponse()
 
