@@ -178,7 +178,7 @@ export default function App(): ReactElement {
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main
-        className="relative isolate min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)]"
+        className="relative isolate flex h-dvh w-full flex-col overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
         style={{ '--glow-color': glowColor } as CSSProperties}
       >
         <CelestialBackground />
@@ -220,8 +220,8 @@ export default function App(): ReactElement {
           )}
         </div>
 
-        <div className="relative z-[var(--z-bento-hud)] p-4 md:p-6">
-          <header className="relative mb-6 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
+        <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col">
+          <header className="relative mb-4 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
           <div className="flex items-baseline justify-self-start">
             <h1
               className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
@@ -266,7 +266,7 @@ export default function App(): ReactElement {
           <div
             className={`w-full overflow-hidden transition-all duration-700 ease-in-out ${
               showSubtitleBar
-                ? 'max-h-24 opacity-100 mb-6 translate-y-0 scale-100'
+                ? 'max-h-24 opacity-100 mb-4 translate-y-0 scale-100'
                 : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
             }`}
           >
@@ -279,16 +279,17 @@ export default function App(): ReactElement {
             />
           </div>
 
-          <div className="relative mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
+          <div className="mx-auto grid w-full flex-1 min-h-0 grid-rows-[1fr_auto] gap-4 md:gap-6">
+          <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
           {/* COLUMN 1: LEFT WING */}
-          <div className="flex flex-col gap-4 md:gap-6">
+          <div className="flex min-h-0 flex-col gap-4 md:gap-6">
             <TelemetryCard
               title="Weather"
               icon={CloudSun}
               primaryTemperatureF={primaryTemperatureF}
               weatherCondition={data?.weatherCondition}
               style={weatherCardStyle}
-              className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`flex-1 min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
                 {weatherBody}
@@ -298,7 +299,7 @@ export default function App(): ReactElement {
             <TelemetryCard
               title="Events"
               icon={Calendar}
-              className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`flex-1 min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
                 {scheduleBody}
@@ -309,12 +310,12 @@ export default function App(): ReactElement {
               title="Next F1 Race"
               icon={Flag}
               rawScheduleText={f1ScheduleTelemetryText}
-              className="min-h-40"
+              className="flex-1 min-h-0"
             />
           </div>
 
           {/* COLUMN 2: CENTER REACTOR */}
-          <div className="relative z-[var(--z-core-logo)] flex h-full flex-col items-center justify-between py-6 gap-4 xl:gap-6 xl:col-span-1">
+          <div className="relative z-[var(--z-core-logo)] flex min-h-0 flex-col items-center justify-between gap-4 py-6 xl:col-span-1 xl:gap-6">
             <BriefingDigest
               insights={data?.activeReminders ? (data.activeReminders.length > 0 ? [
                 ...data.activeReminders.map(r => `Reminder: ${r.note}`),
@@ -322,9 +323,9 @@ export default function App(): ReactElement {
               ] : (data.digest?.insights ?? [])) : (data?.digest?.insights ?? [])}
               status={status}
               isLoading={isTriggerLoading}
-              className="w-full"
+              className="flex-1 min-h-0 w-full"
             />
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
               <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
                 <ApexLogo
                   step={activeStep}
@@ -338,8 +339,8 @@ export default function App(): ReactElement {
           </div>
 
           {/* COLUMN 3: RIGHT WING */}
-          <div className="flex flex-col gap-4 md:gap-6">
-            <TelemetryCard title="Inbox" icon={Mail} className="min-h-40">
+          <div className="flex min-h-0 flex-col gap-4 md:gap-6">
+            <TelemetryCard title="Inbox" icon={Mail} className="flex-1 min-h-0">
               {isBusy(status) ? (
                 <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                   Loading inbox…
@@ -352,7 +353,7 @@ export default function App(): ReactElement {
                     </p>
                   )}
                   {emailInfo.items.length > 0 ? (
-                    <ul className="space-y-2">
+                    <ul className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
                       {emailInfo.items.map((item, index) => (
                         <li
                           key={`${item.subject}-${item.time}-${index}`}
@@ -380,13 +381,13 @@ export default function App(): ReactElement {
               )}
             </TelemetryCard>
 
-            <TelemetryCard title="News Wire" icon={Newspaper} className="min-h-40">
+            <TelemetryCard title="News Wire" icon={Newspaper} className="flex-1 min-h-0">
               {isBusy(status) ? (
                 <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                   Loading news…
                 </p>
               ) : newsItems.length > 0 ? (
-                <ul>
+                <ul className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
                   {newsItems.map((item, index) => (
                     <li
                       key={`${item.topic}-${index}`}
@@ -419,44 +420,49 @@ export default function App(): ReactElement {
             <TelemetryCard
               title="Reminders"
               icon={CheckSquare}
-              className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`flex-1 min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               role="region"
               aria-label="Active reminders"
               data-slot="reminders-card"
             >
-              {activeReminders.length === 0 ? (
-                <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                  No pending reminders.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {activeReminders.map((reminder) => (
-                    <ReminderListRow
-                      key={reminder.id}
-                      reminder={reminder}
-                      onMarkRead={handleMarkReminderRead}
-                    />
-                  ))}
-                </ul>
-              )}
-              <ReminderTerminal
-                refreshReminders={refreshReminders}
-                onReminderSaved={handleReminderSaved}
-              />
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {activeReminders.length === 0 ? (
+                  <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+                    No pending reminders.
+                  </p>
+                ) : (
+                  <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                    {activeReminders.map((reminder) => (
+                      <ReminderListRow
+                        key={reminder.id}
+                        reminder={reminder}
+                        onMarkRead={handleMarkReminderRead}
+                      />
+                    ))}
+                  </ul>
+                )}
+                <div className="shrink-0">
+                  <ReminderTerminal
+                    refreshReminders={refreshReminders}
+                    onReminderSaved={handleReminderSaved}
+                  />
+                </div>
+              </div>
             </TelemetryCard>
           </div>
+          </div>
 
-          {/* FULL DECK FOOTER */}
-          <TelemetryCard
-            title="System Diagnostics"
-            icon={Activity}
-            className="md:col-span-2 xl:order-7 xl:col-span-3"
-            role="region"
-            aria-label="System diagnostics"
-            data-slot="system-diagnostics-card"
-          >
-            <SystemDiagnostics />
-          </TelemetryCard>
+          <div className="shrink-0">
+            <TelemetryCard
+              title="System Diagnostics"
+              icon={Activity}
+              role="region"
+              aria-label="System diagnostics"
+              data-slot="system-diagnostics-card"
+            >
+              <SystemDiagnostics />
+            </TelemetryCard>
+          </div>
           </div>
         </div>
       </main>

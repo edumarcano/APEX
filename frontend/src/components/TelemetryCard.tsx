@@ -281,7 +281,7 @@ export function TelemetryCard({
       : null
 
   const shellClassName = [
-    'relative overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)]',
+    'relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)]',
     resolveCardHoverClass(title),
     className,
   ]
@@ -289,7 +289,7 @@ export function TelemetryCard({
     .join(' ')
 
   const glassContentClassName =
-    'relative z-10 hud-glass p-[var(--hud-panel-pad)]'
+    'relative z-10 flex min-h-0 flex-1 flex-col hud-glass p-[var(--hud-panel-pad)]'
 
   const primaryTemperatureStyle: CSSProperties | undefined =
     primaryTemperatureF != null
@@ -344,7 +344,7 @@ export function TelemetryCard({
         </div>
       ) : null}
       <div className={glassContentClassName}>
-      <header className="mb-4 flex min-h-9 items-center gap-3">
+      <header className="mb-4 flex min-h-9 shrink-0 items-center gap-3">
         <Icon
           className="size-5 shrink-0 text-[color:var(--hud-accent)]"
           strokeWidth={1.75}
@@ -357,9 +357,9 @@ export function TelemetryCard({
           {title}
         </h2>
       </header>
-      <div className="min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {primaryTemperatureF != null ? (
-          <div className="mb-3 flex items-center gap-4">
+          <div className="mb-3 flex shrink-0 items-center gap-4">
             <p
               className="tabular-nums text-4xl leading-none tracking-tight text-white"
               style={primaryTemperatureStyle}
@@ -379,7 +379,8 @@ export function TelemetryCard({
           </div>
         ) : null}
         {isScheduleCard && f1Schedule ? (
-          <div className="space-y-3 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-4 text-[color:var(--hud-text)]">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+            <div className="space-y-3 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-4 text-[color:var(--hud-text)]">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
@@ -421,9 +422,12 @@ export function TelemetryCard({
                 Sprint {f1Schedule.sprintEtLabel}
               </span>
             ) : null}
+            </div>
           </div>
         ) : (
-          children
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
+            {children}
+          </div>
         )}
       </div>
       </div>

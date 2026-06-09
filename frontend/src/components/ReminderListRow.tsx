@@ -38,7 +38,7 @@ const handleComplete = useCallback((): void => {
     <li
       className={[
         'overflow-hidden rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 backdrop-blur-sm transition-all duration-300 ease-in-out',
-        isDismissing ? 'max-h-0 opacity-0 py-0' : 'max-h-32 opacity-100',
+        isDismissing ? 'max-h-0 opacity-0 py-0' : 'max-h-24 opacity-100',
       ].join(' ')}
       onTransitionEnd={handleTransitionEnd}
     >
