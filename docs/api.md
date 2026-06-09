@@ -40,6 +40,16 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
     "calendar": "...",
     "reminders": "..."
   },
+  "digest": {
+    "weather_archetype": "clear_day",
+    "unread_emails_count": 2,
+    "upcoming_events_count": 1,
+    "f1_sprint_active": false,
+    "reminders_pending_count": 0,
+    "confidence_score": 95.0,
+    "failed_connectors": [],
+    "insights": ["..."]
+  },
   "metadata": {
     "dev_mode_active": false,
     "demo_mode_active": false,
@@ -58,7 +68,20 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 | `synthesis_strategy` | string | Active synthesis backend: `"llm"` in production; `"raw"`, `"slm"`, or `"llm"` in dev mode; `"slm"` in demo mode |
 | `tts_strategy` | string | Active TTS engine: `"google"` or `"pyttsx3"` in production; reflects `DEV_TTS_PLAYBACK` or `DEMO_TTS` otherwise |
 
-**Demo path:** When the demo path is active, the response always returns `demo_mode_active: true` and `dev_mode_active: true` regardless of the `DEV_MODE` flag value.
+**`digest` field descriptions:**
+
+| Field | Type | Description |
+|---|---|---|
+| `weather_archetype` | string \| null | Normalized weather condition label: `"clear_day"`, `"clear_night"`, `"clouds"`, `"rain"`, `"thunderstorm"`, or `null` |
+| `unread_emails_count` | integer | Count of unread primary inbox messages collected during the run |
+| `upcoming_events_count` | integer | Count of calendar events within the 48-hour briefing window |
+| `f1_sprint_active` | boolean | `true` when an F1 sprint session is scheduled this week |
+| `reminders_pending_count` | integer | Count of unread reminders included in the briefing |
+| `confidence_score` | float | Aggregate connector trust score (0–100); reduced by 10% when the F1 cache was stale |
+| `failed_connectors` | string[] | Names of connectors that returned a failure signal: `"weather"`, `"news"`, `"email"`, `"calendar"`, `"sports"` |
+| `insights` | string[] | Cross-correlated action-oriented bullet strings produced by the Gemini `===INSIGHTS===` output section |
+
+**Demo path:** When the demo path is active, the response always returns `demo_mode_active: true` and `dev_mode_active: true` regardless of the `DEV_MODE` flag value. The `digest` object is loaded from `core/mock/telemetry.json`.
 
 **Note:** the trigger response is returned while TTS audio is still playing on a background thread. Use `GET /api/v1/status` to track `is_speaking` state after the trigger resolves.
 
@@ -130,6 +153,8 @@ Returns all unread reminders.
 
 Returns an empty list `[]` when there are no unread reminders.
 
+**Demo path:** When `DEMO_MODE=true`, returns two static `ReminderRecord` items (`id: 991`, `id: 992`) without querying the database.
+
 ---
 
 ### `POST /api/v1/reminders`
@@ -153,6 +178,8 @@ Persists a new reminder. Input is sanitized before storage.
 { "detail": "Reminder text is empty after TTS sanitization." }
 ```
 
+**Demo path:** When `DEMO_MODE=true`, sanitization still runs but the record is not written to the database. Returns a static `{ "id": 999 }` response.
+
 ---
 
 ### `POST /api/v1/reminders/read`
@@ -171,6 +198,39 @@ Marks one or more reminders as read by row ID. The HUD calls this on explicit us
 { "status": "success" }
 ```
 
+**Demo path:** When `DEMO_MODE=true`, returns `{ "status": "success" }` without writing to the database.
+
+---
+
+### `GET /api/v1/briefings/history`
+
+Returns up to 50 recent briefing ledger entries ordered by timestamp descending.
+
+**Response `200`** — list of `BriefingHistoryRecord`
+```json
+[
+  {
+    "id": 3,
+    "timestamp": "2026-06-08T08:15:00",
+    "briefing": "Greetings Chief...",
+    "digest": {
+      "weather_archetype": "clear_day",
+      "unread_emails_count": 2,
+      "upcoming_events_count": 1,
+      "f1_sprint_active": false,
+      "reminders_pending_count": 2,
+      "confidence_score": 100.0,
+      "failed_connectors": [],
+      "insights": []
+    }
+  }
+]
+```
+
+Returns an empty list `[]` when no briefings have been stored.
+
+**Demo path:** When `DEMO_MODE=true`, returns a static set of three mock `BriefingHistoryRecord` entries without querying the database.
+
 ---
 
 ## Pydantic Models
@@ -182,6 +242,7 @@ class BriefingResponse(BaseModel):
     status: str                   # Run outcome label ("success")
     briefing: str                 # Synthesized briefing text
     telemetry: TelemetryPayload   # Per-module raw telemetry
+    digest: DigestPayload         # Structured summaries and confidence scoring
     metadata: RuntimeMetadata     # Runtime routing metadata
 ```
 
@@ -253,6 +314,32 @@ class MarkReadRequest(BaseModel):
 ```python
 class MarkReadResponse(BaseModel):
     status: str = "success"
+```
+
+### `DigestPayload`
+
+```python
+class DigestPayload(BaseModel):
+    weather_archetype: str | None = None   # Normalized condition label for HUD display
+    unread_emails_count: int = 0           # Unread primary inbox count
+    upcoming_events_count: int = 0         # Calendar events in the 48-hour window
+    f1_sprint_active: bool = False         # True when a sprint session is this week
+    reminders_pending_count: int = 0       # Unread reminders included in the run
+    confidence_score: float                # Aggregate trust score (0–100)
+    failed_connectors: list[str] = []      # Connector names that returned failure signals
+    insights: list[str] = []              # Cross-correlated insight bullets from Gemini
+```
+
+`confidence_score` is computed from the ratio of connectors that returned valid data. When only one sports sub-module is active it contributes a full weight of 1.0; when both F1 and football are enabled they each contribute 0.5. A 10% penalty is applied when the F1 cache existed before the run and was not refreshed (stale hit).
+
+### `BriefingHistoryRecord`
+
+```python
+class BriefingHistoryRecord(BaseModel):
+    id: int              # SQLite row ID
+    timestamp: str       # ISO-8601 local timestamp of the run
+    briefing: str        # Synthesized briefing text delivered to TTS
+    digest: DigestPayload
 ```
 
 ---

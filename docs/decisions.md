@@ -104,16 +104,22 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ## AI-Augmented Development Workflow
 
-The project uses a set of Cursor agent rules in `.cursor/rules/`. Each rule is scoped to a file glob and activates automatically based on the open file.
+## AI-Augmented Development Workflow
 
-| Rule | Scope | Role |
+The project maintains a set of specialized agent rules to provide task-focused guidance across backend development, frontend development, operations, implementation, analysis, auditing, and documentation work.
+
+Multiple rule formats exist to support the AI-assisted development environments used by the project. Depending on the environment, rules may be activated automatically based on context, selected explicitly by the developer, or used as part of agent-specialization workflows.
+
+The responsibilities of each rule are summarized below.
+
+| Rule | Activation | Role |
 |---|---|---|
-| `global.mdc` | `*` | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
-| `analyst.mdc` | `clients/**/*.py` | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only — never modifies code |
-| `auditor.mdc` | _(manual activation)_ | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
-| `backend.mdc` | `core/**/*.py` | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
-| `builder.mdc` | _(manual activation)_ | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
-| `communicator.mdc` | _(manual activation)_ | PR descriptions, merge summaries, release notes, repository documentation |
-| `devops.mdc` | `config.json`, `.env*`, `launcher.py`, `*.bat` | Launchers, dependency lockfiles, the config/credentials separation wall |
-| `frontend.mdc` | `frontend/**/*.{ts,tsx,css,html}` | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
-| `mechanic.mdc` | _(manual activation)_ | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
+| `global` | automatic | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
+| `analyst` | contextual | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only — never modifies code |
+| `auditor` | manual | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
+| `backend` | contextual | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
+| `builder` | manual | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
+| `communicator` | manual | PR descriptions, merge summaries, release notes, repository documentation |
+| `devops` | contextual | Launchers, dependency lockfiles, configuration management, environment boundaries |
+| `frontend` | contextual | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
+| `mechanic` | manual | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
