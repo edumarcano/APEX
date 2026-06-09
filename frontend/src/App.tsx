@@ -454,8 +454,10 @@ export default function App(): ReactElement {
 
           <div className="shrink-0">
             <TelemetryCard
-              title="System Diagnostics"
+              title={showSubtitleBar ? '' : 'System Diagnostics'}
               icon={Activity}
+              className="md:col-span-2 xl:order-7 xl:col-span-3 transition-all duration-700"
+              style={{ padding: '0.75rem 1.25rem' } as CSSProperties}
               role="region"
               aria-label="System diagnostics"
               data-slot="system-diagnostics-card"
