@@ -10,8 +10,8 @@ With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST /api/v1/trig
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
-3. **Synthesis** — raw outputs are joined into a pipe-delimited string and passed to Gemini 2.5 Flash. `brain.py` prepends the persona prompt from `config.json`. A filler phrase plays on a background thread while the model processes. If the Gemini call fails, the raw data string is read out directly so the run never crashes.
-4. **Delivery** — the trigger endpoint returns the briefing text and a telemetry object as JSON. TTS playback runs on a separate worker thread (`_speak_and_cleanup`). `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
+3. **Synthesis** — raw outputs are joined into a pipe-delimited string and passed to Gemini 2.5 Flash. `brain.py` prepends the persona prompt from `config.json`. A filler phrase plays on a background thread while the model processes. The model response is parsed for `===SPEECH===` and `===INSIGHTS===` markers; the speech section becomes the TTS briefing and the insights section yields structured bullet strings. If the Gemini call fails, the raw data string is returned as the briefing with a single fallback insight.
+4. **Delivery** — connector outputs are evaluated for trust, producing a `DigestPayload` with a `confidence_score` and `failed_connectors` list. The trigger endpoint returns the briefing text, telemetry, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=llm`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
@@ -64,11 +64,11 @@ sequenceDiagram
 When `DEMO_MODE=true` in `.env`, the trigger endpoint branches into `_run_demo_briefing()` before the normal pipeline runs. The simulation:
 
 1. Advances `global_pipeline_state` through all four stages with a **1.5-second delay** between each step so the frontend polling loop has time to observe each stage.
-2. Loads static mock telemetry from `core/mock/telemetry.json` via `_load_mock_telemetry()`.
+2. Loads static mock telemetry and a pre-built `DigestPayload` from `core/mock/telemetry.json` via `_load_mock_telemetry()`. The mock telemetry file includes a `digest` sub-object with `weather_archetype`, counts, `confidence_score`, `failed_connectors`, and `insights` bullets.
 3. Returns a deterministic briefing string built by `_build_demo_briefing()`.
 4. Starts `_speak_and_cleanup` with the `DEMO_TTS` engine override.
 
-The `metadata.demo_mode_active` field is `true` in the trigger response. `useApexData` reads this and sets `demoModeActive` on `ApexDataState`, which `App.tsx` uses to render an amber "DEMO MODE ACTIVE" badge in the header. No data connectors, external APIs, or database writes are involved in the demo path.
+The `metadata.demo_mode_active` field is `true` in the trigger response. `useApexData` reads this and sets `demoModeActive` on `ApexDataState`, which `App.tsx` uses to render an amber "DEMO MODE ACTIVE" badge in the header. `GET /api/v1/briefings/history` returns a static mock ledger of three records when `DEMO_MODE=true`. All reminder endpoints return static data without database access in demo mode. No data connectors or external APIs are called on the demo path.
 
 ---
 
@@ -151,13 +151,22 @@ apex/
 
 ### `core/brain.py`
 
-`process_telemetry(raw_data)` constructs a `genai.Client` with `GEMINI_API_KEY`, prepends `SYSTEM_PROMPT` from `config.json`, and calls `gemini-2.5-flash`. When `DEV_MODE=true`:
+`process_telemetry(raw_data)` constructs a `genai.Client` with `GEMINI_API_KEY`, prepends `SYSTEM_PROMPT` from `config.json`, and calls `gemini-2.5-flash`. The function returns a `dict[str, Any]` with keys `briefing` (TTS prose string) and `insights` (list of bullet strings).
 
-- `DEV_AI_SYNTHESIS=raw` — returns the raw data string directly, no model call.
-- `DEV_AI_SYNTHESIS=slm` — returns a placeholder string. Local SLM integration is not yet implemented.
+**Gemini output protocol:** The system prompt instructs the model to return exactly two sections separated by markers:
+
+- `===SPEECH===` — everything after this marker and before `===INSIGHTS===` becomes the `briefing` string.
+- `===INSIGHTS===` — everything after this marker is split into lines; bullet prefixes (`•`, `-`, `*`, `>`) are stripped, and non-empty lines become the `insights` list.
+
+`_parse_model_output(text)` performs this split. If neither marker is present, the full response is used as the briefing with an empty insights list.
+
+When `DEV_MODE=true`:
+
+- `DEV_AI_SYNTHESIS=raw` — returns the raw data string as `briefing` with a single placeholder insight. No model call.
+- `DEV_AI_SYNTHESIS=slm` — returns a placeholder briefing string. Local SLM integration is not yet implemented.
 - `DEV_AI_SYNTHESIS=llm` — falls through to the live Gemini call and logs a network-leakage warning.
 
-On any exception (missing key, empty response, API error), the function catches it, logs diagnostics, and returns the raw data as a plain text fallback so the run completes.
+On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
 
 ### `core/speaker.py`
 
@@ -178,12 +187,19 @@ Two warm-up functions run at module import time:
 
 ### `core/database.py`
 
-SQLite database file: `apex_memory.db`. Two tables, both created by `initialize_db()`:
+SQLite database file: `apex_memory.db`. Three tables, all created by `initialize_db()`:
 
 - `runs (id INTEGER PRIMARY KEY, timestamp TEXT)` — written by `log_run()` on each production trigger; read by `get_last_run()` for cooldown enforcement.
 - `reminders (id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)` — managed by `save_reminder()`, `fetch_unread_reminders()`, and `mark_reminders_read()`.
+- `briefings (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, briefing TEXT, digest_json TEXT)` — written by `save_briefing()` after each production run; indexed on `timestamp DESC` for efficient history queries.
 
 `initialize_db()` is called at the start of `should_run()`, ensuring the schema exists before any read or write.
+
+**Briefing ledger functions:**
+
+- `save_briefing(briefing, digest_dict)` — persists the briefing text and a compact JSON-encoded `DigestPayload` dict to the `briefings` table.
+- `fetch_briefing_history(limit=50)` — returns up to 50 rows ordered by `timestamp DESC`, with the `digest_json` field parsed back into a dict.
+- `prune_historical_ledger()` — deletes all rows not in the 50 most recent by timestamp. Called inside `_speak_and_cleanup` immediately after `save_briefing()`. Uses an explicit `BEGIN` / `ROLLBACK` transaction for safety.
 
 ### `core/config.py`
 
@@ -216,9 +232,17 @@ A multi-layer SVG reactor in the center column. Five inline gradient definitions
 
 SVG speaking-state indicator mounted in the header. In stasis: a single horizontal line. When `isSpeaking=true`: two counter-rotating dashed rings expand around a glowing gold core using `gyroClockwise` / `gyroCounter` CSS keyframe animations.
 
+### `BriefingDigest.tsx`
+
+Displays insight bullet strings from `DigestPayload.insights` in the center column above the `ApexLogo`. Each bullet is prefixed with a gold `>` glyph. When `status === 'success'`, a "History" button appears in the card header; clicking it opens `HistoryLedgerModal` as a portal-mounted dialog. The modal fetches `GET /api/v1/briefings/history` on mount and renders each `BriefingHistoryRecord` with a formatted timestamp, briefing prose, and insight bullets. The modal closes on backdrop click or `Escape`.
+
 ### `BriefingPanel.tsx`
 
 Renders the synthesized briefing text with a `clip-path` curtain-reveal animation on delivery. A `SpeakingBorderMask` activates at pipeline stage 4: a spinning conic-gradient border overlay that persists while `isSpeaking && activeStep === 4`.
+
+### `ConfidenceBadge.tsx`
+
+Header badge rendered between the demo mode indicator and the status ticker. Displays the `confidenceScore` as a rounded integer percentage with three-tier color coding: emerald (≥ 90%), amber (≥ 50%), red (< 50%). When status is not `success`, displays `—%` in a neutral gray. A tooltip opens on hover or focus, listing the names of any `failedConnectors`. The badge reads `Sync Health` on wider viewports and is keyboard-accessible with `tabIndex=0`.
 
 ### `TelemetryCard.tsx`
 
@@ -254,7 +278,8 @@ The single data hook for the entire HUD. On mount it:
 4. On trigger resolution, fetches `GET /api/v1/reminders` to populate `activeReminders`.
 5. Parses weather string fields via `resolvePipelineTemperatureF` and `resolveWeatherDetail`.
 6. Derives `weatherCondition` via `resolveWeatherCondition`.
-7. Clears the polling interval when `/api/v1/status` returns `404`.
+7. Extracts `digest.confidence_score`, `digest.failed_connectors`, and `digest.insights` from the trigger response body and populates `confidenceScore`, `failedConnectors`, and `insights` on `ApexDataState`.
+8. Clears the polling interval when `/api/v1/status` returns `404`.
 
 Exposes `refreshReminders` (best-effort re-sync after new submission) and `markReminderAsRead` (optimistic remove with rollback).
 
@@ -280,9 +305,13 @@ Scans the weather string for exact substring tokens in priority order and resolv
 
 ### `telemetry.ts`
 
-Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `PipelineState`, `SystemDiagnostics`, `AtmosphericTheme`, `WeatherConditionArchetype`.
+Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `PipelineState`, `SystemDiagnostics`, `AtmosphericTheme`, `WeatherConditionArchetype`, `DigestPayload`, `ActiveReminder`.
 
 `WeatherConditionArchetype` union: `'clear_day' | 'clear_night' | 'clouds' | 'rain' | 'thunderstorm'`. The `clear_day` / `clear_night` split is resolved against the local clock hour at parse time (before 06:00 or from 18:00 → `clear_night`).
+
+`DigestPayload` (frontend): `{ insights: string[] }`. The hook assembles this from the trigger response `digest.insights` array. `TelemetryPayload` carries an optional `digest?: DigestPayload` field.
+
+`ApexDataState` includes three fields sourced from the trigger `digest` object: `confidenceScore: number` (defaults to `100.0` before trigger resolution), `failedConnectors: string[]`, and `insights: string[]`.
 
 ---
 
@@ -349,6 +378,51 @@ All datetimes use `ZoneInfo("America/New_York")` and format to `"%A, %B %d at %I
 ### Country Flag Lookup
 
 `COUNTRY_FLAG_MAP` in `TelemetryCard.tsx` maps lowercase country names to ISO 3166-1 alpha-2 codes. Flag images are pulled from `https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/{code}.svg` with `loading="lazy"` and `decoding="async"`. An `onError` handler replaces a broken image with the `🏁` checkered flag fallback.
+
+---
+
+## Confidence Scoring
+
+After the Collection stage, `api.py` evaluates all enabled connector outputs to produce a `confidence_score` (0–100) and a `failed_connectors` list. These populate the `DigestPayload` returned in the trigger response.
+
+### Connector Failure Detection
+
+Each enabled connector's output string is tested against a regex pattern. A match counts as a failure:
+
+| Connector | Failure pattern |
+|---|---|
+| `weather` | `offline`, `error`, `failed` (case-insensitive) |
+| `sports` (F1) | `telemetry unavailable` |
+| `sports` (football) | `telemetry unavailable`, `throttled` |
+| `news` | `telemetry unavailable`, `offline` |
+| `email` | `error`, `check connection` |
+| `calendar` | `error`, `check connection` |
+
+### Weighting Algorithm
+
+Each enabled connector contributes weight toward the final score:
+
+- **Single sports sub-module active** (F1 only or football only) — sports contributes a weight of `1.0`.
+- **Both F1 and football enabled** — each contributes `0.5`, total sports weight `1.0`.
+- All other connectors (weather, news, email, calendar) each contribute `1.0`.
+- Disabled connectors contribute no weight and are excluded from the calculation.
+
+`confidence_score = (earned_weight / total_weight) × 100`, rounded to one decimal place and clamped to `[0.0, 100.0]`.
+
+When all connectors are disabled, the score defaults to `100.0`.
+
+### F1 Cache Penalty
+
+A 10% penalty is applied when:
+
+1. The F1 cache file (`clients/.f1_cache.json`) existed before the sports connector ran, and
+2. Its modification time was unchanged after the connector returned (stale cache hit, no network refresh).
+
+When both conditions are true: `confidence_score *= 0.90`.
+
+### Output
+
+The score and the list of failed connector names are passed to `DigestPayload`. The frontend `ConfidenceBadge` component reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays a color-coded header badge with a connector tooltip.
 
 ---
 

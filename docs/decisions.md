@@ -104,16 +104,16 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ## AI-Augmented Development Workflow
 
-The project uses a set of Cursor agent rules in `.cursor/rules/`. Each rule is scoped to a file glob and activates automatically based on the open file.
+The project uses a set of agent rules in `.agents/rules/`. Each rule is a Markdown file with YAML frontmatter specifying its activation trigger (`manual` or a file glob). Rules are applied by referencing them explicitly (`@[.agents/rules/rule.md]`) or are activated automatically by the development environment based on the open file context.
 
-| Rule | Scope | Role |
+| Rule | Trigger | Role |
 |---|---|---|
-| `global.mdc` | `*` | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
-| `analyst.mdc` | `clients/**/*.py` | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only — never modifies code |
-| `auditor.mdc` | _(manual activation)_ | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
-| `backend.mdc` | `core/**/*.py` | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
-| `builder.mdc` | _(manual activation)_ | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
-| `communicator.mdc` | _(manual activation)_ | PR descriptions, merge summaries, release notes, repository documentation |
-| `devops.mdc` | `config.json`, `.env*`, `launcher.py`, `*.bat` | Launchers, dependency lockfiles, the config/credentials separation wall |
-| `frontend.mdc` | `frontend/**/*.{ts,tsx,css,html}` | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
-| `mechanic.mdc` | _(manual activation)_ | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
+| `global.md` | `*` | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
+| `analyst.md` | `clients/**/*.py` | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only — never modifies code |
+| `auditor.md` | manual | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
+| `backend.md` | `core/**/*.py` | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
+| `builder.md` | manual | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
+| `communicator.md` | manual | PR descriptions, merge summaries, release notes, repository documentation |
+| `devops.md` | `config.json`, `.env*`, `launcher.py`, `*.bat` | Launchers, dependency lockfiles, the config/credentials separation wall |
+| `frontend.md` | `frontend/**/*.{ts,tsx,css,html}` | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
+| `mechanic.md` | manual | Compile-time failures, runtime crashes, typing conflicts, test suite generation |

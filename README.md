@@ -11,8 +11,8 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
                           ↓
-api.py → scanner.py → [Data Connectors] → brain.py → speaker.py
-          (Gate)         (Collection)     (Synthesis)  (Delivery)
+core/api.py → scanner.py → [Data Connectors] → brain.py → speaker.py
+              (Gate)         (Collection)     (Synthesis)  (Delivery)
 ```
 
 Full pipeline walkthrough, mermaid sequence diagram, component inventory, and data contracts are in [docs/architecture.md](docs/architecture.md).
@@ -29,6 +29,8 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
 - **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as SVG ring gauges
 - **Pipeline state visibility** — step, label, timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
+- **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded header badge (`ConfidenceBadge`) with a per-connector tooltip
+- **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
 - **Demo mode** — `DEMO_MODE=true` intercepts the trigger, runs a staged simulation with static mock telemetry, and displays a badge in the HUD; no external API calls are made
 - **Atmospheric theming** — weather condition drives HUD background color, accent color, card glow, and condition icons in real time
 - **Variable Typography Engine** — primary temperature font weight linearly interpolated from `font-weight: 300` (40°F) to `font-weight: 800` (90°F)
