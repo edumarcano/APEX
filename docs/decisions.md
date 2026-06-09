@@ -104,18 +104,22 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ## AI-Augmented Development Workflow
 
-The project maintains two parallel sets of agent rules targeting different development environments. `.cursor/rules/` contains the original Cursor-format rules (`.mdc` files). `.agents/rules/` was added to support Antigravity, which uses plain Markdown files with YAML frontmatter. Both directories remain active; neither replaces the other.
+## AI-Augmented Development Workflow
 
-Each rule in `.agents/rules/` specifies its activation trigger (`manual` or a file glob) in YAML frontmatter. Rules are applied by referencing them explicitly (`@[.agents/rules/rule.md]`) or are activated automatically by the development environment based on the open file context.
+The project maintains a set of specialized agent rules to provide task-focused guidance across backend development, frontend development, operations, implementation, analysis, auditing, and documentation work.
 
-| Rule | Trigger | Role |
+Multiple rule formats exist to support the AI-assisted development environments used by the project. Depending on the environment, rules may be activated automatically based on context, selected explicitly by the developer, or used as part of agent-specialization workflows.
+
+The responsibilities of each rule are summarized below.
+
+| Rule | Activation | Role |
 |---|---|---|
-| `global.md` | `*` | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
-| `analyst.md` | `clients/**/*.py` | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only — never modifies code |
-| `auditor.md` | manual | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
-| `backend.md` | `core/**/*.py` | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
-| `builder.md` | manual | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
-| `communicator.md` | manual | PR descriptions, merge summaries, release notes, repository documentation |
-| `devops.md` | `config.json`, `.env*`, `launcher.py`, `*.bat` | Launchers, dependency lockfiles, the config/credentials separation wall |
-| `frontend.md` | `frontend/**/*.{ts,tsx,css,html}` | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
-| `mechanic.md` | manual | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
+| `global` | automatic | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
+| `analyst` | contextual | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only — never modifies code |
+| `auditor` | manual | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
+| `backend` | contextual | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
+| `builder` | manual | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
+| `communicator` | manual | PR descriptions, merge summaries, release notes, repository documentation |
+| `devops` | contextual | Launchers, dependency lockfiles, configuration management, environment boundaries |
+| `frontend` | contextual | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
+| `mechanic` | manual | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
