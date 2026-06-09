@@ -279,10 +279,10 @@ export default function App(): ReactElement {
             />
           </div>
 
-          <div className="mx-auto grid w-full flex-1 min-h-0 grid-rows-[1fr_auto] gap-4 md:gap-6">
-          <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
+          <div className="mx-auto grid w-full flex-1 min-h-0 grid-rows-[1fr_auto] gap-4">
+          <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {/* COLUMN 1: LEFT WING */}
-          <div className="flex min-h-0 flex-col gap-4 md:gap-6">
+          <div className="flex min-h-0 flex-col gap-4">
             <TelemetryCard
               title="Weather"
               icon={CloudSun}
@@ -291,7 +291,7 @@ export default function App(): ReactElement {
               style={weatherCardStyle}
               className={`flex-1 min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+              <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                 {weatherBody}
               </p>
             </TelemetryCard>
@@ -301,7 +301,7 @@ export default function App(): ReactElement {
               icon={Calendar}
               className={`flex-1 min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+              <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                 {scheduleBody}
               </p>
             </TelemetryCard>
@@ -315,7 +315,7 @@ export default function App(): ReactElement {
           </div>
 
           {/* COLUMN 2: CENTER REACTOR */}
-          <div className="relative z-[var(--z-core-logo)] flex min-h-0 flex-col items-center justify-between gap-4 py-6 xl:col-span-1 xl:gap-6">
+          <div className="relative z-[var(--z-core-logo)] flex min-h-0 flex-col items-center justify-between gap-4 py-6 xl:col-span-1">
             <BriefingDigest
               insights={data?.activeReminders ? (data.activeReminders.length > 0 ? [
                 ...data.activeReminders.map(r => `Reminder: ${r.note}`),
@@ -339,7 +339,7 @@ export default function App(): ReactElement {
           </div>
 
           {/* COLUMN 3: RIGHT WING */}
-          <div className="flex min-h-0 flex-col gap-4 md:gap-6">
+          <div className="flex min-h-0 flex-col gap-4">
             <TelemetryCard title="Inbox" icon={Mail} className="flex-1 min-h-0">
               {isBusy(status) ? (
                 <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -400,7 +400,7 @@ export default function App(): ReactElement {
                       <p className="text-xs font-semibold text-[color:var(--hud-accent)]">
                         [{item.topic}]
                       </p>
-                      <p className="mt-0.5 text-sm leading-relaxed text-zinc-200">
+                      <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-zinc-200">
                         {item.headline}
                       </p>
                     </li>

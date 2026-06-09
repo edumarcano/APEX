@@ -380,7 +380,7 @@ export function TelemetryCard({
         ) : null}
         {isScheduleCard && f1Schedule ? (
           <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-            <div className="space-y-3 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-4 text-[color:var(--hud-text)]">
+            <div className="space-y-1.5 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-3 text-[color:var(--hud-text)]">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
@@ -395,12 +395,12 @@ export function TelemetryCard({
                 className="shrink-0 leading-none"
               >
                 {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
-                  <span className="text-xl">{f1Schedule.countryFlag}</span>
+                  <span className="text-lg">{f1Schedule.countryFlag}</span>
                 ) : (
                   <img
                     src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
                     alt={`${f1Schedule.country || 'Unknown'} flag`}
-                    className="h-4 w-6 rounded object-cover shadow-sm"
+                    className="h-3.5 w-5 rounded object-cover shadow-sm"
                     loading="lazy"
                     decoding="async"
                     onError={(event) => {
