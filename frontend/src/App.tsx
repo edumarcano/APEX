@@ -1,4 +1,12 @@
-import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
+import {
+  Activity,
+  Calendar,
+  CheckSquare,
+  CloudSun,
+  Flag,
+  Mail,
+  Newspaper,
+} from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
@@ -14,6 +22,48 @@ import { VocalOrb } from './components/VocalOrb'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
 import type { WeatherConditionArchetype } from './types/telemetry'
+
+interface ParsedEmail {
+  subject: string
+  time: string
+}
+
+function parseEmailTelemetry(emailText: string): { count: number; items: ParsedEmail[] } {
+  if (!emailText || emailText.includes('No unread emails') || emailText.includes('bypassed')) {
+    return { count: 0, items: [] }
+  }
+  const countMatch = emailText.match(/Email Telemetry:\s+(\d+)\s+unread/i)
+  const count = countMatch ? parseInt(countMatch[1], 10) : 0
+  const recentIndex = emailText.indexOf('Most recent: ')
+  if (recentIndex < 0) return { count, items: [] }
+  const recentStr = emailText.slice(recentIndex + 'Most recent: '.length)
+  const matches = [...recentStr.matchAll(/'([^']+)'\s+at\s+([^,)]+)/g)]
+  const items = matches.map((m) => ({
+    subject: m[1],
+    time: m[2].trim(),
+  }))
+  return { count, items }
+}
+
+interface ParsedNews {
+  topic: string
+  headline: string
+}
+
+function parseNewsTelemetry(newsText: string): ParsedNews[] {
+  if (!newsText || !newsText.includes('[NEWS TELEMETRY]')) {
+    return []
+  }
+  const cleanText = newsText.replace('[NEWS TELEMETRY]\n', '')
+  const parts = cleanText.split(' | ')
+  return parts.map((part) => {
+    const match = part.match(/^\[([^\]]+)\]\s*(.+)$/)
+    if (match) {
+      return { topic: match[1], headline: match[2] }
+    }
+    return { topic: 'Global', headline: part }
+  })
+}
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
@@ -107,6 +157,8 @@ export default function App(): ReactElement {
   }
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
+  const emailInfo = parseEmailTelemetry(data?.email ?? '')
+  const newsItems = parseNewsTelemetry(data?.news ?? '')
 
   const headerTicker = (() => {
     if (status === 'error') {
@@ -287,6 +339,83 @@ export default function App(): ReactElement {
 
           {/* COLUMN 3: RIGHT WING */}
           <div className="flex flex-col gap-4 md:gap-6">
+            <TelemetryCard title="Inbox" icon={Mail} className="min-h-40">
+              {isBusy(status) ? (
+                <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                  Loading inbox…
+                </p>
+              ) : (
+                <>
+                  {status === 'success' && emailInfo.count > 0 && (
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--hud-accent)]">
+                      {emailInfo.count} Primary Messages
+                    </p>
+                  )}
+                  {emailInfo.items.length > 0 ? (
+                    <ul className="space-y-2">
+                      {emailInfo.items.map((item, index) => (
+                        <li
+                          key={`${item.subject}-${item.time}-${index}`}
+                          className="flex items-start justify-between gap-3"
+                        >
+                          <span className="break-words text-sm text-zinc-200">
+                            {item.subject}
+                          </span>
+                          <span className="shrink-0 font-mono text-xs text-zinc-500">
+                            {item.time}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : status === 'success' ? (
+                    <p className="text-sm text-[color:var(--hud-muted-text)]">
+                      No unread emails.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-[color:var(--hud-muted-text)]">
+                      {error ?? 'Inbox unavailable.'}
+                    </p>
+                  )}
+                </>
+              )}
+            </TelemetryCard>
+
+            <TelemetryCard title="News Wire" icon={Newspaper} className="min-h-40">
+              {isBusy(status) ? (
+                <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                  Loading news…
+                </p>
+              ) : newsItems.length > 0 ? (
+                <ul>
+                  {newsItems.map((item, index) => (
+                    <li
+                      key={`${item.topic}-${index}`}
+                      className={
+                        index < newsItems.length - 1
+                          ? 'border-b border-zinc-800/60 py-3 first:pt-0'
+                          : 'py-3 first:pt-0'
+                      }
+                    >
+                      <p className="text-xs font-semibold text-[color:var(--hud-accent)]">
+                        [{item.topic}]
+                      </p>
+                      <p className="mt-0.5 text-sm leading-relaxed text-zinc-200">
+                        {item.headline}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : status === 'success' ? (
+                <p className="text-sm text-[color:var(--hud-muted-text)]">
+                  No news headlines available.
+                </p>
+              ) : (
+                <p className="text-sm text-[color:var(--hud-muted-text)]">
+                  {error ?? 'News unavailable.'}
+                </p>
+              )}
+            </TelemetryCard>
+
             <TelemetryCard
               title="Reminders"
               icon={CheckSquare}
