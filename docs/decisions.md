@@ -104,7 +104,9 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ## AI-Augmented Development Workflow
 
-The project uses a set of agent rules in `.agents/rules/`. Each rule is a Markdown file with YAML frontmatter specifying its activation trigger (`manual` or a file glob). Rules are applied by referencing them explicitly (`@[.agents/rules/rule.md]`) or are activated automatically by the development environment based on the open file context.
+The project maintains two parallel sets of agent rules targeting different development environments. `.cursor/rules/` contains the original Cursor-format rules (`.mdc` files). `.agents/rules/` was added to support Antigravity, which uses plain Markdown files with YAML frontmatter. Both directories remain active; neither replaces the other.
+
+Each rule in `.agents/rules/` specifies its activation trigger (`manual` or a file glob) in YAML frontmatter. Rules are applied by referencing them explicitly (`@[.agents/rules/rule.md]`) or are activated automatically by the development environment based on the open file context.
 
 | Rule | Trigger | Role |
 |---|---|---|
