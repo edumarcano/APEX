@@ -167,7 +167,7 @@ export function ReminderTerminal({
       <button
         type="button"
         onClick={openTerminal}
-        className="mt-3 flex w-full items-center justify-center gap-2 py-2.5 text-sm text-[color:var(--hud-muted-text)] transition-colors hover:text-[color:var(--hud-text)]"
+        className="mt-3 flex w-full items-center justify-center gap-2 py-1.5 text-sm text-[color:var(--hud-muted-text)] transition-colors hover:text-[color:var(--hud-text)]"
         aria-label="Add a reminder. Press slash to focus."
       >
         <Terminal

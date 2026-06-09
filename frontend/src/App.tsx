@@ -1,4 +1,12 @@
-import { Activity, Calendar, CheckSquare, CloudSun, Flag } from 'lucide-react'
+import {
+  Activity,
+  Calendar,
+  CheckSquare,
+  CloudSun,
+  Flag,
+  Mail,
+  Newspaper,
+} from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
@@ -14,6 +22,48 @@ import { VocalOrb } from './components/VocalOrb'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
 import type { WeatherConditionArchetype } from './types/telemetry'
+
+interface ParsedEmail {
+  subject: string
+  time: string
+}
+
+function parseEmailTelemetry(emailText: string): { count: number; items: ParsedEmail[] } {
+  if (!emailText || emailText.includes('No unread emails') || emailText.includes('bypassed')) {
+    return { count: 0, items: [] }
+  }
+  const countMatch = emailText.match(/Email Telemetry:\s+(\d+)\s+unread/i)
+  const count = countMatch ? parseInt(countMatch[1], 10) : 0
+  const recentIndex = emailText.indexOf('Most recent: ')
+  if (recentIndex < 0) return { count, items: [] }
+  const recentStr = emailText.slice(recentIndex + 'Most recent: '.length)
+  const matches = [...recentStr.matchAll(/'([^']+)'\s+at\s+([^,)]+)/g)]
+  const items = matches.map((m) => ({
+    subject: m[1],
+    time: m[2].trim(),
+  }))
+  return { count, items }
+}
+
+interface ParsedNews {
+  topic: string
+  headline: string
+}
+
+function parseNewsTelemetry(newsText: string): ParsedNews[] {
+  if (!newsText || !newsText.includes('[NEWS TELEMETRY]')) {
+    return []
+  }
+  const cleanText = newsText.replace('[NEWS TELEMETRY]\n', '')
+  const parts = cleanText.split(' | ')
+  return parts.map((part) => {
+    const match = part.match(/^\[([^\]]+)\]\s*(.+)$/)
+    if (match) {
+      return { topic: match[1], headline: match[2] }
+    }
+    return { topic: 'Global', headline: part }
+  })
+}
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
@@ -107,6 +157,8 @@ export default function App(): ReactElement {
   }
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
+  const emailInfo = parseEmailTelemetry(data?.email ?? '')
+  const newsItems = parseNewsTelemetry(data?.news ?? '')
 
   const headerTicker = (() => {
     if (status === 'error') {
@@ -126,7 +178,7 @@ export default function App(): ReactElement {
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main
-        className="relative isolate min-h-dvh w-full overflow-hidden bg-[var(--hud-bg)]"
+        className="relative isolate flex min-h-dvh w-full flex-col overflow-y-auto bg-[var(--hud-bg)] p-4 md:p-6 xl:h-dvh xl:overflow-hidden"
         style={{ '--glow-color': glowColor } as CSSProperties}
       >
         <CelestialBackground />
@@ -168,11 +220,11 @@ export default function App(): ReactElement {
           )}
         </div>
 
-        <div className="relative z-[var(--z-bento-hud)] p-4 md:p-6">
-          <header className="relative mb-6 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-4">
+        <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col">
+          <header className="relative mb-3 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
           <div className="flex items-baseline justify-self-start">
             <h1
-              className={`m-0 text-3xl font-extrabold tracking-widest md:text-4xl ${
+              className={`m-0 text-2xl font-extrabold tracking-widest md:text-3xl ${
                 isPipelinePolling
                   ? 'animate-shimmer'
                   : 'text-[color:var(--hud-accent)]'
@@ -180,7 +232,7 @@ export default function App(): ReactElement {
             >
               APEX
             </h1>
-            <span className="mb-1 ml-3 hidden self-end text-xs uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
+            <span className="mb-1 ml-3 hidden self-end text-[10px] uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
               AUTOMATED PERSONAL ENVIRONMENT XYLEM
             </span>
           </div>
@@ -214,7 +266,7 @@ export default function App(): ReactElement {
           <div
             className={`w-full overflow-hidden transition-all duration-700 ease-in-out ${
               showSubtitleBar
-                ? 'max-h-24 opacity-100 mb-6 translate-y-0 scale-100'
+                ? 'max-h-24 opacity-100 mb-4 translate-y-0 scale-100'
                 : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
             }`}
           >
@@ -227,18 +279,19 @@ export default function App(): ReactElement {
             />
           </div>
 
-          <div className="relative mx-auto grid w-full grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3">
+          <div className="mx-auto flex w-full min-h-0 flex-1 flex-col gap-4 md:gap-6 xl:grid xl:grid-rows-[1fr_auto]">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3 xl:min-h-0">
           {/* COLUMN 1: LEFT WING */}
-          <div className="flex flex-col gap-4 md:gap-6">
+          <div className="flex flex-col gap-4 xl:min-h-0">
             <TelemetryCard
               title="Weather"
               icon={CloudSun}
               primaryTemperatureF={primaryTemperatureF}
               weatherCondition={data?.weatherCondition}
               style={weatherCardStyle}
-              className={`min-h-40 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+              <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                 {weatherBody}
               </p>
             </TelemetryCard>
@@ -246,9 +299,9 @@ export default function App(): ReactElement {
             <TelemetryCard
               title="Events"
               icon={Calendar}
-              className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
             >
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+              <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                 {scheduleBody}
               </p>
             </TelemetryCard>
@@ -257,12 +310,12 @@ export default function App(): ReactElement {
               title="Next F1 Race"
               icon={Flag}
               rawScheduleText={f1ScheduleTelemetryText}
-              className="min-h-40"
+              className="flex-none xl:flex-1 xl:min-h-0"
             />
           </div>
 
           {/* COLUMN 2: CENTER REACTOR */}
-          <div className="relative z-[var(--z-core-logo)] flex h-full flex-col items-center justify-between py-6 gap-4 xl:gap-6 xl:col-span-1">
+          <div className="relative z-[var(--z-core-logo)] flex flex-col items-center gap-4 xl:col-span-1 xl:gap-6 xl:min-h-0">
             <BriefingDigest
               insights={data?.activeReminders ? (data.activeReminders.length > 0 ? [
                 ...data.activeReminders.map(r => `Reminder: ${r.note}`),
@@ -270,64 +323,153 @@ export default function App(): ReactElement {
               ] : (data.digest?.insights ?? [])) : (data?.digest?.insights ?? [])}
               status={status}
               isLoading={isTriggerLoading}
-              className="w-full"
+              className="flex-none w-full xl:flex-1 xl:min-h-0"
             />
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-64 flex-none items-center justify-center py-4 xl:h-full xl:min-h-0 xl:flex-1 xl:py-0">
               <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
                 <ApexLogo
                   step={activeStep}
                   status={status}
                   isSpeaking={isSpeaking}
                   reminderPulseCount={reminderPulseCount}
-                  className="h-56 w-auto xl:h-60"
+                  className="h-44 w-auto sm:h-52 xl:h-60"
                 />
               </div>
             </div>
           </div>
 
           {/* COLUMN 3: RIGHT WING */}
-          <div className="flex flex-col gap-4 md:gap-6">
+          <div className="flex flex-col gap-4 xl:min-h-0">
+            <TelemetryCard title="Inbox" icon={Mail} className="flex-none xl:flex-1 xl:min-h-0">
+              {isBusy(status) ? (
+                <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                  Loading inbox…
+                </p>
+              ) : (
+                <>
+                  {status === 'success' && emailInfo.count > 0 && (
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--hud-accent)]">
+                      {emailInfo.count} Primary Messages
+                    </p>
+                  )}
+                  {emailInfo.items.length > 0 ? (
+                    <ul className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                      {emailInfo.items.map((item, index) => (
+                        <li
+                          key={`${item.subject}-${item.time}-${index}`}
+                          className="flex items-start justify-between gap-3"
+                        >
+                          <span className="break-words text-sm text-zinc-200">
+                            {item.subject}
+                          </span>
+                          <span className="shrink-0 font-mono text-xs text-zinc-500">
+                            {item.time}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : status === 'success' ? (
+                    <p className="text-sm text-[color:var(--hud-muted-text)]">
+                      No unread emails.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-[color:var(--hud-muted-text)]">
+                      {error ?? 'Inbox unavailable.'}
+                    </p>
+                  )}
+                </>
+              )}
+            </TelemetryCard>
+
+            <TelemetryCard title="News Wire" icon={Newspaper} className="flex-none xl:flex-1 xl:min-h-0">
+              {isBusy(status) ? (
+                <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                  Loading news…
+                </p>
+              ) : newsItems.length > 0 ? (
+                <ul className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
+                  {newsItems.map((item, index) => (
+                    <li
+                      key={`${item.topic}-${index}`}
+                      className={
+                        index < newsItems.length - 1
+                          ? 'border-b border-zinc-800/60 py-3 first:pt-0'
+                          : 'py-3 first:pt-0'
+                      }
+                    >
+                      <p className="text-xs font-semibold text-[color:var(--hud-accent)]">
+                        [{item.topic}]
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-zinc-200">
+                        {item.headline}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : status === 'success' ? (
+                <p className="text-sm text-[color:var(--hud-muted-text)]">
+                  No news headlines available.
+                </p>
+              ) : (
+                <p className="text-sm text-[color:var(--hud-muted-text)]">
+                  {error ?? 'News unavailable.'}
+                </p>
+              )}
+            </TelemetryCard>
+
             <TelemetryCard
               title="Reminders"
               icon={CheckSquare}
-              className={`min-h-40 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+              className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               role="region"
               aria-label="Active reminders"
               data-slot="reminders-card"
             >
-              {activeReminders.length === 0 ? (
-                <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                  No pending reminders.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {activeReminders.map((reminder) => (
-                    <ReminderListRow
-                      key={reminder.id}
-                      reminder={reminder}
-                      onMarkRead={handleMarkReminderRead}
-                    />
-                  ))}
-                </ul>
-              )}
-              <ReminderTerminal
-                refreshReminders={refreshReminders}
-                onReminderSaved={handleReminderSaved}
-              />
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {activeReminders.length === 0 ? (
+                  <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+                    No pending reminders.
+                  </p>
+                ) : (
+                  <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                    {activeReminders.map((reminder) => (
+                      <ReminderListRow
+                        key={reminder.id}
+                        reminder={reminder}
+                        onMarkRead={handleMarkReminderRead}
+                      />
+                    ))}
+                  </ul>
+                )}
+                <div className="shrink-0">
+                  <ReminderTerminal
+                    refreshReminders={refreshReminders}
+                    onReminderSaved={handleReminderSaved}
+                  />
+                </div>
+              </div>
             </TelemetryCard>
           </div>
+          </div>
 
-          {/* FULL DECK FOOTER */}
-          <TelemetryCard
-            title="System Diagnostics"
-            icon={Activity}
-            className="md:col-span-2 xl:order-7 xl:col-span-3"
-            role="region"
-            aria-label="System diagnostics"
-            data-slot="system-diagnostics-card"
-          >
-            <SystemDiagnostics />
-          </TelemetryCard>
+          <div className="shrink-0">
+            <TelemetryCard
+              title={showSubtitleBar ? '' : 'System Diagnostics'}
+              icon={Activity}
+              className="md:col-span-2 xl:order-7 xl:col-span-3 transition-all duration-700"
+              style={{
+                padding: showSubtitleBar ? '0.25rem 1rem' : 'var(--hud-panel-pad)',
+                ...(showSubtitleBar
+                  ? ({ '--hud-panel-pad': '0.25rem 1rem' } as CSSProperties)
+                  : {}),
+              } as CSSProperties}
+              role="region"
+              aria-label="System diagnostics"
+              data-slot="system-diagnostics-card"
+            >
+              <SystemDiagnostics isCompact={showSubtitleBar} />
+            </TelemetryCard>
+          </div>
           </div>
         </div>
       </main>

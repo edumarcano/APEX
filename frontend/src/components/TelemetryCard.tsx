@@ -271,6 +271,7 @@ export function TelemetryCard({
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
   const isScheduleCard = title.trim().toLowerCase() === 'next f1 race'
+  const showHeader = title.trim().length > 0
 
   const headingId = useId()
   const weatherGlow =
@@ -280,16 +281,13 @@ export function TelemetryCard({
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
       : null
 
-  const shellClassName = [
-    'relative overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)]',
+  const sectionClassName = [
+    'relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
     resolveCardHoverClass(title),
     className,
   ]
     .filter(Boolean)
     .join(' ')
-
-  const glassContentClassName =
-    'relative z-10 hud-glass p-[var(--hud-panel-pad)]'
 
   const primaryTemperatureStyle: CSSProperties | undefined =
     primaryTemperatureF != null
@@ -327,8 +325,8 @@ export function TelemetryCard({
   return (
     <section
       {...sectionProps}
-      className={shellClassName}
-      aria-labelledby={headingId}
+      className={sectionClassName}
+      aria-labelledby={showHeader ? headingId : undefined}
     >
       {weatherGlow ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
@@ -343,23 +341,25 @@ export function TelemetryCard({
           />
         </div>
       ) : null}
-      <div className={glassContentClassName}>
-      <header className="mb-4 flex min-h-9 items-center gap-3">
-        <Icon
-          className="size-5 shrink-0 text-[color:var(--hud-accent)]"
-          strokeWidth={1.75}
-          aria-hidden
-        />
-        <h2
-          id={headingId}
-          className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
-        >
-          {title}
-        </h2>
-      </header>
-      <div className="min-w-0">
+      <div className="relative z-10 flex h-full flex-col justify-between">
+      {showHeader ? (
+        <header className="mb-4 flex min-h-9 shrink-0 items-center gap-3">
+          <Icon
+            className="size-5 shrink-0 text-[color:var(--hud-accent)]"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          <h2
+            id={headingId}
+            className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
+          >
+            {title}
+          </h2>
+        </header>
+      ) : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {primaryTemperatureF != null ? (
-          <div className="mb-3 flex items-center gap-4">
+          <div className="mb-3 flex shrink-0 items-center gap-4">
             <p
               className="tabular-nums text-4xl leading-none tracking-tight text-white"
               style={primaryTemperatureStyle}
@@ -379,7 +379,8 @@ export function TelemetryCard({
           </div>
         ) : null}
         {isScheduleCard && f1Schedule ? (
-          <div className="space-y-3 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-4 text-[color:var(--hud-text)]">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+            <div className="space-y-1.5 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-3 text-[color:var(--hud-text)]">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
@@ -394,12 +395,12 @@ export function TelemetryCard({
                 className="shrink-0 leading-none"
               >
                 {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
-                  <span className="text-xl">{f1Schedule.countryFlag}</span>
+                  <span className="text-lg">{f1Schedule.countryFlag}</span>
                 ) : (
                   <img
                     src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
                     alt={`${f1Schedule.country || 'Unknown'} flag`}
-                    className="h-4 w-6 rounded object-cover shadow-sm"
+                    className="h-3.5 w-5 rounded object-cover shadow-sm"
                     loading="lazy"
                     decoding="async"
                     onError={(event) => {
@@ -421,9 +422,12 @@ export function TelemetryCard({
                 Sprint {f1Schedule.sprintEtLabel}
               </span>
             ) : null}
+            </div>
           </div>
         ) : (
-          children
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
+            {children}
+          </div>
         )}
       </div>
       </div>

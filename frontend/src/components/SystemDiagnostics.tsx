@@ -5,20 +5,21 @@ import {
   DEFAULT_SYSTEM_DIAGNOSTICS,
   type SystemDiagnostics as SystemDiagnosticsMetrics,
 } from '../types/telemetry'
-import { RingGauge } from './RingGauge'
 
-const METRIC_GAUGES = [
-  { key: 'cpu' as const, label: 'CPU Use' },
-  { key: 'ram' as const, label: 'RAM Alloc' },
-  { key: 'disk' as const, label: 'Disk Pres' },
+const METRICS = [
+  { key: 'cpu' as const, label: 'CPU' },
+  { key: 'ram' as const, label: 'RAM' },
+  { key: 'disk' as const, label: 'Disk' },
 ] as const
-
-type DiagnosticsSeverity = 'critical' | 'warning' | 'normal'
 
 function resolveDiagnostics(
   diagnostics: SystemDiagnosticsMetrics | null | undefined,
 ): SystemDiagnosticsMetrics {
   return diagnostics ?? DEFAULT_SYSTEM_DIAGNOSTICS
+}
+
+function clampPercentage(value: number): number {
+  return Math.min(100, Math.max(0, value))
 }
 
 function isMetricUnavailable(
@@ -28,32 +29,24 @@ function isMetricUnavailable(
   return isInitializing || value == null || !Number.isFinite(value)
 }
 
-function resolvePanelSeverity(
-  diagnostics: SystemDiagnosticsMetrics,
-): DiagnosticsSeverity {
-  const percentages = [diagnostics.cpu, diagnostics.ram, diagnostics.disk].filter(
-    (value): value is number =>
-      typeof value === 'number' && Number.isFinite(value),
-  )
-
-  if (percentages.some((value) => value >= 90)) {
-    return 'critical'
+function formatPercentage(
+  value: number | null | undefined,
+  isInitializing: boolean,
+): string {
+  if (isMetricUnavailable(value, isInitializing)) {
+    return '—%'
   }
-  if (percentages.some((value) => value >= 80)) {
-    return 'warning'
-  }
-  return 'normal'
+  return `${Math.round(clampPercentage(value!))}%`
 }
 
-function severityGlowClass(severity: DiagnosticsSeverity): string {
-  switch (severity) {
-    case 'critical':
-      return 'bg-red-500'
-    case 'warning':
-      return 'bg-amber-500'
-    default:
-      return 'bg-blue-500'
+function getBarColorClass(percentage: number): string {
+  if (percentage >= 90) {
+    return 'bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse'
   }
+  if (percentage >= 80) {
+    return 'bg-[#f59e0b] shadow-[0_0_8px_rgba(245,158,11,0.6)]'
+  }
+  return 'bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.6)]'
 }
 
 function cpuSubText(
@@ -95,7 +88,7 @@ function diskSubText(
 }
 
 function metricSubText(
-  key: (typeof METRIC_GAUGES)[number]['key'],
+  key: (typeof METRICS)[number]['key'],
   diagnostics: SystemDiagnosticsMetrics,
   isInitializing: boolean,
 ): string {
@@ -109,45 +102,88 @@ function metricSubText(
   }
 }
 
-export function SystemDiagnostics(): ReactElement {
+type SystemDiagnosticsProps = {
+  isCompact?: boolean
+}
+
+export function SystemDiagnostics({
+  isCompact = false,
+}: SystemDiagnosticsProps): ReactElement {
   const { diagnostics, status } = useSystemDiagnostics()
   const resolvedDiagnostics = resolveDiagnostics(diagnostics)
   const isInitializing = status === 'idle' || status === 'loading'
-  const severity = resolvePanelSeverity(resolvedDiagnostics)
+
+  if (isCompact) {
+    return (
+      <section
+        className="relative w-full"
+        aria-label="System resource utilization"
+        data-slot="system-diagnostics"
+        data-compact="true"
+      >
+        <div className="relative w-full z-0 grid grid-cols-3 gap-4 text-[color:var(--hud-text)] select-none">
+          {METRICS.map(({ key }) => {
+            const rawValue = resolvedDiagnostics[key]
+            const unavailable = isMetricUnavailable(rawValue, isInitializing)
+            const clampedPct = unavailable
+              ? 0
+              : clampPercentage(rawValue as number)
+
+            return (
+              <div
+                key={key}
+                className="h-1 min-w-0 overflow-hidden rounded-full border border-white/5 bg-white/5"
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ease-in-out ${unavailable ? 'bg-white/10' : getBarColorClass(clampedPct)}`}
+                  style={{ width: `${clampedPct}%` }}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section
-      className="relative w-full overflow-hidden"
+      className="relative w-full"
       aria-label="System resource utilization"
       data-slot="system-diagnostics"
     >
-      <div
-        className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 -z-10 rounded-full blur-[80px] opacity-[0.25] transition-all duration-1000 ease-in-out ${severityGlowClass(severity)}`}
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#39FF88]/60 to-transparent animate-sensor-sweep"
-        aria-hidden
-      />
-      <div className="relative z-0 grid w-full grid-cols-3 gap-2 sm:gap-4">
-        {METRIC_GAUGES.map(({ key, label }) => (
-          <div
-            key={key}
-            className="flex min-w-0 flex-col items-center justify-center"
-          >
-            <div className="aspect-square w-full max-w-[7rem] sm:max-w-[8rem]">
-              <RingGauge
-                percentage={resolvedDiagnostics[key]}
-                label={label}
-                subText={metricSubText(key, resolvedDiagnostics, isInitializing)}
-                isUnavailable={isMetricUnavailable(
-                  resolvedDiagnostics[key],
-                  isInitializing,
-                )}
-              />
+      <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
+        {METRICS.map(({ key, label }) => {
+          const rawValue = resolvedDiagnostics[key]
+          const unavailable = isMetricUnavailable(rawValue, isInitializing)
+          const clampedPct = unavailable
+            ? 0
+            : clampPercentage(rawValue as number)
+
+          return (
+            <div key={key} className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-mono text-[11px] font-bold uppercase text-zinc-400">
+                  {label}
+                </span>
+                <span className="text-zinc-500">
+                  {metricSubText(key, resolvedDiagnostics, isInitializing)}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full border border-white/5 bg-white/5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ease-in-out ${unavailable ? 'bg-white/10' : getBarColorClass(clampedPct)}`}
+                    style={{ width: `${clampedPct}%` }}
+                  />
+                </div>
+                <span className="w-10 shrink-0 text-right text-xs font-semibold text-[color:var(--hud-accent)]">
+                  {formatPercentage(rawValue, isInitializing)}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
