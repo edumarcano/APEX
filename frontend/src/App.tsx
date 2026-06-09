@@ -121,6 +121,8 @@ export default function App(): ReactElement {
     return { text: 'SYSTEM OPERATIONAL', className: 'text-[#39FF88] opacity-80' }
   })()
 
+  const showSubtitleBar = isSpeaking && activeStep === 4
+
   return (
     <AtmosphericThemeProvider weatherReport={data?.weather}>
       <main
@@ -211,9 +213,9 @@ export default function App(): ReactElement {
 
           <div
             className={`w-full overflow-hidden transition-all duration-700 ease-in-out ${
-              isSpeaking
-                ? 'mb-6 max-h-24 translate-y-0 scale-100 opacity-100'
-                : 'pointer-events-none mb-0 max-h-0 -translate-y-4 scale-95 opacity-0'
+              showSubtitleBar
+                ? 'max-h-24 opacity-100 mb-6 translate-y-0 scale-100'
+                : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
             }`}
           >
             <BriefingPanel

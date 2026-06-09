@@ -22,7 +22,7 @@ export function BriefingPanel({ briefing }: BriefingPanelProps): ReactElement {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
           <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
         </span>
-        <p className="flex-1 whitespace-pre-wrap break-words text-sm font-medium leading-normal text-zinc-100">
+        <p className="flex-1 text-sm font-medium leading-relaxed text-zinc-100 max-h-16 overflow-y-auto pr-2 scrollbar-thin whitespace-pre-wrap break-words">
           {briefing.trim()}
         </p>
       </div>
