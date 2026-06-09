@@ -179,7 +179,7 @@ Introduce the layered atmospheric canvas architecture, DEMO_MODE workflows, and 
 
 # Phase III: Cognitive Interface
 
-**Status:** Planned
+**Status:** In Progress
 
 **Core Focus:**
 Transforming APEX from a telemetry dashboard into an intelligence presence through structured briefing delivery, local speech synthesis, synchronized communication, and intentional operator interaction.
@@ -188,7 +188,7 @@ Transforming APEX from a telemetry dashboard into an intelligence presence throu
 
 ## v1.8.0 - Briefing Digest & Transcript Ledger
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
 Replace the monolithic briefing presentation with structured intelligence digests, operational confidence scoring, transcript history management, and persistent local briefing storage.

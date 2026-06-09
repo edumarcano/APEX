@@ -2,6 +2,103 @@
 
 ---
 
+## v1.8.0 — Briefing Digest & Transcript Layer
+
+**Released:** June 9, 2026
+
+This release adds structured output from the Gemini synthesis stage, a persistent briefing ledger, and connector trust scoring. The `BriefingResponse` API contract, SQLite schema, and `brain.process_telemetry()` return type were all extended. The HUD gained two new components and two new telemetry cards, and the layout was converted to a viewport-locked deck.
+
+---
+
+### What's New
+
+#### Briefing Digest and History Ledger
+
+- `DigestPayload` Pydantic model added to `core/api.py` and wired into `BriefingResponse` as a top-level `digest` field. Fields: `weather_archetype`, `unread_emails_count`, `upcoming_events_count`, `f1_sprint_active`, `reminders_pending_count`, `confidence_score`, `failed_connectors`, `insights`. All carry typed fallback defaults.
+- `briefings` table added to `apex_memory.db`: `(id AUTOINCREMENT, timestamp TEXT, briefing TEXT, digest_json TEXT)` with a `timestamp DESC` index. `initialize_db()` creates it on first run.
+- `save_briefing()`, `fetch_briefing_history(limit=50)`, and `prune_historical_ledger()` added to `core/database.py`. Ledger capped at 50 rows; pruning runs inside a `BEGIN` / `ROLLBACK` transaction on the TTS worker thread after each production run.
+- `_speak_and_cleanup()` updated to call `save_briefing()` and `prune_historical_ledger()` before `global_pipeline_state.reset()`. Writes are production-only.
+- `GET /api/v1/briefings/history` added — returns up to 50 `BriefingHistoryRecord` objects (id, timestamp, briefing, DigestPayload) ordered by timestamp descending. Returns three static mock records when `DEMO_MODE=true`.
+- `HistoryLedgerModal` in `BriefingDigest.tsx` fetches the history endpoint on open and renders each record with timestamp, briefing prose, and insight bullets. Mounted via `createPortal`; dismissed by backdrop click or `Escape`.
+
+#### Connector Trust Scoring
+
+- `_compute_confidence_and_failures()` added to `core/api.py`. Evaluates each enabled connector's output string against per-connector failure regex constants after Collection. Score: `(earned_weight / total_weight) × 100`, clamped `[0.0, 100.0]`.
+- Sports weight split: F1 and football each contribute `0.5` when both enabled; `1.0` when only one active. All other connectors: `1.0` each.
+- F1 cache staleness penalty: if `clients/.f1_cache.json` existed before the sports connector ran and its mtime was unchanged after, `confidence_score *= 0.90`.
+- Demo mode pinned to `confidence_score: 100.0` and `failed_connectors: []`.
+
+#### Structured Gemini Output (`===SPEECH===` / `===INSIGHTS===`)
+
+- `brain.process_telemetry()` return type changed from `str` to `dict[str, Any]` with keys `briefing` and `insights`. All callers and bypass paths in `core/api.py` updated.
+- `_parse_model_output(text)` splits on the two section markers and strips bullet prefixes from the insights lines. Missing markers fall through to `_fallback_output()`, which returns the raw data string with a single placeholder insight.
+- `config.json` system prompt updated to mandate the two-section output format.
+
+#### New and Modified HUD Components
+
+- `BriefingDigest.tsx` (new) — insight bullets in the center column above `ApexLogo`. Skeleton loader during pipeline runs; empty state when no insights returned. Hosts "History" button that opens `HistoryLedgerModal`.
+- `ConfidenceBadge.tsx` (new) — header pill badge: emerald (≥ 90%), amber (≥ 50%), red (< 50%). Neutral gray before first successful run. Tooltip lists `failedConnectors` on hover/focus. Keyboard-accessible with `tabIndex=0`.
+- `BriefingPanel.tsx` — restructured into a collapsible subtitle drawer beneath the header; activates only at stage 4 TTS playback. History ledger state relocated to `BriefingDigest`.
+- `SystemDiagnostics.tsx` — `RingGauge` SVG components replaced with horizontal bar layout; compact mode added.
+- `TelemetryCard.tsx` — refactored into a single-element flex shell with conditional header rendering and flex-based children containers for internal per-card scrolling.
+- `App.tsx` — added `Inbox` and `News Wire` telemetry cards to the right column, surfacing email and news connector output in the HUD for the first time. `ConfidenceBadge` mounted in the header.
+
+#### Antigravity Workspace Rules
+
+- `.agents/rules/` created alongside `.cursor/rules/`. Nine rule files added: `analyst`, `auditor`, `backend`, `builder`, `communicator`, `devops`, `frontend`, `global`, `mechanic`. Glob patterns adjusted for Antigravity activation semantics.
+
+---
+
+### Architecture Changes
+
+- **`brain.process_telemetry()` return shape** — changed from `str` to `dict[str, Any]`. The `briefing` and `insights` keys are guaranteed present on every code path including the exception handler and all `DEV_MODE` bypass branches.
+- **Gemini output protocol** — system prompt enforces `===SPEECH===` / `===INSIGHTS===` markers. Model responses without markers fall through to `_fallback_output()`.
+- **Viewport-height lock** — root layout converted to `h-dvh overflow-hidden` with `flex min-h-0` propagation. All scrolling is now at the card level; future cards must fit within this constraint.
+- **Demo-mode guards on reminder endpoints** — all three reminder endpoints received explicit `DEMO_MODE` branches returning static mock data without database access.
+
+---
+
+### API Changes
+
+- `POST /api/v1/trigger` — `BriefingResponse` gained `digest: DigestPayload` as a top-level field.
+- `GET /api/v1/briefings/history` added (see above).
+- New Pydantic models: `DigestPayload`, `BriefingHistoryRecord`.
+- `telemetry.ts`: added `DigestPayload` and `ActiveReminder` interfaces; `digest?: DigestPayload` on `TelemetryPayload`; `confidenceScore`, `failedConnectors`, and `insights` on `ApexDataState`.
+- `useApexData` extracts all three digest fields from the trigger response body; no additional fetch required.
+
+---
+
+### Database Changes
+
+| Change | Detail |
+|---|---|
+| New table | `briefings (id, timestamp, briefing, digest_json)` with `timestamp DESC` index |
+| New function | `save_briefing(briefing, digest_dict)` — persists briefing text and JSON-encoded digest |
+| New function | `fetch_briefing_history(limit=50)` — ordered query with JSON parse on return |
+| New function | `prune_historical_ledger()` — deletes rows outside the 50 most recent; explicit `BEGIN` / `ROLLBACK` transaction |
+
+---
+
+### Agent Workflow Changes
+
+- `.agents/rules/` established as a parallel rule surface to `.cursor/rules/`. Nine rules present in both locations.
+- `docs/decisions.md` AI agent rules table updated to cover all nine rules with activation modes and role descriptions.
+
+---
+
+### Documentation Updates
+
+| File | Changes |
+|---|---|
+| `docs/api.md` | Added `digest` field table to `POST /api/v1/trigger`; added `GET /api/v1/briefings/history`; added `DigestPayload` and `BriefingHistoryRecord` model listings; added demo-path notes to all three reminder endpoints |
+| `docs/architecture.md` | Added `briefings` table and ledger functions to `database.py` section; added `BriefingDigest` and `ConfidenceBadge` component descriptions; added Confidence Scoring section; updated `useApexData` and `telemetry.ts` type documentation |
+| `docs/decisions.md` | Updated AI agent rules table |
+| `README.md` | Corrected pipeline diagram; added confidence scoring and briefing history to feature bullets |
+| `frontend/README.md` | Replaced default Vite scaffold content with project-specific documentation |
+| `docs/roadmap.md` | Created. Outlines planned milestones and future capabilities |
+
+---
+
 ## v1.7.0 — HUD-Renaissance: Productization
 
 **Released:** June 6, 2026
