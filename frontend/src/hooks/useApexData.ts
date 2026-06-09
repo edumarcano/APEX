@@ -181,6 +181,7 @@ export function useApexData(): UseApexDataReturn {
     demoModeActive: false,
     confidenceScore: 100.0,
     failedConnectors: [],
+    insights: [],
   })
 
   const applyReminderRecords = useCallback((records: ReminderRecord[]): void => {
@@ -354,7 +355,14 @@ export function useApexData(): UseApexDataReturn {
           metadata?: unknown
           digest?: unknown
         }
-        const digest = payload.digest
+        const digest = (body as { digest?: unknown })?.digest
+        const insights = Array.isArray(
+          digest &&
+            typeof digest === 'object' &&
+            (digest as { insights?: unknown }).insights,
+        )
+          ? (digest as { insights: unknown[] }).insights.map(String)
+          : []
         const confidenceScore =
           digest &&
           typeof digest === 'object' &&
@@ -421,6 +429,7 @@ export function useApexData(): UseApexDataReturn {
           activeReminders,
           confidenceScore,
           failedConnectors,
+          digest: { insights },
         }
 
         setState((prev) => ({
@@ -432,6 +441,7 @@ export function useApexData(): UseApexDataReturn {
           demoModeActive,
           confidenceScore,
           failedConnectors,
+          insights,
         }))
       } catch (err) {
         if (
