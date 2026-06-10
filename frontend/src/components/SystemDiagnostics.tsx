@@ -35,6 +35,16 @@ function formatPercentage(
   return `${Math.round(clampPercentage(value!))}%`
 }
 
+function getMicroBarColorClass(percentage: number): string {
+  if (percentage >= 90) {
+    return 'bg-[#ef4444] drop-shadow-[0_0_4px_rgba(239,68,68,0.5)]'
+  }
+  if (percentage >= 80) {
+    return 'bg-[#f59e0b] drop-shadow-[0_0_4px_rgba(245,158,11,0.5)]'
+  }
+  return 'bg-[#3b82f6] drop-shadow-[0_0_4px_rgba(59,130,246,0.3)]'
+}
+
 interface SystemDiagnosticsProps {
   diagnosticsStatus: 'idle' | 'loading' | 'ready' | 'error'
   isSpeaking: boolean
@@ -100,18 +110,38 @@ export function SystemDiagnostics({
     )
   })
 
+  // Hardware Resource Clamped Percentages
+  const cpuVal = resolvedDiagnostics.cpu ?? 0
+  const cpuUnavailable = isMetricUnavailable(resolvedDiagnostics.cpu, isInitializing)
+  const cpuPctClamped = cpuUnavailable ? 0 : clampPercentage(cpuVal)
+
+  const ramVal = resolvedDiagnostics.ram ?? 0
+  const ramUnavailable = isMetricUnavailable(resolvedDiagnostics.ram, isInitializing)
+  const ramPctClamped = ramUnavailable ? 0 : clampPercentage(ramVal)
+
+  const diskVal = resolvedDiagnostics.disk ?? 0
+  const diskUnavailable = isMetricUnavailable(resolvedDiagnostics.disk, isInitializing)
+  const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
+
   return (
     <footer className="w-full border border-white/5 bg-zinc-950/40 backdrop-blur-md rounded-xl p-4 mt-auto z-40 select-none">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
-        {/* Segment 1: Connection & Internet Status */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
+        
+        {/* Column 1: Title */}
+        <div className="flex items-center">
+          <span className="text-[#00c2ff] font-extrabold tracking-wider uppercase text-xs">
+            SYSTEM STATUS
+          </span>
+        </div>
+
+        {/* Column 2: Internet Connection */}
         <div className="flex items-center gap-3">
-          <Globe className="h-4 w-4 text-cyan-400 shrink-0" />
+          <Globe className="h-4 w-4 text-zinc-400 shrink-0" />
           <div className="flex flex-col">
-            <span className="text-[10px] tracking-wider uppercase text-cyan-400 font-bold">
-              SYSTEM STATUS
+            <span className="text-[10px] tracking-wider uppercase text-zinc-500">
+              Internet
             </span>
             <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300">
-              Internet:{' '}
               {diagnosticsStatus === 'ready' ? (
                 <>
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
@@ -127,7 +157,7 @@ export function SystemDiagnostics({
           </div>
         </div>
 
-        {/* Segment 2: Briefing Status */}
+        {/* Column 3: Briefing Status */}
         <div className="flex items-center gap-3">
           <Activity className="h-4 w-4 text-zinc-400 shrink-0" />
           <div className="flex flex-col">
@@ -141,7 +171,7 @@ export function SystemDiagnostics({
           </div>
         </div>
 
-        {/* Segment 3: Sync Health */}
+        {/* Column 4: Sync Health */}
         <div className="flex items-center gap-3">
           <RotateCw className="h-4 w-4 text-zinc-400 shrink-0 animate-[spin_12s_linear_infinite]" />
           <div className="flex flex-col gap-1 w-full max-w-[120px]">
@@ -153,30 +183,52 @@ export function SystemDiagnostics({
           </div>
         </div>
 
-        {/* Segment 4: Compact Hardware resource gauges */}
-        <div className="flex items-center gap-3 col-span-1">
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500">
-              Resources
-            </span>
-            <div className="flex items-center gap-3.5 text-zinc-300">
-              <div className="flex items-center gap-1">
-                <Cpu className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-                <span>CPU {formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Database className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-                <span>RAM {formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <HardDrive className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-                <span>DISK {formatPercentage(resolvedDiagnostics.disk, isInitializing)}</span>
-              </div>
+        {/* Column 5: Hardware Resources */}
+        <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+          {/* CPU */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1 text-[11px] text-zinc-300">
+              <Cpu className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+              <span>CPU {formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
+            </div>
+            <div className="w-12 h-1 rounded-full bg-white/5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(cpuPctClamped)}`}
+                style={{ width: `${cpuPctClamped}%` }}
+              />
+            </div>
+          </div>
+
+          {/* RAM */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1 text-[11px] text-zinc-300">
+              <Database className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+              <span>RAM {formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
+            </div>
+            <div className="w-12 h-1 rounded-full bg-white/5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(ramPctClamped)}`}
+                style={{ width: `${ramPctClamped}%` }}
+              />
+            </div>
+          </div>
+
+          {/* DISK */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1 text-[11px] text-zinc-300">
+              <HardDrive className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+              <span>DISK {formatPercentage(resolvedDiagnostics.disk, isInitializing)}</span>
+            </div>
+            <div className="w-12 h-1 rounded-full bg-white/5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(diskPctClamped)}`}
+                style={{ width: `${diskPctClamped}%` }}
+              />
             </div>
           </div>
         </div>
 
-        {/* Segment 5: Last Briefing */}
+        {/* Column 6: Last Briefing */}
         <div className="flex items-center gap-3">
           <Clock className="h-4 w-4 text-zinc-400 shrink-0" />
           <div className="flex flex-col">
@@ -188,6 +240,7 @@ export function SystemDiagnostics({
             </span>
           </div>
         </div>
+
       </div>
     </footer>
   )
