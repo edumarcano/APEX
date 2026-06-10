@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type {
   ActiveReminder,
   ApexDataState,
   PipelineState,
+  SystemState,
   TelemetryPayload,
   WeatherConditionArchetype,
 } from '../types/telemetry'
@@ -18,6 +19,7 @@ export type { ApexDataState } from '../types/telemetry'
 export type UseApexDataReturn = ApexDataState & {
   refreshReminders: () => Promise<void>
   markReminderAsRead: (id: number) => Promise<void>
+  triggerSynthesis: () => Promise<void>
 }
 
 type ReminderRecord = {
@@ -169,6 +171,10 @@ async function fetchUnreadReminderRecords(): Promise<ReminderRecord[]> {
   return parseReminderRecords(body)
 }
 
+function isSynthesisGuarded(status: SystemState, isPipelinePolling: boolean): boolean {
+  return status === 'loading' || isPipelinePolling
+}
+
 export function useApexData(): UseApexDataReturn {
   const [state, setState] = useState<ApexDataState>({
     data: null,
@@ -183,6 +189,11 @@ export function useApexData(): UseApexDataReturn {
     failedConnectors: [],
     insights: [],
   })
+
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  const synthesisAbortRef = useRef<AbortController | null>(null)
 
   const applyReminderRecords = useCallback((records: ReminderRecord[]): void => {
     const { activeReminders, reminders } = remindersFromRecords(records)
@@ -287,8 +298,15 @@ export function useApexData(): UseApexDataReturn {
     }
   }, [])
 
-  useEffect(() => {
+  const triggerSynthesis = useCallback(async (): Promise<void> => {
+    const { status, isPipelinePolling } = stateRef.current
+    if (isSynthesisGuarded(status, isPipelinePolling)) {
+      return
+    }
+
+    synthesisAbortRef.current?.abort()
     const controller = new AbortController()
+    synthesisAbortRef.current = controller
     const { signal } = controller
 
     setState((prev) => ({
@@ -296,180 +314,190 @@ export function useApexData(): UseApexDataReturn {
       status: 'loading',
       error: null,
       demoModeActive: false,
+      pipelineState: null,
+      isSpeaking: false,
     }))
 
-    void (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal,
+      })
+
+      let body: unknown = null
       try {
-        const response = await fetch(`${API_BASE}/api/v1/trigger`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-          signal,
-        })
+        body = await response.json()
+      } catch {
+        body = null
+      }
 
-        let body: unknown = null
-        try {
-          body = await response.json()
-        } catch {
-          body = null
-        }
+      if (signal.aborted) return
 
-        if (signal.aborted) return
-
-        if (!response.ok) {
-          const fromBody = errorMessageFromBody(body)
-          setState((prev) => ({
-            ...prev,
-            data: null,
-            status: 'error',
-            error:
-              fromBody ??
-              (response.statusText || `Request failed with status ${response.status}`),
-            isPipelinePolling: false,
-            isSpeaking: false,
-            activeReminders: [],
-            demoModeActive: false,
-          }))
-
-          return
-        }
-
-        if (!body || typeof body !== 'object') {
-          setState((prev) => ({
-            ...prev,
-            data: null,
-            status: 'error',
-            error: 'Invalid response: missing payload body',
-            isPipelinePolling: false,
-            isSpeaking: false,
-            activeReminders: [],
-            demoModeActive: false,
-          }))
-
-          return
-        }
-
-        const payload = body as {
-          briefing?: unknown
-          telemetry?: unknown
-          metadata?: unknown
-          digest?: unknown
-        }
-        const digest = (body as { digest?: unknown })?.digest
-        const insights = Array.isArray(
-          digest &&
-            typeof digest === 'object' &&
-            (digest as { insights?: unknown }).insights,
-        )
-          ? (digest as { insights: unknown[] }).insights.map(String)
-          : []
-        const confidenceScore =
-          digest &&
-          typeof digest === 'object' &&
-          typeof (digest as { confidence_score?: unknown }).confidence_score ===
-            'number'
-            ? (digest as { confidence_score: number }).confidence_score
-            : 100.0
-        const rawFailedConnectors =
-          digest &&
-          typeof digest === 'object' &&
-          Array.isArray(
-            (digest as { failed_connectors?: unknown }).failed_connectors,
-          )
-            ? (digest as { failed_connectors: unknown[] }).failed_connectors
-            : []
-        const failedConnectors = rawFailedConnectors.map(String)
-        const telemetry = payload.telemetry
-        const metadata =
-          payload.metadata && typeof payload.metadata === 'object'
-            ? (payload.metadata as Record<string, unknown>)
-            : null
-        const demoModeActive = metadata?.demo_mode_active === true
-
-        if (!telemetry || typeof telemetry !== 'object') {
-          setState((prev) => ({
-            ...prev,
-            data: null,
-            status: 'error',
-            error: 'Invalid response: missing telemetry',
-            isPipelinePolling: false,
-            isSpeaking: false,
-            activeReminders: [],
-            demoModeActive: false,
-          }))
-
-          return
-        }
-
-        const telemetryRecord = telemetry as Record<string, unknown>
-        const weatherReport = getStringField(telemetryRecord, 'weather')
-
-        let reminderRecords: ReminderRecord[] = []
-        try {
-          reminderRecords = await fetchUnreadReminderRecords()
-        } catch {
-          reminderRecords = []
-        }
-
-        const { activeReminders, reminders } = remindersFromRecords(reminderRecords)
-
-        const weatherDetail = resolveWeatherDetail(weatherReport)
-
-        const mergedData: TelemetryPayload = {
-          briefing: typeof payload.briefing === 'string' ? payload.briefing : '',
-          weather: weatherReport,
-          temperatureF: resolvePipelineTemperatureF(weatherReport),
-          weatherDetail,
-          weatherCondition: resolveWeatherCondition(weatherDetail),
-          sports: getStringField(telemetryRecord, 'sports'),
-          news: getStringField(telemetryRecord, 'news'),
-          email: getStringField(telemetryRecord, 'email'),
-          calendar: getStringField(telemetryRecord, 'calendar'),
-          reminders,
-          activeReminders,
-          confidenceScore,
-          failedConnectors,
-          digest: { insights },
-        }
-
-        setState((prev) => ({
-          ...prev,
-          data: mergedData,
-          status: 'success',
-          error: null,
-          activeReminders,
-          demoModeActive,
-          confidenceScore,
-          failedConnectors,
-          insights,
-        }))
-      } catch (err) {
-        if (
-          signal.aborted ||
-          (err instanceof DOMException && err.name === 'AbortError')
-        ) {
-          return
-        }
-
+      if (!response.ok) {
+        const fromBody = errorMessageFromBody(body)
         setState((prev) => ({
           ...prev,
           data: null,
           status: 'error',
-          error: err instanceof Error ? err.message : 'Unknown error',
+          error:
+            fromBody ??
+            (response.statusText || `Request failed with status ${response.status}`),
           isPipelinePolling: false,
           isSpeaking: false,
           activeReminders: [],
           demoModeActive: false,
         }))
-      }
-    })()
 
-    return () => {
-      controller.abort()
+        return
+      }
+
+      if (!body || typeof body !== 'object') {
+        setState((prev) => ({
+          ...prev,
+          data: null,
+          status: 'error',
+          error: 'Invalid response: missing payload body',
+          isPipelinePolling: false,
+          isSpeaking: false,
+          activeReminders: [],
+          demoModeActive: false,
+        }))
+
+        return
+      }
+
+      const payload = body as {
+        briefing?: unknown
+        telemetry?: unknown
+        metadata?: unknown
+        digest?: unknown
+      }
+      const digest = (body as { digest?: unknown })?.digest
+      const insights = Array.isArray(
+        digest &&
+          typeof digest === 'object' &&
+          (digest as { insights?: unknown }).insights,
+      )
+        ? (digest as { insights: unknown[] }).insights.map(String)
+        : []
+      const confidenceScore =
+        digest &&
+        typeof digest === 'object' &&
+        typeof (digest as { confidence_score?: unknown }).confidence_score ===
+          'number'
+          ? (digest as { confidence_score: number }).confidence_score
+          : 100.0
+      const rawFailedConnectors =
+        digest &&
+        typeof digest === 'object' &&
+        Array.isArray(
+          (digest as { failed_connectors?: unknown }).failed_connectors,
+        )
+          ? (digest as { failed_connectors: unknown[] }).failed_connectors
+          : []
+      const failedConnectors = rawFailedConnectors.map(String)
+      const telemetry = payload.telemetry
+      const metadata =
+        payload.metadata && typeof payload.metadata === 'object'
+          ? (payload.metadata as Record<string, unknown>)
+          : null
+      const demoModeActive = metadata?.demo_mode_active === true
+
+      if (!telemetry || typeof telemetry !== 'object') {
+        setState((prev) => ({
+          ...prev,
+          data: null,
+          status: 'error',
+          error: 'Invalid response: missing telemetry',
+          isPipelinePolling: false,
+          isSpeaking: false,
+          activeReminders: [],
+          demoModeActive: false,
+        }))
+
+        return
+      }
+
+      const telemetryRecord = telemetry as Record<string, unknown>
+      const weatherReport = getStringField(telemetryRecord, 'weather')
+
+      let reminderRecords: ReminderRecord[] = []
+      try {
+        reminderRecords = await fetchUnreadReminderRecords()
+      } catch {
+        reminderRecords = []
+      }
+
+      const { activeReminders, reminders } = remindersFromRecords(reminderRecords)
+
+      const weatherDetail = resolveWeatherDetail(weatherReport)
+
+      const mergedData: TelemetryPayload = {
+        briefing: typeof payload.briefing === 'string' ? payload.briefing : '',
+        weather: weatherReport,
+        temperatureF: resolvePipelineTemperatureF(weatherReport),
+        weatherDetail,
+        weatherCondition: resolveWeatherCondition(weatherDetail),
+        sports: getStringField(telemetryRecord, 'sports'),
+        news: getStringField(telemetryRecord, 'news'),
+        email: getStringField(telemetryRecord, 'email'),
+        calendar: getStringField(telemetryRecord, 'calendar'),
+        reminders,
+        activeReminders,
+        confidenceScore,
+        failedConnectors,
+        digest: { insights },
+      }
+
+      setState((prev) => ({
+        ...prev,
+        data: mergedData,
+        status: 'success',
+        error: null,
+        activeReminders,
+        demoModeActive,
+        confidenceScore,
+        failedConnectors,
+        insights,
+      }))
+    } catch (err) {
+      if (
+        signal.aborted ||
+        (err instanceof DOMException && err.name === 'AbortError')
+      ) {
+        return
+      }
+
+      setState((prev) => ({
+        ...prev,
+        data: null,
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Unknown error',
+        isPipelinePolling: false,
+        isSpeaking: false,
+        activeReminders: [],
+        demoModeActive: false,
+      }))
     }
   }, [])
 
   useEffect(() => {
+    void refreshReminders()
+  }, [refreshReminders])
+
+  useEffect(() => {
+    return () => {
+      synthesisAbortRef.current?.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (state.status === 'idle') {
+      return undefined
+    }
+
     if (state.status === 'error') {
       setState((prev) => ({
         ...prev,
@@ -549,5 +577,5 @@ export function useApexData(): UseApexDataReturn {
     }
   }, [state.status, state.pipelineState?.step])
 
-  return { ...state, refreshReminders, markReminderAsRead }
+  return { ...state, refreshReminders, markReminderAsRead, triggerSynthesis }
 }
