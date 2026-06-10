@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import {
   Globe,
@@ -64,9 +65,26 @@ export function SystemDiagnostics({
   lastBriefingTime,
   pipelineStep,
 }: SystemDiagnosticsProps): ReactElement {
+  const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
+
+  useEffect(() => {
+    const handleOnline = () => setIsBrowserOnline(true)
+    const handleOffline = () => setIsBrowserOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   const { diagnostics, status: localStatus } = useSystemDiagnostics()
   const resolvedDiagnostics = diagnostics ?? DEFAULT_SYSTEM_DIAGNOSTICS
   const isInitializing = localStatus === 'idle' || localStatus === 'loading'
+
+  const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
   // Segment 2 (Briefing Status) State Resolution
   let briefingStateText: string
@@ -155,15 +173,15 @@ export function SystemDiagnostics({
               Internet
             </span>
             <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300">
-              {diagnosticsStatus === 'ready' ? (
+              {isNetworkConnected ? (
                 <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#39FF88]" />
                   <span className="text-zinc-200">Connected</span>
                 </>
               ) : (
                 <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-                  <span className="text-zinc-400">Offline</span>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#ef4444]" />
+                  <span className="text-zinc-400">Not Connected</span>
                 </>
               )}
             </span>
