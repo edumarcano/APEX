@@ -66,6 +66,26 @@ function remindersFromRecords(records: ReminderRecord[]): {
   }
 }
 
+function createStandbyTelemetryPayload(
+  activeReminders: ActiveReminder[],
+  reminders: string,
+): TelemetryPayload {
+  return {
+    briefing: '',
+    weather: '',
+    temperatureF: null,
+    weatherDetail: '',
+    sports: '',
+    news: '',
+    email: '',
+    calendar: '',
+    reminders,
+    activeReminders,
+    confidenceScore: 100.0,
+    failedConnectors: [],
+  }
+}
+
 function errorMessageFromBody(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null
 
@@ -207,7 +227,7 @@ export function useApexData(): UseApexDataReturn {
             activeReminders,
             reminders,
           }
-        : prev.data,
+        : createStandbyTelemetryPayload(activeReminders, reminders),
     }))
   }, [])
 
@@ -484,8 +504,67 @@ export function useApexData(): UseApexDataReturn {
   }, [])
 
   useEffect(() => {
-    void refreshReminders()
-  }, [refreshReminders])
+    if (stateRef.current.status !== 'idle') {
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const { signal } = controller
+
+    void (async (): Promise<void> => {
+      try {
+        const response = await fetch(REMINDERS_ENDPOINT, { signal })
+
+        if (signal.aborted) {
+          return
+        }
+
+        if (!response.ok) {
+          return
+        }
+
+        const body: unknown = await response.json()
+        const records = parseReminderRecords(body)
+
+        if (signal.aborted) {
+          return
+        }
+
+        const { activeReminders, reminders } = remindersFromRecords(records)
+
+        setState((prev) => {
+          if (prev.status !== 'idle') {
+            return prev
+          }
+
+          return {
+            ...prev,
+            status: 'idle',
+            activeReminders,
+            data: prev.data
+              ? {
+                  ...prev.data,
+                  activeReminders,
+                  reminders,
+                }
+              : createStandbyTelemetryPayload(activeReminders, reminders),
+          }
+        })
+      } catch (err) {
+        if (
+          signal.aborted ||
+          (err instanceof DOMException && err.name === 'AbortError')
+        ) {
+          return
+        }
+        // Standby reminder fetch is best-effort; preserve dormant idle state on failure.
+      }
+    })()
+
+    return () => {
+      controller.abort()
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
