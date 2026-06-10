@@ -1,5 +1,4 @@
 import {
-  Activity,
   Calendar,
   CheckSquare,
   CloudSun,
@@ -27,6 +26,7 @@ import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
+import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import type { WeatherConditionArchetype } from './types/telemetry'
 
 interface ParsedEmail {
@@ -77,6 +77,10 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
+  const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
+  const [prevStatus, setPrevStatus] = useState<string>('idle')
+
+  const { status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
   const {
     data,
@@ -162,6 +166,53 @@ export default function App(): ReactElement {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
   }, [status, triggerSynthesis])
+
+  // Load initial last briefing time from history ledger
+  useEffect(() => {
+    let active = true
+    const fetchHistory = async (): Promise<void> => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/v1/briefings/history')
+        if (!response.ok) return
+        const body: unknown = await response.json()
+        if (!active) return
+
+        if (Array.isArray(body) && body.length > 0) {
+          const first = body[0]
+          if (first && typeof first === 'object' && 'timestamp' in first) {
+            const ts = first.timestamp
+            if (typeof ts === 'string') {
+              const date = new Date(ts)
+              const formatted = date.toLocaleTimeString([], {
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+              setLastBriefingTime(formatted)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch briefing history:', err)
+      }
+    }
+    void fetchHistory()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // Cache last briefing time locally on successful briefing trigger
+  useEffect(() => {
+    if (status === 'success' && prevStatus === 'loading') {
+      const now = new Date()
+      const formatted = now.toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+      setLastBriefingTime(formatted)
+    }
+    setPrevStatus(status)
+  }, [status, prevStatus])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -520,27 +571,17 @@ export default function App(): ReactElement {
             </TelemetryCard>
           </div>
           </div>
-
-          <div className="shrink-0">
-            <TelemetryCard
-              title={showSubtitleBar ? '' : 'System Diagnostics'}
-              icon={Activity}
-              className="md:col-span-2 xl:order-7 xl:col-span-3 transition-all duration-700"
-              style={{
-                padding: showSubtitleBar ? '0.25rem 1rem' : 'var(--hud-panel-pad)',
-                ...(showSubtitleBar
-                  ? ({ '--hud-panel-pad': '0.25rem 1rem' } as CSSProperties)
-                  : {}),
-              } as CSSProperties}
-              role="region"
-              aria-label="System diagnostics"
-              data-slot="system-diagnostics-card"
-            >
-              <SystemDiagnostics isCompact={showSubtitleBar} />
-            </TelemetryCard>
-          </div>
           </div>
         </div>
+
+        <SystemDiagnostics
+          diagnosticsStatus={diagnosticsStatus}
+          isSpeaking={isSpeaking}
+          isPipelinePolling={isPipelinePolling}
+          status={status}
+          confidenceScore={confidenceScore}
+          lastBriefingTime={lastBriefingTime}
+        />
       </main>
     </AtmosphericThemeProvider>
   )
