@@ -36,6 +36,42 @@ function formatPercentage(
   return `${Math.round(clampPercentage(value!))}%`
 }
 
+const CONNECTOR_LABELS: Record<string, string> = {
+  weather: 'Weather',
+  news: 'News',
+  email: 'Email',
+  calendar: 'Calendar',
+  sports: 'Sports (F1)',
+  sports_f1: 'Formula 1',
+  sports_football: 'Barcelona Football',
+}
+
+function formatConnectorLabel(connectorId: string): string {
+  const normalized = connectorId.trim().toLowerCase()
+  return CONNECTOR_LABELS[normalized] ?? connectorId
+}
+
+function formatCpuFreq(freq: number | null | undefined): string {
+  if (freq == null || !Number.isFinite(freq) || freq === 0) {
+    return 'N/A'
+  }
+  return `${freq.toFixed(1)} GHz`
+}
+
+function formatRamRatio(used: number | null | undefined, total: number | null | undefined): string {
+  if (used == null || total == null || !Number.isFinite(used) || !Number.isFinite(total) || total === 0) {
+    return 'N/A'
+  }
+  return `${used.toFixed(1)} / ${total.toFixed(1)} GB`
+}
+
+function formatDiskRatio(used: number | null | undefined, total: number | null | undefined): string {
+  if (used == null || total == null || !Number.isFinite(used) || !Number.isFinite(total) || total === 0) {
+    return 'N/A'
+  }
+  return `${used.toFixed(1)} / ${total.toFixed(1)} GB`
+}
+
 function getMicroBarColorClass(percentage: number): string {
   if (percentage >= 90) {
     return 'bg-[#ef4444] drop-shadow-[0_0_4px_rgba(239,68,68,0.5)]'
@@ -54,6 +90,7 @@ interface SystemDiagnosticsProps {
   confidenceScore: number
   lastBriefingTime: string | null
   pipelineStep: number | null
+  failedConnectors?: string[]
 }
 
 export function SystemDiagnostics({
@@ -64,8 +101,13 @@ export function SystemDiagnostics({
   confidenceScore,
   lastBriefingTime,
   pipelineStep,
+  failedConnectors = [],
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
+  const [isSyncHovered, setIsSyncHovered] = useState(false)
+  const [isCpuHovered, setIsCpuHovered] = useState(false)
+  const [isRamHovered, setIsRamHovered] = useState(false)
+  const [isDiskHovered, setIsDiskHovered] = useState(false)
 
   useEffect(() => {
     const handleOnline = () => setIsBrowserOnline(true)
@@ -122,7 +164,27 @@ export function SystemDiagnostics({
     )
   }
 
-  // Segment 3: Sync Health Vertical Blocks
+  // Segment 3: Sync Health Dynamic 3-tier Adaptive Color Schemes
+  let syncColorText = 'text-zinc-500'
+  let syncColorBar = 'bg-zinc-700'
+  let syncColorShadow = ''
+
+  if (status === 'success') {
+    if (confidenceScore >= 90) {
+      syncColorText = 'text-emerald-400'
+      syncColorBar = 'bg-emerald-500'
+      syncColorShadow = 'shadow-[0_0_4px_rgba(16,185,129,0.5)]'
+    } else if (confidenceScore >= 50) {
+      syncColorText = 'text-amber-400'
+      syncColorBar = 'bg-amber-500'
+      syncColorShadow = 'shadow-[0_0_4px_rgba(245,158,11,0.5)]'
+    } else {
+      syncColorText = 'text-red-400'
+      syncColorBar = 'bg-red-500'
+      syncColorShadow = 'shadow-[0_0_4px_rgba(239,68,68,0.5)]'
+    }
+  }
+
   const activeBlocksCount = Math.floor((confidenceScore ?? 0) / 10)
   const syncBlocks = Array.from({ length: 10 }, (_, i) => {
     const isSuccess = status === 'success'
@@ -133,7 +195,7 @@ export function SystemDiagnostics({
         className={`h-3 w-1 rounded-sm transition-colors duration-500 ${
           isSuccess
             ? isActive
-              ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]'
+              ? `${syncColorBar} ${syncColorShadow}`
               : 'bg-zinc-700'
             : 'bg-zinc-800/40'
         }`}
@@ -203,25 +265,58 @@ export function SystemDiagnostics({
         </div>
 
         {/* Column 4: Sync Health */}
-        <div className="flex items-center gap-3">
+        <div
+          className="relative flex items-center gap-3 cursor-default"
+          onMouseEnter={() => setIsSyncHovered(true)}
+          onMouseLeave={() => setIsSyncHovered(false)}
+        >
           <RotateCw className="h-4 w-4 text-zinc-400 shrink-0 animate-[spin_12s_linear_infinite]" />
           <div className="flex flex-col gap-1 w-full max-w-[120px]">
             <span className="text-[10px] tracking-wider uppercase text-zinc-500 flex justify-between">
               <span>Sync Health</span>
               {status === 'success' ? (
-                <span className="text-emerald-400 font-bold">{confidenceScore}%</span>
+                <span className={`${syncColorText} font-bold`}>{confidenceScore}%</span>
               ) : (
                 <span className="text-zinc-500 font-bold">—%</span>
               )}
             </span>
             <div className="flex items-center gap-0.5">{syncBlocks}</div>
           </div>
+
+          {/* Sync Health Tooltip */}
+          {isSyncHovered && (
+            <div
+              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 rounded-xl border border-white/10 bg-zinc-950/90 p-3 text-xs backdrop-blur-md z-50 text-left"
+              role="tooltip"
+            >
+              <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                Connector Status
+              </div>
+              {!failedConnectors || failedConnectors.length === 0 ? (
+                <p className="text-emerald-400 font-medium">
+                  All connectors fully functional
+                </p>
+              ) : (
+                <ul className="space-y-1 text-zinc-300">
+                  {failedConnectors.map((connectorId) => (
+                    <li key={connectorId}>
+                      • {formatConnectorLabel(connectorId)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Column 5: Hardware Resources */}
         <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
           {/* CPU */}
-          <div className="flex flex-col gap-1.5">
+          <div
+            className="relative flex flex-col gap-1.5 cursor-default"
+            onMouseEnter={() => setIsCpuHovered(true)}
+            onMouseLeave={() => setIsCpuHovered(false)}
+          >
             <div className="flex items-center gap-1 text-[11px] text-zinc-300">
               <Cpu className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <span>CPU {formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
@@ -232,10 +327,24 @@ export function SystemDiagnostics({
                 style={{ width: `${cpuPctClamped}%` }}
               />
             </div>
+
+            {/* CPU Tooltip */}
+            {isCpuHovered && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
+                role="tooltip"
+              >
+                CPU Frequency: {formatCpuFreq(resolvedDiagnostics.cpu_freq)}
+              </div>
+            )}
           </div>
 
           {/* RAM */}
-          <div className="flex flex-col gap-1.5">
+          <div
+            className="relative flex flex-col gap-1.5 cursor-default"
+            onMouseEnter={() => setIsRamHovered(true)}
+            onMouseLeave={() => setIsRamHovered(false)}
+          >
             <div className="flex items-center gap-1 text-[11px] text-zinc-300">
               <Database className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <span>RAM {formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
@@ -246,10 +355,24 @@ export function SystemDiagnostics({
                 style={{ width: `${ramPctClamped}%` }}
               />
             </div>
+
+            {/* RAM Tooltip */}
+            {isRamHovered && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
+                role="tooltip"
+              >
+                RAM Allocation: {formatRamRatio(resolvedDiagnostics.ram_used, resolvedDiagnostics.ram_total)}
+              </div>
+            )}
           </div>
 
           {/* DISK */}
-          <div className="flex flex-col gap-1.5">
+          <div
+            className="relative flex flex-col gap-1.5 cursor-default"
+            onMouseEnter={() => setIsDiskHovered(true)}
+            onMouseLeave={() => setIsDiskHovered(false)}
+          >
             <div className="flex items-center gap-1 text-[11px] text-zinc-300">
               <HardDrive className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <span>DISK {formatPercentage(resolvedDiagnostics.disk, isInitializing)}</span>
@@ -260,6 +383,16 @@ export function SystemDiagnostics({
                 style={{ width: `${diskPctClamped}%` }}
               />
             </div>
+
+            {/* DISK Tooltip */}
+            {isDiskHovered && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
+                role="tooltip"
+              >
+                DISK Allocation: {formatDiskRatio(resolvedDiagnostics.disk_used, resolvedDiagnostics.disk_total)}
+              </div>
+            )}
           </div>
         </div>
 

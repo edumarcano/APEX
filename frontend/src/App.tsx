@@ -91,6 +91,7 @@ export default function App(): ReactElement {
     activeReminders,
     demoModeActive,
     confidenceScore,
+    failedConnectors,
     refreshReminders,
     markReminderAsRead,
     triggerSynthesis,
@@ -575,6 +576,7 @@ export default function App(): ReactElement {
           confidenceScore={confidenceScore}
           lastBriefingTime={lastBriefingTime}
           pipelineStep={activeStep}
+          failedConnectors={failedConnectors}
         />
       </main>
     </AtmosphericThemeProvider>
