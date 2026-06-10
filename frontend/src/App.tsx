@@ -124,7 +124,7 @@ export default function App(): ReactElement {
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
-  const showTriggerButton = status === 'idle' || status === 'success'
+  const showTriggerButton = status === 'idle'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showStandbyNotification =
@@ -132,6 +132,10 @@ export default function App(): ReactElement {
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
+      if (status !== 'idle') {
+        return
+      }
+
       if (event.key !== 'Enter') {
         return
       }
@@ -157,7 +161,7 @@ export default function App(): ReactElement {
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [triggerSynthesis])
+  }, [status, triggerSynthesis])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -292,7 +296,7 @@ export default function App(): ReactElement {
                 aria-label="Initiate system briefing"
                 data-slot="synthesis-trigger"
               >
-                {status === 'success' ? 'RUN SYNTHESIS' : 'INITIATE SYSTEM BRIEFING'}
+                INITIATE SYSTEM BRIEFING
               </button>
             )}
             {demoModeActive && (
