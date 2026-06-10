@@ -574,6 +574,7 @@ export default function App(): ReactElement {
           status={status}
           confidenceScore={confidenceScore}
           lastBriefingTime={lastBriefingTime}
+          pipelineStep={activeStep}
         />
       </main>
     </AtmosphericThemeProvider>

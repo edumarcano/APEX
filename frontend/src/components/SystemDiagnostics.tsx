@@ -52,6 +52,7 @@ interface SystemDiagnosticsProps {
   status: 'idle' | 'loading' | 'success' | 'error'
   confidenceScore: number
   lastBriefingTime: string | null
+  pipelineStep: number | null
 }
 
 export function SystemDiagnostics({
@@ -61,33 +62,42 @@ export function SystemDiagnostics({
   status,
   confidenceScore,
   lastBriefingTime,
+  pipelineStep,
 }: SystemDiagnosticsProps): ReactElement {
   const { diagnostics, status: localStatus } = useSystemDiagnostics()
   const resolvedDiagnostics = diagnostics ?? DEFAULT_SYSTEM_DIAGNOSTICS
   const isInitializing = localStatus === 'idle' || localStatus === 'loading'
 
   // Segment 2 (Briefing Status) State Resolution
-  let briefingStateText = 'Standby'
-  let briefingDot = (
-    <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-  )
+  let briefingStateText: string
+  let briefingDot: ReactElement
 
-  if (isSpeaking) {
-    briefingStateText = 'Delivering'
+  if (status === 'error') {
+    briefingStateText = 'Fault'
     briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-pulse" />
+      <span className="h-2 w-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
     )
-  } else if (isPipelinePolling) {
+  } else if (
+    isPipelinePolling &&
+    pipelineStep !== null &&
+    pipelineStep >= 1 &&
+    pipelineStep <= 3
+  ) {
     briefingStateText = 'Processing'
     briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-[pulse_1s_infinite]" />
+      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
     )
-  } else if (status === 'success') {
-    briefingStateText = 'Ready'
+  } else if (pipelineStep === 4 || isSpeaking) {
+    briefingStateText = 'Delivering'
+    briefingDot = (
+      <span className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-gold-glow" />
+    )
+  } else if (status === 'success' && !isSpeaking) {
+    briefingStateText = 'Complete'
     briefingDot = (
       <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
     )
-  } else if (status === 'idle') {
+  } else {
     briefingStateText = 'Standby'
     briefingDot = (
       <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />

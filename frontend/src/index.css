@@ -380,6 +380,17 @@
     }
   }
 
+  @keyframes goldGlow {
+    0%, 100% {
+      opacity: 0.6;
+      box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+    }
+    50% {
+      opacity: 1;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.9);
+    }
+  }
+
   .animate-twinkle-slow {
     animation: twinkleSlow 15s ease-in-out infinite;
     will-change: opacity;
@@ -393,5 +404,10 @@
   .animate-twinkle-fast {
     animation: twinkleFast 4s ease-in-out infinite;
     will-change: opacity;
+  }
+
+  .animate-gold-glow {
+    animation: goldGlow 3s ease-in-out infinite;
+    will-change: opacity, box-shadow;
   }
 }
