@@ -7,7 +7,13 @@ import {
   Mail,
   Newspaper,
 } from 'lucide-react'
-import { useMemo, useState, type CSSProperties, type ReactElement } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
 import { ConfidenceBadge } from './components/ConfidenceBadge'
@@ -85,6 +91,7 @@ export default function App(): ReactElement {
     failedConnectors,
     refreshReminders,
     markReminderAsRead,
+    triggerSynthesis,
   } = apexData
 
   const activeStep = pipelineState?.step ?? null
@@ -117,6 +124,44 @@ export default function App(): ReactElement {
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
+  const showTriggerButton = status === 'idle'
+  const isTriggerDisabled = isProcessing
+  const pendingReminderCount = activeReminders.length
+  const showStandbyNotification =
+    status === 'idle' && pendingReminderCount > 0
+
+  useEffect(() => {
+    const handleGlobalEnter = (event: KeyboardEvent): void => {
+      if (status !== 'idle') {
+        return
+      }
+
+      if (event.key !== 'Enter') {
+        return
+      }
+
+      const target = event.target
+      if (!(target instanceof HTMLElement)) {
+        return
+      }
+
+      const tagName = target.tagName
+      if (
+        tagName === 'INPUT' ||
+        tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return
+      }
+
+      void triggerSynthesis()
+    }
+
+    window.addEventListener('keydown', handleGlobalEnter)
+    return () => {
+      window.removeEventListener('keydown', handleGlobalEnter)
+    }
+  }, [status, triggerSynthesis])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -240,6 +285,20 @@ export default function App(): ReactElement {
             <VocalOrb isSpeaking={isSpeaking} className="h-12 w-auto" />
           </div>
           <div className="flex items-center justify-end gap-2 justify-self-end">
+            {showTriggerButton && (
+              <button
+                type="button"
+                onClick={() => {
+                  void triggerSynthesis()
+                }}
+                disabled={isTriggerDisabled}
+                className="inline-flex rounded-lg border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-widest text-[#FBBF24] transition-all hover:border-[#0F4DB8]/60 hover:bg-[#0F4DB8]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-[10px]"
+                aria-label="Initiate system briefing"
+                data-slot="synthesis-trigger"
+              >
+                INITIATE SYSTEM BRIEFING
+              </button>
+            )}
             {demoModeActive && (
               <span
                 className="border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite]"
@@ -325,7 +384,7 @@ export default function App(): ReactElement {
               isLoading={isTriggerLoading}
               className="flex-none w-full xl:flex-1 xl:min-h-0"
             />
-            <div className="flex h-64 flex-none items-center justify-center py-4 xl:h-full xl:min-h-0 xl:flex-1 xl:py-0">
+            <div className="flex h-64 flex-none flex-col items-center justify-center py-4 xl:h-full xl:min-h-0 xl:flex-1 xl:py-0">
               <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
                 <ApexLogo
                   step={activeStep}
@@ -335,6 +394,16 @@ export default function App(): ReactElement {
                   className="h-44 w-auto sm:h-52 xl:h-60"
                 />
               </div>
+              {showStandbyNotification && (
+                <p
+                  className="mt-3 font-mono text-[11px] uppercase tracking-widest text-amber-400/70"
+                  aria-live="polite"
+                  data-slot="standby-notification"
+                >
+                  [{pendingReminderCount}{' '}
+                  {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
+                </p>
+              )}
             </div>
           </div>
 

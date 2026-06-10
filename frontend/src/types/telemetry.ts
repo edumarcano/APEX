@@ -64,9 +64,19 @@ export interface TelemetryPayload {
   digest?: DigestPayload
 }
 
+/** Canonical lifecycle values: dormant standby through terminal outcomes. */
+export const SYSTEM_STATE_VALUES = [
+  'idle',
+  'loading',
+  'success',
+  'error',
+] as const
+
+export type SystemState = (typeof SYSTEM_STATE_VALUES)[number]
+
 export interface ApexDataState {
   data: TelemetryPayload | null
-  status: 'idle' | 'loading' | 'success' | 'error'
+  status: SystemState
   error: string | null
   pipelineState: PipelineState | null
   isPipelinePolling: boolean
@@ -77,8 +87,6 @@ export interface ApexDataState {
   failedConnectors: string[]
   insights: string[]
 }
-
-export type SystemState = 'idle' | 'loading' | 'success' | 'error'
 
 export type AtmosphericCondition = 'neutral' | 'stormy' | 'clear'
 
