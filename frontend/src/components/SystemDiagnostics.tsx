@@ -97,14 +97,17 @@ export function SystemDiagnostics({
   // Segment 3: Sync Health Vertical Blocks
   const activeBlocksCount = Math.floor((confidenceScore ?? 0) / 10)
   const syncBlocks = Array.from({ length: 10 }, (_, i) => {
-    const isActive = i < activeBlocksCount
+    const isSuccess = status === 'success'
+    const isActive = isSuccess && i < activeBlocksCount
     return (
       <div
         key={i}
         className={`h-3 w-1 rounded-sm transition-colors duration-500 ${
-          isActive
-            ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]'
-            : 'bg-zinc-700'
+          isSuccess
+            ? isActive
+              ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]'
+              : 'bg-zinc-700'
+            : 'bg-zinc-800/40'
         }`}
       />
     )
@@ -129,7 +132,7 @@ export function SystemDiagnostics({
         
         {/* Column 1: Title */}
         <div className="flex items-center">
-          <span className="text-[#00c2ff] font-extrabold tracking-wider uppercase text-xs">
+          <span className="text-[#0F4DB8] font-extrabold tracking-wider uppercase text-xs">
             SYSTEM STATUS
           </span>
         </div>
@@ -177,7 +180,11 @@ export function SystemDiagnostics({
           <div className="flex flex-col gap-1 w-full max-w-[120px]">
             <span className="text-[10px] tracking-wider uppercase text-zinc-500 flex justify-between">
               <span>Sync Health</span>
-              <span className="text-emerald-400 font-bold">{confidenceScore}%</span>
+              {status === 'success' ? (
+                <span className="text-emerald-400 font-bold">{confidenceScore}%</span>
+              ) : (
+                <span className="text-zinc-500 font-bold">—%</span>
+              )}
             </span>
             <div className="flex items-center gap-0.5">{syncBlocks}</div>
           </div>
