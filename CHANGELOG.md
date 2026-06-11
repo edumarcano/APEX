@@ -2,6 +2,57 @@
 
 ---
 
+## v1.9.1 — Stabilization & Maintenance
+
+**Released:** June 11, 2026
+
+This release focuses on backend concurrency hardening, external API payload optimization, database lock mitigation, and pruning dead or deprecated frontend components and context providers to improve overall layout and operational stability.
+
+---
+
+### What's New
+
+- Prevented concurrent briefing pipeline executions by introducing a global thread lock guard.
+- Enabled Write-Ahead Logging (WAL) and configured database connection timeouts to mitigate SQLite write locks.
+- Optimized Gmail API message querying to retrieve metadata headers instead of the full payload.
+- Configured request connection timeouts for the OpenWeatherMap client.
+- Corrected the date ordinal suffix lookup logic for sports fixture calendars.
+- Pruned the unused `AtmosphericThemeContext`, `ConfidenceBadge`, and `RingGauge` components from the codebase.
+- Refactored frontend system diagnostics to prevent duplicate diagnostic hook execution.
+
+### Architecture Changes
+
+- Integrated a global thread lock (`_TRIGGER_LOCK`) to serialize `/api/v1/trigger` calls and enforce safe state resets on exceptions.
+- Transitioned SQLite connection configuration to WAL mode, permitting concurrent read transactions during active database writes.
+- Resolved database path dynamically using `PROJECT_ROOT` to avoid writing state to the local execution subdirectory.
+- Restructured `SystemDiagnostics` to accept diagnostics state directly via props from the parent `App` shell, eliminating duplicate API polling hook executions.
+- Discarded React Context for atmospheric theme state in favor of localized CSS variable updates and type-safe mappings.
+- Replaced the file-modification time tracking of `clients/.f1_cache.json` with a dedicated caching boolean flag passed directly by the sports client.
+
+### API Changes
+
+- Extended the sports client `fetch_sports_data` return signature to include an explicit cache-status boolean indicator.
+- Refactored response payload parsing in the frontend `useApexData` hook to parse and typecast digest insights, scores, and failed connector arrays from a unified response dictionary.
+- Simplified `SystemState` types in `telemetry.ts` to a static literal union, and removed the deprecated atmospheric context and insights array interfaces.
+
+### Frontend Changes
+
+- Updated `App.tsx` layout to pass diagnostics state down to the full-width status footer.
+- Removed the parent `AtmosphericThemeProvider` wrapper from `App.tsx`.
+- Streamlined `BriefingPanel` properties, removing unused loading, speaking, and status tracking inputs.
+- Combined separate RAM and Disk storage formatting methods in `SystemDiagnostics.tsx` into a single `formatGbRatio` utility function.
+- Deleted the deprecated `ConfidenceBadge.tsx` component.
+- Deleted the deprecated `RingGauge.tsx` component.
+- Deleted the deprecated `AtmosphericThemeContext.tsx` context file.
+
+### Documentation Updates
+
+- Updated `docs/api.md` to document the cache-status indicator flag and updated confidence rating formulas.
+- Modified `docs/architecture.md` directory trees and component descriptions to reflect the removal of `ConfidenceBadge`, `RingGauge`, and `AtmosphericThemeContext`.
+- Removed obsolete implementation notes regarding filesystem metadata polling in architectural documents.
+
+---
+
 ## v1.9.0 — Standby Core & Unified Status Deck
 
 **Released:** June 11, 2026

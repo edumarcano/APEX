@@ -204,6 +204,15 @@ Refactor APEX into a deliberate, operator-initiated workflow by eliminating auto
 
 ---
 
+## v1.9.1 - Stabilization & Maintenance
+
+**Status:** Complete
+
+**Objective:**
+Harden multi-threaded execution safety, eliminate database write contention, resolve duplicate network requests, and prune dead assets.
+
+---
+
 ## v1.10.0 - Local Neural Voice Matrix
 
 **Status:** Planned
