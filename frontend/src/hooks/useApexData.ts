@@ -207,7 +207,6 @@ export function useApexData(): UseApexDataReturn {
     demoModeActive: false,
     confidenceScore: 100.0,
     failedConnectors: [],
-    insights: [],
   })
 
   const stateRef = useRef(state)
@@ -480,7 +479,6 @@ export function useApexData(): UseApexDataReturn {
         demoModeActive,
         confidenceScore,
         failedConnectors,
-        insights,
       }))
     } catch (err) {
       if (

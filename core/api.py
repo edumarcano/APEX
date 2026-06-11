@@ -478,10 +478,6 @@ def _mock_briefing_history() -> list[dict[str, Any]]:
 
 def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
     """Compose a deterministic briefing string from mock telemetry fields."""
-    combined_raw_data = (
-        f"{telemetry.weather} | {telemetry.sports} | {telemetry.email} | "
-        f"{telemetry.calendar} | {telemetry.news} | {telemetry.reminders}"
-    )
     return (
         "Greetings Chief. APEX simulation controls are operational. "
         "Atmospheric sensors report seventy-two degrees with clear skies. "

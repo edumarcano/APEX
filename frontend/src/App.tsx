@@ -24,7 +24,6 @@ import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
-import { AtmosphericThemeProvider } from './context/AtmosphericThemeContext'
 import { useApexData } from './hooks/useApexData'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import type { WeatherConditionArchetype } from './types/telemetry'
@@ -261,11 +260,10 @@ export default function App(): ReactElement {
   const showSubtitleBar = isSpeaking && activeStep === 4
 
   return (
-    <AtmosphericThemeProvider weatherReport={data?.weather}>
-      <main
-        className="relative isolate flex min-h-dvh w-full flex-col overflow-y-auto bg-[var(--hud-bg)] p-4 md:p-6 xl:h-dvh xl:overflow-hidden"
-        style={{ '--glow-color': glowColor } as CSSProperties}
-      >
+    <main
+      className="relative isolate flex min-h-dvh w-full flex-col overflow-y-auto bg-[var(--hud-bg)] p-4 md:p-6 xl:h-dvh xl:overflow-hidden"
+      style={{ '--glow-color': glowColor } as CSSProperties}
+    >
         <CelestialBackground />
 
         <div
@@ -359,13 +357,7 @@ export default function App(): ReactElement {
                 : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
               }`}
           >
-            <BriefingPanel
-              briefing={data?.briefing ?? ''}
-              status={status}
-              error={error}
-              isLoading={isTriggerLoading}
-              isSpeaking={isSpeaking}
-            />
+            <BriefingPanel briefing={data?.briefing ?? ''} />
           </div>
 
           <div className="mx-auto flex w-full min-h-0 flex-1 flex-col gap-4 md:gap-6 xl:grid xl:grid-rows-[1fr_auto]">
@@ -553,16 +545,15 @@ export default function App(): ReactElement {
           </div>
         </div>
 
-        <SystemDiagnostics
-          diagnosticsStatus={diagnosticsStatus}
-          isSpeaking={isSpeaking}
-          isPipelinePolling={isPipelinePolling}
-          status={status}
-          confidenceScore={confidenceScore}
-          pipelineStep={activeStep}
-          failedConnectors={failedConnectors}
-        />
-      </main>
-    </AtmosphericThemeProvider>
+      <SystemDiagnostics
+        diagnosticsStatus={diagnosticsStatus}
+        isSpeaking={isSpeaking}
+        isPipelinePolling={isPipelinePolling}
+        status={status}
+        confidenceScore={confidenceScore}
+        pipelineStep={activeStep}
+        failedConnectors={failedConnectors}
+      />
+    </main>
   )
 }

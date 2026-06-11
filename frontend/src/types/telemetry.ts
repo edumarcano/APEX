@@ -64,15 +64,7 @@ export interface TelemetryPayload {
   digest?: DigestPayload
 }
 
-/** Canonical lifecycle values: dormant standby through terminal outcomes. */
-export const SYSTEM_STATE_VALUES = [
-  'idle',
-  'loading',
-  'success',
-  'error',
-] as const
-
-export type SystemState = (typeof SYSTEM_STATE_VALUES)[number]
+export type SystemState = 'idle' | 'loading' | 'success' | 'error'
 
 export interface ApexDataState {
   data: TelemetryPayload | null
@@ -85,20 +77,4 @@ export interface ApexDataState {
   demoModeActive: boolean
   confidenceScore: number
   failedConnectors: string[]
-  insights: string[]
-}
-
-export type AtmosphericCondition = 'neutral' | 'stormy' | 'clear'
-
-export interface AtmosphericTheme {
-  condition: AtmosphericCondition
-  isStormy: boolean
-  bgColors: string
-  textColor: string
-  accentColor: string
-}
-
-export interface AtmosphericThemeContextType {
-  theme: AtmosphericTheme
-  updateThemeFromTelemetry: (weatherReport?: string) => void
 }
