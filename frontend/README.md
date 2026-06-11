@@ -49,7 +49,7 @@ frontend/
 │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
 │   │   ├── ConfidenceBadge.tsx      # Header confidence score badge with connector tooltip
 │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
-│   │   ├── SystemDiagnostics.tsx    # Three-gauge CPU/RAM/disk grid with severity glow
+│   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
 │   │   ├── RingGauge.tsx            # Stateless SVG circular gauge with arc and N/A fallback
 │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator
 │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
@@ -75,7 +75,7 @@ The API base URL is hardcoded to `http://127.0.0.1:8000` in `src/hooks/useApexDa
 
 ### `useApexData`
 
-The single data hook for the entire HUD. Fires `POST /api/v1/trigger` on mount, polls `GET /api/v1/status` at 500 ms intervals, and fetches `GET /api/v1/reminders` after trigger resolution. Exposes the full `ApexDataState` plus `refreshReminders` and `markReminderAsRead`.
+The single data hook for the entire HUD. Starts in `idle` state on mount and fetches `GET /api/v1/reminders` to populate the standby reminder list. The trigger is not fired automatically. When `triggerSynthesis()` is called, it fires `POST /api/v1/trigger`, polls `GET /api/v1/status` at 500 ms intervals until the pipeline completes, then parses and stores telemetry and digest fields. Exposes the full `ApexDataState` plus `triggerSynthesis`, `refreshReminders`, and `markReminderAsRead`.
 
 ### `useSystemDiagnostics`
 
