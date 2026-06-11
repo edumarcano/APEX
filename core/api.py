@@ -255,28 +255,11 @@ class BriefingResponse(BaseModel):
 
 
 def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
-    """Safely parse a digest sub-object with fallback defaults for missing keys."""
-    if not isinstance(raw_digest, dict):
+    """Safely parse a digest sub-object with fallback defaults on validation failure."""
+    try:
+        return DigestPayload.model_validate(raw_digest)
+    except Exception:
         return DigestPayload(confidence_score=0.0)
-
-    failed_connectors = raw_digest.get("failed_connectors", [])
-    if not isinstance(failed_connectors, list):
-        failed_connectors = []
-
-    raw_insights = raw_digest.get("insights", [])
-    if not isinstance(raw_insights, list):
-        raw_insights = []
-
-    return DigestPayload(
-        weather_archetype=raw_digest.get("weather_archetype"),
-        unread_emails_count=int(raw_digest.get("unread_emails_count", 0)),
-        upcoming_events_count=int(raw_digest.get("upcoming_events_count", 0)),
-        f1_sprint_active=bool(raw_digest.get("f1_sprint_active", False)),
-        reminders_pending_count=int(raw_digest.get("reminders_pending_count", 0)),
-        confidence_score=float(raw_digest.get("confidence_score", 0.0)),
-        failed_connectors=[str(name) for name in failed_connectors],
-        insights=[str(line) for line in raw_insights],
-    )
 
 
 def _split_sports_report(sports_report: str) -> tuple[str, str]:
@@ -616,24 +599,22 @@ def clean_for_tts(text: str) -> str:
         ASCII-only plain text with collapsed whitespace.
     """
     cleaned = text
-    cleaned = _MARKDOWN_CODE_BLOCK_PATTERN.sub(" ", cleaned)
-    cleaned = _MARKDOWN_IMAGE_PATTERN.sub(r"\1", cleaned)
-    cleaned = _MARKDOWN_LINK_PATTERN.sub(r"\1", cleaned)
-    cleaned = _MARKDOWN_INLINE_CODE_PATTERN.sub(r"\1", cleaned)
-    cleaned = _MARKDOWN_HEADER_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_BLOCKQUOTE_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_HRULE_PATTERN.sub(" ", cleaned)
-    cleaned = _MARKDOWN_LIST_MARKER_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_ORDERED_LIST_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_BOLD_PATTERN.sub(
-        lambda match: match.group(1) or match.group(2) or "",
-        cleaned,
+    replacements = (
+        (_MARKDOWN_CODE_BLOCK_PATTERN, " "),
+        (_MARKDOWN_IMAGE_PATTERN, r"\1"),
+        (_MARKDOWN_LINK_PATTERN, r"\1"),
+        (_MARKDOWN_INLINE_CODE_PATTERN, r"\1"),
+        (_MARKDOWN_HEADER_PATTERN, ""),
+        (_MARKDOWN_BLOCKQUOTE_PATTERN, ""),
+        (_MARKDOWN_HRULE_PATTERN, " "),
+        (_MARKDOWN_LIST_MARKER_PATTERN, ""),
+        (_MARKDOWN_ORDERED_LIST_PATTERN, ""),
+        (_MARKDOWN_BOLD_PATTERN, lambda match: match.group(1) or match.group(2) or ""),
+        (_MARKDOWN_ITALIC_PATTERN, lambda match: match.group(1) or match.group(2) or ""),
+        (_MARKDOWN_STRIKE_PATTERN, r"\1"),
     )
-    cleaned = _MARKDOWN_ITALIC_PATTERN.sub(
-        lambda match: match.group(1) or match.group(2) or "",
-        cleaned,
-    )
-    cleaned = _MARKDOWN_STRIKE_PATTERN.sub(r"\1", cleaned)
+    for pattern, replacement in replacements:
+        cleaned = pattern.sub(replacement, cleaned)
     cleaned = _NON_ASCII_PATTERN.sub(" ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned

@@ -54,24 +54,19 @@ DevTtsPlaybackMode = Literal["pyttsx3", "google", "elevenlabs"]
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
     """
-    Normalize an environment string into a boolean with bounded retries.
+    Normalize an environment string into a boolean.
 
-    Strips whitespace and optional surrounding quotes on each pass. Unknown
+    Strips whitespace and optional surrounding quotes. Unknown
     values log a warning and return ``default``.
     """
     if raw is None:
         return default
 
-    candidate = raw
-    for _ in range(3):
-        normalized = candidate.strip().lower().strip("'\"")
-        if normalized in _TRUTHY_ENV_VALUES:
-            return True
-        if normalized in _FALSY_ENV_VALUES:
-            return False
-        if normalized == candidate.strip().lower():
-            break
-        candidate = normalized
+    normalized = raw.strip().lower().strip("'\"")
+    if normalized in _TRUTHY_ENV_VALUES:
+        return True
+    if normalized in _FALSY_ENV_VALUES:
+        return False
 
     _LOGGER.warning(
         "Invalid %s=%r; using default %s.",

@@ -79,7 +79,7 @@ export default function App(): ReactElement {
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
   const [prevStatus, setPrevStatus] = useState<string>('idle')
 
-  const { status: diagnosticsStatus } = useSystemDiagnostics()
+  const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
   const {
     data,
@@ -546,6 +546,7 @@ export default function App(): ReactElement {
         </div>
 
       <SystemDiagnostics
+        diagnostics={diagnostics}
         diagnosticsStatus={diagnosticsStatus}
         isSpeaking={isSpeaking}
         isPipelinePolling={isPipelinePolling}

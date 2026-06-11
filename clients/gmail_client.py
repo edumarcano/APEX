@@ -46,7 +46,12 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
             msg: dict[str, Any] = (
                 service.users()
                 .messages()
-                .get(userId='me', id=msg_id, format='full')
+                .get(
+                    userId='me',
+                    id=msg_id,
+                    format='metadata',
+                    metadataHeaders=['subject', 'date'],
+                )
                 .execute()
             )
             subject: str | None = None

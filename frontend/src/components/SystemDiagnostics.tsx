@@ -10,9 +10,8 @@ import {
   Clock,
 } from 'lucide-react'
 
-import { useSystemDiagnostics } from '../hooks/useSystemDiagnostics'
 import {
-  DEFAULT_SYSTEM_DIAGNOSTICS,
+  type SystemDiagnostics as SystemDiagnosticsPayload,
 } from '../types/telemetry'
 
 function clampPercentage(value: number): number {
@@ -83,6 +82,7 @@ function getMicroBarColorClass(percentage: number): string {
 }
 
 interface SystemDiagnosticsProps {
+  diagnostics: SystemDiagnosticsPayload
   diagnosticsStatus: 'idle' | 'loading' | 'ready' | 'error'
   isSpeaking: boolean
   isPipelinePolling: boolean
@@ -93,6 +93,7 @@ interface SystemDiagnosticsProps {
 }
 
 export function SystemDiagnostics({
+  diagnostics,
   diagnosticsStatus,
   isSpeaking,
   isPipelinePolling,
@@ -143,9 +144,8 @@ export function SystemDiagnostics({
     }
   }, [])
 
-  const { diagnostics, status: localStatus } = useSystemDiagnostics()
-  const resolvedDiagnostics = diagnostics ?? DEFAULT_SYSTEM_DIAGNOSTICS
-  const isInitializing = localStatus === 'idle' || localStatus === 'loading'
+  const resolvedDiagnostics = diagnostics
+  const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
 
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
