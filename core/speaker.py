@@ -118,8 +118,8 @@ def _speak_pyttsx3_local(text: str) -> None:
         except OSError:
             pass
 
+    print("[SPEAKER] Local pyttsx3 route selected.")
     try:
-        print("[SPEAKER] Initializing thread-isolated local pyttsx3 engine context dynamically.")
         engine = pyttsx3.init()
         engine.setProperty("rate", 175)
 
@@ -127,12 +127,11 @@ def _speak_pyttsx3_local(text: str) -> None:
         if voices:
             engine.setProperty("voice", voices[0].id)
 
-        print("[SPEAKER] Enqueuing local pyttsx3 speech payload and running event loop thread bounds.")
         engine.say(text)
         engine.runAndWait()
-        print("[SPEAKER] Local pyttsx3 playback sequence finalized cleanly.")
+        print("[SPEAKER] Local pyttsx3 playback completed.")
     except Exception as exc:
-        print(f"[SPEAKER] Error: Local pyttsx3 initialization or run sequence failed ({type(exc).__name__}).")
+        print(f"[SPEAKER] Local pyttsx3 playback failed ({type(exc).__name__}).")
 
 
 def _try_google_tts(content: str) -> bool:
@@ -140,15 +139,14 @@ def _try_google_tts(content: str) -> bool:
     if not config.GOOGLE_VOICE_ID.strip():
         print("[SPEAKER] Skipping Google TTS: google_voice_id is not configured.")
         return False
+    print("[SPEAKER] Google Cloud TTS route selected.")
     try:
-        print("[SPEAKER] Attempting Google Cloud TTS (utilizing pre-warmed client context).")
         audio = fetch_google_audio(content, config.GOOGLE_VOICE_ID)
-        print("[SPEAKER] Google TTS succeeded; playing MP3 from memory.")
         _play_audio_bytes(audio)
-        print("[SPEAKER] Google TTS playback completed.")
+        print("[SPEAKER] Google Cloud TTS playback completed.")
         return True
     except Exception as exc:  # noqa: BLE001 - broad catch drops execution to the next fallback loop safely
-        print(f"[SPEAKER] Error: Google TTS failed ({type(exc).__name__}).")
+        print(f"[SPEAKER] Google Cloud TTS playback failed ({type(exc).__name__}).")
         return False
 
 

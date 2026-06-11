@@ -227,21 +227,23 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def fetch_sports_data() -> str:
+def fetch_sports_data() -> tuple[str, bool]:
     """Connect to sports APIs and retrieve current sports telemetry.
 
     Args:
         None
 
     Returns:
-        str: A formatted string containing sports updates or fallback
-            telemetry unavailable messages.
+        tuple[str, bool]: A formatted sports telemetry string and whether the
+            F1 cache path used fresh data (fresh disk cache hit or successful
+            network fetch/cache write).
 
     Raises:
         None: All transport and parsing failures are handled internally and
             converted to fallback telemetry strings.
     """
     intel = []
+    f1_cache_refreshed = True
 
     if MODULE_F1:
         cache_payload = _read_f1_cache()
@@ -253,6 +255,7 @@ def fetch_sports_data() -> str:
             f1_url = "https://api.jolpi.ca/ergast/f1/current/next.json"
             if cache_payload and cached_map and _is_f1_cache_fresh(cache_payload):
                 f1_map = cached_map
+                f1_cache_refreshed = True
             else:
                 response = requests.get(f1_url, timeout=10)
                 response.raise_for_status()
@@ -263,9 +266,11 @@ def fetch_sports_data() -> str:
                 race = races[0]
                 f1_map = _build_f1_map_from_race(race)
                 _write_f1_cache(f1_map)
+                f1_cache_refreshed = True
             intel.append(f"F1_DATA:{json.dumps(f1_map, separators=(',', ':'))}")
         except Exception as exc:
             sys.stderr.write(f"[SPORTS][F1] {exc}\n")
+            f1_cache_refreshed = False
             if cached_map:
                 intel.append(f"F1_DATA:{json.dumps(cached_map, separators=(',', ':'))}")
             else:
@@ -321,8 +326,9 @@ def fetch_sports_data() -> str:
             sys.stderr.write(f"[SPORTS][FOOTBALL] {exc}\n")
             intel.append("Barcelona fixture telemetry unavailable.")
 
-    return " ".join(intel)
+    return " ".join(intel), f1_cache_refreshed
 
 
 if __name__ == "__main__":
-    print(f"[SPORTS]: {fetch_sports_data()}")
+    report, _ = fetch_sports_data()
+    print(f"[SPORTS]: {report}")

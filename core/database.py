@@ -157,18 +157,12 @@ def prune_historical_ledger() -> None:
     """
     conn = sqlite3.connect(DB_NAME, timeout=30.0)
     cursor = conn.cursor()
-    try:
-        cursor.execute("BEGIN")
-        cursor.execute(
-            "DELETE FROM briefings WHERE id NOT IN "
-            "(SELECT id FROM briefings ORDER BY timestamp DESC LIMIT 50)"
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    cursor.execute(
+        "DELETE FROM briefings WHERE id NOT IN "
+        "(SELECT id FROM briefings ORDER BY timestamp DESC LIMIT 50)"
+    )
+    conn.commit()
+    conn.close()
     print("[SYSTEM]: Historical briefing ledger pruned to 50 rows.")
 
 

@@ -55,8 +55,6 @@ NEWS_FAILED_RE = re.compile(r"(telemetry unavailable|offline)", re.IGNORECASE)
 EMAIL_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 CALENDAR_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 
-_F1_CACHE_PATH = Path(__file__).resolve().parent.parent / "clients" / ".f1_cache.json"
-
 app = FastAPI(title="APEX Nexus")
 
 
@@ -282,38 +280,30 @@ def _evaluate_sports_trust(
     Sports weight is 1.0 when a single sub-module is active, or 0.5 per sub-module
     when both F1 and football are enabled.
     """
-    earned_weight = 0.0
-    total_weight = 0.0
-    sports_failed = False
-
+    active_modules: list[tuple[re.Pattern[str], str]] = []
     if MODULE_F1 and MODULE_FOOTBALL:
         f1_part, fb_part = _split_sports_report(sports_report)
-        total_weight = 1.0
-        if not SPORTS_F1_FAILED_RE.search(f1_part):
-            earned_weight += 0.5
-        else:
-            sports_failed = True
-        if not SPORTS_FB_FAILED_RE.search(fb_part):
-            earned_weight += 0.5
-        else:
-            sports_failed = True
-    elif MODULE_F1:
-        total_weight = 1.0
-        if SPORTS_F1_FAILED_RE.search(sports_report):
-            sports_failed = True
-        else:
-            earned_weight = 1.0
-    elif MODULE_FOOTBALL:
-        total_weight = 1.0
-        if SPORTS_FB_FAILED_RE.search(sports_report):
-            sports_failed = True
-        else:
-            earned_weight = 1.0
     else:
-        total_weight = 1.0
-        earned_weight = 1.0
+        f1_part, fb_part = sports_report, sports_report
 
-    return earned_weight, total_weight, sports_failed
+    if MODULE_F1:
+        active_modules.append((SPORTS_F1_FAILED_RE, f1_part))
+    if MODULE_FOOTBALL:
+        active_modules.append((SPORTS_FB_FAILED_RE, fb_part))
+
+    if not active_modules:
+        return 1.0, 1.0, False
+
+    module_weight = 1.0 / len(active_modules)
+    earned_weight = 0.0
+    sports_failed = False
+    for failure_pattern, module_report in active_modules:
+        if failure_pattern.search(module_report):
+            sports_failed = True
+        else:
+            earned_weight += module_weight
+
+    return earned_weight, 1.0, sports_failed
 
 
 def _compute_confidence_and_failures(
@@ -497,6 +487,7 @@ def _run_demo_briefing() -> BriefingResponse:
                 "digest": digest,
                 "lock": _TRIGGER_LOCK,
             },
+            daemon=True,
         )
         voice_thread.start()
         voice_thread_started = True
@@ -701,19 +692,12 @@ def trigger_briefing() -> BriefingResponse:
                 print("[SYSTEM]: Weather module bypassed via user preference")
                 weather_report = ""
 
-            f1_cache_existed_before = False
-            f1_mtime_before: float | None = None
-            f1_mtime_after: float | None = None
             if FEATURE_SPORTS:
-                f1_cache_existed_before = _F1_CACHE_PATH.exists()
-                if f1_cache_existed_before:
-                    f1_mtime_before = os.path.getmtime(_F1_CACHE_PATH)
-                sports_report = sports_client.fetch_sports_data()
-                if _F1_CACHE_PATH.exists():
-                    f1_mtime_after = os.path.getmtime(_F1_CACHE_PATH)
+                sports_report, f1_cache_refreshed = sports_client.fetch_sports_data()
             else:
                 print("[SYSTEM]: Sports module bypassed via user preference")
                 sports_report = ""
+                f1_cache_refreshed = True
 
             if FEATURE_NEWS:
                 news_report = news_client.fetch_news_data()
@@ -797,6 +781,7 @@ def trigger_briefing() -> BriefingResponse:
             filler_thread = threading.Thread(
                 target=speaker.speak,
                 args=("Generating briefing... Please wait...",),
+                daemon=True,
             )
             filler_thread.start()
 
@@ -806,13 +791,7 @@ def trigger_briefing() -> BriefingResponse:
 
             filler_thread.join()
 
-            f1_cache_penalty = False
-            if FEATURE_SPORTS and MODULE_F1 and f1_cache_existed_before:
-                f1_cache_penalty = (
-                    f1_mtime_before is not None
-                    and f1_mtime_after is not None
-                    and f1_mtime_after == f1_mtime_before
-                )
+            f1_cache_penalty = FEATURE_SPORTS and MODULE_F1 and not f1_cache_refreshed
 
             confidence_score, failed_connectors = _compute_confidence_and_failures(
                 weather_report=weather_report,
@@ -836,6 +815,7 @@ def trigger_briefing() -> BriefingResponse:
                     "digest": digest_payload,
                     "lock": _TRIGGER_LOCK,
                 },
+                daemon=True,
             )
             voice_thread.start()
             voice_thread_started = True
