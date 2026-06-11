@@ -197,7 +197,7 @@ Replace the monolithic briefing presentation with structured intelligence digest
 
 ## v1.9.0 - Standby Core & Unified Status Deck
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
 Refactor APEX into a deliberate, operator-initiated workflow by eliminating automatic startup synthesis and introducing manual execution pathways and dormant-state awareness.

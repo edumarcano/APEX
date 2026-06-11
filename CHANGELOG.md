@@ -2,6 +2,72 @@
 
 ---
 
+## v1.9.0 — Standby Core & Unified Status Deck
+
+**Released:** June 11, 2026
+
+This release replaces the auto-firing trigger with an operator-initiated model, introduces a dormant `idle` standby state, and rebuilds the system diagnostics surface as a full-width footer bar outside the telemetry card grid. The HUD now loads into a resting state, shows pending reminders before any synthesis is requested, and consolidates confidence, pipeline, hardware, and time data into a unified status row at the bottom of the layout.
+
+---
+
+### What's New
+
+#### Operator-Initiated Synthesis and Standby State
+
+- Replaced the auto-executing `POST /api/v1/trigger` call on mount with an explicit `triggerSynthesis` callback.
+- Added a dormant `idle` standby state that the HUD enters before any synthesis is requested. The trigger does not fire until the operator acts.
+- Added an `INITIATE SYSTEM BRIEFING` button to the header toolbar, visible only when status is `idle`.
+- Added a global `Enter` keyboard shortcut that calls `triggerSynthesis` when focus is outside inputs and status is `idle`.
+- Added `isSynthesisGuarded` to block duplicate trigger requests while a run is already `loading` or pipeline polling is active.
+- Added `synthesisAbortRef` to abort any previous in-flight synthesis before starting a new one, and a cleanup effect to abort the controller on component unmount.
+- `useApexData` now fetches `GET /api/v1/reminders` on mount to populate `activeReminders` during standby, surfacing pending reminder count below the `ApexLogo` before the first briefing.
+- Added `createStandbyTelemetryPayload` to produce a zero-content payload that initializes `ApexDataState` during the dormant phase.
+
+#### Unified Status Footer
+
+- Removed `SystemDiagnostics` from the telemetry card grid and rendered it as a full-width `<footer>` element outside the main bento grid.
+- Rebuilt the footer as a six-column horizontal layout: **System Status** label, **Internet** connectivity indicator, **Briefing Status** lifecycle state, **Sync Health** segmented bar, **Hardware Resources** micro-bars, and a **System Clock**.
+- Sync Health column: 10 segmented blocks filled proportional to `confidenceScore`, color-coded emerald/amber/red. Hover tooltip lists `failedConnectors` or confirms all connectors healthy.
+- Hardware Resources column: CPU, RAM, and disk percentage labels each backed by a horizontal micro-bar. Hover tooltips show CPU frequency (GHz) and RAM/disk as used/total GB.
+- Briefing Status column reflects the full pipeline lifecycle: Standby → Processing (pulsing emerald) → Delivering (amber) → Complete (blue) → Fault (rose).
+- Removed `ConfidenceBadge` from the header; confidence display consolidated exclusively into the footer Sync Health column.
+- Replaced the header status ticker with a `Clock`-icon last-briefing-time display (`lastBriefingTime`), populated from `GET /api/v1/briefings/history` on mount and updated on each successful trigger resolution.
+- Added `@keyframes goldGlow` and `.animate-gold-glow` CSS utility to `index.css`.
+
+---
+
+### Architecture Changes
+
+- `useApexData` trigger lifecycle changed from mount-time auto-fire to explicit operator invocation. The hook now initializes into `idle` state rather than immediately entering `loading`.
+- `SystemDiagnostics` relocated from inside the `<main>` bento grid to a sibling `<footer>` element, making it layout-independent from the telemetry card count and grid column configuration.
+- `SystemState` type extracted from an inline union to a derived `const` array type in `telemetry.ts`, making the valid state set enumerable at runtime.
+- `lastBriefingTime` state added to `App.tsx`, hydrated from briefing history on mount and kept current through each trigger resolution.
+- `prevStatus` tracking for the `loading → success` transition isolated into a self-contained effect.
+
+---
+
+### Frontend Changes
+
+- `App.tsx` — added `INITIATE SYSTEM BRIEFING` header button, standby reminder count display, `lastBriefingTime` hydration, and `<footer>` mounting for `SystemDiagnostics`.
+- `SystemDiagnostics.tsx` — fully rebuilt as a six-column horizontal status bar; `RingGauge` gauges replaced with horizontal micro-bars and segmented sync health indicator; hover tooltip overlays added to Sync Health and Hardware Resources columns; live clock column added.
+- `useApexData.ts` — trigger flow restructured for operator-initiated execution; standby reminder fetch added on mount; abort controller wired for cleanup; `isSynthesisGuarded` guard added.
+- `telemetry.ts` — `SystemState` extracted from inline union to `const` array type.
+- News Wire card empty-state copy corrected; list item key changed from `item.subject` to `item.topic`.
+
+---
+
+### Documentation Updates
+
+| File | Changes |
+|---|---|
+| `docs/architecture.md` | Updated `SystemDiagnostics` description to the six-column footer bar; documented `ConfidenceBadge` as unused; updated `RingGauge` as unused; updated `useApexData` to reflect idle initialization, standby reminder fetching, and operator-initiated trigger execution |
+| `docs/roadmap.md` | Adjusted v1.9.0 roadmap header |
+| `README.md` | Minor copy corrections |
+| `frontend/README.md` | Minor corrections |
+| `docs/decisions.md` | Removed duplicate heading |
+
+---
+
 ## v1.8.0 — Briefing Digest & Transcript Layer
 
 **Released:** June 9, 2026
