@@ -1,6 +1,7 @@
 import {
   Calendar,
   CheckSquare,
+  Clock,
   CloudSun,
   Flag,
   Mail,
@@ -255,18 +256,7 @@ export default function App(): ReactElement {
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
 
-  const headerTicker = (() => {
-    if (status === 'error') {
-      return { text: 'SYSTEM FAULT', className: 'text-[#DC2626] animate-pulse' }
-    }
-    if (status === 'loading' && pipelineState !== null) {
-      return {
-        text: pipelineState.label,
-        className: 'text-[color:var(--hud-accent)]',
-      }
-    }
-    return { text: 'SYSTEM OPERATIONAL', className: 'text-[#39FF88] opacity-80' }
-  })()
+
 
   const showSubtitleBar = isSpeaking && activeStep === 4
 
@@ -357,13 +347,10 @@ export default function App(): ReactElement {
                 DEMO MODE ACTIVE
               </span>
             )}
-            <p
-              className={`m-0 font-mono text-sm uppercase tracking-wider ${headerTicker.className}`}
-              aria-live="polite"
-              data-slot="header-status-ticker"
-            >
-              {headerTicker.text}
-            </p>
+            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-zinc-400">
+              <Clock className="size-3.5 text-[#0F4DB8]" />
+              <span>Last Briefing: <span className="text-[#FBBF24]">{lastBriefingTime || 'Standby'}</span></span>
+            </div>
           </div>
           </header>
 
@@ -574,7 +561,6 @@ export default function App(): ReactElement {
           isPipelinePolling={isPipelinePolling}
           status={status}
           confidenceScore={confidenceScore}
-          lastBriefingTime={lastBriefingTime}
           pipelineStep={activeStep}
           failedConnectors={failedConnectors}
         />

@@ -88,7 +88,6 @@ interface SystemDiagnosticsProps {
   isPipelinePolling: boolean
   status: 'idle' | 'loading' | 'success' | 'error'
   confidenceScore: number
-  lastBriefingTime: string | null
   pipelineStep: number | null
   failedConnectors?: string[]
 }
@@ -99,7 +98,6 @@ export function SystemDiagnostics({
   isPipelinePolling,
   status,
   confidenceScore,
-  lastBriefingTime,
   pipelineStep,
   failedConnectors = [],
 }: SystemDiagnosticsProps): ReactElement {
@@ -108,6 +106,29 @@ export function SystemDiagnostics({
   const [isCpuHovered, setIsCpuHovered] = useState(false)
   const [isRamHovered, setIsRamHovered] = useState(false)
   const [isDiskHovered, setIsDiskHovered] = useState(false)
+  const [liveTime, setLiveTime] = useState({ date: '', time: '' })
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date()
+      const dateStr = now.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: '2-digit',
+      })
+      const timeStr = now.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      })
+      setLiveTime({ date: dateStr, time: timeStr })
+    }
+
+    updateClock()
+    const timerId = setInterval(updateClock, 1000)
+    return () => clearInterval(timerId)
+  }, [])
 
   useEffect(() => {
     const handleOnline = () => setIsBrowserOnline(true)
@@ -192,13 +213,12 @@ export function SystemDiagnostics({
     return (
       <div
         key={i}
-        className={`h-3 w-1 rounded-sm transition-colors duration-500 ${
-          isSuccess
-            ? isActive
-              ? `${syncColorBar} ${syncColorShadow}`
-              : 'bg-zinc-700'
-            : 'bg-zinc-800/40'
-        }`}
+        className={`h-3 w-1 rounded-sm transition-colors duration-500 ${isSuccess
+          ? isActive
+            ? `${syncColorBar} ${syncColorShadow}`
+            : 'bg-zinc-700'
+          : 'bg-zinc-800/40'
+          }`}
       />
     )
   })
@@ -219,7 +239,7 @@ export function SystemDiagnostics({
   return (
     <footer className="w-full border border-white/5 bg-zinc-950/40 backdrop-blur-md rounded-xl p-4 mt-auto z-40 select-none">
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
-        
+
         {/* Column 1: Title */}
         <div className="flex items-center">
           <span className="text-[#0F4DB8] font-extrabold tracking-wider uppercase text-xs">
@@ -396,16 +416,17 @@ export function SystemDiagnostics({
           </div>
         </div>
 
-        {/* Column 6: Last Briefing */}
+        {/* Column 6: System Time */}
         <div className="flex items-center gap-3">
           <Clock className="h-4 w-4 text-zinc-400 shrink-0" />
           <div className="flex flex-col">
             <span className="text-[10px] tracking-wider uppercase text-zinc-500">
-              Last Briefing
+              SYSTEM TIME
             </span>
-            <span className="text-zinc-200 mt-0.5">
-              {lastBriefingTime ?? 'Standby'}
-            </span>
+            <div className="flex flex-col mt-0.5 font-mono tabular-nums leading-tight">
+              <span className="text-zinc-300">{liveTime.date}</span>
+              <span className="text-zinc-300">{liveTime.time}</span>
+            </div>
           </div>
         </div>
 
