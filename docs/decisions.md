@@ -104,8 +104,6 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ## AI-Augmented Development Workflow
 
-## AI-Augmented Development Workflow
-
 The project maintains a set of specialized agent rules to provide task-focused guidance across backend development, frontend development, operations, implementation, analysis, auditing, and documentation work.
 
 Multiple rule formats exist to support the AI-assisted development environments used by the project. Depending on the environment, rules may be activated automatically based on context, selected explicitly by the developer, or used as part of agent-specialization workflows.

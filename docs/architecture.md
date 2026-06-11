@@ -19,7 +19,7 @@ With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run l
 
 ## FastAPI Pipeline Telemetry & Polling
 
-A full briefing run is a blocking HTTP call. Rather than streaming partial JSON out of the trigger response, execution and observation are kept separate. `useApexData` fires a single `POST /api/v1/trigger` and holds it open, while a `setInterval` loop at **500 ms** inside the same hook polls `GET /api/v1/status`.
+A full briefing run is a blocking HTTP call. Rather than streaming partial JSON out of the trigger response, execution and observation are kept separate. When the operator clicks "INITIATE SYSTEM BRIEFING" or presses `Enter`, `useApexData.triggerSynthesis()` fires a single `POST /api/v1/trigger` and holds it open, while a `setInterval` loop at **500 ms** inside the same hook polls `GET /api/v1/status`.
 
 On the backend, `core/api.py` calls `global_pipeline_state.update(step, label)` at each stage boundary. The state is read under a `threading.Lock` on every poll. At step 4 (Delivery), the trigger response returns while TTS plays on a worker thread. Once `_speak_and_cleanup` calls `global_pipeline_state.reset()`, the next poll returns `404`. The hook treats `404` as idle, clears the interval, and the HUD fills its cards from the trigger response body.
 
@@ -31,7 +31,7 @@ sequenceDiagram
     participant Status as Backend: /api/v1/status
     participant Speaker as Backend: _speak_and_cleanup (worker thread)
 
-    App->>Trigger: POST /api/v1/trigger (on mount)
+    App->>Trigger: POST /api/v1/trigger (operator-initiated)
     Trigger->>Store: update(1, GATE)
 
     loop Every 500ms while loading or speaking
@@ -45,7 +45,7 @@ sequenceDiagram
     Trigger->>Store: update(2, COLLECTION)
     Trigger->>Store: update(3, SYNTHESIS)
     Trigger->>Store: update(4, DELIVERY)
-    Trigger-->>App: 200 { briefing, telemetry, metadata }
+    Trigger-->>App: 200 { briefing, telemetry, digest, metadata }
     Note over App: HUD fills telemetry cards
 
     Trigger->>Speaker: Start _speak_and_cleanup thread
@@ -101,13 +101,15 @@ apex/
 │   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state
 │   │   │   └── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
 │   │   ├── types/
-│   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
+│   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   │   ├── context/
 │   │   │   └── AtmosphericThemeContext.tsx  # React context theme provider
 │   │   ├── components/
 │   │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
+│   │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
+│   │   │   ├── ConfidenceBadge.tsx      # Header confidence score badge with connector tooltip
 │   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
 │   │   │   ├── SystemDiagnostics.tsx    # Three-gauge CPU/RAM/disk grid with severity glow
 │   │   │   ├── RingGauge.tsx            # Stateless SVG circular gauge with arc and N/A fallback
@@ -213,10 +215,12 @@ Loads `config.json` at module import. All environment flags (`DEV_MODE`, `DEMO_M
 
 Root layout. Renders a three-column bento grid (`md:grid-cols-2 xl:grid-cols-3`). Manages:
 
-- `glowColor` — a CSS RGB tuple that drives the nebula blobs; green (`57, 255, 136`) during pipeline stages 1–3, gold (`251, 191, 36`) at stage 4 and after delivery.
 - `reminderPulseCount` — incremented on successful reminder submission, passed to `ApexLogo` to trigger an 800 ms blue surge.
-- `demoModeActive` — renders an amber "DEMO MODE ACTIVE" badge in the header when `true`.
-- A header `headerTicker` that shows the active pipeline stage label, "SYSTEM OPERATIONAL", or "SYSTEM FAULT" depending on status.
+- `lastBriefingTime` — stores the formatted time of the last successful briefing, populated on mount from `GET /api/v1/briefings/history` and updated on each trigger resolution.
+- `prevStatus` — tracks the previous render's status string to detect the `loading → success` transition.
+- `glowColor` — a derived CSS RGB tuple that drives the nebula blobs; green (`57, 255, 136`) during pipeline stages 1–3, gold (`251, 191, 36`) at stage 4 and after delivery.
+
+The header renders: an "INITIATE SYSTEM BRIEFING" button when status is `idle`, a "DEMO MODE ACTIVE" amber badge when `demoModeActive` is `true` (sourced from `useApexData`), the `VocalOrb`, and a "Last Briefing: [time]" readout. A standby notification showing pending reminder count appears below the `ApexLogo` when reminders are present and status is `idle`.
 
 Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
 
@@ -240,9 +244,13 @@ Displays insight bullet strings from `DigestPayload.insights` in the center colu
 
 Renders the synthesized briefing text with a `clip-path` curtain-reveal animation on delivery. A `SpeakingBorderMask` activates at pipeline stage 4: a spinning conic-gradient border overlay that persists while `isSpeaking && activeStep === 4`.
 
+`BriefingPanel` is wrapped in a collapsible container in `App.tsx` (`showSubtitleBar = isSpeaking && activeStep === 4`). The container uses `max-h-0 opacity-0` when collapsed and `max-h-24 opacity-100` when visible, with a 700 ms ease-in-out transition. The component is not rendered in the DOM unless the delivery condition is met.
+
 ### `ConfidenceBadge.tsx`
 
-Header badge rendered between the demo mode indicator and the status ticker. Displays the `confidenceScore` as a rounded integer percentage with three-tier color coding: emerald (≥ 90%), amber (≥ 50%), red (< 50%). When status is not `success`, displays `—%` in a neutral gray. A tooltip opens on hover or focus, listing the names of any `failedConnectors`. The badge reads `Sync Health` on wider viewports and is keyboard-accessible with `tabIndex=0`.
+Stateless confidence score badge component. Displays the `confidenceScore` as a rounded integer percentage with three-tier color coding: emerald (≥ 90%), amber (≥ 50%), red (< 50%). When status is not `success`, displays `—%` in a neutral gray. A tooltip opens on hover or focus, listing the names of any `failedConnectors`. Keyboard-accessible with `tabIndex=0`.
+
+> **Note:** This component is not currently mounted by `App.tsx`. Sync health is rendered inside `SystemDiagnostics` (Column 4). `ConfidenceBadge.tsx` exists in the repository but is unused.
 
 ### `TelemetryCard.tsx`
 
@@ -252,9 +260,24 @@ Shared card frame. Additional responsibilities:
 - **VTE** — when `primaryTemperatureF` is provided, applies `resolveTemperatureFontWeight()` as an inline `style` on the temperature readout.
 - **Weather glow** — per-archetype animated background glow and border color driven by `weatherCondition`.
 
-### `SystemDiagnostics.tsx` and `RingGauge.tsx`
+### `SystemDiagnostics.tsx`
 
-`SystemDiagnostics` assembles a three-gauge grid (CPU / RAM / Disk) in the full-width footer card. Each gauge is a `RingGauge` SVG component. Arc color thresholds: blue (< 80%), amber (≥ 80%), red (≥ 90%). Sub-text shows CPU frequency in GHz and RAM/disk as used/total GB. An ambient severity glow shifts color to the highest active threshold. A looping scan sweep animation fires continuously in the background.
+`SystemDiagnostics` renders a full-width six-column status bar in the page footer (`grid-cols-2 md:grid-cols-3 xl:grid-cols-6`). Each column:
+
+1. **SYSTEM STATUS** — label column.
+2. **Internet** — `navigator.onLine` combined with `diagnosticsStatus !== 'error'`; green dot (Connected) or red dot (Not Connected).
+3. **Briefing Status** — reflects the pipeline lifecycle: Standby, Processing (pulsing emerald, steps 1–3), Delivering (amber, step 4 / speaking), Complete (blue), or Fault (rose).
+4. **Sync Health** — a row of 10 segmented blocks filled proportional to `confidenceScore`; color-coded emerald (≥ 90%), amber (≥ 50%), red (< 50%). A hover tooltip lists `failedConnectors` or confirms all connectors are functional.
+5. **Hardware Resources** — CPU, RAM, and DISK percentage labels each backed by a horizontal micro-bar. Color thresholds: blue (< 80%), amber (≥ 80%), red (≥ 90%). Hover tooltips show CPU frequency in GHz and RAM/disk as used/total GB.
+6. **System Time** — live clock updated every 1,000 ms via `setInterval`.
+
+Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `confidenceScore`, `pipelineStep`, and `failedConnectors` as props from `App.tsx`. Pulls hardware metric values internally via a second `useSystemDiagnostics()` call.
+
+### `RingGauge.tsx`
+
+Stateless SVG circular gauge. Accepts `percentage`, `label`, `subText`, `isUnavailable`, and `className` props. Renders a track circle and an indicator arc whose `strokeDashoffset` is derived from the clamped percentage. Color thresholds match `SystemDiagnostics`: blue (< 80%), amber (≥ 80%), red (≥ 90%). Renders an N/A dashed fallback when `isUnavailable` is `true` or `percentage` is non-finite.
+
+> **Note:** `RingGauge.tsx` is not currently imported by any mounted component. It exists in the repository but is unused.
 
 ### `ReminderTerminal.tsx`
 
@@ -272,16 +295,20 @@ Per-item reminder display with optimistic dismissal. Removal is applied to local
 
 The single data hook for the entire HUD. On mount it:
 
+1. Sets `status` to `idle`.
+2. Fetches `GET /api/v1/reminders` to populate `activeReminders` for the standby display.
+
+The trigger is not fired on mount. When `triggerSynthesis()` is called (via the header button or `Enter` key), the hook:
+
 1. Sets `status` to `loading`.
 2. Fires `POST /api/v1/trigger` with an `AbortController` signal.
 3. Starts a `setInterval` at 500 ms to poll `GET /api/v1/status`.
-4. On trigger resolution, fetches `GET /api/v1/reminders` to populate `activeReminders`.
-5. Parses weather string fields via `resolvePipelineTemperatureF` and `resolveWeatherDetail`.
-6. Derives `weatherCondition` via `resolveWeatherCondition`.
-7. Extracts `digest.confidence_score`, `digest.failed_connectors`, and `digest.insights` from the trigger response body and populates `confidenceScore`, `failedConnectors`, and `insights` on `ApexDataState`.
-8. Clears the polling interval when `/api/v1/status` returns `404`.
+4. On trigger resolution, parses weather string fields via `resolvePipelineTemperatureF` and `resolveWeatherDetail`.
+5. Derives `weatherCondition` via `resolveWeatherCondition`.
+6. Extracts `digest.confidence_score`, `digest.failed_connectors`, and `digest.insights` from the trigger response body and populates `confidenceScore`, `failedConnectors`, and `insights` on `ApexDataState`.
+7. Clears the polling interval when `/api/v1/status` returns `404`.
 
-Exposes `refreshReminders` (best-effort re-sync after new submission) and `markReminderAsRead` (optimistic remove with rollback).
+Exposes `triggerSynthesis`, `refreshReminders` (best-effort re-sync after new submission), and `markReminderAsRead` (optimistic remove with rollback).
 
 ### `useSystemDiagnostics`
 
@@ -422,7 +449,7 @@ When both conditions are true: `confidence_score *= 0.90`.
 
 ### Output
 
-The score and the list of failed connector names are passed to `DigestPayload`. The frontend `ConfidenceBadge` component reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays a color-coded header badge with a connector tooltip.
+The score and the list of failed connector names are passed to `DigestPayload`. The frontend reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays them in the Sync Health column of `SystemDiagnostics`. A segmented block bar with a hover tooltip listing any failed connectors.
 
 ---
 

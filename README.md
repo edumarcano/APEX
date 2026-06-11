@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## Architecture Overview
 
-`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. A `POST /api/v1/trigger` runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
+`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM BRIEFING" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
 
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
@@ -27,9 +27,9 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
 - **Text-to-speech** — Google Cloud TTS primary (MP3 played from memory via pygame), pyttsx3 offline fallback; pre-warmed singletons, serialized `_SPEAK_LOCK`
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
-- **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as SVG ring gauges
+- **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as color-coded micro-bars in a six-column status footer; additional columns show internet connectivity, briefing lifecycle state, sync health, and live system time
 - **Pipeline state visibility** — step, label, timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
-- **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded header badge (`ConfidenceBadge`) with a per-connector tooltip
+- **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded segmented block bar in the system status footer with a per-connector hover tooltip
 - **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
 - **Demo mode** — `DEMO_MODE=true` intercepts the trigger, runs a staged simulation with static mock telemetry, and displays a badge in the HUD; no external API calls are made
 - **Atmospheric theming** — weather condition drives HUD background color, accent color, card glow, and condition icons in real time
