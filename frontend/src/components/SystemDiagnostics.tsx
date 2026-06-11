@@ -10,9 +10,8 @@ import {
   Clock,
 } from 'lucide-react'
 
-import { useSystemDiagnostics } from '../hooks/useSystemDiagnostics'
 import {
-  DEFAULT_SYSTEM_DIAGNOSTICS,
+  type SystemDiagnostics as SystemDiagnosticsPayload,
 } from '../types/telemetry'
 
 function clampPercentage(value: number): number {
@@ -58,14 +57,7 @@ function formatCpuFreq(freq: number | null | undefined): string {
   return `${freq.toFixed(1)} GHz`
 }
 
-function formatRamRatio(used: number | null | undefined, total: number | null | undefined): string {
-  if (used == null || total == null || !Number.isFinite(used) || !Number.isFinite(total) || total === 0) {
-    return 'N/A'
-  }
-  return `${used.toFixed(1)} / ${total.toFixed(1)} GB`
-}
-
-function formatDiskRatio(used: number | null | undefined, total: number | null | undefined): string {
+function formatGbRatio(used: number | null | undefined, total: number | null | undefined): string {
   if (used == null || total == null || !Number.isFinite(used) || !Number.isFinite(total) || total === 0) {
     return 'N/A'
   }
@@ -83,6 +75,7 @@ function getMicroBarColorClass(percentage: number): string {
 }
 
 interface SystemDiagnosticsProps {
+  diagnostics: SystemDiagnosticsPayload
   diagnosticsStatus: 'idle' | 'loading' | 'ready' | 'error'
   isSpeaking: boolean
   isPipelinePolling: boolean
@@ -93,6 +86,7 @@ interface SystemDiagnosticsProps {
 }
 
 export function SystemDiagnostics({
+  diagnostics,
   diagnosticsStatus,
   isSpeaking,
   isPipelinePolling,
@@ -143,9 +137,8 @@ export function SystemDiagnostics({
     }
   }, [])
 
-  const { diagnostics, status: localStatus } = useSystemDiagnostics()
-  const resolvedDiagnostics = diagnostics ?? DEFAULT_SYSTEM_DIAGNOSTICS
-  const isInitializing = localStatus === 'idle' || localStatus === 'loading'
+  const resolvedDiagnostics = diagnostics
+  const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
 
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
@@ -382,7 +375,7 @@ export function SystemDiagnostics({
                 className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
                 role="tooltip"
               >
-                RAM Allocation: {formatRamRatio(resolvedDiagnostics.ram_used, resolvedDiagnostics.ram_total)}
+                RAM Allocation: {formatGbRatio(resolvedDiagnostics.ram_used, resolvedDiagnostics.ram_total)}
               </div>
             )}
           </div>
@@ -410,7 +403,7 @@ export function SystemDiagnostics({
                 className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
                 role="tooltip"
               >
-                DISK Allocation: {formatDiskRatio(resolvedDiagnostics.disk_used, resolvedDiagnostics.disk_total)}
+                DISK Allocation: {formatGbRatio(resolvedDiagnostics.disk_used, resolvedDiagnostics.disk_total)}
               </div>
             )}
           </div>

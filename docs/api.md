@@ -77,7 +77,7 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 | `upcoming_events_count` | integer | Count of calendar events within the 48-hour briefing window |
 | `f1_sprint_active` | boolean | `true` when an F1 sprint session is scheduled this week |
 | `reminders_pending_count` | integer | Count of unread reminders included in the briefing |
-| `confidence_score` | float | Aggregate connector trust score (0–100); reduced by 10% when the F1 cache was stale |
+| `confidence_score` | float | Aggregate connector trust score (0–100); reduced by 10% when the sports client reports a stale F1 cache hit |
 | `failed_connectors` | string[] | Names of connectors that returned a failure signal: `"weather"`, `"news"`, `"email"`, `"calendar"`, `"sports"` |
 | `insights` | string[] | Cross-correlated action-oriented bullet strings produced by the Gemini `===INSIGHTS===` output section |
 
@@ -330,7 +330,7 @@ class DigestPayload(BaseModel):
     insights: list[str] = []              # Cross-correlated insight bullets from Gemini
 ```
 
-`confidence_score` is computed from the ratio of connectors that returned valid data. When only one sports sub-module is active it contributes a full weight of 1.0; when both F1 and football are enabled they each contribute 0.5. A 10% penalty is applied when the F1 cache existed before the run and was not refreshed (stale hit).
+`confidence_score` is computed from the ratio of connectors that returned valid data. When only one sports sub-module is active it contributes a full weight of 1.0; when both F1 and football are enabled they each contribute 0.5. A 10% penalty is applied when the sports client reports a stale F1 cache hit.
 
 ### `BriefingHistoryRecord`
 

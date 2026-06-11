@@ -1,13 +1,7 @@
 import type { ReactElement } from 'react'
 
-import type { SystemState } from '../types/telemetry'
-
 export type BriefingPanelProps = {
   briefing: string
-  status: SystemState
-  error: string | null
-  isLoading: boolean
-  isSpeaking: boolean
 }
 
 export function BriefingPanel({ briefing }: BriefingPanelProps): ReactElement {

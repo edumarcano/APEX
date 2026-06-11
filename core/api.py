@@ -55,8 +55,6 @@ NEWS_FAILED_RE = re.compile(r"(telemetry unavailable|offline)", re.IGNORECASE)
 EMAIL_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 CALENDAR_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 
-_F1_CACHE_PATH = Path(__file__).resolve().parent.parent / "clients" / ".f1_cache.json"
-
 app = FastAPI(title="APEX Nexus")
 
 
@@ -146,6 +144,7 @@ class PipelineState:
 
 
 global_pipeline_state = PipelineState()
+_TRIGGER_LOCK = threading.Lock()
 
 _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.json"
 _DEMO_STAGE_DELAY_SECONDS = 1.5
@@ -156,6 +155,7 @@ def _speak_and_cleanup(
     *,
     tts_override: str | None = None,
     digest: DigestPayload | None = None,
+    lock: threading.Lock | None = None,
 ) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
     if digest is not None and not is_dev_mode():
@@ -175,6 +175,9 @@ def _speak_and_cleanup(
         speaker.speak(text, tts_override=tts_override)
     finally:
         global_pipeline_state.reset()
+        if lock is not None:
+            lock.release()
+
 
 
 class RuntimeMetadata(BaseModel):
@@ -250,28 +253,11 @@ class BriefingResponse(BaseModel):
 
 
 def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
-    """Safely parse a digest sub-object with fallback defaults for missing keys."""
-    if not isinstance(raw_digest, dict):
+    """Safely parse a digest sub-object with fallback defaults on validation failure."""
+    try:
+        return DigestPayload.model_validate(raw_digest)
+    except Exception:
         return DigestPayload(confidence_score=0.0)
-
-    failed_connectors = raw_digest.get("failed_connectors", [])
-    if not isinstance(failed_connectors, list):
-        failed_connectors = []
-
-    raw_insights = raw_digest.get("insights", [])
-    if not isinstance(raw_insights, list):
-        raw_insights = []
-
-    return DigestPayload(
-        weather_archetype=raw_digest.get("weather_archetype"),
-        unread_emails_count=int(raw_digest.get("unread_emails_count", 0)),
-        upcoming_events_count=int(raw_digest.get("upcoming_events_count", 0)),
-        f1_sprint_active=bool(raw_digest.get("f1_sprint_active", False)),
-        reminders_pending_count=int(raw_digest.get("reminders_pending_count", 0)),
-        confidence_score=float(raw_digest.get("confidence_score", 0.0)),
-        failed_connectors=[str(name) for name in failed_connectors],
-        insights=[str(line) for line in raw_insights],
-    )
 
 
 def _split_sports_report(sports_report: str) -> tuple[str, str]:
@@ -294,38 +280,30 @@ def _evaluate_sports_trust(
     Sports weight is 1.0 when a single sub-module is active, or 0.5 per sub-module
     when both F1 and football are enabled.
     """
-    earned_weight = 0.0
-    total_weight = 0.0
-    sports_failed = False
-
+    active_modules: list[tuple[re.Pattern[str], str]] = []
     if MODULE_F1 and MODULE_FOOTBALL:
         f1_part, fb_part = _split_sports_report(sports_report)
-        total_weight = 1.0
-        if not SPORTS_F1_FAILED_RE.search(f1_part):
-            earned_weight += 0.5
-        else:
-            sports_failed = True
-        if not SPORTS_FB_FAILED_RE.search(fb_part):
-            earned_weight += 0.5
-        else:
-            sports_failed = True
-    elif MODULE_F1:
-        total_weight = 1.0
-        if SPORTS_F1_FAILED_RE.search(sports_report):
-            sports_failed = True
-        else:
-            earned_weight = 1.0
-    elif MODULE_FOOTBALL:
-        total_weight = 1.0
-        if SPORTS_FB_FAILED_RE.search(sports_report):
-            sports_failed = True
-        else:
-            earned_weight = 1.0
     else:
-        total_weight = 1.0
-        earned_weight = 1.0
+        f1_part, fb_part = sports_report, sports_report
 
-    return earned_weight, total_weight, sports_failed
+    if MODULE_F1:
+        active_modules.append((SPORTS_F1_FAILED_RE, f1_part))
+    if MODULE_FOOTBALL:
+        active_modules.append((SPORTS_FB_FAILED_RE, fb_part))
+
+    if not active_modules:
+        return 1.0, 1.0, False
+
+    module_weight = 1.0 / len(active_modules)
+    earned_weight = 0.0
+    sports_failed = False
+    for failure_pattern, module_report in active_modules:
+        if failure_pattern.search(module_report):
+            sports_failed = True
+        else:
+            earned_weight += module_weight
+
+    return earned_weight, 1.0, sports_failed
 
 
 def _compute_confidence_and_failures(
@@ -473,10 +451,6 @@ def _mock_briefing_history() -> list[dict[str, Any]]:
 
 def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
     """Compose a deterministic briefing string from mock telemetry fields."""
-    combined_raw_data = (
-        f"{telemetry.weather} | {telemetry.sports} | {telemetry.email} | "
-        f"{telemetry.calendar} | {telemetry.news} | {telemetry.reminders}"
-    )
     return (
         "Greetings Chief. APEX simulation controls are operational. "
         "Atmospheric sensors report seventy-two degrees with clear skies. "
@@ -511,7 +485,9 @@ def _run_demo_briefing() -> BriefingResponse:
                 "text": final_briefing,
                 "tts_override": DEMO_TTS,
                 "digest": digest,
+                "lock": _TRIGGER_LOCK,
             },
+            daemon=True,
         )
         voice_thread.start()
         voice_thread_started = True
@@ -531,6 +507,8 @@ def _run_demo_briefing() -> BriefingResponse:
     finally:
         if not voice_thread_started:
             global_pipeline_state.reset()
+            if _TRIGGER_LOCK.locked():
+                _TRIGGER_LOCK.release()
 
 
 class CreateReminderRequest(BaseModel):
@@ -612,24 +590,22 @@ def clean_for_tts(text: str) -> str:
         ASCII-only plain text with collapsed whitespace.
     """
     cleaned = text
-    cleaned = _MARKDOWN_CODE_BLOCK_PATTERN.sub(" ", cleaned)
-    cleaned = _MARKDOWN_IMAGE_PATTERN.sub(r"\1", cleaned)
-    cleaned = _MARKDOWN_LINK_PATTERN.sub(r"\1", cleaned)
-    cleaned = _MARKDOWN_INLINE_CODE_PATTERN.sub(r"\1", cleaned)
-    cleaned = _MARKDOWN_HEADER_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_BLOCKQUOTE_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_HRULE_PATTERN.sub(" ", cleaned)
-    cleaned = _MARKDOWN_LIST_MARKER_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_ORDERED_LIST_PATTERN.sub("", cleaned)
-    cleaned = _MARKDOWN_BOLD_PATTERN.sub(
-        lambda match: match.group(1) or match.group(2) or "",
-        cleaned,
+    replacements = (
+        (_MARKDOWN_CODE_BLOCK_PATTERN, " "),
+        (_MARKDOWN_IMAGE_PATTERN, r"\1"),
+        (_MARKDOWN_LINK_PATTERN, r"\1"),
+        (_MARKDOWN_INLINE_CODE_PATTERN, r"\1"),
+        (_MARKDOWN_HEADER_PATTERN, ""),
+        (_MARKDOWN_BLOCKQUOTE_PATTERN, ""),
+        (_MARKDOWN_HRULE_PATTERN, " "),
+        (_MARKDOWN_LIST_MARKER_PATTERN, ""),
+        (_MARKDOWN_ORDERED_LIST_PATTERN, ""),
+        (_MARKDOWN_BOLD_PATTERN, lambda match: match.group(1) or match.group(2) or ""),
+        (_MARKDOWN_ITALIC_PATTERN, lambda match: match.group(1) or match.group(2) or ""),
+        (_MARKDOWN_STRIKE_PATTERN, r"\1"),
     )
-    cleaned = _MARKDOWN_ITALIC_PATTERN.sub(
-        lambda match: match.group(1) or match.group(2) or "",
-        cleaned,
-    )
-    cleaned = _MARKDOWN_STRIKE_PATTERN.sub(r"\1", cleaned)
+    for pattern, replacement in replacements:
+        cleaned = pattern.sub(replacement, cleaned)
     cleaned = _NON_ASCII_PATTERN.sub(" ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
@@ -673,199 +649,210 @@ def trigger_briefing() -> BriefingResponse:
     Mirrors main.start_apex execution order. When ``DEMO_MODE`` is active,
     serves static mock telemetry through a staged simulation loop.
     """
-    if DEMO_MODE:
-        return _run_demo_briefing()
-
-    voice_thread_started = False
-    global_pipeline_state.update(1, "GATE")
-
-    if not scanner.should_run():
-        global_pipeline_state.reset()
+    if _TRIGGER_LOCK.locked():
         raise HTTPException(
-            status_code=403,
-            detail="System gate failed: scanner.should_run() is False.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pipeline run already active.",
+        )
+
+    lock_acquired = _TRIGGER_LOCK.acquire(blocking=False)
+    if not lock_acquired:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pipeline run already active.",
         )
 
     try:
-        dev_mode = is_dev_mode()
+        if DEMO_MODE:
+            return _run_demo_briefing()
 
-        if not dev_mode:
-            database.log_run()
+        voice_thread_started = False
+        global_pipeline_state.update(1, "GATE")
 
-        speaker.speak("System initialized. All modules online.")
-
-        global_pipeline_state.update(2, "COLLECTION")
-        print("[SYSTEM]: Fetching data...")
-        if FEATURE_WEATHER:
-            weather_report = weather_client.fetch_weather_data()
-        else:
-            print("[SYSTEM]: Weather module bypassed via user preference")
-            weather_report = ""
-
-        f1_cache_existed_before = False
-        f1_mtime_before: float | None = None
-        f1_mtime_after: float | None = None
-        if FEATURE_SPORTS:
-            f1_cache_existed_before = _F1_CACHE_PATH.exists()
-            if f1_cache_existed_before:
-                f1_mtime_before = os.path.getmtime(_F1_CACHE_PATH)
-            sports_report = sports_client.fetch_sports_data()
-            if _F1_CACHE_PATH.exists():
-                f1_mtime_after = os.path.getmtime(_F1_CACHE_PATH)
-        else:
-            print("[SYSTEM]: Sports module bypassed via user preference")
-            sports_report = ""
-
-        if FEATURE_NEWS:
-            news_report = news_client.fetch_news_data()
-        else:
-            print("[SYSTEM]: News module bypassed via user preference")
-            news_report = ""
-
-        if not FEATURE_EMAIL:
-            print("[SYSTEM]: Email module bypassed via user preference")
-            email_report = ""
-        else:
-            try:
-                email_service = google_auth.get_service("gmail", "v1")
-                email_data = gmail_client.get_unread_gmail_data(email_service)
-
-                count = email_data.get("count", 0)
-                items = email_data.get("emails", [])
-
-                if items:
-                    recent_emails = [
-                        f"'{email['subject']}' at {email['time']}"
-                        for email in items
-                    ]
-                    recent_emails_str = ", ".join(recent_emails)
-                else:
-                    recent_emails_str = (
-                        "Email Telemetry (24h): No unread emails"
-                    )
-
-                email_report = (
-                    f"Email Telemetry: {count} unread primary emails. "
-                    f"Most recent: {recent_emails_str}"
-                )
-            except Exception as exc:
-                print(f"[SYSTEM]: Email fetch failed: ({exc})")
-                email_report = "ERROR: Check connection"
-
-        if not FEATURE_CALENDAR:
-            print("[SYSTEM]: Calendar module bypassed via user preference")
-            calendar_report = ""
-        else:
-            try:
-                calendar_service = google_auth.get_service("calendar", "v3")
-                calendar_data = calendar_client.get_upcoming_calendar_events(
-                    calendar_service
-                )
-                if calendar_data:
-                    calendar_entries = [
-                        f"'{event['summary']}' at {event['start']}"
-                        for event in calendar_data
-                    ]
-                    calendar_report = (
-                        "Calendar Telemetry (48h): "
-                        + " | ".join(calendar_entries)
-                    )
-                else:
-                    calendar_report = (
-                        "Calendar Telemetry (48h): No upcoming events"
-                    )
-            except Exception as exc:
-                print(f"[SYSTEM]: Calendar fetch failed: ({exc})")
-                calendar_report = "ERROR: Check connection"
-
-        unread_records = database.fetch_unread_reminders()
-        if unread_records:
-            notes = [note for _, note in unread_records]
-            notes_str = ", ".join(notes)
-            memory_report = f"Pending Reminders: {notes_str}"
-        else:
-            memory_report = "No pending reminders."
-
-        combined_raw_data = (
-            f"{weather_report} | {sports_report} | {email_report} | "
-            f"{calendar_report} | {news_report} | {memory_report}"
-        )
-
-        global_pipeline_state.update(3, "SYNTHESIS")
-        print("[SYSTEM]: Synthesizing briefing...")
-
-        # Execute filler audio concurrently to hide the Gemini processing time
-        filler_thread = threading.Thread(
-            target=speaker.speak,
-            args=("Generating briefing... Please wait...",),
-        )
-        filler_thread.start()
-
-        brain_output = brain.process_telemetry(combined_raw_data)
-        final_briefing = brain_output["briefing"]
-        briefing_insights = brain_output["insights"]
-
-        filler_thread.join()
-
-        f1_cache_penalty = False
-        if FEATURE_SPORTS and MODULE_F1 and f1_cache_existed_before:
-            f1_cache_penalty = (
-                f1_mtime_before is not None
-                and f1_mtime_after is not None
-                and f1_mtime_after == f1_mtime_before
+        if not scanner.should_run():
+            global_pipeline_state.reset()
+            raise HTTPException(
+                status_code=403,
+                detail="System gate failed: scanner.should_run() is False.",
             )
 
-        confidence_score, failed_connectors = _compute_confidence_and_failures(
-            weather_report=weather_report,
-            sports_report=sports_report,
-            news_report=news_report,
-            email_report=email_report,
-            calendar_report=calendar_report,
-            f1_cache_penalty=f1_cache_penalty,
-        )
+        try:
+            dev_mode = is_dev_mode()
 
-        global_pipeline_state.update(4, "DELIVERY")
-        digest_payload = DigestPayload(
-            confidence_score=confidence_score,
-            failed_connectors=failed_connectors,
-            insights=briefing_insights,
-        )
-        voice_thread = threading.Thread(
-            target=_speak_and_cleanup,
-            kwargs={"text": final_briefing, "digest": digest_payload},
-        )
-        voice_thread.start()
-        voice_thread_started = True
+            if not dev_mode:
+                database.log_run()
 
-        if dev_mode:
-            synthesis_strategy = DEV_AI_SYNTHESIS
-            tts_strategy = DEV_TTS_PLAYBACK
-        else:
-            synthesis_strategy = "llm"
-            tts_strategy = "google"
+            speaker.speak("System initialized. All modules online.")
 
-        return BriefingResponse(
-            status="success",
-            briefing=final_briefing,
-            telemetry=TelemetryPayload(
-                weather=weather_report,
-                sports=sports_report,
-                news=news_report,
-                email=email_report,
-                calendar=calendar_report,
-                reminders=memory_report,
-            ),
-            digest=digest_payload,
-            metadata=RuntimeMetadata(
-                dev_mode_active=dev_mode,
-                demo_mode_active=False,
-                synthesis_strategy=synthesis_strategy,
-                tts_strategy=tts_strategy,
-            ),
-        )
+            global_pipeline_state.update(2, "COLLECTION")
+            print("[SYSTEM]: Fetching data...")
+            if FEATURE_WEATHER:
+                weather_report = weather_client.fetch_weather_data()
+            else:
+                print("[SYSTEM]: Weather module bypassed via user preference")
+                weather_report = ""
+
+            if FEATURE_SPORTS:
+                sports_report, f1_cache_refreshed = sports_client.fetch_sports_data()
+            else:
+                print("[SYSTEM]: Sports module bypassed via user preference")
+                sports_report = ""
+                f1_cache_refreshed = True
+
+            if FEATURE_NEWS:
+                news_report = news_client.fetch_news_data()
+            else:
+                print("[SYSTEM]: News module bypassed via user preference")
+                news_report = ""
+
+            if not FEATURE_EMAIL:
+                print("[SYSTEM]: Email module bypassed via user preference")
+                email_report = ""
+            else:
+                try:
+                    email_service = google_auth.get_service("gmail", "v1")
+                    email_data = gmail_client.get_unread_gmail_data(email_service)
+
+                    count = email_data.get("count", 0)
+                    items = email_data.get("emails", [])
+
+                    if items:
+                        recent_emails = [
+                            f"'{email['subject']}' at {email['time']}"
+                            for email in items
+                        ]
+                        recent_emails_str = ", ".join(recent_emails)
+                    else:
+                        recent_emails_str = (
+                            "Email Telemetry (24h): No unread emails"
+                        )
+
+                    email_report = (
+                        f"Email Telemetry: {count} unread primary emails. "
+                        f"Most recent: {recent_emails_str}"
+                    )
+                except Exception as exc:
+                    print(f"[SYSTEM]: Email fetch failed: ({exc})")
+                    email_report = "ERROR: Check connection"
+
+            if not FEATURE_CALENDAR:
+                print("[SYSTEM]: Calendar module bypassed via user preference")
+                calendar_report = ""
+            else:
+                try:
+                    calendar_service = google_auth.get_service("calendar", "v3")
+                    calendar_data = calendar_client.get_upcoming_calendar_events(
+                        calendar_service
+                    )
+                    if calendar_data:
+                        calendar_entries = [
+                            f"'{event['summary']}' at {event['start']}"
+                            for event in calendar_data
+                        ]
+                        calendar_report = (
+                            "Calendar Telemetry (48h): "
+                            + " | ".join(calendar_entries)
+                        )
+                    else:
+                        calendar_report = (
+                            "Calendar Telemetry (48h): No upcoming events"
+                        )
+                except Exception as exc:
+                    print(f"[SYSTEM]: Calendar fetch failed: ({exc})")
+                    calendar_report = "ERROR: Check connection"
+
+            unread_records = database.fetch_unread_reminders()
+            if unread_records:
+                notes = [note for _, note in unread_records]
+                notes_str = ", ".join(notes)
+                memory_report = f"Pending Reminders: {notes_str}"
+            else:
+                memory_report = "No pending reminders."
+
+            combined_raw_data = (
+                f"{weather_report} | {sports_report} | {email_report} | "
+                f"{calendar_report} | {news_report} | {memory_report}"
+            )
+
+            global_pipeline_state.update(3, "SYNTHESIS")
+            print("[SYSTEM]: Synthesizing briefing...")
+
+            # Execute filler audio concurrently to hide the Gemini processing time
+            filler_thread = threading.Thread(
+                target=speaker.speak,
+                args=("Generating briefing... Please wait...",),
+                daemon=True,
+            )
+            filler_thread.start()
+
+            brain_output = brain.process_telemetry(combined_raw_data)
+            final_briefing = brain_output["briefing"]
+            briefing_insights = brain_output["insights"]
+
+            filler_thread.join()
+
+            f1_cache_penalty = FEATURE_SPORTS and MODULE_F1 and not f1_cache_refreshed
+
+            confidence_score, failed_connectors = _compute_confidence_and_failures(
+                weather_report=weather_report,
+                sports_report=sports_report,
+                news_report=news_report,
+                email_report=email_report,
+                calendar_report=calendar_report,
+                f1_cache_penalty=f1_cache_penalty,
+            )
+
+            global_pipeline_state.update(4, "DELIVERY")
+            digest_payload = DigestPayload(
+                confidence_score=confidence_score,
+                failed_connectors=failed_connectors,
+                insights=briefing_insights,
+            )
+            voice_thread = threading.Thread(
+                target=_speak_and_cleanup,
+                kwargs={
+                    "text": final_briefing,
+                    "digest": digest_payload,
+                    "lock": _TRIGGER_LOCK,
+                },
+                daemon=True,
+            )
+            voice_thread.start()
+            voice_thread_started = True
+
+            if dev_mode:
+                synthesis_strategy = DEV_AI_SYNTHESIS
+                tts_strategy = DEV_TTS_PLAYBACK
+            else:
+                synthesis_strategy = "llm"
+                tts_strategy = "google"
+
+            return BriefingResponse(
+                status="success",
+                briefing=final_briefing,
+                telemetry=TelemetryPayload(
+                    weather=weather_report,
+                    sports=sports_report,
+                    news=news_report,
+                    email=email_report,
+                    calendar=calendar_report,
+                    reminders=memory_report,
+                ),
+                digest=digest_payload,
+                metadata=RuntimeMetadata(
+                    dev_mode_active=dev_mode,
+                    demo_mode_active=False,
+                    synthesis_strategy=synthesis_strategy,
+                    tts_strategy=tts_strategy,
+                ),
+            )
+        finally:
+            if not voice_thread_started:
+                global_pipeline_state.reset()
     finally:
         if not voice_thread_started:
-            global_pipeline_state.reset()
+            if _TRIGGER_LOCK.locked():
+                _TRIGGER_LOCK.release()
 
 
 @app.get("/api/v1/briefings/history", response_model=list[BriefingHistoryRecord])

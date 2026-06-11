@@ -54,24 +54,19 @@ DevTtsPlaybackMode = Literal["pyttsx3", "google", "elevenlabs"]
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
     """
-    Normalize an environment string into a boolean with bounded retries.
+    Normalize an environment string into a boolean.
 
-    Strips whitespace and optional surrounding quotes on each pass. Unknown
+    Strips whitespace and optional surrounding quotes. Unknown
     values log a warning and return ``default``.
     """
     if raw is None:
         return default
 
-    candidate = raw
-    for _ in range(3):
-        normalized = candidate.strip().lower().strip("'\"")
-        if normalized in _TRUTHY_ENV_VALUES:
-            return True
-        if normalized in _FALSY_ENV_VALUES:
-            return False
-        if normalized == candidate.strip().lower():
-            break
-        candidate = normalized
+    normalized = raw.strip().lower().strip("'\"")
+    if normalized in _TRUTHY_ENV_VALUES:
+        return True
+    if normalized in _FALSY_ENV_VALUES:
+        return False
 
     _LOGGER.warning(
         "Invalid %s=%r; using default %s.",
@@ -196,14 +191,9 @@ GOOGLE_VOICE_ID: Final[str] = tts_settings.get("google_voice_id", "")
 CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")
 
 
-def _all_features_false() -> dict[str, bool]:
-    """Return a map of every known feature key set to ``False``."""
-    return dict.fromkeys(_FEATURE_KEYS, False)
-
-
 def load_feature_flags() -> dict[str, bool]:
     """Load feature toggles from module-level ``_CONFIG_DATA``."""
-    result = _all_features_false()
+    result = dict.fromkeys(_FEATURE_KEYS, False)
     features = _CONFIG_DATA.get("features")
     if not isinstance(features, dict):
         if features is not None:
@@ -218,13 +208,10 @@ def load_feature_flags() -> dict[str, bool]:
             _LOGGER.warning('Feature %r must be a boolean; ignoring invalid value.', key)
     return result
 
-def _all_modules_false() -> dict[str, bool]:
-    """Return a map of every known module key set to ``False``."""
-    return dict.fromkeys(_MODULE_KEYS, False)
 
 def load_module_flags() -> dict[str, bool]:
     """Load granular sub-module toggles from module-level ``_CONFIG_DATA``."""
-    result = _all_modules_false()
+    result = dict.fromkeys(_MODULE_KEYS, False)
     modules = _CONFIG_DATA.get("modules")
     if not isinstance(modules, dict):
         if modules is not None:

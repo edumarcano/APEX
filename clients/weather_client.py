@@ -22,7 +22,7 @@ def fetch_weather_data():
     url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}&units=imperial"
     
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10.0)
         data = response.json()
         
         if response.status_code == 200:
@@ -33,7 +33,7 @@ def fetch_weather_data():
         else:
             return f"Weather API error: {data.get('message', 'Unknown error')}."
             
-    except Exception as e:
+    except Exception:
         return "Failed to connect to Weather API."
 
 if __name__ == "__main__":
