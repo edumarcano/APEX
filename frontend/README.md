@@ -40,17 +40,13 @@ frontend/
 │   ├── types/
 │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload,
 │   │                                #   SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
-│   ├── context/
-│   │   └── AtmosphericThemeContext.tsx  # React context weather theme provider
 │   ├── components/
 │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
 │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
-│   │   ├── ConfidenceBadge.tsx      # Header confidence score badge with connector tooltip
 │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
 │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
-│   │   ├── RingGauge.tsx            # Stateless SVG circular gauge with arc and N/A fallback
 │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator
 │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   └── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal

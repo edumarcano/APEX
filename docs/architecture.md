@@ -102,17 +102,13 @@ apex/
 │   │   │   └── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
 │   │   ├── types/
 │   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
-│   │   ├── context/
-│   │   │   └── AtmosphericThemeContext.tsx  # React context theme provider
 │   │   ├── components/
 │   │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
 │   │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
-│   │   │   ├── ConfidenceBadge.tsx      # Header confidence score badge with connector tooltip
 │   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
-│   │   │   ├── SystemDiagnostics.tsx    # Three-gauge CPU/RAM/disk grid with severity glow
-│   │   │   ├── RingGauge.tsx            # Stateless SVG circular gauge with arc and N/A fallback
+│   │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
 │   │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator (stasis line → gyro rings)
 │   │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   │   └── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
@@ -246,12 +242,6 @@ Renders the synthesized briefing text with a `clip-path` curtain-reveal animatio
 
 `BriefingPanel` is wrapped in a collapsible container in `App.tsx` (`showSubtitleBar = isSpeaking && activeStep === 4`). The container uses `max-h-0 opacity-0` when collapsed and `max-h-24 opacity-100` when visible, with a 700 ms ease-in-out transition. The component is not rendered in the DOM unless the delivery condition is met.
 
-### `ConfidenceBadge.tsx`
-
-Stateless confidence score badge component. Displays the `confidenceScore` as a rounded integer percentage with three-tier color coding: emerald (≥ 90%), amber (≥ 50%), red (< 50%). When status is not `success`, displays `—%` in a neutral gray. A tooltip opens on hover or focus, listing the names of any `failedConnectors`. Keyboard-accessible with `tabIndex=0`.
-
-> **Note:** This component is not currently mounted by `App.tsx`. Sync health is rendered inside `SystemDiagnostics` (Column 4). `ConfidenceBadge.tsx` exists in the repository but is unused.
-
 ### `TelemetryCard.tsx`
 
 Shared card frame. Additional responsibilities:
@@ -272,12 +262,6 @@ Shared card frame. Additional responsibilities:
 6. **System Time** — live clock updated every 1,000 ms via `setInterval`.
 
 Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `confidenceScore`, `pipelineStep`, and `failedConnectors` as props from `App.tsx`. Pulls hardware metric values internally via a second `useSystemDiagnostics()` call.
-
-### `RingGauge.tsx`
-
-Stateless SVG circular gauge. Accepts `percentage`, `label`, `subText`, `isUnavailable`, and `className` props. Renders a track circle and an indicator arc whose `strokeDashoffset` is derived from the clamped percentage. Color thresholds match `SystemDiagnostics`: blue (< 80%), amber (≥ 80%), red (≥ 90%). Renders an N/A dashed fallback when `isUnavailable` is `true` or `percentage` is non-finite.
-
-> **Note:** `RingGauge.tsx` is not currently imported by any mounted component. It exists in the repository but is unused.
 
 ### `ReminderTerminal.tsx`
 
@@ -318,18 +302,6 @@ Polls `GET /api/v1/diagnostics` every 1,000 ms. Exposes `{ diagnostics, status }
 
 ## Context and Types
 
-### `AtmosphericThemeContext.tsx`
-
-Scans the weather string for exact substring tokens in priority order and resolves an `AtmosphericTheme`:
-
-| Token | `bgColors` | `accentColor` | `condition` |
-|---|---|---|---|
-| `"Thunderstorm"` | `#1a202c` (dark charcoal) | `#06b6d4` (cyan) | `stormy` |
-| `"Clear"` | `#020617` (deep night) | `#eab308` (amber) | `clear` |
-| _(no match)_ | `#0a0f1d` (default navy) | `#3b82f6` (blue) | `neutral` |
-
-`App.tsx` passes `data?.weather` as the `weatherReport` prop. `useAtmosphericTheme()` exposes `{ theme, updateThemeFromTelemetry }` to any descendant.
-
 ### `telemetry.ts`
 
 Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `PipelineState`, `SystemDiagnostics`, `AtmosphericTheme`, `WeatherConditionArchetype`, `DigestPayload`, `ActiveReminder`.
@@ -347,6 +319,8 @@ Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `Pipelin
 ### Weather Condition Micro-Climate
 
 `resolveWeatherCondition()` in `useApexData.ts` maps the parsed condition detail string to a `WeatherConditionArchetype`. This archetype drives per-card animated background glow, border color, and condition icon (`CloudLightning`, `CloudRain`, `Cloud`, `Sun`, `Moon` from lucide-react) in `TelemetryCard.tsx`.
+
+Theming is resolved directly inside `useApexData.ts` and passed as a prop through the component tree. There is no React Context provider for theme state.
 
 ### Variable Typography Engine (VTE)
 
@@ -440,12 +414,7 @@ When all connectors are disabled, the score defaults to `100.0`.
 
 ### F1 Cache Penalty
 
-A 10% penalty is applied when:
-
-1. The F1 cache file (`clients/.f1_cache.json`) existed before the sports connector ran, and
-2. Its modification time was unchanged after the connector returned (stale cache hit, no network refresh).
-
-When both conditions are true: `confidence_score *= 0.90`.
+A 10% penalty is applied when the sports client reports a stale cache hit. `sports_client.fetch_sports_data()` returns an explicit boolean `f1_cache_refreshed` flag. When this flag is `False`, `api.py` applies the penalty: `confidence_score *= 0.90`. The sports client sets the flag to `True` only when a live network fetch to the Jolpica/Ergast API succeeds and writes a new cache entry; a fresh cache hit or any network failure that falls back to disk leaves the flag `False`.
 
 ### Output
 
