@@ -101,13 +101,15 @@ apex/
 │   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state
 │   │   │   └── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
 │   │   ├── types/
-│   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
+│   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   │   ├── context/
 │   │   │   └── AtmosphericThemeContext.tsx  # React context theme provider
 │   │   ├── components/
 │   │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
+│   │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
+│   │   │   ├── ConfidenceBadge.tsx      # Header confidence score badge with connector tooltip
 │   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
 │   │   │   ├── SystemDiagnostics.tsx    # Three-gauge CPU/RAM/disk grid with severity glow
 │   │   │   ├── RingGauge.tsx            # Stateless SVG circular gauge with arc and N/A fallback

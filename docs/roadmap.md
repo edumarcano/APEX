@@ -195,7 +195,7 @@ Replace the monolithic briefing presentation with structured intelligence digest
 
 ---
 
-## v1.9.0 - Dormant Trigger Foundation
+## v1.9.0 - Standby Core & Unified Status Deck
 
 **Status:** Planned
 
