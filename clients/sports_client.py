@@ -20,33 +20,12 @@ except Exception:
 
 
 def _get_f1_cache_path() -> str:
-    """Build the absolute filesystem path for the F1 cache file.
-
-    Args:
-        None
-
-    Returns:
-        str: Absolute path to `.f1_cache.json` in the `clients` directory.
-
-    Raises:
-        None.
-    """
+    # Resolve the on-disk cache path for F1 telemetry.
     return os.path.join(os.path.dirname(__file__), F1_CACHE_FILENAME)
 
 
 def _read_f1_cache() -> Optional[Dict[str, Any]]:
-    """Read and deserialize cached F1 telemetry data from disk.
-
-    Args:
-        None
-
-    Returns:
-        Optional[Dict[str, Any]]: Parsed cache payload if available and valid;
-            otherwise `None`.
-
-    Raises:
-        None: All file and JSON parsing errors are handled internally.
-    """
+    # Load cached F1 telemetry from disk if available and valid.
     cache_path = _get_f1_cache_path()
     if not os.path.exists(cache_path):
         return None
@@ -59,18 +38,7 @@ def _read_f1_cache() -> Optional[Dict[str, Any]]:
 
 
 def _write_f1_cache(f1_map: Dict[str, Any]) -> None:
-    """Persist the F1 telemetry map to the local cache file.
-
-    Args:
-        f1_map (Dict[str, Any]): Telemetry map to serialize into the cache.
-
-    Returns:
-        None: This function writes data as a side effect.
-
-    Raises:
-        OSError: If the cache file cannot be written.
-        TypeError: If `f1_map` contains non-serializable values.
-    """
+    # Persist the normalized F1 telemetry map to local cache.
     try:
         cache_payload = {
             "cached_at": datetime.now(timezone.utc).isoformat(),
@@ -84,19 +52,7 @@ def _write_f1_cache(f1_map: Dict[str, Any]) -> None:
 
 
 def _is_f1_cache_fresh(cache_payload: Dict[str, Any]) -> bool:
-    """Determine whether the cache payload is still within the TTL window.
-
-    Args:
-        cache_payload (Dict[str, Any]): Cached payload containing `cached_at`
-            metadata and telemetry fields.
-
-    Returns:
-        bool: `True` when the payload timestamp is within 24 hours; otherwise
-            `False`.
-
-    Raises:
-        None: Invalid timestamp formats are handled and evaluated as stale.
-    """
+    # Check whether cached F1 data is still within the TTL window.
     cached_at_raw = cache_payload.get("cached_at")
     if not isinstance(cached_at_raw, str):
         return False
@@ -114,19 +70,7 @@ def _is_f1_cache_fresh(cache_payload: Dict[str, Any]) -> bool:
 
 
 def _safe_parse_utc_datetime(date_value: str, time_value: str) -> Optional[datetime]:
-    """Safely parse UTC date and time strings into a timezone-aware datetime.
-
-    Args:
-        date_value (str): ISO-like race date string (e.g., `YYYY-MM-DD`).
-        time_value (str): ISO-like UTC time string (e.g., `HH:MM:SSZ`).
-
-    Returns:
-        Optional[datetime]: Parsed UTC datetime when inputs are valid;
-            otherwise `None`.
-
-    Raises:
-        None: Parsing errors are handled and return `None`.
-    """
+    # Parse race date/time strings into a timezone-aware UTC datetime.
     if not date_value:
         return None
 
@@ -139,18 +83,7 @@ def _safe_parse_utc_datetime(date_value: str, time_value: str) -> Optional[datet
 
 
 def _format_est_edt(dt_utc: Optional[datetime]) -> str:
-    """Format a UTC datetime into an Eastern time display string.
-
-    Args:
-        dt_utc (Optional[datetime]): UTC datetime to convert and format.
-
-    Returns:
-        str: Human-readable Eastern date-time string, or `Unscheduled` when
-            input is `None`.
-
-    Raises:
-        None.
-    """
+    # Convert UTC race datetime into human-readable Eastern time text.
     if dt_utc is None:
         return "Unscheduled"
 
@@ -159,18 +92,7 @@ def _format_est_edt(dt_utc: Optional[datetime]) -> str:
 
 
 def _relative_week_label(dt_utc: Optional[datetime]) -> str:
-    """Generate a relative week label for the given race datetime.
-
-    Args:
-        dt_utc (Optional[datetime]): UTC race datetime used to compute week
-            offset from current local Eastern time.
-
-    Returns:
-        str: One of `This week`, `Next week`, `In X weeks`, or `Unscheduled`.
-
-    Raises:
-        None.
-    """
+    # Compute a relative week label for the race in Eastern time.
     if dt_utc is None:
         return "Unscheduled"
 
@@ -188,19 +110,7 @@ def _relative_week_label(dt_utc: Optional[datetime]) -> str:
 
 
 def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
-    """Build the normalized telemetry map for the next F1 race payload.
-
-    Args:
-        race (Dict[str, Any]): Race dictionary from the Jolpica/Ergast response.
-
-    Returns:
-        Dict[str, Any]: Normalized F1 telemetry map including race details,
-            Eastern-formatted schedule values, relative week string, and sprint
-            scheduling fields.
-
-    Raises:
-        None: Missing or malformed fields are handled with safe defaults.
-    """
+    # Normalize the next-race payload into the F1 telemetry map shape.
     race_dt_utc = _safe_parse_utc_datetime(race.get("date", ""), race.get("time", ""))
     sprint = race.get("Sprint")
     sprint_available = isinstance(sprint, dict)
@@ -306,12 +216,11 @@ def fetch_sports_data() -> tuple[str, bool]:
                             match['utcDate'].replace('Z', '+00:00')
                         )
                         day = match_dt.day
-                        if 11 <= day <= 13:
-                            suffix = 'th'
-                        else:
-                            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(
-                                day % 10, 'th'
-                            )
+                        suffix = (
+                            'th'
+                            if 11 <= day % 100 <= 13
+                            else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+                        )
                         fixture_date = (
                             match_dt.strftime('%A, %B ')
                             + f"{day}{suffix}"

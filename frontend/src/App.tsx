@@ -398,10 +398,10 @@ export default function App(): ReactElement {
               {/* COLUMN 2: CENTER REACTOR */}
               <div className="relative z-[var(--z-core-logo)] flex flex-col items-center gap-4 xl:col-span-1 xl:gap-6 xl:min-h-0">
                 <BriefingDigest
-                  insights={data?.activeReminders ? (data.activeReminders.length > 0 ? [
-                    ...data.activeReminders.map(r => `Reminder: ${r.note}`),
-                    ...(data.digest?.insights ?? [])
-                  ] : (data.digest?.insights ?? [])) : (data?.digest?.insights ?? [])}
+                  insights={[
+                    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
+                    ...(data?.digest?.insights ?? []),
+                  ]}
                   status={status}
                   isLoading={isTriggerLoading}
                   className="flex-none w-full xl:flex-1 xl:min-h-0"

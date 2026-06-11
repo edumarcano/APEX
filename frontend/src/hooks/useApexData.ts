@@ -42,10 +42,6 @@ function parseReminderRecords(body: unknown): ReminderRecord[] {
   return records
 }
 
-function toActiveReminders(records: ReminderRecord[]): ActiveReminder[] {
-  return records.map((record) => ({ id: record.id, note: record.note }))
-}
-
 function assembleRemindersTelemetry(records: ReminderRecord[]): string {
   if (records.length === 0) {
     return 'No pending reminders.'
@@ -53,17 +49,6 @@ function assembleRemindersTelemetry(records: ReminderRecord[]): string {
 
   const notes = records.map((record) => record.note).join(', ')
   return `Pending Reminders: ${notes}`
-}
-
-function remindersFromRecords(records: ReminderRecord[]): {
-  activeReminders: ActiveReminder[]
-  reminders: string
-} {
-  const activeReminders = toActiveReminders(records)
-  return {
-    activeReminders,
-    reminders: assembleRemindersTelemetry(records),
-  }
 }
 
 function createStandbyTelemetryPayload(
@@ -215,7 +200,8 @@ export function useApexData(): UseApexDataReturn {
   const synthesisAbortRef = useRef<AbortController | null>(null)
 
   const applyReminderRecords = useCallback((records: ReminderRecord[]): void => {
-    const { activeReminders, reminders } = remindersFromRecords(records)
+    const activeReminders = records.map((record) => ({ id: record.id, note: record.note }))
+    const reminders = assembleRemindersTelemetry(records)
 
     setState((prev) => ({
       ...prev,
@@ -256,7 +242,7 @@ export function useApexData(): UseApexDataReturn {
         id: reminder.id,
         note: reminder.note,
       }))
-      const { reminders } = remindersFromRecords(nextRecords)
+      const reminders = assembleRemindersTelemetry(nextRecords)
 
       return {
         ...prev,
@@ -300,7 +286,7 @@ export function useApexData(): UseApexDataReturn {
           id: reminder.id,
           note: reminder.note,
         }))
-        const { reminders } = remindersFromRecords(nextRecords)
+        const reminders = assembleRemindersTelemetry(nextRecords)
 
         return {
           ...prev,
@@ -394,28 +380,10 @@ export function useApexData(): UseApexDataReturn {
         digest?: unknown
       }
       const digest = (body as { digest?: unknown })?.digest
-      const insights = Array.isArray(
-        digest &&
-          typeof digest === 'object' &&
-          (digest as { insights?: unknown }).insights,
-      )
-        ? (digest as { insights: unknown[] }).insights.map(String)
-        : []
-      const confidenceScore =
-        digest &&
-        typeof digest === 'object' &&
-        typeof (digest as { confidence_score?: unknown }).confidence_score ===
-          'number'
-          ? (digest as { confidence_score: number }).confidence_score
-          : 100.0
-      const rawFailedConnectors =
-        digest &&
-        typeof digest === 'object' &&
-        Array.isArray(
-          (digest as { failed_connectors?: unknown }).failed_connectors,
-        )
-          ? (digest as { failed_connectors: unknown[] }).failed_connectors
-          : []
+      const d = digest && typeof digest === 'object' ? (digest as Record<string, unknown>) : {}
+      const insights = Array.isArray(d.insights) ? d.insights.map(String) : []
+      const confidenceScore = typeof d.confidence_score === 'number' ? d.confidence_score : 100.0
+      const rawFailedConnectors = Array.isArray(d.failed_connectors) ? d.failed_connectors : []
       const failedConnectors = rawFailedConnectors.map(String)
       const telemetry = payload.telemetry
       const metadata =
@@ -449,7 +417,8 @@ export function useApexData(): UseApexDataReturn {
         reminderRecords = []
       }
 
-      const { activeReminders, reminders } = remindersFromRecords(reminderRecords)
+      const activeReminders = reminderRecords.map((record) => ({ id: record.id, note: record.note }))
+      const reminders = assembleRemindersTelemetry(reminderRecords)
 
       const weatherDetail = resolveWeatherDetail(weatherReport)
 
@@ -528,7 +497,8 @@ export function useApexData(): UseApexDataReturn {
           return
         }
 
-        const { activeReminders, reminders } = remindersFromRecords(records)
+        const activeReminders = records.map((record) => ({ id: record.id, note: record.note }))
+        const reminders = assembleRemindersTelemetry(records)
 
         setState((prev) => {
           if (prev.status !== 'idle') {
