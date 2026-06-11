@@ -176,7 +176,7 @@ export function SystemDiagnostics({
   } else if (status === 'success' && !isSpeaking) {
     briefingStateText = 'Complete'
     briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+      <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
     )
   } else {
     briefingStateText = 'Standby'
@@ -237,7 +237,7 @@ export function SystemDiagnostics({
   const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
 
   return (
-    <footer className="w-full border border-white/5 bg-zinc-950/40 backdrop-blur-md rounded-xl p-4 mt-auto z-40 select-none">
+    <footer className="w-full border border-white/5 bg-zinc-950/40 backdrop-blur-md rounded-xl p-4 mt-auto z-40 select-none transition-all duration-700 ease-in-out hover-blue-medium">
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
 
         {/* Column 1: Title */}
