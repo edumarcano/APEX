@@ -4,7 +4,18 @@ import ctypes
 import io
 import os
 import threading
+import wave
 from typing import Any
+
+try:
+    from kokoro_onnx import Kokoro
+except ImportError:
+    Kokoro = None  # type: ignore[misc, assignment]
+
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore[assignment]
 
 # Headless SDL so pygame.mixer can init without a display
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -18,7 +29,9 @@ from core import config
 load_dotenv(dotenv_path=config.ENV_PATH)
 
 _SPEAK_LOCK = threading.Lock()
+_KOKORO_LOCK = threading.Lock()
 _GOOGLE_TTS_CLIENT: Any | None = None
+_KOKORO_CLIENT: Kokoro | None = None
 
 
 def _infer_language_code(voice_id: str) -> str:
@@ -36,6 +49,50 @@ def _warm_system_subsystems() -> None:
         print("[SPEAKER] Pygame hardware mixer channel pre-warmed successfully.")
     except Exception as exc:
         print(f"[SPEAKER] Pygame mixer pre-warm failed ({type(exc).__name__}).")
+
+
+def _get_kokoro_client() -> Kokoro:
+    """Return the thread-safe singleton Kokoro ONNX session."""
+    global _KOKORO_CLIENT
+
+    if Kokoro is None:
+        raise ImportError("kokoro-onnx is not installed.")
+
+    if _KOKORO_CLIENT is None:
+        with _KOKORO_LOCK:
+            if _KOKORO_CLIENT is None:
+                weights_dir = (config.PROJECT_ROOT / "core" / "weights" / "kokoro").resolve()
+                model_path = (weights_dir / "kokoro-v1.0.onnx").resolve()
+                voices_path = (weights_dir / "voices-v1.0.bin").resolve()
+                _KOKORO_CLIENT = Kokoro(str(model_path), str(voices_path))
+
+    return _KOKORO_CLIENT
+
+
+def _warm_local_kokoro() -> None:
+    """Pre-warm the local Kokoro ONNX client in a background daemon thread."""
+    def _warm() -> None:
+        try:
+            _get_kokoro_client()
+            print("[SPEAKER] Local Kokoro ONNX client pre-warmed successfully.")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[SPEAKER] Kokoro client pre-warm bypassed or failed ({type(exc).__name__}).")
+
+    threading.Thread(target=_warm, daemon=True).start()
+
+
+def _convert_samples_to_wav_bytes(samples: np.ndarray, sample_rate: int) -> bytes:
+    """Encode float32 PCM samples into in-memory WAV bytes."""
+    pcm16 = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16)
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm16.tobytes())
+
+    return buffer.getvalue()
 
 
 def _warm_cloud_clients() -> None:
@@ -110,6 +167,27 @@ def _play_audio_bytes(data: bytes) -> None:
             unload()
 
 
+def _speak_kokoro_local(text: str) -> None:
+    """Synthesize and play text via the in-process Kokoro ONNX engine."""
+    try:
+        client = _get_kokoro_client()
+        samples, sample_rate = client.create(
+            text,
+            voice="af_sky",
+            speed=1.0,
+            lang="en-us",
+        )
+        wav_bytes = _convert_samples_to_wav_bytes(samples, sample_rate)
+        _play_audio_bytes(wav_bytes)
+        print("[SPEAKER] Local Kokoro ONNX playback completed.")
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
+            "falling back to local pyttsx3."
+        )
+        _speak_pyttsx3_local(text)
+
+
 def _speak_pyttsx3_local(text: str) -> None:
     """Speak text with a thread-local pyttsx3 engine."""
     if os.name == "nt":
@@ -179,6 +257,11 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         _speak_pyttsx3_local(text)
         return
 
+    if normalized == "kokoro":
+        print("[SPEAKER] Routing to local Kokoro ONNX engine.")
+        _speak_kokoro_local(text)
+        return
+
     print(
         f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
         "defaulting to local pyttsx3."
@@ -218,6 +301,7 @@ def speak(text: str, *, tts_override: str | None = None) -> None:
 
 _warm_system_subsystems()
 _warm_cloud_clients()
+_warm_local_kokoro()
 
 
 if __name__ == "__main__":

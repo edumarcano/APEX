@@ -12,3 +12,5 @@ frontend/node_modules/
 clients/.f1_cache.json
 digest.txt
 repomix-output.xml
+bin/
+weights/
