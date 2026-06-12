@@ -179,7 +179,7 @@ Two warm-up functions run at module import time:
 2. If `DEV_MODE=true`, route to `DEV_TTS_PLAYBACK`.
 3. Otherwise route to `PRIMARY_TTS` from `config.json`.
 
-`_route_tts_playback` handles `"google"` (tries cloud, falls back to pyttsx3 on failure), `"pyttsx3"` (direct local), and `"elevenlabs"` (logs a notice and returns without audio; not yet deployed).
+`_route_tts_playback` handles `"google"` (tries cloud, falls back to pyttsx3 on failure), and `"pyttsx3"` (direct local).
 
 `is_speaking()` returns `True` when `_SPEAK_LOCK` is held or `pygame.mixer.music.get_busy()` is active. This is the value exposed through `GET /api/v1/status`.
 

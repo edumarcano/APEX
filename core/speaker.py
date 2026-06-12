@@ -179,13 +179,6 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         _speak_pyttsx3_local(text)
         return
 
-    if normalized == "elevenlabs":
-        print(
-            "[SPEAKER] elevenlabs routing placeholder — "
-            "ElevenLabs pipeline not yet deployed."
-        )
-        return
-
     print(
         f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
         "defaulting to local pyttsx3."

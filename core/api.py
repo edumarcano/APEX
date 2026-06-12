@@ -191,7 +191,7 @@ class RuntimeMetadata(BaseModel):
         description="Active briefing synthesis backend (dev config or production default).",
     )
     tts_strategy: str = Field(
-        description="Active text-to-speech backend (dev config or production default).",
+        description="Active text-to-speech backend (pyttsx3 or google).",
     )
 
 
