@@ -11,6 +11,8 @@ from core.config import ENABLE_STARTUP_GATE, ENV_PATH, is_dev_mode
 load_dotenv(dotenv_path=ENV_PATH)
 
 COOLDOWN_SECONDS = 3600
+CPU_THROTTLE_LIMIT = 80.0
+RAM_THROTTLE_LIMIT = 85.0
 
 
 def get_current_ssid() -> str | None:
@@ -96,6 +98,34 @@ def sample_system_vitals() -> dict[str, float]:
     return vitals
 
 
+def is_system_throttled() -> bool:
+    """
+    Assess whether CPU or RAM utilization exceeds hardware throttle thresholds.
+
+    RAM is checked first; sustained high CPU requires two sequential samples
+    spaced 100ms apart to both exceed the CPU limit.
+
+    Returns:
+        bool: True when throttling thresholds are met, False otherwise or on error.
+    """
+    try:
+        try:
+            ram_percent = float(psutil.virtual_memory().percent)
+        except Exception:
+            ram_percent = 0.0
+
+        if ram_percent >= RAM_THROTTLE_LIMIT:
+            return True
+
+        cpu_sample_1 = float(psutil.cpu_percent(interval=0.1))
+        cpu_sample_2 = float(psutil.cpu_percent(interval=0.1))
+
+        return cpu_sample_1 > CPU_THROTTLE_LIMIT and cpu_sample_2 > CPU_THROTTLE_LIMIT
+    except Exception as exc:
+        print(f"[SCANNER]: Hardware throttle assessment failed: {exc}")
+        return False
+
+
 def _enforce_production_gate() -> bool:
     """Run Wi-Fi, AC power, and cooldown checks when the startup gate is enabled."""
     current_wifi = get_current_ssid()
@@ -154,5 +184,19 @@ def should_run() -> bool:
 
 
 if __name__ == "__main__":
+    vitals = sample_system_vitals()
+    print(
+        f"[SCANNER]: Vitals snapshot — CPU: {vitals['cpu']}%, "
+        f"RAM: {vitals['ram']}% ({vitals['ram_used']}/{vitals['ram_total']} GB)"
+    )
+    print(
+        f"[SCANNER]: Throttle limits — CPU: {CPU_THROTTLE_LIMIT}%, "
+        f"RAM: {RAM_THROTTLE_LIMIT}%"
+    )
+    throttled = is_system_throttled()
+    print(f"[SCANNER]: Hardware throttle active: {throttled}")
+
     if should_run():
         print("[SCANNER]: Checks passed.")
+    else:
+        print("[SCANNER]: Checks failed.")
