@@ -1,16 +1,25 @@
 import { useId, type ReactElement } from 'react'
 
+import type { TtsEngine } from '../types/telemetry'
+
 export interface VocalOrbProps {
   isSpeaking: boolean
+  activeTtsEngine?: TtsEngine
+  systemLoadThrottled?: boolean
   className?: string
 }
 
 export function VocalOrb({
   isSpeaking,
+  activeTtsEngine = 'google',
+  systemLoadThrottled = false,
   className,
 }: VocalOrbProps): ReactElement {
   const filterId = useId().replace(/:/g, '')
   const glowFilter = `url(#${filterId})`
+
+  const isLocalEngine =
+    activeTtsEngine === 'piper' || activeTtsEngine === 'pyttsx3'
 
   const svgClassName = [
     'overflow-visible fill-none',
@@ -18,8 +27,12 @@ export function VocalOrb({
   ].join(' ')
 
   const stasisClassName = [
-    'transition-all duration-700 ease-in-out',
-    isSpeaking ? 'scale-0 opacity-0' : 'scale-100 opacity-100',
+    'transition-all duration-700 ease-in-out origin-center',
+    isSpeaking
+      ? isLocalEngine
+        ? 'scale-150 opacity-100'
+        : 'scale-0 opacity-0'
+      : 'scale-100 opacity-100',
   ].join(' ')
 
   const gyroActiveClassName = [
@@ -31,23 +44,60 @@ export function VocalOrb({
 
   const outerGyroClassName = [
     gyroActiveClassName,
-    isSpeaking ? 'animate-gyro-clockwise stroke-[#FBBF24]/80' : 'stroke-[#FBBF24]/80',
+    isLocalEngine
+      ? isSpeaking
+        ? 'animate-gyro-clockwise stroke-cyan-400/80'
+        : 'stroke-cyan-400/80'
+      : isSpeaking
+        ? 'animate-gyro-clockwise stroke-[#FBBF24]/80'
+        : 'stroke-[#FBBF24]/80',
   ].join(' ')
 
   const innerGyroClassName = [
     gyroActiveClassName,
-    isSpeaking ? 'animate-gyro-counter stroke-[#FBBF24]/90' : 'stroke-[#FBBF24]/90',
+    isLocalEngine
+      ? isSpeaking
+        ? 'animate-gyro-counter stroke-cyan-500/90'
+        : 'stroke-cyan-500/90'
+      : isSpeaking
+        ? 'animate-gyro-counter stroke-[#FBBF24]/90'
+        : 'stroke-[#FBBF24]/90',
   ].join(' ')
 
   const coreClassName = [
-    'fill-[#FBBF24] transition-all duration-700 ease-in-out origin-center',
+    'transition-all duration-700 ease-in-out origin-center',
+    isLocalEngine
+      ? 'fill-cyan-400'
+      : 'fill-[#FBBF24]',
     isSpeaking
-      ? 'scale-150 opacity-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]'
+      ? isLocalEngine
+        ? 'scale-150 opacity-100 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)]'
+        : 'scale-150 opacity-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]'
       : 'scale-100 opacity-60',
   ].join(' ')
 
+  const lineX1 = isLocalEngine
+    ? isSpeaking
+      ? 10
+      : 50
+    : isSpeaking
+      ? 50
+      : 15
+  const lineX2 = isLocalEngine
+    ? isSpeaking
+      ? 90
+      : 50
+    : isSpeaking
+      ? 50
+      : 85
+
   return (
-    <div className="flex items-center justify-center" aria-hidden="true">
+    <div
+      className="flex items-center justify-center"
+      aria-hidden="true"
+      data-tts-engine={activeTtsEngine}
+      data-throttled={systemLoadThrottled ? 'true' : 'false'}
+    >
       <svg
         viewBox="0 0 100 100"
         className={svgClassName}
@@ -67,13 +117,17 @@ export function VocalOrb({
           style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
         >
           <line
-            x1={isSpeaking ? 50 : 15}
+            x1={lineX1}
             y1={50}
-            x2={isSpeaking ? 50 : 85}
+            x2={lineX2}
             y2={50}
             strokeWidth={2}
             strokeLinecap="round"
-            className="stroke-zinc-600/50"
+            className={
+              isLocalEngine
+                ? 'stroke-cyan-400/60'
+                : 'stroke-zinc-600/50'
+            }
           />
         </g>
 

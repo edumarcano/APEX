@@ -102,20 +102,35 @@ class PipelineState:
         self._step = 0
         self._label = "IDLE"
         self._timestamp = datetime.now(timezone.utc).isoformat()
+        self._active_tts_engine = "google"
+        self._system_load_throttled = False
 
-    def update(self, step: int, label: str) -> None:
+    def update(
+        self,
+        step: int,
+        label: str,
+        *,
+        active_tts_engine: str | None = None,
+        system_load_throttled: bool | None = None,
+    ) -> None:
         """
         Advance the conceptual pipeline stage.
 
         Args:
             step: Monotonic pipeline step index supplied by orchestration logic.
             label: Stable short label naming the stage for dashboards and probes.
+            active_tts_engine: Resolved TTS engine for the active run, when known.
+            system_load_throttled: Whether hardware throttle thresholds are active.
         """
         with self._lock:
             self._is_active = True
             self._step = step
             self._label = label
             self._timestamp = datetime.now(timezone.utc).isoformat()
+            if active_tts_engine is not None:
+                self._active_tts_engine = active_tts_engine
+            if system_load_throttled is not None:
+                self._system_load_throttled = system_load_throttled
 
     def reset(self) -> None:
         """Restore the tracker to idle or pre-run defaults."""
@@ -124,6 +139,8 @@ class PipelineState:
             self._step = 0
             self._label = "IDLE"
             self._timestamp = datetime.now(timezone.utc).isoformat()
+            self._active_tts_engine = "google"
+            self._system_load_throttled = False
 
     def get_state(self) -> dict[str, Any] | None:
         """
@@ -140,6 +157,8 @@ class PipelineState:
                 "label": self._label,
                 "timestamp": self._timestamp,
                 "is_speaking": speaker.is_speaking(),
+                "active_tts_engine": self._active_tts_engine,
+                "system_load_throttled": self._system_load_throttled,
             }
 
 
@@ -192,6 +211,12 @@ class RuntimeMetadata(BaseModel):
     )
     tts_strategy: str = Field(
         description="Active text-to-speech backend (pyttsx3 or google).",
+    )
+    active_tts_engine: str = Field(
+        description="Resolved TTS engine for this run (google, kokoro, piper, or pyttsx3).",
+    )
+    system_load_throttled: bool = Field(
+        description="True when CPU or RAM utilization triggered a local-engine fallback.",
     )
 
 
@@ -478,7 +503,16 @@ def _run_demo_briefing() -> BriefingResponse:
 
         final_briefing = _build_demo_briefing(telemetry)
 
-        global_pipeline_state.update(4, "DELIVERY")
+        active_tts_engine, system_load_throttled = _resolve_tts_diagnostics(
+            dev_mode=True,
+            configured_tts=DEMO_TTS,
+        )
+        global_pipeline_state.update(
+            4,
+            "DELIVERY",
+            active_tts_engine=active_tts_engine,
+            system_load_throttled=system_load_throttled,
+        )
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
             kwargs={
@@ -502,6 +536,8 @@ def _run_demo_briefing() -> BriefingResponse:
                 demo_mode_active=True,
                 synthesis_strategy="slm",
                 tts_strategy=DEMO_TTS,
+                active_tts_engine=active_tts_engine,
+                system_load_throttled=system_load_throttled,
             ),
         )
     finally:
@@ -562,6 +598,39 @@ class PipelineStatusSnapshot(BaseModel):
     is_speaking: bool = Field(
         description="True when the speaker subsystem lock is held or audio playback is active.",
     )
+    active_tts_engine: str = Field(
+        description="Resolved TTS engine for the active run.",
+    )
+    system_load_throttled: bool = Field(
+        description="True when hardware throttle thresholds forced a local-engine fallback.",
+    )
+
+
+def _resolve_tts_diagnostics(
+    *,
+    dev_mode: bool,
+    configured_tts: str,
+) -> tuple[str, bool]:
+    """
+    Resolve the active TTS engine and throttle flag for runtime diagnostics.
+
+    When hardware throttle thresholds are met, cloud engines (google, kokoro)
+    downgrade to their local fallback (pyttsx3 or piper).
+    """
+    system_load_throttled = scanner.is_system_throttled()
+    normalized = configured_tts.strip().lower()
+
+    if system_load_throttled and normalized in {"google", "kokoro"}:
+        fallback = "piper" if normalized == "kokoro" else "pyttsx3"
+        return fallback, True
+
+    if dev_mode:
+        return normalized if normalized in {"google", "kokoro", "piper", "pyttsx3"} else "pyttsx3", system_load_throttled
+
+    if normalized in {"google", "kokoro", "piper", "pyttsx3"}:
+        return normalized, system_load_throttled
+
+    return "google", system_load_throttled
 
 
 _MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\([^)]+\)")
@@ -802,7 +871,23 @@ def trigger_briefing() -> BriefingResponse:
                 f1_cache_penalty=f1_cache_penalty,
             )
 
-            global_pipeline_state.update(4, "DELIVERY")
+            if dev_mode:
+                synthesis_strategy = DEV_AI_SYNTHESIS
+                tts_strategy = DEV_TTS_PLAYBACK
+            else:
+                synthesis_strategy = "llm"
+                tts_strategy = "google"
+
+            active_tts_engine, system_load_throttled = _resolve_tts_diagnostics(
+                dev_mode=dev_mode,
+                configured_tts=tts_strategy,
+            )
+            global_pipeline_state.update(
+                4,
+                "DELIVERY",
+                active_tts_engine=active_tts_engine,
+                system_load_throttled=system_load_throttled,
+            )
             digest_payload = DigestPayload(
                 confidence_score=confidence_score,
                 failed_connectors=failed_connectors,
@@ -819,13 +904,6 @@ def trigger_briefing() -> BriefingResponse:
             )
             voice_thread.start()
             voice_thread_started = True
-
-            if dev_mode:
-                synthesis_strategy = DEV_AI_SYNTHESIS
-                tts_strategy = DEV_TTS_PLAYBACK
-            else:
-                synthesis_strategy = "llm"
-                tts_strategy = "google"
 
             return BriefingResponse(
                 status="success",
@@ -844,6 +922,8 @@ def trigger_briefing() -> BriefingResponse:
                     demo_mode_active=False,
                     synthesis_strategy=synthesis_strategy,
                     tts_strategy=tts_strategy,
+                    active_tts_engine=active_tts_engine,
+                    system_load_throttled=system_load_throttled,
                 ),
             )
         finally:

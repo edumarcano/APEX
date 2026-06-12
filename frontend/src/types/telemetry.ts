@@ -1,8 +1,12 @@
+export type TtsEngine = 'google' | 'kokoro' | 'piper' | 'pyttsx3'
+
 export interface PipelineState {
   step: number
   label: string
   timestamp: string
   is_speaking: boolean
+  active_tts_engine: TtsEngine
+  system_load_throttled: boolean
 }
 
 export interface SystemDiagnostics {
@@ -77,4 +81,6 @@ export interface ApexDataState {
   demoModeActive: boolean
   confidenceScore: number
   failedConnectors: string[]
+  active_tts_engine: TtsEngine
+  system_load_throttled: boolean
 }

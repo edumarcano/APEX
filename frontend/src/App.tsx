@@ -92,10 +92,16 @@ export default function App(): ReactElement {
     demoModeActive,
     confidenceScore,
     failedConnectors,
+    active_tts_engine,
+    system_load_throttled,
     refreshReminders,
     markReminderAsRead,
     triggerSynthesis,
   } = apexData
+
+  const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
+  const resolvedSystemThrottled =
+    pipelineState?.system_load_throttled ?? system_load_throttled
 
   const activeStep = pipelineState?.step ?? null
   const isProcessing =
@@ -319,7 +325,12 @@ export default function App(): ReactElement {
               </span>
             </div>
             <div className="flex justify-center justify-self-center">
-              <VocalOrb isSpeaking={isSpeaking} className="h-12 w-auto" />
+              <VocalOrb
+                isSpeaking={isSpeaking}
+                activeTtsEngine={resolvedTtsEngine}
+                systemLoadThrottled={resolvedSystemThrottled}
+                className="h-12 w-auto"
+              />
             </div>
             <div className="flex items-center justify-end gap-2 justify-self-end">
               {showTriggerButton && (
