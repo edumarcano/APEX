@@ -79,44 +79,57 @@
   transform: translate3d(0, 0, 0);
 }
 
-@keyframes nebulaAlternating1 {
-  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
-  5% { transform: translate3d(5%, -5%, 0) scale(1.05); opacity: 0.75; }
-  25% { transform: translate3d(-5%, 5%, 0) scale(0.95); opacity: 0.75; }
-  30% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
-  40% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
-  90% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
-  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
-}
-@keyframes nebulaAlternating2 {
-  0%, 23% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
-  33% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
-  38% { transform: translate3d(-5%, 5%, 0) scale(1.08); opacity: 0.75; }
-  58% { transform: translate3d(5%, -5%, 0) scale(0.92); opacity: 0.75; }
-  63% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
-  73% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
-  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
-}
-@keyframes nebulaAlternating3 {
-  0% { transform: translate3d(-40%, -40%, 0) scale(0.8); opacity: 0.35; }
-  7% { transform: translate3d(-40%, -40%, 0) scale(0.8); opacity: 0; }
-  56% { transform: translate3d(40%, 40%, 0) scale(0.8); opacity: 0; }
-  66% { transform: translate3d(30%, 30%, 0) scale(0.9); opacity: 0.65; }
-  78% { transform: translate3d(0, 0, 0) scale(1.1); opacity: 0.65; }
-  90% { transform: translate3d(-30%, -30%, 0) scale(0.9); opacity: 0.65; }
-  100% { transform: translate3d(-40%, -40%, 0) scale(0.8); opacity: 0.35; }
+/* Distorted Gaseous Light Fields */
+.bg-nebula-swirl-1 {
+  background-image: radial-gradient(ellipse at 45% 45%, rgba(var(--glow-color), 0.28) 0%, rgba(var(--glow-color), 0.08) 50%, rgba(0, 0, 0, 0) 80%);
+  will-change: transform, background-image;
 }
 
-.animate-nebula-1 { animation: nebulaAlternating1 24s ease-in-out infinite; }
-.animate-nebula-2 { animation: nebulaAlternating2 24s infinite; }
-.animate-nebula-3 { animation: nebulaAlternating3 24s infinite; }
+.bg-nebula-swirl-2 {
+  background-image: radial-gradient(ellipse at 55% 55%, rgba(var(--glow-color), 0.22) 0%, rgba(var(--glow-color), 0.05) 55%, rgba(0, 0, 0, 0) 90%);
+  will-change: transform, background-image;
+}
 
-.hud-nebula-blob {
-  position: absolute;
-  border-radius: 50%;
-  mix-blend-mode: screen;
-  filter: blur(160px);
-  will-change: transform, opacity;
+.bg-atmosphere-vignette {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.85) 100%);
+}
+
+/* Counter-Swirl Physics Keyframes */
+@keyframes nebulaSpinClockwise {
+  0% {
+    transform: scaleX(1.7) scaleY(0.7) rotate(0deg) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scaleX(1.5) scaleY(0.8) rotate(180deg) translate3d(4%, -2%, 0);
+  }
+  100% {
+    transform: scaleX(1.7) scaleY(0.7) rotate(360deg) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes nebulaSpinCounter {
+  0% {
+    transform: scaleX(0.7) scaleY(1.6) rotate(360deg) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scaleX(0.8) scaleY(1.4) rotate(180deg) translate3d(-3%, 3%, 0);
+  }
+  100% {
+    transform: scaleX(0.7) scaleY(1.6) rotate(0deg) translate3d(0, 0, 0);
+  }
+}
+
+/* High-Performance Animation Handles */
+.animate-nebula-spin-clockwise {
+  animation: nebulaSpinClockwise 32s cubic-bezier(0.445, 0.05, 0.55, 0.95) infinite;
+  transform-gpu: true;
+  backface-visibility: hidden;
+}
+
+.animate-nebula-spin-counter {
+  animation: nebulaSpinCounter 24s cubic-bezier(0.445, 0.05, 0.55, 0.95) infinite;
+  transform-gpu: true;
+  backface-visibility: hidden;
 }
 
 @keyframes gyroClockwise {

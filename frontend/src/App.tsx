@@ -107,13 +107,27 @@ export default function App(): ReactElement {
   const isProcessing =
     status === 'loading' ||
     (activeStep !== null && activeStep >= 1 && activeStep <= 3)
-  const showGlow = isProcessing || isSpeaking || status === 'success'
-
-  const glowColor = isProcessing
-    ? '57, 255, 136' // Processing Green for Stages 1–3
-    : isSpeaking || status === 'success'
-      ? '251, 191, 36' // Ready Gold for Stage 4 and delivered state
-      : '0, 0, 0'
+  const glowColor = useMemo((): string => {
+    if (status === 'error') {
+      return '153, 27, 27' // Soft, smoldering red
+    }
+    if (status === 'idle') {
+      return '15, 23, 42' // Deep, dormant slate blue
+    }
+    if (isSpeaking || activeStep === 4 || status === 'success') {
+      return '217, 119, 6' // Operational warm amber/gold
+    }
+    switch (activeStep) {
+      case 1:
+        return '16, 185, 129' // Gate emerald green
+      case 2:
+        return '6, 182, 212' // Collection electric cyan
+      case 3:
+        return '139, 92, 246' // Synthesis deep violet
+      default:
+        return '15, 23, 42'
+    }
+  }, [status, activeStep, isSpeaking])
 
   const weatherBorderByCondition: Record<WeatherConditionArchetype, string> = {
     clear_day: '#1E6BFF',
@@ -272,42 +286,19 @@ export default function App(): ReactElement {
     >
         <CelestialBackground />
 
-        <div
-          className="absolute inset-0 z-[var(--z-reactive-glow)] pointer-events-none overflow-hidden transition-opacity duration-1000 ease-in-out"
-          style={{
-            opacity: showGlow ? 1 : 0,
-            '--glow-color': glowColor,
-          } as CSSProperties}
-        >
-          {showGlow && (
-            <>
-              {/* Nebula 1: Top-Right */}
-              <div
-                className="hud-nebula-blob animate-nebula-1 top-[-35%] right-[-35%] h-[110%] w-[110%] will-change-transform will-change-[opacity]"
-                style={{
-                  background:
-                    'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)',
-                }}
-              />
-              {/* Nebula 2: Bottom-Left */}
-              <div
-                className="hud-nebula-blob animate-nebula-2 bottom-[-35%] left-[-35%] h-[110%] w-[110%] will-change-transform will-change-[opacity]"
-                style={{
-                  background:
-                    'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.12) 45%, rgba(var(--glow-color), 0.04) 75%, rgba(0,0,0,0) 100%)',
-                }}
-              />
-              {/* Nebula 3: Center-Slicing Diagonal */}
-              <div
-                className="hud-nebula-blob animate-nebula-3 top-[10%] left-[10%] h-[100%] w-[100%] will-change-transform will-change-[opacity]"
-                style={{
-                  background:
-                    'radial-gradient(circle, rgba(var(--glow-color), 0.35) 0%, rgba(var(--glow-color), 0.08) 45%, rgba(var(--glow-color), 0.02) 75%, rgba(0,0,0,0) 100%)',
-                }}
-              />
-            </>
-          )}
-        </div>
+      <div 
+        className="absolute inset-0 z-[var(--z-reactive-glow)] pointer-events-none overflow-hidden"
+        style={{ '--glow-color': glowColor } as CSSProperties}
+      >
+        {/* Layer 1: Horizontal Drifting Nebula (Clockwise Swirl) */}
+        <div className="absolute top-[-30%] left-[-30%] h-[160%] w-[160%] opacity-40 bg-nebula-swirl-1 animate-nebula-spin-clockwise" />
+        
+        {/* Layer 2: Vertical Drifting Aurora (Counter-Clockwise Swirl) */}
+        <div className="absolute bottom-[-30%] right-[-30%] h-[160%] w-[160%] opacity-35 bg-nebula-swirl-2 animate-nebula-spin-counter" />
+        
+        {/* Layer 3: Vignette Edge Contrast Mask */}
+        <div className="absolute inset-0 bg-atmosphere-vignette" />
+      </div>
 
         <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col">
           <header className="relative mb-3 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
