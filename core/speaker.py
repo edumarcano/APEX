@@ -3,9 +3,14 @@ from __future__ import annotations
 import ctypes
 import io
 import os
+import subprocess
+import sys
 import threading
 import wave
+
 from typing import Any
+
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 try:
     from kokoro_onnx import Kokoro
@@ -81,16 +86,14 @@ def _warm_local_kokoro() -> None:
     threading.Thread(target=_warm, daemon=True).start()
 
 
-def _convert_samples_to_wav_bytes(samples: np.ndarray, sample_rate: int) -> bytes:
-    """Encode float32 PCM samples into in-memory WAV bytes."""
-    pcm16 = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16)
-
+def _pack_pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int) -> bytes:
+    """Wrap raw 16-bit mono PCM bytes in a standard in-memory WAV container."""
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm16.tobytes())
+        wav_file.writeframes(pcm_data)
 
     return buffer.getvalue()
 
@@ -169,23 +172,58 @@ def _play_audio_bytes(data: bytes) -> None:
 
 def _speak_kokoro_local(text: str) -> None:
     """Synthesize and play text via the in-process Kokoro ONNX engine."""
+    if np is None:
+        raise ImportError("numpy is not installed.")
+
+    client = _get_kokoro_client()
+    samples, _sample_rate = client.create(
+        text,
+        voice=config.KOKORO_VOICE,
+        speed=1.0,
+        lang="en-us",
+    )
+    pcm_data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+    wav_bytes = _pack_pcm_to_wav_bytes(pcm_data, 24000)
+    _play_audio_bytes(wav_bytes)
+    print("[SPEAKER] Local Kokoro ONNX playback completed.")
+
+
+def _speak_piper_local(text: str) -> None:
+    """Synthesize and play text via the Piper CLI subprocess engine."""
     try:
-        client = _get_kokoro_client()
-        samples, sample_rate = client.create(
-            text,
-            voice="af_sky",
-            speed=1.0,
-            lang="en-us",
+        piper_dir = (config.PROJECT_ROOT / "core" / "bin" / "piper").resolve()
+        weights_dir = (config.PROJECT_ROOT / "core" / "weights" / "piper").resolve()
+
+        piper_exe = (piper_dir / "piper.exe").resolve()
+        model_path = (weights_dir / config.PIPER_VOICE_MODEL).resolve()
+
+        if not piper_exe.is_file() or not model_path.is_file():
+            raise FileNotFoundError(
+                f"Piper assets missing: piper_exe={piper_exe}, model_path={model_path}"
+            )
+
+        proc = subprocess.Popen(
+            [str(piper_exe), "--model", str(model_path), "--output_raw"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
+            cwd=str(piper_exe.parent), # Enforce localized DLL & espeak-data resolution
         )
-        wav_bytes = _convert_samples_to_wav_bytes(samples, sample_rate)
+        raw_pcm_bytes, _stderr = proc.communicate(input=text.encode("utf-8"))
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"Piper CLI exited with code {proc.returncode}")
+
+        wav_bytes = _pack_pcm_to_wav_bytes(raw_pcm_bytes, 22050)
         _play_audio_bytes(wav_bytes)
-        print("[SPEAKER] Local Kokoro ONNX playback completed.")
+        print("[SPEAKER] Local Piper CLI playback completed.")
     except Exception as exc:  # noqa: BLE001
         print(
-            f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
-            "falling back to local pyttsx3."
+            f"[SPEAKER] Local Piper CLI playback failed ({type(exc).__name__}); "
+            "falling back to Google Cloud TTS."
         )
-        _speak_pyttsx3_local(text)
+        _route_tts_playback(text, "google")
 
 
 def _speak_pyttsx3_local(text: str) -> None:
@@ -241,12 +279,24 @@ def is_speaking() -> bool:
 
 
 def _route_tts_playback(text: str, tts_strategy: str) -> None:
-    """Route speech to the engine named by ``tts_strategy``."""
+    """Route speech through a cascading fallback chain keyed by ``tts_strategy``."""
     normalized = tts_strategy.strip().lower()
 
-    if normalized == "pyttsx3":
-        print("[SPEAKER] Routing directly to local pyttsx3 execution.")
-        _speak_pyttsx3_local(text)
+    if normalized == "kokoro":
+        print("[SPEAKER] Routing to local Kokoro ONNX engine.")
+        try:
+            _speak_kokoro_local(text)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
+                "falling back to Piper CLI."
+            )
+            _route_tts_playback(text, "piper")
+        return
+
+    if normalized == "piper":
+        print("[SPEAKER] Routing to local Piper CLI engine.")
+        _speak_piper_local(text)
         return
 
     if normalized == "google":
@@ -254,19 +304,19 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         if _try_google_tts(text):
             return
         print("[SPEAKER] Google TTS failed; falling back to local pyttsx3.")
-        _speak_pyttsx3_local(text)
+        _route_tts_playback(text, "pyttsx3")
         return
 
-    if normalized == "kokoro":
-        print("[SPEAKER] Routing to local Kokoro ONNX engine.")
-        _speak_kokoro_local(text)
+    if normalized == "pyttsx3":
+        print("[SPEAKER] Routing directly to local pyttsx3 execution.")
+        _speak_pyttsx3_local(text)
         return
 
     print(
         f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
         "defaulting to local pyttsx3."
     )
-    _speak_pyttsx3_local(text)
+    _route_tts_playback(text, "pyttsx3")
 
 
 def speak(text: str, *, tts_override: str | None = None) -> None:

@@ -29,7 +29,7 @@ from clients import (
     sports_client,
     weather_client,
 )
-from core import brain, database, scanner, speaker
+from core import brain, database, scanner, speaker, config
 from core.config import (
     DEMO_MODE,
     DEMO_TTS,
@@ -876,7 +876,7 @@ def trigger_briefing() -> BriefingResponse:
                 tts_strategy = DEV_TTS_PLAYBACK
             else:
                 synthesis_strategy = "llm"
-                tts_strategy = "google"
+                tts_strategy = config.PRIMARY_TTS
 
             active_tts_engine, system_load_throttled = _resolve_tts_diagnostics(
                 dev_mode=dev_mode,
