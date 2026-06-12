@@ -65,7 +65,7 @@ Both flags are read from `.env`. Values are normalized at read time (`true`, `Tr
 
 `DEMO_MODE` intercepts the trigger entirely and serves static mock telemetry from `core/mock/telemetry.json`. It does not run any connectors or write to the database. `DEV_MODE` and `DEMO_MODE` are independent flags; `DEMO_MODE` takes priority in the trigger path when both are set.
 
-Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `slm` placeholder, `llm` routes to live Gemini) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `elevenlabs` placeholder). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3` or `google`).
+Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `slm` placeholder, `llm` routes to live Gemini) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3` or `google`).
 
 ---
 

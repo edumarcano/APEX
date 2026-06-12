@@ -6,6 +6,7 @@ import type {
   PipelineState,
   SystemState,
   TelemetryPayload,
+  TtsEngine,
   WeatherConditionArchetype,
 } from '../types/telemetry'
 
@@ -90,6 +91,15 @@ function getStringField(
   return typeof value === 'string' ? value : fallback
 }
 
+const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'piper', 'pyttsx3']
+
+function parseTtsEngine(value: unknown): TtsEngine {
+  if (typeof value === 'string' && VALID_TTS_ENGINES.includes(value as TtsEngine)) {
+    return value as TtsEngine
+  }
+  return 'google'
+}
+
 function parsePipelineStatus(body: unknown): PipelineState | null {
   if (!body || typeof body !== 'object') {
     return null
@@ -105,6 +115,8 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
     label: record.label,
     timestamp: typeof record.timestamp === 'string' ? record.timestamp : '',
     is_speaking: record.is_speaking === true,
+    active_tts_engine: parseTtsEngine(record.active_tts_engine),
+    system_load_throttled: record.system_load_throttled === true,
   }
 }
 
@@ -192,6 +204,8 @@ export function useApexData(): UseApexDataReturn {
     demoModeActive: false,
     confidenceScore: 100.0,
     failedConnectors: [],
+    active_tts_engine: 'google',
+    system_load_throttled: false,
   })
 
   const stateRef = useRef(state)
@@ -391,6 +405,8 @@ export function useApexData(): UseApexDataReturn {
           ? (payload.metadata as Record<string, unknown>)
           : null
       const demoModeActive = metadata?.demo_mode_active === true
+      const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
+      const system_load_throttled = metadata?.system_load_throttled === true
 
       if (!telemetry || typeof telemetry !== 'object') {
         setState((prev) => ({
@@ -448,6 +464,8 @@ export function useApexData(): UseApexDataReturn {
         demoModeActive,
         confidenceScore,
         failedConnectors,
+        active_tts_engine,
+        system_load_throttled,
       }))
     } catch (err) {
       if (

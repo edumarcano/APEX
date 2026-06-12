@@ -267,7 +267,7 @@ class RuntimeMetadata(BaseModel):
     dev_mode_active: bool
     demo_mode_active: bool
     synthesis_strategy: str   # "raw" | "slm" | "llm"
-    tts_strategy: str         # "pyttsx3" | "google" | "elevenlabs"
+    tts_strategy: str         # "pyttsx3" | "google"
 ```
 
 ### `PipelineStatusSnapshot`
@@ -375,7 +375,7 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `DEMO_MODE` | `false` | Intercepts trigger; serves static mock telemetry |
 | `ENABLE_STARTUP_GATE` | `true` | When `false`, skips Wi-Fi/power/cooldown while keeping live APIs |
 | `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `slm` (placeholder), `llm` |
-| `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `elevenlabs` (placeholder) |
+| `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google` |
 | `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google` |
 | `APEX_ALLOWED_ORIGINS` | _(see below)_ | Comma-separated CORS origins; replaces defaults entirely when set |
 
