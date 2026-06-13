@@ -2,6 +2,54 @@
 
 ---
 
+## v1.10.0 — Local Neural Voice Matrix
+
+**Released:** June 13, 2026
+
+This release transitions APEX speech synthesis from cloud-first delivery toward a local-first neural voice architecture powered by Kokoro ONNX and Piper, while preserving optional cloud fallback capabilities. It implements dynamic hardware load monitoring to gracefully downgrade to low-overhead speech engines under system resource starvation, introduces a unified voice gender configuration toggle, and adds GPU-accelerated HUD background elements.
+
+---
+
+### What's New
+
+- Integrated Kokoro ONNX for high-quality, network-independent local neural text-to-speech synthesis.
+- Pre-warmed the local Kokoro ONNX client session in a background daemon thread at module import to eliminate first-run latency.
+- Integrated local Piper CLI subprocess engine execution with dynamic voice model selection support.
+- Added system resource monitoring using `psutil` to query RAM and CPU utilization before executing speech synthesis.
+- Implemented automatic hardware-load throttling that downgrades heavy synthesis engines to low-overhead fallbacks (Google Cloud TTS to pyttsx3, Kokoro to Piper) under resource starvation.
+- Introduced a unified `VOICE_GENDER` configuration parameter in `config.json` supporting male and female options.
+- Dynamic gender matching implemented across all active speech engines (Kokoro, Piper, Google Cloud TTS, and pyttsx3).
+- Added telemetry indicators for the resolved speech engine (`active_tts_engine`) and system load throttling status (`system_load_throttled`).
+
+### Architecture Changes
+
+- Rebuilt the speech synthesis routing flow into a cascading fallback chain: Kokoro ONNX $\rightarrow$ Google Cloud TTS $\rightarrow$ Piper CLI $\rightarrow$ pyttsx3.
+- Added helper utility to package raw 16-bit mono PCM bytes into memory-buffered WAV containers for Pygame audio playback.
+- Pruned all deprecated ElevenLabs API endpoints, clients, configurations, and environment variables.
+- Updated core pipeline tracking in `api.py` to trace the active speech engine and system load throttling flag.
+- Refactored background layout rendering to use GPU-accelerated counter-rotating radial gradient nebula fields.
+
+### API Changes
+
+- Extended `RuntimeMetadata` and `PipelineStatusSnapshot` schemas to expose `active_tts_engine` and `system_load_throttled` fields.
+- Added `TtsEngine` literal union type and updated state hook interfaces in the frontend TypeScript files.
+- Documented `DEV_TTS_PLAYBACK` and `DEMO_TTS` configuration options for local offline engines in API schemas.
+
+### Frontend Changes
+
+- Replaced legacy CSS nebula animation loops with hardware-accelerated counter-rotating CSS transforms.
+- Updated `VocalOrb.tsx` to display a cyan color scheme and wider stasis coordinates when local offline speech engines are operating.
+- Configured data attribute flags on the HUD root layout to expose the active TTS engine and throttle states.
+
+### Documentation Updates
+
+- Updated `docs/architecture.md` to document the cascading fallback speech chain and the hardware load throttling behavior.
+- Documented new fields and fallback configuration variables (`DEV_TTS_PLAYBACK`/`DEMO_TTS`) in `docs/api.md`.
+- Logged design decisions regarding local-first neural speech synthesis and cascading fallbacks in `docs/decisions.md`.
+- Updated version `v1.10.0` status to Complete in `docs/roadmap.md`.
+
+---
+
 ## v1.9.1 — Stabilization & Maintenance
 
 **Released:** June 11, 2026
