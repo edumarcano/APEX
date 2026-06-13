@@ -29,7 +29,7 @@ from clients import (
     sports_client,
     weather_client,
 )
-from core import brain, database, scanner, speaker
+from core import brain, database, scanner, speaker, config
 from core.config import (
     DEMO_MODE,
     DEMO_TTS,
@@ -517,7 +517,7 @@ def _run_demo_briefing() -> BriefingResponse:
             target=_speak_and_cleanup,
             kwargs={
                 "text": final_briefing,
-                "tts_override": DEMO_TTS,
+                "tts_override": active_tts_engine,
                 "digest": digest,
                 "lock": _TRIGGER_LOCK,
             },
@@ -731,11 +731,13 @@ def trigger_briefing() -> BriefingResponse:
             detail="Pipeline run already active.",
         )
 
+    voice_thread_started = False
     try:
         if DEMO_MODE:
-            return _run_demo_briefing()
+            demo_res = _run_demo_briefing()
+            voice_thread_started = True  # Lock ownership transferred to demo thread
+            return demo_res
 
-        voice_thread_started = False
         global_pipeline_state.update(1, "GATE")
 
         if not scanner.should_run():
@@ -876,7 +878,7 @@ def trigger_briefing() -> BriefingResponse:
                 tts_strategy = DEV_TTS_PLAYBACK
             else:
                 synthesis_strategy = "llm"
-                tts_strategy = "google"
+                tts_strategy = config.PRIMARY_TTS
 
             active_tts_engine, system_load_throttled = _resolve_tts_diagnostics(
                 dev_mode=dev_mode,
@@ -897,6 +899,7 @@ def trigger_briefing() -> BriefingResponse:
                 target=_speak_and_cleanup,
                 kwargs={
                     "text": final_briefing,
+                    "tts_override": active_tts_engine,
                     "digest": digest_payload,
                     "lock": _TRIGGER_LOCK,
                 },

@@ -27,10 +27,10 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
-    "GOOGLE_VOICE_ID",
     "PRIMARY_TTS",
     "PROJECT_ROOT",
     "SYSTEM_PROMPT",
+    "VOICE_GENDER",
     "is_dev_mode",
     "load_feature_flags",
     "load_module_flags",
@@ -47,9 +47,9 @@ load_dotenv(dotenv_path=ENV_PATH)
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
 _VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"slm", "llm", "raw"})
-_VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google"})
+_VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro", "piper"})
 DevAiSynthesisMode = Literal["slm", "llm", "raw"]
-DevTtsPlaybackMode = Literal["pyttsx3", "google"]
+DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro", "piper"]
 
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
@@ -187,7 +187,7 @@ else:
 
 tts_settings = _CONFIG_DATA.get("tts_settings", {})
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
-GOOGLE_VOICE_ID: Final[str] = tts_settings.get("google_voice_id", "")
+VOICE_GENDER: Final[str] = tts_settings.get("voice_gender", "female")
 CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")
 
 

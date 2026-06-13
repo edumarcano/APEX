@@ -3,8 +3,24 @@ from __future__ import annotations
 import ctypes
 import io
 import os
+import subprocess
+import sys
 import threading
+import wave
+
 from typing import Any
+
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
+try:
+    from kokoro_onnx import Kokoro
+except ImportError:
+    Kokoro = None  # type: ignore[misc, assignment]
+
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore[assignment]
 
 # Headless SDL so pygame.mixer can init without a display
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -18,7 +34,9 @@ from core import config
 load_dotenv(dotenv_path=config.ENV_PATH)
 
 _SPEAK_LOCK = threading.Lock()
+_KOKORO_LOCK = threading.Lock()
 _GOOGLE_TTS_CLIENT: Any | None = None
+_KOKORO_CLIENT: Kokoro | None = None
 
 
 def _infer_language_code(voice_id: str) -> str:
@@ -29,6 +47,21 @@ def _infer_language_code(voice_id: str) -> str:
     return "en-US"
 
 
+def _get_active_kokoro_voice() -> str:
+    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+    return "am_michael" if gender == "male" else "af_sky"
+
+
+def _get_active_piper_model() -> str:
+    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+    return "en_US-joe-medium.onnx" if gender == "male" else "en_US-lessac-medium.onnx"
+
+
+def _get_active_google_voice() -> str:
+    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+    return "en-US-Chirp3-HD-Sadachbia" if gender == "male" else "en-US-Chirp3-HD-Laomedeia"
+
+
 def _warm_system_subsystems() -> None:
     """Initialize and hold the pygame hardware mixer channel at import time."""
     try:
@@ -36,6 +69,48 @@ def _warm_system_subsystems() -> None:
         print("[SPEAKER] Pygame hardware mixer channel pre-warmed successfully.")
     except Exception as exc:
         print(f"[SPEAKER] Pygame mixer pre-warm failed ({type(exc).__name__}).")
+
+
+def _get_kokoro_client() -> Kokoro:
+    """Return the thread-safe singleton Kokoro ONNX session."""
+    global _KOKORO_CLIENT
+
+    if Kokoro is None:
+        raise ImportError("kokoro-onnx is not installed.")
+
+    if _KOKORO_CLIENT is None:
+        with _KOKORO_LOCK:
+            if _KOKORO_CLIENT is None:
+                weights_dir = (config.PROJECT_ROOT / "core" / "weights" / "kokoro").resolve()
+                model_path = (weights_dir / "kokoro-v1.0.onnx").resolve()
+                voices_path = (weights_dir / "voices-v1.0.bin").resolve()
+                _KOKORO_CLIENT = Kokoro(str(model_path), str(voices_path))
+
+    return _KOKORO_CLIENT
+
+
+def _warm_local_kokoro() -> None:
+    """Pre-warm the local Kokoro ONNX client in a background daemon thread."""
+    def _warm() -> None:
+        try:
+            _get_kokoro_client()
+            print("[SPEAKER] Local Kokoro ONNX client pre-warmed successfully.")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[SPEAKER] Kokoro client pre-warm bypassed or failed ({type(exc).__name__}).")
+
+    threading.Thread(target=_warm, daemon=True).start()
+
+
+def _pack_pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int) -> bytes:
+    """Wrap raw 16-bit mono PCM bytes in a standard in-memory WAV container."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_data)
+
+    return buffer.getvalue()
 
 
 def _warm_cloud_clients() -> None:
@@ -110,6 +185,61 @@ def _play_audio_bytes(data: bytes) -> None:
             unload()
 
 
+def _speak_kokoro_local(text: str) -> None:
+    """Synthesize and play text via the in-process Kokoro ONNX engine."""
+    if np is None:
+        raise ImportError("numpy is not installed.")
+
+    client = _get_kokoro_client()
+    samples, sample_rate = client.create(
+        text,
+        voice=_get_active_kokoro_voice(),
+        speed=1.0,
+        lang="en-us",
+    )
+    pcm_data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+    wav_bytes = _pack_pcm_to_wav_bytes(pcm_data, sample_rate)
+    _play_audio_bytes(wav_bytes)
+    print("[SPEAKER] Local Kokoro ONNX playback completed.")
+
+
+def _speak_piper_local(text: str) -> None:
+    """Synthesize and play text via the Piper CLI subprocess engine."""
+    try:
+        # Resolve absolute nested sandbox paths
+        piper_exe = (config.PROJECT_ROOT / "core" / "bin" / "piper" / "piper.exe").resolve()
+        model_path = (config.PROJECT_ROOT / "core" / "weights" / "piper" / _get_active_piper_model()).resolve()
+
+        if not piper_exe.is_file() or not model_path.is_file():
+            raise FileNotFoundError(
+                f"Piper assets missing: piper_exe={piper_exe}, model_path={model_path}"
+            )
+
+        proc = subprocess.Popen(
+            [str(piper_exe), "--model", str(model_path), "--output_raw"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
+            cwd=str(piper_exe.parent), # Enforce localized DLL & espeak-data resolution
+        )
+        raw_pcm_bytes, stderr = proc.communicate(input=text.encode("utf-8"))
+
+        if proc.returncode != 0:
+            err_msg = stderr.decode("utf-8", errors="ignore").strip()
+            raise RuntimeError(f"Piper CLI exited with code {proc.returncode}. Stderr: {err_msg}")
+
+        wav_bytes = _pack_pcm_to_wav_bytes(raw_pcm_bytes, 22050)
+        _play_audio_bytes(wav_bytes)
+        print("[SPEAKER] Local Piper CLI playback completed.")
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"[SPEAKER] Local Piper CLI playback failed ({type(exc).__name__}: {exc}); "
+            "falling back to Google Cloud TTS."
+        )
+        _route_tts_playback(text, "google")
+
+
 def _speak_pyttsx3_local(text: str) -> None:
     """Speak text with a thread-local pyttsx3 engine."""
     if os.name == "nt":
@@ -125,7 +255,25 @@ def _speak_pyttsx3_local(text: str) -> None:
 
         voices = engine.getProperty("voices")
         if voices:
-            engine.setProperty("voice", voices[0].id)
+            gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+            selected_id = None
+            for voice in voices:
+                name_lower = (getattr(voice, "name", "") or "").lower()
+                id_lower = (getattr(voice, "id", "") or "").lower()
+                gender_attr = (getattr(voice, "gender", "") or "").lower()
+
+                if gender == "male":
+                    if "david" in name_lower or "male" in name_lower or "male" in gender_attr or "david" in id_lower or "male" in id_lower:
+                        selected_id = voice.id
+                        break
+                else:  # female
+                    if "zira" in name_lower or "female" in name_lower or "female" in gender_attr or "zira" in id_lower or "female" in id_lower:
+                        selected_id = voice.id
+                        break
+
+            if selected_id is None:
+                selected_id = voices[0].id
+            engine.setProperty("voice", selected_id)
 
         engine.say(text)
         engine.runAndWait()
@@ -136,12 +284,13 @@ def _speak_pyttsx3_local(text: str) -> None:
 
 def _try_google_tts(content: str) -> bool:
     """Return True if Google cloud TTS played successfully."""
-    if not config.GOOGLE_VOICE_ID.strip():
-        print("[SPEAKER] Skipping Google TTS: google_voice_id is not configured.")
+    active_voice = _get_active_google_voice()
+    if not active_voice.strip():
+        print("[SPEAKER] Skipping Google TTS: active_voice is not configured.")
         return False
     print("[SPEAKER] Google Cloud TTS route selected.")
     try:
-        audio = fetch_google_audio(content, config.GOOGLE_VOICE_ID)
+        audio = fetch_google_audio(content, active_voice)
         _play_audio_bytes(audio)
         print("[SPEAKER] Google Cloud TTS playback completed.")
         return True
@@ -163,12 +312,24 @@ def is_speaking() -> bool:
 
 
 def _route_tts_playback(text: str, tts_strategy: str) -> None:
-    """Route speech to the engine named by ``tts_strategy``."""
+    """Route speech through a cascading fallback chain keyed by ``tts_strategy``."""
     normalized = tts_strategy.strip().lower()
 
-    if normalized == "pyttsx3":
-        print("[SPEAKER] Routing directly to local pyttsx3 execution.")
-        _speak_pyttsx3_local(text)
+    if normalized == "kokoro":
+        print("[SPEAKER] Routing to local Kokoro ONNX engine.")
+        try:
+            _speak_kokoro_local(text)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
+                "falling back to Piper CLI."
+            )
+            _route_tts_playback(text, "piper")
+        return
+
+    if normalized == "piper":
+        print("[SPEAKER] Routing to local Piper CLI engine.")
+        _speak_piper_local(text)
         return
 
     if normalized == "google":
@@ -176,6 +337,11 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         if _try_google_tts(text):
             return
         print("[SPEAKER] Google TTS failed; falling back to local pyttsx3.")
+        _route_tts_playback(text, "pyttsx3")
+        return
+
+    if normalized == "pyttsx3":
+        print("[SPEAKER] Routing directly to local pyttsx3 execution.")
         _speak_pyttsx3_local(text)
         return
 
@@ -183,7 +349,7 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
         "defaulting to local pyttsx3."
     )
-    _speak_pyttsx3_local(text)
+    _route_tts_playback(text, "pyttsx3")
 
 
 def speak(text: str, *, tts_override: str | None = None) -> None:
@@ -218,6 +384,7 @@ def speak(text: str, *, tts_override: str | None = None) -> None:
 
 _warm_system_subsystems()
 _warm_cloud_clients()
+_warm_local_kokoro()
 
 
 if __name__ == "__main__":

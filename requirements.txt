@@ -12,3 +12,5 @@ fastapi
 pydantic
 uvicorn[standard]
 tzdata
+kokoro-onnx
+onnxruntime
