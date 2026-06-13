@@ -11,7 +11,7 @@
     "f1": true
   },
   "tts_settings": {
-    "primary_tts": "kokoro",
+    "primary_tts": "piper",
     "google_voice_id": "en-US-Chirp3-HD-Gacrux",
     "kokoro_voice": "af_sky",
     "piper_voice_model": "en_US-lessac-medium.onnx"

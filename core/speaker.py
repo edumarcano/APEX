@@ -191,11 +191,9 @@ def _speak_kokoro_local(text: str) -> None:
 def _speak_piper_local(text: str) -> None:
     """Synthesize and play text via the Piper CLI subprocess engine."""
     try:
-        piper_dir = (config.PROJECT_ROOT / "core" / "bin" / "piper").resolve()
-        weights_dir = (config.PROJECT_ROOT / "core" / "weights" / "piper").resolve()
-
-        piper_exe = (piper_dir / "piper.exe").resolve()
-        model_path = (weights_dir / config.PIPER_VOICE_MODEL).resolve()
+        # Resolve absolute nested sandbox paths
+        piper_exe = (config.PROJECT_ROOT / "core" / "bin" / "piper" / "piper.exe").resolve()
+        model_path = (config.PROJECT_ROOT / "core" / "weights" / "piper" / config.PIPER_VOICE_MODEL).resolve()
 
         if not piper_exe.is_file() or not model_path.is_file():
             raise FileNotFoundError(
@@ -210,17 +208,18 @@ def _speak_piper_local(text: str) -> None:
             creationflags=CREATE_NO_WINDOW,
             cwd=str(piper_exe.parent), # Enforce localized DLL & espeak-data resolution
         )
-        raw_pcm_bytes, _stderr = proc.communicate(input=text.encode("utf-8"))
+        raw_pcm_bytes, stderr = proc.communicate(input=text.encode("utf-8"))
 
         if proc.returncode != 0:
-            raise RuntimeError(f"Piper CLI exited with code {proc.returncode}")
+            err_msg = stderr.decode("utf-8", errors="ignore").strip()
+            raise RuntimeError(f"Piper CLI exited with code {proc.returncode}. Stderr: {err_msg}")
 
         wav_bytes = _pack_pcm_to_wav_bytes(raw_pcm_bytes, 22050)
         _play_audio_bytes(wav_bytes)
         print("[SPEAKER] Local Piper CLI playback completed.")
     except Exception as exc:  # noqa: BLE001
         print(
-            f"[SPEAKER] Local Piper CLI playback failed ({type(exc).__name__}); "
+            f"[SPEAKER] Local Piper CLI playback failed ({type(exc).__name__}: {exc}); "
             "falling back to Google Cloud TTS."
         )
         _route_tts_playback(text, "google")
