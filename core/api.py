@@ -731,11 +731,13 @@ def trigger_briefing() -> BriefingResponse:
             detail="Pipeline run already active.",
         )
 
+    voice_thread_started = False
     try:
         if DEMO_MODE:
-            return _run_demo_briefing()
+            demo_res = _run_demo_briefing()
+            voice_thread_started = True  # Lock ownership transferred to demo thread
+            return demo_res
 
-        voice_thread_started = False
         global_pipeline_state.update(1, "GATE")
 
         if not scanner.should_run():
