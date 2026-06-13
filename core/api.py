@@ -517,7 +517,7 @@ def _run_demo_briefing() -> BriefingResponse:
             target=_speak_and_cleanup,
             kwargs={
                 "text": final_briefing,
-                "tts_override": DEMO_TTS,
+                "tts_override": active_tts_engine,
                 "digest": digest,
                 "lock": _TRIGGER_LOCK,
             },
@@ -899,6 +899,7 @@ def trigger_briefing() -> BriefingResponse:
                 target=_speak_and_cleanup,
                 kwargs={
                     "text": final_briefing,
+                    "tts_override": active_tts_engine,
                     "digest": digest_payload,
                     "lock": _TRIGGER_LOCK,
                 },

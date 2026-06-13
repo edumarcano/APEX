@@ -191,14 +191,14 @@ def _speak_kokoro_local(text: str) -> None:
         raise ImportError("numpy is not installed.")
 
     client = _get_kokoro_client()
-    samples, _sample_rate = client.create(
+    samples, sample_rate = client.create(
         text,
         voice=_get_active_kokoro_voice(),
         speed=1.0,
         lang="en-us",
     )
     pcm_data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
-    wav_bytes = _pack_pcm_to_wav_bytes(pcm_data, 24000)
+    wav_bytes = _pack_pcm_to_wav_bytes(pcm_data, sample_rate)
     _play_audio_bytes(wav_bytes)
     print("[SPEAKER] Local Kokoro ONNX playback completed.")
 
@@ -258,9 +258,9 @@ def _speak_pyttsx3_local(text: str) -> None:
             gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
             selected_id = None
             for voice in voices:
-                name_lower = getattr(voice, "name", "").lower()
-                id_lower = getattr(voice, "id", "").lower()
-                gender_attr = getattr(voice, "gender", "").lower()
+                name_lower = (getattr(voice, "name", "") or "").lower()
+                id_lower = (getattr(voice, "id", "") or "").lower()
+                gender_attr = (getattr(voice, "gender", "") or "").lower()
 
                 if gender == "male":
                     if "david" in name_lower or "male" in name_lower or "male" in gender_attr or "david" in id_lower or "male" in id_lower:
