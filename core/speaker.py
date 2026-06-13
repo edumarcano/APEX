@@ -47,6 +47,21 @@ def _infer_language_code(voice_id: str) -> str:
     return "en-US"
 
 
+def _get_active_kokoro_voice() -> str:
+    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+    return "am_michael" if gender == "male" else "af_sky"
+
+
+def _get_active_piper_model() -> str:
+    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+    return "en_US-joe-medium.onnx" if gender == "male" else "en_US-lessac-medium.onnx"
+
+
+def _get_active_google_voice() -> str:
+    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+    return "en-US-Chirp3-HD-Sadachbia" if gender == "male" else "en-US-Chirp3-HD-Laomedeia"
+
+
 def _warm_system_subsystems() -> None:
     """Initialize and hold the pygame hardware mixer channel at import time."""
     try:
@@ -178,7 +193,7 @@ def _speak_kokoro_local(text: str) -> None:
     client = _get_kokoro_client()
     samples, _sample_rate = client.create(
         text,
-        voice=config.KOKORO_VOICE,
+        voice=_get_active_kokoro_voice(),
         speed=1.0,
         lang="en-us",
     )
@@ -193,7 +208,7 @@ def _speak_piper_local(text: str) -> None:
     try:
         # Resolve absolute nested sandbox paths
         piper_exe = (config.PROJECT_ROOT / "core" / "bin" / "piper" / "piper.exe").resolve()
-        model_path = (config.PROJECT_ROOT / "core" / "weights" / "piper" / config.PIPER_VOICE_MODEL).resolve()
+        model_path = (config.PROJECT_ROOT / "core" / "weights" / "piper" / _get_active_piper_model()).resolve()
 
         if not piper_exe.is_file() or not model_path.is_file():
             raise FileNotFoundError(
@@ -240,7 +255,25 @@ def _speak_pyttsx3_local(text: str) -> None:
 
         voices = engine.getProperty("voices")
         if voices:
-            engine.setProperty("voice", voices[0].id)
+            gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+            selected_id = None
+            for voice in voices:
+                name_lower = getattr(voice, "name", "").lower()
+                id_lower = getattr(voice, "id", "").lower()
+                gender_attr = getattr(voice, "gender", "").lower()
+
+                if gender == "male":
+                    if "david" in name_lower or "male" in name_lower or "male" in gender_attr or "david" in id_lower or "male" in id_lower:
+                        selected_id = voice.id
+                        break
+                else:  # female
+                    if "zira" in name_lower or "female" in name_lower or "female" in gender_attr or "zira" in id_lower or "female" in id_lower:
+                        selected_id = voice.id
+                        break
+
+            if selected_id is None:
+                selected_id = voices[0].id
+            engine.setProperty("voice", selected_id)
 
         engine.say(text)
         engine.runAndWait()
@@ -251,12 +284,13 @@ def _speak_pyttsx3_local(text: str) -> None:
 
 def _try_google_tts(content: str) -> bool:
     """Return True if Google cloud TTS played successfully."""
-    if not config.GOOGLE_VOICE_ID.strip():
-        print("[SPEAKER] Skipping Google TTS: google_voice_id is not configured.")
+    active_voice = _get_active_google_voice()
+    if not active_voice.strip():
+        print("[SPEAKER] Skipping Google TTS: active_voice is not configured.")
         return False
     print("[SPEAKER] Google Cloud TTS route selected.")
     try:
-        audio = fetch_google_audio(content, config.GOOGLE_VOICE_ID)
+        audio = fetch_google_audio(content, active_voice)
         _play_audio_bytes(audio)
         print("[SPEAKER] Google Cloud TTS playback completed.")
         return True

@@ -27,12 +27,10 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
-    "GOOGLE_VOICE_ID",
-    "KOKORO_VOICE",
-    "PIPER_VOICE_MODEL",
     "PRIMARY_TTS",
     "PROJECT_ROOT",
     "SYSTEM_PROMPT",
+    "VOICE_GENDER",
     "is_dev_mode",
     "load_feature_flags",
     "load_module_flags",
@@ -189,9 +187,7 @@ else:
 
 tts_settings = _CONFIG_DATA.get("tts_settings", {})
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
-GOOGLE_VOICE_ID: Final[str] = tts_settings.get("google_voice_id", "")
-KOKORO_VOICE: Final[str] = tts_settings.get("kokoro_voice", "af_sky")
-PIPER_VOICE_MODEL: Final[str] = tts_settings.get("piper_voice_model", "en_US-lessac-medium.onnx")
+VOICE_GENDER: Final[str] = tts_settings.get("voice_gender", "female")
 CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")
 
 
