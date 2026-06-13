@@ -235,9 +235,9 @@ def _speak_piper_local(text: str) -> None:
     except Exception as exc:  # noqa: BLE001
         print(
             f"[SPEAKER] Local Piper CLI playback failed ({type(exc).__name__}: {exc}); "
-            "falling back to Google Cloud TTS."
+            "falling back to local pyttsx3."
         )
-        _route_tts_playback(text, "google")
+        _route_tts_playback(text, "pyttsx3")
 
 
 def _speak_pyttsx3_local(text: str) -> None:
@@ -322,9 +322,9 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         except Exception as exc:  # noqa: BLE001
             print(
                 f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
-                "falling back to Piper CLI."
+                "falling back to Google Cloud TTS."
             )
-            _route_tts_playback(text, "piper")
+            _route_tts_playback(text, "google")
         return
 
     if normalized == "piper":
@@ -336,8 +336,8 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
         print("[SPEAKER] Routing to Google Cloud TTS client API.")
         if _try_google_tts(text):
             return
-        print("[SPEAKER] Google TTS failed; falling back to local pyttsx3.")
-        _route_tts_playback(text, "pyttsx3")
+        print("[SPEAKER] Google TTS failed; falling back to local Piper CLI.")
+        _route_tts_playback(text, "piper")
         return
 
     if normalized == "pyttsx3":

@@ -66,7 +66,9 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 | `dev_mode_active` | boolean | `true` when `DEV_MODE=true` was active for the run |
 | `demo_mode_active` | boolean | `true` when `DEMO_MODE=true` was active for the run |
 | `synthesis_strategy` | string | Active synthesis backend: `"llm"` in production; `"raw"`, `"slm"`, or `"llm"` in dev mode; `"slm"` in demo mode |
-| `tts_strategy` | string | Active TTS engine: `"google"` or `"pyttsx3"` in production; reflects `DEV_TTS_PLAYBACK` or `DEMO_TTS` otherwise |
+| `tts_strategy` | string | Configured TTS strategy: `"google"`, `"kokoro"`, `"piper"`, or `"pyttsx3"` in production; reflects `DEV_TTS_PLAYBACK` or `DEMO_TTS` otherwise |
+| `active_tts_engine` | string | Resolved active TTS engine used for playback (e.g., `"google"`, `"kokoro"`, `"piper"`, or `"pyttsx3"`); may differ from `tts_strategy` if system resource throttling triggers local fallback |
+| `system_load_throttled` | boolean | `true` when hardware resource utilization exceeds throttle limits and triggers local fallback |
 
 **`digest` field descriptions:**
 
@@ -112,6 +114,8 @@ Diagnostic snapshot of the active pipeline run. Readable only while a trigger is
 | `label` | string | Short stage label: `GATE`, `COLLECTION`, `SYNTHESIS`, `DELIVERY` |
 | `timestamp` | string | UTC ISO-8601 timestamp of the last stage update |
 | `is_speaking` | boolean | `true` when `_SPEAK_LOCK` is held or `pygame.mixer.music.get_busy()` is active |
+| `active_tts_engine` | string | Resolved active TTS engine used for playback (e.g., `"google"`, `"kokoro"`, `"piper"`, or `"pyttsx3"`) |
+| `system_load_throttled` | boolean | `true` when hardware resource utilization exceeds throttle limits and triggers local fallback |
 
 **Response `404`** — no active run. The frontend treats this as the idle signal, clears the polling interval, and marks `isSpeaking` as `false`.
 
@@ -267,7 +271,9 @@ class RuntimeMetadata(BaseModel):
     dev_mode_active: bool
     demo_mode_active: bool
     synthesis_strategy: str   # "raw" | "slm" | "llm"
-    tts_strategy: str         # "pyttsx3" | "google"
+    tts_strategy: str         # "pyttsx3" | "google" | "kokoro" | "piper"
+    active_tts_engine: str    # "pyttsx3" | "google" | "kokoro" | "piper"
+    system_load_throttled: bool
 ```
 
 ### `PipelineStatusSnapshot`
@@ -278,6 +284,8 @@ class PipelineStatusSnapshot(BaseModel):
     label: str
     timestamp: str    # UTC ISO-8601
     is_speaking: bool
+    active_tts_engine: str    # "pyttsx3" | "google" | "kokoro" | "piper"
+    system_load_throttled: bool
 ```
 
 ### `ReminderRecord`
@@ -375,8 +383,8 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `DEMO_MODE` | `false` | Intercepts trigger; serves static mock telemetry |
 | `ENABLE_STARTUP_GATE` | `true` | When `false`, skips Wi-Fi/power/cooldown while keeping live APIs |
 | `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `slm` (placeholder), `llm` |
-| `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google` |
-| `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google` |
+| `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `kokoro`, `piper` |
+| `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google`, `kokoro`, `piper` |
 | `APEX_ALLOWED_ORIGINS` | _(see below)_ | Comma-separated CORS origins; replaces defaults entirely when set |
 
 **Default CORS origins** (when `APEX_ALLOWED_ORIGINS` is unset):

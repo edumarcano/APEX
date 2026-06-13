@@ -215,7 +215,7 @@ Harden multi-threaded execution safety, eliminate database write contention, res
 
 ## v1.10.0 - Local Neural Voice Matrix
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
 Transition speech synthesis from cloud-first delivery toward a local-first neural voice architecture powered by Kokoro ONNX and Piper, while preserving optional cloud fallback capabilities.

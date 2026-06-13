@@ -80,7 +80,7 @@ apex/
 │   ├── api.py           # FastAPI app — routes, PipelineState, Pydantic models, clean_for_tts
 │   ├── brain.py         # Briefing synthesis via Gemini 2.5 Flash (google-genai)
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
-│   ├── speaker.py       # TTS fallback chain: Google Cloud TTS → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
+│   ├── speaker.py       # TTS fallback chain: Kokoro → Google → Piper → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite session logging and reminder CRUD
 │   ├── config.py        # Feature flags, module flags, system prompt, TTS settings loader
 │   ├── mock/
@@ -168,10 +168,11 @@ On any exception (missing key, empty speech section, API error), the function ca
 
 ### `core/speaker.py`
 
-Two warm-up functions run at module import time:
+Three warm-up functions run at module import time:
 
 - `_warm_system_subsystems()` — calls `pygame.mixer.init()` once and holds the channel open. `SDL_VIDEODRIVER=dummy` is set at import to prevent crashes when no display is attached.
 - `_warm_cloud_clients()` — instantiates a `TextToSpeechClient` singleton when `GOOGLE_APPLICATION_CREDENTIALS` is present. Logs a skip message when absent rather than raising.
+- `_warm_local_kokoro()` — instantiates the local Kokoro ONNX model session in a background daemon thread to eliminate initialization latency on the first briefing run.
 
 `speak(text, *, tts_override=None)` acquires `_SPEAK_LOCK` (a module-level `threading.Lock`) before routing. All concurrent invocations serialize through this lock, preventing audio interleaving. Routing order:
 
@@ -179,9 +180,22 @@ Two warm-up functions run at module import time:
 2. If `DEV_MODE=true`, route to `DEV_TTS_PLAYBACK`.
 3. Otherwise route to `PRIMARY_TTS` from `config.json`.
 
-`_route_tts_playback` handles `"google"` (tries cloud, falls back to pyttsx3 on failure), and `"pyttsx3"` (direct local).
+`_route_tts_playback` routes audio generation through a cascading fallback chain:
+- `"kokoro"`: Synthesizes text to PCM using local Kokoro ONNX and plays via Pygame. If it fails, falls back to `"google"`.
+- `"google"`: Synthesizes text to MP3 using Google Cloud TTS and plays via Pygame. If it fails, falls back to `"piper"`.
+- `"piper"`: Synthesizes text to PCM using the local Piper CLI subprocess and plays via Pygame. If it fails, falls back to `"pyttsx3"`.
+- `"pyttsx3"`: Synthesizes text locally using the OS-native speech engine (terminal fallback).
 
 `is_speaking()` returns `True` when `_SPEAK_LOCK` is held or `pygame.mixer.music.get_busy()` is active. This is the value exposed through `GET /api/v1/status`.
+
+### Hardware Throttling & Local Fallbacks
+
+To prevent system resource starvation and audio lag, APEX evaluates hardware vitals using `psutil` before resolving the active speech engine:
+- **Throttling Thresholds**: Throttling triggers when RAM utilization is $\ge 85\%$ or when CPU utilization exceeds $80\%$ across two sequential samples spaced 100ms apart (`is_system_throttled()`).
+- **Dynamic Downscaling**: If throttling is active, `/api/v1/trigger` calls `_resolve_tts_diagnostics()` to automatically override cloud or heavy local engines with lower-overhead alternatives:
+  - `"google"` redirects to `"pyttsx3"`
+  - `"kokoro"` redirects to `"piper"`
+- **Diagnostics Reporting**: The resolved engine and throttling status are returned in the response metadata (`active_tts_engine` and `system_load_throttled`) and updated in `/api/v1/status`.
 
 ### `core/database.py`
 

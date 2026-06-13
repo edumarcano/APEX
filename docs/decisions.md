@@ -22,23 +22,18 @@ Templated output gets repetitive fast and requires manual updates whenever a dat
 
 ## TTS strategy and fallback design
 
-APEX uses a layered text-to-speech architecture that prioritizes reliability and low operational cost. The primary synthesis path uses a cloud TTS provider for higher-quality speech generation, while local synthesis remains available as a network-independent fallback.
+APEX uses a layered, cascading text-to-speech architecture that prioritizes local-first neural speech generation while retaining cloud and native OS fallbacks. The primary synthesis path uses local Kokoro ONNX for high-quality, network-independent neural speech.
 
-The cloud implementation initializes shared TTS clients at startup and reuses them across requests to reduce latency and avoid repeated initialization overhead. Speech playback is serialized through a dedicated lock to prevent overlapping audio output.
+To ensure continuous operation and low latency, clients and models are initialized and pre-warmed at startup. Speech playback is serialized through a dedicated lock to prevent overlapping audio output.
 
-Local synthesis is provided through pyttsx3, allowing briefings to be delivered even when network connectivity or cloud services are unavailable.
-
-Additional TTS providers may be added in future releases, but the architecture is intentionally provider-agnostic. New engines are expected to integrate into the existing fallback chain rather than becoming hard dependencies.
+If the primary Kokoro ONNX engine fails, the system falls back through a cascading pipeline (Google Cloud TTS $\rightarrow$ Piper CLI $\rightarrow$ pyttsx3) to ensure a briefing is always delivered regardless of network state or system load.
 
 **Current implementation:**
 
-Google Cloud TTS (primary)
-pyttsx3 (local fallback)
-
-**Planned expansion:**
-
-Additional TTS providers
-Improved voice selection and quality options
+- Kokoro ONNX (primary local neural)
+- Google Cloud TTS (secondary cloud fallback)
+- Piper CLI (tertiary local neural fallback)
+- pyttsx3 (terminal local OS fallback)
 
 ---
 
