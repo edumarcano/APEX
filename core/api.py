@@ -753,7 +753,7 @@ def trigger_briefing() -> BriefingResponse:
             if not dev_mode:
                 database.log_run()
 
-            speaker.speak("System initialized. All modules online.")
+            speaker.speak("APEX online. Preparing situational overview.")
 
             global_pipeline_state.update(2, "COLLECTION")
             print("[SYSTEM]: Fetching data...")
