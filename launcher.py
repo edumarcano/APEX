@@ -203,13 +203,13 @@ def main() -> None:
     print("[LAUNCHER] Waiting for APEX Nexus API to come online...", flush=True)
     api_ready = False
     
-    for _ in range(30): 
+    for _ in range(15): 
         try:
-            with urllib.request.urlopen("http://127.0.0.1:8000/", timeout=1) as response:
+            with urllib.request.urlopen("http://127.0.0.1:8000/", timeout=3) as response:
                 if response.getcode() == 200:
                     api_ready = True
                     break
-        except (urllib.error.URLError, ConnectionResetError):
+        except (urllib.error.URLError, ConnectionResetError, TimeoutError):
             pass
         time.sleep(0.5)
 
