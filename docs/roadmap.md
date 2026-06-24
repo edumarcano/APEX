@@ -222,21 +222,21 @@ Transition speech synthesis from cloud-first delivery toward a local-first neura
 
 ---
 
-## v1.11.0 - Precision Subtitle Synchronization
-
-**Status:** Planned
-
-**Objective:**
-Introduce timing-aware subtitle delivery through speech-alignment metadata, synchronized playhead tracking, and real-time transcript highlighting.
-
----
-
-## v1.12.0 - Dormant Core & Ambient State Engine
+## v1.11.0 - Dormant Core & Ambient State Engine
 
 **Status:** Planned
 
 **Objective:**
 Transform APEX into a standby intelligence appliance featuring manual synthesis activation, adaptive atmospheric awareness, state-driven environmental feedback, and command-console interaction patterns.
+
+---
+
+## v1.12.0 - Reserved / Deferred Integration Placeholder
+
+**Status:** Planned
+
+**Objective:**
+Reserved for future scope expansion. Potential targets include workspace activation systems, local environment orchestration, or intermediate platform optimization as determined by active operational requirements.
 
 ---
 
