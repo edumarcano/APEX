@@ -59,7 +59,7 @@ If the Gemini call fails, APEX falls back to reading raw connector data directly
 
 This layered approach prioritizes reliability, offline capability, and graceful degradation.
 
-**Implemented:** Gemini synthesis (Gemini 2.5 Flash), offline raw-data fallback.
+**Implemented:** Gemini synthesis (Gemini 3.1 Flash Lite), offline raw-data fallback.
 
 **Planned:** Model-tier failover within Gemini, local SLM synthesis via Ollama, improved degradation behavior.
 

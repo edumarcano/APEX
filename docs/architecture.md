@@ -10,7 +10,7 @@ With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST /api/v1/trig
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
-3. **Synthesis** — raw outputs are joined into a pipe-delimited string and passed to Gemini 2.5 Flash. `brain.py` prepends the persona prompt from `config.json`. A filler phrase plays on a background thread while the model processes. The model response is parsed for `===SPEECH===` and `===INSIGHTS===` markers; the speech section becomes the TTS briefing and the insights section yields structured bullet strings. If the Gemini call fails, the raw data string is returned as the briefing with a single fallback insight.
+3. **Synthesis** — raw outputs are joined into a pipe-delimited string and passed to Gemini 3.1 Flash Lite. `brain.py` prepends the persona prompt from `config.json`. A filler phrase plays on a background thread while the model processes. The model response is parsed for `===SPEECH===` and `===INSIGHTS===` markers; the speech section becomes the TTS briefing and the insights section yields structured bullet strings. If the Gemini call fails, the raw data string is returned as the briefing with a single fallback insight.
 4. **Delivery** — connector outputs are evaluated for trust, producing a `DigestPayload` with a `confidence_score` and `failed_connectors` list. The trigger endpoint returns the briefing text, telemetry, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=llm`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
@@ -78,7 +78,7 @@ The `metadata.demo_mode_active` field is `true` in the trigger response. `useApe
 apex/
 ├── core/
 │   ├── api.py           # FastAPI app — routes, PipelineState, Pydantic models, clean_for_tts
-│   ├── brain.py         # Briefing synthesis via Gemini 2.5 Flash (google-genai)
+│   ├── brain.py         # Briefing synthesis via Gemini 3.1 Flash Lite (google-genai)
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
 │   ├── speaker.py       # TTS fallback chain: Kokoro → Google → Piper → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite session logging and reminder CRUD
@@ -149,7 +149,7 @@ apex/
 
 ### `core/brain.py`
 
-`process_telemetry(raw_data)` constructs a `genai.Client` with `GEMINI_API_KEY`, prepends `SYSTEM_PROMPT` from `config.json`, and calls `gemini-2.5-flash`. The function returns a `dict[str, Any]` with keys `briefing` (TTS prose string) and `insights` (list of bullet strings).
+`process_telemetry(raw_data)` constructs a `genai.Client` with `GEMINI_API_KEY`, prepends `SYSTEM_PROMPT` from `config.json`, and calls `gemini-3.1-flash-lite`. The function returns a `dict[str, Any]` with keys `briefing` (TTS prose string) and `insights` (list of bullet strings).
 
 **Gemini output protocol:** The system prompt instructs the model to return exactly two sections separated by markers:
 

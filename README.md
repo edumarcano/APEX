@@ -1,6 +1,6 @@
 # APEX: Automated Personal Environment Xylem
 
-A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, pulls live data from a set of configurable connectors, passes everything to Gemini 2.5 Flash for synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
+A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, pulls live data from a set of configurable connectors, passes everything to Gemini 3.1 Flash Lite for synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
 
 ---
 
@@ -23,7 +23,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 - **Context-aware gate** — checks home Wi-Fi (SSID), AC power, and a 1-hour cooldown before any API call is made (`scanner.py`)
 - **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window)
-- **AI briefing synthesis** — raw connector output passed to Gemini 2.5 Flash; falls back to reading raw data if the API call fails
+- **AI briefing synthesis** — raw connector output passed to Gemini 3.1 Flash Lite; falls back to reading raw data if the API call fails
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
 - **Text-to-speech** — Kokoro ONNX primary, cascading through Google Cloud TTS, local Piper CLI, and native pyttsx3 fallbacks; pre-warmed singletons, serialized `_SPEAK_LOCK`
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
@@ -43,7 +43,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 |---|---|
 | Language | Python 3.10+ |
 | API Framework | FastAPI, uvicorn |
-| AI Engine | Google GenAI SDK (Gemini 2.5 Flash) |
+| AI Engine | Google GenAI SDK (Gemini 3.1 Flash Lite) |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Icons | lucide-react |
 | Database | SQLite3 |

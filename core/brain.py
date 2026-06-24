@@ -80,7 +80,7 @@ def process_telemetry(raw_data: str) -> dict[str, Any]:
                 "[BRAIN]: DEV_MODE active — DEV_AI_SYNTHESIS=slm; "
                 "allocating local placeholder baseline."
             )
-            # TODO: APEX-V1.7.0 — Integrate local SLM fallback execution loop via Ollama (llama3.2:1b).
+            # TODO: — Integrate local SLM fallback execution loop via Ollama.
             return {
                 "briefing": (
                     "DEV MODE ACTIVE. Local SLM placeholder briefing.\n\n"
@@ -104,7 +104,7 @@ def process_telemetry(raw_data: str) -> dict[str, Any]:
         full_prompt = f"{SYSTEM_PROMPT}\n\nDATA TO ANALYZE: {raw_data}"
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.1-flash-lite",
             contents=[full_prompt],
         )
         if response.text and response.text.strip():
