@@ -149,6 +149,24 @@ export default function App(): ReactElement {
   const pendingReminderCount = activeReminders.length
   const showStandbyNotification =
     status === 'idle' && pendingReminderCount > 0
+  const isDormant = status === 'idle'
+
+  const wingTransition =
+    'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
+  const leftWingDormantClasses =
+    'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const leftWingActiveClasses =
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+  const rightWingDormantClasses =
+    'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const rightWingActiveClasses =
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+  const centerColumnDormantClasses = 'xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1'
+  const briefingDigestDormantClasses =
+    'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
+  const briefingDigestActiveClasses =
+    'max-h-[500px] opacity-100 mb-4 scale-100 pointer-events-auto'
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -360,9 +378,11 @@ export default function App(): ReactElement {
         </div>
 
         <div className="mx-auto flex w-full min-h-0 flex-1 flex-col gap-4 md:gap-6 xl:grid xl:grid-rows-[1fr_auto]">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3 xl:min-h-0">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:flex xl:min-h-0 xl:w-full xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
-            <div className="flex flex-col gap-4 xl:min-h-0">
+            <div
+              className={`flex min-w-0 flex-col gap-4 xl:min-h-0 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+            >
               <TelemetryCard
                 title="Weather"
                 icon={CloudSun}
@@ -395,17 +415,25 @@ export default function App(): ReactElement {
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}
-            <div className="relative z-[var(--z-core-logo)] flex flex-col items-center gap-4 xl:col-span-1 xl:gap-6 xl:min-h-0">
-              <BriefingDigest
-                insights={[
-                  ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
-                  ...(data?.digest?.insights ?? []),
-                ]}
-                status={status}
-                isLoading={isTriggerLoading}
-                className="flex-none w-full xl:flex-1 xl:min-h-0"
-              />
-              <div className="flex h-64 flex-none flex-col items-center justify-center py-4 xl:h-full xl:min-h-0 xl:flex-1 xl:py-0">
+            <div
+              className={`relative z-[var(--z-core-logo)] flex min-w-0 flex-col items-center gap-4 ${wingTransition} xl:gap-6 xl:min-h-0 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+            >
+              <div
+                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses}`}
+              >
+                <BriefingDigest
+                  insights={[
+                    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
+                    ...(data?.digest?.insights ?? []),
+                  ]}
+                  status={status}
+                  isLoading={isTriggerLoading}
+                  className="flex-none w-full xl:min-h-0"
+                />
+              </div>
+              <div
+                className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:h-full xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:flex-1 xl:justify-center' : ''}`}
+              >
                 <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
                   <ApexLogo
                     step={activeStep}
@@ -429,7 +457,9 @@ export default function App(): ReactElement {
             </div>
 
             {/* COLUMN 3: RIGHT WING */}
-            <div className="flex flex-col gap-4 xl:min-h-0">
+            <div
+              className={`flex min-w-0 flex-col gap-4 xl:min-h-0 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+            >
               <TelemetryCard title="Inbox" icon={Mail} className="flex-none xl:flex-1 xl:min-h-0">
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
