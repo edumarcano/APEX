@@ -17,6 +17,7 @@ import {
 
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
+import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -144,11 +145,28 @@ export default function App(): ReactElement {
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
-  const showTriggerButton = status === 'idle'
+  const showCommandTrigger = status === 'idle' || status === 'loading'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
-  const showStandbyNotification =
-    status === 'idle' && pendingReminderCount > 0
+  const showPendingReminderBadge = pendingReminderCount > 0
+  const isDormant = status === 'idle'
+
+  const wingTransition =
+    'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
+  const leftWingDormantClasses =
+    'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const leftWingActiveClasses =
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+  const rightWingDormantClasses =
+    'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const rightWingActiveClasses =
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+  const centerColumnDormantClasses = 'xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1'
+  const briefingDigestDormantClasses =
+    'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
+  const briefingDigestActiveClasses =
+    'max-h-[500px] opacity-100 mb-4 scale-100 pointer-events-auto'
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -321,19 +339,15 @@ export default function App(): ReactElement {
             />
           </div>
           <div className="flex items-center justify-end gap-2 justify-self-end">
-            {showTriggerButton && (
-              <button
-                type="button"
-                onClick={() => {
-                  void triggerSynthesis()
-                }}
-                disabled={isTriggerDisabled}
-                className="inline-flex rounded-lg border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-widest text-[#FBBF24] transition-all hover:border-[#0F4DB8]/60 hover:bg-[#0F4DB8]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-[10px]"
-                aria-label="Initiate system briefing"
-                data-slot="synthesis-trigger"
+            {showPendingReminderBadge && (
+              <span
+                className="font-mono text-[10px] sm:text-[11px] uppercase tracking-widest text-amber-500/80 animate-pulse"
+                aria-live="polite"
+                data-slot="pending-reminder-badge"
               >
-                INITIATE SYSTEM BRIEFING
-              </button>
+                [{pendingReminderCount}{' '}
+                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
+              </span>
             )}
             {demoModeActive && (
               <span
@@ -360,9 +374,11 @@ export default function App(): ReactElement {
         </div>
 
         <div className="mx-auto flex w-full min-h-0 flex-1 flex-col gap-4 md:gap-6 xl:grid xl:grid-rows-[1fr_auto]">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-3 xl:min-h-0">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:flex xl:min-h-0 xl:w-full xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
-            <div className="flex flex-col gap-4 xl:min-h-0">
+            <div
+              className={`flex min-w-0 flex-col gap-4 xl:min-h-0 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+            >
               <TelemetryCard
                 title="Weather"
                 icon={CloudSun}
@@ -395,41 +411,62 @@ export default function App(): ReactElement {
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}
-            <div className="relative z-[var(--z-core-logo)] flex flex-col items-center gap-4 xl:col-span-1 xl:gap-6 xl:min-h-0">
-              <BriefingDigest
-                insights={[
-                  ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
-                  ...(data?.digest?.insights ?? []),
-                ]}
-                status={status}
-                isLoading={isTriggerLoading}
-                className="flex-none w-full xl:flex-1 xl:min-h-0"
-              />
-              <div className="flex h-64 flex-none flex-col items-center justify-center py-4 xl:h-full xl:min-h-0 xl:flex-1 xl:py-0">
-                <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
-                  <ApexLogo
-                    step={activeStep}
-                    status={status}
-                    isSpeaking={isSpeaking}
-                    reminderPulseCount={reminderPulseCount}
-                    className="h-44 w-auto sm:h-52 xl:h-60"
-                  />
-                </div>
-                {showStandbyNotification && (
-                  <p
-                    className="mt-3 font-mono text-[11px] uppercase tracking-widest text-amber-400/70"
-                    aria-live="polite"
-                    data-slot="standby-notification"
+            <div
+              className={`relative z-[var(--z-core-logo)] flex min-w-0 flex-col items-center gap-4 ${wingTransition} xl:gap-6 xl:min-h-0 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+            >
+              <div
+                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses}`}
+              >
+                <BriefingDigest
+                  insights={[
+                    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
+                    ...(data?.digest?.insights ?? []),
+                  ]}
+                  status={status}
+                  isLoading={isTriggerLoading}
+                  className="flex-none w-full xl:min-h-0"
+                />
+              </div>
+              <div
+                className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:h-full xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:flex-1 xl:justify-center' : ''}`}
+              >
+                <div className="relative flex flex-col items-center">
+                  <div
+                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
                   >
-                    [{pendingReminderCount}{' '}
-                    {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
-                  </p>
-                )}
+                    <ApexLogo
+                      step={activeStep}
+                      status={status}
+                      isSpeaking={isSpeaking}
+                      reminderPulseCount={reminderPulseCount}
+                      className="h-44 w-auto sm:h-52 xl:h-60"
+                    />
+                  </div>
+                  <div
+                    className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                      isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
+                    } ${
+                      showCommandTrigger
+                        ? 'pointer-events-auto opacity-100'
+                        : 'pointer-events-none opacity-0'
+                    }`}
+                  >
+                    <CommandTrigger
+                      status={isTriggerLoading ? 'loading' : 'idle'}
+                      onClick={() => {
+                        void triggerSynthesis()
+                      }}
+                      disabled={isTriggerDisabled}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* COLUMN 3: RIGHT WING */}
-            <div className="flex flex-col gap-4 xl:min-h-0">
+            <div
+              className={`flex min-w-0 flex-col gap-4 xl:min-h-0 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+            >
               <TelemetryCard title="Inbox" icon={Mail} className="flex-none xl:flex-1 xl:min-h-0">
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
