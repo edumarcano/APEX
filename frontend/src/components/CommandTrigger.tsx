@@ -43,7 +43,7 @@ export function CommandTrigger({
       onBlur={() => {
         setIsHovered(false)
       }}
-      className={`inline-flex border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-[#FBBF24] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] sm:text-[11px] ${
+      className={`inline-flex rounded-xl border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-[#FBBF24] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] sm:text-[11px] ${
         isLoading
           ? 'cursor-not-allowed animate-[pulse_3s_ease-in-out_infinite] opacity-80'
           : disabled

@@ -33,6 +33,9 @@ export default {
       lineHeight: {
         hud: '1.5',
       },
+      scale: {
+        115: '1.15',
+      },
     },
   },
 }

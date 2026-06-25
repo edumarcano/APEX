@@ -341,7 +341,7 @@ export default function App(): ReactElement {
           <div className="flex items-center justify-end gap-2 justify-self-end">
             {showPendingReminderBadge && (
               <span
-                className="rounded-full border border-amber-500/40 bg-amber-950/20 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-amber-400"
+                className="font-mono text-[10px] sm:text-[11px] uppercase tracking-widest text-amber-500/80 animate-pulse"
                 aria-live="polite"
                 data-slot="pending-reminder-badge"
               >
@@ -431,7 +431,9 @@ export default function App(): ReactElement {
                 className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:h-full xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:flex-1 xl:justify-center' : ''}`}
               >
                 <div className="relative flex flex-col items-center">
-                  <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
+                  <div
+                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
+                  >
                     <ApexLogo
                       step={activeStep}
                       status={status}
@@ -441,7 +443,9 @@ export default function App(): ReactElement {
                     />
                   </div>
                   <div
-                    className={`absolute left-1/2 top-full mt-3 -translate-x-1/2 whitespace-nowrap transition-opacity duration-700 ease-in-out ${
+                    className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                      isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
+                    } ${
                       showCommandTrigger
                         ? 'pointer-events-auto opacity-100'
                         : 'pointer-events-none opacity-0'
