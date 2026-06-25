@@ -17,6 +17,7 @@ import {
 
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
+import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -144,11 +145,10 @@ export default function App(): ReactElement {
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
-  const showTriggerButton = status === 'idle'
+  const showCommandTrigger = status === 'idle' || status === 'loading'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
-  const showStandbyNotification =
-    status === 'idle' && pendingReminderCount > 0
+  const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
 
   const wingTransition =
@@ -339,19 +339,15 @@ export default function App(): ReactElement {
             />
           </div>
           <div className="flex items-center justify-end gap-2 justify-self-end">
-            {showTriggerButton && (
-              <button
-                type="button"
-                onClick={() => {
-                  void triggerSynthesis()
-                }}
-                disabled={isTriggerDisabled}
-                className="inline-flex rounded-lg border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-widest text-[#FBBF24] transition-all hover:border-[#0F4DB8]/60 hover:bg-[#0F4DB8]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-[10px]"
-                aria-label="Initiate system briefing"
-                data-slot="synthesis-trigger"
+            {showPendingReminderBadge && (
+              <span
+                className="rounded-full border border-amber-500/40 bg-amber-950/20 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-amber-400"
+                aria-live="polite"
+                data-slot="pending-reminder-badge"
               >
-                INITIATE SYSTEM BRIEFING
-              </button>
+                [{pendingReminderCount}{' '}
+                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
+              </span>
             )}
             {demoModeActive && (
               <span
@@ -434,25 +430,32 @@ export default function App(): ReactElement {
               <div
                 className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:h-full xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:flex-1 xl:justify-center' : ''}`}
               >
-                <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
-                  <ApexLogo
-                    step={activeStep}
-                    status={status}
-                    isSpeaking={isSpeaking}
-                    reminderPulseCount={reminderPulseCount}
-                    className="h-44 w-auto sm:h-52 xl:h-60"
-                  />
-                </div>
-                {showStandbyNotification && (
-                  <p
-                    className="mt-3 font-mono text-[11px] uppercase tracking-widest text-amber-400/70"
-                    aria-live="polite"
-                    data-slot="standby-notification"
+                <div className="relative flex flex-col items-center">
+                  <div className="filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:scale-[1.03] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)]">
+                    <ApexLogo
+                      step={activeStep}
+                      status={status}
+                      isSpeaking={isSpeaking}
+                      reminderPulseCount={reminderPulseCount}
+                      className="h-44 w-auto sm:h-52 xl:h-60"
+                    />
+                  </div>
+                  <div
+                    className={`absolute left-1/2 top-full mt-3 -translate-x-1/2 whitespace-nowrap transition-opacity duration-700 ease-in-out ${
+                      showCommandTrigger
+                        ? 'pointer-events-auto opacity-100'
+                        : 'pointer-events-none opacity-0'
+                    }`}
                   >
-                    [{pendingReminderCount}{' '}
-                    {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
-                  </p>
-                )}
+                    <CommandTrigger
+                      status={isTriggerLoading ? 'loading' : 'idle'}
+                      onClick={() => {
+                        void triggerSynthesis()
+                      }}
+                      disabled={isTriggerDisabled}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
