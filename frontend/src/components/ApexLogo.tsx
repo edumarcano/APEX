@@ -28,6 +28,7 @@ export function ApexLogo({
   }, [reminderPulseCount])
 
   const isError = status === 'error'
+  const isDormant = status === 'idle'
   const activeStep = step ?? 0
   const hasDelivered = status === 'success' || activeStep >= 4
 
@@ -58,6 +59,10 @@ export function ApexLogo({
   const goldActiveBreathing = `${goldActiveCore} animate-[pulse_3s_ease-in-out_infinite]`
 
   const getGoldSegmentClass = (segmentStep: number): string => {
+    if (isDormant) {
+      return 'apex-core-metal--breathing-dormant'
+    }
+
     if (pulseActive) {
       return `transition-all duration-300 ease-out ${surgeBlueCore}`
     }
@@ -201,6 +206,22 @@ export function ApexLogo({
             .apex-core-metal--dormant {
               fill: url(#apexDormantMetal);
               opacity: 0.2;
+            }
+
+            @keyframes breathingDormant {
+              0%, 100% {
+                opacity: 0.15;
+                filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.15));
+              }
+              50% {
+                opacity: 0.55;
+                filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.45));
+              }
+            }
+
+            .apex-core-metal--breathing-dormant {
+              fill: url(#apexDormantMetal);
+              animation: breathingDormant 10s ease-in-out infinite;
             }
 
             .apex-core-metal--green {
