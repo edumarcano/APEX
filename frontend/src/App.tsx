@@ -118,10 +118,10 @@ export default function App(): ReactElement {
     if (status === 'success' && !isSpeaking) {
       return '15, 77, 184' // APEX Blue
     }
-    if (
-      status === 'loading' ||
-      (activeStep !== null && activeStep >= 1 && activeStep <= 3)
-    ) {
+    if (activeStep === 3) {
+      return '168, 85, 247' // Purple/magenta (logo accent)
+    }
+    if (status === 'loading' || activeStep === 1 || activeStep === 2) {
       return '57, 255, 136' // Green
     }
     return '15, 23, 42' // Deep Slate Blue
