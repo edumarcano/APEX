@@ -2,6 +2,43 @@
 
 ---
 
+## v1.11.1 — Speech Engine Stabilization & Library Pruning
+
+**Released:** June 29, 2026
+
+This patch removes Piper CLI from the active TTS stack, restores Google Cloud TTS as the primary engine, and places Kokoro ONNX on hardware-conditional cold standby. Boot memory overhead and thread count are reduced when Kokoro is not the configured primary engine.
+
+---
+
+### What's New
+
+- Removed Piper CLI as an active TTS engine; all runtime subprocess calls, binary resolution, and voice model selection logic were deleted from `core/speaker.py`.
+- Added a silent forward-compatibility redirect: `primary_tts: "piper"` in `config.json` resolves to `"pyttsx3"` at runtime with a logged warning, preserving existing configs without errors.
+- Restored Google Cloud TTS as the default primary engine in `config.json`.
+- Placed Kokoro ONNX on hardware-conditional cold standby; the warmup thread and lazy imports are skipped at boot when `primary_tts` is not `"kokoro"`, consuming 0 MB RAM and 0 threads.
+
+### Architecture Changes
+
+- Updated `_resolve_tts_diagnostics` in `core/api.py` so Google Cloud TTS bypasses hardware throttle checks; Kokoro retains its existing fallback to `pyttsx3` under load.
+- Narrowed `TtsEngine` literal union and the `active_tts_engine` field in `RuntimeMetadata` and `PipelineStatusSnapshot` to `"google" | "kokoro" | "pyttsx3"`, removing `"piper"` from all schema definitions.
+- Updated `core/config.py` to enforce the `piper → pyttsx3` redirect at config parse time.
+
+### API Changes
+
+- `TtsEngine` type is now `Literal["google", "kokoro", "pyttsx3"]` across the backend schema and frontend TypeScript types; `"piper"` is no longer a valid or emitted value.
+
+### Frontend Changes
+
+- Unified `VocalOrb.tsx` to a single gold color scheme by removing the `isLocalEngine` conditional branch and the cyan color path it produced.
+- Updated `useApexData.ts` and `telemetry.ts` to reflect the narrowed `TtsEngine` union.
+
+### Documentation Updates
+
+- Updated `README.md`, `docs/architecture.md`, `docs/api.md`, `docs/decisions.md`, and `docs/roadmap.md` to reflect the revised engine stack.
+- Documented the Lunar Lake latency root cause that motivated the Piper removal in `docs/decisions.md`.
+
+---
+
 ## v1.11.0 — Dormant Core & Ambient State Engine
 
 **Released:** June 28, 2026
