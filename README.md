@@ -2,6 +2,14 @@
 
 A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, pulls live data from a set of configurable connectors, passes everything to Gemini 3.1 Flash Lite for synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
 
+<p align="center">
+  <img src="docs/assets/apex-hero.png" alt="APEX dormant standby HUD" width="900">
+</p>
+
+<p align="center">
+  <em>Dormant standby mode with centralized command trigger, reminder badge, parallax starfield, and live system diagnostics.</em>
+</p>
+
 ---
 
 ## Architecture Overview
@@ -16,6 +24,18 @@ core/api.py → scanner.py → [Data Connectors] → brain.py → speaker.py
 ```
 
 Full pipeline walkthrough, mermaid sequence diagram, component inventory, and data contracts are in [docs/architecture.md](docs/architecture.md).
+
+---
+
+## Interface Preview
+
+<p align="center">
+  <img src="docs/assets/apex-active-hud.png" alt="APEX active briefing HUD with live modules, reminders, diagnostics, and delivery status" width="900">
+</p>
+
+<p align="center">
+  <em>Active briefing mode with synthesized output, live data modules, reminder controls, demo-mode telemetry, sync health, and system diagnostics rendered in the full HUD layout.</em>
+</p>
 
 ---
 
