@@ -5,6 +5,7 @@ interface Star {
   x: number
   y: number
   radius: number
+  tierClass: string
   animationClass: string
 }
 
@@ -31,6 +32,7 @@ function buildStars(): Star[] {
       x: Math.floor(rng() * 101),
       y: Math.floor(rng() * 101),
       radius: 0.5 + rng() * 0.3,
+      tierClass: 'star-tier-far',
       animationClass: 'animate-twinkle-slow',
     })
   }
@@ -41,6 +43,7 @@ function buildStars(): Star[] {
       x: Math.floor(rng() * 101),
       y: Math.floor(rng() * 101),
       radius: 1.0 + rng() * 0.3,
+      tierClass: 'star-tier-mid',
       animationClass: 'animate-twinkle-medium',
     })
   }
@@ -51,6 +54,7 @@ function buildStars(): Star[] {
       x: Math.floor(rng() * 101),
       y: Math.floor(rng() * 101),
       radius: 1.5 + rng() * 0.5,
+      tierClass: 'star-tier-near',
       animationClass: 'animate-twinkle-fast',
     })
   }
@@ -69,7 +73,7 @@ function CelestialBackgroundComponent(): ReactElement {
       {STARS.map((star) => (
         <span
           key={star.id}
-          className={`absolute rounded-full bg-white ${star.animationClass}`}
+          className={`absolute rounded-full bg-white ${star.tierClass} ${star.animationClass}`}
           style={{
             left: `${star.x}%`,
             top: `${star.y}%`,

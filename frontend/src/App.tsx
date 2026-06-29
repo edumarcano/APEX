@@ -169,6 +169,20 @@ export default function App(): ReactElement {
     'max-h-[500px] opacity-100 mb-4 scale-100 pointer-events-auto'
 
   useEffect(() => {
+    const handleMouseMove = (event: MouseEvent): void => {
+      const mouseX = event.clientX / window.innerWidth - 0.5
+      const mouseY = event.clientY / window.innerHeight - 0.5
+      document.documentElement.style.setProperty('--mouse-x', String(mouseX))
+      document.documentElement.style.setProperty('--mouse-y', String(mouseY))
+    }
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+    }
+  }, [])
+
+  useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
       if (status !== 'idle') {
         return

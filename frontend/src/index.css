@@ -481,4 +481,31 @@
     animation: goldGlow 3s ease-in-out infinite;
     will-change: opacity, box-shadow;
   }
+
+  .star-tier-far {
+    transform: translate3d(
+      calc(var(--mouse-x, 0) * 12px),
+      calc(var(--mouse-y, 0) * 12px),
+      0
+    );
+    transition: transform 0.1s ease-out;
+  }
+
+  .star-tier-mid {
+    transform: translate3d(
+      calc(var(--mouse-x, 0) * 28px),
+      calc(var(--mouse-y, 0) * 28px),
+      0
+    );
+    transition: transform 0.1s ease-out;
+  }
+
+  .star-tier-near {
+    transform: translate3d(
+      calc(var(--mouse-x, 0) * 48px),
+      calc(var(--mouse-y, 0) * 48px),
+      0
+    );
+    transition: transform 0.1s ease-out;
+  }
 }
