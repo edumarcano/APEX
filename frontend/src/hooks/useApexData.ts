@@ -91,7 +91,7 @@ function getStringField(
   return typeof value === 'string' ? value : fallback
 }
 
-const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'piper', 'pyttsx3']
+const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 
 function parseTtsEngine(value: unknown): TtsEngine {
   if (typeof value === 'string' && VALID_TTS_ENGINES.includes(value as TtsEngine)) {
