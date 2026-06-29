@@ -45,7 +45,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window)
 - **AI briefing synthesis** — raw connector output passed to Gemini 3.1 Flash Lite; falls back to reading raw data if the API call fails
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
-- **Text-to-speech** — Kokoro ONNX primary, cascading through Google Cloud TTS, local Piper CLI, and native pyttsx3 fallbacks; pre-warmed singletons, serialized `_SPEAK_LOCK`
+- **Text-to-speech** — Google Cloud TTS primary with native pyttsx3 fallback; Kokoro ONNX available as an optional local engine that falls back to Google on failure; pre-warmed singletons, serialized `_SPEAK_LOCK`
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
 - **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as color-coded micro-bars in a six-column status footer; additional columns show internet connectivity, briefing lifecycle state, sync health, and live system time
 - **Dormant ambient HUD mode** — idle state collapses peripheral data wings, expands the central command area, surfaces pending reminders, and animates the APEX logo with pipeline-driven color states and parallax background motion
@@ -68,7 +68,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Icons | lucide-react |
 | Database | SQLite3 |
-| TTS | Kokoro ONNX (primary), Piper CLI, Google Cloud TTS, pyttsx3 |
+| TTS | Google Cloud TTS, pyttsx3, Kokoro ONNX (optional) |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, `google-cloud-texttospeech`, `google-genai`, `pygame-ce`, `tzdata`, `kokoro-onnx`, `onnxruntime`, `numpy` |
 
 ---
@@ -86,7 +86,7 @@ Both flags are read from `.env`. Values are normalized at read time (`true`, `Tr
 
 `DEMO_MODE` intercepts the trigger entirely and serves static mock telemetry from `core/mock/telemetry.json`. It does not run any connectors or write to the database. `DEV_MODE` and `DEMO_MODE` are independent flags; `DEMO_MODE` takes priority in the trigger path when both are set.
 
-Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `slm` placeholder, `llm` routes to live Gemini) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`, `piper`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, `kokoro`, or `piper`).
+Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `slm` placeholder, `llm` routes to live Gemini) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, or `kokoro`).
 
 ---
 
@@ -98,12 +98,12 @@ Individual connectors are switched on or off in `config.json`. When a connector 
 {
   "features":    { "weather": true, "sports": true, "news": true, "email": false, "calendar": false },
   "modules":     { "f1": true, "football": false },
-  "tts_settings": { "primary_tts": "kokoro", "voice_gender": "female" },
+  "tts_settings": { "primary_tts": "google", "voice_gender": "female" },
   "system_prompt": "You are APEX. Deliver a concise briefing in under 75 words. No emojis or markdown."
 }
 ```
 
-`modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, `"kokoro"`, or `"piper"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
+`modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
 ---
 
@@ -152,16 +152,12 @@ copy .env.example .env        # Windows
 - Save the key as `service_account.json` in the project root (gitignored).
 - Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` to its absolute path.
 
-**7. (Optional) Set up Local Neural Voices (Kokoro ONNX & Piper)**
+**7. (Optional) Set up Local Neural Voices (Kokoro ONNX)**
 
-APEX supports offline speech synthesis using local model weights and binaries. To use these engines, place the required files in the gitignored folders as follows:
+APEX supports offline speech synthesis using local Kokoro ONNX model weights. To use this engine, place the required files in the gitignored folder as follows:
 - **Kokoro ONNX**:
   - Save the ONNX model files inside `core/weights/kokoro/`.
   - Required files: `kokoro-v1.0.onnx` and `voices-v1.0.bin` (available from the Kokoro ONNX releases).
-- **Piper CLI**:
-  - Save the Piper executable files inside `core/bin/piper/` (e.g. `piper.exe` and its supporting DLLs).
-  - Save the Piper ONNX voice model files inside `core/weights/piper/`.
-  - Required files: `en_US-lessac-medium.onnx` (female voice) and `en_US-joe-medium.onnx` (male voice).
 
 **8. (Optional) Customize persona and connectors**
 

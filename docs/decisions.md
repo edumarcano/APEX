@@ -22,18 +22,17 @@ Templated output gets repetitive fast and requires manual updates whenever a dat
 
 ## TTS strategy and fallback design
 
-APEX uses a layered, cascading text-to-speech architecture that prioritizes local-first neural speech generation while retaining cloud and native OS fallbacks. The primary synthesis path uses local Kokoro ONNX for high-quality, network-independent neural speech.
+APEX uses a layered, cascading text-to-speech architecture with Google Cloud TTS as the default primary engine and pyttsx3 as the universal terminal fallback. Kokoro ONNX is available as an optional local engine; when selected, it falls back to Google Cloud TTS on failure, which in turn falls back to pyttsx3.
 
-To ensure continuous operation and low latency, clients and models are initialized and pre-warmed at startup. Speech playback is serialized through a dedicated lock to prevent overlapping audio output.
+Clients and models are initialized and pre-warmed at startup. Speech playback is serialized through a dedicated lock to prevent overlapping audio output.
 
-If the primary Kokoro ONNX engine fails, the system falls back through a cascading pipeline (Google Cloud TTS $\rightarrow$ Piper CLI $\rightarrow$ pyttsx3) to ensure a briefing is always delivered regardless of network state or system load.
+The active engine is controlled by `primary_tts` in `config.json`. Regardless of selection, a briefing is always delivered through the fallback chain.
 
 **Current implementation:**
 
-- Kokoro ONNX (primary local neural)
-- Google Cloud TTS (secondary cloud fallback)
-- Piper CLI (tertiary local neural fallback)
+- Google Cloud TTS (primary cloud engine)
 - pyttsx3 (terminal local OS fallback)
+- Kokoro ONNX (optional local neural — selected via `primary_tts`; falls back to Google on failure)
 
 ---
 
