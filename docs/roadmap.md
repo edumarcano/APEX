@@ -231,6 +231,15 @@ Transform APEX into a standby intelligence appliance featuring manual synthesis 
 
 ---
 
+## v1.11.1 - Speech Engine Stabilization & Library Pruning
+
+**Status:** Complete
+
+**Objective:**
+Revert the active primary speech synthesis path to Google Cloud TTS, deprecate and prune the Piper CLI engine to eliminate binary bloat, and configure Kokoro ONNX as a zero-overhead, optional local engine.
+
+---
+
 ## v1.12.0 - Command Console & Dynamic Control Deck
 
 **Status:** Planned

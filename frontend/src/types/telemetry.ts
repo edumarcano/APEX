@@ -1,4 +1,4 @@
-export type TtsEngine = 'google' | 'kokoro' | 'piper' | 'pyttsx3'
+export type TtsEngine = 'google' | 'kokoro' | 'pyttsx3'
 
 export interface PipelineState {
   step: number

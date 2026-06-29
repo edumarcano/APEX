@@ -13,7 +13,7 @@ import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from dotenv import load_dotenv
@@ -209,11 +209,11 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
-    tts_strategy: str = Field(
-        description="Active text-to-speech backend (pyttsx3 or google).",
+    tts_strategy: Literal["google", "kokoro", "pyttsx3"] = Field(
+        description="Active text-to-speech backend (google, kokoro, or pyttsx3).",
     )
-    active_tts_engine: str = Field(
-        description="Resolved TTS engine for this run (google, kokoro, piper, or pyttsx3).",
+    active_tts_engine: Literal["google", "kokoro", "pyttsx3"] = Field(
+        description="Resolved TTS engine for this run (google, kokoro, or pyttsx3).",
     )
     system_load_throttled: bool = Field(
         description="True when CPU or RAM utilization triggered a local-engine fallback.",
@@ -598,8 +598,8 @@ class PipelineStatusSnapshot(BaseModel):
     is_speaking: bool = Field(
         description="True when the speaker subsystem lock is held or audio playback is active.",
     )
-    active_tts_engine: str = Field(
-        description="Resolved TTS engine for the active run.",
+    active_tts_engine: Literal["google", "kokoro", "pyttsx3"] = Field(
+        description="Resolved TTS engine for the active run (google, kokoro, or pyttsx3).",
     )
     system_load_throttled: bool = Field(
         description="True when hardware throttle thresholds forced a local-engine fallback.",
@@ -614,20 +614,20 @@ def _resolve_tts_diagnostics(
     """
     Resolve the active TTS engine and throttle flag for runtime diagnostics.
 
-    When hardware throttle thresholds are met, cloud engines (google, kokoro)
-    downgrade to their local fallback (pyttsx3 or piper).
+    When hardware throttle thresholds are met, Kokoro ONNX downgrades to pyttsx3.
+    Google Cloud TTS bypasses throttling because cloud synthesis has negligible
+    local CPU/RAM overhead.
     """
     system_load_throttled = scanner.is_system_throttled()
     normalized = configured_tts.strip().lower()
 
-    if system_load_throttled and normalized in {"google", "kokoro"}:
-        fallback = "piper" if normalized == "kokoro" else "pyttsx3"
-        return fallback, True
+    if system_load_throttled and normalized == "kokoro":
+        return "pyttsx3", True
 
     if dev_mode:
-        return normalized if normalized in {"google", "kokoro", "piper", "pyttsx3"} else "pyttsx3", system_load_throttled
+        return normalized if normalized in {"google", "kokoro", "pyttsx3"} else "pyttsx3", system_load_throttled
 
-    if normalized in {"google", "kokoro", "piper", "pyttsx3"}:
+    if normalized in {"google", "kokoro", "pyttsx3"}:
         return normalized, system_load_throttled
 
     return "google", system_load_throttled

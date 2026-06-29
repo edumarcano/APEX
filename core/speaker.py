@@ -3,14 +3,10 @@ from __future__ import annotations
 import ctypes
 import io
 import os
-import subprocess
-import sys
 import threading
 import wave
 
 from typing import Any
-
-CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 try:
     from kokoro_onnx import Kokoro
@@ -52,11 +48,6 @@ def _get_active_kokoro_voice() -> str:
     return "am_michael" if gender == "male" else "af_sky"
 
 
-def _get_active_piper_model() -> str:
-    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
-    return "en_US-joe-medium.onnx" if gender == "male" else "en_US-lessac-medium.onnx"
-
-
 def _get_active_google_voice() -> str:
     gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
     return "en-US-Chirp3-HD-Sadachbia" if gender == "male" else "en-US-Chirp3-HD-Laomedeia"
@@ -90,10 +81,23 @@ def _get_kokoro_client() -> Kokoro:
 
 
 def _warm_local_kokoro() -> None:
-    """Pre-warm the local Kokoro ONNX client in a background daemon thread."""
+    """Pre-warm the local Kokoro ONNX client when kokoro is the configured active engine."""
+    primary = str(getattr(config, "PRIMARY_TTS", "pyttsx3")).strip().lower()
+    dev_tts = str(getattr(config, "DEV_TTS_PLAYBACK", "pyttsx3")).strip().lower()
+
+    if primary != "kokoro" and dev_tts != "kokoro":
+        print("[SPEAKER] Local Kokoro ONNX is not selected as active. Skipping background warmup.")
+        return
+
     def _warm() -> None:
         try:
-            _get_kokoro_client()
+            client = _get_kokoro_client()
+            client.create(
+                "warm",
+                voice=_get_active_kokoro_voice(),
+                speed=1.0,
+                lang="en-us",
+            )
             print("[SPEAKER] Local Kokoro ONNX client pre-warmed successfully.")
         except Exception as exc:  # noqa: BLE001
             print(f"[SPEAKER] Kokoro client pre-warm bypassed or failed ({type(exc).__name__}).")
@@ -203,43 +207,6 @@ def _speak_kokoro_local(text: str) -> None:
     print("[SPEAKER] Local Kokoro ONNX playback completed.")
 
 
-def _speak_piper_local(text: str) -> None:
-    """Synthesize and play text via the Piper CLI subprocess engine."""
-    try:
-        # Resolve absolute nested sandbox paths
-        piper_exe = (config.PROJECT_ROOT / "core" / "bin" / "piper" / "piper.exe").resolve()
-        model_path = (config.PROJECT_ROOT / "core" / "weights" / "piper" / _get_active_piper_model()).resolve()
-
-        if not piper_exe.is_file() or not model_path.is_file():
-            raise FileNotFoundError(
-                f"Piper assets missing: piper_exe={piper_exe}, model_path={model_path}"
-            )
-
-        proc = subprocess.Popen(
-            [str(piper_exe), "--model", str(model_path), "--output_raw"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=CREATE_NO_WINDOW,
-            cwd=str(piper_exe.parent), # Enforce localized DLL & espeak-data resolution
-        )
-        raw_pcm_bytes, stderr = proc.communicate(input=text.encode("utf-8"))
-
-        if proc.returncode != 0:
-            err_msg = stderr.decode("utf-8", errors="ignore").strip()
-            raise RuntimeError(f"Piper CLI exited with code {proc.returncode}. Stderr: {err_msg}")
-
-        wav_bytes = _pack_pcm_to_wav_bytes(raw_pcm_bytes, 22050)
-        _play_audio_bytes(wav_bytes)
-        print("[SPEAKER] Local Piper CLI playback completed.")
-    except Exception as exc:  # noqa: BLE001
-        print(
-            f"[SPEAKER] Local Piper CLI playback failed ({type(exc).__name__}: {exc}); "
-            "falling back to local pyttsx3."
-        )
-        _route_tts_playback(text, "pyttsx3")
-
-
 def _speak_pyttsx3_local(text: str) -> None:
     """Speak text with a thread-local pyttsx3 engine."""
     if os.name == "nt":
@@ -312,8 +279,23 @@ def is_speaking() -> bool:
 
 
 def _route_tts_playback(text: str, tts_strategy: str) -> None:
-    """Route speech through a cascading fallback chain keyed by ``tts_strategy``."""
+    """Route speech through a safe, low-latency fallback chain keyed by ``tts_strategy``."""
     normalized = tts_strategy.strip().lower()
+
+    if normalized == "piper":
+        print(
+            "[SPEAKER] WARNING: Piper engine has been deprecated. "
+            "Gracefully redirecting to pyttsx3."
+        )
+        normalized = "pyttsx3"
+
+    if normalized == "google":
+        print("[SPEAKER] Routing to Google Cloud TTS client API.")
+        if _try_google_tts(text):
+            return
+        print("[SPEAKER] Google TTS failed; falling back to pyttsx3.")
+        _speak_pyttsx3_local(text)
+        return
 
     if normalized == "kokoro":
         print("[SPEAKER] Routing to local Kokoro ONNX engine.")
@@ -325,19 +307,6 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
                 "falling back to Google Cloud TTS."
             )
             _route_tts_playback(text, "google")
-        return
-
-    if normalized == "piper":
-        print("[SPEAKER] Routing to local Piper CLI engine.")
-        _speak_piper_local(text)
-        return
-
-    if normalized == "google":
-        print("[SPEAKER] Routing to Google Cloud TTS client API.")
-        if _try_google_tts(text):
-            return
-        print("[SPEAKER] Google TTS failed; falling back to local Piper CLI.")
-        _route_tts_playback(text, "piper")
         return
 
     if normalized == "pyttsx3":

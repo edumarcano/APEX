@@ -47,9 +47,9 @@ load_dotenv(dotenv_path=ENV_PATH)
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
 _VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"slm", "llm", "raw"})
-_VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro", "piper"})
+_VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro"})
 DevAiSynthesisMode = Literal["slm", "llm", "raw"]
-DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro", "piper"]
+DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro"]
 
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:
