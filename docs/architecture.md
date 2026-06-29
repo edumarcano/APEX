@@ -19,7 +19,7 @@ With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run l
 
 ## FastAPI Pipeline Telemetry & Polling
 
-A full briefing run is a blocking HTTP call. Rather than streaming partial JSON out of the trigger response, execution and observation are kept separate. When the operator clicks "INITIATE SYSTEM BRIEFING" or presses `Enter`, `useApexData.triggerSynthesis()` fires a single `POST /api/v1/trigger` and holds it open, while a `setInterval` loop at **500 ms** inside the same hook polls `GET /api/v1/status`.
+A full briefing run is a blocking HTTP call. Rather than streaming partial JSON out of the trigger response, execution and observation are kept separate. When the operator clicks "INITIATE SYSTEM SYNTHESIS" or presses `Enter`, `useApexData.triggerSynthesis()` fires a single `POST /api/v1/trigger` and holds it open, while a `setInterval` loop at **500 ms** inside the same hook polls `GET /api/v1/status`.
 
 On the backend, `core/api.py` calls `global_pipeline_state.update(step, label)` at each stage boundary. The state is read under a `threading.Lock` on every poll. At step 4 (Delivery), the trigger response returns while TTS plays on a worker thread. Once `_speak_and_cleanup` calls `global_pipeline_state.reset()`, the next poll returns `404`. The hook treats `404` as idle, clears the interval, and the HUD fills its cards from the trigger response body.
 
@@ -104,6 +104,7 @@ apex/
 │   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   │   ├── components/
 │   │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
+│   │   │   ├── CommandTrigger.tsx       # Status-driven synthesis trigger button (idle / loading states)
 │   │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
@@ -223,14 +224,18 @@ Loads `config.json` at module import. All environment flags (`DEV_MODE`, `DEMO_M
 
 ### `App.tsx`
 
-Root layout. Renders a three-column bento grid (`md:grid-cols-2 xl:grid-cols-3`). Manages:
+Root layout. At `xl` breakpoints the HUD uses a three-column flex row (left wing / center reactor / right wing). At smaller breakpoints columns stack. Manages:
 
 - `reminderPulseCount` — incremented on successful reminder submission, passed to `ApexLogo` to trigger an 800 ms blue surge.
 - `lastBriefingTime` — stores the formatted time of the last successful briefing, populated on mount from `GET /api/v1/briefings/history` and updated on each trigger resolution.
 - `prevStatus` — tracks the previous render's status string to detect the `loading → success` transition.
-- `glowColor` — a derived CSS RGB tuple that drives the nebula blobs; green (`57, 255, 136`) during pipeline stages 1–3, gold (`251, 191, 36`) at stage 4 and after delivery.
+- `glowColor` — a derived CSS RGB tuple that drives the nebula swirl layers via `--glow-color`. Stage mapping: green (`57, 255, 136`) at steps 1–2, purple (`168, 85, 247`) at step 3, gold (`251, 191, 36`) at step 4, APEX blue (`15, 77, 184`) on `success` while not speaking, red (`220, 38, 38`) on `error`, deep slate (`15, 23, 42`) at idle.
 
-The header renders: an "INITIATE SYSTEM BRIEFING" button when status is `idle`, a "DEMO MODE ACTIVE" amber badge when `demoModeActive` is `true` (sourced from `useApexData`), the `VocalOrb`, and a "Last Briefing: [time]" readout. A standby notification showing pending reminder count appears below the `ApexLogo` when reminders are present and status is `idle`.
+**Dormant canvas mode:** When `status === 'idle'` (`isDormant`), the left and right wings collapse: `opacity-0`, outward `translate-x`, `xl:flex-[0_0_0%]`, and `overflow-hidden`. The center column expands to fill the full row width. The `ApexLogo` scales up (`scale-115` / `xl:scale-125`) within a larger container. The `BriefingDigest` panel collapses (`max-h-0 opacity-0 scale-95`). All transitions use `duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]`. When any non-idle status is set, the wings expand back to their active classes (`opacity-100 translate-x-0 xl:flex-1`) and the digest panel reveals.
+
+The header renders: the `VocalOrb` (center), the `APEX` title with subtitle (left), and on the right — a pending-reminder badge (amber, shown whenever unread reminders exist regardless of pipeline state), a "DEMO MODE ACTIVE" amber badge when `demoModeActive` is `true`, and a "Last Briefing: [time]" readout.
+
+The `CommandTrigger` component is mounted **below the `ApexLogo`** in the center column. It is visible (`opacity-100 pointer-events-auto`) when `status === 'idle'` or `status === 'loading'`, and fades out otherwise.
 
 Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
 
@@ -238,9 +243,32 @@ Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at st
 
 A persistent `memo`-wrapped starfield rendered behind all HUD content. Uses a seeded `mulberry32` PRNG (seed `0x41504558`) to generate 80 deterministic stars across three size tiers (48 slow-twinkle, 24 medium-twinkle, 8 fast-twinkle). Positioned with `position: absolute` at `z-[var(--z-celestial-stars)]`. Stars are built once at module load and never recomputed.
 
+**Mouse-parallax:** Each star tier is translated in screen space using `transform: translate3d(calc(var(--mouse-x) * D), calc(var(--mouse-y) * D), 0)` where `D` is a tier-specific depth multiplier:
+
+| Tier | Class | Depth multiplier |
+|---|---|---|
+| Far (48 stars) | `star-tier-far` | 12 px |
+| Mid (24 stars) | `star-tier-mid` | 28 px |
+| Near (8 stars) | `star-tier-near` | 48 px |
+
+`--mouse-x` and `--mouse-y` are CSS custom properties set on `document.documentElement` by a `passive` `mousemove` listener in `App.tsx`. Values are normalized to `[-0.5, 0.5]` relative to viewport center. Each tier uses `translate3d` with `will-change: transform` (via `transform-gpu` in Tailwind) and a `transition: transform 0.1s ease-out` for smooth trailing. Stars with larger depth multipliers appear to move more, creating a layered depth effect.
+
 ### `ApexLogo.tsx`
 
-A multi-layer SVG reactor in the center column. Five inline gradient definitions back stage-gated segment activation. The inner core transitions through: dormant (dim) → green (processing, steps 1–3) → gold (delivered / speaking, step 4 and `status === 'success'`) → red (error). An `isSpeaking` prop drives a pulsing gold core. `reminderPulseCount` triggers an 800 ms blue surge.
+A multi-layer SVG reactor in the center column. Seven inline gradient definitions back the state-driven fill system: `apexBlueMetal`, `apexGoldMetal`, `apexGreenMetal`, `apexRedMetal`, `apexPurpleMetal`, `apexDormantMetal`, and `apexBlueSurgeMetal`.
+
+The outer blue shell has four segment groups activated by pipeline step (trunk base → lower roots → upper roots → crown), using `getBlueSegmentClass(step)`. Segments at or below the active step glow (`apex-blue-metal--active`); all segments surge blue on reminder pulse (`apex-blue-metal--surge`).
+
+The inner gold core uses `getGoldSegmentClass()` and transitions through:
+
+- **Idle (`isDormant`)** — `apex-core-metal--breathing-dormant` (dim amber-brown, slow breathe)
+- **Steps 1–2** — green surge (`apexGreenMetal`)
+- **Step 3** — purple surge (`apexPurpleMetal`)
+- **Delivered / speaking** — `apex-core-metal--gold-active` (gold glow); adds `animate-[pulse_3s_ease-in-out_infinite]` while `isSpeaking === true`
+- **Error** — `apex-core-metal--red` (red glow)
+- **Reminder pulse** — overrides all states with `apex-core-metal--blue-surge` for 800 ms
+
+`reminderPulseCount` prop change triggers an 800 ms `pulseActive` state that overrides both the outer shell and inner core to their blue-surge variants simultaneously.
 
 ### `VocalOrb.tsx`
 
@@ -255,6 +283,20 @@ Displays insight bullet strings from `DigestPayload.insights` in the center colu
 Renders the synthesized briefing text with a `clip-path` curtain-reveal animation on delivery. A `SpeakingBorderMask` activates at pipeline stage 4: a spinning conic-gradient border overlay that persists while `isSpeaking && activeStep === 4`.
 
 `BriefingPanel` is wrapped in a collapsible container in `App.tsx` (`showSubtitleBar = isSpeaking && activeStep === 4`). The container uses `max-h-0 opacity-0` when collapsed and `max-h-24 opacity-100` when visible, with a 700 ms ease-in-out transition. The component is not rendered in the DOM unless the delivery condition is met.
+
+### `CommandTrigger.tsx`
+
+A focused button component that renders the primary synthesis trigger below the `ApexLogo` in the center column. Accepts `status` (`'idle' | 'loading'`), `onClick`, and an optional `disabled` flag.
+
+Label behavior:
+
+- Idle, not hovered: `[ INITIATE SYSTEM SYNTHESIS ]`
+- Idle, hovered or focused: `> INITIATE SYSTEM SYNTHESIS`
+- Loading: `[ SYNTHESIS INITIALIZING ]` (disabled, `pulse` animation)
+
+Rendered in `App.tsx` when `status === 'idle'` or `status === 'loading'` (`showCommandTrigger`). Disabled while `isProcessing` is `true`. Visibility is controlled by opacity and `pointer-events` rather than conditional mounting, so layout does not shift when it fades out.
+
+---
 
 ### `TelemetryCard.tsx`
 
@@ -348,7 +390,13 @@ Applied as an inline `style` on the temperature readout `<p>` tagged `data-vte="
 
 ### Nebula Glow Layer
 
-Three animated radial-gradient blobs in `App.tsx` appear when a pipeline run is active (`showGlow`). Blob color shifts by stage via the `--glow-color` CSS custom property: green for stages 1–3, gold at stage 4 and after `status === 'success'`. Blobs are positioned at top-right, bottom-left, and a center-diagonal offset; each uses a distinct CSS keyframe animation for continuous drift.
+`App.tsx` renders two persistent animated swirl layers and one vignette mask inside a full-bleed `position: absolute` container:
+
+1. **Nebula swirl 1** (`bg-nebula-swirl-1 animate-nebula-spin-clockwise`) — a 160% × 160% radial gradient anchored top-left, rotating clockwise.
+2. **Nebula swirl 2** (`bg-nebula-swirl-2 animate-nebula-spin-counter`) — a 160% × 160% radial gradient anchored bottom-right, rotating counter-clockwise.
+3. **Vignette mask** (`bg-atmosphere-vignette`) — a full-inset overlay that darkens the screen edges.
+
+Both swirl layers receive `--glow-color` as a CSS custom property set on the root `<main>`. Color transitions by pipeline state (see `App.tsx` `glowColor` — green steps 1–2, purple step 3, gold step 4, APEX blue on success, red on error, deep slate at idle). The swirl layers are always present in the DOM; color-driven opacity and hue changes make them appear and shift without conditional mounting.
 
 ---
 

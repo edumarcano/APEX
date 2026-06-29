@@ -2,11 +2,19 @@
 
 A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, pulls live data from a set of configurable connectors, passes everything to Gemini 3.1 Flash Lite for synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
 
+<p align="center">
+  <img src="docs/assets/apex-hero.png" alt="APEX dormant standby HUD" width="900">
+</p>
+
+<p align="center">
+  <em>Dormant standby mode with centralized command trigger, reminder badge, parallax starfield, and live system diagnostics.</em>
+</p>
+
 ---
 
 ## Architecture Overview
 
-`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM BRIEFING" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
+`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM SYNTHESIS" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
 
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
@@ -19,6 +27,18 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 ---
 
+## Interface Preview
+
+<p align="center">
+  <img src="docs/assets/apex-active-hud.png" alt="APEX active briefing HUD with live modules, reminders, diagnostics, and delivery status" width="900">
+</p>
+
+<p align="center">
+  <em>Active briefing mode with synthesized output, live data modules, reminder controls, demo-mode telemetry, sync health, and system diagnostics rendered in the full HUD layout.</em>
+</p>
+
+---
+
 ## Features
 
 - **Context-aware gate** — checks home Wi-Fi (SSID), AC power, and a 1-hour cooldown before any API call is made (`scanner.py`)
@@ -28,6 +48,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Text-to-speech** — Kokoro ONNX primary, cascading through Google Cloud TTS, local Piper CLI, and native pyttsx3 fallbacks; pre-warmed singletons, serialized `_SPEAK_LOCK`
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
 - **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as color-coded micro-bars in a six-column status footer; additional columns show internet connectivity, briefing lifecycle state, sync health, and live system time
+- **Dormant ambient HUD mode** — idle state collapses peripheral data wings, expands the central command area, surfaces pending reminders, and animates the APEX logo with pipeline-driven color states and parallax background motion
 - **Pipeline state visibility** — step, label, timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
 - **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded segmented block bar in the system status footer with a per-connector hover tooltip
 - **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD

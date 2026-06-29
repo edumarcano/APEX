@@ -42,6 +42,7 @@ frontend/
 │   │                                #   SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   ├── components/
 │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
+│   │   ├── CommandTrigger.tsx       # Status-driven synthesis trigger button (idle / loading states)
 │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
