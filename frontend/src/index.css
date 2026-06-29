@@ -362,6 +362,64 @@
   will-change: transform;
 }
 
+@keyframes breathingDormant {
+  0%,
+  100% {
+    opacity: 0.15;
+    filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.15));
+  }
+  50% {
+    opacity: 0.55;
+    filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.45));
+  }
+}
+
+.apex-core-metal--breathing-dormant {
+  fill: url(#apexDormantMetal);
+  animation: breathingDormant 10s ease-in-out infinite;
+  will-change: opacity, filter;
+}
+
+@keyframes greenSurge {
+  0%,
+  30%,
+  100% {
+    opacity: 0.45;
+    fill: url(#apexDormantMetal);
+    filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.15));
+  }
+  15% {
+    opacity: 0.95;
+    fill: url(#apexGreenMetal);
+    filter: drop-shadow(0 0 14px rgba(57, 255, 136, 0.85));
+  }
+}
+
+@keyframes purpleSurge {
+  0%,
+  30%,
+  100% {
+    opacity: 0.45;
+    fill: url(#apexDormantMetal);
+    filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.15));
+  }
+  15% {
+    opacity: 0.95;
+    fill: url(#apexPurpleMetal);
+    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.85));
+  }
+}
+
+.apex-core-metal--green-surge {
+  animation: greenSurge 2.5s ease-in-out infinite;
+  will-change: opacity, filter, fill;
+}
+
+.apex-core-metal--purple-surge {
+  animation: purpleSurge 2.5s ease-in-out infinite;
+  will-change: opacity, filter, fill;
+}
+
 @layer utilities {
   @keyframes twinkleSlow {
     0%,
