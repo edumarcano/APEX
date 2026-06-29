@@ -614,13 +614,14 @@ def _resolve_tts_diagnostics(
     """
     Resolve the active TTS engine and throttle flag for runtime diagnostics.
 
-    When hardware throttle thresholds are met, cloud engines (google, kokoro)
-    downgrade to pyttsx3.
+    When hardware throttle thresholds are met, Kokoro ONNX downgrades to pyttsx3.
+    Google Cloud TTS bypasses throttling because cloud synthesis has negligible
+    local CPU/RAM overhead.
     """
     system_load_throttled = scanner.is_system_throttled()
     normalized = configured_tts.strip().lower()
 
-    if system_load_throttled and normalized in {"google", "kokoro"}:
+    if system_load_throttled and normalized == "kokoro":
         return "pyttsx3", True
 
     if dev_mode:
