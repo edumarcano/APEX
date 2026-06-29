@@ -224,19 +224,19 @@ Transition speech synthesis from cloud-first delivery toward a local-first neura
 
 ## v1.11.0 - Dormant Core & Ambient State Engine
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
 Transform APEX into a standby intelligence appliance featuring manual synthesis activation, adaptive atmospheric awareness, state-driven environmental feedback, and command-console interaction patterns.
 
 ---
 
-## v1.12.0 - Reserved / Deferred Integration Placeholder
+## v1.12.0 - Command Console & Dynamic Control Deck
 
 **Status:** Planned
 
 **Objective:**
-Reserved for future scope expansion. Potential targets include workspace activation systems, local environment orchestration, or intermediate platform optimization as determined by active operational requirements.
+Implement runtime configuration reloading, dynamic service re-warming, and an interactive settings drawer to act as the development workspace.
 
 ---
 
