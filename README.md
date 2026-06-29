@@ -6,7 +6,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## Architecture Overview
 
-`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM BRIEFING" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
+`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM SYNTHESIS" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
 
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
