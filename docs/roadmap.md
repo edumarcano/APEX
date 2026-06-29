@@ -5,7 +5,7 @@
 > Milestone ordering, scope, implementation details, and phase boundaries may change as development progresses.
 > Completed milestones reflect historical architectural decisions. Planned milestones reflect current project direction and are not contractual commitments.
 
-**Current Phase:** Phase III - Cognitive Interface
+**Current Phase:** Phase IV: Interactive Intelligence
 
 ---
 
@@ -179,7 +179,7 @@ Introduce the layered atmospheric canvas architecture, DEMO_MODE workflows, and 
 
 # Phase III: Cognitive Interface
 
-**Status:** In Progress
+**Status:** Complete (100%)
 
 **Core Focus:**
 Transforming APEX from a telemetry dashboard into an intelligence presence through structured briefing delivery, local speech synthesis, synchronized communication, and intentional operator interaction.
@@ -240,39 +240,39 @@ Revert the active primary speech synthesis path to Google Cloud TTS, deprecate a
 
 ---
 
-## v1.12.0 - Command Console & Dynamic Control Deck
-
-**Status:** Planned
-
-**Objective:**
-Implement runtime configuration reloading, dynamic service re-warming, and an interactive settings drawer to act as the development workspace.
-
----
-
 # Phase IV: Interactive Intelligence
 
-**Status:** Planned
+**Status:** In Progress
 
 **Core Focus:**
 Transitioning APEX from an intelligence presence into an operator-directed agent capable of reasoning, tool execution, conversational interaction, and autonomous task completion.
 
 ---
 
-## v1.13.0 - Cloud Gemini Agentic Tool Calling
+## v1.12.0 - Cloud Gemini Agentic Tool Calling
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Transform APEX from a push-based summarization system into an interactive cloud-agent framework capable of tool execution, conversational preemption, stateful reasoning, and controlled action loops.
 
 ---
 
-## v1.14.0 - Local Ollama Agentic Tool Calling
+## v1.13.0 - Local Ollama Agentic Tool Calling
 
 **Status:** Planned
 
 **Objective:**
 Enable local agentic execution through Ollama-powered models while reducing cloud dependency. Introduce runtime model switching, local inference management, and automatic memory lifecycle control.
+
+---
+
+## v1.14.0 - Command Console & Dynamic Control Deck
+
+**Status:** Planned
+
+**Objective:**
+Implement runtime configuration reloading, dynamic service re-warming, and an interactive settings drawer to act as the development workspace. Reposition the control deck as an administrative console to monitor agent tool execution, token budgets, and prompt routing.
 
 ---
 
