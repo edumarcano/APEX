@@ -28,6 +28,7 @@ export function ApexLogo({
   }, [reminderPulseCount])
 
   const isError = status === 'error'
+  const isDormant = status === 'idle'
   const activeStep = step ?? 0
   const hasDelivered = status === 'success' || activeStep >= 4
 
@@ -52,27 +53,45 @@ export function ApexLogo({
 
   const surgeBlueCore = 'apex-core-metal apex-core-metal--blue-surge'
   const dormantCore = 'apex-core-metal apex-core-metal--dormant'
-  const greenCore = 'apex-core-metal apex-core-metal--green'
+  const greenSurgeCore = 'apex-core-metal apex-core-metal--green-surge'
+  const purpleSurgeCore = 'apex-core-metal apex-core-metal--purple-surge'
   const redCore = 'apex-core-metal apex-core-metal--red'
   const goldActiveCore = 'apex-core-metal apex-core-metal--gold-active'
   const goldActiveBreathing = `${goldActiveCore} animate-[pulse_3s_ease-in-out_infinite]`
 
-  const getGoldSegmentClass = (segmentStep: number): string => {
+  const GOLD_STAGE_DELAYS_MS = [0, 150, 300, 450] as const
+
+  const getGoldStageDelay = (segmentStep: number): { animationDelay: string } => ({
+    animationDelay: `${GOLD_STAGE_DELAYS_MS[segmentStep - 1]}ms`,
+  })
+
+  const getGoldSegmentClass = (): string => {
+    if (isDormant) {
+      return 'apex-core-metal apex-core-metal--breathing-dormant'
+    }
+
     if (pulseActive) {
       return `transition-all duration-300 ease-out ${surgeBlueCore}`
     }
 
-    let fillClass = dormantCore
-
     if (isError) {
-      fillClass = redCore
-    } else if (hasDelivered) {
-      fillClass = isSpeaking ? goldActiveBreathing : goldActiveCore
-    } else if (activeStep >= segmentStep) {
-      fillClass = greenCore
+      return `transition-all duration-700 ease-in-out ${redCore}`
     }
 
-    return `transition-all duration-700 ease-in-out ${fillClass}`
+    if (activeStep === 1 || activeStep === 2) {
+      return greenSurgeCore
+    }
+
+    if (activeStep === 3) {
+      return purpleSurgeCore
+    }
+
+    if (hasDelivered) {
+      const deliveredCore = isSpeaking ? goldActiveBreathing : goldActiveCore
+      return `transition-all duration-700 ease-in-out ${deliveredCore}`
+    }
+
+    return `transition-all duration-700 ease-in-out ${dormantCore}`
   }
 
   return (
@@ -148,6 +167,22 @@ export function ApexLogo({
           </linearGradient>
 
           <linearGradient
+            id="apexPurpleMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#F5F3FF" />
+            <stop offset="18%" stopColor="#C084FC" />
+            <stop offset="40%" stopColor="#A855F7" />
+            <stop offset="62%" stopColor="#7E22CE" />
+            <stop offset="82%" stopColor="#3B0764" />
+            <stop offset="100%" stopColor="#D8B4FE" />
+          </linearGradient>
+
+          <linearGradient
             id="apexDormantMetal"
             x1="2110"
             y1="520"
@@ -201,11 +236,6 @@ export function ApexLogo({
             .apex-core-metal--dormant {
               fill: url(#apexDormantMetal);
               opacity: 0.2;
-            }
-
-            .apex-core-metal--green {
-              fill: url(#apexGreenMetal);
-              filter: drop-shadow(0 0 12px rgba(57, 255, 136, 0.8));
             }
 
             .apex-core-metal--red {
@@ -291,28 +321,32 @@ export function ApexLogo({
         {/* Gold Stage 1: Trunk Base */}
         <path 
           id="gold-stage-1"
-          className={getGoldSegmentClass(1)}
+          className={getGoldSegmentClass()}
+          style={getGoldStageDelay(1)}
           d="M2256.38 4639.56C2365.38 4389.56 2404.88 4050.06 2365.38 3843.56H2677.38H2856.88C2841.88 4054.06 2856.88 4389.56 2965.88 4639.56C3091.66 4928.06 3357.88 5174.56 3553.88 5310.06C3567.38 5338.4 3599.88 5397.22 3460.88 5405.06C3325.54 5412.7 2944.19 5411 2751.12 5410.13L2735.88 5410.06C2548.38 5410.9 1892.18 5412.06 1765.38 5410.06C1638.58 5410.06 1633.88 5350.9 1647.38 5322.56C1841.88 5200.56 2137.7 4911.76 2256.38 4639.56Z"
         />
 
         {/* Gold Stage 2: Lower Branches */}
         <path 
           id="gold-stage-2"
-          className={getGoldSegmentClass(2)}
+          className={getGoldSegmentClass()}
+          style={getGoldStageDelay(2)}
           d="M2200.38 3157.06H2298.38H2904.88H3002.88C3394.88 3006.56 3948.38 2805.06 3948.38 2843.56C3948.38 2912.69 3836.88 2921.06 3691.38 3006.56C3565.55 3056.9 3313.07 3190.85 3207.88 3273.56C3090.88 3365.56 2871.88 3617.56 2859.88 3843.06H2364.88C2352.88 3617.56 2127.38 3365.06 2010.38 3273.06C1905.18 3190.35 1637.71 3056.9 1511.88 3006.56C1366.38 2921.06 1261.27 2940.06 1265.37 2871.06C1266.24 2856.56 1819.88 3006.56 2200.38 3157.06Z"
         />
 
         {/* Gold Stage 3: Upper Branches */}
         <path 
           id="gold-stage-3"
-          className={getGoldSegmentClass(3)}
+          className={getGoldSegmentClass()}
+          style={getGoldStageDelay(3)}
           d="M1806.38 1998.56C1714.46 1959.84 1729.88 1951.06 1729.88 1925.06L2049.38 2037.56L2278.88 2130.06H2601.88H2904.88L2978.38 2105.56L3172.38 2020.06L3318.38 1963.06L3489.88 1904.06H3496.38C3496.38 1938.56 3487.3 1959.84 3395.38 1998.56C3001.38 2164.56 2828.3 2341.42 2774.88 2558.56C2712.88 2810.56 2773.88 3093.56 2902.38 3156.56H2571.88H2298.38C2426.88 3089.56 2496.82 2803.06 2426.88 2558.56C2365.38 2343.56 2200.38 2164.56 1806.38 1998.56Z"
         />
 
         {/* Gold Stage 4: Arrow Peak */}
         <path 
           id="gold-stage-4"
-          className={getGoldSegmentClass(4)}
+          className={getGoldSegmentClass()}
+          style={getGoldStageDelay(4)}
           d="M2371.88 1003.56C2351.88 1014.36 2346.88 982.064 2346.88 964.564L2608.88 555.064L2618.38 550.564L2627.38 555.064L2880.38 964.564C2882.38 982.064 2878.18 1012.76 2845.38 995.564C2812.58 978.364 2776.88 964.564 2776.88 964.564C2735.88 977.064 2714.38 1018.06 2703.88 1039.56V1223.06C2705.38 1239.4 2737.9 1259.56 2776.88 1243.06C2815.85 1226.56 2995.05 1156.4 3069.88 1127.56C3136.88 1101.75 3117.38 1127.56 3094.38 1162.56C3003.38 1196.06 2880.38 1259.56 2820.88 1340.06C2776.88 1373.56 2730.37 1537.45 2719.38 1642.06C2704.48 1783.83 2718.22 2115.89 2875.57 2129.06H2895.38C2888.54 2129.61 2881.93 2129.6 2875.57 2129.06H2331.88C2455.38 2129.06 2519.8 1805.43 2495.88 1642.06C2472.38 1481.56 2468.88 1485.06 2426.38 1393.56C2383.88 1302.06 2169.88 1188.06 2129.38 1170.56C2096.98 1156.56 2102.88 1136.06 2109.88 1127.56C2209.55 1165.73 2418.18 1245.56 2455.38 1259.56C2492.58 1273.56 2514.88 1241.06 2521.38 1223.06C2522.71 1167.4 2524.58 1049.86 2521.38 1025.06C2518.18 1000.26 2476.05 974.398 2455.38 964.564C2435.88 973.064 2391.88 992.764 2371.88 1003.56Z"
         />
       </svg>

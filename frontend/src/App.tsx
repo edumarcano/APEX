@@ -118,10 +118,10 @@ export default function App(): ReactElement {
     if (status === 'success' && !isSpeaking) {
       return '15, 77, 184' // APEX Blue
     }
-    if (
-      status === 'loading' ||
-      (activeStep !== null && activeStep >= 1 && activeStep <= 3)
-    ) {
+    if (activeStep === 3) {
+      return '168, 85, 247' // Purple/magenta (logo accent)
+    }
+    if (status === 'loading' || activeStep === 1 || activeStep === 2) {
       return '57, 255, 136' // Green
     }
     return '15, 23, 42' // Deep Slate Blue
@@ -167,6 +167,20 @@ export default function App(): ReactElement {
     'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
   const briefingDigestActiveClasses =
     'max-h-[500px] opacity-100 mb-4 scale-100 pointer-events-auto'
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent): void => {
+      const mouseX = event.clientX / window.innerWidth - 0.5
+      const mouseY = event.clientY / window.innerHeight - 0.5
+      document.documentElement.style.setProperty('--mouse-x', String(mouseX))
+      document.documentElement.style.setProperty('--mouse-y', String(mouseY))
+    }
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+    }
+  }, [])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {

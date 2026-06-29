@@ -153,13 +153,16 @@ export function SystemDiagnostics({
     )
   } else if (
     isPipelinePolling &&
-    pipelineStep !== null &&
-    pipelineStep >= 1 &&
-    pipelineStep <= 3
+    (pipelineStep === 1 || pipelineStep === 2)
   ) {
-    briefingStateText = 'Processing'
+    briefingStateText = 'Collecting Data'
     briefingDot = (
       <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+    )
+  } else if (isPipelinePolling && pipelineStep === 3) {
+    briefingStateText = 'Synthesizing'
+    briefingDot = (
+      <span className="h-2 w-2 rounded-full bg-[#A855F7] shadow-[0_0_8px_rgba(168,85,247,0.8)] animate-pulse" />
     )
   } else if (pipelineStep === 4 || isSpeaking) {
     briefingStateText = 'Delivering'
