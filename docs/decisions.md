@@ -115,3 +115,26 @@ The responsibilities of each rule are summarized below.
 | `devops` | contextual | Launchers, dependency lockfiles, configuration management, environment boundaries |
 | `frontend` | contextual | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
 | `mechanic` | manual | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
+
+---
+
+## TTS engine priority restructure: mobile CPU oversubscription and hardware-conditional Kokoro standby
+
+APEX v1.10.0 integrated Kokoro ONNX and Piper CLI as candidates for a fully local, zero-API-cost voice engine. Both were benchmarked on an Intel Core Ultra 7 (Lunar Lake) mobile hybrid processor. Kokoro produced unacceptable latency under that specific hardware profile; Piper was subsequently pruned from the codebase. Kokoro itself remains fully integrated and operational.
+
+**Root cause of latency on mobile x86**
+
+`onnxruntime`'s CPU execution provider has no native SIMD matrix acceleration on hybrid mobile architectures (no AVX-512 support). Its thread pool defaults to active spin-waiting, which caused it to compete directly with the FastAPI event loop for time on the same physical cores. This produced core oversubscription and context-switching thrash at the OS scheduler level. Measured impact on Lunar Lake: Kokoro required over 40 seconds of silence before producing audio for a 420-character briefing. Piper required approximately 16 seconds of pre-speech calculation. Neither met the sub-5-second threshold required for conversational HUD use on that hardware.
+
+**Resolution**
+
+The engine priority order was restructured to protect system resources on thin-and-light mobile x86 hardware while preserving Kokoro as a fully active engine on capable hardware:
+
+- **Google Cloud TTS** was restored as the active primary engine. It operates at sub-3-second end-to-end latency, imposes zero local CPU load, and produces quality consistent with the original design intent.
+- **pyttsx3** (Windows SAPI5) was retained as the immediate local fallback. It starts speaking instantly, requires no configuration, and consumes no measurable CPU at rest.
+- **Kokoro ONNX** was placed on hardware-conditional cold standby. When `primary_tts` is set to any engine other than `"kokoro"`, its Python imports are lazy-loaded and its background warmup thread is bypassed at boot, consuming 0 MB of RAM and 0 threads. When `primary_tts: "kokoro"` is set, as intended on hardware with dedicated ONNX acceleration such as Apple Silicon (Metal/CoreML) or an NVIDIA-equipped desktop (CUDA/TensorRT), the warmup thread activates automatically and the engine is expected to run at full neural synthesis speed. Kokoro is a supported, production-ready engine; its standby classification is a hardware-scoped default, not a deprecation.
+- **Piper CLI** was removed from disk entirely to eliminate binary bloat and reduce the local engine maintenance surface. With Kokoro retained as the capable neural alternative, Piper provided no remaining value. A SemVer-safe redirect was added inside `speaker.py`: any `"piper"` value in `primary_tts` silently resolves to `"pyttsx3"` with a logged warning, preserving forward compatibility with existing config files.
+
+**Trade-offs accepted**
+
+Google Cloud TTS requires a live API key and network access. The pyttsx3 fallback covers offline and credential-failure scenarios but produces lower voice quality than any neural engine. On mobile x86, Kokoro's cold standby eliminates its resource footprint at the cost of not using local neural synthesis by default. On hardware where ONNX acceleration is available, setting `primary_tts: "kokoro"` in `config.json` restores full local neural synthesis with no other changes required.
