@@ -2,6 +2,47 @@
 
 ---
 
+## v1.11.0 — Dormant Core & Ambient State Engine
+
+**Released:** June 28, 2026
+
+This release transforms APEX into a standby intelligence appliance. The HUD now enters a dormant visual state when no synthesis is active, with layout animations, logo breathing effects, and mouse-driven parallax depth responding to system state transitions. A dedicated `CommandTrigger` component replaces the inline button header, and the synthesis model was migrated to Gemini 3.1 Flash Lite.
+
+---
+
+### What's New
+
+- Introduced dormant standby mode: when pipeline status is `idle`, the HUD collapses side panels, scales the logo up, and reveals the synthesis trigger as a centered overlay.
+- Added `CommandTrigger` component with context-sensitive labels and internal hover/focus state, positioned beneath the `ApexLogo` in dormant layout.
+- Promoted pending reminder count from a below-logo label to a pulsing ARIA-live header badge.
+- Applied spring-eased `cubic-bezier(0.16, 1, 0.3, 1)` transitions (1000 ms) to all layout, opacity, and scale changes across dormant and active states.
+- Added `isDormant` idle state to `ApexLogo`; logo plays a breathing amber keyframe animation when the pipeline is inactive.
+- Replaced static green logo fill with `greenSurge` (steps 1–2) and `purpleSurge` (step 3) keyframe animations at 2.5-second loop intervals with per-segment delay cascades.
+- Added `apexPurpleMetal` SVG gradient; step 3 of the nebula color logic now emits purple instead of green.
+- Split the `Processing` status label into `Collecting Data` (steps 1–2) and `Synthesizing` (step 3) in `SystemDiagnostics`.
+- Implemented GPU-accelerated mouse-parallax starfield: passive `mousemove` listener writes `--mouse-x`/`--mouse-y` to `documentElement`; stars classified into three depth tiers (far/mid/near) with `translate3d` displacement ranges of 12 px, 28 px, and 48 px.
+- Migrated synthesis model from Gemini 2.5 Flash to Gemini 3.1 Flash Lite in `core/brain.py`.
+- Fixed launcher crash when the backend connection times out by adding `TimeoutError` to the readiness check catch block and increasing the connection timeout.
+
+### Architecture Changes
+
+- Replaced three-column CSS grid with a flex row layout in `App.tsx` to enable per-column `max-width` and `flex` animations during state transitions.
+- Defined named class-string constants for dormant and active layout states across left wing, right wing, center column, and briefing digest container.
+- Wrapped `BriefingDigest` in an animated container using `max-height` clamping for collapse/expand transitions.
+- `CommandTrigger` extracted as a standalone component; inline trigger button removed from the header.
+- Three `translate3d` parallax utility classes added to `index.css` for depth-tiered star displacement.
+- Added `scale-115` to Tailwind config theme extensions.
+
+### Documentation Updates
+
+- Added dormant HUD and active briefing screenshot assets to `docs/assets/` and embedded both in `README.md` under a new "Interface Preview" section.
+- Added dormant ambient HUD mode to the README features list.
+- Documented dormant canvas mode layout transitions, `CommandTrigger` component, full `ApexLogo` state machine, and mouse-parallax depth multiplier table in `docs/architecture.md`.
+- Updated all Gemini 2.5 Flash references to Gemini 3.1 Flash Lite across `README.md`, `docs/architecture.md`, and `docs/decisions.md`.
+- Marked v1.11.0 roadmap status as Complete and defined the v1.12.0 objective.
+
+---
+
 ## v1.10.0 — Local Neural Voice Matrix
 
 **Released:** June 13, 2026
