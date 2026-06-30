@@ -1,7 +1,10 @@
+import random
+import time
 from typing import Any
 
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.types import AgentMessage, ToolCall
@@ -103,11 +106,39 @@ class GeminiProvider:
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        response = self.client.models.generate_content(
-            model=profile.api_model,
-            contents=contents,
-            config=config,
-        )
+        max_attempts = 3
+        response = None
+        for attempt in range(max_attempts):
+            try:
+                response = self.client.models.generate_content(
+                    model=profile.api_model,
+                    contents=contents,
+                    config=config,
+                )
+                break
+            except APIError as e:
+                if e.code == 429:
+                    if attempt == max_attempts - 1:
+                        raise
+                    wait_time = (1.0 * (2**attempt)) + random.uniform(0, 0.5)
+                    print(
+                        f"[AGENT][GEMINI] Rate limited (429). "
+                        f"Retrying in {wait_time:.2f} seconds..."
+                    )
+                    time.sleep(wait_time)
+                elif e.code in (500, 502, 503, 504):
+                    if attempt == max_attempts - 1:
+                        raise
+                    print(
+                        f"[AGENT][GEMINI] Server error ({e.code}). "
+                        "Retrying in 2.0 seconds..."
+                    )
+                    time.sleep(2.0)
+                else:
+                    raise
+
+        if response is None:
+            raise RuntimeError("Gemini generate_content failed without a response.")
 
         if not response.candidates:
             raise ValueError("Gemini returned no response candidates.")

@@ -1,4 +1,5 @@
 import time
+import traceback
 from typing import Any, Callable, Dict
 
 from core.agent.providers.gemini import GeminiProvider
@@ -27,71 +28,87 @@ def run_agent_loop(
     last_model_content: str | None = None
     list_of_tool_declarations: list[dict] = []
 
-    for _turn in range(profile.max_tool_turns):
-        model_message = provider.generate_turn(
-            history, list_of_tool_declarations, profile
-        )
-        history.append(model_message)
-
-        if model_message.content:
-            last_model_content = model_message.content
-
-        if not model_message.tool_calls:
-            return AgentQueryResponse(
-                answer=model_message.content or "",
-                profile_used=profile.model_dump(),
-                tool_trace=tool_trace,
-                session_id=request.session_id,
+    try:
+        for _turn in range(profile.max_tool_turns):
+            model_message = provider.generate_turn(
+                history, list_of_tool_declarations, profile
             )
+            history.append(model_message)
 
-        tool_results: list[ToolResult] = []
+            if model_message.content:
+                last_model_content = model_message.content
 
-        for call in model_message.tool_calls:
-            if total_tool_executions >= profile.max_tool_calls:
+            if not model_message.tool_calls:
                 return AgentQueryResponse(
-                    answer=last_model_content or "",
+                    answer=model_message.content or "",
                     profile_used=profile.model_dump(),
                     tool_trace=tool_trace,
                     session_id=request.session_id,
-                    error=(
-                        f"Tool execution limit reached ({profile.max_tool_calls} calls)."
-                    ),
                 )
 
-            started_at = time.perf_counter()
-            status = "ok"
-            output: Any
+            tool_results: list[ToolResult] = []
 
-            try:
-                output = tools_dispatcher(call.name, call.arguments)
-            except Exception as exc:
-                status = "error"
-                output = str(exc)
+            for call in model_message.tool_calls:
+                if total_tool_executions >= profile.max_tool_calls:
+                    return AgentQueryResponse(
+                        answer=last_model_content or "",
+                        profile_used=profile.model_dump(),
+                        tool_trace=tool_trace,
+                        session_id=request.session_id,
+                        error=(
+                            f"Tool execution limit reached "
+                            f"({profile.max_tool_calls} calls)."
+                        ),
+                    )
 
-            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-            total_tool_executions += 1
+                started_at = time.perf_counter()
+                status = "ok"
+                output: Any
 
-            tool_trace.append(
-                {
-                    "name": call.name,
-                    "status": status,
-                    "duration_ms": duration_ms,
-                }
-            )
+                try:
+                    output = tools_dispatcher(call.name, call.arguments)
+                except Exception as exc:
+                    status = "error"
+                    output = str(exc)
 
-            tool_results.append(
-                ToolResult(id=call.id, name=call.name, output=output)
-            )
+                duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+                total_tool_executions += 1
 
-        history.append(AgentMessage(role="tool", tool_results=tool_results))
+                tool_trace.append(
+                    {
+                        "name": call.name,
+                        "status": status,
+                        "duration_ms": duration_ms,
+                    }
+                )
 
-    return AgentQueryResponse(
-        answer=last_model_content or "",
-        profile_used=profile.model_dump(),
-        tool_trace=tool_trace,
-        session_id=request.session_id,
-        error=(
-            f"Agent turn limit reached ({profile.max_tool_turns} turns) "
-            "without a final answer."
-        ),
-    )
+                tool_results.append(
+                    ToolResult(id=call.id, name=call.name, output=output)
+                )
+
+            history.append(AgentMessage(role="tool", tool_results=tool_results))
+
+        return AgentQueryResponse(
+            answer=last_model_content or "",
+            profile_used=profile.model_dump(),
+            tool_trace=tool_trace,
+            session_id=request.session_id,
+            error=(
+                f"Agent turn limit reached ({profile.max_tool_turns} turns) "
+                "without a final answer."
+            ),
+        )
+    except Exception as exc:
+        print(f"[AGENT][LOOP] Bounded loop execution crashed: {exc}")
+        return AgentQueryResponse(
+            answer=(
+                "The Ask APEX agent encountered an issue reaching the cloud "
+                "provider or running the requested operations. Please check "
+                "your credentials, network status, or quota allocations, "
+                "and try again."
+            ),
+            profile_used=profile.model_dump(),
+            tool_trace=tool_trace,
+            session_id=request.session_id,
+            error=traceback.format_exc(),
+        )
