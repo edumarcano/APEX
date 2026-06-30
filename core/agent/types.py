@@ -46,3 +46,21 @@ class AgentQueryRequest(BaseModel):
         default_factory=list,
         description="Recent conversation history for the session.",
     )
+
+
+class AgentQueryResponse(BaseModel):
+    answer: str = Field(description="The final synthesized response from the agent.")
+    profile_used: Dict[str, Any] = Field(
+        description="Display details of the configured profile used."
+    )
+    tool_trace: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Audit trace of tools called during the loop.",
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Active temporary session grouping identifier.",
+    )
+    error: Optional[str] = Field(
+        default=None, description="Detailed error diagnostics, if any."
+    )
