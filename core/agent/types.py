@@ -9,6 +9,10 @@ class ToolCall(BaseModel):
     arguments: Dict[str, Any] = Field(
         description="Arguments mapping validated against the tool schema."
     )
+    thought_signature: Optional[str] = Field(
+        default=None,
+        description="Opaque reasoning token required to maintain Gemini 3 loop state.",
+    )
 
 
 class ToolResult(BaseModel):

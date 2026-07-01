@@ -1,3 +1,4 @@
+import base64
 import random
 import time
 from typing import Any
@@ -47,11 +48,17 @@ def _messages_to_contents(messages: list[AgentMessage]) -> list[types.Content]:
                 parts.append(types.Part.from_text(text=message.content))
             if message.tool_calls:
                 for call in message.tool_calls:
-                    parts.append(
-                        types.Part.from_function_call(
-                            name=call.name, args=call.arguments
-                        )
+                    part = types.Part.from_function_call(
+                        name=call.name, args=call.arguments
                     )
+                    if call.thought_signature:
+                        try:
+                            part.thought_signature = base64.b64decode(
+                                call.thought_signature
+                            )
+                        except Exception:
+                            pass
+                    parts.append(part)
             if parts:
                 contents.append(types.Content(role="model", parts=parts))
 
@@ -80,11 +87,20 @@ def _content_to_agent_message(content: types.Content) -> AgentMessage:
         if part.function_call is not None:
             function_call = part.function_call
             call_id = function_call.id or f"{function_call.name}-{len(tool_calls)}"
+            ts = getattr(part, "thought_signature", None)
+            ts_str: str | None
+            if isinstance(ts, bytes):
+                ts_str = base64.b64encode(ts).decode("utf-8")
+            elif isinstance(ts, str):
+                ts_str = ts
+            else:
+                ts_str = None
             tool_calls.append(
                 ToolCall(
                     id=call_id,
                     name=function_call.name,
                     arguments=function_call.args or {},
+                    thought_signature=ts_str,
                 )
             )
 
