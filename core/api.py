@@ -1037,7 +1037,7 @@ def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
 @app.post("/api/v1/agent/query", response_model=AgentQueryResponse)
 def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     """
-    Execute an Ask APEX agent turn with optional tool calling.
+    Execute an APEX Cortex agent turn with optional tool calling.
 
     Runs synchronously so uvicorn can offload blocking Gemini I/O to a worker thread.
     """
@@ -1045,7 +1045,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     if not api_key:
         return AgentQueryResponse(
             answer=(
-                "Ask APEX cloud agent is currently unavailable because the Gemini "
+                "APEX Cortex is currently unavailable because the Gemini "
                 "API key is not configured. Please set GEMINI_API_KEY in your "
                 "environment and restart the API server."
             ),
@@ -1091,10 +1091,9 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     except Exception as exc:
         return AgentQueryResponse(
             answer=(
-                "The Ask APEX agent encountered an issue reaching the cloud "
-                "provider or running the requested operations. Please check "
-                "your credentials, network status, or quota allocations, "
-                "and try again."
+                "The APEX Cortex encountered an issue reaching the cloud provider "
+                "or running the requested operations. Please check your "
+                "credentials, network status, or quota allocations, and try again."
             ),
             profile_used=profile.model_dump(),
             session_id=payload.session_id,

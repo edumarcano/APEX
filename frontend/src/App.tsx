@@ -8,6 +8,7 @@ import {
   Newspaper,
 } from 'lucide-react'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -15,9 +16,11 @@ import {
   type ReactElement,
 } from 'react'
 
+import { AskApexBar } from './components/AskApexBar'
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CommandTrigger } from './components/CommandTrigger'
+import { CortexDrawer } from './components/CortexDrawer'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -26,6 +29,7 @@ import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
+import { useCortexAgent } from './hooks/useCortexAgent'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import type { WeatherConditionArchetype } from './types/telemetry'
 
@@ -75,12 +79,25 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
 
+type AgentProfile = 'comet' | 'nova' | 'pulsar'
+
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
   const [prevStatus, setPrevStatus] = useState<string>('idle')
+  const [agentProfile, setAgentProfile] = useState<AgentProfile>('nova')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
+  const {
+    history: cortexHistory,
+    isQuerying: isCortexQuerying,
+    isOpen: isCortexOpen,
+    latestTrace: cortexLatestTrace,
+    error: cortexError,
+    queryCortex,
+    resetSession: resetCortexSession,
+    setIsOpen: setCortexOpen,
+  } = useCortexAgent()
   const apexData = useApexData()
   const {
     data,
@@ -146,6 +163,7 @@ export default function App(): ReactElement {
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
   const showCommandTrigger = status === 'idle' || status === 'loading'
+  const showAskApexBar = status === 'success'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
@@ -162,11 +180,11 @@ export default function App(): ReactElement {
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
   const centerColumnDormantClasses = 'xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1'
+  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
   const briefingDigestDormantClasses =
     'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
   const briefingDigestActiveClasses =
-    'max-h-[500px] opacity-100 mb-4 scale-100 pointer-events-auto'
+    'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4 scale-100 pointer-events-auto'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -206,6 +224,7 @@ export default function App(): ReactElement {
         return
       }
 
+      resetCortexSession()
       void triggerSynthesis()
     }
 
@@ -213,7 +232,7 @@ export default function App(): ReactElement {
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [status, triggerSynthesis])
+  }, [status, triggerSynthesis, resetCortexSession])
 
   // Load initial last briefing time from history ledger
   useEffect(() => {
@@ -299,6 +318,34 @@ export default function App(): ReactElement {
   const handleReminderSaved = (): void => {
     setReminderPulseCount((prev) => prev + 1)
   }
+
+  const handleAgentQuery = useCallback(
+    (query: string, profile: AgentProfile): void => {
+      const cortexProfile = profile === 'pulsar' ? 'pulsar' : profile
+      void queryCortex(query, cortexProfile)
+    },
+    [queryCortex],
+  )
+
+  const handleCortexFollowUp = useCallback(
+    (query: string): void => {
+      const cortexProfile = agentProfile === 'pulsar' ? 'pulsar' : agentProfile
+      void queryCortex(query, cortexProfile)
+    },
+    [agentProfile, queryCortex],
+  )
+
+  const handleCortexChipSelect = useCallback(
+    (query: string): void => {
+      void queryCortex(query, agentProfile)
+    },
+    [agentProfile, queryCortex],
+  )
+
+  const handleTriggerSynthesis = useCallback((): void => {
+    resetCortexSession()
+    void triggerSynthesis()
+  }, [resetCortexSession, triggerSynthesis])
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
@@ -429,7 +476,7 @@ export default function App(): ReactElement {
               className={`relative z-[var(--z-core-logo)] flex min-w-0 flex-col items-center gap-4 ${wingTransition} xl:gap-6 xl:min-h-0 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               <div
-                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses}`}
+                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses} overflow-hidden flex flex-col`}
               >
                 <BriefingDigest
                   insights={[
@@ -438,7 +485,7 @@ export default function App(): ReactElement {
                   ]}
                   status={status}
                   isLoading={isTriggerLoading}
-                  className="flex-none w-full xl:min-h-0"
+                  className="w-full h-full min-h-0"
                 />
               </div>
               <div
@@ -467,12 +514,24 @@ export default function App(): ReactElement {
                   >
                     <CommandTrigger
                       status={isTriggerLoading ? 'loading' : 'idle'}
-                      onClick={() => {
-                        void triggerSynthesis()
-                      }}
+                      onClick={handleTriggerSynthesis}
                       disabled={isTriggerDisabled}
                     />
                   </div>
+                  {showAskApexBar ? (
+                    <div
+                      className="mt-3 flex w-full max-w-lg justify-center px-4 transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100"
+                    >
+                      <AskApexBar
+                        activeProfile={agentProfile}
+                        onProfileChange={setAgentProfile}
+                        onSubmit={handleAgentQuery}
+                        onSelectChip={handleCortexChipSelect}
+                        isSubmitting={isCortexQuerying}
+                        disabled={isSpeaking}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -604,6 +663,20 @@ export default function App(): ReactElement {
         confidenceScore={confidenceScore}
         pipelineStep={activeStep}
         failedConnectors={failedConnectors}
+      />
+
+      <CortexDrawer
+        isOpen={isCortexOpen}
+        onClose={() => {
+          setCortexOpen(false)
+        }}
+        onResetSession={resetCortexSession}
+        history={cortexHistory}
+        isQuerying={isCortexQuerying}
+        latestTrace={cortexLatestTrace}
+        activeProfile={agentProfile}
+        onSubmitFollowUp={handleCortexFollowUp}
+        error={cortexError}
       />
     </main>
   )

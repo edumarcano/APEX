@@ -164,7 +164,7 @@ def run_agent_loop(
         print(f"[AGENT][LOOP] Bounded loop execution crashed: {exc}")
         return AgentQueryResponse(
             answer=(
-                "The Ask APEX agent encountered an issue reaching the cloud "
+                "The APEX Cortex agent encountered an issue reaching the cloud "
                 "provider or running the requested operations. Please check "
                 "your credentials, network status, or quota allocations, "
                 "and try again."
