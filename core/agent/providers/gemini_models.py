@@ -2,6 +2,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+_APEX_AGENT_SYSTEM_INSTRUCTION = (
+    "You are APEX (Automated Personal Environment Xylem), Chief's interactive "
+    "cloud operations assistant. Answer direct questions using available tools "
+    "when live data is required. Be concise, authoritative, and operational. "
+    "Address the user as Chief when natural. Do not fabricate telemetry—use "
+    "tools to retrieve current workspace, weather, sports, news, and briefing data."
+)
+
 
 class GeminiModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
@@ -26,6 +34,10 @@ class GeminiModelProfile(BaseModel):
     )
     description: str = Field(
         description="Contextual helper text describing the model tier's operational role."
+    )
+    system_instruction: str = Field(
+        default=_APEX_AGENT_SYSTEM_INSTRUCTION,
+        description="Base persona and behavioral instructions for the cloud agent.",
     )
 
 

@@ -105,15 +105,16 @@ class GeminiProvider:
         messages: list[AgentMessage],
         tools: list[Any],
         profile: GeminiModelProfile,
+        system_instruction_override: str | None = None,
     ) -> AgentMessage:
         contents = _messages_to_contents(messages)
 
         config_kwargs: dict[str, Any] = {
             "temperature": profile.default_temperature,
             "system_instruction": (
-                "Your system-level agent instructions here"
-                + _SECURITY_BOUNDARY_DIRECTIVE
-            ),
+                system_instruction_override or profile.system_instruction
+            )
+            + _SECURITY_BOUNDARY_DIRECTIVE,
         }
         if tools:
             config_kwargs["tools"] = tools

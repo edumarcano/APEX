@@ -78,6 +78,7 @@ def run_agent_loop(
     provider: GeminiProvider,
     profile: GeminiModelProfile,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
+    system_instruction_override: str | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -92,6 +93,7 @@ def run_agent_loop(
                 history,
                 list(AGENT_TOOLS_REGISTRY.values()),
                 profile,
+                system_instruction_override=system_instruction_override,
             )
             history.append(model_message)
 

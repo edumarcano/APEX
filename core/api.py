@@ -35,6 +35,7 @@ from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.config import (
+    AGENT_SYSTEM_PROMPT,
     DEMO_MODE,
     DEMO_TTS,
     DEV_AI_SYNTHESIS,
@@ -1061,8 +1062,31 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         )
 
     try:
+        latest_runs = database.fetch_briefing_history(limit=1)
+        hud_context = ""
+        if latest_runs:
+            briefing_text = latest_runs[0]["briefing"]
+            insights_list = latest_runs[0]["digest"].get("insights", [])
+            hud_context = (
+                "\n\nCURRENT HUD STATE:\n"
+                "The user is actively looking at this compiled briefing on their HUD screen:\n"
+                f'- Briefing Prose: "{briefing_text}"\n'
+                f"- Active Summary Insights: "
+                f"{', '.join(insights_list) if insights_list else 'None'}\n"
+                "Use this context to resolve relative follow-up queries about the active briefing "
+                "(e.g., 'explain that first insight', 'why did you mention the weather?', "
+                "or 'summarize this')."
+            )
+
+        local_system_instruction = config.AGENT_SYSTEM_PROMPT + hud_context
+
         provider = GeminiProvider(api_key=os.getenv("GEMINI_API_KEY"))
-        response = run_agent_loop(payload, provider, profile)
+        response = run_agent_loop(
+            payload,
+            provider,
+            profile,
+            system_instruction_override=local_system_instruction,
+        )
         return response
     except Exception as exc:
         return AgentQueryResponse(
