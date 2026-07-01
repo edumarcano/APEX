@@ -1,9 +1,11 @@
+import inspect
 import time
 import traceback
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, get_type_hints
 
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
+from core.agent.tools import AGENT_TOOLS_REGISTRY
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -14,11 +16,68 @@ from core.agent.types import (
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
 
+def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
+    if name not in AGENT_TOOLS_REGISTRY:
+        return f"Error: Tool '{name}' is not registered."
+
+    try:
+        func = AGENT_TOOLS_REGISTRY[name]
+        type_hints = get_type_hints(func)
+        sig = inspect.signature(func)
+        validated_args: dict[str, Any] = {}
+
+        for param_name, param in sig.parameters.items():
+            if param_name not in arguments:
+                if param.default != inspect.Parameter.empty:
+                    validated_args[param_name] = param.default
+                else:
+                    return (
+                        f"Error: Missing required argument '{param_name}' "
+                        f"for tool '{name}'."
+                    )
+                continue
+
+            value = arguments[param_name]
+            declared_type = type_hints.get(param_name)
+
+            if declared_type is int:
+                try:
+                    cast_value = int(value)
+                except (TypeError, ValueError):
+                    return (
+                        f"Error: Argument '{param_name}' for tool '{name}' "
+                        f"must be an integer; received {value!r}."
+                    )
+
+                if name == "get_weather_forecast":
+                    cast_value = max(1, min(5, cast_value))
+                elif name == "get_upcoming_calendar_events":
+                    cast_value = max(1, min(14, cast_value))
+
+                validated_args[param_name] = cast_value
+            elif declared_type is float:
+                try:
+                    validated_args[param_name] = float(value)
+                except (TypeError, ValueError):
+                    return (
+                        f"Error: Argument '{param_name}' for tool '{name}' "
+                        f"must be a float; received {value!r}."
+                    )
+            elif declared_type is str:
+                validated_args[param_name] = str(value)
+            else:
+                validated_args[param_name] = value
+
+        return func(**validated_args)
+    except Exception as exc:
+        return f"Error during tool execution: {exc}"
+
+
 def run_agent_loop(
     request: AgentQueryRequest,
     provider: GeminiProvider,
     profile: GeminiModelProfile,
-    tools_dispatcher: ToolsDispatcher,
+    tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -26,12 +85,13 @@ def run_agent_loop(
     tool_trace: list[dict[str, Any]] = []
     total_tool_executions = 0
     last_model_content: str | None = None
-    list_of_tool_declarations: list[dict] = []
 
     try:
         for _turn in range(profile.max_tool_turns):
             model_message = provider.generate_turn(
-                history, list_of_tool_declarations, profile
+                history,
+                list(AGENT_TOOLS_REGISTRY.values()),
+                profile,
             )
             history.append(model_message)
 
