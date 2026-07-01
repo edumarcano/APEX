@@ -56,7 +56,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
         profile_version="1.0",
-        api_model="gemini-3-flash",
+        api_model="gemini-3-flash-preview",
         tier="balanced",
         stability="preview",
         default_temperature=0.2,
