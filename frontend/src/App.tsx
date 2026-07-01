@@ -8,6 +8,7 @@ import {
   Newspaper,
 } from 'lucide-react'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -15,6 +16,7 @@ import {
   type ReactElement,
 } from 'react'
 
+import { AskApexBar } from './components/AskApexBar'
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CommandTrigger } from './components/CommandTrigger'
@@ -75,10 +77,13 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
 
+type AgentProfile = 'comet' | 'nova' | 'stellar'
+
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
   const [prevStatus, setPrevStatus] = useState<string>('idle')
+  const [agentProfile, setAgentProfile] = useState<AgentProfile>('nova')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
@@ -146,6 +151,7 @@ export default function App(): ReactElement {
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
   const showCommandTrigger = status === 'idle' || status === 'loading'
+  const showAskApexBar = status === 'success'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
@@ -299,6 +305,13 @@ export default function App(): ReactElement {
   const handleReminderSaved = (): void => {
     setReminderPulseCount((prev) => prev + 1)
   }
+
+  const handleAgentQuery = useCallback(
+    (query: string, profile: AgentProfile): void => {
+      console.log('[Ask APEX]', { query, profile })
+    },
+    [],
+  )
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
@@ -457,21 +470,33 @@ export default function App(): ReactElement {
                     />
                   </div>
                   <div
-                    className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    className={`absolute left-1/2 top-full w-full max-w-lg -translate-x-1/2 px-4 transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
                     } ${
-                      showCommandTrigger
+                      showCommandTrigger || showAskApexBar
                         ? 'pointer-events-auto opacity-100'
                         : 'pointer-events-none opacity-0'
                     }`}
                   >
-                    <CommandTrigger
-                      status={isTriggerLoading ? 'loading' : 'idle'}
-                      onClick={() => {
-                        void triggerSynthesis()
-                      }}
-                      disabled={isTriggerDisabled}
-                    />
+                    {showCommandTrigger ? (
+                      <div className="flex justify-center whitespace-nowrap">
+                        <CommandTrigger
+                          status={isTriggerLoading ? 'loading' : 'idle'}
+                          onClick={() => {
+                            void triggerSynthesis()
+                          }}
+                          disabled={isTriggerDisabled}
+                        />
+                      </div>
+                    ) : showAskApexBar ? (
+                      <AskApexBar
+                        activeProfile={agentProfile}
+                        onProfileChange={setAgentProfile}
+                        onSubmit={handleAgentQuery}
+                        isSubmitting={false}
+                        disabled={isSpeaking}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </div>
