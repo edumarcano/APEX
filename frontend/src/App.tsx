@@ -335,6 +335,13 @@ export default function App(): ReactElement {
     [agentProfile, queryCortex],
   )
 
+  const handleCortexChipSelect = useCallback(
+    (query: string): void => {
+      void queryCortex(query, agentProfile)
+    },
+    [agentProfile, queryCortex],
+  )
+
   const handleTriggerSynthesis = useCallback((): void => {
     resetCortexSession()
     void triggerSynthesis()
@@ -519,6 +526,7 @@ export default function App(): ReactElement {
                         activeProfile={agentProfile}
                         onProfileChange={setAgentProfile}
                         onSubmit={handleAgentQuery}
+                        onSelectChip={handleCortexChipSelect}
                         isSubmitting={isCortexQuerying}
                         disabled={isSpeaking}
                       />
@@ -662,6 +670,7 @@ export default function App(): ReactElement {
         onClose={() => {
           setCortexOpen(false)
         }}
+        onResetSession={resetCortexSession}
         history={cortexHistory}
         isQuerying={isCortexQuerying}
         latestTrace={cortexLatestTrace}
