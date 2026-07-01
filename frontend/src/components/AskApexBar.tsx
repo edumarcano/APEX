@@ -60,7 +60,7 @@ export function AskApexBar({
     <form
       onSubmit={handleSubmit}
       className={[
-        'w-full rounded-xl border bg-zinc-950/40 backdrop-blur-md',
+        'w-80 sm:w-[380px] xl:w-[460px] rounded-xl border bg-zinc-950/40 backdrop-blur-md',
         'border-white/10 transition-all duration-300',
         'focus-within:border-[#0F4DB8]/60 focus-within:shadow-[0_0_12px_rgba(15,77,184,0.2)]',
         disabled ? 'opacity-50' : '',

@@ -16,13 +16,13 @@ const PROFILE_OPTIONS: ReadonlyArray<{
 }> = [
   { key: 'comet', label: 'Apex Comet', subtitle: 'Fast summary' },
   { key: 'nova', label: 'Apex Nova', subtitle: 'Balanced agent' },
-  { key: 'stellar', label: 'Apex Stellar', subtitle: 'Advanced reasoning' },
+  { key: 'stellar', label: 'Apex Pulsar', subtitle: 'Advanced reasoning' },
 ]
 
 const PROFILE_LABELS: Record<CloudProfile, string> = {
   comet: 'Apex Comet',
   nova: 'Apex Nova',
-  stellar: 'Apex Stellar',
+  stellar: 'Apex Pulsar',
 }
 
 interface CloudProfileSelectorProps {
