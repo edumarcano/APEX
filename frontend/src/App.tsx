@@ -168,11 +168,11 @@ export default function App(): ReactElement {
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
   const centerColumnDormantClasses = 'xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1'
+  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
   const briefingDigestDormantClasses =
     'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
   const briefingDigestActiveClasses =
-    'max-h-[500px] opacity-100 mb-4 scale-100 pointer-events-auto'
+    'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4 scale-100 pointer-events-auto'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -442,7 +442,7 @@ export default function App(): ReactElement {
               className={`relative z-[var(--z-core-logo)] flex min-w-0 flex-col items-center gap-4 ${wingTransition} xl:gap-6 xl:min-h-0 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               <div
-                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses}`}
+                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses} overflow-hidden flex flex-col`}
               >
                 <BriefingDigest
                   insights={[
@@ -451,7 +451,7 @@ export default function App(): ReactElement {
                   ]}
                   status={status}
                   isLoading={isTriggerLoading}
-                  className="flex-none w-full xl:min-h-0"
+                  className="w-full h-full min-h-0"
                 />
               </div>
               <div
