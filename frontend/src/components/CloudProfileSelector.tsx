@@ -127,7 +127,7 @@ export function CloudProfileSelector({
           role="listbox"
           aria-label="Select cloud profile"
           className={[
-            'absolute right-0 top-full z-50 mt-1 min-w-[11rem] overflow-hidden',
+            'absolute bottom-full right-0 z-50 mb-2 min-w-[11rem] overflow-hidden',
             'rounded-lg border border-white/10 bg-zinc-950/95 shadow-2xl backdrop-blur-md',
           ].join(' ')}
         >
