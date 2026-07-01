@@ -40,7 +40,7 @@ class AgentMessage(BaseModel):
 
 class AgentQueryRequest(BaseModel):
     prompt: str = Field(description="The user's direct operations query.")
-    profile: Literal["comet", "nova", "stellar"] = Field(
+    profile: Literal["comet", "nova", "pulsar"] = Field(
         default="nova", description="The APEX cloud role tier."
     )
     session_id: Optional[str] = Field(

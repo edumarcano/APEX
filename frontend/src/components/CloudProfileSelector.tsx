@@ -7,7 +7,7 @@ import {
   type ReactElement,
 } from 'react'
 
-export type CloudProfile = 'comet' | 'nova' | 'stellar'
+export type CloudProfile = 'comet' | 'nova' | 'pulsar'
 
 const PROFILE_OPTIONS: ReadonlyArray<{
   key: CloudProfile
@@ -16,13 +16,13 @@ const PROFILE_OPTIONS: ReadonlyArray<{
 }> = [
   { key: 'comet', label: 'Apex Comet', subtitle: 'Fast' },
   { key: 'nova', label: 'Apex Nova', subtitle: 'Balanced' },
-  { key: 'stellar', label: 'Apex Pulsar', subtitle: 'Advanced' },
+  { key: 'pulsar', label: 'Apex Pulsar', subtitle: 'Advanced' },
 ]
 
 const PROFILE_LABELS: Record<CloudProfile, string> = {
   comet: 'Apex Comet',
   nova: 'Apex Nova',
-  stellar: 'Apex Pulsar',
+  pulsar: 'Apex Pulsar',
 }
 
 interface CloudProfileSelectorProps {

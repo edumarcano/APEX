@@ -20,6 +20,7 @@ import { AskApexBar } from './components/AskApexBar'
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CommandTrigger } from './components/CommandTrigger'
+import { CortexDrawer } from './components/CortexDrawer'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -28,6 +29,7 @@ import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
+import { useCortexAgent } from './hooks/useCortexAgent'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import type { WeatherConditionArchetype } from './types/telemetry'
 
@@ -77,7 +79,7 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
 
-type AgentProfile = 'comet' | 'nova' | 'stellar'
+type AgentProfile = 'comet' | 'nova' | 'pulsar'
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
@@ -86,6 +88,16 @@ export default function App(): ReactElement {
   const [agentProfile, setAgentProfile] = useState<AgentProfile>('nova')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
+  const {
+    history: cortexHistory,
+    isQuerying: isCortexQuerying,
+    isOpen: isCortexOpen,
+    latestTrace: cortexLatestTrace,
+    error: cortexError,
+    queryCortex,
+    resetSession: resetCortexSession,
+    setIsOpen: setCortexOpen,
+  } = useCortexAgent()
   const apexData = useApexData()
   const {
     data,
@@ -212,6 +224,7 @@ export default function App(): ReactElement {
         return
       }
 
+      resetCortexSession()
       void triggerSynthesis()
     }
 
@@ -219,7 +232,7 @@ export default function App(): ReactElement {
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [status, triggerSynthesis])
+  }, [status, triggerSynthesis, resetCortexSession])
 
   // Load initial last briefing time from history ledger
   useEffect(() => {
@@ -308,10 +321,24 @@ export default function App(): ReactElement {
 
   const handleAgentQuery = useCallback(
     (query: string, profile: AgentProfile): void => {
-      console.log('[Ask APEX]', { query, profile })
+      const cortexProfile = profile === 'pulsar' ? 'pulsar' : profile
+      void queryCortex(query, cortexProfile)
     },
-    [],
+    [queryCortex],
   )
+
+  const handleCortexFollowUp = useCallback(
+    (query: string): void => {
+      const cortexProfile = agentProfile === 'pulsar' ? 'pulsar' : agentProfile
+      void queryCortex(query, cortexProfile)
+    },
+    [agentProfile, queryCortex],
+  )
+
+  const handleTriggerSynthesis = useCallback((): void => {
+    resetCortexSession()
+    void triggerSynthesis()
+  }, [resetCortexSession, triggerSynthesis])
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
@@ -480,9 +507,7 @@ export default function App(): ReactElement {
                   >
                     <CommandTrigger
                       status={isTriggerLoading ? 'loading' : 'idle'}
-                      onClick={() => {
-                        void triggerSynthesis()
-                      }}
+                      onClick={handleTriggerSynthesis}
                       disabled={isTriggerDisabled}
                     />
                   </div>
@@ -494,7 +519,7 @@ export default function App(): ReactElement {
                         activeProfile={agentProfile}
                         onProfileChange={setAgentProfile}
                         onSubmit={handleAgentQuery}
-                        isSubmitting={false}
+                        isSubmitting={isCortexQuerying}
                         disabled={isSpeaking}
                       />
                     </div>
@@ -630,6 +655,19 @@ export default function App(): ReactElement {
         confidenceScore={confidenceScore}
         pipelineStep={activeStep}
         failedConnectors={failedConnectors}
+      />
+
+      <CortexDrawer
+        isOpen={isCortexOpen}
+        onClose={() => {
+          setCortexOpen(false)
+        }}
+        history={cortexHistory}
+        isQuerying={isCortexQuerying}
+        latestTrace={cortexLatestTrace}
+        activeProfile={agentProfile}
+        onSubmitFollowUp={handleCortexFollowUp}
+        error={cortexError}
       />
     </main>
   )

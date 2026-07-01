@@ -64,7 +64,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         max_tool_calls=4,
         description="Balanced cloud agent for normal APEX Cortex usage.",
     ),
-    "stellar": GeminiModelProfile(
+    "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
         profile_version="1.0",
         api_model="gemini-3.5-flash",
