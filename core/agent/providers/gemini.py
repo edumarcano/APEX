@@ -89,7 +89,7 @@ class GeminiProvider:
     def generate_turn(
         self,
         messages: list[AgentMessage],
-        tools: list[dict],
+        tools: list[Any],
         profile: GeminiModelProfile,
     ) -> AgentMessage:
         contents = _messages_to_contents(messages)

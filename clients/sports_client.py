@@ -238,6 +238,89 @@ def fetch_sports_data() -> tuple[str, bool]:
     return " ".join(intel), f1_cache_refreshed
 
 
+def fetch_f1_driver_standings() -> Dict[str, Any]:
+    """Fetch current Formula 1 driver championship standings from Ergast."""
+    url = "https://api.jolpi.ca/ergast/f1/current/driverStandings.json"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        mr_data = data.get("MRData", {})
+        standings_table = mr_data.get("StandingsTable", {})
+        season = str(standings_table.get("season", ""))
+        standings_lists = standings_table.get("StandingsLists", [])
+
+        if not standings_lists:
+            return {"season": season, "round": "", "standings": []}
+
+        standings_list = standings_lists[0]
+        round_value = str(standings_list.get("round", ""))
+        driver_standings = standings_list.get("DriverStandings", [])
+
+        standings: list[Dict[str, Any]] = []
+        for entry in driver_standings:
+            driver = entry.get("Driver", {})
+            constructors = entry.get("Constructors", [])
+            team = constructors[0].get("name", "") if constructors else ""
+            given_name = driver.get("givenName", "")
+            family_name = driver.get("familyName", "")
+            driver_name = f"{given_name} {family_name}".strip()
+            driver_code = driver.get("code") or driver.get("driverId", "")
+
+            standings.append(
+                {
+                    "position": int(entry.get("position", 0)),
+                    "points": float(entry.get("points", 0)),
+                    "wins": int(entry.get("wins", 0)),
+                    "driver_name": driver_name,
+                    "driver_code": str(driver_code),
+                    "team": team,
+                }
+            )
+
+        return {"season": season, "round": round_value, "standings": standings}
+
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def fetch_f1_season_calendar() -> Dict[str, Any]:
+    """Fetch the full Formula 1 race calendar for the current season from Ergast."""
+    url = "https://api.jolpi.ca/ergast/f1/current.json"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        mr_data = data.get("MRData", {})
+        race_table = mr_data.get("RaceTable", {})
+        season = str(race_table.get("season", ""))
+        races = race_table.get("Races", [])
+
+        calendar: list[Dict[str, Any]] = []
+        for race in races:
+            circuit = race.get("Circuit", {})
+            location = circuit.get("Location", {})
+            calendar.append(
+                {
+                    "round": int(race.get("round", 0)),
+                    "raceName": race.get("raceName", ""),
+                    "circuitName": circuit.get("circuitName", ""),
+                    "country": location.get("country", ""),
+                    "date": race.get("date", ""),
+                    "time": race.get("time", "") or "",
+                }
+            )
+
+        return {"season": season, "calendar": calendar}
+
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 if __name__ == "__main__":
     report, _ = fetch_sports_data()
     print(f"[SPORTS]: {report}")

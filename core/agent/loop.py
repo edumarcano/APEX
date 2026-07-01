@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict
 
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
+from core.agent.tools import AGENT_TOOLS_REGISTRY
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -14,11 +15,17 @@ from core.agent.types import (
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
 
+def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
+    if name not in AGENT_TOOLS_REGISTRY:
+        return f"Error: Tool '{name}' is not registered."
+    return AGENT_TOOLS_REGISTRY[name](**arguments)
+
+
 def run_agent_loop(
     request: AgentQueryRequest,
     provider: GeminiProvider,
     profile: GeminiModelProfile,
-    tools_dispatcher: ToolsDispatcher,
+    tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -26,12 +33,13 @@ def run_agent_loop(
     tool_trace: list[dict[str, Any]] = []
     total_tool_executions = 0
     last_model_content: str | None = None
-    list_of_tool_declarations: list[dict] = []
 
     try:
         for _turn in range(profile.max_tool_turns):
             model_message = provider.generate_turn(
-                history, list_of_tool_declarations, profile
+                history,
+                list(AGENT_TOOLS_REGISTRY.values()),
+                profile,
             )
             history.append(model_message)
 
