@@ -14,8 +14,13 @@ from typing import Any, Final, Literal, cast
 from dotenv import load_dotenv
 
 __all__ = [
+    "AGENT_MAX_TOOL_CALLS",
+    "AGENT_MAX_TURNS",
     "AGENT_SYSTEM_PROMPT",
+    "ASK_APEX_ENABLED",
     "CONFIG_PATH",
+    "DEFAULT_CLOUD_PROFILE",
+    "MAX_SESSION_MESSAGES",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -251,3 +256,136 @@ _module_map = load_module_flags()
 
 MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
 MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
+
+_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset({"comet", "nova", "pulsar"})
+
+
+def _parse_config_bool(raw: Any, *, key: str, default: bool) -> bool:
+    """Coerce a config value to bool with logging on invalid input."""
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return default
+    _LOGGER.warning("Config key %r must be a boolean; using default %s.", key, default)
+    return default
+
+
+def _parse_config_int(
+    raw: Any,
+    *,
+    key: str,
+    default: int,
+    min_value: int,
+    max_value: int,
+) -> int:
+    """Coerce a config value to int, clamp to bounds, and log on invalid input."""
+    if isinstance(raw, bool):
+        _LOGGER.warning("Config key %r must be an integer; using default %s.", key, default)
+        return default
+    if isinstance(raw, int):
+        coerced = raw
+    elif isinstance(raw, float) and raw.is_integer():
+        coerced = int(raw)
+    elif isinstance(raw, str):
+        try:
+            coerced = int(raw.strip())
+        except ValueError:
+            _LOGGER.warning("Config key %r must be an integer; using default %s.", key, default)
+            return default
+    else:
+        _LOGGER.warning("Config key %r must be an integer; using default %s.", key, default)
+        return default
+
+    if coerced < min_value:
+        _LOGGER.warning(
+            "Config key %r=%s below minimum %s; clamping.",
+            key,
+            coerced,
+            min_value,
+        )
+        return min_value
+    if coerced > max_value:
+        _LOGGER.warning(
+            "Config key %r=%s above maximum %s; clamping.",
+            key,
+            coerced,
+            max_value,
+        )
+        return max_value
+    return coerced
+
+
+def _parse_cloud_profile(raw: Any, *, key: str, default: str) -> str:
+    """Validate a cloud profile identifier against known Gemini tiers."""
+    if not isinstance(raw, str):
+        if raw is not None:
+            _LOGGER.warning("Config key %r must be a string; using default %r.", key, default)
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in _VALID_CLOUD_PROFILES:
+        return normalized
+
+    _LOGGER.warning(
+        "Config key %r=%r is not in %s; using default %r.",
+        key,
+        raw,
+        sorted(_VALID_CLOUD_PROFILES),
+        default,
+    )
+    return default
+
+
+try:
+    _ask_apex_cfg = _CONFIG_DATA.get("ask_apex", {})
+    if not isinstance(_ask_apex_cfg, dict):
+        _LOGGER.warning('Config key "ask_apex" must be a JSON object; using defaults.')
+        _ask_apex_cfg = {}
+
+    ASK_APEX_ENABLED: Final[bool] = _parse_config_bool(
+        _ask_apex_cfg.get("enabled"),
+        key="ask_apex.enabled",
+        default=True,
+    )
+    DEFAULT_CLOUD_PROFILE: Final[str] = _parse_cloud_profile(
+        _ask_apex_cfg.get("default_cloud_profile"),
+        key="ask_apex.default_cloud_profile",
+        default="comet",
+    )
+    MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
+        _ask_apex_cfg.get("max_session_messages"),
+        key="ask_apex.max_session_messages",
+        default=6,
+        min_value=2,
+        max_value=20,
+    )
+except Exception as exc:
+    _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
+    ASK_APEX_ENABLED = True
+    DEFAULT_CLOUD_PROFILE = "comet"
+    MAX_SESSION_MESSAGES = 6
+
+try:
+    _gemini_cfg = _CONFIG_DATA.get("gemini", {})
+    if not isinstance(_gemini_cfg, dict):
+        _LOGGER.warning('Config key "gemini" must be a JSON object; using defaults.')
+        _gemini_cfg = {}
+
+    AGENT_MAX_TURNS: Final[int] = _parse_config_int(
+        _gemini_cfg.get("agent_max_turns"),
+        key="gemini.agent_max_turns",
+        default=3,
+        min_value=1,
+        max_value=5,
+    )
+    AGENT_MAX_TOOL_CALLS: Final[int] = _parse_config_int(
+        _gemini_cfg.get("agent_max_tool_calls"),
+        key="gemini.agent_max_tool_calls",
+        default=4,
+        min_value=1,
+        max_value=10,
+    )
+except Exception as exc:
+    _LOGGER.warning("Unable to parse gemini config: %s; using defaults.", exc)
+    AGENT_MAX_TURNS = 3
+    AGENT_MAX_TOOL_CALLS = 4
