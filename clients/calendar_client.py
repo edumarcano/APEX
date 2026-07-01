@@ -12,19 +12,24 @@ _DEV_OFFLINE_SUMMARY = (
 )
 
 
-def get_upcoming_calendar_events(service: Any) -> list[dict[str, str]]:
+def get_upcoming_calendar_events(
+    service: Any, days: int = 2
+) -> list[dict[str, str]]:
     """
     Fetches upcoming calendar events from the user's primary calendar.
 
     Args:
         service: A service object for the Calendar API.
+        days: Number of days into the future to query. Clamped to the range
+            1–14. Defaults to 2 (48-hour HUD viewport).
 
     Returns:
         A list of dictionaries with event summary and formatted start time.
     """
     try:
+        clamped_days = max(1, min(14, days))
         now_dt = datetime.now(timezone.utc).replace(microsecond=0)
-        end_of_day_dt = now_dt + timedelta(days=2)
+        end_of_day_dt = now_dt + timedelta(days=clamped_days)
         now = now_dt.isoformat()
         end_of_day = end_of_day_dt.isoformat()
 
