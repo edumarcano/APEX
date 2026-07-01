@@ -470,25 +470,26 @@ export default function App(): ReactElement {
                     />
                   </div>
                   <div
-                    className={`absolute left-1/2 top-full w-full max-w-lg -translate-x-1/2 px-4 transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
                     } ${
-                      showCommandTrigger || showAskApexBar
+                      showCommandTrigger
                         ? 'pointer-events-auto opacity-100'
                         : 'pointer-events-none opacity-0'
                     }`}
                   >
-                    {showCommandTrigger ? (
-                      <div className="flex justify-center whitespace-nowrap">
-                        <CommandTrigger
-                          status={isTriggerLoading ? 'loading' : 'idle'}
-                          onClick={() => {
-                            void triggerSynthesis()
-                          }}
-                          disabled={isTriggerDisabled}
-                        />
-                      </div>
-                    ) : showAskApexBar ? (
+                    <CommandTrigger
+                      status={isTriggerLoading ? 'loading' : 'idle'}
+                      onClick={() => {
+                        void triggerSynthesis()
+                      }}
+                      disabled={isTriggerDisabled}
+                    />
+                  </div>
+                  {showAskApexBar ? (
+                    <div
+                      className="mt-3 flex w-full max-w-lg justify-center px-4 transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100"
+                    >
                       <AskApexBar
                         activeProfile={agentProfile}
                         onProfileChange={setAgentProfile}
@@ -496,8 +497,8 @@ export default function App(): ReactElement {
                         isSubmitting={false}
                         disabled={isSpeaking}
                       />
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
