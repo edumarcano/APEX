@@ -14,6 +14,7 @@ from typing import Any, Final, Literal, cast
 from dotenv import load_dotenv
 
 __all__ = [
+    "AGENT_SYSTEM_PROMPT",
     "CONFIG_PATH",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
@@ -178,12 +179,23 @@ _DEFAULT_SYSTEM_PROMPT: Final[str] = (
     "You are a helpful system assistant. Summarize the following data into a clean, "
     "concise audio briefing under 75 words. Do not use emojis or markdown."
 )
+_DEFAULT_AGENT_SYSTEM_PROMPT: Final[str] = (
+    "You are a helpful cloud agent assistant. Use available tools when live data "
+    "is required."
+)
 _configured_prompt = _CONFIG_DATA.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
 if isinstance(_configured_prompt, str):
     SYSTEM_PROMPT: Final[str] = _configured_prompt
 else:
     _LOGGER.warning("Config key 'system_prompt' must be a string; using default.")
     SYSTEM_PROMPT = _DEFAULT_SYSTEM_PROMPT
+
+_configured_agent_prompt = _CONFIG_DATA.get("agent_system_prompt", _DEFAULT_AGENT_SYSTEM_PROMPT)
+if isinstance(_configured_agent_prompt, str):
+    AGENT_SYSTEM_PROMPT: Final[str] = _configured_agent_prompt
+else:
+    _LOGGER.warning("Config key 'agent_system_prompt' must be a string; using default.")
+    AGENT_SYSTEM_PROMPT = _DEFAULT_AGENT_SYSTEM_PROMPT
 
 tts_settings = _CONFIG_DATA.get("tts_settings", {})
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")

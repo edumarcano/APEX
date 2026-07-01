@@ -30,7 +30,12 @@ from clients import (
     weather_client,
 )
 from core import brain, database, scanner, speaker, config
+from core.agent.loop import default_tools_dispatcher, run_agent_loop
+from core.agent.providers.gemini import GeminiProvider
+from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
+from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.config import (
+    AGENT_SYSTEM_PROMPT,
     DEMO_MODE,
     DEMO_TTS,
     DEV_AI_SYNTHESIS,
@@ -1027,6 +1032,74 @@ def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
         return MarkReadResponse()
     database.mark_reminders_read(payload.ids)
     return MarkReadResponse()
+
+
+@app.post("/api/v1/agent/query", response_model=AgentQueryResponse)
+def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
+    """
+    Execute an Ask APEX agent turn with optional tool calling.
+
+    Runs synchronously so uvicorn can offload blocking Gemini I/O to a worker thread.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return AgentQueryResponse(
+            answer=(
+                "Ask APEX cloud agent is currently unavailable because the Gemini "
+                "API key is not configured. Please set GEMINI_API_KEY in your "
+                "environment and restart the API server."
+            ),
+            profile_used={},
+            session_id=payload.session_id,
+            error="GEMINI_API_KEY is missing from environment variables.",
+        )
+
+    profile: GeminiModelProfile | None = GEMINI_MODEL_PROFILES.get(payload.profile)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown agent profile: {payload.profile!r}",
+        )
+
+    try:
+        latest_runs = database.fetch_briefing_history(limit=1)
+        hud_context = ""
+        if latest_runs:
+            briefing_text = latest_runs[0]["briefing"]
+            insights_list = latest_runs[0]["digest"].get("insights", [])
+            hud_context = (
+                "\n\nCURRENT HUD STATE:\n"
+                "The user is actively looking at this compiled briefing on their HUD screen:\n"
+                f'- Briefing Prose: "{briefing_text}"\n'
+                f"- Active Summary Insights: "
+                f"{', '.join(insights_list) if insights_list else 'None'}\n"
+                "Use this context to resolve relative follow-up queries about the active briefing "
+                "(e.g., 'explain that first insight', 'why did you mention the weather?', "
+                "or 'summarize this')."
+            )
+
+        local_system_instruction = config.AGENT_SYSTEM_PROMPT + hud_context
+
+        provider = GeminiProvider(api_key=os.getenv("GEMINI_API_KEY"))
+        response = run_agent_loop(
+            payload,
+            provider,
+            profile,
+            system_instruction_override=local_system_instruction,
+        )
+        return response
+    except Exception as exc:
+        return AgentQueryResponse(
+            answer=(
+                "The Ask APEX agent encountered an issue reaching the cloud "
+                "provider or running the requested operations. Please check "
+                "your credentials, network status, or quota allocations, "
+                "and try again."
+            ),
+            profile_used=profile.model_dump(),
+            session_id=payload.session_id,
+            error=str(exc),
+        )
 
 
 def main() -> None:
