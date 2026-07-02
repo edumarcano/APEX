@@ -19,6 +19,27 @@ Health check. Returns a minimal payload for launcher readiness polling.
 
 ---
 
+### `GET /api/v1/config`
+
+Exposes global system configuration to the frontend HUD on boot. Called once alongside `GET /api/v1/reminders` while the HUD is idle.
+
+**Response `200`**
+```json
+{
+  "default_profile": "comet",
+  "ask_apex_enabled": true,
+  "max_session_messages": 6
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `default_profile` | string | Default Cortex agent profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
+| `ask_apex_enabled` | boolean | Whether the Ask APEX bar and Cortex drawer are enabled, from `config.json` `ask_apex.enabled` |
+| `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
+
+---
+
 ### `POST /api/v1/trigger`
 
 Runs the full pipeline: gate → collection → synthesis → delivery. Blocking — returns after all four stages complete and TTS audio has started on a background thread.
@@ -237,6 +258,67 @@ Returns an empty list `[]` when no briefings have been stored.
 
 ---
 
+### `POST /api/v1/agent/query`
+
+Executes one turn of the APEX Cortex conversational agent, including any tool calls the model requests. Runs synchronously; uvicorn offloads the blocking Gemini call to a worker thread.
+
+The endpoint is stateless on the server. The full conversation history is supplied by the client on every call and echoed back into the next request — there is no server-side session store.
+
+**Request body** — `AgentQueryRequest`
+```json
+{
+  "prompt": "What is the current weather?",
+  "profile": "nova",
+  "session_id": null,
+  "history": []
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `prompt` | string | The user's query for this turn. |
+| `profile` | string | Cloud role tier: `"comet"`, `"nova"`, or `"pulsar"`. Defaults to `"nova"`. |
+| `session_id` | string \| null | Optional client-generated grouping identifier; passed through unchanged. |
+| `history` | `AgentMessage[]` | Prior turns for this session, including `tool_calls`/`tool_results`. Empty on the first turn. |
+
+**Response `200`** — `AgentQueryResponse`
+```json
+{
+  "answer": "Current conditions are 78°F with clear skies.",
+  "profile_used": { "display_name": "Apex Nova", "api_model": "gemini-3-flash-preview", "...": "..." },
+  "tool_trace": [
+    { "name": "get_current_weather", "status": "ok", "duration_ms": 412.3 }
+  ],
+  "session_id": null,
+  "error": null
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `answer` | string | Final synthesized text response. |
+| `profile_used` | object | Full `GeminiModelProfile` dump for the profile that served this request. |
+| `tool_trace` | object[] | One entry per tool executed this turn: `name`, `status` (`"ok"` or `"error"`), `duration_ms`. |
+| `session_id` | string \| null | Echo of the request's `session_id`. |
+| `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
+
+**Response `403`** — Ask APEX disabled via `config.json` `ask_apex.enabled`
+```json
+{ "detail": "APEX Cortex is currently disabled in system settings." }
+```
+
+**Response `400`** — unknown `profile` value not present in `GEMINI_MODEL_PROFILES`.
+
+**Missing API key:** When `GEMINI_API_KEY` is not set, the endpoint returns `200` with a static unavailability message in `answer` and `error` set to `"GEMINI_API_KEY is missing from environment variables."` rather than raising an HTTP error.
+
+**HUD context injection:** Before dispatching to the model, the handler fetches the single most recent row from `GET /api/v1/briefings/history` (production only) and appends its briefing text and insight bullets to the system instruction, so the agent can resolve relative follow-ups like "explain that first insight" against what is currently on screen.
+
+**Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
+
+**Demo path:** When `DEMO_MODE=true`, returns a deterministic canned response selected by keyword-matching the prompt (weather/forecast, F1/standings/calendar, reminders/tasks, or a generic fallback) with a synthetic `tool_trace`. No live Gemini call is made.
+
+---
+
 ## Pydantic Models
 
 ### `BriefingResponse`
@@ -350,6 +432,58 @@ class BriefingHistoryRecord(BaseModel):
     digest: DigestPayload
 ```
 
+### `ToolCall`
+
+```python
+class ToolCall(BaseModel):
+    id: str                          # Unique call identifier from the model
+    name: str                        # Registered tool name to execute
+    arguments: dict[str, Any]        # Arguments validated against the tool signature
+    thought_signature: str | None = None  # Base64-encoded Gemini 3 reasoning token
+```
+
+`thought_signature` is an opaque token Gemini attaches to function calls under its native "thinking" mode. It is round-tripped verbatim (base64-decoded to bytes on the outbound request, re-encoded on the inbound response) so multi-turn tool-calling loop state stays valid across turns; APEX never inspects its contents.
+
+### `ToolResult`
+
+```python
+class ToolResult(BaseModel):
+    id: str          # Matches the originating ToolCall.id
+    name: str        # Tool name that was executed
+    output: Any      # Serializable raw output from the Python handler
+```
+
+### `AgentMessage`
+
+```python
+class AgentMessage(BaseModel):
+    role: Literal["user", "model", "tool"]
+    content: str | None = None
+    tool_calls: list[ToolCall] | None = None
+    tool_results: list[ToolResult] | None = None
+```
+
+### `AgentQueryRequest`
+
+```python
+class AgentQueryRequest(BaseModel):
+    prompt: str
+    profile: Literal["comet", "nova", "pulsar"] = "nova"
+    session_id: str | None = None
+    history: list[AgentMessage] = []
+```
+
+### `AgentQueryResponse`
+
+```python
+class AgentQueryResponse(BaseModel):
+    answer: str
+    profile_used: dict[str, Any]
+    tool_trace: list[dict[str, Any]] = []
+    session_id: str | None = None
+    error: str | None = None
+```
+
 ---
 
 ## Text Sanitization (`clean_for_tts`)
@@ -393,6 +527,10 @@ http://127.0.0.1:8000
 http://localhost:8000
 http://127.0.0.1:5500
 http://localhost:5500
+http://127.0.0.1:5173
+http://localhost:5173
 ```
+
+The `5173` pair covers the Vite dev server (`npm run dev`).
 
 A custom value replaces these defaults rather than extending them. If you serve the HUD from a different port, set `APEX_ALLOWED_ORIGINS` to include all required origins.

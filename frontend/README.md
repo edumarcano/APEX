@@ -35,8 +35,9 @@ The dev server is for local development only. The production path served by `lau
 frontend/
 ├── src/
 │   ├── hooks/
-│   │   ├── useApexData.ts           # Central data hook: trigger, polling, telemetry, reminder state
-│   │   └── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
+│   │   ├── useApexData.ts           # Central data hook: trigger, polling, telemetry, reminder state, boot config fetch
+│   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
+│   │   └── useCortexAgent.ts        # Ask APEX / Cortex drawer state: query submission, history, tool trace
 │   ├── types/
 │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload,
 │   │                                #   SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
@@ -50,7 +51,10 @@ frontend/
 │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
 │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator
 │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
-│   │   └── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
+│   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
+│   │   ├── AskApexBar.tsx           # Inline Cortex query input, prompt chips, profile selector
+│   │   ├── CortexDrawer.tsx         # Slide-out chat drawer: message history, tool trace, follow-up input
+│   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown
 │   ├── App.tsx      # Root layout: three-column bento grid, nebula glow, demo badge
 │   └── main.tsx     # Vite entry point
 ├── index.html
@@ -78,9 +82,13 @@ The single data hook for the entire HUD. Starts in `idle` state on mount and fet
 
 Polls `GET /api/v1/diagnostics` every 1,000 ms. Returns `{ diagnostics, status }`. Independent of pipeline state.
 
+### `useCortexAgent`
+
+State for the Ask APEX bar and Cortex drawer. `queryCortex(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `history` array, then appends the resulting user/model message pair to local state on success. There is no server-side session — this hook is the sole owner of conversation history for the tab's lifetime. Exposes `history`, `isQuerying`, `isOpen`, `latestTrace` (the most recent turn's tool executions), `error`, `queryCortex`, `resetSession` (clears history and closes the drawer), and `setIsOpen`.
+
 ---
 
 ## Environment Notes
 
-- The HUD does not read `.env` directly. All configuration reaches the frontend through the API response (`metadata`, `digest` fields) or through the CORS policy set on the backend.
-- `DEMO_MODE=true` on the backend causes the trigger response to include `metadata.demo_mode_active: true`, which `App.tsx` uses to render the amber "DEMO MODE ACTIVE" header badge.
+- The HUD does not read `.env` directly. All configuration reaches the frontend through the API response (`metadata`, `digest` fields), a dedicated `GET /api/v1/config` fetch made once on boot (populates `askApexEnabled` and `defaultProfile`), or through the CORS policy set on the backend.
+- `DEMO_MODE=true` on the backend causes the trigger response to include `metadata.demo_mode_active: true`, which `App.tsx` uses to render the amber "DEMO MODE ACTIVE" header badge. The same flag also switches `POST /api/v1/agent/query` to a deterministic keyword-matched response with no live Gemini call.
