@@ -37,7 +37,7 @@ frontend/
 │   ├── hooks/
 │   │   ├── useApexData.ts           # Central data hook: trigger, polling, telemetry, reminder state, boot config fetch
 │   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
-│   │   └── useApexAssistant.ts      # Ask APEX / assistant drawer state: query submission, history, tool trace
+│   │   └── useApexAssistant.ts      # Assistant bar / drawer state: query submission, history, tool trace
 │   ├── types/
 │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload,
 │   │                                #   SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
@@ -52,7 +52,7 @@ frontend/
 │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator
 │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
-│   │   ├── AskApexBar.tsx           # Inline Ask APEX query input, prompt chips, profile selector
+│   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
 │   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, follow-up input
 │   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown
 │   ├── App.tsx      # Root layout: three-column bento grid, nebula glow, demo badge
@@ -84,7 +84,7 @@ Polls `GET /api/v1/diagnostics` every 1,000 ms. Returns `{ diagnostics, status }
 
 ### `useApexAssistant`
 
-State for the Ask APEX bar and assistant drawer. `queryAssistant(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `assistantHistory` array, then appends the resulting user/model message pair to local state on success. There is no server-side session — this hook is the sole owner of conversation history for the tab's lifetime. Exposes `assistantHistory`, `isAssistantQuerying`, `isAssistantOpen`, `assistantLatestTrace` (the most recent turn's tool executions), `assistantError`, `queryAssistant`, `resetAssistantSession` (clears history and closes the drawer), and `setAssistantOpen`.
+State for the assistant bar and assistant drawer. `queryAssistant(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `assistantHistory` array, then appends the resulting user/model message pair to local state on success. There is no server-side session — this hook is the sole owner of conversation history for the tab's lifetime. Exposes `assistantHistory`, `isAssistantQuerying`, `isAssistantOpen`, `assistantLatestTrace` (the most recent turn's tool executions), `assistantError`, `queryAssistant`, `resetAssistantSession` (clears history and closes the drawer), and `setAssistantOpen`.
 
 ---
 

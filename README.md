@@ -109,7 +109,7 @@ Individual connectors are switched on or off in `config.json`. When a connector 
 
 `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
-`agent_system_prompt` sets the APEX assistant persona (executed by the internal Cortex reasoning engine), independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the Ask APEX bar and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query. See [docs/api.md](docs/api.md) for the full agent query contract.
+`agent_system_prompt` sets the APEX assistant persona (executed by the internal Cortex reasoning engine), independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query. See [docs/api.md](docs/api.md) for the full agent query contract.
 
 ---
 

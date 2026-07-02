@@ -35,7 +35,7 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
 | Field | Type | Description |
 |---|---|---|
 | `default_profile` | string | Default APEX assistant profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
-| `ask_apex_enabled` | boolean | Whether the Ask APEX bar and assistant drawer are enabled, from `config.json` `ask_apex.enabled` |
+| `ask_apex_enabled` | boolean | Whether the assistant bar and assistant drawer are enabled, from `config.json` `ask_apex.enabled` |
 | `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
 
 ---
@@ -302,7 +302,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
 
-**Response `403`** — Ask APEX disabled via `config.json` `ask_apex.enabled`
+**Response `403`** — Assistant interface disabled via `config.json` `ask_apex.enabled`
 ```json
 { "detail": "APEX is currently disabled in system settings." }
 ```

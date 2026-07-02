@@ -61,7 +61,7 @@ sequenceDiagram
 
 ## APEX Assistant Query Flow
 
-Unlike the trigger/status pipeline, an Ask APEX query is a single request-response cycle with no polling. The frontend holds the entire conversation; the backend holds none of it.
+Unlike the trigger/status pipeline, an assistant query is a single request-response cycle with no polling. The frontend holds the entire conversation; the backend holds none of it.
 
 ```mermaid
 sequenceDiagram
@@ -144,7 +144,7 @@ apex/
 │   │   ├── hooks/
 │   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state, boot config fetch
 │   │   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
-│   │   │   └── useApexAssistant.ts      # Ask APEX / assistant drawer state: query submission, client-held history, trace, errors
+│   │   │   └── useApexAssistant.ts      # Assistant bar / drawer state: query submission, client-held history, trace, errors
 │   │   ├── types/
 │   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   │   ├── components/
@@ -158,7 +158,7 @@ apex/
 │   │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator (stasis line → gyro rings)
 │   │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
-│   │   │   ├── AskApexBar.tsx           # Inline Ask APEX query input, prompt chips, profile selector
+│   │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
 │   │   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, follow-up input
 │   │   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown shared by the bar and drawer
 │   │   ├── App.tsx          # Root layout: three-column bento grid, nebula glow, demo badge
