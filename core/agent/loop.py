@@ -16,7 +16,7 @@ ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
 
 @runtime_checkable
-class CortexProvider(Protocol):
+class AgentProvider(Protocol):
     def generate_turn(
         self,
         messages: list[AgentMessage],
@@ -82,7 +82,7 @@ def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
 
 def run_agent_loop(
     request: AgentQueryRequest,
-    provider: CortexProvider,
+    provider: AgentProvider,
     profile: GeminiModelProfile,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
@@ -171,7 +171,7 @@ def run_agent_loop(
         print(f"[AGENT][LOOP] Bounded loop execution crashed: {exc}")
         return AgentQueryResponse(
             answer=(
-                "The APEX Cortex agent encountered an issue reaching the cloud "
+                "The APEX assistant encountered an issue reaching the cloud "
                 "provider or running the requested operations. Please check "
                 "your credentials, network status, or quota allocations, "
                 "and try again."

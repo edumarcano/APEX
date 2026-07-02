@@ -251,7 +251,7 @@ Transitioning APEX from an intelligence presence into an operator-directed agent
 
 ## v1.12.0 - Cloud Gemini Agentic Tool Calling
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
 Transform APEX from a push-based summarization system into an interactive cloud-agent framework capable of tool execution, conversational preemption, stateful reasoning, and controlled action loops.
@@ -267,7 +267,7 @@ Enable local agentic execution through Ollama-powered models while reducing clou
 
 ---
 
-## v1.14.0 - Command Console & Dynamic Control Deck
+## v1.X.0 - Command Console & Dynamic Control Deck
 
 **Status:** Planned
 

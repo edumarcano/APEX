@@ -96,6 +96,22 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ---
 
+## APEX assistant sessions are stateless on the server
+
+The APEX assistant (`POST /api/v1/agent/query`) does not persist conversation history server-side. The client sends the full message history with every request, and the server appends the new turn and returns the updated response without writing anything to a session store.
+
+This mirrors the project's existing preference for the client owning UI-facing state (see the trigger/polling design) and avoids adding session lifecycle management, expiry, cleanup, multi-tab conflicts, to a single-user local tool where the browser tab already holds the canonical conversation. The trade-off is that history is lost on page reload and is bounded by `config.json` `ask_apex.max_session_messages` purely as a client-side truncation concern, not a server-enforced limit.
+
+---
+
+## Untrusted tool output boundary in the Cortex engine
+
+Every tool result returned to Gemini during an agent loop turn is wrapped in an `<untrusted_tool_output>` XML tag, and every system instruction sent to the model includes a directive to treat that tag's contents as data, never as instructions.
+
+Live connector data (calendar event titles, news headlines, Gmail subjects) is written by third parties outside APEX's control. Without an explicit boundary, adversarial or malformed text inside that data could be interpreted by the model as a system-level instruction override, a standard prompt-injection risk for any tool-calling agent that ingests external content. Marking tool output as untrusted at the prompt level costs nothing at runtime and requires no additional infrastructure, consistent with the project's preference for simple, dependency-free safeguards.
+
+---
+
 ## AI-Augmented Development Workflow
 
 The project maintains a set of specialized agent rules to provide task-focused guidance across backend development, frontend development, operations, implementation, analysis, auditing, and documentation work.

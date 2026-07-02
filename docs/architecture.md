@@ -59,6 +59,42 @@ sequenceDiagram
 
 ---
 
+## APEX Assistant Query Flow
+
+Unlike the trigger/status pipeline, an assistant query is a single request-response cycle with no polling. The frontend holds the entire conversation; the backend holds none of it.
+
+```mermaid
+sequenceDiagram
+    participant Bar as Frontend: AskApexBar / AssistantDrawer
+    participant Hook as Frontend: useApexAssistant (history state)
+    participant Query as Backend: /api/v1/agent/query
+    participant DB as Backend: SQLite (latest briefing)
+    participant Loop as Backend: run_agent_loop
+    participant Gemini as Gemini API
+
+    Bar->>Hook: queryAssistant(prompt, profile)
+    Hook->>Query: POST { prompt, profile, session_id, history }
+    Query->>DB: fetch_briefing_history(limit=1)
+    DB-->>Query: latest briefing + insights
+    Query->>Loop: run_agent_loop(request, profile, hud_context)
+    loop Up to profile.max_tool_turns
+        Loop->>Gemini: generate_turn(history, tools)
+        Gemini-->>Loop: text and/or tool_calls
+        opt tool_calls present
+            Loop->>Loop: dispatch registered tool(s)
+            Loop->>Gemini: next turn with wrapped tool results
+        end
+    end
+    Loop-->>Query: AgentQueryResponse { answer, tool_trace }
+    Query-->>Hook: 200 JSON
+    Hook->>Hook: append {user, model} to local history array
+    Hook-->>Bar: render answer + tool trace
+```
+
+The `hud_context` injected before the loop starts is built fresh on every request from whatever briefing is currently the most recent in the ledger — it is not cached or part of the client-sent `history`. This lets an operator ask "why did you mention the weather?" and have it resolve against the briefing currently on their screen, without the frontend needing to send the briefing text itself.
+
+---
+
 ## Demo Mode Simulation
 
 When `DEMO_MODE=true` in `.env`, the trigger endpoint branches into `_run_demo_briefing()` before the normal pipeline runs. The simulation:
@@ -82,7 +118,15 @@ apex/
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite session logging and reminder CRUD
-│   ├── config.py        # Feature flags, module flags, system prompt, TTS settings loader
+│   ├── config.py        # Feature flags, module flags, system prompt, TTS settings, agent/ask_apex settings loader
+│   ├── agent/
+│   │   ├── loop.py              # Bounded tool-calling loop: turn/call ceilings, tool dispatch and validation
+│   │   ├── tools.py              # Registered read-only agent tools + AGENT_TOOLS_REGISTRY
+│   │   ├── types.py              # AgentMessage, ToolCall, ToolResult, AgentQueryRequest/Response models
+│   │   ├── providers/
+│   │   │   ├── gemini.py          # GeminiProvider: message↔Content conversion, retry/backoff, security boundary
+│   │   │   └── gemini_models.py   # GeminiModelProfile + Comet/Nova/Pulsar profile definitions
+│   │   └── __init__.py
 │   ├── mock/
 │   │   └── telemetry.json   # Static telemetry payload for DEMO_MODE runs
 │   └── __init__.py
@@ -98,8 +142,9 @@ apex/
 ├── frontend/                # React/TypeScript source — compiled by Vite
 │   ├── src/
 │   │   ├── hooks/
-│   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state
-│   │   │   └── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
+│   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state, boot config fetch
+│   │   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
+│   │   │   └── useApexAssistant.ts      # Assistant bar / drawer state: query submission, client-held history, trace, errors
 │   │   ├── types/
 │   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   │   ├── components/
@@ -112,7 +157,10 @@ apex/
 │   │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
 │   │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator (stasis line → gyro rings)
 │   │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
-│   │   │   └── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
+│   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
+│   │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
+│   │   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, follow-up input
+│   │   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown shared by the bar and drawer
 │   │   ├── App.tsx          # Root layout: three-column bento grid, nebula glow, demo badge
 │   │   └── main.tsx         # Vite entry point
 │   ├── index.html
@@ -167,6 +215,48 @@ When `DEV_MODE=true`:
 
 On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
 
+### `core/agent/` — Cortex reasoning engine for the APEX assistant
+
+Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis and the APEX assistant use independent prompts, and the assistant additionally supports tool calling and multi-turn conversation through the internal Cortex engine.
+
+**`core/agent/types.py`** — Pydantic models for the wire contract: `AgentMessage` (role plus optional `content`, `tool_calls`, `tool_results`), `ToolCall`, `ToolResult`, `AgentQueryRequest`, `AgentQueryResponse`. See [docs/api.md](api.md#pydantic-models) for full field definitions.
+
+**`core/agent/providers/gemini_models.py`** — Defines `GeminiModelProfile` and three fixed profiles in `GEMINI_MODEL_PROFILES`:
+
+<a id="cloud-agent-profiles"></a>
+
+| Profile | Display Name | Model | Tier | Stability | Max Turns | Max Tool Calls | Temperature |
+|---|---|---|---|---|---|---|---|
+| `comet` | Apex Comet | `gemini-3.1-flash-lite` | fast | stable | `min(2, AGENT_MAX_TURNS)` | `min(3, AGENT_MAX_TOOL_CALLS)` | 0.2 |
+| `nova` | Apex Nova | `gemini-3-flash-preview` | balanced | preview | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.2 |
+| `pulsar` | Apex Pulsar | `gemini-3.5-flash` | advanced | stable | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.1 |
+
+`AGENT_MAX_TURNS` (1–5, default 3) and `AGENT_MAX_TOOL_CALLS` (1–10, default 4) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`; Comet always applies a lower fixed ceiling regardless of configured values.
+
+**`core/agent/tools.py`** — `AGENT_TOOLS_REGISTRY` maps tool names to Python callables, each documented with a Google-style docstring the model uses as its function-calling schema:
+
+| Tool | Source |
+|---|---|
+| `get_current_weather` | `weather_client.fetch_weather_data()` |
+| `get_weather_forecast(days)` | `weather_client.fetch_weather_forecast()`, clamped to 1–5 days |
+| `get_f1_driver_standings` | `sports_client.fetch_f1_driver_standings()` |
+| `get_f1_season_calendar` | `sports_client.fetch_f1_season_calendar()` |
+| `get_upcoming_calendar_events(days)` | `calendar_client.get_upcoming_calendar_events()`, clamped to 1–14 days; independent of the HUD's 48-hour window |
+| `get_active_reminders` | `database.fetch_unread_reminders()` |
+| `get_briefing_history(limit)` | `database.fetch_briefing_history()`, clamped to 1–5 records |
+
+All tools are read-only; none can mutate reminders, settings, or telemetry state.
+
+**`core/agent/loop.py`** — `run_agent_loop()` drives a bounded turn loop: each turn calls `provider.generate_turn()`, appends the model's message to history, and if the model requested tool calls, dispatches them via `default_tools_dispatcher()` before looping again. `default_tools_dispatcher` validates and coerces arguments against each tool's type hints (int arguments are clamped per-tool, e.g. `get_weather_forecast` days to 1–5) and raises on missing required arguments. The loop terminates when the model returns a message with no tool calls (success), when `profile.max_tool_calls` total executions are reached, or when `profile.max_tool_turns` turns elapse without a final answer — the latter two return the best available partial answer with `error` populated rather than looping indefinitely. Any unhandled exception in the loop is caught and converted into a generic unavailability message plus a `traceback.format_exc()` in `error`.
+
+**`core/agent/providers/gemini.py`** — `GeminiProvider` implements the `AgentProvider` protocol. `_messages_to_contents()` converts the internal `AgentMessage` history into Gemini `types.Content` objects; `_content_to_agent_message()` converts the reply back, including any `function_call` parts into `ToolCall`s. Tool call arguments are sent with `automatic_function_calling` disabled — APEX's own loop drives execution, not the SDK's built-in auto-calling.
+
+Every tool result is wrapped in an `<untrusted_tool_output name='...'>...</untrusted_tool_output>` XML block before being sent back to the model. A `_SECURITY_BOUNDARY_DIRECTIVE` appended to every system instruction explicitly tells the model to treat this block's contents as data only, never as instructions — a defense against prompt injection carried in live connector output (e.g. a news headline or calendar event title engineered to look like a system command).
+
+Gemini API calls retry up to 3 attempts on `429` (exponential backoff starting at 1.0s, plus jitter) and on `500`/`502`/`503`/`504` (fixed 2.0s backoff); any other `APIError` status is raised immediately without retry.
+
+**Session model:** the agent endpoint holds no server-side session state. `AgentQueryRequest.history` is supplied by the client on every call; the frontend's `useApexAssistant` hook accumulates it in React state and resends the full list each turn. `session_id` is an opaque passthrough value with no server-side lookup.
+
 ### `core/speaker.py`
 
 Three warm-up functions run at module import time:
@@ -217,6 +307,8 @@ SQLite database file: `apex_memory.db`. Three tables, all created by `initialize
 
 Loads `config.json` at module import. All environment flags (`DEV_MODE`, `DEMO_MODE`, `ENABLE_STARTUP_GATE`, `DEV_AI_SYNTHESIS`, `DEV_TTS_PLAYBACK`, `DEMO_TTS`) are parsed via `_parse_env_bool()` or typed literal validators with normalization and logged fallbacks for unrecognized values. If `config.json` is missing or malformed, feature flags default to `False` and `SYSTEM_PROMPT` falls back to a neutral placeholder.
 
+Also loads the assistant config surface for the Cortex engine: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `ASK_APEX_ENABLED` / `DEFAULT_CLOUD_PROFILE` / `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.*`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
+
 ---
 
 ## Frontend Components
@@ -237,6 +329,8 @@ The header renders: the `VocalOrb` (center), the `APEX` title with subtitle (lef
 The `CommandTrigger` component is mounted **below the `ApexLogo`** in the center column. It is visible (`opacity-100 pointer-events-auto`) when `status === 'idle'` or `status === 'loading'`, and fades out otherwise.
 
 Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
+
+**Assistant wiring:** `App.tsx` holds `agentProfile` state (default `'nova'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useApexAssistant()` directly. The `AskApexBar` renders below the `ApexLogo`, gated by `showAskApexBar = status === 'success' && askApexEnabled` — it only appears after a briefing has been delivered, and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetAssistantSession()`) clears any open assistant conversation first. The `AssistantDrawer` is always mounted (visibility controlled by `translate-x` transform, not conditional mounting) and slides in from the right whenever `queryAssistant()` is called from either the bar or the drawer's own follow-up input.
 
 ### `CelestialBackground.tsx`
 

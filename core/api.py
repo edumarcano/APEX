@@ -479,7 +479,7 @@ def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
 
 
 def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
-    """Return deterministic Cortex responses when ``DEMO_MODE`` is active."""
+    """Return deterministic assistant responses when ``DEMO_MODE`` is active."""
     profile: GeminiModelProfile | None = GEMINI_MODEL_PROFILES.get(payload.profile)
     if profile is None:
         raise HTTPException(
@@ -493,7 +493,7 @@ def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     if any(keyword in prompt_lower for keyword in ("weather", "forecast", "temp")):
         answer = (
-            "Under APEX Cortex simulation, the 3-day weather forecast for Plantation, FL "
+            "Under APEX simulation, the 3-day weather forecast for Plantation, FL "
             "indicates consistent light rain with high temperatures in the low 90s:\n\n"
             "* July 1: High 91°F, Low 80°F. Light rain.\n"
             "* July 2: High 90°F, Low 77°F. Light rain.\n"
@@ -507,7 +507,7 @@ def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
         for keyword in ("f1", "standings", "championship", "calendar")
     ):
         answer = (
-            "APEX Cortex simulation data shows Max Verstappen leading the driver "
+            "APEX simulation data shows Max Verstappen leading the driver "
             "standings with 110 points. The next scheduled race is the Monaco "
             "Simulation Grand Prix running this week."
         )
@@ -525,7 +525,7 @@ def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
         ]
     else:
         answer = (
-            "APEX Cortex simulation is fully operational, Chief. I have verified your "
+            "APEX simulation is fully operational, Chief. I have verified your "
             "local database registers and ambient HUD context. Let me know if you "
             "would like me to simulate a weather forecast or F1 standings query."
         )
@@ -1113,14 +1113,14 @@ def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
 @app.post("/api/v1/agent/query", response_model=AgentQueryResponse)
 def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     """
-    Execute an APEX Cortex agent turn with optional tool calling.
+    Execute an APEX assistant turn with optional tool calling.
 
     Runs synchronously so uvicorn can offload blocking Gemini I/O to a worker thread.
     """
     if not config.ASK_APEX_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="APEX Cortex is currently disabled in system settings.",
+            detail="APEX is currently disabled in system settings.",
         )
 
     if DEMO_MODE:
@@ -1130,7 +1130,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     if not api_key:
         return AgentQueryResponse(
             answer=(
-                "APEX Cortex is currently unavailable because the Gemini "
+                "APEX is currently unavailable because the Gemini "
                 "API key is not configured. Please set GEMINI_API_KEY in your "
                 "environment and restart the API server."
             ),
@@ -1176,7 +1176,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     except Exception as exc:
         return AgentQueryResponse(
             answer=(
-                "The APEX Cortex encountered an issue reaching the cloud provider "
+                "The APEX assistant encountered an issue reaching the cloud provider "
                 "or running the requested operations. Please check your "
                 "credentials, network status, or quota allocations, and try again."
             ),

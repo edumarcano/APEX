@@ -28,7 +28,7 @@ export interface ToolTraceItem {
   duration_ms: number
 }
 
-export type CortexProfile = 'comet' | 'nova' | 'pulsar'
+export type AssistantProfile = 'comet' | 'nova' | 'pulsar'
 
 type BackendProfile = 'comet' | 'nova' | 'pulsar'
 
@@ -38,7 +38,7 @@ interface AgentQueryResponseBody {
   error?: string | null
 }
 
-function mapProfileToBackend(profile: CortexProfile): BackendProfile {
+function mapProfileToBackend(profile: AssistantProfile): BackendProfile {
   return profile === 'pulsar' ? 'pulsar' : profile
 }
 
@@ -84,34 +84,34 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   return { answer, tool_trace, error }
 }
 
-export interface UseCortexAgentResult {
-  history: AgentMessage[]
-  isQuerying: boolean
-  isOpen: boolean
-  latestTrace: ToolTraceItem[]
-  error: string | null
-  queryCortex: (prompt: string, profile: CortexProfile) => Promise<void>
-  resetSession: () => void
-  setIsOpen: (open: boolean) => void
+export interface UseApexAssistantResult {
+  assistantHistory: AgentMessage[]
+  isAssistantQuerying: boolean
+  isAssistantOpen: boolean
+  assistantLatestTrace: ToolTraceItem[]
+  assistantError: string | null
+  queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
+  resetAssistantSession: () => void
+  setAssistantOpen: (open: boolean) => void
 }
 
-export function useCortexAgent(): UseCortexAgentResult {
-  const [history, setHistory] = useState<AgentMessage[]>([])
-  const [isQuerying, setIsQuerying] = useState(false)
-  const [isOpen, setIsOpen] = useState(false)
-  const [latestTrace, setLatestTrace] = useState<ToolTraceItem[]>([])
-  const [error, setError] = useState<string | null>(null)
+export function useApexAssistant(): UseApexAssistantResult {
+  const [assistantHistory, setAssistantHistory] = useState<AgentMessage[]>([])
+  const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
+  const [isAssistantOpen, setAssistantOpen] = useState(false)
+  const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
+  const [assistantError, setAssistantError] = useState<string | null>(null)
 
-  const queryCortex = useCallback(
-    async (prompt: string, profile: CortexProfile): Promise<void> => {
+  const queryAssistant = useCallback(
+    async (prompt: string, profile: AssistantProfile): Promise<void> => {
       const trimmedPrompt = prompt.trim()
       if (!trimmedPrompt) {
         return
       }
 
-      setIsQuerying(true)
-      setIsOpen(true)
-      setError(null)
+      setIsAssistantQuerying(true)
+      setAssistantOpen(true)
+      setAssistantError(null)
 
       const userMsg: AgentMessage = { role: 'user', content: trimmedPrompt }
 
@@ -122,7 +122,7 @@ export function useCortexAgent(): UseCortexAgentResult {
           body: JSON.stringify({
             prompt: trimmedPrompt,
             profile: mapProfileToBackend(profile),
-            history,
+            history: assistantHistory,
           }),
         })
 
@@ -141,7 +141,7 @@ export function useCortexAgent(): UseCortexAgentResult {
           } catch {
             // Keep default message when error body is not JSON.
           }
-          setError(message)
+          setAssistantError(message)
           return
         }
 
@@ -149,40 +149,40 @@ export function useCortexAgent(): UseCortexAgentResult {
         const answer = body.answer ?? ''
         const modelMsg: AgentMessage = { role: 'model', content: answer }
 
-        setHistory((prev) => [...prev, userMsg, modelMsg])
-        setLatestTrace(body.tool_trace ?? [])
+        setAssistantHistory((prev) => [...prev, userMsg, modelMsg])
+        setAssistantLatestTrace(body.tool_trace ?? [])
 
         if (body.error) {
-          setError(body.error)
+          setAssistantError(body.error)
         }
       } catch (fetchError) {
         const message =
           fetchError instanceof Error
             ? fetchError.message
-            : 'Failed to reach APEX Cortex.'
-        setError(message)
+            : 'Failed to reach APEX.'
+        setAssistantError(message)
       } finally {
-        setIsQuerying(false)
+        setIsAssistantQuerying(false)
       }
     },
-    [history],
+    [assistantHistory],
   )
 
-  const resetSession = useCallback((): void => {
-    setHistory([])
-    setLatestTrace([])
-    setError(null)
-    setIsOpen(false)
+  const resetAssistantSession = useCallback((): void => {
+    setAssistantHistory([])
+    setAssistantLatestTrace([])
+    setAssistantError(null)
+    setAssistantOpen(false)
   }, [])
 
   return {
-    history,
-    isQuerying,
-    isOpen,
-    latestTrace,
-    error,
-    queryCortex,
-    resetSession,
-    setIsOpen,
+    assistantHistory,
+    isAssistantQuerying,
+    isAssistantOpen,
+    assistantLatestTrace,
+    assistantError,
+    queryAssistant,
+    resetAssistantSession,
+    setAssistantOpen,
   }
 }
