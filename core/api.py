@@ -68,6 +68,8 @@ DEFAULT_ALLOWED_ORIGINS = (
     "http://localhost:8000",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
 )
 
 
@@ -178,23 +180,9 @@ def _speak_and_cleanup(
     text: str,
     *,
     tts_override: str | None = None,
-    digest: DigestPayload | None = None,
     lock: threading.Lock | None = None,
 ) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
-    if digest is not None and not is_dev_mode():
-        try:
-            print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
-            digest_dict = (
-                digest.model_dump()
-                if hasattr(digest, "model_dump")
-                else digest.dict()
-            )
-            database.save_briefing(text, digest_dict)
-            database.prune_historical_ledger()
-        except Exception as exc:
-            print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
-
     try:
         speaker.speak(text, tts_override=tts_override)
     finally:
@@ -580,12 +568,19 @@ def _run_demo_briefing() -> BriefingResponse:
             active_tts_engine=active_tts_engine,
             system_load_throttled=system_load_throttled,
         )
+        if not is_dev_mode():
+            try:
+                print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
+                database.save_briefing(final_briefing, digest.model_dump())
+                database.prune_historical_ledger()
+            except Exception as exc:
+                print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
             kwargs={
                 "text": final_briefing,
                 "tts_override": active_tts_engine,
-                "digest": digest,
                 "lock": _TRIGGER_LOCK,
             },
             daemon=True,
@@ -972,12 +967,21 @@ def trigger_briefing() -> BriefingResponse:
                 failed_connectors=failed_connectors,
                 insights=briefing_insights,
             )
+            if not dev_mode:
+                try:
+                    print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
+                    database.save_briefing(
+                        final_briefing, digest_payload.model_dump()
+                    )
+                    database.prune_historical_ledger()
+                except Exception as exc:
+                    print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+
             voice_thread = threading.Thread(
                 target=_speak_and_cleanup,
                 kwargs={
                     "text": final_briefing,
                     "tts_override": active_tts_engine,
-                    "digest": digest_payload,
                     "lock": _TRIGGER_LOCK,
                 },
                 daemon=True,

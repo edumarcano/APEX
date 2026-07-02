@@ -1,9 +1,8 @@
 import inspect
 import time
 import traceback
-from typing import Any, Callable, Dict, get_type_hints
+from typing import Any, Callable, Dict, Protocol, get_type_hints, runtime_checkable
 
-from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.tools import AGENT_TOOLS_REGISTRY
 from core.agent.types import (
@@ -16,66 +15,74 @@ from core.agent.types import (
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
 
+@runtime_checkable
+class CortexProvider(Protocol):
+    def generate_turn(
+        self,
+        messages: list[AgentMessage],
+        tools: list[Any],
+        profile: GeminiModelProfile,
+        system_instruction_override: str | None = None,
+    ) -> AgentMessage:
+        ...
+
+
 def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
     if name not in AGENT_TOOLS_REGISTRY:
-        return f"Error: Tool '{name}' is not registered."
+        raise ValueError(f"Tool '{name}' is not registered.")
 
-    try:
-        func = AGENT_TOOLS_REGISTRY[name]
-        type_hints = get_type_hints(func)
-        sig = inspect.signature(func)
-        validated_args: dict[str, Any] = {}
+    func = AGENT_TOOLS_REGISTRY[name]
+    type_hints = get_type_hints(func)
+    sig = inspect.signature(func)
+    validated_args: dict[str, Any] = {}
 
-        for param_name, param in sig.parameters.items():
-            if param_name not in arguments:
-                if param.default != inspect.Parameter.empty:
-                    validated_args[param_name] = param.default
-                else:
-                    return (
-                        f"Error: Missing required argument '{param_name}' "
-                        f"for tool '{name}'."
-                    )
-                continue
-
-            value = arguments[param_name]
-            declared_type = type_hints.get(param_name)
-
-            if declared_type is int:
-                try:
-                    cast_value = int(value)
-                except (TypeError, ValueError):
-                    return (
-                        f"Error: Argument '{param_name}' for tool '{name}' "
-                        f"must be an integer; received {value!r}."
-                    )
-
-                if name == "get_weather_forecast":
-                    cast_value = max(1, min(5, cast_value))
-                elif name == "get_upcoming_calendar_events":
-                    cast_value = max(1, min(14, cast_value))
-
-                validated_args[param_name] = cast_value
-            elif declared_type is float:
-                try:
-                    validated_args[param_name] = float(value)
-                except (TypeError, ValueError):
-                    return (
-                        f"Error: Argument '{param_name}' for tool '{name}' "
-                        f"must be a float; received {value!r}."
-                    )
-            elif declared_type is str:
-                validated_args[param_name] = str(value)
+    for param_name, param in sig.parameters.items():
+        if param_name not in arguments:
+            if param.default != inspect.Parameter.empty:
+                validated_args[param_name] = param.default
             else:
-                validated_args[param_name] = value
+                raise ValueError(
+                    f"Missing required argument '{param_name}' for tool '{name}'."
+                )
+            continue
 
-        return func(**validated_args)
-    except Exception as exc:
-        return f"Error during tool execution: {exc}"
+        value = arguments[param_name]
+        declared_type = type_hints.get(param_name)
+
+        if declared_type is int:
+            try:
+                cast_value = int(value)
+            except (TypeError, ValueError) as exc:
+                raise TypeError(
+                    f"Argument '{param_name}' for tool '{name}' must be an integer; "
+                    f"received {value!r}."
+                ) from exc
+
+            if name == "get_weather_forecast":
+                cast_value = max(1, min(5, cast_value))
+            elif name == "get_upcoming_calendar_events":
+                cast_value = max(1, min(14, cast_value))
+
+            validated_args[param_name] = cast_value
+        elif declared_type is float:
+            try:
+                validated_args[param_name] = float(value)
+            except (TypeError, ValueError) as exc:
+                raise TypeError(
+                    f"Argument '{param_name}' for tool '{name}' must be a float; "
+                    f"received {value!r}."
+                ) from exc
+        elif declared_type is str:
+            validated_args[param_name] = str(value)
+        else:
+            validated_args[param_name] = value
+
+    return func(**validated_args)
 
 
 def run_agent_loop(
     request: AgentQueryRequest,
-    provider: GeminiProvider,
+    provider: CortexProvider,
     profile: GeminiModelProfile,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
