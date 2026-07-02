@@ -117,6 +117,13 @@ export default function App(): ReactElement {
     triggerSynthesis,
   } = apexData
 
+  // Synchronize the active profile state with the backend's configured defaults on boot
+  useEffect(() => {
+    if (data?.defaultProfile) {
+      setAgentProfile(data.defaultProfile)
+    }
+  }, [data?.defaultProfile])
+
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled

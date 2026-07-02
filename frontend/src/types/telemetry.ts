@@ -43,6 +43,8 @@ export type WeatherConditionArchetype =
   | 'rain'
   | 'thunderstorm'
 
+export type AgentCloudProfile = 'comet' | 'nova' | 'pulsar'
+
 export interface DigestPayload {
   insights: string[]
 }
@@ -66,6 +68,7 @@ export interface TelemetryPayload {
   confidenceScore: number
   failedConnectors: string[]
   digest?: DigestPayload
+  defaultProfile?: AgentCloudProfile
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
@@ -83,4 +86,5 @@ export interface ApexDataState {
   failedConnectors: string[]
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
+  defaultProfile?: AgentCloudProfile
 }

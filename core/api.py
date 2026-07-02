@@ -693,6 +693,16 @@ def health_check() -> dict[str, Any]:
     return {"status": "online", "system": "APEX Nexus"}
 
 
+@app.get("/api/v1/config")
+def get_global_config() -> dict[str, Any]:
+    """Expose global system configurations to the frontend HUD on boot."""
+    return {
+        "default_profile": config.DEFAULT_CLOUD_PROFILE,
+        "ask_apex_enabled": config.ASK_APEX_ENABLED,
+        "max_session_messages": config.MAX_SESSION_MESSAGES,
+    }
+
+
 @app.get("/api/v1/status", response_model=PipelineStatusSnapshot)
 def get_pipeline_diagnostic_status() -> PipelineStatusSnapshot:
     """
