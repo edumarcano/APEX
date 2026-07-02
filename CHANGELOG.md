@@ -2,6 +2,55 @@
 
 ---
 
+## v1.12.0 — Cloud Gemini Agentic Tool Calling
+
+**Released:** July 2, 2026
+
+This release adds a Gemini-backed conversational assistant to APEX. A bounded multi-turn agent loop dispatches read-only tools for weather, F1, calendar, reminders, and briefing history, and the HUD gained an input bar and drawer for querying it directly.
+
+---
+
+### What's New
+
+- Implemented a bounded multi-turn agent loop with tool dispatch, execution tracing, and crash-resilient error handling.
+- Added a Gemini provider adapter supporting three model profiles (comet, nova, pulsar) with tunable turn and tool-call limits.
+- Added retry backoff for Gemini rate-limit and server errors, and Base64 encoding for binary thought signatures to preserve model reasoning across multi-turn function calls.
+- Added a registry of seven read-only agent tools: weather forecast, F1 driver standings, F1 season calendar, extended calendar lookback, active reminders, and briefing history.
+- Wrapped tool outputs in `<untrusted_tool_output>` blocks with a security-boundary system instruction to reduce prompt-injection risk.
+- Injected the latest briefing prose and insights into the assistant's system instruction so it can answer follow-up questions about current HUD state.
+- Added deterministic offline demo responses for the assistant under demo mode.
+- Added an "Ask APEX" input bar with cloud profile selection and suggestion chips, and an assistant drawer showing query history, execution trace, and follow-up input.
+- Added centralized config parsing for assistant feature flags, default profile, and turn/tool-call limits.
+- Fixed briefing ledger persistence to run before voice playback instead of inside the playback thread.
+
+### Architecture Changes
+
+- Decoupled the agent loop from the concrete Gemini provider via an `AgentProvider` protocol, replacing the earlier `CortexProvider` protocol.
+- Refactored the agent tool dispatcher to raise exceptions instead of returning error strings.
+- Added a `system_instruction_override` pathway through the agent loop and provider `send` call, with a configurable `system_instruction` field per model profile.
+- Added local Vite dev server origins to the CORS allowlist.
+- Renamed all internal "Cortex" naming to "APEX assistant" across the agent loop, model profiles, and API responses.
+
+### API Changes
+
+- Added `POST /api/v1/agent/query`, routing user questions through the Gemini-backed agent loop and returning structured error responses on invalid API key or profile.
+- Added `GET /api/v1/config`, exposing the default assistant profile and Ask APEX visibility flag; the frontend syncs both on boot.
+- Added typed agent message, request, and response models, and an `agent_system_prompt` config key sourced through `core/config.py`.
+
+### Frontend Changes
+
+- Added `AskApexBar.tsx`, `CloudProfileSelector.tsx`, and `AssistantDrawer.tsx` components.
+- Added `useApexAssistant.ts` to manage assistant query state, history, and session reset.
+- Adjusted HUD layout to fit the new input bar alongside the briefing digest and command trigger.
+
+### Documentation Updates
+
+- Updated `README.md`, `frontend/README.md`, `docs/api.md`, and `docs/architecture.md` to document the assistant, its tools, and configuration options.
+- Added decision records covering stateless assistant sessions and the untrusted tool output boundary in `docs/decisions.md`.
+- Marked v1.12.0 complete in `docs/roadmap.md` and renumbered the next planned milestone.
+
+---
+
 ## v1.11.1 — Speech Engine Stabilization & Library Pruning
 
 **Released:** June 29, 2026
