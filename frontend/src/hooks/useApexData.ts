@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type {
   ActiveReminder,
+  AgentCloudProfile,
   ApexDataState,
   PipelineState,
   SystemState,
@@ -14,6 +15,7 @@ const API_BASE = 'http://127.0.0.1:8000'
 const STATUS_ENDPOINT = `${API_BASE}/api/v1/status`
 const REMINDERS_ENDPOINT = `${API_BASE}/api/v1/reminders`
 const REMINDERS_READ_ENDPOINT = `${API_BASE}/api/v1/reminders/read`
+const CONFIG_ENDPOINT = `${API_BASE}/api/v1/config`
 
 export type { ApexDataState } from '../types/telemetry'
 
@@ -55,6 +57,7 @@ function assembleRemindersTelemetry(records: ReminderRecord[]): string {
 function createStandbyTelemetryPayload(
   activeReminders: ActiveReminder[],
   reminders: string,
+  defaultProfile?: AgentCloudProfile,
 ): TelemetryPayload {
   return {
     briefing: '',
@@ -69,6 +72,7 @@ function createStandbyTelemetryPayload(
     activeReminders,
     confidenceScore: 100.0,
     failedConnectors: [],
+    ...(defaultProfile !== undefined ? { defaultProfile } : {}),
   }
 }
 
@@ -92,6 +96,14 @@ function getStringField(
 }
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
+const VALID_AGENT_PROFILES: readonly AgentCloudProfile[] = ['comet', 'nova', 'pulsar']
+
+function parseDefaultProfile(value: unknown): AgentCloudProfile | undefined {
+  if (typeof value === 'string' && VALID_AGENT_PROFILES.includes(value as AgentCloudProfile)) {
+    return value as AgentCloudProfile
+  }
+  return undefined
+}
 
 function parseTtsEngine(value: unknown): TtsEngine {
   if (typeof value === 'string' && VALID_TTS_ENGINES.includes(value as TtsEngine)) {
@@ -206,6 +218,7 @@ export function useApexData(): UseApexDataReturn {
     failedConnectors: [],
     active_tts_engine: 'google',
     system_load_throttled: false,
+    askApexEnabled: true,
   })
 
   const stateRef = useRef(state)
@@ -226,7 +239,7 @@ export function useApexData(): UseApexDataReturn {
             activeReminders,
             reminders,
           }
-        : createStandbyTelemetryPayload(activeReminders, reminders),
+        : createStandbyTelemetryPayload(activeReminders, reminders, prev.defaultProfile),
     }))
   }, [])
 
@@ -498,17 +511,60 @@ export function useApexData(): UseApexDataReturn {
 
     void (async (): Promise<void> => {
       try {
-        const response = await fetch(REMINDERS_ENDPOINT, { signal })
+        const [remindersResp, configResp] = await Promise.all([
+          fetch(REMINDERS_ENDPOINT, { signal }),
+          fetch(CONFIG_ENDPOINT, { signal }),
+        ])
 
         if (signal.aborted) {
           return
         }
 
-        if (!response.ok) {
+        let defaultProfile: AgentCloudProfile | undefined
+        let askApexEnabled: boolean | undefined
+        if (configResp.ok) {
+          try {
+            const configBody: unknown = await configResp.json()
+            if (configBody && typeof configBody === 'object') {
+              const body = configBody as {
+                default_profile?: unknown
+                ask_apex_enabled?: unknown
+              }
+              defaultProfile = parseDefaultProfile(body.default_profile)
+              if (typeof body.ask_apex_enabled === 'boolean') {
+                askApexEnabled = body.ask_apex_enabled
+              }
+            }
+          } catch {
+            // Config hydration is best-effort; preserve dormant idle state on parse failure.
+          }
+        }
+
+        if (!remindersResp.ok) {
+          if (defaultProfile !== undefined || askApexEnabled !== undefined) {
+            setState((prev) => {
+              if (prev.status !== 'idle') {
+                return prev
+              }
+
+              return {
+                ...prev,
+                defaultProfile,
+                ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                data: prev.data
+                  ? {
+                      ...prev.data,
+                      defaultProfile,
+                      ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                    }
+                  : createStandbyTelemetryPayload([], 'No pending reminders.', defaultProfile),
+              }
+            })
+          }
           return
         }
 
-        const body: unknown = await response.json()
+        const body: unknown = await remindersResp.json()
         const records = parseReminderRecords(body)
 
         if (signal.aborted) {
@@ -527,13 +583,17 @@ export function useApexData(): UseApexDataReturn {
             ...prev,
             status: 'idle',
             activeReminders,
+            ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+            ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
             data: prev.data
               ? {
                   ...prev.data,
                   activeReminders,
                   reminders,
+                  ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+                  ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 }
-              : createStandbyTelemetryPayload(activeReminders, reminders),
+              : createStandbyTelemetryPayload(activeReminders, reminders, defaultProfile),
           }
         })
       } catch (err) {

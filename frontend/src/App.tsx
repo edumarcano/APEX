@@ -112,10 +112,18 @@ export default function App(): ReactElement {
     failedConnectors,
     active_tts_engine,
     system_load_throttled,
+    askApexEnabled,
     refreshReminders,
     markReminderAsRead,
     triggerSynthesis,
   } = apexData
+
+  // Synchronize the active profile state with the backend's configured defaults on boot
+  useEffect(() => {
+    if (data?.defaultProfile) {
+      setAgentProfile(data.defaultProfile)
+    }
+  }, [data?.defaultProfile])
 
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
@@ -163,7 +171,7 @@ export default function App(): ReactElement {
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
   const showCommandTrigger = status === 'idle' || status === 'loading'
-  const showAskApexBar = status === 'success'
+  const showAskApexBar = status === 'success' && askApexEnabled
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0

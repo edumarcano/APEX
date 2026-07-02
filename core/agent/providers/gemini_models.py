@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS
+
 _APEX_AGENT_SYSTEM_INSTRUCTION = (
     "You are APEX (Automated Personal Environment Xylem), Chief's interactive "
     "cloud operations assistant. Answer direct questions using available tools "
@@ -49,8 +51,8 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="fast",
         stability="stable",
         default_temperature=0.2,
-        max_tool_turns=2,
-        max_tool_calls=3,
+        max_tool_turns=min(2, AGENT_MAX_TURNS),
+        max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
         description="Fast cloud mode for quick lookups and lightweight summaries inside the APEX Cortex.",
     ),
     "nova": GeminiModelProfile(
@@ -60,8 +62,8 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="balanced",
         stability="preview",
         default_temperature=0.2,
-        max_tool_turns=3,
-        max_tool_calls=4,
+        max_tool_turns=AGENT_MAX_TURNS,
+        max_tool_calls=AGENT_MAX_TOOL_CALLS,
         description="Balanced cloud agent for normal APEX Cortex usage.",
     ),
     "pulsar": GeminiModelProfile(
@@ -71,8 +73,8 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="advanced",
         stability="stable",
         default_temperature=0.1,
-        max_tool_turns=3,
-        max_tool_calls=4,
+        max_tool_turns=AGENT_MAX_TURNS,
+        max_tool_calls=AGENT_MAX_TOOL_CALLS,
         description="Advanced cloud reasoning for complex multi-source questions inside the APEX Cortex.",
     ),
 }

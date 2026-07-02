@@ -68,6 +68,8 @@ DEFAULT_ALLOWED_ORIGINS = (
     "http://localhost:8000",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
 )
 
 
@@ -178,23 +180,9 @@ def _speak_and_cleanup(
     text: str,
     *,
     tts_override: str | None = None,
-    digest: DigestPayload | None = None,
     lock: threading.Lock | None = None,
 ) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
-    if digest is not None and not is_dev_mode():
-        try:
-            print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
-            digest_dict = (
-                digest.model_dump()
-                if hasattr(digest, "model_dump")
-                else digest.dict()
-            )
-            database.save_briefing(text, digest_dict)
-            database.prune_historical_ledger()
-        except Exception as exc:
-            print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
-
     try:
         speaker.speak(text, tts_override=tts_override)
     finally:
@@ -490,6 +478,68 @@ def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
     )
 
 
+def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
+    """Return deterministic Cortex responses when ``DEMO_MODE`` is active."""
+    profile: GeminiModelProfile | None = GEMINI_MODEL_PROFILES.get(payload.profile)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown agent profile: {payload.profile!r}",
+        )
+
+    prompt_lower = payload.prompt.lower()
+    answer: str
+    tool_trace: list[dict[str, Any]]
+
+    if any(keyword in prompt_lower for keyword in ("weather", "forecast", "temp")):
+        answer = (
+            "Under APEX Cortex simulation, the 3-day weather forecast for Plantation, FL "
+            "indicates consistent light rain with high temperatures in the low 90s:\n\n"
+            "* July 1: High 91°F, Low 80°F. Light rain.\n"
+            "* July 2: High 90°F, Low 77°F. Light rain.\n"
+            "* July 3: High 94°F, Low 84°F. Light rain."
+        )
+        tool_trace = [
+            {"name": "get_weather_forecast", "status": "ok", "duration_ms": 115.4},
+        ]
+    elif any(
+        keyword in prompt_lower
+        for keyword in ("f1", "standings", "championship", "calendar")
+    ):
+        answer = (
+            "APEX Cortex simulation data shows Max Verstappen leading the driver "
+            "standings with 110 points. The next scheduled race is the Monaco "
+            "Simulation Grand Prix running this week."
+        )
+        tool_trace = [
+            {"name": "get_f1_driver_standings", "status": "ok", "duration_ms": 142.1},
+        ]
+    elif any(keyword in prompt_lower for keyword in ("reminder", "task")):
+        answer = (
+            "You have 2 pending reminders in the active ledger:\n\n"
+            "* Review APEX demo script\n"
+            "* Charge backup operations hardware"
+        )
+        tool_trace = [
+            {"name": "get_active_reminders", "status": "ok", "duration_ms": 94.2},
+        ]
+    else:
+        answer = (
+            "APEX Cortex simulation is fully operational, Chief. I have verified your "
+            "local database registers and ambient HUD context. Let me know if you "
+            "would like me to simulate a weather forecast or F1 standings query."
+        )
+        tool_trace = []
+
+    return AgentQueryResponse(
+        answer=answer,
+        profile_used=profile.model_dump(),
+        tool_trace=tool_trace,
+        session_id=payload.session_id,
+        error=None,
+    )
+
+
 def _run_demo_briefing() -> BriefingResponse:
     """Execute the staged simulation path when ``DEMO_MODE`` is active."""
     voice_thread_started = False
@@ -518,12 +568,19 @@ def _run_demo_briefing() -> BriefingResponse:
             active_tts_engine=active_tts_engine,
             system_load_throttled=system_load_throttled,
         )
+        if not is_dev_mode():
+            try:
+                print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
+                database.save_briefing(final_briefing, digest.model_dump())
+                database.prune_historical_ledger()
+            except Exception as exc:
+                print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
             kwargs={
                 "text": final_briefing,
                 "tts_override": active_tts_engine,
-                "digest": digest,
                 "lock": _TRIGGER_LOCK,
             },
             daemon=True,
@@ -691,6 +748,16 @@ def health_check() -> dict[str, Any]:
     Return a minimal health payload for monitoring and readiness probes.
     """
     return {"status": "online", "system": "APEX Nexus"}
+
+
+@app.get("/api/v1/config")
+def get_global_config() -> dict[str, Any]:
+    """Expose global system configurations to the frontend HUD on boot."""
+    return {
+        "default_profile": config.DEFAULT_CLOUD_PROFILE,
+        "ask_apex_enabled": config.ASK_APEX_ENABLED,
+        "max_session_messages": config.MAX_SESSION_MESSAGES,
+    }
 
 
 @app.get("/api/v1/status", response_model=PipelineStatusSnapshot)
@@ -900,12 +967,21 @@ def trigger_briefing() -> BriefingResponse:
                 failed_connectors=failed_connectors,
                 insights=briefing_insights,
             )
+            if not dev_mode:
+                try:
+                    print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
+                    database.save_briefing(
+                        final_briefing, digest_payload.model_dump()
+                    )
+                    database.prune_historical_ledger()
+                except Exception as exc:
+                    print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+
             voice_thread = threading.Thread(
                 target=_speak_and_cleanup,
                 kwargs={
                     "text": final_briefing,
                     "tts_override": active_tts_engine,
-                    "digest": digest_payload,
                     "lock": _TRIGGER_LOCK,
                 },
                 daemon=True,
@@ -1041,6 +1117,15 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     Runs synchronously so uvicorn can offload blocking Gemini I/O to a worker thread.
     """
+    if not config.ASK_APEX_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="APEX Cortex is currently disabled in system settings.",
+        )
+
+    if DEMO_MODE:
+        return _run_demo_agent_query(payload)
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return AgentQueryResponse(
