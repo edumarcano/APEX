@@ -490,6 +490,68 @@ def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
     )
 
 
+def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
+    """Return deterministic Cortex responses when ``DEMO_MODE`` is active."""
+    profile: GeminiModelProfile | None = GEMINI_MODEL_PROFILES.get(payload.profile)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown agent profile: {payload.profile!r}",
+        )
+
+    prompt_lower = payload.prompt.lower()
+    answer: str
+    tool_trace: list[dict[str, Any]]
+
+    if any(keyword in prompt_lower for keyword in ("weather", "forecast", "temp")):
+        answer = (
+            "Under APEX Cortex simulation, the 3-day weather forecast for Plantation, FL "
+            "indicates consistent light rain with high temperatures in the low 90s:\n\n"
+            "* July 1: High 91°F, Low 80°F. Light rain.\n"
+            "* July 2: High 90°F, Low 77°F. Light rain.\n"
+            "* July 3: High 94°F, Low 84°F. Light rain."
+        )
+        tool_trace = [
+            {"name": "get_weather_forecast", "status": "ok", "duration_ms": 115.4},
+        ]
+    elif any(
+        keyword in prompt_lower
+        for keyword in ("f1", "standings", "championship", "calendar")
+    ):
+        answer = (
+            "APEX Cortex simulation data shows Max Verstappen leading the driver "
+            "standings with 110 points. The next scheduled race is the Monaco "
+            "Simulation Grand Prix running this week."
+        )
+        tool_trace = [
+            {"name": "get_f1_driver_standings", "status": "ok", "duration_ms": 142.1},
+        ]
+    elif any(keyword in prompt_lower for keyword in ("reminder", "task")):
+        answer = (
+            "You have 2 pending reminders in the active ledger:\n\n"
+            "* Review APEX demo script\n"
+            "* Charge backup operations hardware"
+        )
+        tool_trace = [
+            {"name": "get_active_reminders", "status": "ok", "duration_ms": 94.2},
+        ]
+    else:
+        answer = (
+            "APEX Cortex simulation is fully operational, Chief. I have verified your "
+            "local database registers and ambient HUD context. Let me know if you "
+            "would like me to simulate a weather forecast or F1 standings query."
+        )
+        tool_trace = []
+
+    return AgentQueryResponse(
+        answer=answer,
+        profile_used=profile.model_dump(),
+        tool_trace=tool_trace,
+        session_id=payload.session_id,
+        error=None,
+    )
+
+
 def _run_demo_briefing() -> BriefingResponse:
     """Execute the staged simulation path when ``DEMO_MODE`` is active."""
     voice_thread_started = False
@@ -1051,6 +1113,15 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     Runs synchronously so uvicorn can offload blocking Gemini I/O to a worker thread.
     """
+    if not config.ASK_APEX_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="APEX Cortex is currently disabled in system settings.",
+        )
+
+    if DEMO_MODE:
+        return _run_demo_agent_query(payload)
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return AgentQueryResponse(

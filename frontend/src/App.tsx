@@ -112,6 +112,7 @@ export default function App(): ReactElement {
     failedConnectors,
     active_tts_engine,
     system_load_throttled,
+    askApexEnabled,
     refreshReminders,
     markReminderAsRead,
     triggerSynthesis,
@@ -170,7 +171,7 @@ export default function App(): ReactElement {
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
   const showCommandTrigger = status === 'idle' || status === 'loading'
-  const showAskApexBar = status === 'success'
+  const showAskApexBar = status === 'success' && askApexEnabled
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0

@@ -218,6 +218,7 @@ export function useApexData(): UseApexDataReturn {
     failedConnectors: [],
     active_tts_engine: 'google',
     system_load_throttled: false,
+    askApexEnabled: true,
   })
 
   const stateRef = useRef(state)
@@ -520,13 +521,19 @@ export function useApexData(): UseApexDataReturn {
         }
 
         let defaultProfile: AgentCloudProfile | undefined
+        let askApexEnabled: boolean | undefined
         if (configResp.ok) {
           try {
             const configBody: unknown = await configResp.json()
             if (configBody && typeof configBody === 'object') {
-              defaultProfile = parseDefaultProfile(
-                (configBody as { default_profile?: unknown }).default_profile,
-              )
+              const body = configBody as {
+                default_profile?: unknown
+                ask_apex_enabled?: unknown
+              }
+              defaultProfile = parseDefaultProfile(body.default_profile)
+              if (typeof body.ask_apex_enabled === 'boolean') {
+                askApexEnabled = body.ask_apex_enabled
+              }
             }
           } catch {
             // Config hydration is best-effort; preserve dormant idle state on parse failure.
@@ -534,7 +541,7 @@ export function useApexData(): UseApexDataReturn {
         }
 
         if (!remindersResp.ok) {
-          if (defaultProfile !== undefined) {
+          if (defaultProfile !== undefined || askApexEnabled !== undefined) {
             setState((prev) => {
               if (prev.status !== 'idle') {
                 return prev
@@ -543,8 +550,13 @@ export function useApexData(): UseApexDataReturn {
               return {
                 ...prev,
                 defaultProfile,
+                ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 data: prev.data
-                  ? { ...prev.data, defaultProfile }
+                  ? {
+                      ...prev.data,
+                      defaultProfile,
+                      ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                    }
                   : createStandbyTelemetryPayload([], 'No pending reminders.', defaultProfile),
               }
             })
@@ -572,12 +584,14 @@ export function useApexData(): UseApexDataReturn {
             status: 'idle',
             activeReminders,
             ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+            ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
             data: prev.data
               ? {
                   ...prev.data,
                   activeReminders,
                   reminders,
                   ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+                  ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 }
               : createStandbyTelemetryPayload(activeReminders, reminders, defaultProfile),
           }

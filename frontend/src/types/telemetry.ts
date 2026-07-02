@@ -69,6 +69,7 @@ export interface TelemetryPayload {
   failedConnectors: string[]
   digest?: DigestPayload
   defaultProfile?: AgentCloudProfile
+  askApexEnabled?: boolean
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
@@ -87,4 +88,5 @@ export interface ApexDataState {
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
   defaultProfile?: AgentCloudProfile
+  askApexEnabled?: boolean
 }
