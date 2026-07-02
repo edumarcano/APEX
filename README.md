@@ -52,7 +52,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Pipeline state visibility** — step, label, timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
 - **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded segmented block bar in the system status footer with a per-connector hover tooltip
 - **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
-- **Ask APEX / Cortex agent** — a conversational Gemini agent with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with three selectable performance profiles (Comet, Nova, Pulsar)
+- **APEX assistant** — a conversational Gemini assistant with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with three selectable performance profiles (Comet, Nova, Pulsar)
 - **Demo mode** — `DEMO_MODE=true` intercepts the trigger, runs a staged simulation with static mock telemetry, and displays a badge in the HUD; no external API calls are made
 - **Atmospheric theming** — weather condition drives HUD background color, accent color, card glow, and condition icons in real time
 - **Variable Typography Engine** — primary temperature font weight linearly interpolated from `font-weight: 300` (40°F) to `font-weight: 800` (90°F)
@@ -65,7 +65,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 |---|---|
 | Language | Python 3.10+ |
 | API Framework | FastAPI, uvicorn |
-| AI Engine | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (Cortex agent tiers) |
+| AI Engine | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Icons | lucide-react |
 | Database | SQLite3 |
@@ -109,7 +109,7 @@ Individual connectors are switched on or off in `config.json`. When a connector 
 
 `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
-`agent_system_prompt` sets the Cortex agent's persona, independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the Ask APEX bar and Cortex drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the agent's tool-calling loop per query. See [docs/api.md](docs/api.md) for the full agent query contract.
+`agent_system_prompt` sets the APEX assistant persona (executed by the internal Cortex reasoning engine), independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the Ask APEX bar and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query. See [docs/api.md](docs/api.md) for the full agent query contract.
 
 ---
 

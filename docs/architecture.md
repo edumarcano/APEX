@@ -59,20 +59,20 @@ sequenceDiagram
 
 ---
 
-## Cortex Agent Query Flow
+## APEX Assistant Query Flow
 
 Unlike the trigger/status pipeline, an Ask APEX query is a single request-response cycle with no polling. The frontend holds the entire conversation; the backend holds none of it.
 
 ```mermaid
 sequenceDiagram
-    participant Bar as Frontend: AskApexBar / CortexDrawer
-    participant Hook as Frontend: useCortexAgent (history state)
+    participant Bar as Frontend: AskApexBar / AssistantDrawer
+    participant Hook as Frontend: useApexAssistant (history state)
     participant Query as Backend: /api/v1/agent/query
     participant DB as Backend: SQLite (latest briefing)
     participant Loop as Backend: run_agent_loop
     participant Gemini as Gemini API
 
-    Bar->>Hook: queryCortex(prompt, profile)
+    Bar->>Hook: queryAssistant(prompt, profile)
     Hook->>Query: POST { prompt, profile, session_id, history }
     Query->>DB: fetch_briefing_history(limit=1)
     DB-->>Query: latest briefing + insights
@@ -144,7 +144,7 @@ apex/
 │   │   ├── hooks/
 │   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state, boot config fetch
 │   │   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
-│   │   │   └── useCortexAgent.ts        # Ask APEX / Cortex drawer state: query submission, client-held history, trace, errors
+│   │   │   └── useApexAssistant.ts      # Ask APEX / assistant drawer state: query submission, client-held history, trace, errors
 │   │   ├── types/
 │   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
 │   │   ├── components/
@@ -158,8 +158,8 @@ apex/
 │   │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator (stasis line → gyro rings)
 │   │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
-│   │   │   ├── AskApexBar.tsx           # Inline Cortex query input, prompt chips, profile selector
-│   │   │   ├── CortexDrawer.tsx         # Slide-out chat drawer: message history, tool trace, follow-up input
+│   │   │   ├── AskApexBar.tsx           # Inline Ask APEX query input, prompt chips, profile selector
+│   │   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, follow-up input
 │   │   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown shared by the bar and drawer
 │   │   ├── App.tsx          # Root layout: three-column bento grid, nebula glow, demo badge
 │   │   └── main.tsx         # Vite entry point
@@ -215,9 +215,9 @@ When `DEV_MODE=true`:
 
 On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
 
-### `core/agent/` — Cortex conversational agent
+### `core/agent/` — Cortex reasoning engine for the APEX assistant
 
-Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis and the Cortex agent use independent prompts, and the agent additionally supports tool calling and multi-turn conversation.
+Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis and the APEX assistant use independent prompts, and the assistant additionally supports tool calling and multi-turn conversation through the internal Cortex engine.
 
 **`core/agent/types.py`** — Pydantic models for the wire contract: `AgentMessage` (role plus optional `content`, `tool_calls`, `tool_results`), `ToolCall`, `ToolResult`, `AgentQueryRequest`, `AgentQueryResponse`. See [docs/api.md](api.md#pydantic-models) for full field definitions.
 
@@ -249,13 +249,13 @@ All tools are read-only; none can mutate reminders, settings, or telemetry state
 
 **`core/agent/loop.py`** — `run_agent_loop()` drives a bounded turn loop: each turn calls `provider.generate_turn()`, appends the model's message to history, and if the model requested tool calls, dispatches them via `default_tools_dispatcher()` before looping again. `default_tools_dispatcher` validates and coerces arguments against each tool's type hints (int arguments are clamped per-tool, e.g. `get_weather_forecast` days to 1–5) and raises on missing required arguments. The loop terminates when the model returns a message with no tool calls (success), when `profile.max_tool_calls` total executions are reached, or when `profile.max_tool_turns` turns elapse without a final answer — the latter two return the best available partial answer with `error` populated rather than looping indefinitely. Any unhandled exception in the loop is caught and converted into a generic unavailability message plus a `traceback.format_exc()` in `error`.
 
-**`core/agent/providers/gemini.py`** — `GeminiProvider` implements the `CortexProvider` protocol. `_messages_to_contents()` converts the internal `AgentMessage` history into Gemini `types.Content` objects; `_content_to_agent_message()` converts the reply back, including any `function_call` parts into `ToolCall`s. Tool call arguments are sent with `automatic_function_calling` disabled — APEX's own loop drives execution, not the SDK's built-in auto-calling.
+**`core/agent/providers/gemini.py`** — `GeminiProvider` implements the `AgentProvider` protocol. `_messages_to_contents()` converts the internal `AgentMessage` history into Gemini `types.Content` objects; `_content_to_agent_message()` converts the reply back, including any `function_call` parts into `ToolCall`s. Tool call arguments are sent with `automatic_function_calling` disabled — APEX's own loop drives execution, not the SDK's built-in auto-calling.
 
 Every tool result is wrapped in an `<untrusted_tool_output name='...'>...</untrusted_tool_output>` XML block before being sent back to the model. A `_SECURITY_BOUNDARY_DIRECTIVE` appended to every system instruction explicitly tells the model to treat this block's contents as data only, never as instructions — a defense against prompt injection carried in live connector output (e.g. a news headline or calendar event title engineered to look like a system command).
 
 Gemini API calls retry up to 3 attempts on `429` (exponential backoff starting at 1.0s, plus jitter) and on `500`/`502`/`503`/`504` (fixed 2.0s backoff); any other `APIError` status is raised immediately without retry.
 
-**Session model:** the agent endpoint holds no server-side session state. `AgentQueryRequest.history` is supplied by the client on every call; the frontend's `useCortexAgent` hook accumulates it in React state and resends the full list each turn. `session_id` is an opaque passthrough value with no server-side lookup.
+**Session model:** the agent endpoint holds no server-side session state. `AgentQueryRequest.history` is supplied by the client on every call; the frontend's `useApexAssistant` hook accumulates it in React state and resends the full list each turn. `session_id` is an opaque passthrough value with no server-side lookup.
 
 ### `core/speaker.py`
 
@@ -307,7 +307,7 @@ SQLite database file: `apex_memory.db`. Three tables, all created by `initialize
 
 Loads `config.json` at module import. All environment flags (`DEV_MODE`, `DEMO_MODE`, `ENABLE_STARTUP_GATE`, `DEV_AI_SYNTHESIS`, `DEV_TTS_PLAYBACK`, `DEMO_TTS`) are parsed via `_parse_env_bool()` or typed literal validators with normalization and logged fallbacks for unrecognized values. If `config.json` is missing or malformed, feature flags default to `False` and `SYSTEM_PROMPT` falls back to a neutral placeholder.
 
-Also loads the Cortex agent config surface: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `ASK_APEX_ENABLED` / `DEFAULT_CLOUD_PROFILE` / `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.*`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
+Also loads the assistant config surface for the Cortex engine: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `ASK_APEX_ENABLED` / `DEFAULT_CLOUD_PROFILE` / `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.*`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
 
 ---
 
@@ -330,7 +330,7 @@ The `CommandTrigger` component is mounted **below the `ApexLogo`** in the center
 
 Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
 
-**Cortex wiring:** `App.tsx` holds `agentProfile` state (default `'nova'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useCortexAgent()` directly. The `AskApexBar` renders below the `ApexLogo`, gated by `showAskApexBar = status === 'success' && askApexEnabled` — it only appears after a briefing has been delivered, and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetCortexSession()`) clears any open Cortex conversation first. The `CortexDrawer` is always mounted (visibility controlled by `translate-x` transform, not conditional mounting) and slides in from the right whenever `queryCortex()` is called from either the bar or the drawer's own follow-up input.
+**Assistant wiring:** `App.tsx` holds `agentProfile` state (default `'nova'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useApexAssistant()` directly. The `AskApexBar` renders below the `ApexLogo`, gated by `showAskApexBar = status === 'success' && askApexEnabled` — it only appears after a briefing has been delivered, and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetAssistantSession()`) clears any open assistant conversation first. The `AssistantDrawer` is always mounted (visibility controlled by `translate-x` transform, not conditional mounting) and slides in from the right whenever `queryAssistant()` is called from either the bar or the drawer's own follow-up input.
 
 ### `CelestialBackground.tsx`
 

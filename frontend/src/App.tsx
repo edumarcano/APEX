@@ -18,9 +18,9 @@ import {
 
 import { AskApexBar } from './components/AskApexBar'
 import { ApexLogo } from './components/ApexLogo'
+import { AssistantDrawer } from './components/AssistantDrawer'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CommandTrigger } from './components/CommandTrigger'
-import { CortexDrawer } from './components/CortexDrawer'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -29,7 +29,7 @@ import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
-import { useCortexAgent } from './hooks/useCortexAgent'
+import { useApexAssistant } from './hooks/useApexAssistant'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import type { WeatherConditionArchetype } from './types/telemetry'
 
@@ -79,25 +79,25 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
 
-type AgentProfile = 'comet' | 'nova' | 'pulsar'
+type AssistantProfile = 'comet' | 'nova' | 'pulsar'
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
   const [prevStatus, setPrevStatus] = useState<string>('idle')
-  const [agentProfile, setAgentProfile] = useState<AgentProfile>('nova')
+  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const {
-    history: cortexHistory,
-    isQuerying: isCortexQuerying,
-    isOpen: isCortexOpen,
-    latestTrace: cortexLatestTrace,
-    error: cortexError,
-    queryCortex,
-    resetSession: resetCortexSession,
-    setIsOpen: setCortexOpen,
-  } = useCortexAgent()
+    assistantHistory,
+    isAssistantQuerying,
+    isAssistantOpen,
+    assistantLatestTrace,
+    assistantError,
+    queryAssistant,
+    resetAssistantSession,
+    setAssistantOpen,
+  } = useApexAssistant()
   const apexData = useApexData()
   const {
     data,
@@ -232,7 +232,7 @@ export default function App(): ReactElement {
         return
       }
 
-      resetCortexSession()
+      resetAssistantSession()
       void triggerSynthesis()
     }
 
@@ -240,7 +240,7 @@ export default function App(): ReactElement {
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [status, triggerSynthesis, resetCortexSession])
+  }, [status, triggerSynthesis, resetAssistantSession])
 
   // Load initial last briefing time from history ledger
   useEffect(() => {
@@ -328,32 +328,32 @@ export default function App(): ReactElement {
   }
 
   const handleAgentQuery = useCallback(
-    (query: string, profile: AgentProfile): void => {
-      const cortexProfile = profile === 'pulsar' ? 'pulsar' : profile
-      void queryCortex(query, cortexProfile)
+    (query: string, profile: AssistantProfile): void => {
+      const assistantProfile = profile === 'pulsar' ? 'pulsar' : profile
+      void queryAssistant(query, assistantProfile)
     },
-    [queryCortex],
+    [queryAssistant],
   )
 
-  const handleCortexFollowUp = useCallback(
+  const handleAssistantFollowUp = useCallback(
     (query: string): void => {
-      const cortexProfile = agentProfile === 'pulsar' ? 'pulsar' : agentProfile
-      void queryCortex(query, cortexProfile)
+      const assistantProfile = agentProfile === 'pulsar' ? 'pulsar' : agentProfile
+      void queryAssistant(query, assistantProfile)
     },
-    [agentProfile, queryCortex],
+    [agentProfile, queryAssistant],
   )
 
-  const handleCortexChipSelect = useCallback(
+  const handleAssistantChipSelect = useCallback(
     (query: string): void => {
-      void queryCortex(query, agentProfile)
+      void queryAssistant(query, agentProfile)
     },
-    [agentProfile, queryCortex],
+    [agentProfile, queryAssistant],
   )
 
   const handleTriggerSynthesis = useCallback((): void => {
-    resetCortexSession()
+    resetAssistantSession()
     void triggerSynthesis()
-  }, [resetCortexSession, triggerSynthesis])
+  }, [resetAssistantSession, triggerSynthesis])
 
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
@@ -534,8 +534,8 @@ export default function App(): ReactElement {
                         activeProfile={agentProfile}
                         onProfileChange={setAgentProfile}
                         onSubmit={handleAgentQuery}
-                        onSelectChip={handleCortexChipSelect}
-                        isSubmitting={isCortexQuerying}
+                        onSelectChip={handleAssistantChipSelect}
+                        isSubmitting={isAssistantQuerying}
                         disabled={isSpeaking}
                       />
                     </div>
@@ -673,18 +673,18 @@ export default function App(): ReactElement {
         failedConnectors={failedConnectors}
       />
 
-      <CortexDrawer
-        isOpen={isCortexOpen}
+      <AssistantDrawer
+        isOpen={isAssistantOpen}
         onClose={() => {
-          setCortexOpen(false)
+          setAssistantOpen(false)
         }}
-        onResetSession={resetCortexSession}
-        history={cortexHistory}
-        isQuerying={isCortexQuerying}
-        latestTrace={cortexLatestTrace}
+        onResetSession={resetAssistantSession}
+        history={assistantHistory}
+        isQuerying={isAssistantQuerying}
+        latestTrace={assistantLatestTrace}
         activeProfile={agentProfile}
-        onSubmitFollowUp={handleCortexFollowUp}
-        error={cortexError}
+        onSubmitFollowUp={handleAssistantFollowUp}
+        error={assistantError}
       />
     </main>
   )

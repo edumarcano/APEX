@@ -53,7 +53,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         default_temperature=0.2,
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
-        description="Fast cloud mode for quick lookups and lightweight summaries inside the APEX Cortex.",
+        description="Fast cloud mode for quick lookups and lightweight summaries inside APEX.",
     ),
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
@@ -64,7 +64,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
-        description="Balanced cloud agent for normal APEX Cortex usage.",
+        description="Balanced cloud agent for normal APEX usage.",
     ),
     "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
@@ -75,6 +75,6 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
-        description="Advanced cloud reasoning for complex multi-source questions inside the APEX Cortex.",
+        description="Advanced cloud reasoning for complex multi-source questions inside APEX.",
     ),
 }

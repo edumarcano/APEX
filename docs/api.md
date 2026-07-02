@@ -34,8 +34,8 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
 
 | Field | Type | Description |
 |---|---|---|
-| `default_profile` | string | Default Cortex agent profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
-| `ask_apex_enabled` | boolean | Whether the Ask APEX bar and Cortex drawer are enabled, from `config.json` `ask_apex.enabled` |
+| `default_profile` | string | Default APEX assistant profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
+| `ask_apex_enabled` | boolean | Whether the Ask APEX bar and assistant drawer are enabled, from `config.json` `ask_apex.enabled` |
 | `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
 
 ---
@@ -260,7 +260,7 @@ Returns an empty list `[]` when no briefings have been stored.
 
 ### `POST /api/v1/agent/query`
 
-Executes one turn of the APEX Cortex conversational agent, including any tool calls the model requests. Runs synchronously; uvicorn offloads the blocking Gemini call to a worker thread.
+Executes one turn of the APEX conversational assistant, including any tool calls the model requests. Runs synchronously; uvicorn offloads the blocking Gemini call to a worker thread. Internally, Cortex drives the reasoning/tool-calling loop.
 
 The endpoint is stateless on the server. The full conversation history is supplied by the client on every call and echoed back into the next request — there is no server-side session store.
 
@@ -304,7 +304,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 **Response `403`** — Ask APEX disabled via `config.json` `ask_apex.enabled`
 ```json
-{ "detail": "APEX Cortex is currently disabled in system settings." }
+{ "detail": "APEX is currently disabled in system settings." }
 ```
 
 **Response `400`** — unknown `profile` value not present in `GEMINI_MODEL_PROFILES`.

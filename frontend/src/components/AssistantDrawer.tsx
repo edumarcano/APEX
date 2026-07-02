@@ -17,7 +17,7 @@ import {
   type ReactElement,
 } from 'react'
 
-import type { AgentMessage, ToolTraceItem } from '../hooks/useCortexAgent'
+import type { AgentMessage, ToolTraceItem } from '../hooks/useApexAssistant'
 
 import { OPERATION_PROMPT_CHIPS } from './AskApexBar'
 
@@ -29,7 +29,7 @@ const PROFILE_LABELS: Record<ActiveProfile, string> = {
   pulsar: 'Pulsar',
 }
 
-interface CortexDrawerProps {
+interface AssistantDrawerProps {
   isOpen: boolean
   onClose: () => void
   onResetSession: () => void
@@ -135,7 +135,7 @@ function ToolTracePanel({ trace }: { trace: ToolTraceItem[] }): ReactElement | n
   )
 }
 
-export function CortexDrawer({
+export function AssistantDrawer({
   isOpen,
   onClose,
   onResetSession,
@@ -145,7 +145,7 @@ export function CortexDrawer({
   activeProfile,
   onSubmitFollowUp,
   error,
-}: CortexDrawerProps): ReactElement {
+}: AssistantDrawerProps): ReactElement {
   const [followUp, setFollowUp] = useState('')
   const chatEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -205,12 +205,12 @@ export function CortexDrawer({
         isOpen ? 'translate-x-0' : 'translate-x-full',
       ].join(' ')}
       aria-hidden={!isOpen}
-      data-slot="cortex-drawer"
+      data-slot="assistant-drawer"
     >
       <header className="flex items-center justify-between border-b border-white/10 px-6 py-4">
         <div className="flex items-center gap-3">
           <h2 className="font-mono text-sm font-semibold uppercase tracking-[0.2em] text-white">
-            APEX CORTEX
+            APEX
           </h2>
           <span className="rounded-full border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#7EB3FF]">
             {PROFILE_LABELS[activeProfile]}
@@ -230,7 +230,7 @@ export function CortexDrawer({
             type="button"
             onClick={onClose}
             className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
-            aria-label="Close APEX Cortex drawer"
+            aria-label="Close APEX drawer"
           >
             <X className="size-4" />
           </button>
@@ -246,7 +246,7 @@ export function CortexDrawer({
                 aria-hidden
               />
               <h3 className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-white">
-                APEX CORTEX STANDBY
+                APEX STANDBY
               </h3>
               <p className="mb-6 max-w-sm text-sm text-zinc-500">
                 Ask follow-up questions, query long-range schedules, or run
@@ -317,7 +317,7 @@ export function CortexDrawer({
                   />
                   <div className="flex flex-col gap-1.5">
                     <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-                      Cortex processing
+                      APEX processing
                     </span>
                     <div className="h-2 w-40 animate-pulse rounded-full bg-gradient-to-r from-[#0F4DB8]/20 via-[#39FF88]/40 to-[#0F4DB8]/20" />
                   </div>
