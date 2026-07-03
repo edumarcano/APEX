@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import TypedDict
 
 import psutil
@@ -8,6 +9,9 @@ from requests.exceptions import RequestException
 from core.config import OLLAMA_HOST
 
 _LOGGER = logging.getLogger(__name__)
+
+_model_lock = threading.Lock()
+_active_loaded_model: str | None = None
 
 ResourceGateReason = str  # "insufficient_ram" | "cpu_overloaded"
 
@@ -101,3 +105,101 @@ def get_installed_ollama_tags() -> list[str]:
             tags.append(name)
 
     return tags
+
+
+def unload_local_model(model_name: str) -> bool:
+    """
+    Unload a model from Ollama by sending a keep_alive=0 signal.
+
+    This forces Ollama to immediately release the model from memory.
+    Clears the _active_loaded_model tracker on success, even if Ollama
+    is unreachable (fail-safe for consistency).
+
+    Args:
+        model_name: Name of the model to unload.
+
+    Returns:
+        True if the unload request succeeded or was safely cleared.
+        False if an unexpected error occurred.
+    """
+    global _active_loaded_model
+
+    url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    payload = {"model": model_name, "keep_alive": 0}
+
+    try:
+        response = requests.post(url, json=payload, timeout=5.0)
+        response.raise_for_status()
+        _LOGGER.info("Unloaded model %s from Ollama", model_name)
+    except ConnectionError as exc:
+        _LOGGER.warning(
+            "Ollama unreachable while unloading %s; clearing tracker anyway: %s",
+            model_name,
+            exc,
+        )
+    except RequestException as exc:
+        _LOGGER.warning("Failed to unload model %s: %s", model_name, exc)
+        return False
+
+    with _model_lock:
+        _active_loaded_model = None
+
+    return True
+
+
+def switch_local_model(target_model_name: str) -> bool:
+    """
+    Switch the active loaded model, unloading the current one first if needed.
+
+    This is the primary entry point for coordinated model switches. It ensures
+    only one local model remains in Ollama memory at any time.
+
+    Thread-safe via _model_lock. If multiple threads call this concurrently,
+    the last one to acquire the lock will perform its switch operation.
+
+    Args:
+        target_model_name: Name of the model to switch to.
+
+    Returns:
+        True if the switch succeeded or was already satisfied.
+        False if the warmup/load failed or an unrecoverable error occurred.
+    """
+    global _active_loaded_model
+
+    with _model_lock:
+        if _active_loaded_model == target_model_name:
+            _LOGGER.debug("Model %s already loaded; skipping switch", target_model_name)
+            return True
+
+        if _active_loaded_model is not None:
+            _LOGGER.info(
+                "Unloading %s before switching to %s",
+                _active_loaded_model,
+                target_model_name,
+            )
+            if not unload_local_model(_active_loaded_model):
+                _LOGGER.error("Failed to unload %s; aborting switch", _active_loaded_model)
+                return False
+
+        url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+        payload = {"model": target_model_name, "prompt": "", "keep_alive": "5m"}
+
+        try:
+            response = requests.post(url, json=payload, timeout=10.0)
+            response.raise_for_status()
+            _LOGGER.info("Loaded model %s into Ollama", target_model_name)
+        except requests.Timeout:
+            _LOGGER.error("Timeout loading model %s after 10s", target_model_name)
+            _active_loaded_model = None
+            return False
+        except ConnectionError as exc:
+            _LOGGER.error("Ollama unreachable while loading %s: %s", target_model_name, exc)
+            _active_loaded_model = None
+            return False
+        except RequestException as exc:
+            _LOGGER.error("Failed to load model %s: %s", target_model_name, exc)
+            _active_loaded_model = None
+            return False
+
+        _active_loaded_model = target_model_name
+        return True
