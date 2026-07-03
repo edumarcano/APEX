@@ -6,11 +6,14 @@ Standalone HTTP surface; briefing trigger mirrors main.start_apex flow.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import time
 import re
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -33,6 +36,7 @@ from core import brain, database, scanner, speaker, config
 from core.agent.loop import default_tools_dispatcher, run_agent_loop
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
+from core.agent.providers.ollama_lifecycle import check_idle_models_loop
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.config import (
     AGENT_SYSTEM_PROMPT,
@@ -48,6 +52,7 @@ from core.config import (
     FEATURE_WEATHER,
     MODULE_F1,
     MODULE_FOOTBALL,
+    OLLAMA_ENABLED,
     is_dev_mode,
 )
 
@@ -60,7 +65,29 @@ NEWS_FAILED_RE = re.compile(r"(telemetry unavailable|offline)", re.IGNORECASE)
 EMAIL_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 CALENDAR_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 
-app = FastAPI(title="APEX Nexus")
+_LOGGER = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    """Start background workers on API boot and cancel them on shutdown."""
+    idle_model_task: asyncio.Task[None] | None = None
+
+    if OLLAMA_ENABLED:
+        idle_model_task = asyncio.create_task(check_idle_models_loop())
+        _LOGGER.info("Started Ollama idle model monitor")
+
+    yield
+
+    if idle_model_task is not None:
+        idle_model_task.cancel()
+        try:
+            await idle_model_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="APEX Nexus", lifespan=_app_lifespan)
 
 
 DEFAULT_ALLOWED_ORIGINS = (

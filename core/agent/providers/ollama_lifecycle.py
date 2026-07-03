@@ -1,17 +1,21 @@
+import asyncio
 import logging
 import threading
+import time
 from typing import TypedDict
 
 import psutil
 import requests
 from requests.exceptions import RequestException
 
-from core.config import OLLAMA_HOST
+from core.config import OLLAMA_HOST, OLLAMA_IDLE_UNLOAD_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 
 _model_lock = threading.Lock()
 _active_loaded_model: str | None = None
+_last_activity_time: float = time.time()
+_IDLE_CHECK_INTERVAL_SECONDS = 30
 
 ResourceGateReason = str  # "insufficient_ram" | "cpu_overloaded"
 
@@ -107,6 +111,43 @@ def get_installed_ollama_tags() -> list[str]:
     return tags
 
 
+def _post_unload_request(model_name: str) -> bool:
+    """Send keep_alive=0 to Ollama without mutating local tracker state."""
+    url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    payload = {"model": model_name, "keep_alive": 0}
+
+    try:
+        response = requests.post(url, json=payload, timeout=5.0)
+        response.raise_for_status()
+        _LOGGER.info("Unloaded model %s from Ollama", model_name)
+        return True
+    except ConnectionError as exc:
+        _LOGGER.warning(
+            "Ollama unreachable while unloading %s; clearing tracker anyway: %s",
+            model_name,
+            exc,
+        )
+        return True
+    except RequestException as exc:
+        _LOGGER.warning("Failed to unload model %s: %s", model_name, exc)
+        return False
+
+
+def register_activity(model_name: str) -> None:
+    """
+    Record model usage so the idle auto-unload timer resets.
+
+    Updates the last-activity timestamp on every call. Sets
+    ``_active_loaded_model`` only when no model is currently tracked.
+    """
+    global _active_loaded_model, _last_activity_time
+
+    with _model_lock:
+        _last_activity_time = time.time()
+        if _active_loaded_model is None:
+            _active_loaded_model = model_name
+
+
 def unload_local_model(model_name: str) -> bool:
     """
     Unload a model from Ollama by sending a keep_alive=0 signal.
@@ -124,27 +165,69 @@ def unload_local_model(model_name: str) -> bool:
     """
     global _active_loaded_model
 
-    url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
-    payload = {"model": model_name, "keep_alive": 0}
-
-    try:
-        response = requests.post(url, json=payload, timeout=5.0)
-        response.raise_for_status()
-        _LOGGER.info("Unloaded model %s from Ollama", model_name)
-    except ConnectionError as exc:
-        _LOGGER.warning(
-            "Ollama unreachable while unloading %s; clearing tracker anyway: %s",
-            model_name,
-            exc,
-        )
-    except RequestException as exc:
-        _LOGGER.warning("Failed to unload model %s: %s", model_name, exc)
+    if not _post_unload_request(model_name):
         return False
 
     with _model_lock:
-        _active_loaded_model = None
+        if _active_loaded_model == model_name:
+            _active_loaded_model = None
 
     return True
+
+
+def _maybe_unload_idle_model() -> None:
+    """
+    Unload the active model when idle duration exceeds the configured threshold.
+
+    Uses a snapshot-and-reverify pattern so concurrent activity or model
+    switches are not clobbered by a stale idle decision.
+    """
+    global _active_loaded_model
+
+    with _model_lock:
+        if _active_loaded_model is None:
+            return
+
+        idle_seconds = time.time() - _last_activity_time
+        idle_threshold_seconds = OLLAMA_IDLE_UNLOAD_MINUTES * 60
+        if idle_seconds < idle_threshold_seconds:
+            return
+
+        model_to_unload = _active_loaded_model
+        activity_snapshot = _last_activity_time
+
+    if not _post_unload_request(model_to_unload):
+        return
+
+    with _model_lock:
+        if (
+            _active_loaded_model == model_to_unload
+            and _last_activity_time == activity_snapshot
+        ):
+            _active_loaded_model = None
+            _LOGGER.info(
+                "Idle unload triggered for %s after %.0fs of inactivity",
+                model_to_unload,
+                time.time() - activity_snapshot,
+            )
+
+
+async def check_idle_models_loop() -> None:
+    """
+    Background worker that periodically unloads idle local models.
+
+    Polls every 30 seconds and compares absolute elapsed time against
+    ``OLLAMA_IDLE_UNLOAD_MINUTES``. Safe across system sleep because it
+    uses monotonic wall-clock deltas rather than tick counts.
+    """
+    while True:
+        try:
+            await asyncio.sleep(_IDLE_CHECK_INTERVAL_SECONDS)
+            await asyncio.to_thread(_maybe_unload_idle_model)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            _LOGGER.warning("Idle model check failed: %s", exc)
 
 
 def switch_local_model(target_model_name: str) -> bool:
@@ -164,22 +247,25 @@ def switch_local_model(target_model_name: str) -> bool:
         True if the switch succeeded or was already satisfied.
         False if the warmup/load failed or an unrecoverable error occurred.
     """
-    global _active_loaded_model
+    global _active_loaded_model, _last_activity_time
 
     with _model_lock:
         if _active_loaded_model == target_model_name:
             _LOGGER.debug("Model %s already loaded; skipping switch", target_model_name)
+            _last_activity_time = time.time()
             return True
 
         if _active_loaded_model is not None:
+            previous_model = _active_loaded_model
             _LOGGER.info(
                 "Unloading %s before switching to %s",
-                _active_loaded_model,
+                previous_model,
                 target_model_name,
             )
-            if not unload_local_model(_active_loaded_model):
-                _LOGGER.error("Failed to unload %s; aborting switch", _active_loaded_model)
+            if not _post_unload_request(previous_model):
+                _LOGGER.error("Failed to unload %s; aborting switch", previous_model)
                 return False
+            _active_loaded_model = None
 
         url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
         payload = {"model": target_model_name, "prompt": "", "keep_alive": "5m"}
@@ -202,4 +288,5 @@ def switch_local_model(target_model_name: str) -> bool:
             return False
 
         _active_loaded_model = target_model_name
+        _last_activity_time = time.time()
         return True
