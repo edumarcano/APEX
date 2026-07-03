@@ -70,6 +70,53 @@ def check_resource_gate(
     return True, None
 
 
+def is_ollama_reachable() -> bool:
+    """Return whether the local Ollama daemon responds to a tags probe."""
+    url = f"{OLLAMA_HOST.rstrip('/')}/api/tags"
+
+    try:
+        response = requests.get(url, timeout=2.0)
+        response.raise_for_status()
+        return True
+    except RequestException:
+        return False
+
+
+def get_active_loaded_model() -> str | None:
+    """Return the Ollama model tag currently tracked as loaded in memory."""
+    with _model_lock:
+        return _active_loaded_model
+
+
+def get_idle_unload_remaining_seconds() -> int | None:
+    """
+    Return seconds until the active model is auto-unloaded due to inactivity.
+
+    Returns None when no model is currently tracked as loaded.
+    """
+    with _model_lock:
+        if _active_loaded_model is None:
+            return None
+        elapsed = time.time() - _last_activity_time
+        remaining = (OLLAMA_IDLE_UNLOAD_MINUTES * 60) - elapsed
+        return max(0, int(remaining))
+
+
+def unload_active_local_model() -> bool:
+    """
+    Unload the currently tracked active model from Ollama memory.
+
+    Returns True when no model is active or the unload request succeeds.
+    """
+    with _model_lock:
+        model_name = _active_loaded_model
+
+    if model_name is None:
+        return True
+
+    return unload_local_model(model_name)
+
+
 def get_installed_ollama_tags() -> list[str]:
     """
     Query the local Ollama daemon for installed model tags.
