@@ -249,7 +249,13 @@ Transitioning APEX from an intelligence presence into an operator-directed agent
 
 ---
 
-## v1.12.0 - Cloud Gemini Agentic Tool Calling
+Cortex Initiative
+
+The Cortex initiative represents the evolution of APEX's cognitive architecture. Rather than focusing on briefing synthesis, Cortex establishes a provider-agnostic reasoning engine responsible for conversational interaction, tool orchestration, session management, and autonomous execution. Successive milestones expand Cortex from cloud-based reasoning to local inference, administrative controls, and increasingly capable agent workflows.
+
+---
+
+## v1.12.0 - Cortex: Cloud Gemini Agentic Tool Calling
 
 **Status:** Complete
 
@@ -258,9 +264,9 @@ Transform APEX from a push-based summarization system into an interactive cloud-
 
 ---
 
-## v1.13.0 - Local Ollama Agentic Tool Calling
+## v1.13.0 - Cortex: Local Ollama Provider
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Enable local agentic execution through Ollama-powered models while reducing cloud dependency. Introduce runtime model switching, local inference management, and automatic memory lifecycle control.
