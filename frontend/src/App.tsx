@@ -107,6 +107,7 @@ export default function App(): ReactElement {
     assistantError,
     profilesStatus,
     queryAssistant,
+    unloadLocalModel,
     resetAssistantSession,
     setAssistantOpen,
   } = useApexAssistant()
@@ -695,6 +696,8 @@ export default function App(): ReactElement {
         isQuerying={isAssistantQuerying}
         latestTrace={assistantLatestTrace}
         activeProfile={agentProfile}
+        profilesStatus={profilesStatus}
+        onUnloadModel={unloadLocalModel}
         onSubmitFollowUp={handleAssistantFollowUp}
         error={assistantError}
       />
