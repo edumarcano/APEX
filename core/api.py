@@ -210,6 +210,7 @@ class PipelineState:
 
 global_pipeline_state = PipelineState()
 _TRIGGER_LOCK = threading.Lock()
+_OLLAMA_EXECUTION_LOCK = threading.Lock()
 
 _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.json"
 _DEMO_STAGE_DELAY_SECONDS = 1.5
@@ -1358,17 +1359,6 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 error="GEMINI_API_KEY is missing from environment variables.",
             )
 
-    if isinstance(profile, OllamaModelProfile):
-        if not switch_local_model(profile.api_model):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    f"Local model {profile.api_model} failed to load. "
-                    "Ensure Ollama is reachable and configured."
-                ),
-            )
-        register_activity(profile.api_model)
-
     try:
         latest_runs = database.fetch_briefing_history(limit=1)
         hud_context = ""
@@ -1395,12 +1385,30 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
         local_system_instruction = base_prompt + hud_context
 
-        response = run_agent_loop(
-            payload,
-            provider,
-            profile,
-            system_instruction_override=local_system_instruction,
-        )
+        if isinstance(profile, OllamaModelProfile):
+            with _OLLAMA_EXECUTION_LOCK:
+                if not switch_local_model(profile.api_model):
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=(
+                            f"Local model {profile.api_model} failed to load. "
+                            "Ensure Ollama is reachable and configured."
+                        ),
+                    )
+                register_activity(profile.api_model)
+                response = run_agent_loop(
+                    payload,
+                    provider,
+                    profile,
+                    system_instruction_override=local_system_instruction,
+                )
+        else:
+            response = run_agent_loop(
+                payload,
+                provider,
+                profile,
+                system_instruction_override=local_system_instruction,
+            )
         return response
     except Exception as exc:
         return AgentQueryResponse(
