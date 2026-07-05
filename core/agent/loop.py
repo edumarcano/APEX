@@ -99,9 +99,20 @@ def run_agent_loop(
 
     try:
         for _turn in range(profile.max_tool_turns):
+            turn_tools: list[Any] = list(AGENT_TOOLS_REGISTRY.values())
+
+            # On the last permitted local turn, withhold tools so the model is
+            # forced into a text answer under the final-answer token budget
+            # instead of burning the turn on a tool call that can never run.
+            if (
+                isinstance(profile, OllamaModelProfile)
+                and _turn == profile.max_tool_turns - 1
+            ):
+                turn_tools = []
+
             model_message = provider.generate_turn(
                 history,
-                list(AGENT_TOOLS_REGISTRY.values()),
+                turn_tools,
                 profile,
                 system_instruction_override=system_instruction_override,
             )

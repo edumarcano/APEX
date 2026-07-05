@@ -38,18 +38,20 @@ from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
+    SystemVitals,
     check_idle_models_loop,
     check_resource_gate,
+    end_local_execution,
     get_active_loaded_model,
     get_idle_unload_remaining_seconds,
-    get_installed_ollama_tags,
-    is_ollama_reachable,
-    register_activity,
+    get_status_snapshot,
+    is_local_execution_active,
     switch_local_model,
+    try_begin_local_execution,
     unload_active_local_model,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
-from core.agent.types import AgentQueryRequest, AgentQueryResponse
+from core.agent.types import AgentMessage, AgentQueryRequest, AgentQueryResponse
 from core.config import (
     DEMO_MODE,
     DEMO_TTS,
@@ -210,7 +212,6 @@ class PipelineState:
 
 global_pipeline_state = PipelineState()
 _TRIGGER_LOCK = threading.Lock()
-_OLLAMA_EXECUTION_LOCK = threading.Lock()
 
 _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.json"
 _DEMO_STAGE_DELAY_SECONDS = 1.5
@@ -1211,8 +1212,9 @@ def _resolve_local_profile_status(
     *,
     ollama_reachable: bool,
     installed_tags: list[str],
+    vitals: SystemVitals | None,
 ) -> tuple[ProfileAvailabilityStatus, str | None]:
-    """Evaluate a local Ollama profile using fresh runtime signals."""
+    """Evaluate a local Ollama profile using cached snapshot signals."""
     if not OLLAMA_ENABLED:
         return "disabled", _PROFILE_STATUS_REASONS["disabled"]
 
@@ -1222,7 +1224,9 @@ def _resolve_local_profile_status(
     if profile.api_model not in installed_tags:
         return "model_not_installed", _PROFILE_STATUS_REASONS["model_not_installed"]
 
-    gate_open, gate_reason = check_resource_gate(profile.ram_limit, profile.cpu_limit)
+    gate_open, gate_reason = check_resource_gate(
+        profile.ram_limit, profile.cpu_limit, vitals=vitals
+    )
     if not gate_open and gate_reason is not None:
         return gate_reason, _PROFILE_STATUS_REASONS[gate_reason]
 
@@ -1240,8 +1244,16 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
     """Build the full profile availability matrix for the HUD."""
     active_model = get_active_loaded_model()
     idle_remaining = get_idle_unload_remaining_seconds()
-    ollama_reachable = is_ollama_reachable() if OLLAMA_ENABLED else False
-    installed_tags = get_installed_ollama_tags() if ollama_reachable else []
+
+    ollama_reachable = False
+    installed_tags: list[str] = []
+    vitals: SystemVitals | None = None
+    if OLLAMA_ENABLED:
+        snapshot = get_status_snapshot()
+        ollama_reachable = snapshot["reachable"]
+        installed_tags = snapshot["installed_tags"]
+        vitals = snapshot["vitals"]
+
     cloud_status, cloud_reason = _resolve_cloud_profile_status()
 
     profiles: list[AgentProfileStatus] = []
@@ -1253,6 +1265,7 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 profile,
                 ollama_reachable=ollama_reachable,
                 installed_tags=installed_tags,
+                vitals=vitals,
             )
             is_active = active_model == profile.api_model
             profiles.append(
@@ -1291,8 +1304,9 @@ def list_agent_profiles() -> list[AgentProfileStatus]:
     """
     Return profile availability for local and cloud assistant modes.
 
-    States are recomputed on every request so dynamic RAM/CPU thresholds
-    and Ollama reachability are always current.
+    Ollama reachability, installed tags, and host vitals come from a shared
+    TTL snapshot (single /api/tags probe at most once per 10 seconds), so
+    frequent HUD polling never floods the daemon while a model is generating.
     """
     return _build_agent_profile_statuses()
 
@@ -1313,8 +1327,87 @@ def unload_active_local_agent_model() -> LocalUnloadResponse:
             detail="Manual local model unload is disabled in system settings.",
         )
 
+    if is_local_execution_active():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A local model generation is in progress. "
+                "Wait for it to finish before unloading."
+            ),
+        )
+
     unload_active_local_model()
     return LocalUnloadResponse()
+
+
+def _trim_agent_history(
+    history: list[AgentMessage], max_messages: int
+) -> list[AgentMessage]:
+    """
+    Bound session history so prompt evaluation cost stays flat over a session.
+
+    After the cut, leading non-user messages are dropped so the model never
+    sees orphaned tool output or an assistant reply without its prompt at the
+    start of the window.
+    """
+    if len(history) <= max_messages:
+        return list(history)
+
+    trimmed = list(history[-max_messages:])
+    while trimmed and trimmed[0].role != "user":
+        trimmed.pop(0)
+    return trimmed
+
+
+def _execute_agent_turn(
+    payload: AgentQueryRequest,
+    profile: GeminiModelProfile | OllamaModelProfile,
+    api_key: str | None,
+) -> AgentQueryResponse:
+    """Build HUD context, select the provider, and run the bounded agent loop."""
+    try:
+        latest_runs = database.fetch_briefing_history(limit=1)
+        hud_context = ""
+        if latest_runs:
+            briefing_text = latest_runs[0]["briefing"]
+            insights_list = latest_runs[0]["digest"].get("insights", [])
+            hud_context = (
+                "\n\nCURRENT HUD STATE:\n"
+                "The user is actively looking at this compiled briefing on their HUD screen:\n"
+                f'- Briefing Prose: "{briefing_text}"\n'
+                f"- Active Summary Insights: "
+                f"{', '.join(insights_list) if insights_list else 'None'}\n"
+                "Use this context to resolve relative follow-up queries about the active briefing "
+                "(e.g., 'explain that first insight', 'why did you mention the weather?', "
+                "or 'summarize this')."
+            )
+
+        if isinstance(profile, OllamaModelProfile):
+            provider: GeminiProvider | OllamaProvider = OllamaProvider()
+            base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
+        else:
+            provider = GeminiProvider(api_key=api_key)
+            base_prompt = config.AGENT_SYSTEM_PROMPT
+
+        local_system_instruction = base_prompt + hud_context
+
+        return run_agent_loop(
+            payload,
+            provider,
+            profile,
+            system_instruction_override=local_system_instruction,
+        )
+    except Exception as exc:
+        return AgentQueryResponse(
+            answer=(
+                "The APEX assistant encountered an issue reaching the cloud provider "
+                "or running the requested operations. Please check your "
+                "credentials, network status, or quota allocations, and try again."
+            ),
+            profile_used=profile.model_dump(),
+            session_id=payload.session_id,
+            error=str(exc),
+        )
 
 
 @app.post("/api/v1/agent/query", response_model=AgentQueryResponse)
@@ -1322,7 +1415,11 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     """
     Execute an APEX assistant turn with optional tool calling.
 
-    Runs synchronously so uvicorn can offload blocking Gemini I/O to a worker thread.
+    Runs synchronously so uvicorn can offload blocking provider I/O to a
+    worker thread. Local (Ollama) queries pass an admission gate first:
+    a non-blocking execution slot (429 when busy), a host resource gate
+    (503 with the gate reason), and a coordinated model switch (503 on
+    load failure).
     """
     if not config.ASK_APEX_ENABLED:
         raise HTTPException(
@@ -1359,68 +1456,53 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 error="GEMINI_API_KEY is missing from environment variables.",
             )
 
-    try:
-        latest_runs = database.fetch_briefing_history(limit=1)
-        hud_context = ""
-        if latest_runs:
-            briefing_text = latest_runs[0]["briefing"]
-            insights_list = latest_runs[0]["digest"].get("insights", [])
-            hud_context = (
-                "\n\nCURRENT HUD STATE:\n"
-                "The user is actively looking at this compiled briefing on their HUD screen:\n"
-                f'- Briefing Prose: "{briefing_text}"\n'
-                f"- Active Summary Insights: "
-                f"{', '.join(insights_list) if insights_list else 'None'}\n"
-                "Use this context to resolve relative follow-up queries about the active briefing "
-                "(e.g., 'explain that first insight', 'why did you mention the weather?', "
-                "or 'summarize this')."
+    payload.history = _trim_agent_history(
+        payload.history, config.MAX_SESSION_MESSAGES
+    )
+
+    if isinstance(profile, OllamaModelProfile):
+        if not OLLAMA_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Local Ollama inference is disabled in system settings.",
             )
 
-        if isinstance(profile, OllamaModelProfile):
-            provider: GeminiProvider | OllamaProvider = OllamaProvider()
-            base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
-        else:
-            provider = GeminiProvider(api_key=api_key)
-            base_prompt = config.AGENT_SYSTEM_PROMPT
+        if not try_begin_local_execution():
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    "A local model generation is already in progress. "
+                    "Wait for it to finish and try again."
+                ),
+            )
 
-        local_system_instruction = base_prompt + hud_context
-
-        if isinstance(profile, OllamaModelProfile):
-            with _OLLAMA_EXECUTION_LOCK:
-                if not switch_local_model(profile.api_model):
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail=(
-                            f"Local model {profile.api_model} failed to load. "
-                            "Ensure Ollama is reachable and configured."
-                        ),
-                    )
-                register_activity(profile.api_model)
-                response = run_agent_loop(
-                    payload,
-                    provider,
-                    profile,
-                    system_instruction_override=local_system_instruction,
+        try:
+            gate_open, gate_reason = check_resource_gate(
+                profile.ram_limit, profile.cpu_limit
+            )
+            if not gate_open and gate_reason is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        f"Local profile blocked: "
+                        f"{_PROFILE_STATUS_REASONS[gate_reason]}."
+                    ),
                 )
-        else:
-            response = run_agent_loop(
-                payload,
-                provider,
-                profile,
-                system_instruction_override=local_system_instruction,
-            )
-        return response
-    except Exception as exc:
-        return AgentQueryResponse(
-            answer=(
-                "The APEX assistant encountered an issue reaching the cloud provider "
-                "or running the requested operations. Please check your "
-                "credentials, network status, or quota allocations, and try again."
-            ),
-            profile_used=profile.model_dump(),
-            session_id=payload.session_id,
-            error=str(exc),
-        )
+
+            if not switch_local_model(profile.api_model):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        f"Local model {profile.api_model} failed to load. "
+                        "Ensure Ollama is reachable and configured."
+                    ),
+                )
+
+            return _execute_agent_turn(payload, profile, api_key=None)
+        finally:
+            end_local_execution()
+
+    return _execute_agent_turn(payload, profile, api_key=api_key)
 
 
 def main() -> None:

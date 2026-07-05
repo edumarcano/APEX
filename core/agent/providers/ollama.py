@@ -8,6 +8,11 @@ import requests
 from requests.exceptions import RequestException
 
 from core.agent.providers.gemini_models import GeminiModelProfile
+from core.agent.providers.ollama_lifecycle import (
+    get_http_session,
+    get_keep_alive_duration,
+    register_activity,
+)
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.types import AgentMessage, ToolCall
 from core.config import OLLAMA_HOST
@@ -15,6 +20,9 @@ from core.config import OLLAMA_HOST
 AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 _LOGGER = logging.getLogger(__name__)
+
+# Tool schemas are derived from static registry callables; build each once.
+_SCHEMA_CACHE: dict[Any, dict[str, Any]] = {}
 
 
 def _python_type_to_json_schema(type_hint: Any) -> dict[str, str]:
@@ -94,6 +102,10 @@ def _extract_param_descriptions(docstring: str | None) -> dict[str, str]:
 
 def _function_to_openai_schema(func: Callable[..., Any]) -> dict[str, Any]:
     """Convert a Python callable into an OpenAI-compatible function tool schema."""
+    cached = _SCHEMA_CACHE.get(func)
+    if cached is not None:
+        return cached
+
     sig = inspect.signature(func)
     type_hints = get_type_hints(func)
     docstring = func.__doc__
@@ -114,7 +126,7 @@ def _function_to_openai_schema(func: Callable[..., Any]) -> dict[str, Any]:
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
 
-    return {
+    schema = {
         "type": "function",
         "function": {
             "name": func.__name__,
@@ -126,6 +138,8 @@ def _function_to_openai_schema(func: Callable[..., Any]) -> dict[str, Any]:
             },
         },
     }
+    _SCHEMA_CACHE[func] = schema
+    return schema
 
 
 def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
@@ -166,6 +180,7 @@ def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
                 ollama_messages.append(
                     {
                         "role": "tool",
+                        "tool_name": result.name,
                         "content": str(result.output),
                     }
                 )
@@ -227,6 +242,99 @@ def _ollama_message_to_agent_message(message: dict[str, Any]) -> AgentMessage:
     )
 
 
+def _post_chat(payload: dict[str, Any], profile: AgentModelProfile) -> dict[str, Any]:
+    """POST a chat payload to Ollama, log telemetry, and return the parsed body."""
+    url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
+
+    try:
+        response = get_http_session().post(
+            url,
+            json=payload,
+            timeout=profile.generation_timeout,
+        )
+        response.raise_for_status()
+    except requests.Timeout as exc:
+        raise RuntimeError(
+            f"Ollama generation timed out after {profile.generation_timeout}s "
+            f"for model {profile.api_model!r}."
+        ) from exc
+    except requests.ConnectionError as exc:
+        raise RuntimeError(
+            f"Failed to connect to Ollama at {OLLAMA_HOST}. "
+            "Ensure the local Ollama daemon is running."
+        ) from exc
+    except RequestException as exc:
+        status_detail = ""
+        if exc.response is not None:
+            status_detail = f" (HTTP {exc.response.status_code})"
+        raise RuntimeError(
+            f"Ollama request failed for model {profile.api_model!r}"
+            f"{status_detail}: {exc}"
+        ) from exc
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Ollama returned non-JSON response (HTTP {response.status_code})."
+        ) from exc
+
+    load_duration_ns = data.get("load_duration")
+    prompt_eval_duration_ns = data.get("prompt_eval_duration")
+    eval_count = data.get("eval_count")
+    eval_duration_ns = data.get("eval_duration")
+
+    if any(
+        v is not None
+        for v in (
+            data.get("total_duration"),
+            load_duration_ns,
+            data.get("prompt_eval_count"),
+            prompt_eval_duration_ns,
+            eval_count,
+            eval_duration_ns,
+        )
+    ):
+        load_s = (
+            load_duration_ns / 1e9
+            if isinstance(load_duration_ns, (int, float))
+            else 0.0
+        )
+        prompt_eval_s = (
+            prompt_eval_duration_ns / 1e9
+            if isinstance(prompt_eval_duration_ns, (int, float))
+            else 0.0
+        )
+        token_count = eval_count if isinstance(eval_count, int) else 0
+        tps = 0.0
+        if (
+            isinstance(eval_duration_ns, (int, float))
+            and eval_duration_ns > 0
+            and isinstance(eval_count, int)
+        ):
+            tps = (eval_count / eval_duration_ns) * 1e9
+        _LOGGER.info(
+            "[AGENT][OLLAMA] Telemetry: load=%.3fs, prompt_eval=%.3fs, "
+            "generation=%d tokens at %.2f t/s",
+            load_s,
+            prompt_eval_s,
+            token_count,
+            tps,
+        )
+
+    return data
+
+
+def _extract_message(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate and return the 'message' object from an Ollama chat response."""
+    message = data.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError(
+            f"Ollama response missing 'message' object: {data!r}"
+        )
+    return message
+
+
 class OllamaProvider:
     """Local Ollama agent provider backed by the /api/chat REST endpoint."""
 
@@ -249,7 +357,9 @@ class OllamaProvider:
             "temperature": profile.default_temperature,
         }
 
-        if isinstance(profile, OllamaModelProfile):
+        is_local_profile = isinstance(profile, OllamaModelProfile)
+
+        if is_local_profile:
             resolved_num_predict = (
                 profile.tool_select_max_tokens
                 if tools
@@ -264,16 +374,14 @@ class OllamaProvider:
             "messages": ollama_messages,
             "stream": False,
             "options": options,
-            "keep_alive": "5m",
+            "keep_alive": get_keep_alive_duration(),
         }
 
-        if isinstance(profile, OllamaModelProfile):
+        if is_local_profile:
             payload["think"] = profile.think
 
         if tools:
             payload["tools"] = [_function_to_openai_schema(tool) for tool in tools]
-
-        url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
 
         _LOGGER.info(
             "[AGENT][OLLAMA] generate_turn — model=%s messages=%d tools=%d",
@@ -282,87 +390,36 @@ class OllamaProvider:
             len(tools),
         )
 
-        try:
-            response = requests.post(
-                url,
-                json=payload,
-                timeout=profile.generation_timeout,
-            )
-            response.raise_for_status()
-        except requests.Timeout as exc:
-            raise RuntimeError(
-                f"Ollama generation timed out after {profile.generation_timeout}s "
-                f"for model {profile.api_model!r}."
-            ) from exc
-        except requests.ConnectionError as exc:
-            raise RuntimeError(
-                f"Failed to connect to Ollama at {OLLAMA_HOST}. "
-                "Ensure the local Ollama daemon is running."
-            ) from exc
-        except RequestException as exc:
-            status_detail = ""
-            if exc.response is not None:
-                status_detail = f" (HTTP {exc.response.status_code})"
-            raise RuntimeError(
-                f"Ollama request failed for model {profile.api_model!r}"
-                f"{status_detail}: {exc}"
-            ) from exc
+        data = _post_chat(payload, profile)
 
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise RuntimeError(
-                f"Ollama returned non-JSON response (HTTP {response.status_code})."
-            ) from exc
+        if is_local_profile:
+            register_activity(profile.api_model)
 
-        load_duration_ns = data.get("load_duration")
-        prompt_eval_duration_ns = data.get("prompt_eval_duration")
-        eval_count = data.get("eval_count")
-        eval_duration_ns = data.get("eval_duration")
+        message = _extract_message(data)
 
-        if any(
-            v is not None
-            for v in (
-                data.get("total_duration"),
-                load_duration_ns,
-                data.get("prompt_eval_count"),
-                prompt_eval_duration_ns,
-                eval_count,
-                eval_duration_ns,
-            )
+        # A tool-select turn that hit the num_predict ceiling without emitting
+        # a tool call produced a truncated prose answer. Regenerate once
+        # without tools under the final-answer token budget.
+        if (
+            is_local_profile
+            and tools
+            and data.get("done_reason") == "length"
+            and not message.get("tool_calls")
         ):
-            load_s = (
-                load_duration_ns / 1e9
-                if isinstance(load_duration_ns, (int, float))
-                else 0.0
-            )
-            prompt_eval_s = (
-                prompt_eval_duration_ns / 1e9
-                if isinstance(prompt_eval_duration_ns, (int, float))
-                else 0.0
-            )
-            token_count = eval_count if isinstance(eval_count, int) else 0
-            tps = 0.0
-            if (
-                isinstance(eval_duration_ns, (int, float))
-                and eval_duration_ns > 0
-                and isinstance(eval_count, int)
-            ):
-                tps = (eval_count / eval_duration_ns) * 1e9
             _LOGGER.info(
-                "[AGENT][OLLAMA] Telemetry: load=%.3fs, prompt_eval=%.3fs, "
-                "generation=%d tokens at %.2f t/s",
-                load_s,
-                prompt_eval_s,
-                token_count,
-                tps,
+                "[AGENT][OLLAMA] Tool-select turn truncated at %s tokens without "
+                "a tool call; regenerating as final answer",
+                options.get("num_predict"),
             )
+            retry_options = dict(options)
+            retry_options["num_predict"] = profile.final_answer_max_tokens
+            retry_payload = dict(payload)
+            retry_payload.pop("tools", None)
+            retry_payload["options"] = retry_options
 
-        message = data.get("message")
-        if not isinstance(message, dict):
-            raise RuntimeError(
-                f"Ollama response missing 'message' object: {data!r}"
-            )
+            data = _post_chat(retry_payload, profile)
+            register_activity(profile.api_model)
+            message = _extract_message(data)
 
         raw_content = message.get("content")
         if isinstance(raw_content, str) and raw_content:

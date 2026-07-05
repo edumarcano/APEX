@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AgentProfileStatus, AssistantProfile, ProfileAvailabilityStatus } from '../types/telemetry'
 
@@ -208,6 +208,10 @@ export function useApexAssistant(): UseApexAssistantResult {
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
 
+  // Mirrors isAssistantQuerying for the poll loop without restarting it on
+  // every query state transition.
+  const isAssistantQueryingRef = useRef(false)
+
   const fetchProfilesStatus = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(AGENT_PROFILES_ENDPOINT)
@@ -233,14 +237,36 @@ export function useApexAssistant(): UseApexAssistantResult {
       return
     }
 
-    void fetchProfilesStatus()
+    let cancelled = false
+    let timeoutId: number | undefined
 
-    const intervalId = window.setInterval(() => {
-      void fetchProfilesStatus()
-    }, PROFILE_POLL_INTERVAL_MS)
+    // Self-scheduling loop: the next poll is armed only after the current
+    // request settles, so slow backend responses can never stack requests.
+    // Polls are skipped while a query is in flight (status churns server-side
+    // during generation) and while the tab is hidden.
+    const pollLoop = async (): Promise<void> => {
+      if (cancelled) {
+        return
+      }
+
+      if (!document.hidden && !isAssistantQueryingRef.current) {
+        await fetchProfilesStatus()
+      }
+
+      if (!cancelled) {
+        timeoutId = window.setTimeout(() => {
+          void pollLoop()
+        }, PROFILE_POLL_INTERVAL_MS)
+      }
+    }
+
+    void pollLoop()
 
     return () => {
-      window.clearInterval(intervalId)
+      cancelled = true
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
     }
   }, [isAssistantOpen, fetchProfilesStatus])
 
@@ -272,6 +298,7 @@ export function useApexAssistant(): UseApexAssistantResult {
         return
       }
 
+      isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
       setAssistantOpen(true)
       setAssistantError(null)
@@ -325,10 +352,14 @@ export function useApexAssistant(): UseApexAssistantResult {
             : 'Failed to reach APEX.'
         setAssistantError(message)
       } finally {
+        isAssistantQueryingRef.current = false
         setIsAssistantQuerying(false)
+        // Resync active-model and idle-countdown badges now that the
+        // generation has settled.
+        void fetchProfilesStatus()
       }
     },
-    [assistantHistory],
+    [assistantHistory, fetchProfilesStatus],
   )
 
   const resetAssistantSession = useCallback((): void => {
