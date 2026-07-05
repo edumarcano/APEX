@@ -45,6 +45,10 @@ class OllamaModelProfile(BaseModel):
     generation_timeout: int = Field(
         description="Hard timeout in seconds for a single model generation call."
     )
+    think: bool = Field(
+        default=False,
+        description="Whether to enable Ollama's local reasoning and chain-of-thought phase.",
+    )
     ram_limit: float = Field(
         description="Maximum host RAM utilization percentage before load is gated."
     )
@@ -72,7 +76,8 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
         context_window=4096,
         max_output_tokens=512,
-        generation_timeout=60,
+        generation_timeout=90,
+        think=False,
         ram_limit=LYNX_RAM_LIMIT,
         cpu_limit=LYNX_CPU_LIMIT,
         description="Lightweight local mode for quick lookups and minimal resource usage.",
@@ -88,7 +93,8 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
         context_window=8192,
         max_output_tokens=768,
-        generation_timeout=90,
+        generation_timeout=120,
+        think=False,
         ram_limit=ACINONYX_RAM_LIMIT,
         cpu_limit=ACINONYX_CPU_LIMIT,
         description="Fast local agent for normal APEX usage with balanced resource cost.",
@@ -104,7 +110,8 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
         context_window=8192,
         max_output_tokens=1024,
-        generation_timeout=150,
+        generation_timeout=180,
+        think=True,
         ram_limit=NEOFELIS_RAM_LIMIT,
         cpu_limit=NEOFELIS_CPU_LIMIT,
         description="Capable local reasoning for complex multi-source questions inside APEX.",

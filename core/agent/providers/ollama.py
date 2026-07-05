@@ -256,6 +256,9 @@ class OllamaProvider:
             "keep_alive": "5m",
         }
 
+        if isinstance(profile, OllamaModelProfile):
+            payload["think"] = profile.think
+
         if tools:
             payload["tools"] = [_function_to_openai_schema(tool) for tool in tools]
 

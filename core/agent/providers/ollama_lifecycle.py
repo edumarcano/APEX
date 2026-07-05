@@ -6,7 +6,11 @@ from typing import TypedDict
 
 import psutil
 import requests
-from requests.exceptions import RequestException
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    RequestException,
+    Timeout as RequestsTimeout,
+)
 
 from core.config import OLLAMA_HOST, OLLAMA_IDLE_UNLOAD_MINUTES
 
@@ -130,7 +134,7 @@ def get_installed_ollama_tags() -> list[str]:
         response = requests.get(url, timeout=2.0)
         response.raise_for_status()
         payload = response.json()
-    except ConnectionError as exc:
+    except (RequestsConnectionError, ConnectionError) as exc:
         _LOGGER.warning("Ollama daemon unreachable at %s: %s", url, exc)
         return []
     except RequestException as exc:
@@ -161,14 +165,14 @@ def get_installed_ollama_tags() -> list[str]:
 def _post_unload_request(model_name: str) -> bool:
     """Send keep_alive=0 to Ollama without mutating local tracker state."""
     url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
-    payload = {"model": model_name, "keep_alive": 0}
+    payload = {"model": model_name, "keep_alive": 0, "stream": False}
 
     try:
         response = requests.post(url, json=payload, timeout=5.0)
         response.raise_for_status()
         _LOGGER.info("Unloaded model %s from Ollama", model_name)
         return True
-    except ConnectionError as exc:
+    except (RequestsConnectionError, ConnectionError) as exc:
         _LOGGER.warning(
             "Ollama unreachable while unloading %s; clearing tracker anyway: %s",
             model_name,
@@ -315,17 +319,22 @@ def switch_local_model(target_model_name: str) -> bool:
             _active_loaded_model = None
 
         url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
-        payload = {"model": target_model_name, "prompt": "", "keep_alive": "5m"}
+        payload = {
+            "model": target_model_name,
+            "prompt": "",
+            "keep_alive": "5m",
+            "stream": False,
+        }
 
         try:
-            response = requests.post(url, json=payload, timeout=10.0)
+            response = requests.post(url, json=payload, timeout=60.0)
             response.raise_for_status()
             _LOGGER.info("Loaded model %s into Ollama", target_model_name)
-        except requests.Timeout:
-            _LOGGER.error("Timeout loading model %s after 10s", target_model_name)
+        except RequestsTimeout:
+            _LOGGER.error("Timeout loading model %s after 60s", target_model_name)
             _active_loaded_model = None
             return False
-        except ConnectionError as exc:
+        except (RequestsConnectionError, ConnectionError) as exc:
             _LOGGER.error("Ollama unreachable while loading %s: %s", target_model_name, exc)
             _active_loaded_model = None
             return False
