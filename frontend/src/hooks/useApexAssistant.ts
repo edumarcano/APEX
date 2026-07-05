@@ -53,6 +53,7 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
 
 const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
   'available',
+  'unknown',
   'disabled',
   'ollama_unreachable',
   'model_not_installed',
@@ -194,19 +195,21 @@ export interface UseApexAssistantResult {
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
   profilesStatus: AgentProfileStatus[]
+  profilesStatusHydrated: boolean
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
   unloadLocalModel: () => Promise<void>
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
 }
 
-export function useApexAssistant(): UseApexAssistantResult {
+export function useApexAssistant(profilesPollingEnabled = false): UseApexAssistantResult {
   const [assistantHistory, setAssistantHistory] = useState<AgentMessage[]>([])
   const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
   const [isAssistantOpen, setAssistantOpen] = useState(false)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
+  const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
 
   // Mirrors isAssistantQuerying for the poll loop without restarting it on
   // every query state transition.
@@ -225,6 +228,7 @@ export function useApexAssistant(): UseApexAssistantResult {
       const body: unknown = await response.json()
       const parsed = parseAgentProfileStatusList(body)
       setProfilesStatus(parsed)
+      setProfilesStatusHydrated(true)
     } catch (fetchError) {
       const message =
         fetchError instanceof Error ? fetchError.message : 'Unknown profile fetch error'
@@ -232,8 +236,10 @@ export function useApexAssistant(): UseApexAssistantResult {
     }
   }, [])
 
+  const shouldPollProfiles = profilesPollingEnabled || isAssistantOpen
+
   useEffect(() => {
-    if (!isAssistantOpen) {
+    if (!shouldPollProfiles) {
       return
     }
 
@@ -268,7 +274,7 @@ export function useApexAssistant(): UseApexAssistantResult {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [isAssistantOpen, fetchProfilesStatus])
+  }, [shouldPollProfiles, fetchProfilesStatus])
 
   const unloadLocalModel = useCallback(async (): Promise<void> => {
     try {
@@ -376,6 +382,7 @@ export function useApexAssistant(): UseApexAssistantResult {
     assistantLatestTrace,
     assistantError,
     profilesStatus,
+    profilesStatusHydrated,
     queryAssistant,
     unloadLocalModel,
     resetAssistantSession,

@@ -142,6 +142,14 @@ def _function_to_openai_schema(func: Callable[..., Any]) -> dict[str, Any]:
     return schema
 
 
+def _serialize_tool_output(output: Any) -> str:
+    """Serialize tool output as stable JSON when possible."""
+    try:
+        return json.dumps(output, default=str)
+    except (TypeError, ValueError):
+        return str(output)
+
+
 def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
     """Translate APEX AgentMessage history into Ollama /api/chat payload entries."""
     ollama_messages: list[dict[str, Any]] = []
@@ -181,7 +189,7 @@ def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
                     {
                         "role": "tool",
                         "tool_name": result.name,
-                        "content": str(result.output),
+                        "content": _serialize_tool_output(result.output),
                     }
                 )
 

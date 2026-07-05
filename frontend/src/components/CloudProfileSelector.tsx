@@ -42,6 +42,7 @@ const PROFILE_LABELS: Record<AssistantProfile, string> = {
 
 const STATUS_FALLBACK_REASONS: Record<ProfileAvailabilityStatus, string> = {
   available: '',
+  unknown: 'Checking profile availability…',
   disabled: 'Profile disabled in system settings',
   ollama_unreachable: 'Ollama daemon is unreachable',
   model_not_installed: 'Model is not installed locally',
@@ -63,16 +64,22 @@ interface CloudProfileSelectorProps {
   activeProfile: AssistantProfile
   onChange: (profile: AssistantProfile) => void
   profilesStatus: AgentProfileStatus[]
+  profilesStatusHydrated: boolean
   disabled?: boolean
 }
 
 function resolveProfileAvailability(
   key: AssistantProfile,
   profilesStatus: AgentProfileStatus[],
+  profilesStatusHydrated: boolean,
 ): { status: ProfileAvailabilityStatus; reason: string | null } {
+  if (!profilesStatusHydrated) {
+    return { status: 'unknown', reason: 'Checking profile availability…' }
+  }
+
   const entry = profilesStatus.find((profile) => profile.key === key)
   if (!entry) {
-    return { status: 'available', reason: null }
+    return { status: 'unknown', reason: 'Profile status unavailable' }
   }
   return { status: entry.status, reason: entry.reason }
 }
@@ -91,6 +98,7 @@ export function CloudProfileSelector({
   activeProfile,
   onChange,
   profilesStatus,
+  profilesStatusHydrated,
   disabled = false,
 }: CloudProfileSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
@@ -101,11 +109,11 @@ export function CloudProfileSelector({
   }, [])
 
   const toggleDropdown = useCallback((): void => {
-    if (disabled) {
+    if (disabled || !profilesStatusHydrated) {
       return
     }
     setIsOpen((prev) => !prev)
-  }, [disabled])
+  }, [disabled, profilesStatusHydrated])
 
   const handleSelect = useCallback(
     (profile: AssistantProfile, isGated: boolean): void => {
@@ -156,9 +164,16 @@ export function CloudProfileSelector({
     }
   }, [closeDropdown, isOpen])
 
+  const selectorDisabled = disabled || !profilesStatusHydrated
+
   const renderOption = (option: ProfileOption): ReactElement => {
-    const { status, reason } = resolveProfileAvailability(option.key, profilesStatus)
+    const { status, reason } = resolveProfileAvailability(
+      option.key,
+      profilesStatus,
+      profilesStatusHydrated,
+    )
     const isGated = status !== 'available'
+    const isLoading = status === 'unknown'
     const isActive = option.key === activeProfile
     const tooltipText = resolveTooltipText(status, reason)
 
@@ -210,7 +225,8 @@ export function CloudProfileSelector({
             className={[
               'pointer-events-none absolute right-full top-1/2 z-50 mr-2 -translate-y-1/2',
               'rounded-lg border border-white/10 bg-zinc-950/95 px-2.5 py-1.5',
-              'font-mono text-[10px] whitespace-nowrap text-rose-400 shadow-xl',
+              'font-mono text-[10px] whitespace-nowrap shadow-xl',
+              isLoading ? 'text-zinc-400' : 'text-rose-400',
               'opacity-0 transition-opacity group-hover/tooltip:opacity-100',
             ].join(' ')}
           >
@@ -226,9 +242,10 @@ export function CloudProfileSelector({
       <button
         type="button"
         tabIndex={0}
-        disabled={disabled}
+        disabled={selectorDisabled}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-busy={!profilesStatusHydrated}
         aria-label={`Assistant profile: ${PROFILE_LABELS[activeProfile]}`}
         onClick={toggleDropdown}
         onKeyDown={handleTriggerKeyDown}
@@ -238,7 +255,7 @@ export function CloudProfileSelector({
           'border-white/10 transition-colors',
           'hover:border-[#0F4DB8]/40 focus-visible:outline focus-visible:outline-2',
           'focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8]',
-          disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
+          selectorDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
         ].join(' ')}
       >
         <span className="whitespace-nowrap">{PROFILE_LABELS[activeProfile]}</span>

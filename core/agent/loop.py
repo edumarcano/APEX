@@ -1,6 +1,6 @@
 import inspect
+import logging
 import time
-import traceback
 from typing import Any, Callable, Dict, Protocol, get_type_hints, runtime_checkable
 
 from core.agent.providers.gemini_models import GeminiModelProfile
@@ -16,6 +16,8 @@ from core.agent.types import (
 AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -182,16 +184,30 @@ def run_agent_loop(
             ),
         )
     except Exception as exc:
-        print(f"[AGENT][LOOP] Bounded loop execution crashed: {exc}")
+        _LOGGER.exception(
+            "Bounded agent loop failed for profile %s",
+            profile.api_model,
+        )
+        if isinstance(profile, OllamaModelProfile):
+            answer = (
+                "The APEX assistant encountered an issue reaching the local Ollama "
+                "provider or running the requested operations. Please verify that "
+                "Ollama is running, the model is installed, and system resources "
+                "are sufficient, then try again."
+            )
+            error_detail = f"Local provider error ({type(exc).__name__}): {exc}"
+        else:
+            answer = (
+                "The APEX assistant encountered an issue reaching the cloud provider "
+                "or running the requested operations. Please check your "
+                "credentials, network status, or quota allocations, and try again."
+            )
+            error_detail = f"Cloud provider error ({type(exc).__name__}): {exc}"
+
         return AgentQueryResponse(
-            answer=(
-                "The APEX assistant encountered an issue reaching the cloud "
-                "provider or running the requested operations. Please check "
-                "your credentials, network status, or quota allocations, "
-                "and try again."
-            ),
+            answer=answer,
             profile_used=profile.model_dump(),
             tool_trace=tool_trace,
             session_id=request.session_id,
-            error=traceback.format_exc(),
+            error=error_detail,
         )

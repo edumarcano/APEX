@@ -521,8 +521,12 @@ def _build_demo_briefing(telemetry: TelemetryPayload) -> str:
 
 def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     """Return deterministic assistant responses when ``DEMO_MODE`` is active."""
-    profile: GeminiModelProfile | None = GEMINI_MODEL_PROFILES.get(payload.profile)
-    if profile is None:
+    profile: GeminiModelProfile | OllamaModelProfile | None = None
+    if payload.profile in GEMINI_MODEL_PROFILES:
+        profile = GEMINI_MODEL_PROFILES[payload.profile]
+    elif payload.profile in OLLAMA_MODEL_PROFILES:
+        profile = OLLAMA_MODEL_PROFILES[payload.profile]
+    else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown agent profile: {payload.profile!r}",
@@ -1336,7 +1340,11 @@ def unload_active_local_agent_model() -> LocalUnloadResponse:
             ),
         )
 
-    unload_active_local_model()
+    if not unload_active_local_model():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Active local model failed to unload from Ollama.",
+        )
     return LocalUnloadResponse()
 
 
@@ -1398,15 +1406,31 @@ def _execute_agent_turn(
             system_instruction_override=local_system_instruction,
         )
     except Exception as exc:
-        return AgentQueryResponse(
-            answer=(
+        _LOGGER.exception(
+            "Agent turn failed for profile %s",
+            payload.profile,
+        )
+        if isinstance(profile, OllamaModelProfile):
+            answer = (
+                "The APEX assistant encountered an issue reaching the local Ollama "
+                "provider or running the requested operations. Please verify that "
+                "Ollama is running, the model is installed, and system resources "
+                "are sufficient, then try again."
+            )
+            error_detail = f"Local provider error ({type(exc).__name__}): {exc}"
+        else:
+            answer = (
                 "The APEX assistant encountered an issue reaching the cloud provider "
                 "or running the requested operations. Please check your "
                 "credentials, network status, or quota allocations, and try again."
-            ),
+            )
+            error_detail = f"Cloud provider error ({type(exc).__name__}): {exc}"
+
+        return AgentQueryResponse(
+            answer=answer,
             profile_used=profile.model_dump(),
             session_id=payload.session_id,
-            error=str(exc),
+            error=error_detail,
         )
 
 

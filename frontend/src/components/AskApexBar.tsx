@@ -47,6 +47,7 @@ interface AskApexBarProps {
   onProfileChange: (profile: AssistantProfile) => void
   onSubmit: (query: string, profile: AssistantProfile) => void
   profilesStatus: AgentProfileStatus[]
+  profilesStatusHydrated: boolean
   onSelectChip?: (query: string) => void
   isSubmitting: boolean
   disabled?: boolean
@@ -57,6 +58,7 @@ export function AskApexBar({
   onProfileChange,
   onSubmit,
   profilesStatus,
+  profilesStatusHydrated,
   onSelectChip,
   isSubmitting,
   disabled = false,
@@ -156,6 +158,7 @@ export function AskApexBar({
             activeProfile={activeProfile}
             onChange={onProfileChange}
             profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
             disabled={isInputDisabled}
           />
         </div>

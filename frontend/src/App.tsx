@@ -99,18 +99,6 @@ export default function App(): ReactElement {
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
-  const {
-    assistantHistory,
-    isAssistantQuerying,
-    isAssistantOpen,
-    assistantLatestTrace,
-    assistantError,
-    profilesStatus,
-    queryAssistant,
-    unloadLocalModel,
-    resetAssistantSession,
-    setAssistantOpen,
-  } = useApexAssistant()
   const apexData = useApexData()
   const {
     data,
@@ -130,6 +118,22 @@ export default function App(): ReactElement {
     markReminderAsRead,
     triggerSynthesis,
   } = apexData
+
+  const showAskApexBar = status === 'success' && askApexEnabled
+
+  const {
+    assistantHistory,
+    isAssistantQuerying,
+    isAssistantOpen,
+    assistantLatestTrace,
+    assistantError,
+    profilesStatus,
+    profilesStatusHydrated,
+    queryAssistant,
+    unloadLocalModel,
+    resetAssistantSession,
+    setAssistantOpen,
+  } = useApexAssistant(showAskApexBar)
 
   // Synchronize the active profile state with the backend's configured defaults on boot
   useEffect(() => {
@@ -185,7 +189,6 @@ export default function App(): ReactElement {
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
   const showCommandTrigger = status === 'idle' || status === 'loading'
-  const showAskApexBar = status === 'success' && askApexEnabled
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
@@ -547,6 +550,7 @@ export default function App(): ReactElement {
                         onProfileChange={setAgentProfile}
                         onSubmit={handleAgentQuery}
                         profilesStatus={profilesStatus}
+                        profilesStatusHydrated={profilesStatusHydrated}
                         onSelectChip={handleAssistantChipSelect}
                         isSubmitting={isAssistantQuerying}
                         disabled={isSpeaking}

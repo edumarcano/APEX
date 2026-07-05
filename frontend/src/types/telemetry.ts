@@ -55,6 +55,7 @@ export type AssistantProfile =
 
 export type ProfileAvailabilityStatus =
   | 'available'
+  | 'unknown'
   | 'disabled'
   | 'ollama_unreachable'
   | 'model_not_installed'
