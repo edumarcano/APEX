@@ -249,7 +249,7 @@ Transitioning APEX from an intelligence presence into an operator-directed agent
 
 ---
 
-Cortex Initiative
+## Cortex Initiative
 
 The Cortex initiative represents the evolution of APEX's cognitive architecture. Rather than focusing on briefing synthesis, Cortex establishes a provider-agnostic reasoning engine responsible for conversational interaction, tool orchestration, session management, and autonomous execution. Successive milestones expand Cortex from cloud-based reasoning to local inference, administrative controls, and increasingly capable agent workflows.
 

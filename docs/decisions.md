@@ -56,7 +56,7 @@ The reminder feature needs read/write with persistent state (marking items as re
 
 APEX is designed around progressive degradation rather than dependence on a single synthesis path. The primary briefing pipeline uses Gemini for synthesis. A single Gemini API key is sufficient to call multiple Gemini models; model-tier failover is a direction for a future release, not a current implementation.
 
-If the Gemini call fails, APEX falls back to reading raw connector data directly, ensuring a briefing is always delivered. A code placeholder for Ollama-hosted local briefing synthesis exists (`DEV_AI_SYNTHESIS=slm`), but that specific integration has not been implemented. This is distinct from the APEX assistant, where Ollama is already fully integrated (see the local agent profiles in [docs/architecture.md](architecture.md#core-agent--cortex-reasoning-engine-for-the-apex-assistant)). Despite Ollama already being integrated for the assistant, using a local model for briefing synthesis remains planned for the future.
+If the Gemini call fails, APEX falls back to reading raw connector data directly, ensuring a briefing is always delivered. A code placeholder for Ollama-hosted local briefing synthesis exists (`DEV_AI_SYNTHESIS=slm`), but that specific integration has not been implemented. This is distinct from the APEX assistant, where Ollama is already fully integrated (see the local agent profiles in [docs/architecture.md](architecture.md#local-agent-profiles)). Despite Ollama already being integrated for the assistant, using a local model for briefing synthesis remains planned for the future.
 
 This layered approach prioritizes reliability, offline capability, and graceful degradation.
 

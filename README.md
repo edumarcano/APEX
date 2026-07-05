@@ -253,3 +253,4 @@ Full version history is available in [CHANGELOG.md](CHANGELOG.md).
 | [docs/architecture.md](docs/architecture.md) | Pipeline internals, component inventory, data contracts, F1 cache, theming systems, project structure |
 | [docs/api.md](docs/api.md) | All API endpoints, request/response schemas, Pydantic models, environment variables |
 | [docs/decisions.md](docs/decisions.md) | Engineering rationale, TTS selection history, AI workflow, design trade-offs |
+| [docs/roadmap.md](docs/roadmap.md) | Milestone history, current phase, planned platform evolution |

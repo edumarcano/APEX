@@ -650,7 +650,7 @@ A 10% penalty is applied when the sports client reports a stale cache hit. `spor
 
 ### Output
 
-The score and the list of failed connector names are passed to `DigestPayload`. The frontend reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays them in the Sync Health column of `SystemDiagnostics`. A segmented block bar with a hover tooltip listing any failed connectors.
+The score and the list of failed connector names are passed to `DigestPayload`. The frontend reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays them in the Sync Health column of `SystemDiagnostics` as a segmented block bar with a hover tooltip listing any failed connectors.
 
 ---
 

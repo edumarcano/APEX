@@ -303,7 +303,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | Field | Type | Description |
 |---|---|---|
 | `answer` | string | Final synthesized text response. |
-| `profile_used` | object | Full `GeminiModelProfile` dump for the profile that served this request. |
+| `profile_used` | object | Full cloud or local model profile dump for the profile that served this request. |
 | `tool_trace` | object[] | One entry per tool executed this turn: `name`, `status` (`"ok"` or `"error"`), `duration_ms`. |
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
@@ -313,7 +313,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 { "detail": "APEX is currently disabled in system settings." }
 ```
 
-**Response `400`** — unknown `profile` value not present in `GEMINI_MODEL_PROFILES`.
+**Response `400`** — unknown `profile` value not present in the registered Gemini or Ollama profile maps.
 
 **Missing API key:** When `GEMINI_API_KEY` is not set, the endpoint returns `200` with a static unavailability message in `answer` and `error` set to `"GEMINI_API_KEY is missing from environment variables."` rather than raising an HTTP error.
 
