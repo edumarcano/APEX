@@ -81,6 +81,12 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
 
 type AssistantProfile = 'comet' | 'nova' | 'pulsar'
 
+const CLOUD_ASSISTANT_PROFILES: readonly AssistantProfile[] = ['comet', 'nova', 'pulsar']
+
+function isCloudAssistantProfile(value: string): value is AssistantProfile {
+  return (CLOUD_ASSISTANT_PROFILES as readonly string[]).includes(value)
+}
+
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
@@ -120,8 +126,9 @@ export default function App(): ReactElement {
 
   // Synchronize the active profile state with the backend's configured defaults on boot
   useEffect(() => {
-    if (data?.defaultProfile) {
-      setAgentProfile(data.defaultProfile)
+    const profile = data?.defaultProfile
+    if (profile && isCloudAssistantProfile(profile)) {
+      setAgentProfile(profile)
     }
   }, [data?.defaultProfile])
 

@@ -1,6 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
-const AGENT_QUERY_ENDPOINT = 'http://127.0.0.1:8000/api/v1/agent/query'
+import type { AgentProfileStatus, AssistantProfile, ProfileAvailabilityStatus } from '../types/telemetry'
+
+const API_BASE = 'http://127.0.0.1:8000'
+const AGENT_QUERY_ENDPOINT = `${API_BASE}/api/v1/agent/query`
+const AGENT_PROFILES_ENDPOINT = `${API_BASE}/api/v1/agent/profiles`
+const AGENT_LOCAL_UNLOAD_ENDPOINT = `${API_BASE}/api/v1/agent/local/unload`
+const PROFILE_POLL_INTERVAL_MS = 4000
+
+export type { AssistantProfile, AgentProfileStatus } from '../types/telemetry'
 
 export interface ToolCall {
   id: string
@@ -28,18 +36,113 @@ export interface ToolTraceItem {
   duration_ms: number
 }
 
-export type AssistantProfile = 'comet' | 'nova' | 'pulsar'
-
-type BackendProfile = 'comet' | 'nova' | 'pulsar'
-
 interface AgentQueryResponseBody {
   answer?: string
   tool_trace?: ToolTraceItem[]
   error?: string | null
 }
 
-function mapProfileToBackend(profile: AssistantProfile): BackendProfile {
-  return profile === 'pulsar' ? 'pulsar' : profile
+const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
+  'comet',
+  'nova',
+  'pulsar',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+]
+
+const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
+  'available',
+  'disabled',
+  'ollama_unreachable',
+  'model_not_installed',
+  'insufficient_ram',
+  'cpu_overloaded',
+]
+
+const VALID_PROVIDERS: readonly AgentProfileStatus['provider'][] = ['ollama', 'gemini']
+
+function isAssistantProfile(value: unknown): value is AssistantProfile {
+  return (
+    typeof value === 'string' &&
+    (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
+  )
+}
+
+function isProfileAvailabilityStatus(value: unknown): value is ProfileAvailabilityStatus {
+  return (
+    typeof value === 'string' &&
+    (VALID_PROFILE_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+function isProvider(value: unknown): value is AgentProfileStatus['provider'] {
+  return typeof value === 'string' && (VALID_PROVIDERS as readonly string[]).includes(value)
+}
+
+function parseNullableString(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (value === null || value === undefined) {
+    return null
+  }
+  return null
+}
+
+function parseNullableFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (value === null || value === undefined) {
+    return null
+  }
+  return null
+}
+
+function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const key = record.key
+  const displayName = record.display_name
+  const provider = record.provider
+  const status = record.status
+
+  if (!isAssistantProfile(key)) {
+    return null
+  }
+  if (typeof displayName !== 'string') {
+    return null
+  }
+  if (!isProvider(provider)) {
+    return null
+  }
+  if (!isProfileAvailabilityStatus(status)) {
+    return null
+  }
+
+  return {
+    key,
+    display_name: displayName,
+    provider,
+    status,
+    active: typeof record.active === 'boolean' ? record.active : false,
+    reason: parseNullableString(record.reason),
+    idle_unload_remaining_seconds: parseNullableFiniteNumber(record.idle_unload_remaining_seconds),
+  }
+}
+
+function parseAgentProfileStatusList(body: unknown): AgentProfileStatus[] {
+  if (!Array.isArray(body)) {
+    return []
+  }
+
+  return body
+    .map(parseAgentProfileStatus)
+    .filter((item): item is AgentProfileStatus => item !== null)
 }
 
 function parseToolTraceItem(value: unknown): ToolTraceItem | null {
@@ -90,7 +193,9 @@ export interface UseApexAssistantResult {
   isAssistantOpen: boolean
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
+  profilesStatus: AgentProfileStatus[]
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
+  unloadLocalModel: () => Promise<void>
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
 }
@@ -101,6 +206,64 @@ export function useApexAssistant(): UseApexAssistantResult {
   const [isAssistantOpen, setAssistantOpen] = useState(false)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
   const [assistantError, setAssistantError] = useState<string | null>(null)
+  const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
+
+  const fetchProfilesStatus = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch(AGENT_PROFILES_ENDPOINT)
+      if (!response.ok) {
+        console.warn(
+          `[useApexAssistant] Profile status fetch failed (${response.status}); retaining prior state.`,
+        )
+        return
+      }
+
+      const body: unknown = await response.json()
+      const parsed = parseAgentProfileStatusList(body)
+      setProfilesStatus(parsed)
+    } catch (fetchError) {
+      const message =
+        fetchError instanceof Error ? fetchError.message : 'Unknown profile fetch error'
+      console.warn(`[useApexAssistant] Profile status fetch error: ${message}`)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isAssistantOpen) {
+      return
+    }
+
+    void fetchProfilesStatus()
+
+    const intervalId = window.setInterval(() => {
+      void fetchProfilesStatus()
+    }, PROFILE_POLL_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [isAssistantOpen, fetchProfilesStatus])
+
+  const unloadLocalModel = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch(AGENT_LOCAL_UNLOAD_ENDPOINT, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        console.warn(
+          `[useApexAssistant] Local model unload failed (${response.status}).`,
+        )
+        return
+      }
+
+      await fetchProfilesStatus()
+    } catch (fetchError) {
+      const message =
+        fetchError instanceof Error ? fetchError.message : 'Unknown unload error'
+      console.warn(`[useApexAssistant] Local model unload error: ${message}`)
+    }
+  }, [fetchProfilesStatus])
 
   const queryAssistant = useCallback(
     async (prompt: string, profile: AssistantProfile): Promise<void> => {
@@ -121,7 +284,7 @@ export function useApexAssistant(): UseApexAssistantResult {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: trimmedPrompt,
-            profile: mapProfileToBackend(profile),
+            profile,
             history: assistantHistory,
           }),
         })
@@ -181,7 +344,9 @@ export function useApexAssistant(): UseApexAssistantResult {
     isAssistantOpen,
     assistantLatestTrace,
     assistantError,
+    profilesStatus,
     queryAssistant,
+    unloadLocalModel,
     resetAssistantSession,
     setAssistantOpen,
   }
