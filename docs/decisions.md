@@ -113,6 +113,16 @@ Google Cloud TTS requires a live API key and network access. The pyttsx3 fallbac
 
 ## Local Inference
 
+### Assistant profile names and model selection
+
+The APEX assistant exposes six named profiles: cloud profiles (`Comet`, `Nova`, `Pulsar`) and local profiles (`Lynx`, `Acinonyx`, `Neofelis`). The codenames follow the broader APEX theme and personal naming style, but their technical purpose is to communicate relative speed, reasoning depth, and resource cost without exposing raw provider model IDs in the UI.
+
+Cloud profiles exist for two reasons. First, the Gemini free tier applies rate limits per underlying model, so keeping multiple cloud profiles available gives APEX a practical fallback path when one model is temporarily constrained. Second, the backing Gemini models have different latency and reasoning characteristics, so the profiles are divided into fast, balanced, and advanced categories instead of treating every cloud call as equivalent.
+
+Local profiles solve a different problem: hardware cost. Running models through Ollama competes directly with the same CPU and RAM needed by the API server, browser, and operating system. Multiple local tiers make it possible to choose a smaller model for quick or resource-constrained queries and reserve heavier models for prompts that justify the extra memory, CPU, and latency.
+
+The current assistant tool set is intentionally small and read-only, so the difference between speed and reasoning depth is not always dramatic. The profile system is still useful now because it establishes the routing contract before the tool surface grows. As APEX gains more complex tool-calling workflows, longer reasoning chains, and higher-impact operations, explicit model selection will matter more: some tasks should prioritize fast interaction, while others should spend more compute for stronger planning and synthesis.
+
 ### APEX assistant sessions are stateless on the server
 
 The APEX assistant (`POST /api/v1/agent/query`) does not persist conversation history server-side. The client sends the full message history with every request, and the server appends the new turn and returns the updated response without writing anything to a session store.
