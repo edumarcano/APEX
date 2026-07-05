@@ -18,15 +18,17 @@ import {
 } from 'react'
 
 import type { AgentMessage, ToolTraceItem } from '../hooks/useApexAssistant'
+import type { AssistantProfile } from '../types/telemetry'
 
 import { OPERATION_PROMPT_CHIPS } from './AskApexBar'
 
-type ActiveProfile = 'comet' | 'nova' | 'pulsar'
-
-const PROFILE_LABELS: Record<ActiveProfile, string> = {
+const PROFILE_LABELS: Record<AssistantProfile, string> = {
   comet: 'Comet',
   nova: 'Nova',
   pulsar: 'Pulsar',
+  lynx: 'Lynx',
+  acinonyx: 'Acinonyx',
+  neofelis: 'Neofelis',
 }
 
 interface AssistantDrawerProps {
@@ -36,7 +38,7 @@ interface AssistantDrawerProps {
   history: AgentMessage[]
   isQuerying: boolean
   latestTrace: ToolTraceItem[]
-  activeProfile: ActiveProfile
+  activeProfile: AssistantProfile
   onSubmitFollowUp: (prompt: string) => void
   error: string | null
 }

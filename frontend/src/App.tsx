@@ -31,7 +31,7 @@ import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
-import type { WeatherConditionArchetype } from './types/telemetry'
+import type { AssistantProfile, WeatherConditionArchetype } from './types/telemetry'
 
 interface ParsedEmail {
   subject: string
@@ -79,12 +79,17 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
 
-type AssistantProfile = 'comet' | 'nova' | 'pulsar'
+const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
+  'comet',
+  'nova',
+  'pulsar',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+]
 
-const CLOUD_ASSISTANT_PROFILES: readonly AssistantProfile[] = ['comet', 'nova', 'pulsar']
-
-function isCloudAssistantProfile(value: string): value is AssistantProfile {
-  return (CLOUD_ASSISTANT_PROFILES as readonly string[]).includes(value)
+function isAssistantProfile(value: string): value is AssistantProfile {
+  return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
 }
 
 export default function App(): ReactElement {
@@ -100,6 +105,7 @@ export default function App(): ReactElement {
     isAssistantOpen,
     assistantLatestTrace,
     assistantError,
+    profilesStatus,
     queryAssistant,
     resetAssistantSession,
     setAssistantOpen,
@@ -127,7 +133,7 @@ export default function App(): ReactElement {
   // Synchronize the active profile state with the backend's configured defaults on boot
   useEffect(() => {
     const profile = data?.defaultProfile
-    if (profile && isCloudAssistantProfile(profile)) {
+    if (profile && isAssistantProfile(profile)) {
       setAgentProfile(profile)
     }
   }, [data?.defaultProfile])
@@ -336,16 +342,14 @@ export default function App(): ReactElement {
 
   const handleAgentQuery = useCallback(
     (query: string, profile: AssistantProfile): void => {
-      const assistantProfile = profile === 'pulsar' ? 'pulsar' : profile
-      void queryAssistant(query, assistantProfile)
+      void queryAssistant(query, profile)
     },
     [queryAssistant],
   )
 
   const handleAssistantFollowUp = useCallback(
     (query: string): void => {
-      const assistantProfile = agentProfile === 'pulsar' ? 'pulsar' : agentProfile
-      void queryAssistant(query, assistantProfile)
+      void queryAssistant(query, agentProfile)
     },
     [agentProfile, queryAssistant],
   )
@@ -541,6 +545,7 @@ export default function App(): ReactElement {
                         activeProfile={agentProfile}
                         onProfileChange={setAgentProfile}
                         onSubmit={handleAgentQuery}
+                        profilesStatus={profilesStatus}
                         onSelectChip={handleAssistantChipSelect}
                         isSubmitting={isAssistantQuerying}
                         disabled={isSpeaking}
