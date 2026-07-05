@@ -40,8 +40,11 @@ class AgentMessage(BaseModel):
 
 class AgentQueryRequest(BaseModel):
     prompt: str = Field(description="The user's direct operations query.")
-    profile: Literal["comet", "nova", "pulsar"] = Field(
-        default="nova", description="The APEX cloud role tier."
+    profile: Literal[
+        "comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"
+    ] = Field(
+        default="nova",
+        description="The APEX agent role tier (cloud or local Ollama profile).",
     )
     session_id: Optional[str] = Field(
         default=None, description="Optional temporary session grouping identifier."

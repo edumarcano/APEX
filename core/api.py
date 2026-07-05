@@ -6,11 +6,14 @@ Standalone HTTP surface; briefing trigger mirrors main.start_apex flow.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import time
 import re
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -33,6 +36,16 @@ from core import brain, database, scanner, speaker, config
 from core.agent.loop import default_tools_dispatcher, run_agent_loop
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
+from core.agent.providers.ollama_lifecycle import (
+    check_idle_models_loop,
+    check_resource_gate,
+    get_active_loaded_model,
+    get_idle_unload_remaining_seconds,
+    get_installed_ollama_tags,
+    is_ollama_reachable,
+    unload_active_local_model,
+)
+from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.config import (
     AGENT_SYSTEM_PROMPT,
@@ -48,6 +61,8 @@ from core.config import (
     FEATURE_WEATHER,
     MODULE_F1,
     MODULE_FOOTBALL,
+    OLLAMA_ENABLED,
+    OLLAMA_MANUAL_UNLOAD_ENABLED,
     is_dev_mode,
 )
 
@@ -60,7 +75,29 @@ NEWS_FAILED_RE = re.compile(r"(telemetry unavailable|offline)", re.IGNORECASE)
 EMAIL_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 CALENDAR_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
 
-app = FastAPI(title="APEX Nexus")
+_LOGGER = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    """Start background workers on API boot and cancel them on shutdown."""
+    idle_model_task: asyncio.Task[None] | None = None
+
+    if OLLAMA_ENABLED:
+        idle_model_task = asyncio.create_task(check_idle_models_loop())
+        _LOGGER.info("Started Ollama idle model monitor")
+
+    yield
+
+    if idle_model_task is not None:
+        idle_model_task.cancel()
+        try:
+            await idle_model_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="APEX Nexus", lifespan=_app_lifespan)
 
 
 DEFAULT_ALLOWED_ORIGINS = (
@@ -646,6 +683,62 @@ class MarkReadResponse(BaseModel):
     )
 
 
+ProfileAvailabilityStatus = Literal[
+    "available",
+    "disabled",
+    "ollama_unreachable",
+    "model_not_installed",
+    "insufficient_ram",
+    "cpu_overloaded",
+]
+
+_AGENT_PROFILE_ORDER: tuple[str, ...] = (
+    "lynx",
+    "acinonyx",
+    "neofelis",
+    "comet",
+    "nova",
+    "pulsar",
+)
+
+_PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
+    "disabled": "Ollama local inference is disabled in system settings",
+    "ollama_unreachable": "Ollama daemon is unreachable",
+    "model_not_installed": "Model tag is not installed locally",
+    "insufficient_ram": "Current memory pressure exceeds threshold",
+    "cpu_overloaded": "Current CPU utilization exceeds threshold",
+}
+
+
+class AgentProfileStatus(BaseModel):
+    key: str = Field(description="Stable profile identifier used by the HUD.")
+    display_name: str = Field(description="Human-readable profile label.")
+    provider: Literal["ollama", "gemini"] = Field(
+        description="Inference backend for this profile.",
+    )
+    status: ProfileAvailabilityStatus = Field(
+        description="Current availability state for this profile.",
+    )
+    active: bool = Field(
+        description="Whether this profile's model is currently loaded in memory.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Human-readable explanation when status is not available.",
+    )
+    idle_unload_remaining_seconds: int | None = Field(
+        default=None,
+        description="Seconds until auto-unload when this profile is active.",
+    )
+
+
+class LocalUnloadResponse(BaseModel):
+    status: str = Field(
+        default="success",
+        description="Outcome label for the manual unload operation.",
+    )
+
+
 class BriefingHistoryRecord(BaseModel):
     id: int
     timestamp: str
@@ -1108,6 +1201,117 @@ def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
         return MarkReadResponse()
     database.mark_reminders_read(payload.ids)
     return MarkReadResponse()
+
+
+def _resolve_local_profile_status(
+    profile: OllamaModelProfile,
+    *,
+    ollama_reachable: bool,
+    installed_tags: list[str],
+) -> tuple[ProfileAvailabilityStatus, str | None]:
+    """Evaluate a local Ollama profile using fresh runtime signals."""
+    if not OLLAMA_ENABLED:
+        return "disabled", _PROFILE_STATUS_REASONS["disabled"]
+
+    if not ollama_reachable:
+        return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
+
+    if profile.api_model not in installed_tags:
+        return "model_not_installed", _PROFILE_STATUS_REASONS["model_not_installed"]
+
+    gate_open, gate_reason = check_resource_gate(profile.ram_limit, profile.cpu_limit)
+    if not gate_open and gate_reason is not None:
+        return gate_reason, _PROFILE_STATUS_REASONS[gate_reason]
+
+    return "available", None
+
+
+def _resolve_cloud_profile_status() -> tuple[ProfileAvailabilityStatus, str | None]:
+    """Evaluate cloud profile availability based on Gemini credentials."""
+    if os.getenv("GEMINI_API_KEY"):
+        return "available", None
+    return "disabled", "Gemini API key is not configured"
+
+
+def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
+    """Build the full profile availability matrix for the HUD."""
+    active_model = get_active_loaded_model()
+    idle_remaining = get_idle_unload_remaining_seconds()
+    ollama_reachable = is_ollama_reachable() if OLLAMA_ENABLED else False
+    installed_tags = get_installed_ollama_tags() if ollama_reachable else []
+    cloud_status, cloud_reason = _resolve_cloud_profile_status()
+
+    profiles: list[AgentProfileStatus] = []
+
+    for key in _AGENT_PROFILE_ORDER:
+        if key in OLLAMA_MODEL_PROFILES:
+            profile = OLLAMA_MODEL_PROFILES[key]
+            status, reason = _resolve_local_profile_status(
+                profile,
+                ollama_reachable=ollama_reachable,
+                installed_tags=installed_tags,
+            )
+            is_active = active_model == profile.api_model
+            profiles.append(
+                AgentProfileStatus(
+                    key=key,
+                    display_name=profile.display_name,
+                    provider="ollama",
+                    status=status,
+                    active=is_active,
+                    reason=reason,
+                    idle_unload_remaining_seconds=idle_remaining if is_active else None,
+                )
+            )
+            continue
+
+        gemini_profile = GEMINI_MODEL_PROFILES.get(key)
+        if gemini_profile is None:
+            continue
+
+        profiles.append(
+            AgentProfileStatus(
+                key=key,
+                display_name=gemini_profile.display_name,
+                provider="gemini",
+                status=cloud_status,
+                active=False,
+                reason=cloud_reason,
+            )
+        )
+
+    return profiles
+
+
+@app.get("/api/v1/agent/profiles", response_model=list[AgentProfileStatus])
+def list_agent_profiles() -> list[AgentProfileStatus]:
+    """
+    Return profile availability for local and cloud assistant modes.
+
+    States are recomputed on every request so dynamic RAM/CPU thresholds
+    and Ollama reachability are always current.
+    """
+    return _build_agent_profile_statuses()
+
+
+@app.post(
+    "/api/v1/agent/local/unload",
+    response_model=LocalUnloadResponse,
+)
+def unload_active_local_agent_model() -> LocalUnloadResponse:
+    """
+    Manually unload the currently active local Ollama model from memory.
+
+    Returns success when no model is active or the unload completes cleanly.
+    """
+    if not OLLAMA_MANUAL_UNLOAD_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manual local model unload is disabled in system settings.",
+        )
+
+    unload_active_local_model()
+    return LocalUnloadResponse()
 
 
 @app.post("/api/v1/agent/query", response_model=AgentQueryResponse)

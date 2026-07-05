@@ -21,6 +21,17 @@ __all__ = [
     "CONFIG_PATH",
     "DEFAULT_CLOUD_PROFILE",
     "MAX_SESSION_MESSAGES",
+    "ACINONYX_CPU_LIMIT",
+    "ACINONYX_RAM_LIMIT",
+    "LYNX_CPU_LIMIT",
+    "LYNX_RAM_LIMIT",
+    "NEOFELIS_CPU_LIMIT",
+    "NEOFELIS_RAM_LIMIT",
+    "OLLAMA_ENABLED",
+    "OLLAMA_HOST",
+    "OLLAMA_IDLE_UNLOAD_MINUTES",
+    "OLLAMA_MANUAL_UNLOAD_ENABLED",
+    "OLLAMA_SINGLE_LOADED_MODEL",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -315,6 +326,78 @@ def _parse_config_int(
     return coerced
 
 
+def _parse_config_float(
+    raw: Any,
+    *,
+    key: str,
+    default: float,
+    min_value: float = 0.0,
+    max_value: float = 100.0,
+) -> float:
+    """Coerce a config value to float, clamp to bounds, and log on invalid input."""
+    if isinstance(raw, bool):
+        _LOGGER.warning("Config key %r must be a float; using default %s.", key, default)
+        return default
+    if isinstance(raw, (int, float)):
+        coerced = float(raw)
+    elif isinstance(raw, str):
+        try:
+            coerced = float(raw.strip())
+        except ValueError:
+            _LOGGER.warning("Config key %r must be a float; using default %s.", key, default)
+            return default
+    else:
+        _LOGGER.warning("Config key %r must be a float; using default %s.", key, default)
+        return default
+
+    if coerced < min_value:
+        _LOGGER.warning(
+            "Config key %r=%s below minimum %s; clamping.",
+            key,
+            coerced,
+            min_value,
+        )
+        return min_value
+    if coerced > max_value:
+        _LOGGER.warning(
+            "Config key %r=%s above maximum %s; clamping.",
+            key,
+            coerced,
+            max_value,
+        )
+        return max_value
+    return coerced
+
+
+def _parse_resource_gate(
+    gates: Any,
+    *,
+    profile: str,
+    default_ram: float,
+    default_cpu: float,
+) -> tuple[float, float]:
+    """Parse RAM and CPU percentage limits for a single Ollama profile gate."""
+    if not isinstance(gates, dict):
+        if gates is not None:
+            _LOGGER.warning(
+                'Config key "ollama.resource_gates.%s" must be a JSON object; using defaults.',
+                profile,
+            )
+        return default_ram, default_cpu
+
+    ram = _parse_config_float(
+        gates.get("ram_limit"),
+        key=f"ollama.resource_gates.{profile}.ram_limit",
+        default=default_ram,
+    )
+    cpu = _parse_config_float(
+        gates.get("cpu_limit"),
+        key=f"ollama.resource_gates.{profile}.cpu_limit",
+        default=default_cpu,
+    )
+    return ram, cpu
+
+
 def _parse_cloud_profile(raw: Any, *, key: str, default: str) -> str:
     """Validate a cloud profile identifier against known Gemini tiers."""
     if not isinstance(raw, str):
@@ -389,3 +472,97 @@ except Exception as exc:
     _LOGGER.warning("Unable to parse gemini config: %s; using defaults.", exc)
     AGENT_MAX_TURNS = 3
     AGENT_MAX_TOOL_CALLS = 4
+
+_DEFAULT_LYNX_RAM: Final[float] = 88.0
+_DEFAULT_LYNX_CPU: Final[float] = 95.0
+_DEFAULT_ACINONYX_RAM: Final[float] = 78.0
+_DEFAULT_ACINONYX_CPU: Final[float] = 90.0
+_DEFAULT_NEOFELIS_RAM: Final[float] = 68.0
+_DEFAULT_NEOFELIS_CPU: Final[float] = 85.0
+
+try:
+    _ollama_cfg = _CONFIG_DATA.get("ollama", {})
+    if not isinstance(_ollama_cfg, dict):
+        _LOGGER.warning('Config key "ollama" must be a JSON object; using defaults.')
+        _ollama_cfg = {}
+
+    OLLAMA_ENABLED: Final[bool] = _parse_config_bool(
+        _ollama_cfg.get("enabled"),
+        key="ollama.enabled",
+        default=True,
+    )
+    _configured_host = _ollama_cfg.get("host", "http://localhost:11434")
+    if isinstance(_configured_host, str) and _configured_host.strip():
+        OLLAMA_HOST: Final[str] = _configured_host.strip()
+    else:
+        if _configured_host is not None:
+            _LOGGER.warning(
+                'Config key "ollama.host" must be a non-empty string; using default.'
+            )
+        OLLAMA_HOST = "http://localhost:11434"
+
+    OLLAMA_IDLE_UNLOAD_MINUTES: Final[int] = _parse_config_int(
+        _ollama_cfg.get("idle_unload_timeout_minutes"),
+        key="ollama.idle_unload_timeout_minutes",
+        default=5,
+        min_value=1,
+        max_value=60,
+    )
+    OLLAMA_SINGLE_LOADED_MODEL: Final[bool] = _parse_config_bool(
+        _ollama_cfg.get("single_loaded_model"),
+        key="ollama.single_loaded_model",
+        default=True,
+    )
+    OLLAMA_MANUAL_UNLOAD_ENABLED: Final[bool] = _parse_config_bool(
+        _ollama_cfg.get("manual_unload_enabled"),
+        key="ollama.manual_unload_enabled",
+        default=True,
+    )
+
+    _resource_gates = _ollama_cfg.get("resource_gates", {})
+    if not isinstance(_resource_gates, dict):
+        if _resource_gates is not None:
+            _LOGGER.warning(
+                'Config key "ollama.resource_gates" must be a JSON object; using defaults.'
+            )
+        _resource_gates = {}
+
+    _lynx_ram, _lynx_cpu = _parse_resource_gate(
+        _resource_gates.get("lynx"),
+        profile="lynx",
+        default_ram=_DEFAULT_LYNX_RAM,
+        default_cpu=_DEFAULT_LYNX_CPU,
+    )
+    LYNX_RAM_LIMIT: Final[float] = _lynx_ram
+    LYNX_CPU_LIMIT: Final[float] = _lynx_cpu
+
+    _acinonyx_ram, _acinonyx_cpu = _parse_resource_gate(
+        _resource_gates.get("acinonyx"),
+        profile="acinonyx",
+        default_ram=_DEFAULT_ACINONYX_RAM,
+        default_cpu=_DEFAULT_ACINONYX_CPU,
+    )
+    ACINONYX_RAM_LIMIT: Final[float] = _acinonyx_ram
+    ACINONYX_CPU_LIMIT: Final[float] = _acinonyx_cpu
+
+    _neofelis_ram, _neofelis_cpu = _parse_resource_gate(
+        _resource_gates.get("neofelis"),
+        profile="neofelis",
+        default_ram=_DEFAULT_NEOFELIS_RAM,
+        default_cpu=_DEFAULT_NEOFELIS_CPU,
+    )
+    NEOFELIS_RAM_LIMIT: Final[float] = _neofelis_ram
+    NEOFELIS_CPU_LIMIT: Final[float] = _neofelis_cpu
+except Exception as exc:
+    _LOGGER.warning("Unable to parse ollama config: %s; using defaults.", exc)
+    OLLAMA_ENABLED = True
+    OLLAMA_HOST = "http://localhost:11434"
+    OLLAMA_IDLE_UNLOAD_MINUTES = 5
+    OLLAMA_SINGLE_LOADED_MODEL = True
+    OLLAMA_MANUAL_UNLOAD_ENABLED = True
+    LYNX_RAM_LIMIT = _DEFAULT_LYNX_RAM
+    LYNX_CPU_LIMIT = _DEFAULT_LYNX_CPU
+    ACINONYX_RAM_LIMIT = _DEFAULT_ACINONYX_RAM
+    ACINONYX_CPU_LIMIT = _DEFAULT_ACINONYX_CPU
+    NEOFELIS_RAM_LIMIT = _DEFAULT_NEOFELIS_RAM
+    NEOFELIS_CPU_LIMIT = _DEFAULT_NEOFELIS_CPU

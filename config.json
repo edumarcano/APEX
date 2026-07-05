@@ -24,5 +24,17 @@
   "gemini": {
     "agent_max_turns": 3,
     "agent_max_tool_calls": 4
+  },
+  "ollama": {
+    "enabled": true,
+    "host": "http://localhost:11434",
+    "idle_unload_timeout_minutes": 5,
+    "single_loaded_model": true,
+    "manual_unload_enabled": true,
+    "resource_gates": {
+      "lynx": { "ram_limit": 88.0, "cpu_limit": 95.0 },
+      "acinonyx": { "ram_limit": 78.0, "cpu_limit": 90.0 },
+      "neofelis": { "ram_limit": 68.0, "cpu_limit": 85.0 }
+    }
   }
 }
