@@ -269,6 +269,28 @@ def _probe_ollama_loaded_models() -> list[LoadedOllamaModel]:
     return loaded_models
 
 
+def _loaded_model_matches(loaded_model: LoadedOllamaModel, model_name: str) -> bool:
+    """Return whether a loaded Ollama model entry matches a configured tag."""
+    return loaded_model["name"] == model_name or loaded_model["model"] == model_name
+
+
+def is_local_model_loaded(model_name: str) -> bool:
+    """
+    Return whether a specific local model is already resident in Ollama.
+
+    Checks the fast in-process tracker first, then falls back to /api/ps so the
+    API can recognize models that survived an APEX server restart.
+    """
+    with _model_lock:
+        if _active_loaded_model == model_name:
+            return True
+
+    return any(
+        _loaded_model_matches(loaded_model, model_name)
+        for loaded_model in _probe_ollama_loaded_models()
+    )
+
+
 def get_status_snapshot(force_refresh: bool = False) -> OllamaStatusSnapshot:
     """
     Return daemon reachability, installed tags, and host vitals from a TTL cache.
@@ -539,6 +561,13 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
             with _model_lock:
                 _active_loaded_model = previous_model
             return False
+
+    if is_local_model_loaded(target_model_name):
+        with _model_lock:
+            _active_loaded_model = target_model_name
+            _last_activity_time = time.monotonic()
+        _LOGGER.info("Model %s already resident in Ollama", target_model_name)
+        return True
 
     url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
     payload = {

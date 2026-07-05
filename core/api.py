@@ -45,6 +45,7 @@ from core.agent.providers.ollama_lifecycle import (
     get_active_loaded_model,
     get_idle_unload_remaining_seconds,
     get_status_snapshot,
+    is_local_model_loaded,
     is_local_execution_active,
     switch_local_model,
     try_begin_local_execution,
@@ -1243,6 +1244,7 @@ def mark_reminders_read(payload: MarkReadRequest) -> MarkReadResponse:
 def _resolve_local_profile_status(
     profile: OllamaModelProfile,
     *,
+    is_active: bool,
     ollama_reachable: bool,
     installed_tags: list[str],
     vitals: SystemVitals | None,
@@ -1253,6 +1255,9 @@ def _resolve_local_profile_status(
 
     if not ollama_reachable:
         return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
+
+    if is_active:
+        return "available", None
 
     if profile.api_model not in installed_tags:
         return "model_not_installed", _PROFILE_STATUS_REASONS["model_not_installed"]
@@ -1305,16 +1310,17 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 ),
                 None,
             )
-            status, reason = _resolve_local_profile_status(
-                profile,
-                ollama_reachable=ollama_reachable,
-                installed_tags=installed_tags,
-                vitals=vitals,
-            )
             is_tracked_active = tracked_active_model == profile.api_model
             is_active = (
                 loaded_model is not None
                 or is_tracked_active
+            )
+            status, reason = _resolve_local_profile_status(
+                profile,
+                is_active=is_active,
+                ollama_reachable=ollama_reachable,
+                installed_tags=installed_tags,
+                vitals=vitals,
             )
             profiles.append(
                 AgentProfileStatus(
@@ -1492,9 +1498,10 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     Runs synchronously so uvicorn can offload blocking provider I/O to a
     worker thread. Local (Ollama) queries pass an admission gate first:
-    a non-blocking execution slot (429 when busy), a host resource gate
-    (503 with the gate reason), and a coordinated model switch (503 on
-    load failure).
+    a non-blocking execution slot (429 when busy), a host resource gate for
+    cold loads/switches (503 with the gate reason), and a coordinated model
+    switch (503 on load failure). Already-loaded target models bypass the
+    resource gate because their memory footprint is already present.
     """
     if not config.ASK_APEX_ENABLED:
         raise HTTPException(
@@ -1552,17 +1559,19 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             )
 
         try:
-            gate_open, gate_reason = check_resource_gate(
-                profile.ram_limit, profile.cpu_limit
-            )
-            if not gate_open and gate_reason is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=(
-                        f"Local profile blocked: "
-                        f"{_PROFILE_STATUS_REASONS[gate_reason]}."
-                    ),
+            already_loaded = is_local_model_loaded(profile.api_model)
+            if not already_loaded:
+                gate_open, gate_reason = check_resource_gate(
+                    profile.ram_limit, profile.cpu_limit
                 )
+                if not gate_open and gate_reason is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=(
+                            f"Local profile blocked: "
+                            f"{_PROFILE_STATUS_REASONS[gate_reason]}."
+                        ),
+                    )
 
             if not switch_local_model(profile):
                 raise HTTPException(
