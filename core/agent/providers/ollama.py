@@ -173,6 +173,21 @@ def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
     return ollama_messages
 
 
+def _strip_thinking_tags(content: str | None) -> str:
+    """Remove Qwen-style reasoning blocks from assistant content."""
+    if not content:
+        return ""
+
+    think_open = "<" + "think" + ">"
+    think_close = "</" + "think" + ">"
+    content = re.sub(rf"{re.escape(think_open)}[\s\S]*?{re.escape(think_close)}", "", content)
+    content = re.sub(rf"{re.escape(think_open)}[\s\S]*$", "", content)
+    content = re.sub(rf"^[\s\S]*?{re.escape(think_close)}", "", content)
+    content = re.sub(r"\n{3,}", "\n\n", content)
+    content = re.sub(r"[ \t]{2,}", " ", content)
+    return content.strip()
+
+
 def _parse_tool_call_arguments(raw_arguments: Any) -> dict[str, Any]:
     """Normalize Ollama tool-call arguments to a dictionary."""
     if isinstance(raw_arguments, dict):
@@ -291,5 +306,9 @@ class OllamaProvider:
             raise RuntimeError(
                 f"Ollama response missing 'message' object: {data!r}"
             )
+
+        raw_content = message.get("content")
+        if isinstance(raw_content, str) and raw_content:
+            message["content"] = _strip_thinking_tags(raw_content)
 
         return _ollama_message_to_agent_message(message)
