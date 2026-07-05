@@ -750,6 +750,10 @@ class AgentProfileStatus(BaseModel):
     provider: Literal["ollama", "gemini"] = Field(
         description="Inference backend for this profile.",
     )
+    tier: str = Field(description="Profile performance tier label.")
+    stability: Literal["stable", "preview"] = Field(
+        description="Release stage classification for this profile.",
+    )
     status: ProfileAvailabilityStatus = Field(
         description="Current availability state for this profile.",
     )
@@ -1327,6 +1331,8 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     key=key,
                     display_name=profile.display_name,
                     provider="ollama",
+                    tier=profile.tier,
+                    stability=profile.stability,
                     status=status,
                     active=is_active,
                     reason=reason,
@@ -1351,6 +1357,8 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 key=key,
                 display_name=gemini_profile.display_name,
                 provider="gemini",
+                tier=gemini_profile.tier,
+                stability=gemini_profile.stability,
                 status=cloud_status,
                 active=False,
                 reason=cloud_reason,

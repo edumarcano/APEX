@@ -5,6 +5,7 @@ import type {
   AssistantProfile,
   LoadedOllamaModelStatus,
   ProfileAvailabilityStatus,
+  ProfileStability,
 } from '../types/telemetry'
 
 const API_BASE = 'http://127.0.0.1:8000'
@@ -67,6 +68,7 @@ const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
 ]
 
 const VALID_PROVIDERS: readonly AgentProfileStatus['provider'][] = ['ollama', 'gemini']
+const VALID_PROFILE_STABILITY: readonly ProfileStability[] = ['stable', 'preview']
 
 function isAssistantProfile(value: unknown): value is AssistantProfile {
   return (
@@ -84,6 +86,13 @@ function isProfileAvailabilityStatus(value: unknown): value is ProfileAvailabili
 
 function isProvider(value: unknown): value is AgentProfileStatus['provider'] {
   return typeof value === 'string' && (VALID_PROVIDERS as readonly string[]).includes(value)
+}
+
+function isProfileStability(value: unknown): value is ProfileStability {
+  return (
+    typeof value === 'string' &&
+    (VALID_PROFILE_STABILITY as readonly string[]).includes(value)
+  )
 }
 
 function parseNullableString(value: unknown): string | null {
@@ -139,6 +148,8 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   const key = record.key
   const displayName = record.display_name
   const provider = record.provider
+  const tier = record.tier
+  const stability = record.stability
   const status = record.status
 
   if (!isAssistantProfile(key)) {
@@ -150,6 +161,12 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   if (!isProvider(provider)) {
     return null
   }
+  if (typeof tier !== 'string') {
+    return null
+  }
+  if (!isProfileStability(stability)) {
+    return null
+  }
   if (!isProfileAvailabilityStatus(status)) {
     return null
   }
@@ -158,6 +175,8 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     key,
     display_name: displayName,
     provider,
+    tier,
+    stability,
     status,
     active: typeof record.active === 'boolean' ? record.active : false,
     reason: parseNullableString(record.reason),

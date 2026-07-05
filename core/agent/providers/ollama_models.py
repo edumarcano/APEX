@@ -19,7 +19,7 @@ class OllamaModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
     profile_version: str = Field(description="Internal configuration profile version.")
     api_model: str = Field(description="Exact Ollama model tag string.")
-    tier: Literal["lightweight", "fast", "capable"] = Field(
+    tier: Literal["lightweight", "balanced", "heavy"] = Field(
         description="Computational performance classification for local inference."
     )
     stability: Literal["stable", "preview"] = Field(
@@ -76,7 +76,7 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         profile_version="1.0",
         api_model="qwen3:1.7b",
         tier="lightweight",
-        stability="stable",
+        stability="preview",
         default_temperature=0.2,
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
@@ -94,8 +94,8 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         display_name="Apex Acinonyx",
         profile_version="1.0",
         api_model="qwen3:4b-instruct",
-        tier="fast",
-        stability="stable",
+        tier="balanced",
+        stability="preview",
         default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
@@ -107,14 +107,14 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=ACINONYX_RAM_LIMIT,
         cpu_limit=ACINONYX_CPU_LIMIT,
-        description="Fast local agent for normal APEX usage with balanced resource cost.",
+        description="Balanced local agent for normal APEX usage with moderate resource cost.",
     ),
     "neofelis": OllamaModelProfile(
         display_name="Apex Neofelis",
         profile_version="1.0",
         api_model="qwen3:8b",
-        tier="capable",
-        stability="stable",
+        tier="heavy",
+        stability="preview",
         default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
@@ -126,6 +126,6 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=NEOFELIS_RAM_LIMIT,
         cpu_limit=NEOFELIS_CPU_LIMIT,
-        description="Capable local reasoning for complex multi-source questions inside APEX.",
+        description="Heavy local reasoning for complex multi-source questions inside APEX.",
     ),
 }
