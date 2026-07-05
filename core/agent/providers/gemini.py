@@ -8,6 +8,9 @@ from google.genai import types
 from google.genai.errors import APIError
 
 from core.agent.providers.gemini_models import GeminiModelProfile
+from core.agent.providers.ollama_models import OllamaModelProfile
+
+AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 from core.agent.types import AgentMessage, ToolCall, ToolResult
 
 _SECURITY_BOUNDARY_DIRECTIVE = (
@@ -120,7 +123,7 @@ class GeminiProvider:
         self,
         messages: list[AgentMessage],
         tools: list[Any],
-        profile: GeminiModelProfile,
+        profile: AgentModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
         contents = _messages_to_contents(messages)
