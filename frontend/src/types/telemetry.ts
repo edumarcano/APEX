@@ -62,6 +62,16 @@ export type ProfileAvailabilityStatus =
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
+export interface LoadedOllamaModelStatus {
+  name: string
+  model: string
+  size_bytes: number | null
+  size_vram_bytes: number | null
+  processor: string | null
+  context: string | null
+  expires_at: string | null
+}
+
 export interface AgentProfileStatus {
   key: AssistantProfile
   display_name: string
@@ -70,6 +80,7 @@ export interface AgentProfileStatus {
   active: boolean
   reason: string | null
   idle_unload_remaining_seconds: number | null
+  loaded_model: LoadedOllamaModelStatus | null
 }
 
 export interface DigestPayload {

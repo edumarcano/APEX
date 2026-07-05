@@ -718,6 +718,31 @@ _PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
 }
 
 
+class LocalLoadedModelStatus(BaseModel):
+    name: str = Field(description="Loaded model tag reported by Ollama.")
+    model: str = Field(description="Canonical loaded model name reported by Ollama.")
+    size_bytes: int | None = Field(
+        default=None,
+        description="Total loaded model size in bytes, when reported by Ollama.",
+    )
+    size_vram_bytes: int | None = Field(
+        default=None,
+        description="Loaded model bytes resident in VRAM, when reported by Ollama.",
+    )
+    processor: str | None = Field(
+        default=None,
+        description="Processor/offload split reported by Ollama.",
+    )
+    context: str | None = Field(
+        default=None,
+        description="Runtime context length reported by Ollama.",
+    )
+    expires_at: str | None = Field(
+        default=None,
+        description="Ollama expiration timestamp for the loaded model.",
+    )
+
+
 class AgentProfileStatus(BaseModel):
     key: str = Field(description="Stable profile identifier used by the HUD.")
     display_name: str = Field(description="Human-readable profile label.")
@@ -737,6 +762,10 @@ class AgentProfileStatus(BaseModel):
     idle_unload_remaining_seconds: int | None = Field(
         default=None,
         description="Seconds until auto-unload when this profile is active.",
+    )
+    loaded_model: LocalLoadedModelStatus | None = Field(
+        default=None,
+        description="Runtime details reported by Ollama for the active loaded model.",
     )
 
 
@@ -1246,16 +1275,18 @@ def _resolve_cloud_profile_status() -> tuple[ProfileAvailabilityStatus, str | No
 
 def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
     """Build the full profile availability matrix for the HUD."""
-    active_model = get_active_loaded_model()
+    tracked_active_model = get_active_loaded_model()
     idle_remaining = get_idle_unload_remaining_seconds()
 
     ollama_reachable = False
     installed_tags: list[str] = []
+    loaded_models: list[dict[str, Any]] = []
     vitals: SystemVitals | None = None
     if OLLAMA_ENABLED:
         snapshot = get_status_snapshot()
         ollama_reachable = snapshot["reachable"]
         installed_tags = snapshot["installed_tags"]
+        loaded_models = snapshot["loaded_models"]
         vitals = snapshot["vitals"]
 
     cloud_status, cloud_reason = _resolve_cloud_profile_status()
@@ -1265,13 +1296,26 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
     for key in _AGENT_PROFILE_ORDER:
         if key in OLLAMA_MODEL_PROFILES:
             profile = OLLAMA_MODEL_PROFILES[key]
+            loaded_model = next(
+                (
+                    model
+                    for model in loaded_models
+                    if model["name"] == profile.api_model
+                    or model["model"] == profile.api_model
+                ),
+                None,
+            )
             status, reason = _resolve_local_profile_status(
                 profile,
                 ollama_reachable=ollama_reachable,
                 installed_tags=installed_tags,
                 vitals=vitals,
             )
-            is_active = active_model == profile.api_model
+            is_tracked_active = tracked_active_model == profile.api_model
+            is_active = (
+                loaded_model is not None
+                or is_tracked_active
+            )
             profiles.append(
                 AgentProfileStatus(
                     key=key,
@@ -1280,7 +1324,14 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     status=status,
                     active=is_active,
                     reason=reason,
-                    idle_unload_remaining_seconds=idle_remaining if is_active else None,
+                    idle_unload_remaining_seconds=(
+                        idle_remaining if is_tracked_active else None
+                    ),
+                    loaded_model=(
+                        LocalLoadedModelStatus(**loaded_model)
+                        if loaded_model is not None
+                        else None
+                    ),
                 )
             )
             continue
@@ -1513,7 +1564,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                     ),
                 )
 
-            if not switch_local_model(profile.api_model):
+            if not switch_local_model(profile):
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=(

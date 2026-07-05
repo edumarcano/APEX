@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { AgentProfileStatus, AssistantProfile, ProfileAvailabilityStatus } from '../types/telemetry'
+import type {
+  AgentProfileStatus,
+  AssistantProfile,
+  LoadedOllamaModelStatus,
+  ProfileAvailabilityStatus,
+} from '../types/telemetry'
 
 const API_BASE = 'http://127.0.0.1:8000'
 const AGENT_QUERY_ENDPOINT = `${API_BASE}/api/v1/agent/query`
@@ -101,6 +106,30 @@ function parseNullableFiniteNumber(value: unknown): number | null {
   return null
 }
 
+function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const name = record.name
+  const model = record.model
+
+  if (typeof name !== 'string' || typeof model !== 'string') {
+    return null
+  }
+
+  return {
+    name,
+    model,
+    size_bytes: parseNullableFiniteNumber(record.size_bytes),
+    size_vram_bytes: parseNullableFiniteNumber(record.size_vram_bytes),
+    processor: parseNullableString(record.processor),
+    context: parseNullableString(record.context),
+    expires_at: parseNullableString(record.expires_at),
+  }
+}
+
 function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   if (!value || typeof value !== 'object') {
     return null
@@ -133,6 +162,7 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     active: typeof record.active === 'boolean' ? record.active : false,
     reason: parseNullableString(record.reason),
     idle_unload_remaining_seconds: parseNullableFiniteNumber(record.idle_unload_remaining_seconds),
+    loaded_model: parseLoadedOllamaModelStatus(record.loaded_model),
   }
 }
 
