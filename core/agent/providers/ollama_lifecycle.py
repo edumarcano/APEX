@@ -164,8 +164,8 @@ def get_installed_ollama_tags() -> list[str]:
 
 def _post_unload_request(model_name: str) -> bool:
     """Send keep_alive=0 to Ollama without mutating local tracker state."""
-    url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
-    payload = {"model": model_name, "keep_alive": 0, "stream": False}
+    url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
+    payload = {"model": model_name, "messages": [], "keep_alive": 0}
 
     try:
         response = requests.post(url, json=payload, timeout=5.0)
@@ -318,12 +318,11 @@ def switch_local_model(target_model_name: str) -> bool:
                 return False
             _active_loaded_model = None
 
-        url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+        url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
         payload = {
             "model": target_model_name,
-            "prompt": "",
+            "messages": [],
             "keep_alive": "5m",
-            "stream": False,
         }
 
         try:

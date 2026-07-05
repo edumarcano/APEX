@@ -245,14 +245,25 @@ class OllamaProvider:
                 0, {"role": "system", "content": system_instruction}
             )
 
+        options: dict[str, Any] = {
+            "temperature": profile.default_temperature,
+        }
+
+        if isinstance(profile, OllamaModelProfile):
+            resolved_num_predict = (
+                profile.tool_select_max_tokens
+                if tools
+                else profile.final_answer_max_tokens
+            )
+            options["num_predict"] = resolved_num_predict
+            options["num_thread"] = profile.num_thread
+            options["num_ctx"] = profile.context_window
+
         payload: dict[str, Any] = {
             "model": profile.api_model,
             "messages": ollama_messages,
             "stream": False,
-            "options": {
-                "temperature": profile.default_temperature,
-                "num_predict": profile.max_output_tokens,
-            },
+            "options": options,
             "keep_alive": "5m",
         }
 
@@ -303,6 +314,49 @@ class OllamaProvider:
             raise RuntimeError(
                 f"Ollama returned non-JSON response (HTTP {response.status_code})."
             ) from exc
+
+        load_duration_ns = data.get("load_duration")
+        prompt_eval_duration_ns = data.get("prompt_eval_duration")
+        eval_count = data.get("eval_count")
+        eval_duration_ns = data.get("eval_duration")
+
+        if any(
+            v is not None
+            for v in (
+                data.get("total_duration"),
+                load_duration_ns,
+                data.get("prompt_eval_count"),
+                prompt_eval_duration_ns,
+                eval_count,
+                eval_duration_ns,
+            )
+        ):
+            load_s = (
+                load_duration_ns / 1e9
+                if isinstance(load_duration_ns, (int, float))
+                else 0.0
+            )
+            prompt_eval_s = (
+                prompt_eval_duration_ns / 1e9
+                if isinstance(prompt_eval_duration_ns, (int, float))
+                else 0.0
+            )
+            token_count = eval_count if isinstance(eval_count, int) else 0
+            tps = 0.0
+            if (
+                isinstance(eval_duration_ns, (int, float))
+                and eval_duration_ns > 0
+                and isinstance(eval_count, int)
+            ):
+                tps = (eval_count / eval_duration_ns) * 1e9
+            _LOGGER.info(
+                "[AGENT][OLLAMA] Telemetry: load=%.3fs, prompt_eval=%.3fs, "
+                "generation=%d tokens at %.2f t/s",
+                load_s,
+                prompt_eval_s,
+                token_count,
+                tps,
+            )
 
         message = data.get("message")
         if not isinstance(message, dict):
