@@ -4,6 +4,7 @@ import traceback
 from typing import Any, Callable, Dict, Protocol, get_type_hints, runtime_checkable
 
 from core.agent.providers.gemini_models import GeminiModelProfile
+from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.tools import AGENT_TOOLS_REGISTRY
 from core.agent.types import (
     AgentMessage,
@@ -11,6 +12,8 @@ from core.agent.types import (
     AgentQueryResponse,
     ToolResult,
 )
+
+AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
@@ -21,7 +24,7 @@ class AgentProvider(Protocol):
         self,
         messages: list[AgentMessage],
         tools: list[Any],
-        profile: GeminiModelProfile,
+        profile: AgentModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
         ...
@@ -83,7 +86,7 @@ def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
 def run_agent_loop(
     request: AgentQueryRequest,
     provider: AgentProvider,
-    profile: GeminiModelProfile,
+    profile: AgentModelProfile,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
 ) -> AgentQueryResponse:

@@ -17,6 +17,9 @@ __all__ = [
     "AGENT_MAX_TOOL_CALLS",
     "AGENT_MAX_TURNS",
     "AGENT_SYSTEM_PROMPT",
+    "DEFAULT_AGENT_SYSTEM_PROMPT",
+    "DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT",
+    "LOCAL_AGENT_SYSTEM_PROMPT",
     "ASK_APEX_ENABLED",
     "CONFIG_PATH",
     "DEFAULT_CLOUD_PROFILE",
@@ -195,9 +198,15 @@ _DEFAULT_SYSTEM_PROMPT: Final[str] = (
     "You are a helpful system assistant. Summarize the following data into a clean, "
     "concise audio briefing under 75 words. Do not use emojis or markdown."
 )
-_DEFAULT_AGENT_SYSTEM_PROMPT: Final[str] = (
-    "You are a helpful cloud agent assistant. Use available tools when live data "
-    "is required."
+DEFAULT_AGENT_SYSTEM_PROMPT: Final[str] = (
+    "You are a helpful cloud operations assistant. Answer direct questions "
+    "using available tools when live data is required. Be concise, "
+    "authoritative, and operational."
+)
+DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT: Final[str] = (
+    "You are a helpful local operations assistant. Answer direct questions "
+    "using available tools when live data is required. Be concise, "
+    "authoritative, and operational."
 )
 _configured_prompt = _CONFIG_DATA.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
 if isinstance(_configured_prompt, str):
@@ -206,12 +215,25 @@ else:
     _LOGGER.warning("Config key 'system_prompt' must be a string; using default.")
     SYSTEM_PROMPT = _DEFAULT_SYSTEM_PROMPT
 
-_configured_agent_prompt = _CONFIG_DATA.get("agent_system_prompt", _DEFAULT_AGENT_SYSTEM_PROMPT)
+_configured_agent_prompt = _CONFIG_DATA.get(
+    "agent_system_prompt", DEFAULT_AGENT_SYSTEM_PROMPT
+)
 if isinstance(_configured_agent_prompt, str):
     AGENT_SYSTEM_PROMPT: Final[str] = _configured_agent_prompt
 else:
     _LOGGER.warning("Config key 'agent_system_prompt' must be a string; using default.")
-    AGENT_SYSTEM_PROMPT = _DEFAULT_AGENT_SYSTEM_PROMPT
+    AGENT_SYSTEM_PROMPT = DEFAULT_AGENT_SYSTEM_PROMPT
+
+_configured_local_agent_prompt = _CONFIG_DATA.get(
+    "local_agent_system_prompt", DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
+)
+if isinstance(_configured_local_agent_prompt, str):
+    LOCAL_AGENT_SYSTEM_PROMPT: Final[str] = _configured_local_agent_prompt
+else:
+    _LOGGER.warning(
+        "Config key 'local_agent_system_prompt' must be a string; using default."
+    )
+    LOCAL_AGENT_SYSTEM_PROMPT = DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
 
 tts_settings = _CONFIG_DATA.get("tts_settings", {})
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")

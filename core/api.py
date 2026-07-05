@@ -36,6 +36,7 @@ from core import brain, database, scanner, speaker, config
 from core.agent.loop import default_tools_dispatcher, run_agent_loop
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
+from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     check_idle_models_loop,
     check_resource_gate,
@@ -43,12 +44,13 @@ from core.agent.providers.ollama_lifecycle import (
     get_idle_unload_remaining_seconds,
     get_installed_ollama_tags,
     is_ollama_reachable,
+    register_activity,
+    switch_local_model,
     unload_active_local_model,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.config import (
-    AGENT_SYSTEM_PROMPT,
     DEMO_MODE,
     DEMO_TTS,
     DEV_AI_SYNTHESIS,
@@ -1330,25 +1332,42 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     if DEMO_MODE:
         return _run_demo_agent_query(payload)
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return AgentQueryResponse(
-            answer=(
-                "APEX is currently unavailable because the Gemini "
-                "API key is not configured. Please set GEMINI_API_KEY in your "
-                "environment and restart the API server."
-            ),
-            profile_used={},
-            session_id=payload.session_id,
-            error="GEMINI_API_KEY is missing from environment variables.",
-        )
-
-    profile: GeminiModelProfile | None = GEMINI_MODEL_PROFILES.get(payload.profile)
-    if profile is None:
+    profile: GeminiModelProfile | OllamaModelProfile | None = None
+    if payload.profile in OLLAMA_MODEL_PROFILES:
+        profile = OLLAMA_MODEL_PROFILES[payload.profile]
+    elif payload.profile in GEMINI_MODEL_PROFILES:
+        profile = GEMINI_MODEL_PROFILES[payload.profile]
+    else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown agent profile: {payload.profile!r}",
         )
+
+    api_key: str | None = None
+    if payload.profile in GEMINI_MODEL_PROFILES:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return AgentQueryResponse(
+                answer=(
+                    "APEX is currently unavailable because the Gemini "
+                    "API key is not configured. Please set GEMINI_API_KEY in your "
+                    "environment and restart the API server."
+                ),
+                profile_used={},
+                session_id=payload.session_id,
+                error="GEMINI_API_KEY is missing from environment variables.",
+            )
+
+    if isinstance(profile, OllamaModelProfile):
+        if not switch_local_model(profile.api_model):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"Local model {profile.api_model} failed to load. "
+                    "Ensure Ollama is reachable and configured."
+                ),
+            )
+        register_activity(profile.api_model)
 
     try:
         latest_runs = database.fetch_briefing_history(limit=1)
@@ -1367,9 +1386,15 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 "or 'summarize this')."
             )
 
-        local_system_instruction = config.AGENT_SYSTEM_PROMPT + hud_context
+        if isinstance(profile, OllamaModelProfile):
+            provider: GeminiProvider | OllamaProvider = OllamaProvider()
+            base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
+        else:
+            provider = GeminiProvider(api_key=api_key)
+            base_prompt = config.AGENT_SYSTEM_PROMPT
 
-        provider = GeminiProvider(api_key=os.getenv("GEMINI_API_KEY"))
+        local_system_instruction = base_prompt + hud_context
+
         response = run_agent_loop(
             payload,
             provider,

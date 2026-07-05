@@ -2,15 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS
-
-_APEX_AGENT_SYSTEM_INSTRUCTION = (
-    "You are APEX (Automated Personal Environment Xylem), Chief's interactive "
-    "cloud operations assistant. Answer direct questions using available tools "
-    "when live data is required. Be concise, authoritative, and operational. "
-    "Address the user as Chief when natural. Do not fabricate telemetry—use "
-    "tools to retrieve current workspace, weather, sports, news, and briefing data."
-)
+from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS, DEFAULT_AGENT_SYSTEM_PROMPT
 
 
 class GeminiModelProfile(BaseModel):
@@ -38,7 +30,7 @@ class GeminiModelProfile(BaseModel):
         description="Contextual helper text describing the model tier's operational role."
     )
     system_instruction: str = Field(
-        default=_APEX_AGENT_SYSTEM_INSTRUCTION,
+        default=DEFAULT_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the cloud agent.",
     )
 
