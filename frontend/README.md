@@ -53,8 +53,8 @@ frontend/
 │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
-│   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, follow-up input
-│   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown
+│   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, active local model panel with manual unload
+│   │   └── CloudProfileSelector.tsx # Cloud/local assistant profile dropdown with live availability gating and stability badges
 │   ├── App.tsx      # Root layout: three-column bento grid, nebula glow, demo badge
 │   └── main.tsx     # Vite entry point
 ├── index.html
@@ -84,11 +84,15 @@ Polls `GET /api/v1/diagnostics` every 1,000 ms. Returns `{ diagnostics, status }
 
 ### `useApexAssistant`
 
-State for the assistant bar and assistant drawer. `queryAssistant(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `assistantHistory` array, then appends the resulting user/model message pair to local state on success. There is no server-side session — this hook is the sole owner of conversation history for the tab's lifetime. Exposes `assistantHistory`, `isAssistantQuerying`, `isAssistantOpen`, `assistantLatestTrace` (the most recent turn's tool executions), `assistantError`, `queryAssistant`, `resetAssistantSession` (clears history and closes the drawer), and `setAssistantOpen`.
+State for the assistant bar and assistant drawer. `queryAssistant(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `assistantHistory` array, then appends the resulting user/model message pair to local state on success. There is no server-side session — this hook is the sole owner of conversation history for the tab's lifetime.
+
+The hook also self-schedules a poll of `GET /api/v1/agent/profiles` every 4 seconds (only while the drawer is open or profile polling is otherwise enabled, and skipped while a query is in flight or the tab is hidden) to keep cloud/local profile availability, active-model, and idle-unload-countdown state current. `unloadLocalModel()` posts to `POST /api/v1/agent/local/unload` and re-syncs profile status afterward.
+
+Exposes `assistantHistory`, `isAssistantQuerying`, `isAssistantOpen`, `assistantLatestTrace` (the most recent turn's tool executions), `assistantError`, `profilesStatus` / `profilesStatusHydrated` (the polled profile availability matrix), `queryAssistant`, `unloadLocalModel`, `resetAssistantSession` (clears history and closes the drawer), and `setAssistantOpen`.
 
 ---
 
 ## Environment Notes
 
-- The HUD does not read `.env` directly. All configuration reaches the frontend through the API response (`metadata`, `digest` fields), a dedicated `GET /api/v1/config` fetch made once on boot (populates `askApexEnabled` and `defaultProfile`), or through the CORS policy set on the backend.
-- `DEMO_MODE=true` on the backend causes the trigger response to include `metadata.demo_mode_active: true`, which `App.tsx` uses to render the amber "DEMO MODE ACTIVE" header badge. The same flag also switches `POST /api/v1/agent/query` to a deterministic keyword-matched response with no live Gemini call.
+- The HUD does not read `.env` or `config.json` directly. All configuration reaches the frontend through the API response (`metadata`, `digest` fields), a dedicated `GET /api/v1/config` fetch made once on boot (populates `askApexEnabled` and `defaultProfile`), the polled `GET /api/v1/agent/profiles` response (cloud/local profile availability, active local model, idle-unload countdown), or through the CORS policy set on the backend.
+- `DEMO_MODE=true` on the backend causes the trigger response to include `metadata.demo_mode_active: true`, which `App.tsx` uses to render the amber "DEMO MODE ACTIVE" header badge. The same flag also switches `POST /api/v1/agent/query` to a deterministic keyword-matched response with no live Gemini or Ollama call.

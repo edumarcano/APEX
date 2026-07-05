@@ -38,9 +38,11 @@ The active engine is controlled by `primary_tts` in `config.json`. Regardless of
 
 ## Why `DEV_AI_SYNTHESIS=slm` is a placeholder
 
-`DEV_AI_SYNTHESIS=slm` is registered as a valid value and appears in `.env.example` and README documentation. When selected, `brain.py` returns a placeholder string and logs a notice. Local SLM routing via Ollama (planned model: `llama3.2:3b`) has not been implemented.
+`DEV_AI_SYNTHESIS=slm` is registered as a valid value and appears in `.env.example` and README documentation. When selected, `brain.py` returns a placeholder string and logs a notice. This placeholder is scoped specifically to briefing synthesis (`brain.py`); it does not describe the state of Ollama integration in APEX as a whole.
 
-The value exists in the config surface now so that the routing contract is established and the `metadata.synthesis_strategy` field in API responses accurately reflects the intended enum (`raw | slm | llm`) without requiring a contract change later.
+Ollama is fully integrated and in production use for the APEX assistant (Cortex agent) via the local Lynx, Acinonyx, and Neofelis profiles — see `core/agent/providers/ollama.py`, `ollama_lifecycle.py`, and `ollama_models.py`. Using a local model to synthesize the periodic briefing itself (the `brain.py` code path controlled by `DEV_AI_SYNTHESIS=slm`) is a separate, still-unimplemented piece of work. Despite Ollama already being integrated for the assistant, routing briefing synthesis through a local model remains planned for a future release.
+
+The `slm` value exists in the config surface now so that the routing contract is established and the `metadata.synthesis_strategy` field in API responses accurately reflects the intended enum (`raw | slm | llm`) without requiring a contract change later.
 
 ---
 
@@ -54,13 +56,13 @@ The reminder feature needs read/write with persistent state (marking items as re
 
 APEX is designed around progressive degradation rather than dependence on a single synthesis path. The primary briefing pipeline uses Gemini for synthesis. A single Gemini API key is sufficient to call multiple Gemini models; model-tier failover is a direction for a future release, not a current implementation.
 
-If the Gemini call fails, APEX falls back to reading raw connector data directly, ensuring a briefing is always delivered. A code placeholder for Ollama-hosted local synthesis exists (`DEV_AI_SYNTHESIS=slm`), but local SLM integration has not been implemented.
+If the Gemini call fails, APEX falls back to reading raw connector data directly, ensuring a briefing is always delivered. A code placeholder for Ollama-hosted local briefing synthesis exists (`DEV_AI_SYNTHESIS=slm`), but that specific integration has not been implemented. This is distinct from the APEX assistant, where Ollama is already fully integrated (see the local agent profiles in [docs/architecture.md](architecture.md#core-agent--cortex-reasoning-engine-for-the-apex-assistant)). Despite Ollama already being integrated for the assistant, using a local model for briefing synthesis remains planned for the future.
 
 This layered approach prioritizes reliability, offline capability, and graceful degradation.
 
 **Implemented:** Gemini synthesis (Gemini 3.1 Flash Lite), offline raw-data fallback.
 
-**Planned:** Model-tier failover within Gemini, local SLM synthesis via Ollama, improved degradation behavior.
+**Planned:** Model-tier failover within Gemini, local model synthesis for briefings via Ollama, improved degradation behavior.
 
 ---
 
@@ -101,6 +103,24 @@ The long-term intention is a physical button that cold-starts the full system wi
 The APEX assistant (`POST /api/v1/agent/query`) does not persist conversation history server-side. The client sends the full message history with every request, and the server appends the new turn and returns the updated response without writing anything to a session store.
 
 This mirrors the project's existing preference for the client owning UI-facing state (see the trigger/polling design) and avoids adding session lifecycle management, expiry, cleanup, multi-tab conflicts, to a single-user local tool where the browser tab already holds the canonical conversation. The trade-off is that history is lost on page reload and is bounded by `config.json` `ask_apex.max_session_messages` purely as a client-side truncation concern, not a server-enforced limit.
+
+---
+
+## Local Ollama provider: single loaded model, non-blocking admission, and resource gates
+
+The local agent profiles (Lynx, Acinonyx, Neofelis) share one constraint the cloud profiles do not: they compete directly with the host machine's own CPU and RAM. The design choices in `core/agent/providers/ollama_lifecycle.py` follow from that constraint.
+
+**Single loaded model.** Only one local model is kept resident in Ollama memory at a time. `switch_local_model()` unloads the previous model before loading the next. Running multiple local models concurrently on consumer hardware risks starving the API server and the OS itself; a single-user local tool has no need for concurrent local models, so this restriction costs nothing in practice.
+
+**Non-blocking admission instead of a queue.** `try_begin_local_execution()` claims a single execution slot without blocking; a second concurrent request is rejected with `429` rather than parked in a queue. A queue would let requests silently pile up behind a slow generation with no feedback to the user. An immediate rejection is simpler to reason about and lets the frontend prompt the user to retry.
+
+**Resource gates as RAM/CPU percentage thresholds.** Each local profile defines its own `ram_limit`/`cpu_limit` in `config.json` (heavier models get stricter limits). This is a coarse but dependency-free way to avoid loading a model the host cannot comfortably run, without needing per-model memory-footprint calibration.
+
+**Already-loaded models bypass the resource gate.** If a profile's model is already resident in Ollama, switching to it does not re-check the resource gate, even if host utilization has since risen. The gate exists to prevent a *new* cold load from pushing the system over the edge; a model already occupying memory doesn't consume any additional headroom by being reselected.
+
+**Idle auto-unload, not manual-only cleanup.** `check_idle_models_loop()` runs as an API lifespan background task and unloads a local model after a configurable idle window (`ollama.idle_unload_timeout_minutes`), independent of Ollama's own `keep_alive` eviction. This keeps the resource footprint bounded during long standby periods without requiring the user to remember to unload a model manually. Manual unload remains available for cases where the user wants memory back immediately.
+
+**Thinking output stripped, not surfaced.** `_strip_thinking_tags()` removes `<think>...</think>` blocks from Qwen model output before it reaches the assistant response. Reasoning traces are useful for debugging but are not intended as user-facing conversational text; `think` defaults to `False` in every local profile for the same reason — it costs generation time without a corresponding benefit in the current UI.
 
 ---
 
