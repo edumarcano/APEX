@@ -18,15 +18,17 @@ import {
 } from 'react'
 
 import type { AgentMessage, ToolTraceItem } from '../hooks/useApexAssistant'
+import type { AgentProfileStatus, AssistantProfile } from '../types/telemetry'
 
 import { OPERATION_PROMPT_CHIPS } from './AskApexBar'
 
-type ActiveProfile = 'comet' | 'nova' | 'pulsar'
-
-const PROFILE_LABELS: Record<ActiveProfile, string> = {
+const PROFILE_LABELS: Record<AssistantProfile, string> = {
   comet: 'Comet',
   nova: 'Nova',
   pulsar: 'Pulsar',
+  lynx: 'Lynx',
+  acinonyx: 'Acinonyx',
+  neofelis: 'Neofelis',
 }
 
 interface AssistantDrawerProps {
@@ -36,9 +38,83 @@ interface AssistantDrawerProps {
   history: AgentMessage[]
   isQuerying: boolean
   latestTrace: ToolTraceItem[]
-  activeProfile: ActiveProfile
+  activeProfile: AssistantProfile
+  profilesStatus: AgentProfileStatus[]
+  onUnloadModel: () => Promise<void>
   onSubmitFollowUp: (prompt: string) => void
   error: string | null
+}
+
+function formatCountdown(seconds: number | null): string {
+  if (seconds === null || seconds < 0) {
+    return '--:--'
+  }
+
+  const total = Math.floor(seconds)
+  const minutes = Math.floor(total / 60)
+  const remainingSeconds = total % 60
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+function ActiveLocalModelPanel({
+  activeLocalModel,
+  isQuerying,
+  onUnloadModel,
+}: {
+  activeLocalModel: AgentProfileStatus
+  isQuerying: boolean
+  onUnloadModel: () => Promise<void>
+}): ReactElement {
+  const idleSeconds = activeLocalModel.idle_unload_remaining_seconds
+  const countdownText =
+    idleSeconds === null ? 'Loading...' : formatCountdown(idleSeconds)
+
+  const handleUnload = useCallback((): void => {
+    void onUnloadModel()
+  }, [onUnloadModel])
+
+  return (
+    <div
+      className={[
+        'mb-3 flex items-center justify-between rounded-lg border border-amber-500/20',
+        'bg-amber-950/10 p-3 text-xs transition-opacity duration-300',
+      ].join(' ')}
+      data-slot="active-local-model"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center">
+          <span
+            className="relative mr-2 inline-flex h-2 w-2 shrink-0"
+            aria-hidden
+          >
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FBBF24]/60 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FBBF24]" />
+          </span>
+          <span className="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-amber-200">
+            {activeLocalModel.display_name} [LOADED]
+          </span>
+        </div>
+        <span className="mt-1 block font-mono text-[10px] text-zinc-500">
+          Auto-unload in {countdownText}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleUnload}
+        disabled={isQuerying}
+        className={[
+          'ml-3 shrink-0 rounded border border-white/10 px-2 py-1',
+          'font-mono text-[10px] uppercase transition-colors',
+          'hover:bg-red-950/20 hover:text-red-400',
+          isQuerying ? 'cursor-not-allowed opacity-40' : 'text-zinc-300',
+        ].join(' ')}
+        aria-label={`Unload ${activeLocalModel.display_name}`}
+      >
+        Unload
+      </button>
+    </div>
+  )
 }
 
 function escapeHtml(text: string): string {
@@ -143,12 +219,18 @@ export function AssistantDrawer({
   isQuerying,
   latestTrace,
   activeProfile,
+  profilesStatus,
+  onUnloadModel,
   onSubmitFollowUp,
   error,
 }: AssistantDrawerProps): ReactElement {
   const [followUp, setFollowUp] = useState('')
   const chatEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const activeLocalModel = profilesStatus.find(
+    (profile) => profile.provider === 'ollama' && profile.active,
+  )
 
   const lastModelIndex = (() => {
     for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -330,6 +412,14 @@ export function AssistantDrawer({
         </div>
 
         <footer className="border-t border-white/10 p-4">
+          {activeLocalModel ? (
+            <ActiveLocalModelPanel
+              activeLocalModel={activeLocalModel}
+              isQuerying={isQuerying}
+              onUnloadModel={onUnloadModel}
+            />
+          ) : null}
+
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
             <input
               ref={inputRef}

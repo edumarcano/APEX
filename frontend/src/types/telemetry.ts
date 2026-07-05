@@ -45,6 +45,33 @@ export type WeatherConditionArchetype =
 
 export type AgentCloudProfile = 'comet' | 'nova' | 'pulsar'
 
+export type AssistantProfile =
+  | 'comet'
+  | 'nova'
+  | 'pulsar'
+  | 'lynx'
+  | 'acinonyx'
+  | 'neofelis'
+
+export type ProfileAvailabilityStatus =
+  | 'available'
+  | 'unknown'
+  | 'disabled'
+  | 'ollama_unreachable'
+  | 'model_not_installed'
+  | 'insufficient_ram'
+  | 'cpu_overloaded'
+
+export interface AgentProfileStatus {
+  key: AssistantProfile
+  display_name: string
+  provider: 'ollama' | 'gemini'
+  status: ProfileAvailabilityStatus
+  active: boolean
+  reason: string | null
+  idle_unload_remaining_seconds: number | null
+}
+
 export interface DigestPayload {
   insights: string[]
 }
@@ -68,7 +95,7 @@ export interface TelemetryPayload {
   confidenceScore: number
   failedConnectors: string[]
   digest?: DigestPayload
-  defaultProfile?: AgentCloudProfile
+  defaultProfile?: AssistantProfile
   askApexEnabled?: boolean
 }
 
@@ -87,6 +114,6 @@ export interface ApexDataState {
   failedConnectors: string[]
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
-  defaultProfile?: AgentCloudProfile
+  defaultProfile?: AssistantProfile
   askApexEnabled?: boolean
 }

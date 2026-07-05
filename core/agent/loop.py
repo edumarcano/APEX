@@ -1,6 +1,6 @@
 import inspect
+import logging
 import time
-import traceback
 from typing import Any, Callable, Dict, Protocol, get_type_hints, runtime_checkable
 
 from core.agent.providers.gemini_models import GeminiModelProfile
@@ -16,6 +16,8 @@ from core.agent.types import (
 AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -99,9 +101,20 @@ def run_agent_loop(
 
     try:
         for _turn in range(profile.max_tool_turns):
+            turn_tools: list[Any] = list(AGENT_TOOLS_REGISTRY.values())
+
+            # On the last permitted local turn, withhold tools so the model is
+            # forced into a text answer under the final-answer token budget
+            # instead of burning the turn on a tool call that can never run.
+            if (
+                isinstance(profile, OllamaModelProfile)
+                and _turn == profile.max_tool_turns - 1
+            ):
+                turn_tools = []
+
             model_message = provider.generate_turn(
                 history,
-                list(AGENT_TOOLS_REGISTRY.values()),
+                turn_tools,
                 profile,
                 system_instruction_override=system_instruction_override,
             )
@@ -171,16 +184,30 @@ def run_agent_loop(
             ),
         )
     except Exception as exc:
-        print(f"[AGENT][LOOP] Bounded loop execution crashed: {exc}")
+        _LOGGER.exception(
+            "Bounded agent loop failed for profile %s",
+            profile.api_model,
+        )
+        if isinstance(profile, OllamaModelProfile):
+            answer = (
+                "The APEX assistant encountered an issue reaching the local Ollama "
+                "provider or running the requested operations. Please verify that "
+                "Ollama is running, the model is installed, and system resources "
+                "are sufficient, then try again."
+            )
+            error_detail = f"Local provider error ({type(exc).__name__}): {exc}"
+        else:
+            answer = (
+                "The APEX assistant encountered an issue reaching the cloud provider "
+                "or running the requested operations. Please check your "
+                "credentials, network status, or quota allocations, and try again."
+            )
+            error_detail = f"Cloud provider error ({type(exc).__name__}): {exc}"
+
         return AgentQueryResponse(
-            answer=(
-                "The APEX assistant encountered an issue reaching the cloud "
-                "provider or running the requested operations. Please check "
-                "your credentials, network status, or quota allocations, "
-                "and try again."
-            ),
+            answer=answer,
             profile_used=profile.model_dump(),
             tool_trace=tool_trace,
             session_id=request.session_id,
-            error=traceback.format_exc(),
+            error=error_detail,
         )

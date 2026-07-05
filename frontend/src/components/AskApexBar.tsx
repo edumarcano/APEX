@@ -6,10 +6,9 @@ import {
   type ReactElement,
 } from 'react'
 
-import {
-  CloudProfileSelector,
-  type CloudProfile,
-} from './CloudProfileSelector'
+import type { AgentProfileStatus, AssistantProfile } from '../types/telemetry'
+
+import { CloudProfileSelector } from './CloudProfileSelector'
 
 export interface OperationPromptChip {
   label: string
@@ -44,9 +43,11 @@ export const OPERATION_PROMPT_CHIPS: ReadonlyArray<OperationPromptChip> = [
 ]
 
 interface AskApexBarProps {
-  activeProfile: CloudProfile
-  onProfileChange: (profile: CloudProfile) => void
-  onSubmit: (query: string, profile: CloudProfile) => void
+  activeProfile: AssistantProfile
+  onProfileChange: (profile: AssistantProfile) => void
+  onSubmit: (query: string, profile: AssistantProfile) => void
+  profilesStatus: AgentProfileStatus[]
+  profilesStatusHydrated: boolean
   onSelectChip?: (query: string) => void
   isSubmitting: boolean
   disabled?: boolean
@@ -56,6 +57,8 @@ export function AskApexBar({
   activeProfile,
   onProfileChange,
   onSubmit,
+  profilesStatus,
+  profilesStatusHydrated,
   onSelectChip,
   isSubmitting,
   disabled = false,
@@ -154,6 +157,8 @@ export function AskApexBar({
           <CloudProfileSelector
             activeProfile={activeProfile}
             onChange={onProfileChange}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
             disabled={isInputDisabled}
           />
         </div>

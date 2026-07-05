@@ -4,6 +4,7 @@ import type {
   ActiveReminder,
   AgentCloudProfile,
   ApexDataState,
+  AssistantProfile,
   PipelineState,
   SystemState,
   TelemetryPayload,
@@ -57,7 +58,7 @@ function assembleRemindersTelemetry(records: ReminderRecord[]): string {
 function createStandbyTelemetryPayload(
   activeReminders: ActiveReminder[],
   reminders: string,
-  defaultProfile?: AgentCloudProfile,
+  defaultProfile?: AssistantProfile,
 ): TelemetryPayload {
   return {
     briefing: '',

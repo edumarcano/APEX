@@ -39,11 +39,21 @@ class OllamaModelProfile(BaseModel):
     context_window: int = Field(
         description="Maximum input token context window for the local model."
     )
-    max_output_tokens: int = Field(
-        description="Maximum generation tokens per response."
+    tool_select_max_tokens: int = Field(
+        description="Token ceiling when the model is selecting a tool."
+    )
+    final_answer_max_tokens: int = Field(
+        description="Token ceiling for the final text response."
+    )
+    num_thread: int = Field(
+        description="Maximum CPU threads allocated to local inference."
     )
     generation_timeout: int = Field(
         description="Hard timeout in seconds for a single model generation call."
+    )
+    think: bool = Field(
+        default=False,
+        description="Whether to enable Ollama's local reasoning and chain-of-thought phase.",
     )
     ram_limit: float = Field(
         description="Maximum host RAM utilization percentage before load is gated."
@@ -71,8 +81,11 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
         context_window=4096,
-        max_output_tokens=512,
-        generation_timeout=60,
+        tool_select_max_tokens=128,
+        final_answer_max_tokens=512,
+        num_thread=4,
+        generation_timeout=120,
+        think=False,
         ram_limit=LYNX_RAM_LIMIT,
         cpu_limit=LYNX_CPU_LIMIT,
         description="Lightweight local mode for quick lookups and minimal resource usage.",
@@ -80,15 +93,18 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
     "acinonyx": OllamaModelProfile(
         display_name="Apex Acinonyx",
         profile_version="1.0",
-        api_model="qwen3:4b",
+        api_model="qwen3:4b-instruct",
         tier="fast",
         stability="stable",
         default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
         context_window=8192,
-        max_output_tokens=768,
-        generation_timeout=90,
+        tool_select_max_tokens=128,
+        final_answer_max_tokens=768,
+        num_thread=6,
+        generation_timeout=150,
+        think=False,
         ram_limit=ACINONYX_RAM_LIMIT,
         cpu_limit=ACINONYX_CPU_LIMIT,
         description="Fast local agent for normal APEX usage with balanced resource cost.",
@@ -103,8 +119,11 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
         context_window=8192,
-        max_output_tokens=1024,
-        generation_timeout=150,
+        tool_select_max_tokens=128,
+        final_answer_max_tokens=1024,
+        num_thread=4,
+        generation_timeout=180,
+        think=False,
         ram_limit=NEOFELIS_RAM_LIMIT,
         cpu_limit=NEOFELIS_CPU_LIMIT,
         description="Capable local reasoning for complex multi-source questions inside APEX.",

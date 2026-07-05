@@ -530,6 +530,8 @@ try:
         min_value=1,
         max_value=60,
     )
+    # Parsed for forward compatibility; ollama_lifecycle always enforces a
+    # single loaded model regardless of this flag today.
     OLLAMA_SINGLE_LOADED_MODEL: Final[bool] = _parse_config_bool(
         _ollama_cfg.get("single_loaded_model"),
         key="ollama.single_loaded_model",

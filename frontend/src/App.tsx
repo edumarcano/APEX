@@ -31,7 +31,7 @@ import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
-import type { WeatherConditionArchetype } from './types/telemetry'
+import type { AssistantProfile, WeatherConditionArchetype } from './types/telemetry'
 
 interface ParsedEmail {
   subject: string
@@ -79,7 +79,18 @@ function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
 
-type AssistantProfile = 'comet' | 'nova' | 'pulsar'
+const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
+  'comet',
+  'nova',
+  'pulsar',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+]
+
+function isAssistantProfile(value: string): value is AssistantProfile {
+  return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
+}
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
@@ -88,16 +99,6 @@ export default function App(): ReactElement {
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
-  const {
-    assistantHistory,
-    isAssistantQuerying,
-    isAssistantOpen,
-    assistantLatestTrace,
-    assistantError,
-    queryAssistant,
-    resetAssistantSession,
-    setAssistantOpen,
-  } = useApexAssistant()
   const apexData = useApexData()
   const {
     data,
@@ -118,10 +119,27 @@ export default function App(): ReactElement {
     triggerSynthesis,
   } = apexData
 
+  const showAskApexBar = status === 'success' && askApexEnabled
+
+  const {
+    assistantHistory,
+    isAssistantQuerying,
+    isAssistantOpen,
+    assistantLatestTrace,
+    assistantError,
+    profilesStatus,
+    profilesStatusHydrated,
+    queryAssistant,
+    unloadLocalModel,
+    resetAssistantSession,
+    setAssistantOpen,
+  } = useApexAssistant(showAskApexBar)
+
   // Synchronize the active profile state with the backend's configured defaults on boot
   useEffect(() => {
-    if (data?.defaultProfile) {
-      setAgentProfile(data.defaultProfile)
+    const profile = data?.defaultProfile
+    if (profile && isAssistantProfile(profile)) {
+      setAgentProfile(profile)
     }
   }, [data?.defaultProfile])
 
@@ -171,7 +189,6 @@ export default function App(): ReactElement {
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
   const showCommandTrigger = status === 'idle' || status === 'loading'
-  const showAskApexBar = status === 'success' && askApexEnabled
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
@@ -329,16 +346,14 @@ export default function App(): ReactElement {
 
   const handleAgentQuery = useCallback(
     (query: string, profile: AssistantProfile): void => {
-      const assistantProfile = profile === 'pulsar' ? 'pulsar' : profile
-      void queryAssistant(query, assistantProfile)
+      void queryAssistant(query, profile)
     },
     [queryAssistant],
   )
 
   const handleAssistantFollowUp = useCallback(
     (query: string): void => {
-      const assistantProfile = agentProfile === 'pulsar' ? 'pulsar' : agentProfile
-      void queryAssistant(query, assistantProfile)
+      void queryAssistant(query, agentProfile)
     },
     [agentProfile, queryAssistant],
   )
@@ -534,6 +549,8 @@ export default function App(): ReactElement {
                         activeProfile={agentProfile}
                         onProfileChange={setAgentProfile}
                         onSubmit={handleAgentQuery}
+                        profilesStatus={profilesStatus}
+                        profilesStatusHydrated={profilesStatusHydrated}
                         onSelectChip={handleAssistantChipSelect}
                         isSubmitting={isAssistantQuerying}
                         disabled={isSpeaking}
@@ -683,6 +700,8 @@ export default function App(): ReactElement {
         isQuerying={isAssistantQuerying}
         latestTrace={assistantLatestTrace}
         activeProfile={agentProfile}
+        profilesStatus={profilesStatus}
+        onUnloadModel={unloadLocalModel}
         onSubmitFollowUp={handleAssistantFollowUp}
         error={assistantError}
       />
