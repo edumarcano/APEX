@@ -27,8 +27,8 @@ const CLOUD_PROFILE_OPTIONS: readonly ProfileOption[] = [
 
 const LOCAL_PROFILE_OPTIONS: readonly ProfileOption[] = [
   { key: 'lynx', label: 'Apex Lynx', subtitle: 'Lightweight' },
-  { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Fast' },
-  { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Capable' },
+  { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Balanced' },
+  { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Heavy' },
 ]
 
 const PROFILE_LABELS: Record<AssistantProfile, string> = {
@@ -82,6 +82,13 @@ function resolveProfileAvailability(
     return { status: 'unknown', reason: 'Profile status unavailable' }
   }
   return { status: entry.status, reason: entry.reason }
+}
+
+function resolveProfileMetadata(
+  key: AssistantProfile,
+  profilesStatus: AgentProfileStatus[],
+): AgentProfileStatus | null {
+  return profilesStatus.find((profile) => profile.key === key) ?? null
 }
 
 function resolveTooltipText(
@@ -165,8 +172,11 @@ export function CloudProfileSelector({
   }, [closeDropdown, isOpen])
 
   const selectorDisabled = disabled || !profilesStatusHydrated
+  const activeProfileMetadata = resolveProfileMetadata(activeProfile, profilesStatus)
+  const isActiveProfilePreview = activeProfileMetadata?.stability === 'preview'
 
   const renderOption = (option: ProfileOption): ReactElement => {
+    const metadata = resolveProfileMetadata(option.key, profilesStatus)
     const { status, reason } = resolveProfileAvailability(
       option.key,
       profilesStatus,
@@ -213,8 +223,15 @@ export function CloudProfileSelector({
                 ].join(' '),
           ].join(' ')}
         >
-          <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-100">
-            {option.label}
+          <span className="flex w-full items-center justify-between gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-100">
+              {option.label}
+            </span>
+            {metadata?.stability === 'preview' ? (
+              <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-amber-300">
+                Preview
+              </span>
+            ) : null}
           </span>
           <span className="text-[10px] text-zinc-500">{option.subtitle}</span>
         </button>
@@ -259,6 +276,11 @@ export function CloudProfileSelector({
         ].join(' ')}
       >
         <span className="whitespace-nowrap">{PROFILE_LABELS[activeProfile]}</span>
+        {isActiveProfilePreview ? (
+          <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1 py-0.5 text-[8px] text-amber-300">
+            Preview
+          </span>
+        ) : null}
         <span className="text-[#0F4DB8]" aria-hidden>
           ▼
         </span>

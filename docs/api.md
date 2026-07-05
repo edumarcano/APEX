@@ -75,7 +75,9 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
     "dev_mode_active": false,
     "demo_mode_active": false,
     "synthesis_strategy": "llm",
-    "tts_strategy": "google"
+    "tts_strategy": "google",
+    "active_tts_engine": "google",
+    "system_load_throttled": false
   }
 }
 ```
@@ -125,7 +127,9 @@ Diagnostic snapshot of the active pipeline run. Readable only while a trigger is
   "step": 2,
   "label": "COLLECTION",
   "timestamp": "2026-06-06T12:34:56.789012+00:00",
-  "is_speaking": false
+  "is_speaking": false,
+  "active_tts_engine": "google",
+  "system_load_throttled": false
 }
 ```
 
@@ -281,6 +285,8 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `session_id` | string \| null | Optional client-generated grouping identifier; passed through unchanged. |
 | `history` | `AgentMessage[]` | Prior turns for this session, including `tool_calls`/`tool_results`. Empty on the first turn. |
 
+`profile` accepts three cloud values (`"comet"`, `"nova"`, `"pulsar"`, routed to Gemini) and three local values (`"lynx"`, `"acinonyx"`, `"neofelis"`, routed to Ollama). See [Local Agent Profiles](architecture.md#local-agent-profiles) for the local profile table.
+
 **Response `200`** — `AgentQueryResponse`
 ```json
 {
@@ -297,7 +303,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | Field | Type | Description |
 |---|---|---|
 | `answer` | string | Final synthesized text response. |
-| `profile_used` | object | Full `GeminiModelProfile` dump for the profile that served this request. |
+| `profile_used` | object | Full cloud or local model profile dump for the profile that served this request. |
 | `tool_trace` | object[] | One entry per tool executed this turn: `name`, `status` (`"ok"` or `"error"`), `duration_ms`. |
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
@@ -307,7 +313,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 { "detail": "APEX is currently disabled in system settings." }
 ```
 
-**Response `400`** — unknown `profile` value not present in `GEMINI_MODEL_PROFILES`.
+**Response `400`** — unknown `profile` value not present in the registered Gemini or Ollama profile maps.
 
 **Missing API key:** When `GEMINI_API_KEY` is not set, the endpoint returns `200` with a static unavailability message in `answer` and `error` set to `"GEMINI_API_KEY is missing from environment variables."` rather than raising an HTTP error.
 
@@ -316,6 +322,122 @@ The endpoint is stateless on the server. The full conversation history is suppli
 **Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
 
 **Demo path:** When `DEMO_MODE=true`, returns a deterministic canned response selected by keyword-matching the prompt (weather/forecast, F1/standings/calendar, reminders/tasks, or a generic fallback) with a synthetic `tool_trace`. No live Gemini call is made.
+
+**Local (Ollama) profile behavior:** Requests targeting a local profile (`lynx`, `acinonyx`, `neofelis`) pass through additional admission checks before the agent loop runs:
+
+1. **Execution slot** — only one local generation runs at a time. A concurrent request while another is in flight returns `429`.
+2. **Resource gate** — if the target model is not already loaded in Ollama, current host RAM/CPU utilization is checked against the profile's configured limits (`config.json` `ollama.resource_gates.*`). A model that is already loaded skips this check, since re-selecting it does not add to host resource usage.
+3. **Model switch** — if the target model differs from whatever is currently loaded, the previous model is unloaded and the new one is loaded before the turn runs. A load failure returns `503`.
+
+**Response `429`** — a local generation is already in progress
+```json
+{ "detail": "A local model generation is already in progress. Wait for it to finish and try again." }
+```
+
+**Response `503`** — local profile blocked by the resource gate, or the model failed to load
+```json
+{ "detail": "Local profile blocked: Current memory pressure exceeds threshold." }
+```
+```json
+{ "detail": "Local model qwen3:8b failed to load. Ensure Ollama is reachable and configured." }
+```
+
+**Response `503`** — Ollama local inference disabled in `config.json` (`ollama.enabled: false`)
+```json
+{ "detail": "Local Ollama inference is disabled in system settings." }
+```
+
+---
+
+### `GET /api/v1/agent/profiles`
+
+Returns availability status for all six assistant profiles (three cloud, three local) so the HUD can gate profile selection before a query is sent.
+
+Ollama reachability, installed model tags, and host vitals are read from a shared cache refreshed at most once every 10 seconds, so frequent polling never floods the Ollama daemon.
+
+**Response `200`** — list of `AgentProfileStatus`
+```json
+[
+  {
+    "key": "lynx",
+    "display_name": "Apex Lynx",
+    "provider": "ollama",
+    "tier": "lightweight",
+    "stability": "preview",
+    "status": "model_not_installed",
+    "active": false,
+    "reason": "Model tag is not installed locally",
+    "idle_unload_remaining_seconds": null,
+    "loaded_model": null
+  },
+  {
+    "key": "comet",
+    "display_name": "Apex Comet",
+    "provider": "gemini",
+    "tier": "fast",
+    "stability": "stable",
+    "status": "available",
+    "active": false,
+    "reason": null,
+    "idle_unload_remaining_seconds": null,
+    "loaded_model": null
+  }
+]
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `key` | string | Profile identifier: `"comet"`, `"nova"`, `"pulsar"`, `"lynx"`, `"acinonyx"`, `"neofelis"` |
+| `display_name` | string | Human-readable label (e.g., `"Apex Lynx"`) |
+| `provider` | string | `"ollama"` or `"gemini"` |
+| `tier` | string | Performance tier label (e.g., `"lightweight"`, `"fast"`, `"advanced"`) |
+| `stability` | string | `"stable"` or `"preview"` |
+| `status` | string | See `ProfileAvailabilityStatus` values below |
+| `active` | boolean | `true` when this profile's local model is currently loaded in Ollama memory (always `false` for cloud profiles) |
+| `reason` | string \| null | Human-readable explanation when `status` is not `"available"` |
+| `idle_unload_remaining_seconds` | integer \| null | Seconds until this local model auto-unloads; populated only for the currently active local profile |
+| `loaded_model` | object \| null | Runtime details reported by Ollama (`name`, `model`, `size_bytes`, `size_vram_bytes`, `processor`, `context`, `expires_at`) when this profile's model is loaded |
+
+**`ProfileAvailabilityStatus` values:**
+
+| Value | Meaning |
+|---|---|
+| `available` | Profile can be selected and queried now |
+| `disabled` | Profile disabled in system settings (`ollama.enabled: false`, or missing `GEMINI_API_KEY` for cloud profiles) |
+| `ollama_unreachable` | Ollama daemon did not respond to the status probe |
+| `model_not_installed` | The profile's model tag is not present in Ollama's installed tags |
+| `insufficient_ram` | Host RAM utilization meets or exceeds the profile's `ram_limit` |
+| `cpu_overloaded` | Host CPU utilization meets or exceeds the profile's `cpu_limit` |
+
+---
+
+### `POST /api/v1/agent/local/unload`
+
+Manually unloads the currently active local Ollama model from memory, ahead of the automatic idle-unload timer.
+
+**Request body:** empty JSON object `{}` or no body.
+
+**Response `200`** — `LocalUnloadResponse`
+```json
+{ "status": "success" }
+```
+
+Returns success when no local model is currently active or the unload completes cleanly.
+
+**Response `403`** — manual unload disabled via `config.json` `ollama.manual_unload_enabled`
+```json
+{ "detail": "Manual local model unload is disabled in system settings." }
+```
+
+**Response `409`** — a local generation is currently in progress
+```json
+{ "detail": "A local model generation is in progress. Wait for it to finish before unloading." }
+```
+
+**Response `503`** — the unload request to Ollama failed
+```json
+{ "detail": "Active local model failed to unload from Ollama." }
+```
 
 ---
 
@@ -468,7 +590,7 @@ class AgentMessage(BaseModel):
 ```python
 class AgentQueryRequest(BaseModel):
     prompt: str
-    profile: Literal["comet", "nova", "pulsar"] = "nova"
+    profile: Literal["comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"] = "comet"
     session_id: str | None = None
     history: list[AgentMessage] = []
 ```
@@ -482,6 +604,46 @@ class AgentQueryResponse(BaseModel):
     tool_trace: list[dict[str, Any]] = []
     session_id: str | None = None
     error: str | None = None
+```
+
+### `AgentProfileStatus`
+
+```python
+class AgentProfileStatus(BaseModel):
+    key: str
+    display_name: str
+    provider: Literal["ollama", "gemini"]
+    tier: str
+    stability: Literal["stable", "preview"]
+    status: ProfileAvailabilityStatus
+    active: bool
+    reason: str | None = None
+    idle_unload_remaining_seconds: int | None = None
+    loaded_model: LocalLoadedModelStatus | None = None
+```
+
+Returned as a list by `GET /api/v1/agent/profiles`. See that endpoint's documentation above for the `ProfileAvailabilityStatus` value table.
+
+### `LocalLoadedModelStatus`
+
+```python
+class LocalLoadedModelStatus(BaseModel):
+    name: str
+    model: str
+    size_bytes: int | None = None
+    size_vram_bytes: int | None = None
+    processor: str | None = None
+    context: str | None = None
+    expires_at: str | None = None
+```
+
+Runtime details reported by Ollama's `/api/ps` endpoint for a loaded model. All fields except `name` and `model` are `None` when Ollama does not report that field.
+
+### `LocalUnloadResponse`
+
+```python
+class LocalUnloadResponse(BaseModel):
+    status: str = "success"
 ```
 
 ---

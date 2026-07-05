@@ -12,6 +12,7 @@ from requests.exceptions import (
     Timeout as RequestsTimeout,
 )
 
+from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
 from core.config import OLLAMA_HOST, OLLAMA_IDLE_UNLOAD_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,9 +43,20 @@ class SystemVitals(TypedDict):
     ram: float
 
 
+class LoadedOllamaModel(TypedDict):
+    name: str
+    model: str
+    size_bytes: int | None
+    size_vram_bytes: int | None
+    processor: str | None
+    context: str | None
+    expires_at: str | None
+
+
 class OllamaStatusSnapshot(TypedDict):
     reachable: bool
     installed_tags: list[str]
+    loaded_models: list[LoadedOllamaModel]
     vitals: SystemVitals
     sampled_at: float
 
@@ -183,6 +195,102 @@ def _probe_ollama_tags() -> tuple[bool, list[str]]:
     return True, tags
 
 
+def _coerce_optional_int(value: object) -> int | None:
+    """Return an integer when Ollama reports a numeric runtime field."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None
+
+
+def _coerce_optional_str(value: object) -> str | None:
+    """Return a non-empty string for optional Ollama runtime fields."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _probe_ollama_loaded_models() -> list[LoadedOllamaModel]:
+    """Issue a single /api/ps probe returning loaded model runtime details."""
+    url = f"{OLLAMA_HOST.rstrip('/')}/api/ps"
+
+    try:
+        response = _SESSION.get(url, timeout=_STATUS_PROBE_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        payload = response.json()
+    except (RequestsConnectionError, ConnectionError) as exc:
+        _LOGGER.warning("Ollama daemon unreachable during ps probe at %s: %s", url, exc)
+        return []
+    except RequestException as exc:
+        _LOGGER.warning("Ollama ps request failed at %s: %s", url, exc)
+        return []
+    except ValueError as exc:
+        _LOGGER.warning("Ollama ps response was not valid JSON from %s: %s", url, exc)
+        return []
+
+    models = payload.get("models")
+    if not isinstance(models, list):
+        _LOGGER.warning('Ollama ps response missing "models" array from %s', url)
+        return []
+
+    loaded_models: list[LoadedOllamaModel] = []
+    for raw_model in models:
+        if not isinstance(raw_model, dict):
+            continue
+
+        raw_name = raw_model.get("name")
+        raw_model_name = raw_model.get("model")
+        name = raw_name if isinstance(raw_name, str) and raw_name else None
+        model_name = (
+            raw_model_name
+            if isinstance(raw_model_name, str) and raw_model_name
+            else name
+        )
+        if model_name is None:
+            continue
+
+        loaded_models.append(
+            LoadedOllamaModel(
+                name=name or model_name,
+                model=model_name,
+                size_bytes=_coerce_optional_int(raw_model.get("size")),
+                size_vram_bytes=_coerce_optional_int(raw_model.get("size_vram")),
+                processor=_coerce_optional_str(raw_model.get("processor")),
+                context=_coerce_optional_str(raw_model.get("context")),
+                expires_at=_coerce_optional_str(raw_model.get("expires_at")),
+            )
+        )
+
+    return loaded_models
+
+
+def _loaded_model_matches(loaded_model: LoadedOllamaModel, model_name: str) -> bool:
+    """Return whether a loaded Ollama model entry matches a configured tag."""
+    return loaded_model["name"] == model_name or loaded_model["model"] == model_name
+
+
+def is_local_model_loaded(model_name: str) -> bool:
+    """
+    Return whether a specific local model is already resident in Ollama.
+
+    Checks the fast in-process tracker first, then falls back to /api/ps so the
+    API can recognize models that survived an APEX server restart.
+    """
+    with _model_lock:
+        if _active_loaded_model == model_name:
+            return True
+
+    return any(
+        _loaded_model_matches(loaded_model, model_name)
+        for loaded_model in _probe_ollama_loaded_models()
+    )
+
+
 def get_status_snapshot(force_refresh: bool = False) -> OllamaStatusSnapshot:
     """
     Return daemon reachability, installed tags, and host vitals from a TTL cache.
@@ -207,9 +315,11 @@ def get_status_snapshot(force_refresh: bool = False) -> OllamaStatusSnapshot:
                 return snapshot
 
         reachable, tags = _probe_ollama_tags()
+        loaded_models = _probe_ollama_loaded_models() if reachable else []
         fresh: OllamaStatusSnapshot = {
             "reachable": reachable,
             "installed_tags": tags,
+            "loaded_models": loaded_models,
             "vitals": get_system_vitals(),
             "sampled_at": time.monotonic(),
         }
@@ -239,15 +349,35 @@ def get_idle_unload_remaining_seconds() -> int | None:
 
 def unload_active_local_model() -> bool:
     """
-    Unload the currently tracked active model from Ollama memory.
+    Unload the active APEX local model from Ollama memory.
 
-    Returns True when no model is active or the unload request succeeds.
+    Prefers the in-process tracker, then falls back to /api/ps so manual unload
+    still works after an API restart. Returns True when no APEX local model is
+    active or every unload request succeeds.
     """
     with _model_lock:
         model_name = _active_loaded_model
 
     if model_name is None:
-        return True
+        profile_model_names = {
+            profile.api_model for profile in OLLAMA_MODEL_PROFILES.values()
+        }
+        loaded_profile_names: list[str] = []
+        for loaded_model in _probe_ollama_loaded_models():
+            for loaded_name in (loaded_model["model"], loaded_model["name"]):
+                if (
+                    loaded_name in profile_model_names
+                    and loaded_name not in loaded_profile_names
+                ):
+                    loaded_profile_names.append(loaded_name)
+
+        if not loaded_profile_names:
+            return True
+
+        unloaded_all = True
+        for loaded_name in loaded_profile_names:
+            unloaded_all = unload_local_model(loaded_name) and unloaded_all
+        return unloaded_all
 
     return unload_local_model(model_name)
 
@@ -377,12 +507,24 @@ async def check_idle_models_loop() -> None:
             _LOGGER.warning("Idle model check failed: %s", exc)
 
 
-def switch_local_model(target_model_name: str) -> bool:
+def _build_warmup_options(profile: OllamaModelProfile) -> dict[str, float | int]:
+    """Build the runtime options used to warm a local model honestly."""
+    return {
+        "temperature": profile.default_temperature,
+        "num_ctx": profile.context_window,
+        "num_thread": profile.num_thread,
+        "num_predict": 1,
+    }
+
+
+def switch_local_model(profile: OllamaModelProfile) -> bool:
     """
     Switch the active loaded model, unloading the current one first if needed.
 
     This is the primary entry point for coordinated model switches. It ensures
-    only one local model remains in Ollama memory at any time.
+    only one local model remains in Ollama memory at any time. The warmup
+    request mirrors the profile's real runtime options so the first assistant
+    turn does not pay a second setup cost for context/thread/think settings.
 
     Callers must hold the execution slot (``try_begin_local_execution``) so
     concurrent switches cannot occur. ``_model_lock`` guards only state reads
@@ -390,13 +532,15 @@ def switch_local_model(target_model_name: str) -> bool:
     responsive during long warmups.
 
     Args:
-        target_model_name: Name of the model to switch to.
+        profile: Local model profile to switch to.
 
     Returns:
         True if the switch succeeded or was already satisfied.
         False if the warmup/load failed or an unrecoverable error occurred.
     """
     global _active_loaded_model, _last_activity_time
+
+    target_model_name = profile.api_model
 
     with _model_lock:
         if _active_loaded_model == target_model_name:
@@ -418,19 +562,33 @@ def switch_local_model(target_model_name: str) -> bool:
                 _active_loaded_model = previous_model
             return False
 
+    if is_local_model_loaded(target_model_name):
+        with _model_lock:
+            _active_loaded_model = target_model_name
+            _last_activity_time = time.monotonic()
+        _LOGGER.info("Model %s already resident in Ollama", target_model_name)
+        return True
+
     url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
     payload = {
         "model": target_model_name,
         "messages": [],
+        "stream": False,
+        "options": _build_warmup_options(profile),
+        "think": profile.think,
         "keep_alive": get_keep_alive_duration(),
     }
 
     try:
-        response = _SESSION.post(url, json=payload, timeout=60.0)
+        response = _SESSION.post(url, json=payload, timeout=profile.generation_timeout)
         response.raise_for_status()
         _LOGGER.info("Loaded model %s into Ollama", target_model_name)
     except RequestsTimeout:
-        _LOGGER.error("Timeout loading model %s after 60s", target_model_name)
+        _LOGGER.error(
+            "Timeout loading model %s after %ss",
+            target_model_name,
+            profile.generation_timeout,
+        )
         return False
     except (RequestsConnectionError, ConnectionError) as exc:
         _LOGGER.error("Ollama unreachable while loading %s: %s", target_model_name, exc)

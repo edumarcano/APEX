@@ -62,14 +62,29 @@ export type ProfileAvailabilityStatus =
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
+export type ProfileStability = 'stable' | 'preview'
+
+export interface LoadedOllamaModelStatus {
+  name: string
+  model: string
+  size_bytes: number | null
+  size_vram_bytes: number | null
+  processor: string | null
+  context: string | null
+  expires_at: string | null
+}
+
 export interface AgentProfileStatus {
   key: AssistantProfile
   display_name: string
   provider: 'ollama' | 'gemini'
+  tier: string
+  stability: ProfileStability
   status: ProfileAvailabilityStatus
   active: boolean
   reason: string | null
   idle_unload_remaining_seconds: number | null
+  loaded_model: LoadedOllamaModelStatus | null
 }
 
 export interface DigestPayload {

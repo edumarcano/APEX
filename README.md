@@ -52,7 +52,8 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Pipeline state visibility** — step, label, timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
 - **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded segmented block bar in the system status footer with a per-connector hover tooltip
 - **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
-- **APEX assistant** — a conversational Gemini assistant with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with three selectable performance profiles (Comet, Nova, Pulsar)
+- **APEX assistant** — a conversational assistant with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with six selectable performance profiles across two providers — cloud (Gemini: Comet, Nova, Pulsar) and local (Ollama: Lynx, Acinonyx, Neofelis)
+- **Local Ollama inference** — optional on-device model execution for the APEX assistant with automatic model load/unload, a single-loaded-model policy, idle auto-unload, RAM/CPU resource gating per profile, and a manual unload control in the assistant drawer
 - **Demo mode** — `DEMO_MODE=true` intercepts the trigger, runs a staged simulation with static mock telemetry, and displays a badge in the HUD; no external API calls are made
 - **Atmospheric theming** — weather condition drives HUD background color, accent color, card glow, and condition icons in real time
 - **Variable Typography Engine** — primary temperature font weight linearly interpolated from `font-weight: 300` (40°F) to `font-weight: 800` (90°F)
@@ -65,7 +66,8 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 |---|---|
 | Language | Python 3.10+ |
 | API Framework | FastAPI, uvicorn |
-| AI Engine | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
+| AI Engine (cloud) | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
+| AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers) |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Icons | lucide-react |
 | Database | SQLite3 |
@@ -102,14 +104,29 @@ Individual connectors are switched on or off in `config.json`. When a connector 
   "tts_settings": { "primary_tts": "google", "voice_gender": "female" },
   "system_prompt": "You are APEX. Deliver a concise briefing in under 75 words. No emojis or markdown.",
   "agent_system_prompt": "You are APEX, a cloud-powered agent assisting Chief with operations.",
+  "local_agent_system_prompt": "You are APEX, a local operations assistant assisting Chief with operations.",
   "ask_apex": { "enabled": true, "default_cloud_profile": "comet", "max_session_messages": 6 },
-  "gemini": { "agent_max_turns": 3, "agent_max_tool_calls": 4 }
+  "gemini": { "agent_max_turns": 3, "agent_max_tool_calls": 4 },
+  "ollama": {
+    "enabled": true,
+    "host": "http://localhost:11434",
+    "idle_unload_timeout_minutes": 5,
+    "single_loaded_model": true,
+    "manual_unload_enabled": true,
+    "resource_gates": {
+      "lynx": { "ram_limit": 88.0, "cpu_limit": 95.0 },
+      "acinonyx": { "ram_limit": 78.0, "cpu_limit": 90.0 },
+      "neofelis": { "ram_limit": 68.0, "cpu_limit": 85.0 }
+    }
+  }
 }
 ```
 
 `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
-`agent_system_prompt` sets the APEX assistant persona (executed by the internal Cortex reasoning engine), independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query. See [docs/api.md](docs/api.md) for the full agent query contract.
+`agent_system_prompt` sets the cloud APEX assistant persona; `local_agent_system_prompt` sets the equivalent persona for local Ollama profiles. Both are independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query for both cloud and local profiles. See [docs/api.md](docs/api.md) for the full agent query contract.
+
+`ollama.enabled` toggles local inference off entirely (local profiles report `disabled` in the HUD and `POST /api/v1/agent/query` returns `503` for a local profile). `ollama.host` points at the Ollama daemon's HTTP address. `ollama.idle_unload_timeout_minutes` (1–60) sets how long an unused local model stays loaded before automatic unload. `ollama.manual_unload_enabled` toggles the manual "Unload" control in the assistant drawer. `ollama.resource_gates.{lynx,acinonyx,neofelis}` set the RAM/CPU utilization percentage thresholds (0–100) above which a *cold* load of that profile is blocked; a model already loaded is unaffected by these limits. See [Local Agent Profiles](docs/architecture.md#local-agent-profiles) for the full per-profile defaults.
 
 ---
 
@@ -165,11 +182,24 @@ APEX supports offline speech synthesis using local Kokoro ONNX model weights. To
   - Save the ONNX model files inside `core/weights/kokoro/`.
   - Required files: `kokoro-v1.0.onnx` and `voices-v1.0.bin` (available from the Kokoro ONNX releases).
 
-**8. (Optional) Customize persona and connectors**
+**8. (Optional) Set up local Ollama models for the APEX assistant**
+
+The APEX assistant can run entirely on-device instead of calling Gemini. To enable the local Lynx, Acinonyx, and Neofelis profiles:
+- Install [Ollama](https://ollama.com) and start the daemon.
+- Pull the model tags used by the profiles you want available:
+  ```bash
+  ollama pull qwen3:1.7b          # Lynx (lightweight)
+  ollama pull qwen3:4b-instruct   # Acinonyx (balanced)
+  ollama pull qwen3:8b            # Neofelis (heavy)
+  ```
+- No `.env` keys are required for local inference. `config.json` `ollama.host` defaults to `http://localhost:11434`; change it only if Ollama runs on a different host or port.
+- A profile whose model tag isn't installed reports `model_not_installed` in the HUD's profile selector rather than failing a query. Set `ollama.enabled: false` in `config.json` to hide local profiles entirely.
+
+**9. (Optional) Customize persona and connectors**
 
 Edit `config.json` to change the briefing voice, toggle connectors, or switch TTS engine. See [Feature Toggles](#feature-toggles) above. API keys for disabled connectors are not required.
 
-**9. (Optional) Dev and demo overrides**
+**10. (Optional) Dev and demo overrides**
 
 Set `DEV_MODE=true` in `.env` for local development. The scanner gate, run logging, and (by default) Gemini synthesis are bypassed. Gmail and Calendar connectors still make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Set `DEMO_MODE=true` for a fully offline simulation using static mock telemetry. See [Environment Modes](#environment-modes) above.
 
@@ -223,3 +253,4 @@ Full version history is available in [CHANGELOG.md](CHANGELOG.md).
 | [docs/architecture.md](docs/architecture.md) | Pipeline internals, component inventory, data contracts, F1 cache, theming systems, project structure |
 | [docs/api.md](docs/api.md) | All API endpoints, request/response schemas, Pydantic models, environment variables |
 | [docs/decisions.md](docs/decisions.md) | Engineering rationale, TTS selection history, AI workflow, design trade-offs |
+| [docs/roadmap.md](docs/roadmap.md) | Milestone history, current phase, planned platform evolution |

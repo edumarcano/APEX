@@ -15,6 +15,8 @@ With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST /api/v1/trig
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=llm`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
+**API lifespan worker:** `core/api.py` registers a FastAPI lifespan handler that starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`. It runs independently of the trigger/briefing pipeline described above.
+
 ---
 
 ## FastAPI Pipeline Telemetry & Polling
@@ -61,7 +63,7 @@ sequenceDiagram
 
 ## APEX Assistant Query Flow
 
-Unlike the trigger/status pipeline, an assistant query is a single request-response cycle with no polling. The frontend holds the entire conversation; the backend holds none of it.
+Unlike the trigger/status pipeline, an assistant query is a single request-response cycle with no polling. The frontend holds the entire conversation; the backend holds none of it. `AgentQueryRequest.profile` selects one of six values (`comet`/`nova`/`pulsar` → Gemini, `lynx`/`acinonyx`/`neofelis` → Ollama); the provider used for a given turn is resolved from that value.
 
 ```mermaid
 sequenceDiagram
@@ -92,6 +94,53 @@ sequenceDiagram
 ```
 
 The `hud_context` injected before the loop starts is built fresh on every request from whatever briefing is currently the most recent in the ledger — it is not cached or part of the client-sent `history`. This lets an operator ask "why did you mention the weather?" and have it resolve against the briefing currently on their screen, without the frontend needing to send the briefing text itself.
+
+### Local (Ollama) Query Path
+
+When `profile` resolves to a local profile, `query_agent()` in `core/api.py` runs three admission checks before handing off to `run_agent_loop()`, replacing the direct `Loop->>Gemini` call above with a call to `OllamaProvider.generate_turn()` against the Ollama `/api/chat` REST endpoint:
+
+```mermaid
+sequenceDiagram
+    participant Query as Backend: /api/v1/agent/query
+    participant Slot as Backend: execution slot (threading.Lock)
+    participant Gate as Backend: resource gate (psutil)
+    participant Lifecycle as Backend: switch_local_model
+    participant Ollama as Ollama daemon (/api/chat)
+
+    Query->>Slot: try_begin_local_execution()
+    alt slot already held
+        Slot-->>Query: False
+        Query-->>Query: 429 Too Many Requests
+    else slot claimed
+        Query->>Lifecycle: is_local_model_loaded(target_model)
+        alt model not already loaded
+            Query->>Gate: check_resource_gate(ram_limit, cpu_limit)
+            Gate-->>Query: (False, reason) on breach
+            Query-->>Query: 503 with gate reason
+        end
+        Query->>Lifecycle: switch_local_model(profile)
+        Lifecycle->>Ollama: unload previous model, load target model
+        Ollama-->>Lifecycle: load result
+        alt load failed
+            Lifecycle-->>Query: False
+            Query-->>Query: 503 model load failed
+        else load succeeded
+            Query->>Ollama: run_agent_loop → generate_turn → POST /api/chat
+            Ollama-->>Query: message (content and/or tool_calls)
+            Query->>Slot: end_local_execution()
+        end
+    end
+```
+
+Key behaviors:
+
+- **Already-loaded models skip the resource gate.** The RAM/CPU check in step 2 only runs when the target model is not already resident in Ollama. Re-selecting an already-loaded model never fails on resource pressure, since it does not add to host memory usage.
+- **`num_predict` and tool withholding.** `OllamaProvider` sets `num_predict` to the profile's `tool_select_max_tokens` when tools are offered, or `final_answer_max_tokens` when they are not. `run_agent_loop()` withholds tools entirely on the last permitted turn for local profiles, forcing a text answer instead of a tool call that could never execute.
+- **Truncated tool-select retry.** If a tool-offering turn hits the `num_predict` ceiling without producing a tool call (`done_reason: "length"`), the same turn is regenerated once without tools under the `final_answer_max_tokens` budget, rather than returning a truncated fragment.
+- **Reasoning stripped from output.** `<think>...</think>` blocks emitted by Qwen models are removed from `content` before it is returned to the client. `think` defaults to `False` on all local profiles.
+- **Activity registration.** Every completed local turn calls `register_activity()`, resetting the idle-unload countdown so a long multi-turn conversation never gets evicted mid-session.
+
+See [Local Agent Profiles](#local-agent-profiles) for the per-profile `ram_limit`/`cpu_limit`/token/timeout values, and [docs/api.md](api.md#post-apiv1agentquery) for the `429`/`503` response contract.
 
 ---
 
@@ -125,7 +174,10 @@ apex/
 │   │   ├── types.py              # AgentMessage, ToolCall, ToolResult, AgentQueryRequest/Response models
 │   │   ├── providers/
 │   │   │   ├── gemini.py          # GeminiProvider: message↔Content conversion, retry/backoff, security boundary
-│   │   │   └── gemini_models.py   # GeminiModelProfile + Comet/Nova/Pulsar profile definitions
+│   │   │   ├── gemini_models.py   # GeminiModelProfile + Comet/Nova/Pulsar profile definitions
+│   │   │   ├── ollama.py          # OllamaProvider: /api/chat REST calls, tool schema conversion, thinking-tag stripping
+│   │   │   ├── ollama_models.py   # OllamaModelProfile + Lynx/Acinonyx/Neofelis profile definitions
+│   │   │   └── ollama_lifecycle.py # Model load/unload/switch, idle auto-unload loop, resource gate, status snapshot cache
 │   │   └── __init__.py
 │   ├── mock/
 │   │   └── telemetry.json   # Static telemetry payload for DEMO_MODE runs
@@ -233,6 +285,27 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 
 `AGENT_MAX_TURNS` (1–5, default 3) and `AGENT_MAX_TOOL_CALLS` (1–10, default 4) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`; Comet always applies a lower fixed ceiling regardless of configured values.
 
+<a id="local-agent-profiles"></a>
+
+**`core/agent/providers/ollama_models.py`** — Defines `OllamaModelProfile` and three fixed local profiles in `OLLAMA_MODEL_PROFILES`, each targeting a distinct `qwen3` model tag:
+
+| Profile | Display Name | Model | Tier | Context Window | Tool-Select Tokens | Final-Answer Tokens | Threads | Timeout | RAM Limit | CPU Limit |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `lynx` | Apex Lynx | `qwen3:1.7b` | lightweight | 4096 | 128 | 512 | 4 | 120s | 88% | 95% |
+| `acinonyx` | Apex Acinonyx | `qwen3:4b-instruct` | balanced | 4096 | 128 | 768 | 6 | 150s | 78% | 90% |
+| `neofelis` | Apex Neofelis | `qwen3:8b` | heavy | 4096 | 128 | 1024 | 4 | 180s | 68% | 85% |
+
+`max_tool_turns` and `max_tool_calls` mirror `AGENT_MAX_TURNS`/`AGENT_MAX_TOOL_CALLS` the same way the Gemini profiles do (Lynx applies a lower fixed ceiling: `min(2, AGENT_MAX_TURNS)` / `min(3, AGENT_MAX_TOOL_CALLS)`). All three profiles default `think=False` (Ollama's chain-of-thought phase is disabled) and `default_temperature=0.2` (`0.1` for Neofelis). RAM and CPU limits are percentage thresholds evaluated by the resource gate before a cold load; they are configurable per profile via `config.json` `ollama.resource_gates.{lynx,acinonyx,neofelis}.{ram_limit,cpu_limit}`, defaulting to the values above.
+
+**`core/agent/providers/ollama_lifecycle.py`** — Owns all local-model runtime state:
+
+- **Status snapshot cache** (`get_status_snapshot()`) — a single `/api/tags` probe feeds Ollama reachability and installed-tag lists, refreshed at most once per 10 seconds. Skipped entirely while a generation holds the execution slot, so a saturated daemon is never polled mid-inference.
+- **Execution slot** (`try_begin_local_execution()` / `end_local_execution()`) — a non-blocking `threading.Lock` held for the full duration of a local generation. A second concurrent request is rejected rather than queued.
+- **Resource gate** (`check_resource_gate()`) — compares fresh `psutil` CPU/RAM percentages against a profile's `ram_limit`/`cpu_limit`, returning the specific breached dimension (`insufficient_ram` or `cpu_overloaded`) so the caller can surface an accurate reason.
+- **Model switching** (`switch_local_model()`) — enforces a single loaded model: unloads whatever is currently active (if different), then loads the target model with a warmup request mirroring its real runtime options (context window, thread count, `think`) so the first real turn doesn't pay a second setup cost.
+- **Idle auto-unload** (`check_idle_models_loop()` / `_maybe_unload_idle_model()`) — a 30-second polling loop (started as an API lifespan task) that unloads the active model after `ollama.idle_unload_timeout_minutes` of inactivity, tracked via monotonic time so wall-clock changes cannot trigger a premature unload.
+- **Manual unload** (`unload_active_local_model()`) — used by `POST /api/v1/agent/local/unload`; falls back to an `/api/ps` probe to recover the active model name after an API restart if the in-process tracker was reset.
+
 **`core/agent/tools.py`** — `AGENT_TOOLS_REGISTRY` maps tool names to Python callables, each documented with a Google-style docstring the model uses as its function-calling schema:
 
 | Tool | Source |
@@ -254,6 +327,8 @@ All tools are read-only; none can mutate reminders, settings, or telemetry state
 Every tool result is wrapped in an `<untrusted_tool_output name='...'>...</untrusted_tool_output>` XML block before being sent back to the model. A `_SECURITY_BOUNDARY_DIRECTIVE` appended to every system instruction explicitly tells the model to treat this block's contents as data only, never as instructions — a defense against prompt injection carried in live connector output (e.g. a news headline or calendar event title engineered to look like a system command).
 
 Gemini API calls retry up to 3 attempts on `429` (exponential backoff starting at 1.0s, plus jitter) and on `500`/`502`/`503`/`504` (fixed 2.0s backoff); any other `APIError` status is raised immediately without retry.
+
+**`core/agent/providers/ollama.py`** — `OllamaProvider` implements the same `AgentProvider` protocol against Ollama's `/api/chat` REST endpoint instead of the Gemini SDK. `_messages_to_ollama()` converts the internal `AgentMessage` history into Ollama's `role`/`content`/`tool_calls` message shape; tool results are wrapped in the same `<untrusted_tool_output>` boundary used by Gemini. Tool schemas are converted from the same Python callables in `AGENT_TOOLS_REGISTRY` into OpenAI-compatible function-tool JSON via `_function_to_openai_schema()`, cached per-function after first build. Connection failures, timeouts, and non-2xx responses from the daemon are raised as `RuntimeError` with a message identifying the failed call and the configured `OLLAMA_HOST`.
 
 **Session model:** the agent endpoint holds no server-side session state. `AgentQueryRequest.history` is supplied by the client on every call; the frontend's `useApexAssistant` hook accumulates it in React state and resends the full list each turn. `session_id` is an opaque passthrough value with no server-side lookup.
 
@@ -307,7 +382,9 @@ SQLite database file: `apex_memory.db`. Three tables, all created by `initialize
 
 Loads `config.json` at module import. All environment flags (`DEV_MODE`, `DEMO_MODE`, `ENABLE_STARTUP_GATE`, `DEV_AI_SYNTHESIS`, `DEV_TTS_PLAYBACK`, `DEMO_TTS`) are parsed via `_parse_env_bool()` or typed literal validators with normalization and logged fallbacks for unrecognized values. If `config.json` is missing or malformed, feature flags default to `False` and `SYSTEM_PROMPT` falls back to a neutral placeholder.
 
-Also loads the assistant config surface for the Cortex engine: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `ASK_APEX_ENABLED` / `DEFAULT_CLOUD_PROFILE` / `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.*`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
+Also loads the assistant config surface for the Cortex engine: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `LOCAL_AGENT_SYSTEM_PROMPT` (`config.json` `local_agent_system_prompt`, used as the base persona for local Ollama profiles instead of `AGENT_SYSTEM_PROMPT`), `ASK_APEX_ENABLED` / `DEFAULT_CLOUD_PROFILE` / `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.*`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
+
+Local Ollama runtime settings are parsed from `config.json` `ollama.*` into `OLLAMA_ENABLED`, `OLLAMA_HOST` (default `http://localhost:11434`), `OLLAMA_IDLE_UNLOAD_MINUTES` (1–60, default 5), `OLLAMA_SINGLE_LOADED_MODEL` (parsed for forward compatibility; `ollama_lifecycle` always enforces a single loaded model today regardless of this flag), and `OLLAMA_MANUAL_UNLOAD_ENABLED`. Per-profile `ram_limit`/`cpu_limit` pairs are parsed from `ollama.resource_gates.{lynx,acinonyx,neofelis}` into `LYNX_RAM_LIMIT`/`LYNX_CPU_LIMIT`, `ACINONYX_RAM_LIMIT`/`ACINONYX_CPU_LIMIT`, and `NEOFELIS_RAM_LIMIT`/`NEOFELIS_CPU_LIMIT` (see [Local Agent Profiles](#local-agent-profiles) for defaults). Any parsing failure across the whole `ollama` block falls back to the documented defaults rather than raising at import time.
 
 ---
 
@@ -573,7 +650,7 @@ A 10% penalty is applied when the sports client reports a stale cache hit. `spor
 
 ### Output
 
-The score and the list of failed connector names are passed to `DigestPayload`. The frontend reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays them in the Sync Health column of `SystemDiagnostics`. A segmented block bar with a hover tooltip listing any failed connectors.
+The score and the list of failed connector names are passed to `DigestPayload`. The frontend reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays them in the Sync Health column of `SystemDiagnostics` as a segmented block bar with a hover tooltip listing any failed connectors.
 
 ---
 

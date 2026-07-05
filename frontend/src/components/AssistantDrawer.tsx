@@ -56,6 +56,52 @@ function formatCountdown(seconds: number | null): string {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
 }
 
+function formatBytes(bytes: number | null): string | null {
+  if (bytes === null || !Number.isFinite(bytes) || bytes <= 0) {
+    return null
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  const precision = unitIndex >= 3 ? 1 : 0
+  return `${value.toFixed(precision)} ${units[unitIndex]}`
+}
+
+function buildLoadedModelDetails(
+  loadedModel: AgentProfileStatus['loaded_model'],
+): string[] {
+  if (!loadedModel) {
+    return []
+  }
+
+  const details: string[] = []
+  if (loadedModel.processor) {
+    details.push(loadedModel.processor)
+  }
+  if (loadedModel.context) {
+    details.push(`ctx ${loadedModel.context}`)
+  }
+
+  const size = formatBytes(loadedModel.size_bytes)
+  if (size) {
+    details.push(`size ${size}`)
+  }
+
+  const vram = formatBytes(loadedModel.size_vram_bytes)
+  if (vram) {
+    details.push(`vram ${vram}`)
+  }
+
+  return details
+}
+
 function ActiveLocalModelPanel({
   activeLocalModel,
   isQuerying,
@@ -67,7 +113,8 @@ function ActiveLocalModelPanel({
 }): ReactElement {
   const idleSeconds = activeLocalModel.idle_unload_remaining_seconds
   const countdownText =
-    idleSeconds === null ? 'Loading...' : formatCountdown(idleSeconds)
+    idleSeconds === null ? '--:--' : formatCountdown(idleSeconds)
+  const loadedModelDetails = buildLoadedModelDetails(activeLocalModel.loaded_model)
 
   const handleUnload = useCallback((): void => {
     void onUnloadModel()
@@ -97,6 +144,11 @@ function ActiveLocalModelPanel({
         <span className="mt-1 block font-mono text-[10px] text-zinc-500">
           Auto-unload in {countdownText}
         </span>
+        {loadedModelDetails.length > 0 ? (
+          <span className="mt-1 block truncate font-mono text-[10px] text-zinc-500">
+            {loadedModelDetails.join(' | ')}
+          </span>
+        ) : null}
       </div>
 
       <button
