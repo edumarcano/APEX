@@ -18,11 +18,9 @@ import {
 
 import { AskApexBar } from './components/AskApexBar'
 import { ApexLogo } from './components/ApexLogo'
-import { AssistantDrawer } from './components/AssistantDrawer'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
-import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -122,17 +120,11 @@ export default function App(): ReactElement {
   const showAskApexBar = status === 'success' && askApexEnabled
 
   const {
-    assistantHistory,
     isAssistantQuerying,
-    isAssistantOpen,
-    assistantLatestTrace,
-    assistantError,
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant,
-    unloadLocalModel,
     resetAssistantSession,
-    setAssistantOpen,
   } = useApexAssistant(showAskApexBar)
 
   // Synchronize the active profile state with the backend's configured defaults on boot
@@ -351,13 +343,6 @@ export default function App(): ReactElement {
     [queryAssistant],
   )
 
-  const handleAssistantFollowUp = useCallback(
-    (query: string): void => {
-      void queryAssistant(query, agentProfile)
-    },
-    [agentProfile, queryAssistant],
-  )
-
   const handleAssistantChipSelect = useCallback(
     (query: string): void => {
       void queryAssistant(query, agentProfile)
@@ -373,10 +358,6 @@ export default function App(): ReactElement {
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
-
-
-
-  const showSubtitleBar = isSpeaking && activeStep === 4
 
   return (
     <main
@@ -447,15 +428,6 @@ export default function App(): ReactElement {
             </div>
           </div>
         </header>
-
-        <div
-          className={`flex-none w-full overflow-hidden transition-all duration-700 ease-in-out ${showSubtitleBar
-            ? 'max-h-24 opacity-100 mb-4 translate-y-0 scale-100'
-            : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
-            }`}
-        >
-          <BriefingPanel briefing={data?.briefing ?? ''} />
-        </div>
 
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
@@ -689,22 +661,6 @@ export default function App(): ReactElement {
         failedConnectors={failedConnectors}
       />
       </div>
-
-      <AssistantDrawer
-        isOpen={isAssistantOpen}
-        onClose={() => {
-          setAssistantOpen(false)
-        }}
-        onResetSession={resetAssistantSession}
-        history={assistantHistory}
-        isQuerying={isAssistantQuerying}
-        latestTrace={assistantLatestTrace}
-        activeProfile={agentProfile}
-        profilesStatus={profilesStatus}
-        onUnloadModel={unloadLocalModel}
-        onSubmitFollowUp={handleAssistantFollowUp}
-        error={assistantError}
-      />
     </main>
   )
 }
