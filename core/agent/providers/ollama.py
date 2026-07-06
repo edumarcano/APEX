@@ -21,7 +21,6 @@ AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 _LOGGER = logging.getLogger(__name__)
 
-# Tool schemas are derived from static registry callables; build each once.
 _SCHEMA_CACHE: dict[Any, dict[str, Any]] = {}
 
 _SECURITY_BOUNDARY_DIRECTIVE = (
@@ -57,7 +56,6 @@ def _python_type_to_json_schema(type_hint: Any) -> dict[str, str]:
     if type_hint is list:
         return {"type": "array"}
 
-    # Union / Optional fallbacks — pick the first non-None arg when present.
     args = get_args(type_hint)
     if args:
         non_none = [arg for arg in args if arg is not type(None)]
