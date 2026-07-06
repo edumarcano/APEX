@@ -1,0 +1,41 @@
+{
+  "responses": [
+    {
+      "keywords": ["weather", "forecast", "temp"],
+      "answer": "Under APEX simulation, the 3-day weather forecast for Plantation, FL indicates consistent light rain with high temperatures in the low 90s:\n\n* July 1: High 91\u00b0F, Low 80\u00b0F. Light rain.\n* July 2: High 90\u00b0F, Low 77\u00b0F. Light rain.\n* July 3: High 94\u00b0F, Low 84\u00b0F. Light rain.",
+      "tool_trace": [
+        {
+          "name": "get_weather_forecast",
+          "status": "ok",
+          "duration_ms": 115.4
+        }
+      ]
+    },
+    {
+      "keywords": ["f1", "standings", "championship", "calendar"],
+      "answer": "APEX simulation data shows Max Verstappen leading the driver standings with 110 points. The next scheduled race is the Monaco Simulation Grand Prix running this week.",
+      "tool_trace": [
+        {
+          "name": "get_f1_driver_standings",
+          "status": "ok",
+          "duration_ms": 142.1
+        }
+      ]
+    },
+    {
+      "keywords": ["reminder", "task"],
+      "answer": "You have 2 pending reminders in the active ledger:\n\n* Review APEX demo script\n* Charge backup operations hardware",
+      "tool_trace": [
+        {
+          "name": "get_active_reminders",
+          "status": "ok",
+          "duration_ms": 94.2
+        }
+      ]
+    }
+  ],
+  "fallback": {
+    "answer": "APEX simulation is fully operational, Chief. I have verified your local database registers and ambient HUD context. Let me know if you would like me to simulate a weather forecast or F1 standings query.",
+    "tool_trace": []
+  }
+}

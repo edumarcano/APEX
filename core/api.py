@@ -211,6 +211,7 @@ global_pipeline_state = PipelineState()
 _TRIGGER_LOCK = threading.Lock()
 
 _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent / "mock" / "telemetry.json"
+_MOCK_ASSISTANT_PATH = Path(__file__).resolve().parent / "mock" / "assistant.json"
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 
 
@@ -443,6 +444,87 @@ def _load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
     return telemetry, digest
 
 
+def _validate_mock_agent_response(
+    response: Any,
+    *,
+    require_keywords: bool,
+) -> dict[str, Any]:
+    """Validate one deterministic demo assistant response."""
+    if not isinstance(response, dict):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo assistant response must be a JSON object.",
+        )
+
+    answer = response.get("answer")
+    tool_trace = response.get("tool_trace")
+    keywords = response.get("keywords")
+
+    if not isinstance(answer, str):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo assistant response must include string 'answer'.",
+        )
+    if not isinstance(tool_trace, list):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo assistant response must include list 'tool_trace'.",
+        )
+    if require_keywords:
+        if not isinstance(keywords, list) or not all(
+            isinstance(keyword, str) for keyword in keywords
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Demo assistant response must include list of string "
+                    "'keywords'."
+                ),
+            )
+    else:
+        keywords = []
+
+    return {
+        "answer": answer,
+        "tool_trace": tool_trace,
+        "keywords": keywords,
+    }
+
+
+def _load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load deterministic assistant responses from ``core/mock/assistant.json``."""
+    try:
+        with open(_MOCK_ASSISTANT_PATH, encoding="utf-8") as mock_file:
+            payload = json.load(mock_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demo assistant payload unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo assistant payload must be a JSON object.",
+        )
+
+    responses = payload.get("responses")
+    if not isinstance(responses, list):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo assistant payload must include list 'responses'.",
+        )
+
+    fallback = payload.get("fallback")
+    return (
+        [
+            _validate_mock_agent_response(response, require_keywords=True)
+            for response in responses
+        ],
+        _validate_mock_agent_response(fallback, require_keywords=False),
+    )
+
+
 def _mock_briefing_history() -> list[dict[str, Any]]:
     """Static briefing ledger for DEMO_MODE history responses."""
     return [
@@ -530,53 +612,17 @@ def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
         )
 
     prompt_lower = payload.prompt.lower()
-    answer: str
-    tool_trace: list[dict[str, Any]]
-
-    if any(keyword in prompt_lower for keyword in ("weather", "forecast", "temp")):
-        answer = (
-            "Under APEX simulation, the 3-day weather forecast for Plantation, FL "
-            "indicates consistent light rain with high temperatures in the low 90s:\n\n"
-            "* July 1: High 91°F, Low 80°F. Light rain.\n"
-            "* July 2: High 90°F, Low 77°F. Light rain.\n"
-            "* July 3: High 94°F, Low 84°F. Light rain."
-        )
-        tool_trace = [
-            {"name": "get_weather_forecast", "status": "ok", "duration_ms": 115.4},
-        ]
-    elif any(
-        keyword in prompt_lower
-        for keyword in ("f1", "standings", "championship", "calendar")
-    ):
-        answer = (
-            "APEX simulation data shows Max Verstappen leading the driver "
-            "standings with 110 points. The next scheduled race is the Monaco "
-            "Simulation Grand Prix running this week."
-        )
-        tool_trace = [
-            {"name": "get_f1_driver_standings", "status": "ok", "duration_ms": 142.1},
-        ]
-    elif any(keyword in prompt_lower for keyword in ("reminder", "task")):
-        answer = (
-            "You have 2 pending reminders in the active ledger:\n\n"
-            "* Review APEX demo script\n"
-            "* Charge backup operations hardware"
-        )
-        tool_trace = [
-            {"name": "get_active_reminders", "status": "ok", "duration_ms": 94.2},
-        ]
-    else:
-        answer = (
-            "APEX simulation is fully operational, Chief. I have verified your "
-            "local database registers and ambient HUD context. Let me know if you "
-            "would like me to simulate a weather forecast or F1 standings query."
-        )
-        tool_trace = []
+    responses, fallback = _load_mock_agent_responses()
+    selected_response = fallback
+    for response in responses:
+        if any(keyword in prompt_lower for keyword in response["keywords"]):
+            selected_response = response
+            break
 
     return AgentQueryResponse(
-        answer=answer,
+        answer=selected_response["answer"],
         profile_used=profile.model_dump(),
-        tool_trace=tool_trace,
+        tool_trace=selected_response["tool_trace"],
         session_id=payload.session_id,
         error=None,
     )
