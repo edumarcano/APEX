@@ -426,7 +426,7 @@ export function CentralCommandPanel({
 
   return (
     <section
-      className="flex w-full flex-col overflow-hidden rounded-xl border border-white/10 hud-glass transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
+      className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-white/10 hud-glass transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
       data-slot="central-command-panel"
       aria-label="Central command panel"
     >
