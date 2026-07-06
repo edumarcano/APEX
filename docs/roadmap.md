@@ -266,7 +266,7 @@ Transform APEX from a push-based summarization system into an interactive cloud-
 
 ## v1.13.0 - Cortex: Local Ollama Provider
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
 Enable local agentic execution through Ollama-powered models while reducing cloud dependency. Introduce runtime model switching, local inference management, and automatic memory lifecycle control.

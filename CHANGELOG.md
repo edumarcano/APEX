@@ -2,6 +2,60 @@
 
 ---
 
+## v1.13.0 — Cortex: Local Ollama Provider
+
+**Released:** July 5, 2026
+
+This release adds a local Ollama inference path to the APEX assistant, alongside the existing cloud Gemini profiles. Local Ollama profiles are introduced as experimental/preview functionality in this release: they are fully wired into the assistant, but runtime quality and latency are hardware-dependent, and model defaults may change as the local inference path is tuned. Three local model tiers (Lynx, Acinonyx, Neofelis) run fully on-device with automatic load/unload, a single-loaded-model policy, idle auto-unload, and per-profile RAM/CPU resource gating. The assistant profile selector and drawer now surface live availability across all six profiles, and the internal "Cortex" naming was formalized as the umbrella term for the assistant initiative.
+
+---
+
+### What's New
+
+- Added an `OllamaProvider` implementing the `AgentProvider` protocol, translating APEX agent messages and tool schemas to and from Ollama's `/api/chat` REST contract, including tool-call argument parsing and `<think>` tag stripping from Qwen model output.
+- Added three local model profiles — Lynx (`qwen3:1.7b`, lightweight), Acinonyx (`qwen3:4b-instruct`, balanced), and Neofelis (`qwen3:8b`, heavy) each with independent context window, token ceiling, thread count, timeout, and RAM/CPU resource gate settings.
+- Added a local model lifecycle manager: single-loaded-model enforcement, coordinated model switching, idle auto-unload on a background poll loop, and a manual unload endpoint, backed by a shared HTTP session and status snapshot cache.
+- Added a non-blocking execution slot for local generations so concurrent requests are rejected instead of queued, and a host resource gate that blocks a *cold* model load when RAM or CPU utilization exceeds the profile's configured threshold. Already-loaded models bypass the gate.
+- Added a retry path for local tool-select turns that hit the token ceiling without producing a tool call: the turn regenerates once without tools under the final-answer budget instead of returning truncated prose.
+- Added `GET /api/v1/agent/profiles`, returning live availability, active/loaded state, idle-unload countdown, and Ollama runtime details (size, VRAM, processor, context) for all six cloud and local profiles from a 10-second TTL snapshot.
+- Added `POST /api/v1/agent/local/unload` for manually evicting the active local model ahead of the idle timer.
+- Extended the assistant profile selector with a cloud/local section split, live per-profile availability gating with hover tooltips, and preview-stability badges.
+- Added an active local model panel to the assistant drawer showing the loaded model, an idle-unload countdown, and a manual unload button.
+- Replaced the hardcoded demo assistant keyword-matching logic with responses loaded from `core/mock/assistant.json`, so demo behavior can be edited without a code change.
+- Renamed the FastAPI app title and health check payload from "APEX Nexus" to "APEX API"/"APEX", completing the internal Cortex/Nexus naming cleanup.
+
+### Architecture Changes
+
+- Extended `AgentProvider`, `run_agent_loop`, and the API layer's profile resolution to operate over a union of `GeminiModelProfile` and `OllamaModelProfile`, selecting provider, system prompt, and error messaging based on profile type.
+- Added an `AgentModelProfile` union type shared across the agent loop, providers, and API layer in place of the Gemini-only profile type.
+- Added `local_agent_system_prompt` as an independent config key from the existing cloud `agent_system_prompt`.
+- Added `ollama` config section (`enabled`, `host`, `idle_unload_timeout_minutes`, `manual_unload_enabled`, per-profile `resource_gates`) with bounded parsing and logged fallbacks.
+- Added a FastAPI lifespan handler that starts the idle-model background monitor on boot and cancels it cleanly on shutdown.
+- Added session history trimming (`_trim_agent_history`) that bounds prompt evaluation cost per session and discards orphaned leading non-user messages after the cut.
+- Withheld tool schemas on the final permitted local turn so a bounded local session is forced into a text answer instead of wasting the last turn on an unusable tool call.
+
+### API Changes
+
+- `POST /api/v1/agent/query` — `profile` now accepts three additional local values (`"lynx"`, `"acinonyx"`, `"neofelis"`) alongside the existing cloud values. Local profile requests pass through an admission sequence (execution slot, resource gate, model switch) and can return `429` (busy) or `503` (resource-gated, load failure, or Ollama disabled) in addition to the existing response shapes.
+- Added `GET /api/v1/agent/profiles`, returning an `AgentProfileStatus` list with `key`, `display_name`, `provider`, `tier`, `stability`, `status`, `active`, `reason`, `idle_unload_remaining_seconds`, and `loaded_model`.
+- Added `POST /api/v1/agent/local/unload`, returning `LocalUnloadResponse`; can return `403` (disabled), `409` (generation in progress), or `503` (unload failure).
+- Added `AgentProfileStatus`, `LocalLoadedModelStatus`, and `LocalUnloadResponse` Pydantic models, and a `ProfileAvailabilityStatus` literal union (`available`, `disabled`, `ollama_unreachable`, `model_not_installed`, `insufficient_ram`, `cpu_overloaded`).
+
+### Frontend Changes
+
+- Extended `telemetry.ts` with `AssistantProfile`, `ProfileAvailabilityStatus`, `ProfileStability`, `AgentProfileStatus`, and `LoadedOllamaModelStatus` types, replacing the cloud-only `AgentCloudProfile` usage across the assistant surface.
+- `CloudProfileSelector.tsx` now renders a two-section (cloud/local) dropdown with live gating, tooltips, and preview badges driven by the polled profile status list.
+- `useApexAssistant.ts` gained a self-scheduling poll of `GET /api/v1/agent/profiles` (paused while a query is in flight or the tab is hidden) and an `unloadLocalModel()` action.
+- `AssistantDrawer.tsx` gained an `ActiveLocalModelPanel` showing the loaded model, idle-unload countdown, and manual unload control.
+
+### Documentation Updates
+
+- Updated `README.md`, `frontend/README.md`, `docs/api.md`, and `docs/architecture.md` to document the local Ollama provider, its profiles, lifecycle behavior, and the two new API endpoints.
+- Added the Cortex initiative framing to `docs/roadmap.md`, marked v1.13.0 as in progress, and renamed the milestone from "Local Ollama Agentic Tool Calling" to "Cortex: Local Ollama Provider".
+- Reorganized `docs/decisions.md` into topic sections and added local inference decision records covering profile naming, model tiering, and the distinction between the assistant's Ollama integration and the still-unimplemented `DEV_AI_SYNTHESIS=slm` briefing path.
+
+---
+
 ## v1.12.0 — Cloud Gemini Agentic Tool Calling
 
 **Released:** July 2, 2026
