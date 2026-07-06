@@ -1,8 +1,4 @@
-"""
-FastAPI application for APEX (Milestone Nexus).
-
-Standalone HTTP surface; briefing trigger mirrors main.start_apex flow.
-"""
+"""FastAPI application for APEX."""
 
 from __future__ import annotations
 
@@ -102,7 +98,7 @@ async def _app_lifespan(_app: FastAPI):
             pass
 
 
-app = FastAPI(title="APEX Nexus", lifespan=_app_lifespan)
+app = FastAPI(title="APEX API", lifespan=_app_lifespan)
 
 
 DEFAULT_ALLOWED_ORIGINS = (
@@ -882,7 +878,7 @@ def health_check() -> dict[str, Any]:
     """
     Return a minimal health payload for monitoring and readiness probes.
     """
-    return {"status": "online", "system": "APEX Nexus"}
+    return {"status": "online", "system": "APEX"}
 
 
 @app.get("/api/v1/config")

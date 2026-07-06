@@ -14,7 +14,7 @@ Health check. Returns a minimal payload for launcher readiness polling.
 
 **Response `200`**
 ```json
-{ "status": "online", "system": "APEX Nexus" }
+{ "status": "online", "system": "APEX" }
 ```
 
 ---

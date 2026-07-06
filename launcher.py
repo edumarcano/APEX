@@ -200,7 +200,7 @@ def main() -> None:
 
     # Allow uvicorn and the static server time to bind ports before opening UI.
     # Poll the health check endpoint until the API is online
-    print("[LAUNCHER] Waiting for APEX Nexus API to come online...", flush=True)
+    print("[LAUNCHER] Waiting for APEX API to come online...", flush=True)
     api_ready = False
     
     for _ in range(15): 
