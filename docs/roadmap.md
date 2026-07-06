@@ -273,12 +273,12 @@ Enable local agentic execution through Ollama-powered models while reducing clou
 
 ---
 
-## v1.14.0 - Premium HUD & Personal Signal Expansion
+## v1.14.0 - Central Command Atmosphere
 
 **Status:** Planned
 
 **Objective:**
-Refine APEX into a more premium, showcase-ready personal intelligence HUD while expanding its personal signal layer with new high-value connectors.
+Rebuild APEX as a fullscreen central command HUD with inline chat, strict bento layout, glass atmosphere, structured tool cards, and a market ticker.
 
 ---
 
