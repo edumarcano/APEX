@@ -24,13 +24,22 @@
     box-sizing: border-box;
   }
 
+  html,
+  body {
+    @apply h-dvh w-screen overflow-hidden;
+  }
+
   body {
     margin: 0;
-    min-height: 100vh;
     background-color: var(--hud-bg);
     color: var(--hud-text);
     font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     line-height: 1.5;
+  }
+
+  #root,
+  main {
+    @apply flex h-dvh w-full min-h-0 flex-col overflow-hidden;
   }
 
   h1,
@@ -507,5 +516,33 @@
       0
     );
     transition: transform 0.1s ease-out;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .scrollbar-thin:hover {
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-thin:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
   }
 }

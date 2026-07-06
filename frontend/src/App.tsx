@@ -380,7 +380,7 @@ export default function App(): ReactElement {
 
   return (
     <main
-      className="relative isolate flex min-h-dvh w-full flex-col overflow-y-auto bg-[var(--hud-bg)] p-4 md:p-6 xl:h-dvh xl:overflow-hidden"
+      className="relative isolate flex h-dvh w-full min-h-0 flex-col overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
       style={{ '--glow-color': glowColor } as CSSProperties}
     >
       <CelestialBackground />
