@@ -19,7 +19,7 @@ export function BriefingDigest({ insights, status, isLoading, className }: Brief
 
   return (
     <section
-      className={`relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
       aria-labelledby={labelId}
     >
       <header className="mb-4 flex min-h-9 shrink-0 items-center justify-between gap-3">

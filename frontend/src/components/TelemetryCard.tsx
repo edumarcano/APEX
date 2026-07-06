@@ -282,7 +282,7 @@ export function TelemetryCard({
       : null
 
   const sectionClassName = [
-    'relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
+    'relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
     resolveCardHoverClass(title),
     className,
   ]
@@ -341,7 +341,7 @@ export function TelemetryCard({
           />
         </div>
       ) : null}
-      <div className="relative z-10 flex h-full flex-col justify-between">
+      <div className="relative z-10 flex h-full min-h-0 flex-col">
       {showHeader ? (
         <header className="mb-4 flex min-h-9 shrink-0 items-center gap-3">
           <Icon
