@@ -204,8 +204,8 @@ export default function App(): ReactElement {
     'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
-  const centerColumnDormantClasses = 'xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+  const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
   const briefingDigestDormantClasses =
     'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
   const briefingDigestActiveClasses =
@@ -380,7 +380,7 @@ export default function App(): ReactElement {
 
   return (
     <main
-      className="relative isolate flex min-h-dvh w-full flex-col overflow-y-auto bg-[var(--hud-bg)] p-4 md:p-6 xl:h-dvh xl:overflow-hidden"
+      className="relative isolate flex h-dvh w-full min-h-0 flex-col overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
       style={{ '--glow-color': glowColor } as CSSProperties}
     >
       <CelestialBackground />
@@ -399,8 +399,8 @@ export default function App(): ReactElement {
         <div className="absolute inset-0 bg-atmosphere-vignette" />
       </div>
 
-      <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col">
-        <header className="relative mb-3 grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
+      <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-hidden">
+        <header className="relative mb-3 flex-none grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
           <div className="flex items-baseline justify-self-start">
             <h1
               className={`m-0 text-2xl font-extrabold tracking-widest md:text-3xl ${isPipelinePolling
@@ -449,7 +449,7 @@ export default function App(): ReactElement {
         </header>
 
         <div
-          className={`w-full overflow-hidden transition-all duration-700 ease-in-out ${showSubtitleBar
+          className={`flex-none w-full overflow-hidden transition-all duration-700 ease-in-out ${showSubtitleBar
             ? 'max-h-24 opacity-100 mb-4 translate-y-0 scale-100'
             : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
             }`}
@@ -457,11 +457,10 @@ export default function App(): ReactElement {
           <BriefingPanel briefing={data?.briefing ?? ''} />
         </div>
 
-        <div className="mx-auto flex w-full min-h-0 flex-1 flex-col gap-4 md:gap-6 xl:grid xl:grid-rows-[1fr_auto]">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:flex xl:min-h-0 xl:w-full xl:flex-row xl:gap-6">
+        <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:min-h-0 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-6 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Weather"
@@ -496,10 +495,10 @@ export default function App(): ReactElement {
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
-              className={`relative z-[var(--z-core-logo)] flex min-w-0 flex-col items-center gap-4 ${wingTransition} xl:gap-6 xl:min-h-0 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+              className={`relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} xl:gap-6 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               <div
-                className={`w-full ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses} overflow-hidden flex flex-col`}
+                className={`w-full shrink-0 ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses} overflow-hidden flex flex-col`}
               >
                 <BriefingDigest
                   insights={[
@@ -512,7 +511,7 @@ export default function App(): ReactElement {
                 />
               </div>
               <div
-                className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:h-full xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:flex-1 xl:justify-center' : ''}`}
+                className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:justify-center' : ''}`}
               >
                 <div className="relative flex flex-col items-center">
                   <div
@@ -563,7 +562,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:min-h-0 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-6 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard title="Inbox" icon={Mail} className="flex-none xl:flex-1 xl:min-h-0">
                 {isBusy(status) ? (
@@ -675,10 +674,10 @@ export default function App(): ReactElement {
                 </div>
               </TelemetryCard>
             </div>
-          </div>
         </div>
       </div>
 
+      <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0">
       <SystemDiagnostics
         diagnostics={diagnostics}
         diagnosticsStatus={diagnosticsStatus}
@@ -689,6 +688,7 @@ export default function App(): ReactElement {
         pipelineStep={activeStep}
         failedConnectors={failedConnectors}
       />
+      </div>
 
       <AssistantDrawer
         isOpen={isAssistantOpen}
