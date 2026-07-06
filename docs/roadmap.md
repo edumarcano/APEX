@@ -273,12 +273,66 @@ Enable local agentic execution through Ollama-powered models while reducing clou
 
 ---
 
-## v1.X.0 - Command Console & Dynamic Control Deck
+## v1.14.0 - Premium HUD & Personal Signal Expansion
 
 **Status:** Planned
 
 **Objective:**
-Implement runtime configuration reloading, dynamic service re-warming, and an interactive settings drawer to act as the development workspace. Reposition the control deck as an administrative console to monitor agent tool execution, token budgets, and prompt routing.
+Refine APEX into a more premium, showcase-ready personal intelligence HUD while expanding its personal signal layer with new high-value connectors.
+
+---
+
+## v1.15.0 - Cortex: Command Console & Runtime Control Deck
+
+**Status:** Planned
+
+**Objective:**
+Give APEX runtime control surfaces for configuration, model/provider behavior, service state, and operational visibility.
+
+---
+
+## v1.16.0 - Cortex: Assistant Runtime Decoupling
+
+**Status:** Planned
+
+**Objective:**
+Separate HUD activation, telemetry collection, assistant availability, briefing synthesis, and voice delivery into independent runtime flows.
+
+---
+
+## v1.17.0 - Cortex: Tooling Framework & Connector Registry
+
+**Status:** Planned
+
+**Objective:**
+Standardize APEX tool calling so new connectors and capabilities can be added safely, consistently, and visibly.
+
+---
+
+## v1.18.0 - Cortex: Personal Action Tools
+
+**Status:** Planned
+
+**Objective:**
+Expand APEX from read-only assistance into approval-gated personal action execution.
+
+---
+
+## v1.19.0 - Cortex: Personal Context & Memory Layer
+
+**Status:** Planned
+
+**Objective:**
+Give APEX durable local understanding of personal preferences, routines, projects, and workflow context while keeping private data outside the public repository.
+
+---
+
+## v1.20.0 - Cortex: Workflow Orchestration & Assistant Reliability
+
+**Status:** Planned
+
+**Objective:**
+Enable APEX to perform safe multi-step workflows and harden the assistant layer before Phase V introduces physical-world integration.
 
 ---
 
@@ -291,7 +345,7 @@ Expanding APEX beyond the desktop intelligence appliance into physical, distribu
 
 ---
 
-## v1.X.0 - Tactile Hardware Control
+## Future Milestone - Tactile Hardware Control
 
 **Status:** Planned
 
@@ -300,7 +354,7 @@ Enable physical-world interaction through hardware interrupts, remote wake syste
 
 ---
 
-## v1.X.0 - Mobile Node Companion
+## Future Milestone - Mobile Node Companion
 
 **Status:** Planned
 
