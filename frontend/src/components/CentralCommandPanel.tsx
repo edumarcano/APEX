@@ -17,6 +17,7 @@ import { type AgentMessage, type ToolTraceItem } from '../hooks/useApexAssistant
 import { type AgentProfileStatus, type AssistantProfile, type SystemState } from '../types/telemetry'
 
 import { ApexLogo } from './ApexLogo'
+import { AssistantToolCards } from './AssistantToolCards'
 import { AskApexBar, OPERATION_PROMPT_CHIPS } from './AskApexBar'
 
 interface CentralCommandPanelProps {
@@ -357,12 +358,18 @@ function AssistantTabContent({
           if (message.role === 'model') {
             const showTrace =
               index === lastModelIndex && latestTrace.length > 0
+            const toolOutputs = message.tool_outputs ?? []
             return (
               <div key={`model-${index}`} className="flex justify-start">
-                <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3">
-                  <MarkdownContent content={message.content ?? ''} />
-                  {showTrace ? (
-                    <ToolTracePanel trace={latestTrace} />
+                <div className="flex w-full min-w-0 max-w-[92%] flex-col">
+                  <div className="rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3">
+                    <MarkdownContent content={message.content ?? ''} />
+                    {showTrace ? (
+                      <ToolTracePanel trace={latestTrace} />
+                    ) : null}
+                  </div>
+                  {toolOutputs.length > 0 ? (
+                    <AssistantToolCards toolOutputs={toolOutputs} />
                   ) : null}
                 </div>
               </div>
