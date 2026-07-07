@@ -180,8 +180,13 @@ def run_agent_loop(
                     }
                 )
 
-                if status == "ok" and call.name in ALLOWED_TOOL_OUTPUT_REGISTRY:
-                    whitelisted_output: Any = output
+                if status == "ok":
+                    if call.name in ALLOWED_TOOL_OUTPUT_REGISTRY:
+                        whitelisted_output: Any = output
+                    else:
+                        whitelisted_output = {
+                            "error": "Tool output is not whitelisted for client display."
+                        }
                 else:
                     whitelisted_output = {"error": str(output)}
 
