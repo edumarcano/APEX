@@ -18,7 +18,6 @@ AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
 ALLOWED_TOOL_OUTPUT_REGISTRY: set[str] = {
-    "get_current_weather",
     "get_weather_forecast",
     "get_f1_driver_standings",
     "get_f1_season_calendar",
