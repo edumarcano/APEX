@@ -326,6 +326,7 @@ export default function App(): ReactElement {
     setPrevStatus(status)
   }, [status, prevStatus, activeTab])
 
+  const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
   const staggerTransition =
@@ -451,7 +452,7 @@ export default function App(): ReactElement {
               <MarketTickerCard
                 data={marketData}
                 isLoading={isMarketLoading}
-                className="w-full shrink-0 xl:flex-none"
+                className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
               />
 
               <TelemetryCard

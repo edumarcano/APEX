@@ -30,6 +30,22 @@ function formatChangePercent(changePercent: number | null): string {
   return `${sign}${changePercent.toFixed(2)}%`
 }
 
+function resolveSparklineTrend(values: number[]): 'positive' | 'negative' | 'neutral' {
+  if (values.length < 2) {
+    return 'neutral'
+  }
+  // Backend sparkline is newest-first (index 0 = latest close).
+  const newest = values[0]
+  const oldest = values[values.length - 1]
+  if (newest >= oldest) {
+    return 'positive'
+  }
+  if (newest < oldest) {
+    return 'negative'
+  }
+  return 'neutral'
+}
+
 function resolveTrendDirection(
   change: number | null,
   changePercent: number | null,
@@ -41,13 +57,7 @@ function resolveTrendDirection(
   if (changePercent !== null && changePercent !== 0) {
     return changePercent > 0 ? 'positive' : 'negative'
   }
-  if (sparkline.length >= 2) {
-    const newest = sparkline[0]
-    const oldest = sparkline[sparkline.length - 1]
-    if (newest > oldest) return 'positive'
-    if (newest < oldest) return 'negative'
-  }
-  return 'neutral'
+  return resolveSparklineTrend(sparkline)
 }
 
 function buildSparklinePoints(values: number[]): string {
@@ -70,16 +80,15 @@ function buildSparklinePoints(values: number[]): string {
     .join(' ')
 }
 
-function Sparkline({
-  values,
-  trend,
-}: {
-  values: number[]
-  trend: 'positive' | 'negative' | 'neutral'
-}): ReactElement {
+function Sparkline({ values }: { values: number[] }): ReactElement {
   const points = useMemo(() => buildSparklinePoints(values), [values])
+  const sparkTrend = useMemo(() => resolveSparklineTrend(values), [values])
   const stroke =
-    trend === 'positive' ? POSITIVE_COLOR : trend === 'negative' ? NEGATIVE_COLOR : '#6b7280'
+    sparkTrend === 'positive'
+      ? POSITIVE_COLOR
+      : sparkTrend === 'negative'
+        ? NEGATIVE_COLOR
+        : '#6b7280'
 
   if (!points) {
     return (
@@ -103,7 +112,7 @@ function Sparkline({
         points={points}
         fill="none"
         stroke={stroke}
-        strokeWidth="1.75"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -199,7 +208,7 @@ function TickerRow({
             {isUnavailable ? '--%' : formatChangePercent(ticker.change_percent)}
           </p>
         </div>
-        <Sparkline values={isUnavailable ? [] : ticker.sparkline} trend={trend} />
+        <Sparkline values={isUnavailable ? [] : ticker.sparkline} />
       </div>
     </div>
   )
