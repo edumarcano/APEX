@@ -40,7 +40,7 @@ export interface ToolOutputItem {
   name: string
   status: string
   duration_ms: number
-  output: any
+  output: unknown
 }
 
 export interface AgentMessage {
