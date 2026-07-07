@@ -51,6 +51,7 @@ interface AskApexBarProps {
   onSelectChip?: (query: string) => void
   isSubmitting: boolean
   disabled?: boolean
+  integrated?: boolean
 }
 
 export function AskApexBar({
@@ -62,6 +63,7 @@ export function AskApexBar({
   onSelectChip,
   isSubmitting,
   disabled = false,
+  integrated = false,
 }: AskApexBarProps): ReactElement {
   const [query, setQuery] = useState('')
   const isInputDisabled = disabled || isSubmitting
@@ -101,9 +103,26 @@ export function AskApexBar({
     isInputDisabled ? 'pointer-events-none opacity-50' : '',
   ].join(' ')
 
+  const wrapperClassName = integrated
+    ? 'w-full max-w-full'
+    : 'w-80 sm:w-[380px] xl:w-[460px]'
+
+  const formClassName = integrated
+    ? [
+        'w-full rounded-xl border-0 bg-transparent shadow-none backdrop-blur-none',
+        'transition-all duration-300',
+        disabled ? 'opacity-50' : '',
+      ].join(' ')
+    : [
+        'w-full rounded-xl border bg-zinc-950/40 backdrop-blur-md',
+        'border-white/10 transition-all duration-300',
+        'focus-within:border-[#0F4DB8]/60 focus-within:shadow-[0_0_12px_rgba(15,77,184,0.2)]',
+        disabled ? 'opacity-50' : '',
+      ].join(' ')
+
   return (
-    <div className="w-80 sm:w-[380px] xl:w-[460px]">
-      {query.length === 0 ? (
+    <div className={wrapperClassName}>
+      {!integrated && query.length === 0 ? (
         <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none w-full max-w-full">
           {OPERATION_PROMPT_CHIPS.map((chip) => (
             <button
@@ -123,12 +142,7 @@ export function AskApexBar({
 
       <form
         onSubmit={handleSubmit}
-        className={[
-          'w-full rounded-xl border bg-zinc-950/40 backdrop-blur-md',
-          'border-white/10 transition-all duration-300',
-          'focus-within:border-[#0F4DB8]/60 focus-within:shadow-[0_0_12px_rgba(15,77,184,0.2)]',
-          disabled ? 'opacity-50' : '',
-        ].join(' ')}
+        className={formClassName}
         aria-label="Ask APEX"
       >
         <div className="flex items-center gap-3 px-4 py-3">
