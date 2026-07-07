@@ -16,13 +16,11 @@ import {
   type ReactElement,
 } from 'react'
 
-import { AskApexBar } from './components/AskApexBar'
 import { ApexLogo } from './components/ApexLogo'
-import { AssistantDrawer } from './components/AssistantDrawer'
 import { CelestialBackground } from './components/CelestialBackground'
+import { CentralCommandPanel } from './components/CentralCommandPanel'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
-import { BriefingPanel } from './components/BriefingPanel'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -97,6 +95,8 @@ export default function App(): ReactElement {
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
   const [prevStatus, setPrevStatus] = useState<string>('idle')
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
+  const [activeTab, setActiveTab] = useState<'assistant' | 'briefing'>('assistant')
+  const [isBriefingNew, setIsBriefingNew] = useState(false)
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
@@ -206,10 +206,24 @@ export default function App(): ReactElement {
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
   const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col xl:max-w-full xl:flex-1'
   const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
-  const briefingDigestDormantClasses =
-    'max-h-0 opacity-0 overflow-hidden mb-0 scale-95 pointer-events-none'
-  const briefingDigestActiveClasses =
-    'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4 scale-100 pointer-events-auto'
+
+  const showDigest = !isDormant && !isAssistantOpen
+  const digestWrapperClass = [
+    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
+    showDigest
+      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4'
+      : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
+  ].join(' ')
+
+  const showLargeLogo = isDormant || (!isDormant && !isAssistantOpen)
+  const largeLogoWrapperClass = [
+    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center justify-center',
+    showLargeLogo
+      ? isDormant
+        ? 'opacity-100 scale-100 h-64 xl:h-auto xl:flex-1'
+        : 'opacity-100 scale-100 h-64 xl:h-72'
+      : 'opacity-0 scale-50 h-0 w-0 overflow-hidden pointer-events-none',
+  ].join(' ')
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -302,9 +316,13 @@ export default function App(): ReactElement {
         minute: '2-digit',
       })
       setLastBriefingTime(formatted)
+
+      if (activeTab !== 'briefing') {
+        setIsBriefingNew(true)
+      }
     }
     setPrevStatus(status)
-  }, [status, prevStatus])
+  }, [status, prevStatus, activeTab])
 
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -344,27 +362,6 @@ export default function App(): ReactElement {
     setReminderPulseCount((prev) => prev + 1)
   }
 
-  const handleAgentQuery = useCallback(
-    (query: string, profile: AssistantProfile): void => {
-      void queryAssistant(query, profile)
-    },
-    [queryAssistant],
-  )
-
-  const handleAssistantFollowUp = useCallback(
-    (query: string): void => {
-      void queryAssistant(query, agentProfile)
-    },
-    [agentProfile, queryAssistant],
-  )
-
-  const handleAssistantChipSelect = useCallback(
-    (query: string): void => {
-      void queryAssistant(query, agentProfile)
-    },
-    [agentProfile, queryAssistant],
-  )
-
   const handleTriggerSynthesis = useCallback((): void => {
     resetAssistantSession()
     void triggerSynthesis()
@@ -373,10 +370,6 @@ export default function App(): ReactElement {
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
-
-
-
-  const showSubtitleBar = isSpeaking && activeStep === 4
 
   return (
     <main
@@ -448,15 +441,6 @@ export default function App(): ReactElement {
           </div>
         </header>
 
-        <div
-          className={`flex-none w-full overflow-hidden transition-all duration-700 ease-in-out ${showSubtitleBar
-            ? 'max-h-24 opacity-100 mb-4 translate-y-0 scale-100'
-            : 'max-h-0 opacity-0 mb-0 -translate-y-4 scale-95 pointer-events-none'
-            }`}
-        >
-          <BriefingPanel briefing={data?.briefing ?? ''} />
-        </div>
-
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
@@ -497,9 +481,7 @@ export default function App(): ReactElement {
             <div
               className={`relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} xl:gap-6 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
-              <div
-                className={`w-full shrink-0 ${wingTransition} ${isDormant ? briefingDigestDormantClasses : briefingDigestActiveClasses} overflow-hidden flex flex-col`}
-              >
+              <div className={`shrink-0 overflow-hidden flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
                   insights={[
                     ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
@@ -510,9 +492,8 @@ export default function App(): ReactElement {
                   className="w-full h-full min-h-0"
                 />
               </div>
-              <div
-                className={`flex h-64 flex-none flex-col items-center justify-center py-4 ${wingTransition} xl:min-h-0 xl:flex-1 xl:py-0 ${isDormant ? 'xl:justify-center' : ''}`}
-              >
+
+              <div className={`shrink-0 py-4 xl:py-0 ${largeLogoWrapperClass}`}>
                 <div className="relative flex flex-col items-center">
                   <div
                     className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
@@ -540,24 +521,39 @@ export default function App(): ReactElement {
                       disabled={isTriggerDisabled}
                     />
                   </div>
-                  {showAskApexBar ? (
-                    <div
-                      className="mt-3 flex w-full max-w-lg justify-center px-4 transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100"
-                    >
-                      <AskApexBar
-                        activeProfile={agentProfile}
-                        onProfileChange={setAgentProfile}
-                        onSubmit={handleAgentQuery}
-                        profilesStatus={profilesStatus}
-                        profilesStatusHydrated={profilesStatusHydrated}
-                        onSelectChip={handleAssistantChipSelect}
-                        isSubmitting={isAssistantQuerying}
-                        disabled={isSpeaking}
-                      />
-                    </div>
-                  ) : null}
                 </div>
               </div>
+
+              {!isDormant ? (
+                <div className="flex min-h-0 w-full flex-1 flex-col">
+                  <CentralCommandPanel
+                    isExpanded={isAssistantOpen}
+                    setExpanded={setAssistantOpen}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    briefingText={data?.briefing ?? ''}
+                    insights={data?.digest?.insights || []}
+                    isBriefingNew={isBriefingNew}
+                    setBriefingNew={setIsBriefingNew}
+                    activeStep={activeStep}
+                    status={status}
+                    isSpeaking={isSpeaking}
+                    reminderPulseCount={reminderPulseCount}
+                    assistantHistory={assistantHistory}
+                    isAssistantQuerying={isAssistantQuerying}
+                    assistantLatestTrace={assistantLatestTrace}
+                    assistantError={assistantError}
+                    profilesStatus={profilesStatus}
+                    profilesStatusHydrated={profilesStatusHydrated}
+                    queryAssistant={queryAssistant}
+                    unloadLocalModel={unloadLocalModel}
+                    resetAssistantSession={resetAssistantSession}
+                    activeProfile={agentProfile}
+                    setActiveProfile={setAgentProfile}
+                    askApexEnabled={Boolean(showAskApexBar)}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {/* COLUMN 3: RIGHT WING */}
@@ -689,22 +685,6 @@ export default function App(): ReactElement {
         failedConnectors={failedConnectors}
       />
       </div>
-
-      <AssistantDrawer
-        isOpen={isAssistantOpen}
-        onClose={() => {
-          setAssistantOpen(false)
-        }}
-        onResetSession={resetAssistantSession}
-        history={assistantHistory}
-        isQuerying={isAssistantQuerying}
-        latestTrace={assistantLatestTrace}
-        activeProfile={agentProfile}
-        profilesStatus={profilesStatus}
-        onUnloadModel={unloadLocalModel}
-        onSubmitFollowUp={handleAssistantFollowUp}
-        error={assistantError}
-      />
     </main>
   )
 }
