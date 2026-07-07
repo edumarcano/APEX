@@ -1068,14 +1068,12 @@ def get_market_snapshot() -> MarketResponse:
         return MarketResponse.model_validate(payload)
     except Exception as exc:
         _LOGGER.exception("Market snapshot endpoint failed")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error": "market_snapshot_failed",
-                "message": str(exc),
-                "type": type(exc).__name__,
-            },
-        ) from exc
+        return MarketResponse(
+            status="unavailable",
+            cooldown_active=False,
+            cooldown_remaining_seconds=0,
+            tickers=[],
+        )
 
 
 @app.post("/api/v1/trigger", response_model=BriefingResponse)

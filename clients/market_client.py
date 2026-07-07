@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import random
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
@@ -12,6 +14,12 @@ from typing import Any, Literal
 
 import requests
 from dotenv import load_dotenv
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from core.config import DEMO_MODE
 
 load_dotenv()
 
@@ -22,6 +30,13 @@ _REQUEST_TIMEOUT_SECONDS = 2.5
 _QUOTE_TTL = timedelta(minutes=5)
 _SPARKLINE_TTL = timedelta(hours=6)
 _COOLDOWN_DURATION = timedelta(minutes=15)
+
+_DEMO_SYMBOLS: tuple[str, ...] = ("SPY", "AAPL", "MSFT")
+_DEMO_BASE_PRICES: dict[str, float] = {
+    "SPY": 520.0,
+    "AAPL": 190.0,
+    "MSFT": 420.0,
+}
 
 TickerStatus = Literal["live", "stale", "unavailable"]
 MarketStatus = Literal[
@@ -280,8 +295,64 @@ def _build_response(
     }
 
 
+def _is_simulation_mode() -> bool:
+    """Return whether outbound market HTTP should be bypassed."""
+    return DEMO_MODE or _get_api_key() is None
+
+
+def _simulate_sparkline(current_price: float, *, seed_ts: float) -> list[float]:
+    """Build seven daily closes trending smoothly toward the current mock price."""
+    sparkline: list[float] = []
+    for day_offset in range(6, -1, -1):
+        t = seed_ts - day_offset * 86_400
+        drift = math.sin(t / 86_400.0) * current_price * 0.012
+        retrace = current_price * (1.0 - day_offset * 0.004)
+        point = round(retrace + drift, 2)
+        sparkline.append(point)
+    sparkline[0] = round(current_price, 2)
+    return sparkline
+
+
+def _simulate_ticker(symbol: str, now: datetime) -> dict[str, Any]:
+    """Generate one dynamic demo ticker with sine-wave and jitter variation."""
+    base = _DEMO_BASE_PRICES.get(symbol, 100.0)
+    t = now.timestamp()
+    wave = math.sin(t / 45.0) * base * 0.008
+    jitter = random.uniform(-base * 0.002, base * 0.002)
+    price = round(base + wave + jitter, 2)
+    prior = round(price - wave - jitter * 0.5, 2)
+    change = round(price - prior, 2)
+    change_percent = round((change / prior) * 100.0, 2) if prior else 0.0
+    now_iso = _iso_utc(now)
+
+    return {
+        "symbol": symbol,
+        "price": price,
+        "change": change,
+        "change_percent": change_percent,
+        "status": "live",
+        "last_updated": now_iso,
+        "sparkline": _simulate_sparkline(price, seed_ts=t),
+    }
+
+
+def _fetch_demo_market_data() -> dict[str, Any]:
+    """Return high-fidelity simulated market snapshots without network IO."""
+    now = _now_utc()
+    tickers = [_simulate_ticker(symbol, now) for symbol in _DEMO_SYMBOLS]
+    return _build_response(
+        status="live",
+        cooldown_active=False,
+        cooldown_remaining_seconds=0,
+        tickers=tickers,
+    )
+
+
 def fetch_market_data() -> dict[str, Any]:
     """Return market snapshot with cache-first Alpha Vantage aggregation."""
+    if _is_simulation_mode():
+        return _fetch_demo_market_data()
+
     symbols = _parse_configured_symbols()
     if symbols is None:
         return _build_response(
@@ -297,32 +368,6 @@ def fetch_market_data() -> dict[str, Any]:
         cache = _read_cache()
         cooldown_active, cooldown_remaining = _cooldown_state(cache)
         symbol_cache: dict[str, Any] = cache.setdefault("symbols", {})
-
-        if api_key is None:
-            tickers: list[dict[str, Any]] = []
-            has_any_cache = False
-            for symbol in symbols:
-                entry = symbol_cache.get(symbol)
-                if isinstance(entry, dict) and _has_cached_quote(entry):
-                    tickers.append(_ticker_from_cache(symbol, entry, status="stale"))
-                    has_any_cache = True
-                else:
-                    tickers.append(_empty_ticker(symbol))
-
-            if has_any_cache:
-                return _build_response(
-                    status="stale",
-                    cooldown_active=cooldown_active,
-                    cooldown_remaining_seconds=cooldown_remaining,
-                    tickers=tickers,
-                )
-
-            return _build_response(
-                status="provider_unavailable",
-                cooldown_active=cooldown_active,
-                cooldown_remaining_seconds=cooldown_remaining,
-                tickers=tickers,
-            )
 
         fetch_failed = False
         live_symbols: set[str] = set()
