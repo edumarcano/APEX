@@ -45,6 +45,8 @@ type F1SchedulePayload = {
 
 const COUNTRY_FLAG_MAP: Record<string, string> = {
   australia: 'au',
+  austria: 'at',
+  azerbaijan: 'az',
   bahrain: 'bh',
   belgium: 'be',
   brazil: 'br',
@@ -61,7 +63,9 @@ const COUNTRY_FLAG_MAP: Record<string, string> = {
   singapore: 'sg',
   spain: 'es',
   'united arab emirates': 'ae',
+  uae: 'ae',
   'united kingdom': 'gb',
+  uk: 'gb',
   'united states': 'us',
   usa: 'us',
 }
