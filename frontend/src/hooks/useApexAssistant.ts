@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type {
+  AgentMessage as TelemetryAgentMessage,
   AgentProfileStatus,
   AssistantProfile,
   LoadedOllamaModelStatus,
   ProfileAvailabilityStatus,
   ProfileStability,
+  ToolOutputItem,
 } from '../types/telemetry'
 
 const API_BASE = 'http://127.0.0.1:8000'
@@ -14,7 +16,7 @@ const AGENT_PROFILES_ENDPOINT = `${API_BASE}/api/v1/agent/profiles`
 const AGENT_LOCAL_UNLOAD_ENDPOINT = `${API_BASE}/api/v1/agent/local/unload`
 const PROFILE_POLL_INTERVAL_MS = 4000
 
-export type { AssistantProfile, AgentProfileStatus } from '../types/telemetry'
+export type { AssistantProfile, AgentProfileStatus, ToolOutputItem } from '../types/telemetry'
 
 export interface ToolCall {
   id: string
@@ -29,9 +31,7 @@ export interface ToolResult {
   output: unknown
 }
 
-export interface AgentMessage {
-  role: 'user' | 'model' | 'tool'
-  content?: string
+export interface AgentMessage extends TelemetryAgentMessage {
   tool_calls?: ToolCall[]
   tool_results?: ToolResult[]
 }
@@ -45,6 +45,7 @@ export interface ToolTraceItem {
 interface AgentQueryResponseBody {
   answer?: string
   tool_trace?: ToolTraceItem[]
+  tool_outputs?: ToolOutputItem[]
   error?: string | null
 }
 
@@ -215,6 +216,31 @@ function parseToolTraceItem(value: unknown): ToolTraceItem | null {
   return { name, status, duration_ms: durationMs }
 }
 
+function parseToolOutputItem(value: unknown): ToolOutputItem | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const name = typeof record.name === 'string' ? record.name : null
+  const status = typeof record.status === 'string' ? record.status : null
+  const durationMs =
+    typeof record.duration_ms === 'number' && Number.isFinite(record.duration_ms)
+      ? record.duration_ms
+      : null
+
+  if (!name || !status || durationMs === null || !('output' in record)) {
+    return null
+  }
+
+  return {
+    name,
+    status,
+    duration_ms: durationMs,
+    output: record.output,
+  }
+}
+
 function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   if (!body || typeof body !== 'object') {
     return {}
@@ -234,7 +260,12 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
     .map(parseToolTraceItem)
     .filter((item): item is ToolTraceItem => item !== null)
 
-  return { answer, tool_trace, error }
+  const rawOutputs = Array.isArray(record.tool_outputs) ? record.tool_outputs : []
+  const tool_outputs = rawOutputs
+    .map(parseToolOutputItem)
+    .filter((item): item is ToolOutputItem => item !== null)
+
+  return { answer, tool_trace, tool_outputs, error }
 }
 
 export interface UseApexAssistantResult {
@@ -392,7 +423,11 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
 
         const body = parseAgentQueryResponse(await response.json())
         const answer = body.answer ?? ''
-        const modelMsg: AgentMessage = { role: 'model', content: answer }
+        const modelMsg: AgentMessage = {
+          role: 'model',
+          content: answer,
+          tool_outputs: body.tool_outputs,
+        }
 
         setAssistantHistory((prev) => [...prev, userMsg, modelMsg])
         setAssistantLatestTrace(body.tool_trace ?? [])
