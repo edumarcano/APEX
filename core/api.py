@@ -498,9 +498,7 @@ def _validate_mock_agent_response(
         if not isinstance(entry, dict):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=(
-                    f"Demo assistant tool_outputs[{index}] must be a JSON object."
-                ),
+                detail=f"Demo assistant tool_outputs[{index}] must be a JSON object.",
             )
         missing_keys = required_tool_output_keys - entry.keys()
         if missing_keys:
@@ -513,6 +511,23 @@ def _validate_mock_agent_response(
                 ),
             )
 
+        if not isinstance(entry.get("name"), str) or not isinstance(
+            entry.get("status"), str
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"Demo assistant tool_outputs[{index}] must include string 'name' and 'status'."
+                ),
+            )
+        duration_ms = entry.get("duration_ms")
+        if not isinstance(duration_ms, (int, float)):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"Demo assistant tool_outputs[{index}] must include numeric 'duration_ms'."
+                ),
+            )
     return {
         "answer": answer,
         "tool_trace": tool_trace,
