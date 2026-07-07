@@ -458,6 +458,7 @@ def _validate_mock_agent_response(
 
     answer = response.get("answer")
     tool_trace = response.get("tool_trace")
+    tool_outputs = response.get("tool_outputs", [])
     keywords = response.get("keywords")
 
     if not isinstance(answer, str):
@@ -484,9 +485,38 @@ def _validate_mock_agent_response(
     else:
         keywords = []
 
+    if tool_outputs is None:
+        tool_outputs = []
+    if not isinstance(tool_outputs, list):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Demo assistant response must include list 'tool_outputs'.",
+        )
+
+    required_tool_output_keys = {"name", "status", "duration_ms", "output"}
+    for index, entry in enumerate(tool_outputs):
+        if not isinstance(entry, dict):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"Demo assistant tool_outputs[{index}] must be a JSON object."
+                ),
+            )
+        missing_keys = required_tool_output_keys - entry.keys()
+        if missing_keys:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Demo assistant tool_outputs entries must include "
+                    f"{sorted(required_tool_output_keys)}; "
+                    f"entry {index} missing {sorted(missing_keys)}."
+                ),
+            )
+
     return {
         "answer": answer,
         "tool_trace": tool_trace,
+        "tool_outputs": tool_outputs,
         "keywords": keywords,
     }
 
@@ -623,6 +653,7 @@ def _run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
         answer=selected_response["answer"],
         profile_used=profile.model_dump(),
         tool_trace=selected_response["tool_trace"],
+        tool_outputs=selected_response.get("tool_outputs", []),
         session_id=payload.session_id,
         error=None,
     )
