@@ -495,16 +495,18 @@ export function CentralCommandPanel({
 
   const handleAgentSubmit = useCallback(
     (query: string, profile: AssistantProfile): void => {
+      setActiveTab('assistant')
       void queryAssistant(query, profile)
     },
-    [queryAssistant],
+    [queryAssistant, setActiveTab],
   )
 
   const handleChipSelect = useCallback(
     (query: string): void => {
+      setActiveTab('assistant')
       void queryAssistant(query, activeProfile)
     },
-    [activeProfile, queryAssistant],
+    [activeProfile, queryAssistant, setActiveTab],
   )
 
   const tabBaseClass =
