@@ -3,7 +3,6 @@ import {
   CheckSquare,
   Clock,
   CloudSun,
-  Flag,
   Mail,
   Newspaper,
 } from 'lucide-react'
@@ -462,19 +461,13 @@ export default function App(): ReactElement {
               <TelemetryCard
                 title="Events"
                 icon={Calendar}
+                f1TelemetryText={f1ScheduleTelemetryText}
                 className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {scheduleBody}
                 </p>
               </TelemetryCard>
-
-              <TelemetryCard
-                title="Next F1 Race"
-                icon={Flag}
-                rawScheduleText={f1ScheduleTelemetryText}
-                className="flex-none xl:flex-1 xl:min-h-0"
-              />
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}

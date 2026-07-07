@@ -241,9 +241,7 @@ const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> 
 function resolveCardHoverClass(title: string): string {
   const normalized = title.trim()
   if (normalized === 'Weather') return 'hover-weather-bright'
-  if (normalized === 'Events' || normalized === 'Next F1 Race') {
-    return 'hover-blue-medium'
-  }
+  if (normalized === 'Events') return 'hover-blue-medium'
   if (normalized === 'Reminders') return 'hover-blue-strong'
   return 'hover-blue-subtle'
 }
@@ -254,8 +252,8 @@ export type TelemetryCardProps = {
   children?: ReactNode
   /** When set, renders the primary temperature numerical readout with VTE inline weight. */
   primaryTemperatureF?: number | null
-  /** Optional raw schedule text source used for F1_DATA parsing. */
-  rawScheduleText?: string
+  /** Optional F1 telemetry text source used for F1_DATA parsing. */
+  f1TelemetryText?: string
   /** Micro-climate archetype for scoped atmospheric background glow. */
   weatherCondition?: WeatherConditionArchetype | null
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
@@ -265,12 +263,11 @@ export function TelemetryCard({
   icon: Icon,
   children,
   primaryTemperatureF,
-  rawScheduleText,
+  f1TelemetryText,
   weatherCondition,
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
-  const isScheduleCard = title.trim().toLowerCase() === 'next f1 race'
   const showHeader = title.trim().length > 0
 
   const headingId = useId()
@@ -299,8 +296,10 @@ export function TelemetryCard({
       : undefined
 
   const f1Schedule = useMemo(() => {
-    if (!isScheduleCard) return null
-    const payload = parseF1SchedulePayload(rawScheduleText ?? '')
+    const source = f1TelemetryText?.trim() ?? ''
+    if (!source) return null
+
+    const payload = parseF1SchedulePayload(source)
     if (!payload) return null
 
     const raceName = asString(payload.raceName) || 'Upcoming Grand Prix'
@@ -309,7 +308,6 @@ export function TelemetryCard({
     const raceDateTimeEST = asString(payload.raceDateTimeEST)
     const relativeWeek = asString(payload.relativeWeek)
     const sprintScheduled = asBoolean(payload.sprintScheduled)
-    const sprintDateTimeEST = asString(payload.sprintDateTimeEST)
 
     return {
       raceName,
@@ -317,10 +315,9 @@ export function TelemetryCard({
       country,
       raceEtLabel: `${relativeWeek} — ${raceDateTimeEST}`,
       sprintScheduled,
-      sprintEtLabel: sprintDateTimeEST,
       countryFlag: resolveCountryFlag(country),
     }
-  }, [isScheduleCard, rawScheduleText])
+  }, [f1TelemetryText])
 
   return (
     <section
@@ -378,57 +375,54 @@ export function TelemetryCard({
             ) : null}
           </div>
         ) : null}
-        {isScheduleCard && f1Schedule ? (
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-            <div className="space-y-1.5 rounded-xl border border-[color:var(--hud-border-color)] bg-black/20 p-3 text-[color:var(--hud-text)]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
+        {f1Schedule ? (
+          <div className="mb-3 shrink-0 rounded-xl border border-white/5 bg-black/30 p-2.5 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  aria-label={`Race country flag ${f1Schedule.country || 'unknown'}`}
+                  className="shrink-0 text-sm leading-none"
+                >
+                  {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
+                    f1Schedule.countryFlag
+                  ) : (
+                    <img
+                      src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
+                      alt={`${f1Schedule.country || 'Unknown'} flag`}
+                      className="h-3 w-4 rounded object-cover shadow-sm"
+                      loading="lazy"
+                      decoding="async"
+                      onError={(event) => {
+                        const flagContainer = event.currentTarget.parentElement
+                        if (!flagContainer) return
+                        flagContainer.textContent = CHECKERED_FALLBACK_FLAG
+                      }}
+                    />
+                  )}
+                </span>
+                <span className="truncate text-xs font-semibold text-zinc-200">
                   {f1Schedule.raceName}
-                </p>
-                <p className="text-xs text-[color:var(--hud-muted-text)]">
-                  Round {f1Schedule.round}
-                </p>
+                </span>
               </div>
-              <span
-                aria-label={`Race country flag ${f1Schedule.country || 'unknown'}`}
-                className="shrink-0 leading-none"
-              >
-                {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
-                  <span className="text-lg">{f1Schedule.countryFlag}</span>
-                ) : (
-                  <img
-                    src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
-                    alt={`${f1Schedule.country || 'Unknown'} flag`}
-                    className="h-3.5 w-5 rounded object-cover shadow-sm"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(event) => {
-                      const flagContainer = event.currentTarget.parentElement
-                      if (!flagContainer) return
-                      flagContainer.textContent = CHECKERED_FALLBACK_FLAG
-                    }}
-                  />
-                )}
+              <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                R{f1Schedule.round}
               </span>
             </div>
-
-            <p className="text-sm font-medium text-[color:var(--hud-accent)]">
-              {f1Schedule.raceEtLabel}
-            </p>
-
-            {f1Schedule.sprintScheduled ? (
-              <span className="inline-flex items-center rounded-full border border-[color:var(--hud-accent)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--hud-accent)]">
-                Sprint {f1Schedule.sprintEtLabel}
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <span className="truncate text-[11px] font-medium text-[#7EB3FF]">
+                {f1Schedule.raceEtLabel}
               </span>
-            ) : null}
+              {f1Schedule.sprintScheduled ? (
+                <span className="shrink-0 rounded-full border border-[#7EB3FF]/30 bg-[#7EB3FF]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#7EB3FF]">
+                  Sprint
+                </span>
+              ) : null}
             </div>
           </div>
-        ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
-            {children}
-          </div>
-        )}
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
+          {children}
+        </div>
       </div>
       </div>
     </section>
