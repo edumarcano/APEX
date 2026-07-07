@@ -512,8 +512,8 @@ export function CentralCommandPanel({
       <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
         <div
           className={[
-            'shrink-0 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            isExpanded ? 'w-12 opacity-100 sm:w-14' : 'w-0 opacity-0',
+            'flex shrink-0 items-center justify-center overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+            isExpanded ? 'w-14 opacity-100 sm:w-16' : 'w-0 opacity-0',
           ].join(' ')}
         >
           {isExpanded ? (
@@ -522,7 +522,7 @@ export function CentralCommandPanel({
               status={status}
               isSpeaking={isSpeaking}
               reminderPulseCount={reminderPulseCount}
-              className="h-12 w-auto sm:h-14"
+              className="h-14 w-auto sm:h-16"
             />
           ) : null}
         </div>
