@@ -859,11 +859,16 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
       )
     default:
       return (
-        <ErrorFallbackCard
-          toolName={item.name}
+        <ToolCardFrame
+          title={formatToolLabel(item.name)}
+          icon={<AlertCircle className="size-3.5" aria-hidden />}
           durationMs={item.duration_ms}
-          message="Structured card unavailable for this tool output."
-        />
+          accentClass="text-zinc-400"
+        >
+          <p className="text-sm text-zinc-400">
+            Structured card unavailable for this tool output.
+          </p>
+        </ToolCardFrame>
       )
   }
 }
