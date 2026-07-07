@@ -1,4 +1,4 @@
-"""Alpha Vantage market aggregator with file-backed caching."""
+"""Alpha Vantage EOD market aggregator with file-backed caching."""
 
 from __future__ import annotations
 
@@ -27,8 +27,7 @@ _MARKET_LOCK = threading.Lock()
 _CACHE_FILENAME = ".market_cache.json"
 _ALPHA_VANTAGE_BASE = "https://www.alphavantage.co/query"
 _REQUEST_TIMEOUT_SECONDS = 2.5
-_QUOTE_TTL = timedelta(minutes=5)
-_SPARKLINE_TTL = timedelta(hours=6)
+_MARKET_TTL = timedelta(hours=12)
 _COOLDOWN_DURATION = timedelta(minutes=15)
 
 _DEMO_SYMBOLS: tuple[str, ...] = ("SPY", "AAPL", "MSFT")
@@ -184,55 +183,45 @@ def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, s
     return payload, None
 
 
-def _parse_global_quote(payload: dict[str, Any]) -> dict[str, float | None] | None:
-    quote = payload.get("Global Quote")
-    if not isinstance(quote, dict) or not quote:
+def _daily_close(series: dict[str, Any], date_key: str) -> float | None:
+    day = series.get(date_key)
+    if not isinstance(day, dict):
         return None
-
-    price = _parse_float(quote.get("05. price"))
-    change = _parse_float(quote.get("09. change"))
-    change_percent_raw = quote.get("10. change percent")
-    change_percent = None
-    if change_percent_raw is not None:
-        change_percent = _parse_float(str(change_percent_raw).replace("%", "").strip())
-
-    if price is None and change is None and change_percent is None:
-        return None
-
-    return {
-        "price": price,
-        "change": change,
-        "change_percent": change_percent,
-    }
+    return _parse_float(day.get("4. close"))
 
 
-def _parse_sparkline(payload: dict[str, Any]) -> list[float] | None:
+def _parse_daily_consolidated(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Derive EOD price, change metrics, and sparkline from TIME_SERIES_DAILY."""
     series = payload.get("Time Series (Daily)")
     if not isinstance(series, dict) or not series:
         return None
 
-    dates = sorted(series.keys(), reverse=True)[:7]
-    closes: list[float] = []
-    for date_key in dates:
-        day = series.get(date_key)
-        if not isinstance(day, dict):
-            continue
-        close = _parse_float(day.get("4. close"))
+    dates = sorted(series.keys(), reverse=True)
+    if len(dates) < 2:
+        return None
+
+    price_today = _daily_close(series, dates[0])
+    price_yesterday = _daily_close(series, dates[1])
+    if price_today is None or price_yesterday is None:
+        return None
+
+    change = price_today - price_yesterday
+    change_percent = (change / price_yesterday) * 100.0 if price_yesterday else None
+
+    sparkline: list[float] = []
+    for date_key in dates[:7]:
+        close = _daily_close(series, date_key)
         if close is not None:
-            closes.append(close)
+            sparkline.append(close)
 
-    return closes or None
+    if len(sparkline) < 2:
+        return None
 
-
-def _empty_ticker(symbol: str) -> dict[str, Any]:
     return {
-        "symbol": symbol,
-        "price": None,
-        "change": None,
-        "change_percent": None,
-        "status": "unavailable",
-        "last_updated": None,
-        "sparkline": [],
+        "price": price_today,
+        "change": change,
+        "change_percent": change_percent,
+        "sparkline": sparkline,
     }
 
 
@@ -258,7 +247,7 @@ def _ticker_from_cache(symbol: str, entry: dict[str, Any], *, status: TickerStat
     }
 
 
-def _has_cached_quote(entry: dict[str, Any] | None) -> bool:
+def _has_cached_market_data(entry: dict[str, Any] | None) -> bool:
     if not entry:
         return False
     return any(
@@ -349,7 +338,7 @@ def _fetch_demo_market_data() -> dict[str, Any]:
 
 
 def fetch_market_data() -> dict[str, Any]:
-    """Return market snapshot with cache-first Alpha Vantage aggregation."""
+    """Return EOD market snapshot with cache-first TIME_SERIES_DAILY aggregation."""
     if _is_simulation_mode():
         return _fetch_demo_market_data()
 
@@ -379,49 +368,9 @@ def fetch_market_data() -> dict[str, Any]:
                     entry = {}
                     symbol_cache[symbol] = entry
 
-                quote_fresh = _is_entry_fresh(entry.get("quote_fetched_at"), _QUOTE_TTL)
-                sparkline_fresh = _is_entry_fresh(
-                    entry.get("sparkline_fetched_at"),
-                    _SPARKLINE_TTL,
-                )
+                market_fresh = _is_entry_fresh(entry.get("market_fetched_at"), _MARKET_TTL)
 
-                if not quote_fresh:
-                    payload, error = _alpha_vantage_get(
-                        {
-                            "function": "GLOBAL_QUOTE",
-                            "symbol": symbol,
-                            "apikey": api_key,
-                        }
-                    )
-                    if error is not None:
-                        fetch_failed = True
-                        if error == "rate_limited":
-                            _set_cooldown(cache)
-                            cooldown_active, cooldown_remaining = _cooldown_state(cache)
-                            break
-                        _set_cooldown(cache)
-                        cooldown_active, cooldown_remaining = _cooldown_state(cache)
-                        break
-
-                    parsed_quote = _parse_global_quote(payload or {})
-                    if parsed_quote is None:
-                        fetch_failed = True
-                        _set_cooldown(cache)
-                        cooldown_active, cooldown_remaining = _cooldown_state(cache)
-                        break
-
-                    now_iso = _iso_utc()
-                    entry["price"] = parsed_quote["price"]
-                    entry["change"] = parsed_quote["change"]
-                    entry["change_percent"] = parsed_quote["change_percent"]
-                    entry["last_updated"] = now_iso
-                    entry["quote_fetched_at"] = now_iso
-                    live_symbols.add(symbol)
-
-                if cooldown_active:
-                    break
-
-                if not sparkline_fresh:
+                if not market_fresh:
                     payload, error = _alpha_vantage_get(
                         {
                             "function": "TIME_SERIES_DAILY",
@@ -431,25 +380,25 @@ def fetch_market_data() -> dict[str, Any]:
                     )
                     if error is not None:
                         fetch_failed = True
-                        if error == "rate_limited":
-                            _set_cooldown(cache)
-                            cooldown_active, cooldown_remaining = _cooldown_state(cache)
-                            break
                         _set_cooldown(cache)
                         cooldown_active, cooldown_remaining = _cooldown_state(cache)
                         break
 
-                    sparkline = _parse_sparkline(payload or {})
-                    if sparkline is None:
+                    consolidated = _parse_daily_consolidated(payload or {})
+                    if consolidated is None:
                         fetch_failed = True
                         _set_cooldown(cache)
                         cooldown_active, cooldown_remaining = _cooldown_state(cache)
                         break
 
-                    entry["sparkline"] = sparkline
-                    entry["sparkline_fetched_at"] = _iso_utc()
-                    if symbol not in live_symbols and quote_fresh:
-                        live_symbols.add(symbol)
+                    now_iso = _iso_utc()
+                    entry["price"] = consolidated["price"]
+                    entry["change"] = consolidated["change"]
+                    entry["change_percent"] = consolidated["change_percent"]
+                    entry["sparkline"] = consolidated["sparkline"]
+                    entry["last_updated"] = now_iso
+                    entry["market_fetched_at"] = now_iso
+                    live_symbols.add(symbol)
 
             _write_cache(cache)
         else:
@@ -463,11 +412,11 @@ def fetch_market_data() -> dict[str, Any]:
             if not isinstance(entry, dict):
                 entry = {}
 
-            quote_fresh = _is_entry_fresh(entry.get("quote_fetched_at"), _QUOTE_TTL)
+            market_fresh = _is_entry_fresh(entry.get("market_fetched_at"), _MARKET_TTL)
 
-            if symbol in live_symbols or quote_fresh:
+            if symbol in live_symbols or market_fresh:
                 ticker_status: TickerStatus = "live"
-            elif _has_cached_quote(entry):
+            elif _has_cached_market_data(entry):
                 ticker_status = "stale"
             else:
                 ticker_status = "unavailable"

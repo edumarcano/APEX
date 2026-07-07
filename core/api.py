@@ -905,18 +905,21 @@ MarketGlobalStatus = Literal[
 
 class MarketTickerItem(BaseModel):
     symbol: str = Field(description="Configured ticker symbol.")
-    price: float | None = Field(default=None, description="Latest traded price.")
-    change: float | None = Field(default=None, description="Absolute price change.")
+    price: float | None = Field(default=None, description="Latest available daily close price.")
+    change: float | None = Field(
+        default=None,
+        description="Absolute close-to-close change versus the prior trading day.",
+    )
     change_percent: float | None = Field(
         default=None,
-        description="Percent price change without the trailing percent sign.",
+        description="Percent close-to-close change without the trailing percent sign.",
     )
     status: MarketTickerStatus = Field(
         description="Per-symbol freshness state (live, stale, or unavailable).",
     )
     last_updated: str | None = Field(
         default=None,
-        description="UTC ISO-8601 timestamp of the last successful quote fetch.",
+        description="UTC ISO-8601 timestamp of the last successful market data fetch.",
     )
     sparkline: list[float] = Field(
         default_factory=list,
@@ -1058,10 +1061,11 @@ def get_system_diagnostics() -> dict[str, float]:
 @app.get("/api/v1/market", response_model=MarketResponse)
 def get_market_snapshot() -> MarketResponse:
     """
-    Return cache-first Alpha Vantage market snapshots for configured symbols.
+    Return cache-first EOD market snapshots for configured symbols.
 
-    Network IO is isolated behind a file-backed aggregator so HUD polling does
-    not block on third-party rate limits.
+    A single TIME_SERIES_DAILY call per symbol supplies price, change metrics,
+    and sparkline data. Network IO is isolated behind a file-backed aggregator
+    so HUD polling does not block on third-party rate limits.
     """
     try:
         payload = market_client.fetch_market_data()
