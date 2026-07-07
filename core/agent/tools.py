@@ -1,20 +1,7 @@
 from typing import Any, Callable
 
 from clients.sports_client import fetch_f1_driver_standings, fetch_f1_season_calendar
-from clients.weather_client import fetch_weather_data, fetch_weather_forecast
-
-
-def get_current_weather() -> str:
-    """Retrieve the current weather for the configured target location.
-
-    Reads live conditions from OpenWeatherMap for the location set in the
-    TARGET_LOCATION environment variable. No parameters are required.
-
-    Returns:
-        str: A human-readable summary of the current temperature and weather
-            condition, or an error message if the API is unavailable.
-    """
-    return fetch_weather_data()
+from clients.weather_client import fetch_weather_forecast
 
 
 def get_weather_forecast(days: int = 5) -> dict[str, Any]:
@@ -188,7 +175,6 @@ def get_briefing_history(limit: int = 5) -> dict[str, Any]:
 
 
 AGENT_TOOLS_REGISTRY: dict[str, Callable[..., Any]] = {
-    "get_current_weather": get_current_weather,
     "get_weather_forecast": get_weather_forecast,
     "get_f1_driver_standings": get_f1_driver_standings,
     "get_f1_season_calendar": get_f1_season_calendar,

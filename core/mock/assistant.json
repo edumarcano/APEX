@@ -9,6 +9,36 @@
           "status": "ok",
           "duration_ms": 115.4
         }
+      ],
+      "tool_outputs": [
+        {
+          "name": "get_weather_forecast",
+          "status": "ok",
+          "duration_ms": 115.4,
+          "output": {
+            "location": "Plantation, FL",
+            "forecast": [
+              {
+                "date": "2026-07-01",
+                "temp_max": 91.0,
+                "temp_min": 80.0,
+                "condition": "light rain"
+              },
+              {
+                "date": "2026-07-02",
+                "temp_max": 90.0,
+                "temp_min": 77.0,
+                "condition": "light rain"
+              },
+              {
+                "date": "2026-07-03",
+                "temp_max": 94.0,
+                "temp_min": 84.0,
+                "condition": "light rain"
+              }
+            ]
+          }
+        }
       ]
     },
     {
@@ -20,6 +50,27 @@
           "status": "ok",
           "duration_ms": 142.1
         }
+      ],
+      "tool_outputs": [
+        {
+          "name": "get_f1_driver_standings",
+          "status": "ok",
+          "duration_ms": 142.1,
+          "output": {
+            "season": "2026",
+            "round": "99",
+            "standings": [
+              {
+                "position": 1,
+                "points": 110.0,
+                "wins": 3,
+                "driver_name": "Max Verstappen",
+                "driver_code": "VER",
+                "team": "Red Bull"
+              }
+            ]
+          }
+        }
       ]
     },
     {
@@ -30,6 +81,23 @@
           "name": "get_active_reminders",
           "status": "ok",
           "duration_ms": 94.2
+        }
+      ],
+      "tool_outputs": [
+        {
+          "name": "get_active_reminders",
+          "status": "ok",
+          "duration_ms": 94.2,
+          "output": [
+            {
+              "id": 1,
+              "note": "Review APEX demo script"
+            },
+            {
+              "id": 2,
+              "note": "Charge backup operations hardware"
+            }
+          ]
         }
       ]
     }

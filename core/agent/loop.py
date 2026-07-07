@@ -17,6 +17,15 @@ AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
+ALLOWED_TOOL_OUTPUT_REGISTRY: set[str] = {
+    "get_weather_forecast",
+    "get_f1_driver_standings",
+    "get_f1_season_calendar",
+    "get_upcoming_calendar_events",
+    "get_active_reminders",
+    "get_briefing_history",
+}
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -96,6 +105,7 @@ def run_agent_loop(
     history.append(AgentMessage(role="user", content=request.prompt))
 
     tool_trace: list[dict[str, Any]] = []
+    tool_outputs: list[dict[str, Any]] = []
     total_tool_executions = 0
     last_model_content: str | None = None
 
@@ -128,6 +138,7 @@ def run_agent_loop(
                     answer=model_message.content or "",
                     profile_used=profile.model_dump(),
                     tool_trace=tool_trace,
+                    tool_outputs=tool_outputs,
                     session_id=request.session_id,
                 )
 
@@ -139,6 +150,7 @@ def run_agent_loop(
                         answer=last_model_content or "",
                         profile_used=profile.model_dump(),
                         tool_trace=tool_trace,
+                        tool_outputs=tool_outputs,
                         session_id=request.session_id,
                         error=(
                             f"Tool execution limit reached "
@@ -167,6 +179,25 @@ def run_agent_loop(
                     }
                 )
 
+                if status == "ok":
+                    if call.name in ALLOWED_TOOL_OUTPUT_REGISTRY:
+                        whitelisted_output: Any = output
+                    else:
+                        whitelisted_output = {
+                            "error": "Tool output is not whitelisted for client display."
+                        }
+                else:
+                    whitelisted_output = {"error": str(output)}
+
+                tool_outputs.append(
+                    {
+                        "name": call.name,
+                        "status": status,
+                        "duration_ms": duration_ms,
+                        "output": whitelisted_output,
+                    }
+                )
+
                 tool_results.append(
                     ToolResult(id=call.id, name=call.name, output=output)
                 )
@@ -177,6 +208,7 @@ def run_agent_loop(
             answer=last_model_content or "",
             profile_used=profile.model_dump(),
             tool_trace=tool_trace,
+            tool_outputs=tool_outputs,
             session_id=request.session_id,
             error=(
                 f"Agent turn limit reached ({profile.max_tool_turns} turns) "
@@ -208,6 +240,7 @@ def run_agent_loop(
             answer=answer,
             profile_used=profile.model_dump(),
             tool_trace=tool_trace,
+            tool_outputs=tool_outputs,
             session_id=request.session_id,
             error=error_detail,
         )

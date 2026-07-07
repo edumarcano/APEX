@@ -36,6 +36,19 @@ export interface ActiveReminder {
   note: string
 }
 
+export interface ToolOutputItem {
+  name: string
+  status: string
+  duration_ms: number
+  output: unknown
+}
+
+export interface AgentMessage {
+  role: 'user' | 'model' | 'tool'
+  content?: string
+  tool_outputs?: ToolOutputItem[]
+}
+
 export type WeatherConditionArchetype =
   | 'clear_day'
   | 'clear_night'
@@ -112,6 +125,7 @@ export interface TelemetryPayload {
   digest?: DigestPayload
   defaultProfile?: AssistantProfile
   askApexEnabled?: boolean
+  tool_outputs?: ToolOutputItem[]
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'

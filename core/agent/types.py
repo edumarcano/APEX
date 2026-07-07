@@ -64,6 +64,10 @@ class AgentQueryResponse(BaseModel):
         default_factory=list,
         description="Audit trace of tools called during the loop.",
     )
+    tool_outputs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured outputs of whitelisted tools executed.",
+    )
     session_id: Optional[str] = Field(
         default=None,
         description="Active temporary session grouping identifier.",

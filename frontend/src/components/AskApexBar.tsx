@@ -17,10 +17,6 @@ export interface OperationPromptChip {
 
 export const OPERATION_PROMPT_CHIPS: ReadonlyArray<OperationPromptChip> = [
   {
-    label: 'Weather',
-    query: 'What is the current weather?',
-  },
-  {
     label: 'Forecast',
     query: 'What is the 5-day weather forecast?',
   },
