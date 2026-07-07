@@ -532,8 +532,16 @@ export default function App(): ReactElement {
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                     briefingText={data?.briefing ?? ''}
+                    insights={[
+                      ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
+                      ...(data?.digest?.insights ?? []),
+                    ]}
                     isBriefingNew={isBriefingNew}
                     setBriefingNew={setIsBriefingNew}
+                    activeStep={activeStep}
+                    status={status}
+                    isSpeaking={isSpeaking}
+                    reminderPulseCount={reminderPulseCount}
                     assistantHistory={assistantHistory}
                     isAssistantQuerying={isAssistantQuerying}
                     assistantLatestTrace={assistantLatestTrace}

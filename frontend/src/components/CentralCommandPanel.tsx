@@ -1,5 +1,6 @@
 import {
   Check,
+  ChevronDown,
   Loader2,
   RotateCcw,
   XCircle,
@@ -13,10 +14,10 @@ import {
 } from 'react'
 
 import { type AgentMessage, type ToolTraceItem } from '../hooks/useApexAssistant'
-import { type AgentProfileStatus, type AssistantProfile } from '../types/telemetry'
+import { type AgentProfileStatus, type AssistantProfile, type SystemState } from '../types/telemetry'
 
 import { ApexLogo } from './ApexLogo'
-import { AskApexBar } from './AskApexBar'
+import { AskApexBar, OPERATION_PROMPT_CHIPS } from './AskApexBar'
 
 interface CentralCommandPanelProps {
   isExpanded: boolean
@@ -24,8 +25,13 @@ interface CentralCommandPanelProps {
   activeTab: 'assistant' | 'briefing'
   setActiveTab: (tab: 'assistant' | 'briefing') => void
   briefingText: string
+  insights: string[]
   isBriefingNew: boolean
   setBriefingNew: (val: boolean) => void
+  activeStep: number | null
+  status: SystemState
+  isSpeaking: boolean
+  reminderPulseCount: number
 
   assistantHistory: AgentMessage[]
   isAssistantQuerying: boolean
@@ -266,6 +272,8 @@ function AssistantTabContent({
   error,
   profilesStatus,
   onUnloadModel,
+  queryAssistant,
+  activeProfile,
 }: {
   history: AgentMessage[]
   isQuerying: boolean
@@ -273,6 +281,8 @@ function AssistantTabContent({
   error: string | null
   profilesStatus: AgentProfileStatus[]
   onUnloadModel: () => Promise<void>
+  queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
+  activeProfile: AssistantProfile
 }): ReactElement {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -293,6 +303,14 @@ function AssistantTabContent({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [history, isQuerying])
 
+  const chipClassName = [
+    'px-2.5 py-1 rounded-full border border-white/5 bg-white/5',
+    'hover:border-[#0F4DB8]/40 hover:bg-[#0F4DB8]/10',
+    'text-[10px] text-zinc-400 hover:text-white transition-colors',
+    'cursor-pointer font-mono uppercase tracking-wider',
+    isQuerying ? 'pointer-events-none opacity-50' : '',
+  ].join(' ')
+
   return (
     <div className="space-y-4">
       {activeLocalModel ? (
@@ -304,9 +322,26 @@ function AssistantTabContent({
       ) : null}
 
       {history.length === 0 && !isQuerying ? (
-        <p className="py-8 text-center font-mono text-xs uppercase tracking-widest text-zinc-500">
-          APEX STANDBY. Submit a query to begin assistant session.
-        </p>
+        <div className="flex min-h-[12rem] flex-col items-center justify-center gap-6 py-6">
+          <p className="text-center font-mono text-xs uppercase tracking-widest text-zinc-500">
+            APEX STANDBY. Submit a query to begin assistant session.
+          </p>
+          <div className="flex w-full max-w-lg flex-wrap items-center justify-center gap-2">
+            {OPERATION_PROMPT_CHIPS.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => {
+                  void queryAssistant(chip.query, activeProfile)
+                }}
+                disabled={isQuerying}
+                className={chipClassName}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : (
         history.map((message, index) => {
           if (message.role === 'user') {
@@ -364,7 +399,13 @@ function AssistantTabContent({
   )
 }
 
-function BriefingTabContent({ briefingText }: { briefingText: string }): ReactElement {
+function BriefingTabContent({
+  briefingText,
+  insights,
+}: {
+  briefingText: string
+  insights: string[]
+}): ReactElement {
   const trimmed = briefingText.trim()
 
   if (trimmed.length === 0) {
@@ -376,8 +417,31 @@ function BriefingTabContent({ briefingText }: { briefingText: string }): ReactEl
   }
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-zinc-900/40 p-4">
-      <MarkdownContent content={trimmed} />
+    <div className="space-y-4">
+      <div className="rounded-xl border border-amber-500/30 bg-zinc-900/40 p-4">
+        <MarkdownContent content={trimmed} />
+      </div>
+
+      {insights.length > 0 ? (
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+            [ SUMMARY INSIGHTS ]
+          </p>
+          <ul className="space-y-3">
+            {insights.map((insight, index) => (
+              <li
+                key={`${index}-${insight.slice(0, 24)}`}
+                className="flex items-start gap-3 text-sm leading-relaxed text-zinc-200"
+              >
+                <span className="shrink-0 select-none font-mono font-bold text-[#FBBF24]">
+                  {`>`}
+                </span>
+                <span>{insight}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -388,8 +452,13 @@ export function CentralCommandPanel({
   activeTab,
   setActiveTab,
   briefingText,
+  insights,
   isBriefingNew,
   setBriefingNew,
+  activeStep,
+  status,
+  isSpeaking,
+  reminderPulseCount,
   assistantHistory,
   isAssistantQuerying,
   assistantLatestTrace,
@@ -405,6 +474,16 @@ export function CentralCommandPanel({
 }: CentralCommandPanelProps): ReactElement {
   const handleExpandFromFooter = useCallback((): void => {
     setExpanded(true)
+  }, [setExpanded])
+
+  const handleExpandIfCollapsed = useCallback((): void => {
+    if (!isExpanded) {
+      setExpanded(true)
+    }
+  }, [isExpanded, setExpanded])
+
+  const handleMinimize = useCallback((): void => {
+    setExpanded(false)
   }, [setExpanded])
 
   const handleAgentSubmit = useCallback(
@@ -439,8 +518,10 @@ export function CentralCommandPanel({
         >
           {isExpanded ? (
             <ApexLogo
-              step={null}
-              status="success"
+              step={activeStep}
+              status={status}
+              isSpeaking={isSpeaking}
+              reminderPulseCount={reminderPulseCount}
               className="h-12 w-auto sm:h-14"
             />
           ) : null}
@@ -451,6 +532,7 @@ export function CentralCommandPanel({
             type="button"
             onClick={() => {
               setActiveTab('assistant')
+              handleExpandIfCollapsed()
             }}
             className={[
               tabBaseClass,
@@ -468,6 +550,7 @@ export function CentralCommandPanel({
             onClick={() => {
               setActiveTab('briefing')
               setBriefingNew(false)
+              handleExpandIfCollapsed()
             }}
             className={[
               tabBaseClass,
@@ -491,19 +574,29 @@ export function CentralCommandPanel({
 
         <div
           className={[
-            'shrink-0 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            isExpanded ? 'w-8 opacity-100' : 'w-0 opacity-0',
+            'flex shrink-0 items-center gap-1 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+            isExpanded ? 'w-auto opacity-100' : 'w-0 opacity-0',
           ].join(' ')}
         >
           {isExpanded ? (
-            <button
-              type="button"
-              onClick={resetAssistantSession}
-              className="rounded-md p-1.5 transition-colors hover:bg-white/5"
-              aria-label="Clear session history"
-            >
-              <RotateCcw className="size-4 text-zinc-400 transition-colors hover:text-rose-400" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleMinimize}
+                className="rounded-md p-1.5 transition-colors hover:bg-white/5"
+                aria-label="Minimize panel"
+              >
+                <ChevronDown className="size-4 text-zinc-400 transition-colors hover:text-zinc-200" />
+              </button>
+              <button
+                type="button"
+                onClick={resetAssistantSession}
+                className="rounded-md p-1.5 transition-colors hover:bg-white/5"
+                aria-label="Clear session history"
+              >
+                <RotateCcw className="size-4 text-zinc-400 transition-colors hover:text-rose-400" />
+              </button>
+            </>
           ) : null}
         </div>
       </header>
@@ -526,30 +619,31 @@ export function CentralCommandPanel({
               error={assistantError}
               profilesStatus={profilesStatus}
               onUnloadModel={unloadLocalModel}
+              queryAssistant={queryAssistant}
+              activeProfile={activeProfile}
             />
           ) : (
-            <BriefingTabContent briefingText={briefingText} />
+            <BriefingTabContent briefingText={briefingText} insights={insights} />
           )}
         </div>
       </div>
 
       {askApexEnabled ? (
         <footer
-          className="shrink-0 p-4"
+          className="shrink-0 border-t border-white/10 bg-zinc-950/30 p-4"
           onClick={handleExpandFromFooter}
           onFocusCapture={handleExpandFromFooter}
         >
-          <div className="flex w-full justify-center">
-            <AskApexBar
-              activeProfile={activeProfile}
-              onProfileChange={setActiveProfile}
-              onSubmit={handleAgentSubmit}
-              profilesStatus={profilesStatus}
-              profilesStatusHydrated={profilesStatusHydrated}
-              onSelectChip={handleChipSelect}
-              isSubmitting={isAssistantQuerying}
-            />
-          </div>
+          <AskApexBar
+            activeProfile={activeProfile}
+            onProfileChange={setActiveProfile}
+            onSubmit={handleAgentSubmit}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            onSelectChip={handleChipSelect}
+            isSubmitting={isAssistantQuerying}
+            integrated
+          />
         </footer>
       ) : null}
     </section>
