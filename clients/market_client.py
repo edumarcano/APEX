@@ -1,0 +1,450 @@
+"""Alpha Vantage market aggregator with file-backed caching."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import threading
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Literal
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_MARKET_LOCK = threading.Lock()
+_CACHE_FILENAME = ".market_cache.json"
+_ALPHA_VANTAGE_BASE = "https://www.alphavantage.co/query"
+_REQUEST_TIMEOUT_SECONDS = 2.5
+_QUOTE_TTL = timedelta(minutes=5)
+_SPARKLINE_TTL = timedelta(hours=6)
+_COOLDOWN_DURATION = timedelta(minutes=15)
+
+TickerStatus = Literal["live", "stale", "unavailable"]
+MarketStatus = Literal[
+    "live",
+    "partial",
+    "stale",
+    "unavailable",
+    "not_configured",
+    "provider_unavailable",
+]
+
+
+def _cache_path() -> Path:
+    return Path(__file__).resolve().parent / _CACHE_FILENAME
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso_utc(dt: datetime | None = None) -> str:
+    current = dt or _now_utc()
+    return current.astimezone(timezone.utc).isoformat()
+
+
+def _parse_iso(raw: str | None) -> datetime | None:
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _parse_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_cache() -> dict[str, Any]:
+    cache_file = _cache_path()
+    if not cache_file.exists():
+        return {"cooldown_until": None, "symbols": {}}
+
+    try:
+        with open(cache_file, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {"cooldown_until": None, "symbols": {}}
+
+    if not isinstance(payload, dict):
+        return {"cooldown_until": None, "symbols": {}}
+
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, dict):
+        symbols = {}
+
+    cooldown_until = payload.get("cooldown_until")
+    if cooldown_until is not None and not isinstance(cooldown_until, str):
+        cooldown_until = None
+
+    return {"cooldown_until": cooldown_until, "symbols": symbols}
+
+
+def _write_cache(cache: dict[str, Any]) -> None:
+    cache_file = _cache_path()
+    try:
+        with open(cache_file, "w", encoding="utf-8") as handle:
+            json.dump(cache, handle, separators=(",", ":"))
+    except (OSError, TypeError) as exc:
+        sys.stderr.write(f"[MARKET][CACHE] {exc}\n")
+
+
+def _parse_configured_symbols() -> list[str] | None:
+    raw = os.environ.get("MARKET_SYMBOLS")
+    if raw is None:
+        return None
+
+    symbols = [symbol.strip().upper() for symbol in raw.split(",") if symbol.strip()]
+    if not symbols:
+        return None
+    return symbols
+
+
+def _get_api_key() -> str | None:
+    raw = os.getenv("ALPHA_VANTAGE_API_KEY")
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped or None
+
+
+def _cooldown_state(cache: dict[str, Any]) -> tuple[bool, int]:
+    until = _parse_iso(cache.get("cooldown_until"))
+    if until is None:
+        return False, 0
+
+    remaining = until - _now_utc()
+    if remaining.total_seconds() <= 0:
+        return False, 0
+
+    return True, max(0, int(remaining.total_seconds()))
+
+
+def _set_cooldown(cache: dict[str, Any]) -> None:
+    cache["cooldown_until"] = _iso_utc(_now_utc() + _COOLDOWN_DURATION)
+
+
+def _is_entry_fresh(fetched_at: str | None, ttl: timedelta) -> bool:
+    parsed = _parse_iso(fetched_at)
+    if parsed is None:
+        return False
+    return _now_utc() - parsed <= ttl
+
+
+def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        response = requests.get(
+            _ALPHA_VANTAGE_BASE,
+            params=params,
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.Timeout:
+        return None, "timeout"
+    except requests.RequestException as exc:
+        return None, f"http_error:{exc}"
+    except ValueError:
+        return None, "invalid_json"
+
+    if not isinstance(payload, dict):
+        return None, "invalid_payload"
+
+    if payload.get("Note") or payload.get("Information"):
+        return None, "rate_limited"
+
+    return payload, None
+
+
+def _parse_global_quote(payload: dict[str, Any]) -> dict[str, float | None] | None:
+    quote = payload.get("Global Quote")
+    if not isinstance(quote, dict) or not quote:
+        return None
+
+    price = _parse_float(quote.get("05. price"))
+    change = _parse_float(quote.get("09. change"))
+    change_percent_raw = quote.get("10. change percent")
+    change_percent = None
+    if change_percent_raw is not None:
+        change_percent = _parse_float(str(change_percent_raw).replace("%", "").strip())
+
+    if price is None and change is None and change_percent is None:
+        return None
+
+    return {
+        "price": price,
+        "change": change,
+        "change_percent": change_percent,
+    }
+
+
+def _parse_sparkline(payload: dict[str, Any]) -> list[float] | None:
+    series = payload.get("Time Series (Daily)")
+    if not isinstance(series, dict) or not series:
+        return None
+
+    dates = sorted(series.keys(), reverse=True)[:7]
+    closes: list[float] = []
+    for date_key in dates:
+        day = series.get(date_key)
+        if not isinstance(day, dict):
+            continue
+        close = _parse_float(day.get("4. close"))
+        if close is not None:
+            closes.append(close)
+
+    return closes or None
+
+
+def _empty_ticker(symbol: str) -> dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "price": None,
+        "change": None,
+        "change_percent": None,
+        "status": "unavailable",
+        "last_updated": None,
+        "sparkline": [],
+    }
+
+
+def _ticker_from_cache(symbol: str, entry: dict[str, Any], *, status: TickerStatus) -> dict[str, Any]:
+    sparkline = entry.get("sparkline")
+    if not isinstance(sparkline, list):
+        sparkline = []
+
+    normalized_sparkline: list[float] = []
+    for value in sparkline:
+        parsed = _parse_float(value)
+        if parsed is not None:
+            normalized_sparkline.append(parsed)
+
+    return {
+        "symbol": symbol,
+        "price": _parse_float(entry.get("price")),
+        "change": _parse_float(entry.get("change")),
+        "change_percent": _parse_float(entry.get("change_percent")),
+        "status": status,
+        "last_updated": entry.get("last_updated"),
+        "sparkline": normalized_sparkline,
+    }
+
+
+def _has_cached_quote(entry: dict[str, Any] | None) -> bool:
+    if not entry:
+        return False
+    return any(
+        entry.get(field) is not None
+        for field in ("price", "change", "change_percent")
+    )
+
+
+def _resolve_global_status(ticker_statuses: list[TickerStatus]) -> MarketStatus:
+    if not ticker_statuses:
+        return "unavailable"
+
+    if all(status == "live" for status in ticker_statuses):
+        return "live"
+    if any(status == "live" for status in ticker_statuses):
+        return "partial"
+    if any(status == "stale" for status in ticker_statuses):
+        return "stale"
+    return "unavailable"
+
+
+def _build_response(
+    *,
+    status: MarketStatus,
+    cooldown_active: bool,
+    cooldown_remaining_seconds: int,
+    tickers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "cooldown_active": cooldown_active,
+        "cooldown_remaining_seconds": cooldown_remaining_seconds,
+        "tickers": tickers,
+    }
+
+
+def fetch_market_data() -> dict[str, Any]:
+    """Return market snapshot with cache-first Alpha Vantage aggregation."""
+    symbols = _parse_configured_symbols()
+    if symbols is None:
+        return _build_response(
+            status="not_configured",
+            cooldown_active=False,
+            cooldown_remaining_seconds=0,
+            tickers=[],
+        )
+
+    api_key = _get_api_key()
+
+    with _MARKET_LOCK:
+        cache = _read_cache()
+        cooldown_active, cooldown_remaining = _cooldown_state(cache)
+        symbol_cache: dict[str, Any] = cache.setdefault("symbols", {})
+
+        if api_key is None:
+            tickers: list[dict[str, Any]] = []
+            has_any_cache = False
+            for symbol in symbols:
+                entry = symbol_cache.get(symbol)
+                if isinstance(entry, dict) and _has_cached_quote(entry):
+                    tickers.append(_ticker_from_cache(symbol, entry, status="stale"))
+                    has_any_cache = True
+                else:
+                    tickers.append(_empty_ticker(symbol))
+
+            if has_any_cache:
+                return _build_response(
+                    status="stale",
+                    cooldown_active=cooldown_active,
+                    cooldown_remaining_seconds=cooldown_remaining,
+                    tickers=tickers,
+                )
+
+            return _build_response(
+                status="provider_unavailable",
+                cooldown_active=cooldown_active,
+                cooldown_remaining_seconds=cooldown_remaining,
+                tickers=tickers,
+            )
+
+        fetch_failed = False
+        live_symbols: set[str] = set()
+
+        if not cooldown_active:
+            for symbol in symbols:
+                entry = symbol_cache.get(symbol)
+                if not isinstance(entry, dict):
+                    entry = {}
+                    symbol_cache[symbol] = entry
+
+                quote_fresh = _is_entry_fresh(entry.get("quote_fetched_at"), _QUOTE_TTL)
+                sparkline_fresh = _is_entry_fresh(
+                    entry.get("sparkline_fetched_at"),
+                    _SPARKLINE_TTL,
+                )
+
+                if not quote_fresh:
+                    payload, error = _alpha_vantage_get(
+                        {
+                            "function": "GLOBAL_QUOTE",
+                            "symbol": symbol,
+                            "apikey": api_key,
+                        }
+                    )
+                    if error is not None:
+                        fetch_failed = True
+                        if error == "rate_limited":
+                            _set_cooldown(cache)
+                            cooldown_active, cooldown_remaining = _cooldown_state(cache)
+                            break
+                        _set_cooldown(cache)
+                        cooldown_active, cooldown_remaining = _cooldown_state(cache)
+                        break
+
+                    parsed_quote = _parse_global_quote(payload or {})
+                    if parsed_quote is None:
+                        fetch_failed = True
+                        _set_cooldown(cache)
+                        cooldown_active, cooldown_remaining = _cooldown_state(cache)
+                        break
+
+                    now_iso = _iso_utc()
+                    entry["price"] = parsed_quote["price"]
+                    entry["change"] = parsed_quote["change"]
+                    entry["change_percent"] = parsed_quote["change_percent"]
+                    entry["last_updated"] = now_iso
+                    entry["quote_fetched_at"] = now_iso
+                    live_symbols.add(symbol)
+
+                if cooldown_active:
+                    break
+
+                if not sparkline_fresh:
+                    payload, error = _alpha_vantage_get(
+                        {
+                            "function": "TIME_SERIES_DAILY",
+                            "symbol": symbol,
+                            "apikey": api_key,
+                        }
+                    )
+                    if error is not None:
+                        fetch_failed = True
+                        if error == "rate_limited":
+                            _set_cooldown(cache)
+                            cooldown_active, cooldown_remaining = _cooldown_state(cache)
+                            break
+                        _set_cooldown(cache)
+                        cooldown_active, cooldown_remaining = _cooldown_state(cache)
+                        break
+
+                    sparkline = _parse_sparkline(payload or {})
+                    if sparkline is None:
+                        fetch_failed = True
+                        _set_cooldown(cache)
+                        cooldown_active, cooldown_remaining = _cooldown_state(cache)
+                        break
+
+                    entry["sparkline"] = sparkline
+                    entry["sparkline_fetched_at"] = _iso_utc()
+                    if symbol not in live_symbols and quote_fresh:
+                        live_symbols.add(symbol)
+
+            _write_cache(cache)
+        else:
+            fetch_failed = True
+
+        tickers = []
+        ticker_statuses: list[TickerStatus] = []
+
+        for symbol in symbols:
+            entry = symbol_cache.get(symbol)
+            if not isinstance(entry, dict):
+                entry = {}
+
+            quote_fresh = _is_entry_fresh(entry.get("quote_fetched_at"), _QUOTE_TTL)
+
+            if symbol in live_symbols or quote_fresh:
+                ticker_status: TickerStatus = "live"
+            elif _has_cached_quote(entry):
+                ticker_status = "stale"
+            else:
+                ticker_status = "unavailable"
+
+            tickers.append(_ticker_from_cache(symbol, entry, status=ticker_status))
+            ticker_statuses.append(ticker_status)
+
+        if fetch_failed and not any(status == "live" for status in ticker_statuses):
+            global_status: MarketStatus = (
+                "stale" if any(status == "stale" for status in ticker_statuses) else "unavailable"
+            )
+        else:
+            global_status = _resolve_global_status(ticker_statuses)
+
+        return _build_response(
+            status=global_status,
+            cooldown_active=cooldown_active,
+            cooldown_remaining_seconds=cooldown_remaining,
+            tickers=tickers,
+        )
+
+
+if __name__ == "__main__":
+    snapshot = fetch_market_data()
+    print(json.dumps(snapshot, indent=2))

@@ -24,6 +24,7 @@ from clients import (
     calendar_client,
     gmail_client,
     google_auth,
+    market_client,
     news_client,
     sports_client,
     weather_client,
@@ -891,6 +892,55 @@ class PipelineStatusSnapshot(BaseModel):
     )
 
 
+MarketTickerStatus = Literal["live", "stale", "unavailable"]
+MarketGlobalStatus = Literal[
+    "live",
+    "partial",
+    "stale",
+    "unavailable",
+    "not_configured",
+    "provider_unavailable",
+]
+
+
+class MarketTickerItem(BaseModel):
+    symbol: str = Field(description="Configured ticker symbol.")
+    price: float | None = Field(default=None, description="Latest traded price.")
+    change: float | None = Field(default=None, description="Absolute price change.")
+    change_percent: float | None = Field(
+        default=None,
+        description="Percent price change without the trailing percent sign.",
+    )
+    status: MarketTickerStatus = Field(
+        description="Per-symbol freshness state (live, stale, or unavailable).",
+    )
+    last_updated: str | None = Field(
+        default=None,
+        description="UTC ISO-8601 timestamp of the last successful quote fetch.",
+    )
+    sparkline: list[float] = Field(
+        default_factory=list,
+        description="Up to seven recent daily closing prices, newest first.",
+    )
+
+
+class MarketResponse(BaseModel):
+    status: MarketGlobalStatus = Field(
+        description="Aggregate market feed state for the configured symbol set.",
+    )
+    cooldown_active: bool = Field(
+        description="True when outgoing Alpha Vantage requests are globally paused.",
+    )
+    cooldown_remaining_seconds: int = Field(
+        ge=0,
+        description="Seconds remaining in the active provider cooldown window.",
+    )
+    tickers: list[MarketTickerItem] = Field(
+        default_factory=list,
+        description="Ordered market ticker snapshots for configured symbols.",
+    )
+
+
 def _resolve_tts_diagnostics(
     *,
     dev_mode: bool,
@@ -1003,6 +1053,29 @@ def get_system_diagnostics() -> dict[str, float]:
     Hardware utilization snapshot for operators and HUD diagnostics panels.
     """
     return scanner.sample_system_vitals()
+
+
+@app.get("/api/v1/market", response_model=MarketResponse)
+def get_market_snapshot() -> MarketResponse:
+    """
+    Return cache-first Alpha Vantage market snapshots for configured symbols.
+
+    Network IO is isolated behind a file-backed aggregator so HUD polling does
+    not block on third-party rate limits.
+    """
+    try:
+        payload = market_client.fetch_market_data()
+        return MarketResponse.model_validate(payload)
+    except Exception as exc:
+        _LOGGER.exception("Market snapshot endpoint failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "market_snapshot_failed",
+                "message": str(exc),
+                "type": type(exc).__name__,
+            },
+        ) from exc
 
 
 @app.post("/api/v1/trigger", response_model=BriefingResponse)
