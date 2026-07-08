@@ -246,11 +246,17 @@ export function SystemDiagnostics({
   const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
 
   return (
-    <footer className="w-full max-w-5xl mx-auto xl:max-w-5xl xl:mx-auto rounded-full px-4 sm:px-6 py-2.5 bg-zinc-950/40 border border-white/5 backdrop-blur-md shadow-2xl select-none z-40 transition-all duration-700 ease-in-out hover-blue-medium">
+    <footer className="hud-corner-brackets relative w-full max-w-5xl mx-auto xl:max-w-5xl xl:mx-auto rounded-full px-4 sm:px-6 py-2.5 bg-zinc-950/40 border border-white/5 backdrop-blur-md shadow-2xl select-none z-40 transition-all duration-700 ease-in-out hover-blue-medium">
+      <span className="hud-corner-bl" aria-hidden />
+      <span className="hud-corner-br" aria-hidden />
       <div className="flex flex-nowrap items-center justify-between gap-2 sm:gap-3 min-w-0 text-xs font-mono text-zinc-400 font-medium">
 
         {/* Segment: Title */}
-        <div className="hidden sm:flex items-center shrink-0">
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <span
+            className={`hud-led size-1.5 ${isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}`}
+            aria-hidden
+          />
           <span className="text-[#0F4DB8] font-extrabold tracking-wider uppercase text-[10px] sm:text-xs whitespace-nowrap">
             SYSTEM STATUS
           </span>

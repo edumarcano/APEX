@@ -250,6 +250,24 @@ function resolveCardHoverClass(title: string): string {
   return 'hover-blue-subtle'
 }
 
+export type TelemetryLedState = 'live' | 'stale' | 'loading' | 'error' | 'none'
+
+const LED_STATE_CLASS: Record<TelemetryLedState, string> = {
+  live: 'hud-led hud-led--live size-1.5',
+  stale: 'hud-led hud-led--stale size-1.5',
+  loading: 'hud-led hud-led--loading size-1.5',
+  error: 'hud-led hud-led--error size-1.5',
+  none: '',
+}
+
+const LED_STATE_LABEL: Record<TelemetryLedState, string> = {
+  live: 'Live data',
+  stale: 'Stale data',
+  loading: 'Loading data',
+  error: 'Data error',
+  none: '',
+}
+
 export type TelemetryCardProps = {
   title: string
   icon: LucideIcon
@@ -260,6 +278,8 @@ export type TelemetryCardProps = {
   f1TelemetryText?: string
   /** Micro-climate archetype for scoped atmospheric background glow. */
   weatherCondition?: WeatherConditionArchetype | null
+  /** Module status LED communicating this card's data freshness, mirroring the unified pipeline state. */
+  ledState?: TelemetryLedState
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -269,6 +289,7 @@ export function TelemetryCard({
   primaryTemperatureF,
   f1TelemetryText,
   weatherCondition,
+  ledState = 'none',
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
@@ -283,7 +304,7 @@ export function TelemetryCard({
       : null
 
   const sectionClassName = [
-    'relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
+    'hud-corner-brackets relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
     resolveCardHoverClass(title),
     className,
   ]
@@ -329,6 +350,8 @@ export function TelemetryCard({
       className={sectionClassName}
       aria-labelledby={showHeader ? headingId : undefined}
     >
+      <span className="hud-corner-bl" aria-hidden />
+      <span className="hud-corner-br" aria-hidden />
       {weatherGlow ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
           <div
@@ -344,18 +367,31 @@ export function TelemetryCard({
       ) : null}
       <div className="relative z-10 flex h-full min-h-0 flex-col">
       {showHeader ? (
-        <header className="mb-4 flex min-h-9 shrink-0 items-center gap-3">
-          <Icon
-            className="size-5 shrink-0 text-[color:var(--hud-accent)]"
-            strokeWidth={1.75}
-            aria-hidden
-          />
-          <h2
-            id={headingId}
-            className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
-          >
-            {title}
-          </h2>
+        <header className="mb-3 shrink-0">
+          <div className="flex min-h-9 items-center gap-2.5">
+            <span className="hud-icon-badge size-7 shrink-0">
+              <Icon
+                className="size-4 text-[color:var(--hud-accent)]"
+                strokeWidth={1.75}
+                aria-hidden
+              />
+            </span>
+            <h2
+              id={headingId}
+              className="min-w-0 flex-1 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
+            >
+              {title}
+            </h2>
+            {ledState !== 'none' ? (
+              <span
+                className={LED_STATE_CLASS[ledState]}
+                role="status"
+                aria-label={LED_STATE_LABEL[ledState]}
+                title={LED_STATE_LABEL[ledState]}
+              />
+            ) : null}
+          </div>
+          <div className="hud-header-divider mt-3" aria-hidden />
         </header>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

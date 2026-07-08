@@ -17,14 +17,14 @@ import {
 
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
-import { CentralCommandPanel } from './components/CentralCommandPanel'
+import { ConsoleTray } from './components/ConsoleTray'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
-import { TelemetryCard } from './components/TelemetryCard'
+import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
@@ -76,6 +76,16 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
+}
+
+/** Mirrors the unified pipeline status into a compact per-card status LED. */
+function resolveTelemetryLedState(
+  status: 'idle' | 'loading' | 'success' | 'error',
+): TelemetryLedState {
+  if (status === 'error') return 'error'
+  if (isBusy(status)) return 'loading'
+  if (status === 'success') return 'live'
+  return 'stale'
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -206,10 +216,12 @@ export default function App(): ReactElement {
     'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-  const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+  const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
 
-  const showDigest = !isDormant && !isAssistantOpen
+  // The logo is always visible and full-size — it is never displaced by the
+  // assistant console, which lives in its own docked tray below.
+  const showDigest = !isDormant
   const digestWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
@@ -217,14 +229,9 @@ export default function App(): ReactElement {
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
-  const showLargeLogo = isDormant || (!isDormant && !isAssistantOpen)
   const largeLogoWrapperClass = [
-    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center justify-center',
-    showLargeLogo
-      ? isDormant
-        ? 'opacity-100 scale-100 h-64 xl:h-auto xl:flex-1'
-        : 'opacity-100 scale-100 h-64 xl:h-72'
-      : 'opacity-0 scale-50 h-0 w-0 overflow-hidden pointer-events-none',
+    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center justify-center opacity-100 scale-100',
+    isDormant ? 'h-64 xl:h-auto xl:flex-1' : 'h-64 xl:h-72',
   ].join(' ')
 
   useEffect(() => {
@@ -326,6 +333,7 @@ export default function App(): ReactElement {
     setPrevStatus(status)
   }, [status, prevStatus, activeTab])
 
+  const cardLedState = resolveTelemetryLedState(status)
   const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -470,6 +478,7 @@ export default function App(): ReactElement {
                 icon={CloudSun}
                 primaryTemperatureF={primaryTemperatureF}
                 weatherCondition={data?.weatherCondition}
+                ledState={cardLedState}
                 style={weatherCardStyle}
                 className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
@@ -482,6 +491,7 @@ export default function App(): ReactElement {
                 title="Events"
                 icon={Calendar}
                 f1TelemetryText={f1ScheduleTelemetryText}
+                ledState={cardLedState}
                 className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
@@ -542,44 +552,13 @@ export default function App(): ReactElement {
                   </div>
                 </div>
               </div>
-
-              {!isDormant ? (
-                <div className="flex min-h-0 w-full flex-1 flex-col">
-                  <CentralCommandPanel
-                    isExpanded={isAssistantOpen}
-                    setExpanded={setAssistantOpen}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    briefingText={data?.briefing ?? ''}
-                    insights={data?.digest?.insights || []}
-                    isBriefingNew={isBriefingNew}
-                    setBriefingNew={setIsBriefingNew}
-                    activeStep={activeStep}
-                    status={status}
-                    isSpeaking={isSpeaking}
-                    reminderPulseCount={reminderPulseCount}
-                    assistantHistory={assistantHistory}
-                    isAssistantQuerying={isAssistantQuerying}
-                    assistantLatestTrace={assistantLatestTrace}
-                    assistantError={assistantError}
-                    profilesStatus={profilesStatus}
-                    profilesStatusHydrated={profilesStatusHydrated}
-                    queryAssistant={queryAssistant}
-                    unloadLocalModel={unloadLocalModel}
-                    resetAssistantSession={resetAssistantSession}
-                    activeProfile={agentProfile}
-                    setActiveProfile={setAgentProfile}
-                    askApexEnabled={Boolean(showAskApexBar)}
-                  />
-                </div>
-              ) : null}
             </div>
 
             {/* COLUMN 3: RIGHT WING */}
             <div
               className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-6 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
-              <TelemetryCard title="Inbox" icon={Mail} className="flex-none xl:flex-1 xl:min-h-0">
+              <TelemetryCard title="Inbox" icon={Mail} ledState={cardLedState} className="flex-none xl:flex-1 xl:min-h-0">
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading inbox…
@@ -598,8 +577,11 @@ export default function App(): ReactElement {
                             key={`${item.subject}-${item.time}-${index}`}
                             className="flex items-start justify-between gap-3"
                           >
-                            <span className="break-words text-sm text-zinc-200">
-                              {item.subject}
+                            <span className="flex min-w-0 items-start gap-2">
+                              <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
+                              <span className="break-words text-sm text-zinc-200">
+                                {item.subject}
+                              </span>
                             </span>
                             <span className="shrink-0 font-mono text-xs text-zinc-500">
                               {item.time}
@@ -620,7 +602,7 @@ export default function App(): ReactElement {
                 )}
               </TelemetryCard>
 
-              <TelemetryCard title="News Wire" icon={Newspaper} className="flex-none xl:flex-1 xl:min-h-0">
+              <TelemetryCard title="News Wire" icon={Newspaper} ledState={cardLedState} className="flex-none xl:flex-1 xl:min-h-0">
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading news…
@@ -636,7 +618,8 @@ export default function App(): ReactElement {
                             : 'py-3 first:pt-0'
                         }
                       >
-                        <p className="text-xs font-semibold text-[color:var(--hud-accent)]">
+                        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--hud-accent)]">
+                          <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
                           [{item.topic}]
                         </p>
                         <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-zinc-200">
@@ -659,6 +642,7 @@ export default function App(): ReactElement {
               <TelemetryCard
                 title="Reminders"
                 icon={CheckSquare}
+                ledState={cardLedState}
                 className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 role="region"
                 aria-label="Active reminders"
@@ -692,17 +676,41 @@ export default function App(): ReactElement {
         </div>
       </div>
 
-      <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-6">
-      <SystemDiagnostics
-        diagnostics={diagnostics}
-        diagnosticsStatus={diagnosticsStatus}
-        isSpeaking={isSpeaking}
-        isPipelinePolling={isPipelinePolling}
-        status={status}
-        confidenceScore={confidenceScore}
-        pipelineStep={activeStep}
-        failedConnectors={failedConnectors}
-      />
+      <div className="relative z-[var(--z-bento-hud)] flex flex-none shrink-0 flex-col gap-3 mt-6">
+        {!isDormant ? (
+          <ConsoleTray
+            isExpanded={isAssistantOpen}
+            setExpanded={setAssistantOpen}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            briefingText={data?.briefing ?? ''}
+            insights={data?.digest?.insights || []}
+            isBriefingNew={isBriefingNew}
+            setBriefingNew={setIsBriefingNew}
+            assistantHistory={assistantHistory}
+            isAssistantQuerying={isAssistantQuerying}
+            assistantLatestTrace={assistantLatestTrace}
+            assistantError={assistantError}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            queryAssistant={queryAssistant}
+            unloadLocalModel={unloadLocalModel}
+            resetAssistantSession={resetAssistantSession}
+            activeProfile={agentProfile}
+            setActiveProfile={setAgentProfile}
+            askApexEnabled={Boolean(showAskApexBar)}
+          />
+        ) : null}
+        <SystemDiagnostics
+          diagnostics={diagnostics}
+          diagnosticsStatus={diagnosticsStatus}
+          isSpeaking={isSpeaking}
+          isPipelinePolling={isPipelinePolling}
+          status={status}
+          confidenceScore={confidenceScore}
+          pipelineStep={activeStep}
+          failedConnectors={failedConnectors}
+        />
       </div>
     </main>
   )

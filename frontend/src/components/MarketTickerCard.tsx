@@ -12,6 +12,35 @@ type MarketTickerCardProps = {
 const POSITIVE_COLOR = '#39FF88'
 const NEGATIVE_COLOR = '#ef4444'
 
+type MarketLedState = 'live' | 'stale' | 'loading' | 'error' | 'none'
+
+function resolveMarketLedState(
+  data: MarketResponse | null,
+  isLoading: boolean,
+): MarketLedState {
+  if (!data) {
+    return isLoading ? 'loading' : 'error'
+  }
+  if (data.status === 'not_configured') {
+    return 'none'
+  }
+  if (data.status === 'provider_unavailable' || data.status === 'unavailable') {
+    return 'error'
+  }
+  if (data.status === 'stale' || data.cooldown_active) {
+    return 'stale'
+  }
+  return 'live'
+}
+
+const MARKET_LED_CLASS: Record<MarketLedState, string> = {
+  live: 'hud-led hud-led--live size-1.5',
+  stale: 'hud-led hud-led--stale size-1.5',
+  loading: 'hud-led hud-led--loading size-1.5',
+  error: 'hud-led hud-led--error size-1.5',
+  none: '',
+}
+
 function formatPrice(price: number | null): string {
   if (price === null) {
     return '--.--'
@@ -233,11 +262,13 @@ export function MarketTickerCard({
   className,
 }: MarketTickerCardProps): ReactElement {
   const sectionClassName = [
-    'relative flex h-auto min-h-0 w-full flex-none flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out hover-blue-subtle',
+    'hud-corner-brackets relative flex h-auto min-h-0 w-full flex-none flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out hover-blue-subtle',
     className,
   ]
     .filter(Boolean)
     .join(' ')
+
+  const ledState = resolveMarketLedState(data, isLoading)
 
   const content = (() => {
     if (!data) {
@@ -308,22 +339,35 @@ export function MarketTickerCard({
 
   return (
     <section className={sectionClassName} aria-label="Market ticker">
-      <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <LineChart
-            className="size-4 shrink-0 text-[color:var(--hud-accent)]"
-            strokeWidth={1.75}
-            aria-hidden
-          />
-          <h2 className="truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
+      <span className="hud-corner-bl" aria-hidden />
+      <span className="hud-corner-br" aria-hidden />
+      <header className="mb-3 shrink-0">
+        <div className="flex min-h-9 items-center gap-2.5">
+          <span className="hud-icon-badge size-7 shrink-0">
+            <LineChart
+              className="size-4 text-[color:var(--hud-accent)]"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+          </span>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
             Market
           </h2>
+          {data && data.status !== 'not_configured' && data.status !== 'provider_unavailable' ? (
+            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+              {data.status}
+            </span>
+          ) : null}
+          {ledState !== 'none' ? (
+            <span
+              className={MARKET_LED_CLASS[ledState]}
+              role="status"
+              aria-label={`Market feed ${ledState}`}
+              title={`Market feed ${ledState}`}
+            />
+          ) : null}
         </div>
-        {data && data.status !== 'not_configured' && data.status !== 'provider_unavailable' ? (
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
-            {data.status}
-          </span>
-        ) : null}
+        <div className="hud-header-divider mt-3" aria-hidden />
       </header>
       <div className="min-h-0 w-full">{content}</div>
     </section>
