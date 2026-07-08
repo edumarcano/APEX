@@ -269,37 +269,54 @@
   will-change: transform;
 }
 
-@keyframes thinkingArrow {
+@keyframes signalFlowLeft {
   0%,
   100% {
-    opacity: 0.58;
+    opacity: 0.35;
     transform: translateX(0);
   }
   50% {
     opacity: 1;
-    transform: translateX(3px);
+    transform: translateX(5px);
   }
 }
 
-@keyframes speechCorePulse {
+@keyframes signalFlowRight {
   0%,
   100% {
-    opacity: 0.78;
-    transform: scale(1);
+    opacity: 0.35;
+    transform: translateX(0);
   }
   50% {
     opacity: 1;
-    transform: scale(1.08);
+    transform: translateX(-5px);
   }
 }
 
-.animate-thinking-arrow {
-  animation: thinkingArrow 1.15s ease-in-out infinite;
+@keyframes speechWaveBar {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scaleY(0.55);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.animate-signal-flow-left {
+  animation: signalFlowLeft 1.4s ease-in-out infinite;
   will-change: opacity, transform;
 }
 
-.animate-speech-core-pulse {
-  animation: speechCorePulse 1.1s ease-in-out infinite;
+.animate-signal-flow-right {
+  animation: signalFlowRight 1.4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.animate-speech-wave-bar {
+  animation: speechWaveBar 0.95s ease-in-out infinite;
   will-change: opacity, transform;
 }
 
@@ -466,8 +483,9 @@
   .animate-nebula-spin-clockwise,
   .animate-nebula-spin-counter,
   .animate-shimmer,
-  .animate-thinking-arrow,
-  .animate-speech-core-pulse {
+  .animate-signal-flow-left,
+  .animate-signal-flow-right,
+  .animate-speech-wave-bar {
     animation: none !important;
     transition: none !important;
   }

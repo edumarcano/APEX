@@ -401,7 +401,7 @@ Root layout. At `xl` breakpoints the HUD uses a three-column flex row (left wing
 
 **Dormant canvas mode:** When `status === 'idle'` (`isDormant`), the left and right wings collapse: `opacity-0`, outward `translate-x`, `xl:flex-[0_0_0%]`, and `overflow-hidden`. The center column expands to fill the full row width. The `ApexLogo` scales up (`scale-115` / `xl:scale-125`) within a larger container. The `BriefingDigest` panel collapses (`max-h-0 opacity-0 scale-95`). All transitions use `duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]`. When any non-idle status is set, the wings expand back to their active classes (`opacity-100 translate-x-0 xl:flex-1`) and the digest panel reveals.
 
-The header renders the `APEX` identity pill on the left and diagnostics on the right. The large center logo stack owns briefing and voice state through `VoiceSignalGlyph`, a single always-mounted indicator beneath `ApexLogo` that colors itself by pipeline stage, shows the current stage label, animates side arrows during active processing, and pulses its center aperture cyan when `isSpeaking=true`.
+The header renders the `APEX` identity pill on the left and diagnostics on the right. The large center logo stack owns briefing and voice state through `VoiceSignalGlyph`, a single always-mounted indicator beneath `ApexLogo` that colors itself by pipeline stage, shows the current stage label, animates mirrored conduit flow dashes during active processing, and renders a cyan center waveform when `isSpeaking=true` while keeping stage color on the rail, flow accents, and label.
 
 The `CommandTrigger` component is mounted **below the centered logo accessory stack** in the center column. It is visible (`opacity-100 pointer-events-auto`) when `status === 'idle'` or `status === 'loading'`, and fades out otherwise.
 
@@ -442,7 +442,7 @@ The inner gold core uses `getGoldSegmentClass()` and transitions through:
 
 ### `VoiceSignalGlyph.tsx`
 
-Permanent all-in-one SVG status indicator mounted under the large `ApexLogo`. It maps pipeline state to visible labels and stage colors: standby dim blue, steps 1-2 emerald, step 3 purple, and step 4 gold. During active stages, side arrows animate with `thinkingArrow`; when `isSpeaking=true`, only the center aperture switches to a cyan `speechCorePulse` while the rest of the SVG keeps the stage color.
+Permanent all-in-one SVG status indicator mounted under the large `ApexLogo`. It maps pipeline state to visible labels and stage colors: standby dim blue, steps 1-2 emerald, step 3 purple, and step 4 gold. The glyph is a horizontal signal conduit: a stage-toned rail with mirrored flow dashes (`signalFlowLeft` / `signalFlowRight`) traveling toward a center diamond during active processing. When `isSpeaking=true`, the center becomes a cyan audio waveform (`speechWaveBar`) while the rail, flow accents, aperture ring, and label keep the current stage tone.
 
 ### `BriefingDigest.tsx`
 
