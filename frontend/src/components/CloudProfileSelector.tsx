@@ -101,6 +101,12 @@ function resolveTooltipText(
   return STATUS_FALLBACK_REASONS[status] || status
 }
 
+function resolveStatusLedClass(status: ProfileAvailabilityStatus): string {
+  if (status === 'available') return 'hud-led--live'
+  if (status === 'unknown') return 'hud-led--loading'
+  return 'hud-led--error'
+}
+
 export function CloudProfileSelector({
   activeProfile,
   onChange,
@@ -174,6 +180,11 @@ export function CloudProfileSelector({
   const selectorDisabled = disabled || !profilesStatusHydrated
   const activeProfileMetadata = resolveProfileMetadata(activeProfile, profilesStatus)
   const isActiveProfilePreview = activeProfileMetadata?.stability === 'preview'
+  const { status: activeProfileStatus } = resolveProfileAvailability(
+    activeProfile,
+    profilesStatus,
+    profilesStatusHydrated,
+  )
 
   const renderOption = (option: ProfileOption): ReactElement => {
     const metadata = resolveProfileMetadata(option.key, profilesStatus)
@@ -224,16 +235,19 @@ export function CloudProfileSelector({
           ].join(' ')}
         >
           <span className="flex w-full items-center justify-between gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-100">
-              {option.label}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className={`hud-led size-1.5 shrink-0 ${resolveStatusLedClass(status)}`} aria-hidden />
+              <span className="truncate font-mono text-[10px] uppercase tracking-wider text-zinc-100">
+                {option.label}
+              </span>
             </span>
             {metadata?.stability === 'preview' ? (
-              <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-amber-300">
+              <span className="shrink-0 rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-amber-300">
                 Preview
               </span>
             ) : null}
           </span>
-          <span className="text-[10px] text-zinc-500">{option.subtitle}</span>
+          <span className="pl-3.5 text-[10px] text-zinc-500">{option.subtitle}</span>
         </button>
 
         {isGated ? (
@@ -267,14 +281,15 @@ export function CloudProfileSelector({
         onClick={toggleDropdown}
         onKeyDown={handleTriggerKeyDown}
         className={[
-          'flex items-center gap-1 rounded-lg border bg-black/40 px-2.5 py-1.5',
+          'hud-glass flex items-center gap-2 rounded-lg px-2.5 py-1.5',
           'font-mono text-[10px] uppercase tracking-wider text-zinc-200',
-          'border-white/10 transition-colors',
-          'hover:border-[#0F4DB8]/40 focus-visible:outline focus-visible:outline-2',
+          'transition-colors hover-blue-subtle',
+          'focus-visible:outline focus-visible:outline-2',
           'focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8]',
           selectorDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
         ].join(' ')}
       >
+        <span className={`hud-led size-1.5 shrink-0 ${resolveStatusLedClass(activeProfileStatus)}`} aria-hidden />
         <span className="whitespace-nowrap">{PROFILE_LABELS[activeProfile]}</span>
         {isActiveProfilePreview ? (
           <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1 py-0.5 text-[8px] text-amber-300">
@@ -287,31 +302,33 @@ export function CloudProfileSelector({
       </button>
 
       {isOpen ? (
-        <ul
-          role="listbox"
-          aria-label="Select assistant profile"
+        <div
           className={[
-            'absolute bottom-full right-0 z-50 mb-2 min-w-[12rem] overflow-visible',
-            'rounded-lg border border-white/10 bg-zinc-950/95 shadow-2xl backdrop-blur-md',
+            'hud-corner-brackets hud-glass absolute bottom-full right-0 z-50 mb-2 min-w-[12rem] overflow-visible',
+            'rounded-lg shadow-2xl',
           ].join(' ')}
         >
-          {PROFILE_SECTIONS.map((section, sectionIndex) => (
-            <li key={section.title} role="presentation">
-              {sectionIndex > 0 ? (
-                <div className="mx-2 border-t border-white/10" aria-hidden />
-              ) : null}
-              <div
-                className="px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-500"
-                aria-hidden
-              >
-                {section.title}
-              </div>
-              <ul role="group" aria-label={section.title}>
-                {section.options.map(renderOption)}
-              </ul>
-            </li>
-          ))}
-        </ul>
+          <span className="hud-corner-bl" aria-hidden />
+          <span className="hud-corner-br" aria-hidden />
+          <ul role="listbox" aria-label="Select assistant profile">
+            {PROFILE_SECTIONS.map((section, sectionIndex) => (
+              <li key={section.title} role="presentation">
+                {sectionIndex > 0 ? (
+                  <div className="mx-2 border-t border-white/10" aria-hidden />
+                ) : null}
+                <div
+                  className="px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-500"
+                  aria-hidden
+                >
+                  {section.title}
+                </div>
+                <ul role="group" aria-label={section.title}>
+                  {section.options.map(renderOption)}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </div>
   )

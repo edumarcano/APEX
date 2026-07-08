@@ -1,7 +1,6 @@
 import {
   Calendar,
   CheckSquare,
-  Clock,
   CloudSun,
   Mail,
   Newspaper,
@@ -205,9 +204,14 @@ export default function App(): ReactElement {
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
+  // While the console tray is expanded, the insights panel fully hides and the
+  // logo/wings top-align (instead of centering) so the tray can grow much
+  // larger without leaving dead space behind it.
+  const isConsoleCompact = isAssistantOpen && !isDormant
 
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
+  const wingHeightClass = isConsoleCompact ? 'xl:self-start' : 'xl:h-full'
   const leftWingDormantClasses =
     'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const leftWingActiveClasses =
@@ -217,11 +221,13 @@ export default function App(): ReactElement {
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+  const centerColumnActiveClasses = `h-full min-h-0 flex flex-col ${isConsoleCompact ? 'justify-start pt-2 xl:pt-4' : 'justify-center'} xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
 
   // The logo is always visible and full-size — it is never displaced by the
-  // assistant console, which lives in its own docked tray below.
-  const showDigest = !isDormant
+  // assistant console, which lives in its own docked tray below. The insights
+  // panel fully hides (rather than compacting) whenever the tray is open, to
+  // free as much vertical room as possible for the tray.
+  const showDigest = !isDormant && !isConsoleCompact
   const digestWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
@@ -334,9 +340,6 @@ export default function App(): ReactElement {
   }, [status, prevStatus, activeTab])
 
   const cardLedState = resolveTelemetryLedState(status)
-  // While the console tray is expanded, wings/digest switch to condensed summary rows so the
-  // tray can grow inline without an overlay — the logo (fixed size) simply re-centers higher.
-  const isConsoleCompact = isAssistantOpen && !isDormant
   const wingGapClass = isConsoleCompact ? 'gap-2' : 'gap-4'
   const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
@@ -386,6 +389,13 @@ export default function App(): ReactElement {
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
 
+  // Shared insight list — used identically by the BriefingDigest panel and the
+  // ConsoleTray's Briefing tab so they never show different content.
+  const combinedInsights = [
+    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
+    ...(data?.digest?.insights ?? []),
+  ]
+
   const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
   const eventsCompactValue =
     scheduleBody.length > 28 ? `${scheduleBody.slice(0, 28)}…` : scheduleBody
@@ -415,7 +425,7 @@ export default function App(): ReactElement {
       </div>
 
       <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="pointer-events-none flex flex-nowrap justify-between gap-4 w-full select-none shrink-0 mb-4 h-11 items-center">
+        <header className="relative pointer-events-none flex flex-nowrap justify-between gap-4 w-full select-none shrink-0 mb-4 h-11 items-center">
           {/* Identity Pill (Left) */}
           <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
             <ApexLogo
@@ -453,26 +463,8 @@ export default function App(): ReactElement {
             )}
           </div>
 
-          {/* VocalOrb Island (Center) */}
-          <div className="hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto">
-            <VocalOrb
-              isSpeaking={isSpeaking}
-              activeTtsEngine={resolvedTtsEngine}
-              systemLoadThrottled={resolvedSystemThrottled}
-              className="h-7 w-auto"
-            />
-          </div>
-
-          {/* Right cluster: Context Capsule + Diagnostics Pill */}
-          <div className="flex items-center gap-3 shrink-0 pointer-events-auto">
-            <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-2.5 shrink-0 font-mono text-xs whitespace-nowrap">
-              <Clock className="size-3.5 text-[#0F4DB8] shrink-0" />
-              <span className="uppercase tracking-widest text-zinc-400">
-                Last Briefing:{' '}
-                <span className="text-[#FFFFFF]">{lastBriefingTime || 'Standby'}</span>
-              </span>
-            </div>
-
+          {/* Diagnostics Pill (Right) — absorbs the former Last Briefing capsule into its expanded dropdown */}
+          <div className="flex items-center shrink-0 pointer-events-auto">
             <SystemDiagnostics
               diagnostics={diagnostics}
               diagnosticsStatus={diagnosticsStatus}
@@ -482,6 +474,18 @@ export default function App(): ReactElement {
               confidenceScore={confidenceScore}
               pipelineStep={activeStep}
               failedConnectors={failedConnectors}
+              lastBriefingTime={lastBriefingTime}
+            />
+          </div>
+
+          {/* VocalOrb Island — absolutely centered on the header's own box so its position
+              never depends on (or is thrown off by) the width of the pills either side. */}
+          <div className="hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <VocalOrb
+              isSpeaking={isSpeaking}
+              activeTtsEngine={resolvedTtsEngine}
+              systemLoadThrottled={resolvedSystemThrottled}
+              className="h-7 w-auto"
             />
           </div>
         </header>
@@ -489,7 +493,7 @@ export default function App(): ReactElement {
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col ${wingGapClass} xl:h-full xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
               <MarketTickerCard
                 data={marketData}
@@ -541,14 +545,10 @@ export default function App(): ReactElement {
               />
               <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
-                  insights={[
-                    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
-                    ...(data?.digest?.insights ?? []),
-                  ]}
+                  insights={combinedInsights}
                   status={status}
                   isLoading={isTriggerLoading}
-                  isCompact={isConsoleCompact}
-                  className={isConsoleCompact ? 'w-full' : 'w-full h-full min-h-0'}
+                  className="w-full h-full min-h-0"
                 />
               </div>
 
@@ -586,7 +586,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`flex min-w-0 flex-col ${wingGapClass} xl:h-full xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Inbox"
@@ -730,7 +730,7 @@ export default function App(): ReactElement {
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             briefingText={data?.briefing ?? ''}
-            insights={data?.digest?.insights || []}
+            insights={combinedInsights}
             isBriefingNew={isBriefingNew}
             setBriefingNew={setIsBriefingNew}
             assistantHistory={assistantHistory}

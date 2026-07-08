@@ -394,10 +394,12 @@
    OS / MISSION-CONTROL MODULE CHROME
    ========================================================= */
 
-/* HUD reticle corner brackets — faint at rest, brighten on hover */
-.hud-corner-brackets {
-  position: relative;
-}
+/* HUD reticle corner brackets — faint at rest, brighten on hover.
+   Every usage already applies its own explicit `relative`/`absolute` Tailwind
+   utility, so this class intentionally does NOT set `position` itself: doing
+   so here would be an unlayered rule that silently wins over Tailwind's
+   layered position utilities (e.g. forcing `absolute` dropdowns back to
+   `relative`, making them occupy flow space instead of overlaying). */
 
 .hud-corner-brackets::before,
 .hud-corner-brackets::after,

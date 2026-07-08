@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import type { ReactElement } from 'react'
+import type { KeyboardEvent, ReactElement } from 'react'
 import {
   Globe,
   Activity,
@@ -96,12 +96,15 @@ interface SystemDiagnosticsProps {
   confidenceScore: number
   pipelineStep: number | null
   failedConnectors?: string[]
+  /** Last completed briefing time label, shown only in the expanded dropdown. */
+  lastBriefingTime?: string | null
 }
 
 /**
- * Compact header pill surfacing the three signals that matter at a glance
- * (briefing status, CPU, RAM), expanding into a full detail dropdown on
- * hover or click (internet, sync/confidence, disk, live clock).
+ * Compact header pill surfacing the four signals that matter at a glance
+ * (briefing/pipeline status, CPU, RAM, system time), expanding into a full
+ * detail dropdown on hover or click (internet, sync/confidence, disk, and
+ * last briefing time).
  */
 export function SystemDiagnostics({
   diagnostics,
@@ -112,6 +115,7 @@ export function SystemDiagnostics({
   confidenceScore,
   pipelineStep,
   failedConnectors = [],
+  lastBriefingTime = null,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isOpen, setIsOpen] = useState(false)
@@ -177,6 +181,13 @@ export function SystemDiagnostics({
       setIsOpen(next)
       return next
     })
+  }
+
+  const handleTriggerKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleToggleClick()
+    }
   }
 
   const resolvedDiagnostics = diagnostics
@@ -268,11 +279,14 @@ export function SystemDiagnostics({
         if (!isPinned) setIsOpen(false)
       }}
     >
-      {/* Compact trigger pill — CPU / RAM / Briefing status only */}
-      <button
-        type="button"
+      {/* Compact trigger pill — pipeline state / CPU / RAM / time. A div (matching every other
+          header pill) rather than a native button, avoiding inconsistent browser button chrome. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleToggleClick}
-        className="hud-corner-brackets hud-glass relative flex h-11 shrink-0 items-center gap-2.5 rounded-full px-3 font-mono text-xs text-zinc-300 transition-all duration-500 hover-blue-medium"
+        onKeyDown={handleTriggerKeyDown}
+        className="hud-corner-brackets hud-glass relative flex h-11 shrink-0 cursor-pointer items-center gap-3 rounded-full px-4 font-mono text-xs text-zinc-300 transition-all duration-500 hover-blue-medium"
         aria-expanded={isOpen}
         aria-label="System diagnostics"
       >
@@ -281,7 +295,7 @@ export function SystemDiagnostics({
 
         <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden title={briefingStateText} />
 
-        <span className="hidden items-center gap-1 sm:flex">
+        <span className="flex items-center gap-1">
           <Cpu className="size-3.5 text-zinc-500" aria-hidden />
           <span>{formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
         </span>
@@ -290,7 +304,12 @@ export function SystemDiagnostics({
           <Database className="size-3.5 text-zinc-500" aria-hidden />
           <span>{formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
         </span>
-      </button>
+
+        <span className="hidden items-center gap-1 sm:flex">
+          <Clock className="size-3.5 text-zinc-500" aria-hidden />
+          <span className="tabular-nums whitespace-nowrap">{liveTime.time}</span>
+        </span>
+      </div>
 
       {/* Expanded detail dropdown */}
       <div
@@ -331,6 +350,15 @@ export function SystemDiagnostics({
               <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden />
               {briefingStateText}
             </span>
+          </div>
+
+          {/* Last Briefing Time */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-zinc-500">
+              <Clock className="size-3.5 shrink-0" aria-hidden />
+              Last Briefing
+            </span>
+            <span className="text-zinc-300">{lastBriefingTime || 'Standby'}</span>
           </div>
 
           {/* Sync / Confidence */}
