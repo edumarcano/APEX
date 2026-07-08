@@ -20,7 +20,6 @@ import { ConsoleTray } from './components/ConsoleTray'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
-import { PipelineProgressGlyph } from './components/PipelineProgressGlyph'
 import { ReminderListRow } from './components/ReminderListRow'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
@@ -712,12 +711,9 @@ export default function App(): ReactElement {
                       isDormant ? 'mt-7 xl:mt-9' : 'mt-2'
                     }`}
                   >
-                    <PipelineProgressGlyph
+                    <VoiceSignalGlyph
                       step={activeStep}
                       status={status}
-                      isSpeaking={isSpeaking}
-                    />
-                    <VoiceSignalGlyph
                       isSpeaking={isSpeaking}
                       activeTtsEngine={resolvedTtsEngine}
                       systemLoadThrottled={resolvedSystemThrottled}

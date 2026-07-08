@@ -49,8 +49,7 @@ frontend/
 │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
 │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
 │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
-│   │   ├── VoiceSignalGlyph.tsx     # Permanent centered speech-aperture indicator
-│   │   ├── PipelineProgressGlyph.tsx # Temporary centered briefing progress conduit
+│   │   ├── VoiceSignalGlyph.tsx     # Centered pipeline status, thinking, and speech indicator
 │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
