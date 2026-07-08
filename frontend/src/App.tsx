@@ -57,6 +57,38 @@ interface ParsedNews {
   headline: string
 }
 
+function getMediaQueryMatch(query: string): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false
+  }
+
+  return window.matchMedia(query).matches
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => getMediaQueryMatch(query))
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return
+    }
+
+    const mediaQueryList = window.matchMedia(query)
+    const updateMatch = (): void => {
+      setMatches(mediaQueryList.matches)
+    }
+
+    updateMatch()
+    mediaQueryList.addEventListener('change', updateMatch)
+
+    return () => {
+      mediaQueryList.removeEventListener('change', updateMatch)
+    }
+  }, [query])
+
+  return matches
+}
+
 function parseNewsTelemetry(newsText: string): ParsedNews[] {
   if (!newsText || !newsText.includes('[NEWS TELEMETRY]')) {
     return []
@@ -105,6 +137,7 @@ export default function App(): ReactElement {
   const [prevStatus, setPrevStatus] = useState<string>('idle')
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
+  const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const { data: marketData, isLoading: isMarketLoading } = useMarketData()
@@ -203,44 +236,52 @@ export default function App(): ReactElement {
   const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
   // Expanded assistant sessions become a right rail on desktop. Smaller
-  // viewports keep the existing bottom tray behavior.
-  const isConsoleCompact = isAssistantOpen && !isDormant
+  // and height-constrained viewports keep the existing bottom tray behavior.
+  const useRightRailConsole = isShowcaseDesktop
+  const isConsoleCompact = isAssistantOpen && !isDormant && useRightRailConsole
 
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
-  const wingHeightClass = 'xl:h-full'
-  const leftWingDormantClasses =
-    'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-  const leftWingActiveClasses =
-    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-  const rightWingDormantClasses =
-    'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-  const rightWingActiveClasses =
-    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-  const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses =
-    'h-full min-h-0 flex flex-col justify-start pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+  const wingHeightClass = useRightRailConsole ? 'xl:h-full' : 'h-auto'
+  const leftWingDormantClasses = useRightRailConsole
+    ? 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+    : 'hidden'
+  const leftWingActiveClasses = useRightRailConsole
+    ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+    : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
+  const rightWingDormantClasses = useRightRailConsole
+    ? 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+    : 'hidden'
+  const rightWingActiveClasses = useRightRailConsole
+    ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+    : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
+  const centerColumnDormantClasses = useRightRailConsole
+    ? 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
+    : 'h-auto min-h-0 flex flex-col justify-center'
+  const centerColumnActiveClasses = useRightRailConsole
+    ? 'h-full min-h-0 flex flex-col justify-start pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+    : 'h-auto min-h-0 flex flex-col justify-start pt-0'
 
   // The logo is always visible and the insights panel stays mounted while the
   // desktop console opens in the right column.
   const showDigest = !isDormant
   const digestWrapperClass = [
-    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
+    'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
       ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-3 xl:mb-4 overflow-visible'
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
-  const logoShellClass = 'shrink-0 py-4 xl:py-0'
+  const logoShellClass = 'hud-logo-shell shrink-0 py-4 xl:py-0'
 
   const largeLogoWrapperClass = [
-    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
+    'hud-logo-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
     isDormant
       ? 'h-64 justify-center xl:h-auto xl:flex-1'
       : 'h-72 justify-center xl:h-80',
   ].join(' ')
 
-  const logoSizeClass = 'h-48 w-auto sm:h-56 xl:h-64'
+  const logoSizeClass = 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -340,6 +381,20 @@ export default function App(): ReactElement {
 
   const cardLedState = resolveTelemetryLedState(status)
   const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
+  const weatherPanelLayoutClass = useRightRailConsole
+    ? 'xl:flex-[0.5_1_0] xl:min-h-0'
+    : 'hud-panel-natural min-h-[8rem]'
+  const eventsPanelLayoutClass = useRightRailConsole
+    ? 'xl:flex-[1.5_1_0] xl:min-h-0'
+    : 'hud-panel-natural min-h-[11rem]'
+  const marketPanelLayoutClass = useRightRailConsole
+    ? 'xl:flex-[1_1_0]'
+    : 'hud-panel-natural min-h-[12rem]'
+  const rightTelemetryPanelClass = isConsoleCompact
+    ? 'xl:hidden'
+    : useRightRailConsole
+      ? 'flex-none xl:flex-1 xl:min-h-0'
+      : 'hud-panel-natural min-h-[10rem]'
   const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -407,7 +462,7 @@ export default function App(): ReactElement {
 
   return (
     <main
-      className="relative isolate flex h-dvh w-full min-h-0 flex-col overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
+      className={`hud-app-shell ${useRightRailConsole ? 'hud-layout-fullscreen' : 'hud-layout-compact'} relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6`}
       style={{ '--glow-color': glowColor } as CSSProperties}
     >
       <CelestialBackground />
@@ -426,8 +481,8 @@ export default function App(): ReactElement {
         <div className="absolute inset-0 bg-atmosphere-vignette" />
       </div>
 
-      <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="relative pointer-events-none flex h-16 w-full shrink-0 select-none flex-nowrap items-center justify-between gap-4 mb-4">
+      <div className="hud-main-shell relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden">
+        <header className="hud-header relative pointer-events-none mb-4 flex h-16 w-full shrink-0 select-none flex-nowrap items-center justify-between gap-4">
           {/* Identity Pill (Left) */}
           <div className="hud-interactive-shell hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
             <ApexLogo
@@ -493,12 +548,12 @@ export default function App(): ReactElement {
           </div>
         </header>
 
-        <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
+        <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`hud-wing-column ${useRightRailConsole ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex xl:flex-1`}>
+              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex ${useRightRailConsole ? 'xl:flex-1' : ''}`}>
                 {isConsoleCompact ? (
                   <>
                     <TelemetryCard
@@ -598,7 +653,7 @@ export default function App(): ReactElement {
                   isCompact={isConsoleCompact}
                   compactValue={weatherBody}
                   style={weatherCardStyle}
-                  className={`min-h-0 xl:flex-[0.5_1_0] xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  className={`min-h-0 ${weatherPanelLayoutClass} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {weatherBody}
@@ -612,7 +667,7 @@ export default function App(): ReactElement {
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
-                  className={`min-h-0 xl:flex-[1.5_1_0] xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  className={`min-h-0 ${eventsPanelLayoutClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {scheduleBody}
@@ -622,7 +677,7 @@ export default function App(): ReactElement {
                     <MarketTickerCard
                       data={marketData}
                       isLoading={isMarketLoading}
-                      className={`min-h-0 w-full xl:flex-[1_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      className={`min-h-0 w-full ${marketPanelLayoutClass} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
                     />
                   </>
                 )}
@@ -631,7 +686,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
-              className={`relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} xl:gap-6 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+              className={`hud-center-column ${useRightRailConsole ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               {/* Ambient Logo Glow Projector */}
               <div
@@ -683,7 +738,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Inbox"
@@ -691,7 +746,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
-                className={isConsoleCompact ? 'xl:hidden' : 'flex-none xl:flex-1 xl:min-h-0'}
+                className={rightTelemetryPanelClass}
               >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -742,7 +797,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
-                className={isConsoleCompact ? 'xl:hidden' : 'flex-none xl:flex-1 xl:min-h-0'}
+                className={rightTelemetryPanelClass}
               >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -786,7 +841,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
-                className={`${isConsoleCompact ? 'xl:hidden' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`${rightTelemetryPanelClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
@@ -813,7 +868,7 @@ export default function App(): ReactElement {
                 </div>
               </TelemetryCard>
 
-              <div className={`${isAssistantOpen ? 'hidden h-full min-h-0 xl:flex xl:mt-auto' : 'hidden xl:flex xl:mt-auto'}`}>
+              <div className={`${useRightRailConsole ? (isAssistantOpen ? 'hidden h-full min-h-0 xl:flex xl:mt-auto' : 'hidden xl:flex xl:mt-auto') : 'hidden'}`}>
                 <ConsoleTray
                   placement="rail"
                   isExpanded={isAssistantOpen}
@@ -842,8 +897,8 @@ export default function App(): ReactElement {
         </div>
       </div>
 
-      {!isDormant ? (
-        <div className="relative z-[var(--z-bento-hud)] mt-4 flex-none shrink-0 xl:hidden">
+      {!isDormant && !useRightRailConsole ? (
+        <div className="hud-console-bottom-tray relative z-[var(--z-bento-hud)] mt-4 flex-none shrink-0">
           <ConsoleTray
             isExpanded={isAssistantOpen}
             setExpanded={setAssistantOpen}
