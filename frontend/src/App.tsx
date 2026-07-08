@@ -20,6 +20,7 @@ import { CelestialBackground } from './components/CelestialBackground'
 import { CentralCommandPanel } from './components/CentralCommandPanel'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
+import { MarketTickerCard } from './components/MarketTickerCard'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -27,6 +28,7 @@ import { TelemetryCard } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
+import { useMarketData } from './hooks/useMarketData'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import type { AssistantProfile, WeatherConditionArchetype } from './types/telemetry'
 
@@ -98,6 +100,7 @@ export default function App(): ReactElement {
   const [isBriefingNew, setIsBriefingNew] = useState(false)
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
+  const { data: marketData, isLoading: isMarketLoading } = useMarketData()
   const apexData = useApexData()
   const {
     data,
@@ -323,6 +326,7 @@ export default function App(): ReactElement {
     setPrevStatus(status)
   }, [status, prevStatus, activeTab])
 
+  const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
   const staggerTransition =
@@ -443,15 +447,21 @@ export default function App(): ReactElement {
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-6 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-4 xl:overflow-hidden ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
+              <MarketTickerCard
+                data={marketData}
+                isLoading={isMarketLoading}
+                className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+              />
+
               <TelemetryCard
                 title="Weather"
                 icon={CloudSun}
                 primaryTemperatureF={primaryTemperatureF}
                 weatherCondition={data?.weatherCondition}
                 style={weatherCardStyle}
-                className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {weatherBody}
@@ -462,7 +472,7 @@ export default function App(): ReactElement {
                 title="Events"
                 icon={Calendar}
                 f1TelemetryText={f1ScheduleTelemetryText}
-                className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {scheduleBody}

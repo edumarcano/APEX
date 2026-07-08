@@ -130,6 +130,33 @@ export interface TelemetryPayload {
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
 
+export type MarketTickerStatus = 'live' | 'stale' | 'unavailable'
+
+export type MarketResponseStatus =
+  | 'live'
+  | 'partial'
+  | 'stale'
+  | 'unavailable'
+  | 'not_configured'
+  | 'provider_unavailable'
+
+export interface MarketTickerItem {
+  symbol: string
+  price: number | null
+  change: number | null
+  change_percent: number | null
+  status: MarketTickerStatus
+  last_updated: string | null
+  sparkline: number[]
+}
+
+export interface MarketResponse {
+  status: MarketResponseStatus
+  cooldown_active: boolean
+  cooldown_remaining_seconds: number
+  tickers: MarketTickerItem[]
+}
+
 export interface ApexDataState {
   data: TelemetryPayload | null
   status: SystemState
