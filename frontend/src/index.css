@@ -33,7 +33,7 @@
     margin: 0;
     background-color: var(--hud-bg);
     color: var(--hud-text);
-    font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Exo 2', system-ui, 'Segoe UI', sans-serif;
     line-height: 1.5;
   }
 

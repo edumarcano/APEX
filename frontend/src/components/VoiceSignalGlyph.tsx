@@ -257,7 +257,7 @@ export function VoiceSignalGlyph({
       </svg>
       <span
         className={[
-          'font-mono text-[9px] font-semibold uppercase tracking-[0.22em] transition-colors duration-700 sm:text-[10px]',
+          'font-orbitron text-[9px] font-semibold uppercase tracking-[0.2em] transition-colors duration-700 sm:text-[10px]',
           toneClasses.label,
         ].join(' ')}
       >

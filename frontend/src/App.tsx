@@ -661,7 +661,7 @@ export default function App(): ReactElement {
                 ) : (
                   <>
                     {status === 'success' && emailInfo.count > 0 && (
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--hud-accent)]">
+                      <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
                         {emailInfo.count} Primary Messages
                       </p>
                     )}
@@ -720,7 +720,7 @@ export default function App(): ReactElement {
                             : 'py-3 first:pt-0'
                         }
                       >
-                        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--hud-accent)]">
+                        <p className="flex items-center gap-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--hud-accent)]">
                           <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
                           [{item.topic}]
                         </p>

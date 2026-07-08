@@ -332,9 +332,9 @@ export function SystemDiagnostics({
   ].join(' ')
 
   return (
-    <div className="pointer-events-auto flex h-16 w-full min-w-0 items-center justify-between gap-2 sm:gap-3">
+    <div className="pointer-events-auto grid h-16 w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
       {/* Left flank — hardware */}
-      <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+      <div className="flex min-w-0 items-center justify-self-start gap-2 sm:gap-2.5">
         <MetricPill
           label="CPU"
           value={cpuText}
@@ -355,7 +355,7 @@ export function SystemDiagnostics({
       {/* Center — APEX identity + Sync Health popup */}
       <div
         ref={containerRef}
-        className="relative z-50 shrink-0"
+        className="relative z-50 justify-self-center shrink-0"
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => {
           if (!isPinned) setIsOpen(false)
@@ -438,7 +438,7 @@ export function SystemDiagnostics({
       </div>
 
       {/* Right flank — disk / net / clock */}
-      <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-2.5">
+      <div className="flex min-w-0 items-center justify-self-end gap-2 sm:gap-2.5">
         <MetricPill
           label="DISK"
           value={diskText}

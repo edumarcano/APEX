@@ -22,11 +22,9 @@ export default {
       },
       fontFamily: {
         hud: [
+          '"Exo 2"',
           'system-ui',
           '"Segoe UI"',
-          'Roboto',
-          'Helvetica',
-          'Arial',
           'sans-serif',
         ],
         orbitron: ['Orbitron', 'ui-sans-serif', 'system-ui', 'sans-serif'],

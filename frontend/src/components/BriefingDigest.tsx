@@ -71,7 +71,7 @@ export function BriefingDigest({
           <span className="hud-icon-badge size-7 shrink-0">
             <FileText className="size-4 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
           </span>
-          <h2 id={labelId} className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]">
+          <h2 id={labelId} className="min-w-0 truncate font-orbitron text-sm font-semibold leading-none tracking-[0.12em] text-[color:var(--hud-text)]">
             Briefing Highlights
           </h2>
         </div>
@@ -257,7 +257,7 @@ function HistoryLedgerModal({ onClose }: HistoryLedgerModalProps): ReactElement 
         <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
           <h2
             id="history-ledger-title"
-            className="text-sm font-semibold tracking-tight text-[color:var(--hud-text)]"
+            className="font-orbitron text-sm font-semibold tracking-[0.12em] text-[color:var(--hud-text)]"
           >
             Transcript History Ledger
           </h2>
@@ -300,7 +300,7 @@ function HistoryLedgerModal({ onClose }: HistoryLedgerModalProps): ReactElement 
                   </p>
                   {insights.length > 0 ? (
                     <div className="space-y-2 pt-1">
-                      <h3 className="text-xs font-semibold uppercase tracking-widest text-[color:var(--hud-accent)] opacity-80">
+                      <h3 className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--hud-accent)] opacity-80">
                         Summary Insights
                       </h3>
                       <ul className="space-y-2">

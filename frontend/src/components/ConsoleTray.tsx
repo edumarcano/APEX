@@ -593,7 +593,7 @@ export function ConsoleTray({
   )
 
   const tabBaseClass =
-    'hud-command-surface font-mono text-[10px] uppercase tracking-[0.2em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
+    'hud-command-surface font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
 
   const tabs = (
     <div className={`flex shrink-0 items-center gap-2 ${placement === 'rail' ? 'min-w-0 flex-wrap' : ''}`}>
