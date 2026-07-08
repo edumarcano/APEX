@@ -105,7 +105,7 @@ export function AskApexBar({
 
   const formClassName = integrated
     ? [
-        'w-full rounded-xl border-0 bg-transparent shadow-none backdrop-blur-none',
+        'hud-command-surface w-full rounded-lg bg-zinc-950/20 shadow-none backdrop-blur-none',
         'transition-all duration-300',
         disabled ? 'opacity-50' : '',
       ].join(' ')
@@ -141,7 +141,7 @@ export function AskApexBar({
         className={formClassName}
         aria-label="Ask APEX"
       >
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className={`flex items-center gap-3 ${integrated ? 'px-3 py-2' : 'px-4 py-3'}`}>
           <span
             className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]"
             aria-hidden

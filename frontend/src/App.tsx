@@ -1,7 +1,6 @@
 import {
   Calendar,
   CheckSquare,
-  Clock,
   CloudSun,
   Mail,
   Newspaper,
@@ -17,14 +16,14 @@ import {
 
 import { ApexLogo } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
-import { CentralCommandPanel } from './components/CentralCommandPanel'
+import { ConsoleTray } from './components/ConsoleTray'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
-import { TelemetryCard } from './components/TelemetryCard'
+import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
@@ -76,6 +75,16 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
 
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
+}
+
+/** Mirrors the unified pipeline status into a compact per-card status LED. */
+function resolveTelemetryLedState(
+  status: 'idle' | 'loading' | 'success' | 'error',
+): TelemetryLedState {
+  if (status === 'error') return 'error'
+  if (isBusy(status)) return 'loading'
+  if (status === 'success') return 'live'
+  return 'stale'
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -195,37 +204,52 @@ export default function App(): ReactElement {
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
+  // Expanded assistant sessions become a left rail on desktop. Smaller
+  // viewports keep the existing bottom tray behavior.
+  const isConsoleCompact = isAssistantOpen && !isDormant
 
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
+  const wingHeightClass = 'xl:h-full'
   const leftWingDormantClasses =
     'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const leftWingActiveClasses =
-    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const rightWingDormantClasses =
     'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const rightWingActiveClasses =
-    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
-  const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+  const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = `h-full min-h-0 flex flex-col ${
+    isConsoleCompact ? 'justify-start pt-2 xl:pt-3' : 'justify-start pt-0'
+  } xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
 
-  const showDigest = !isDormant && !isAssistantOpen
+  // The logo is always visible and full-size — it is never displaced by the
+  // assistant console, which lives in its own docked tray below. The insights
+  // panel fully hides (rather than compacting) whenever the tray is open, to
+  // free as much vertical room as possible for the tray.
+  const showDigest = !isDormant && !isConsoleCompact
   const digestWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
-      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4'
+      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-3 xl:mb-4 overflow-visible'
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
-  const showLargeLogo = isDormant || (!isDormant && !isAssistantOpen)
+  const logoShellClass = isConsoleCompact ? 'min-h-0 flex-1 py-1 xl:py-0' : 'shrink-0 py-4 xl:py-0'
+
   const largeLogoWrapperClass = [
-    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center justify-center',
-    showLargeLogo
-      ? isDormant
-        ? 'opacity-100 scale-100 h-64 xl:h-auto xl:flex-1'
-        : 'opacity-100 scale-100 h-64 xl:h-72'
-      : 'opacity-0 scale-50 h-0 w-0 overflow-hidden pointer-events-none',
+    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
+    isDormant
+      ? 'h-64 justify-center xl:h-auto xl:flex-1'
+      : isConsoleCompact
+        ? 'h-full min-h-0 justify-center'
+        : 'h-72 justify-center xl:h-80',
   ].join(' ')
+
+  const logoSizeClass = isConsoleCompact
+    ? 'h-full max-h-[clamp(9rem,min(22vw,30vh),19rem)] w-auto'
+    : 'h-48 w-auto sm:h-56 xl:h-64'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -326,6 +350,8 @@ export default function App(): ReactElement {
     setPrevStatus(status)
   }, [status, prevStatus, activeTab])
 
+  const cardLedState = resolveTelemetryLedState(status)
+  const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
   const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -374,6 +400,38 @@ export default function App(): ReactElement {
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
 
+  // Shared insight list — used identically by the BriefingDigest panel and the
+  // ConsoleTray's Briefing tab so they never show different content.
+  const combinedInsights = [
+    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
+    ...(data?.digest?.insights ?? []),
+  ]
+
+  const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
+  const eventsCompactValue =
+    scheduleBody.length > 28 ? `${scheduleBody.slice(0, 28)}…` : scheduleBody
+  const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
+  const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
+  const remindersCompactValue = `${pendingReminderCount} pending`
+  const reactorStatusLabel =
+    pipelineState?.label ??
+    (status === 'success'
+      ? 'Synthesis complete'
+      : status === 'loading'
+        ? 'Synchronizing'
+        : status === 'error'
+          ? 'Attention required'
+          : 'Standby')
+  const reactorHealthLabel =
+    status === 'error'
+      ? 'Health degraded'
+      : failedConnectors.length > 0
+        ? `${failedConnectors.length} connector alert`
+        : `${Math.round(confidenceScore)}% confidence`
+  const reactorBriefingLabel = lastBriefingTime
+    ? `Last briefing ${lastBriefingTime}`
+    : 'No briefing logged'
+
   return (
     <main
       className="relative isolate flex h-dvh w-full min-h-0 flex-col overflow-hidden bg-[var(--hud-bg)] p-4 md:p-6"
@@ -396,119 +454,190 @@ export default function App(): ReactElement {
       </div>
 
       <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="relative mb-3 flex-none grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
-          <div className="flex items-baseline justify-self-start">
+        <header className="relative pointer-events-none flex h-16 w-full shrink-0 select-none flex-nowrap items-center justify-between gap-4 mb-4">
+          {/* Identity Pill (Left) */}
+          <div className="hud-interactive-shell hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
+            <ApexLogo
+              step={activeStep}
+              status={status}
+              isSpeaking={isSpeaking}
+              reminderPulseCount={reminderPulseCount}
+              className="h-6 w-auto shrink-0"
+            />
             <h1
-              className={`m-0 text-2xl font-extrabold tracking-widest md:text-3xl ${isPipelinePolling
+              className={`m-0 text-lg font-extrabold tracking-widest whitespace-nowrap ${isPipelinePolling
                 ? 'animate-shimmer'
                 : 'text-[color:var(--hud-accent)]'
                 }`}
             >
               APEX
             </h1>
-            <span className="mb-1 ml-3 hidden self-end text-[10px] uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
-              AUTOMATED PERSONAL ENVIRONMENT XYLEM
-            </span>
-          </div>
-          <div className="flex justify-center justify-self-center">
-            <VocalOrb
-              isSpeaking={isSpeaking}
-              activeTtsEngine={resolvedTtsEngine}
-              systemLoadThrottled={resolvedSystemThrottled}
-              className="h-12 w-auto"
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2 justify-self-end">
             {showPendingReminderBadge && (
               <span
-                className="font-mono text-[10px] sm:text-[11px] uppercase tracking-widest text-amber-500/80 animate-pulse"
+                className="hidden sm:inline font-mono text-[10px] uppercase tracking-widest text-amber-500/80 animate-pulse whitespace-nowrap"
                 aria-live="polite"
                 data-slot="pending-reminder-badge"
               >
                 [{pendingReminderCount}{' '}
-                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
+                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'}]
               </span>
             )}
             {demoModeActive && (
               <span
-                className="border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite]"
+                className="hidden md:inline border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite] whitespace-nowrap"
                 data-slot="demo-mode-badge"
               >
-                DEMO MODE ACTIVE
+                DEMO
               </span>
             )}
-            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-zinc-400">
-              <Clock className="size-3.5 text-[#0F4DB8]" />
-              <span>Last Briefing: <span className="text-[#FFFFFF]">{lastBriefingTime || 'Standby'}</span></span>
-            </div>
+          </div>
+
+          {/* Diagnostics Pill (Right) — absorbs the former Last Briefing capsule into its expanded dropdown */}
+          <div className="flex h-16 items-center shrink-0 pointer-events-auto">
+            <SystemDiagnostics
+              diagnostics={diagnostics}
+              diagnosticsStatus={diagnosticsStatus}
+              isSpeaking={isSpeaking}
+              isPipelinePolling={isPipelinePolling}
+              status={status}
+              confidenceScore={confidenceScore}
+              pipelineStep={activeStep}
+              pipelineLabel={pipelineState?.label ?? null}
+              failedConnectors={failedConnectors}
+              lastBriefingTime={lastBriefingTime}
+            />
+          </div>
+
+          {/* VocalOrb Island — absolutely centered on the header's own box so its position
+              never depends on (or is thrown off by) the width of the pills either side. */}
+          <div className="hud-interactive-shell hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+            <VocalOrb
+              isSpeaking={isSpeaking}
+              activeTtsEngine={resolvedTtsEngine}
+              systemLoadThrottled={resolvedSystemThrottled}
+              className="h-7 w-auto"
+            />
           </div>
         </header>
 
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-4 xl:overflow-hidden ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              <MarketTickerCard
-                data={marketData}
-                isLoading={isMarketLoading}
-                className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
-              />
+              {isConsoleCompact ? (
+                <div className="hidden h-full min-h-0 xl:flex">
+                  <ConsoleTray
+                    placement="rail"
+                    isExpanded={isAssistantOpen}
+                    setExpanded={setAssistantOpen}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    briefingText={data?.briefing ?? ''}
+                    insights={combinedInsights}
+                    isBriefingNew={isBriefingNew}
+                    setBriefingNew={setIsBriefingNew}
+                    assistantHistory={assistantHistory}
+                    isAssistantQuerying={isAssistantQuerying}
+                    assistantLatestTrace={assistantLatestTrace}
+                    assistantError={assistantError}
+                    profilesStatus={profilesStatus}
+                    profilesStatusHydrated={profilesStatusHydrated}
+                    queryAssistant={queryAssistant}
+                    unloadLocalModel={unloadLocalModel}
+                    resetAssistantSession={resetAssistantSession}
+                    activeProfile={agentProfile}
+                    setActiveProfile={setAgentProfile}
+                    askApexEnabled={Boolean(showAskApexBar)}
+                  />
+                </div>
+              ) : null}
 
-              <TelemetryCard
-                title="Weather"
-                icon={CloudSun}
-                primaryTemperatureF={primaryTemperatureF}
-                weatherCondition={data?.weatherCondition}
-                style={weatherCardStyle}
-                className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
-              >
-                <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                  {weatherBody}
-                </p>
-              </TelemetryCard>
+              <div className={`flex min-h-0 flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:hidden' : 'xl:flex xl:flex-1'}`}>
+                <MarketTickerCard
+                  data={marketData}
+                  isLoading={isMarketLoading}
+                  isCompact={isConsoleCompact}
+                  className={`h-auto w-full shrink-0 xl:flex-none ${isConsoleCompact ? 'xl:min-h-[3.75rem]' : ''} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                />
 
-              <TelemetryCard
-                title="Events"
-                icon={Calendar}
-                f1TelemetryText={f1ScheduleTelemetryText}
-                className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
-              >
-                <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                  {scheduleBody}
-                </p>
-              </TelemetryCard>
+                <TelemetryCard
+                  title="Weather"
+                  icon={CloudSun}
+                  primaryTemperatureF={primaryTemperatureF}
+                  weatherCondition={data?.weatherCondition}
+                  ledState={cardLedState}
+                  isCompact={isConsoleCompact}
+                  compactValue={weatherCompactValue}
+                  style={weatherCardStyle}
+                  className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                >
+                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                    {weatherBody}
+                  </p>
+                </TelemetryCard>
+
+                <TelemetryCard
+                  title="Events"
+                  icon={Calendar}
+                  f1TelemetryText={f1ScheduleTelemetryText}
+                  ledState={cardLedState}
+                  isCompact={isConsoleCompact}
+                  compactValue={eventsCompactValue}
+                  className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                >
+                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                    {scheduleBody}
+                  </p>
+                </TelemetryCard>
+              </div>
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
               className={`relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} xl:gap-6 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
-              <div className={`shrink-0 overflow-hidden flex flex-col ${digestWrapperClass}`}>
+              {/* Ambient Logo Glow Projector */}
+              <div
+                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-12 h-[380px] w-[380px] rounded-full blur-[120px] opacity-10 mix-blend-screen"
+                style={{ background: 'rgba(var(--glow-color), 0.15)' }}
+                aria-hidden
+              />
+              <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
-                  insights={[
-                    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
-                    ...(data?.digest?.insights ?? []),
-                  ]}
+                  insights={combinedInsights}
                   status={status}
                   isLoading={isTriggerLoading}
                   className="w-full h-full min-h-0"
                 />
               </div>
 
-              <div className={`shrink-0 py-4 xl:py-0 ${largeLogoWrapperClass}`}>
+              <div className={`${logoShellClass} ${largeLogoWrapperClass}`}>
                 <div className="relative flex flex-col items-center">
                   <div
-                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
+                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isConsoleCompact ? 'h-full min-h-0' : ''} ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
                   >
                     <ApexLogo
                       step={activeStep}
                       status={status}
                       isSpeaking={isSpeaking}
                       reminderPulseCount={reminderPulseCount}
-                      className="h-44 w-auto sm:h-52 xl:h-60"
+                      className={logoSizeClass}
                     />
                   </div>
+                  {isConsoleCompact ? (
+                    <div className="pointer-events-none mt-4 hidden max-w-full flex-wrap items-center justify-center gap-2 px-2 xl:flex">
+                      <span className="rounded-full border border-[#0F4DB8]/30 bg-[#0F4DB8]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#7EB3FF] shadow-[0_0_12px_rgba(15,77,184,0.14)]">
+                        {reactorStatusLabel}
+                      </span>
+                      <span className="rounded-full border border-emerald-400/20 bg-emerald-950/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200/80">
+                        {reactorHealthLabel}
+                      </span>
+                      <span className="rounded-full border border-amber-400/20 bg-amber-950/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-amber-200/80">
+                        {reactorBriefingLabel}
+                      </span>
+                    </div>
+                  ) : null}
                   <div
                     className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
@@ -526,44 +655,61 @@ export default function App(): ReactElement {
                   </div>
                 </div>
               </div>
-
-              {!isDormant ? (
-                <div className="flex min-h-0 w-full flex-1 flex-col">
-                  <CentralCommandPanel
-                    isExpanded={isAssistantOpen}
-                    setExpanded={setAssistantOpen}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    briefingText={data?.briefing ?? ''}
-                    insights={data?.digest?.insights || []}
-                    isBriefingNew={isBriefingNew}
-                    setBriefingNew={setIsBriefingNew}
-                    activeStep={activeStep}
-                    status={status}
-                    isSpeaking={isSpeaking}
-                    reminderPulseCount={reminderPulseCount}
-                    assistantHistory={assistantHistory}
-                    isAssistantQuerying={isAssistantQuerying}
-                    assistantLatestTrace={assistantLatestTrace}
-                    assistantError={assistantError}
-                    profilesStatus={profilesStatus}
-                    profilesStatusHydrated={profilesStatusHydrated}
-                    queryAssistant={queryAssistant}
-                    unloadLocalModel={unloadLocalModel}
-                    resetAssistantSession={resetAssistantSession}
-                    activeProfile={agentProfile}
-                    setActiveProfile={setAgentProfile}
-                    askApexEnabled={Boolean(showAskApexBar)}
-                  />
-                </div>
-              ) : null}
             </div>
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-6 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
-              <TelemetryCard title="Inbox" icon={Mail} className="flex-none xl:flex-1 xl:min-h-0">
+              {isConsoleCompact ? (
+                <>
+                  <MarketTickerCard
+                    data={marketData}
+                    isLoading={isMarketLoading}
+                    isCompact
+                    className={`hidden h-auto w-full shrink-0 xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  />
+
+                  <TelemetryCard
+                    title="Weather"
+                    icon={CloudSun}
+                    primaryTemperatureF={primaryTemperatureF}
+                    weatherCondition={data?.weatherCondition}
+                    ledState={cardLedState}
+                    isCompact
+                    compactValue={weatherCompactValue}
+                    style={weatherCardStyle}
+                    className={`hidden xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  >
+                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                      {weatherBody}
+                    </p>
+                  </TelemetryCard>
+
+                  <TelemetryCard
+                    title="Events"
+                    icon={Calendar}
+                    f1TelemetryText={f1ScheduleTelemetryText}
+                    ledState={cardLedState}
+                    isCompact
+                    compactValue={eventsCompactValue}
+                    className={`hidden xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  >
+                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                      {scheduleBody}
+                    </p>
+                  </TelemetryCard>
+                </>
+              ) : null}
+
+              <TelemetryCard
+                title="Inbox"
+                icon={Mail}
+                ledState={cardLedState}
+                isCompact={isConsoleCompact}
+                compactValue={inboxCompactValue}
+                className={isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'}
+              >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading inbox…
@@ -576,14 +722,17 @@ export default function App(): ReactElement {
                       </p>
                     )}
                     {emailInfo.items.length > 0 ? (
-                      <ul className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                      <ul className="list-fade-mask min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
                         {emailInfo.items.map((item, index) => (
                           <li
                             key={`${item.subject}-${item.time}-${index}`}
                             className="flex items-start justify-between gap-3"
                           >
-                            <span className="break-words text-sm text-zinc-200">
-                              {item.subject}
+                            <span className="flex min-w-0 items-start gap-2">
+                              <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
+                              <span className="break-words text-sm text-zinc-200">
+                                {item.subject}
+                              </span>
                             </span>
                             <span className="shrink-0 font-mono text-xs text-zinc-500">
                               {item.time}
@@ -604,13 +753,20 @@ export default function App(): ReactElement {
                 )}
               </TelemetryCard>
 
-              <TelemetryCard title="News Wire" icon={Newspaper} className="flex-none xl:flex-1 xl:min-h-0">
+              <TelemetryCard
+                title="News Wire"
+                icon={Newspaper}
+                ledState={cardLedState}
+                isCompact={isConsoleCompact}
+                compactValue={newsCompactValue}
+                className={isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'}
+              >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading news…
                   </p>
                 ) : newsItems.length > 0 ? (
-                  <ul className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
+                  <ul className="list-fade-mask min-h-0 overflow-y-auto pr-1 scrollbar-thin">
                     {newsItems.map((item, index) => (
                       <li
                         key={`${item.topic}-${index}`}
@@ -620,7 +776,8 @@ export default function App(): ReactElement {
                             : 'py-3 first:pt-0'
                         }
                       >
-                        <p className="text-xs font-semibold text-[color:var(--hud-accent)]">
+                        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--hud-accent)]">
+                          <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
                           [{item.topic}]
                         </p>
                         <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-zinc-200">
@@ -643,22 +800,28 @@ export default function App(): ReactElement {
               <TelemetryCard
                 title="Reminders"
                 icon={CheckSquare}
-                className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                ledState={cardLedState}
+                isCompact={isConsoleCompact}
+                compactValue={remindersCompactValue}
+                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (
-                    <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                      No pending reminders.
-                    </p>
+                    <div className="rounded-md border border-white/[0.06] bg-zinc-950/20 px-3 py-2">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                        No pending reminders
+                      </p>
+                    </div>
                   ) : (
-                    <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-                      {activeReminders.map((reminder) => (
+                    <ul className="list-fade-mask min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
+                      {activeReminders.map((reminder, index) => (
                         <ReminderListRow
                           key={reminder.id}
                           reminder={reminder}
+                          index={index}
                           onMarkRead={handleMarkReminderRead}
                         />
                       ))}
@@ -676,18 +839,32 @@ export default function App(): ReactElement {
         </div>
       </div>
 
-      <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0">
-      <SystemDiagnostics
-        diagnostics={diagnostics}
-        diagnosticsStatus={diagnosticsStatus}
-        isSpeaking={isSpeaking}
-        isPipelinePolling={isPipelinePolling}
-        status={status}
-        confidenceScore={confidenceScore}
-        pipelineStep={activeStep}
-        failedConnectors={failedConnectors}
-      />
-      </div>
+      {!isDormant ? (
+        <div className={`relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-4 ${isConsoleCompact ? 'xl:hidden' : ''}`}>
+          <ConsoleTray
+            isExpanded={isAssistantOpen}
+            setExpanded={setAssistantOpen}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            briefingText={data?.briefing ?? ''}
+            insights={combinedInsights}
+            isBriefingNew={isBriefingNew}
+            setBriefingNew={setIsBriefingNew}
+            assistantHistory={assistantHistory}
+            isAssistantQuerying={isAssistantQuerying}
+            assistantLatestTrace={assistantLatestTrace}
+            assistantError={assistantError}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            queryAssistant={queryAssistant}
+            unloadLocalModel={unloadLocalModel}
+            resetAssistantSession={resetAssistantSession}
+            activeProfile={agentProfile}
+            setActiveProfile={setAgentProfile}
+            askApexEnabled={Boolean(showAskApexBar)}
+          />
+        </div>
+      ) : null}
     </main>
   )
 }

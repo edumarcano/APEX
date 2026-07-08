@@ -11,21 +11,55 @@ export interface BriefingDigestProps {
   status: SystemState
   isLoading: boolean
   className?: string
+  /** When true, renders a single condensed summary line instead of the full insight list (e.g. while the console tray is open). */
+  isCompact?: boolean
 }
 
-export function BriefingDigest({ insights, status, isLoading, className }: BriefingDigestProps): ReactElement {
+export function BriefingDigest({ insights, status, isLoading, className, isCompact = false }: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
 
+  if (isCompact) {
+    const compactMessage =
+      isLoading || status === 'idle'
+        ? 'Compiling briefing…'
+        : insights.length > 0
+          ? `${insights.length} insight${insights.length === 1 ? '' : 's'} ready — open the Briefing tab`
+          : 'No current highlights.'
+
+    return (
+      <section
+        className={`hud-corner-brackets hud-interactive-shell relative flex shrink-0 flex-none items-center gap-3 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle px-3 py-2 hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
+        aria-labelledby={labelId}
+      >
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
+        <div className="hud-inner-lift flex min-w-0 flex-1 items-center gap-3">
+          <span className="hud-icon-badge size-6 shrink-0">
+            <FileText className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
+          </span>
+          <p id={labelId} className="min-w-0 flex-1 truncate text-xs font-medium text-[color:var(--hud-text)]">
+            {compactMessage}
+          </p>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section
-      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
+      className={`hud-corner-brackets hud-interactive-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
       aria-labelledby={labelId}
     >
-      <header className="mb-4 flex min-h-9 shrink-0 items-center justify-between gap-3">
+      <span className="hud-corner-bl" aria-hidden />
+      <span className="hud-corner-br" aria-hidden />
+      <header className="hud-inner-lift mb-3 shrink-0">
+        <div className="flex min-h-9 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <FileText className="size-5 shrink-0 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
-          <h2 id={labelId} className="min-w-0 text-sm font-semibold leading-normal tracking-tight text-[color:var(--hud-text)]">
+          <span className="hud-icon-badge size-7 shrink-0">
+            <FileText className="size-4 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
+          </span>
+          <h2 id={labelId} className="min-w-0 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]">
             Briefing Highlights
           </h2>
         </div>
@@ -39,9 +73,11 @@ export function BriefingDigest({ insights, status, isLoading, className }: Brief
             <span>History</span>
           </button>
         )}
+        </div>
+        <div className="hud-header-divider mt-3" aria-hidden />
       </header>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="hud-inner-lift flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {isLoading || status === 'idle' ? (
           <div className="space-y-2">
             <div className="h-3 bg-white/5 rounded animate-pulse w-full" />
@@ -51,10 +87,10 @@ export function BriefingDigest({ insights, status, isLoading, className }: Brief
         ) : insights.length === 0 ? (
           <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">No current highlights.</p>
         ) : (
-          <ul className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+          <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
             {insights.map((insight, index) => (
               <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">
-                <span className="text-[#FBBF24] font-bold font-mono select-none shrink-0">{`>`}</span>
+                <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
                 <span className="text-zinc-200">{insight}</span>
               </li>
             ))}

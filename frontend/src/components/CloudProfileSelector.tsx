@@ -1,11 +1,21 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactElement,
 } from 'react'
+import { createPortal } from 'react-dom'
+import {
+  Check,
+  ChevronDown,
+  Cloud,
+  Cpu,
+  type LucideIcon,
+} from 'lucide-react'
 
 import type {
   AgentProfileStatus,
@@ -52,12 +62,13 @@ const STATUS_FALLBACK_REASONS: Record<ProfileAvailabilityStatus, string> = {
 
 interface ProfileSection {
   title: string
+  icon: LucideIcon
   options: readonly ProfileOption[]
 }
 
 const PROFILE_SECTIONS: readonly ProfileSection[] = [
-  { title: 'Cloud Models', options: CLOUD_PROFILE_OPTIONS },
-  { title: 'Local Models', options: LOCAL_PROFILE_OPTIONS },
+  { title: 'Cloud Models', icon: Cloud, options: CLOUD_PROFILE_OPTIONS },
+  { title: 'Local Models', icon: Cpu, options: LOCAL_PROFILE_OPTIONS },
 ]
 
 interface CloudProfileSelectorProps {
@@ -101,6 +112,44 @@ function resolveTooltipText(
   return STATUS_FALLBACK_REASONS[status] || status
 }
 
+function resolveStatusLedClass(status: ProfileAvailabilityStatus): string {
+  if (status === 'available') return 'hud-led--live'
+  if (status === 'unknown') return 'hud-led--loading'
+  return 'hud-led--error'
+}
+
+function resolveCompactProfileLabel(profile: AssistantProfile): string {
+  return PROFILE_LABELS[profile].replace(/^Apex\s+/, '')
+}
+
+function resolveProfileInitial(profile: AssistantProfile): string {
+  return resolveCompactProfileLabel(profile).slice(0, 1).toUpperCase()
+}
+
+function resolveProfileProviderLabel(
+  profile: AssistantProfile,
+  profilesStatus: AgentProfileStatus[],
+): string {
+  const metadata = resolveProfileMetadata(profile, profilesStatus)
+  if (metadata?.provider === 'ollama') return 'Local'
+  if (metadata?.provider === 'gemini') return 'Cloud'
+  return LOCAL_PROFILE_OPTIONS.some((option) => option.key === profile)
+    ? 'Local'
+    : 'Cloud'
+}
+
+function resolveProfileDescription(
+  option: ProfileOption,
+  metadata: AgentProfileStatus | null,
+): string {
+  const subtitle = option.subtitle.trim()
+  const tier = metadata?.tier?.trim()
+  if (!tier || tier.toLowerCase() === subtitle.toLowerCase()) {
+    return subtitle
+  }
+  return `${subtitle} / ${tier}`
+}
+
 export function CloudProfileSelector({
   activeProfile,
   onChange,
@@ -109,10 +158,28 @@ export function CloudProfileSelector({
   disabled = false,
 }: CloudProfileSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const closeDropdown = useCallback((): void => {
     setIsOpen(false)
+  }, [])
+
+  const updateDropdownPosition = useCallback((): void => {
+    const trigger = triggerRef.current
+    if (!trigger) {
+      return
+    }
+
+    const rect = trigger.getBoundingClientRect()
+    setDropdownStyle({
+      bottom: window.innerHeight - rect.top + 8,
+      maxWidth: 'calc(100vw - 24px)',
+      right: Math.max(12, window.innerWidth - rect.right),
+      width: '18rem',
+    })
   }, [])
 
   const toggleDropdown = useCallback((): void => {
@@ -160,7 +227,10 @@ export function CloudProfileSelector({
         return
       }
 
-      if (!containerRef.current?.contains(target)) {
+      if (
+        !containerRef.current?.contains(target) &&
+        !dropdownRef.current?.contains(target)
+      ) {
         closeDropdown()
       }
     }
@@ -171,9 +241,30 @@ export function CloudProfileSelector({
     }
   }, [closeDropdown, isOpen])
 
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    updateDropdownPosition()
+
+    window.addEventListener('resize', updateDropdownPosition)
+    window.addEventListener('scroll', updateDropdownPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateDropdownPosition)
+      window.removeEventListener('scroll', updateDropdownPosition, true)
+    }
+  }, [isOpen, updateDropdownPosition])
+
   const selectorDisabled = disabled || !profilesStatusHydrated
   const activeProfileMetadata = resolveProfileMetadata(activeProfile, profilesStatus)
   const isActiveProfilePreview = activeProfileMetadata?.stability === 'preview'
+  const { status: activeProfileStatus } = resolveProfileAvailability(
+    activeProfile,
+    profilesStatus,
+    profilesStatusHydrated,
+  )
+  const activeProviderLabel = resolveProfileProviderLabel(activeProfile, profilesStatus)
 
   const renderOption = (option: ProfileOption): ReactElement => {
     const metadata = resolveProfileMetadata(option.key, profilesStatus)
@@ -186,6 +277,7 @@ export function CloudProfileSelector({
     const isLoading = status === 'unknown'
     const isActive = option.key === activeProfile
     const tooltipText = resolveTooltipText(status, reason)
+    const description = resolveProfileDescription(option, metadata)
 
     return (
       <li key={option.key} role="presentation" className="group/tooltip relative">
@@ -213,27 +305,40 @@ export function CloudProfileSelector({
             }
           }}
           className={[
-            'flex w-full flex-col items-start px-3 py-2 text-left transition-colors',
+            'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors',
             'focus-visible:outline-none',
             isGated
-              ? 'cursor-not-allowed text-zinc-600 opacity-40 pointer-events-none'
+              ? 'cursor-not-allowed text-zinc-600 opacity-45 pointer-events-none'
               : [
                   'hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15',
-                  isActive ? 'bg-[#0F4DB8]/10' : '',
+                  isActive ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : '',
                 ].join(' '),
           ].join(' ')}
         >
-          <span className="flex w-full items-center justify-between gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-100">
-              {option.label}
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] font-mono text-[10px] font-bold text-[#7EB3FF]">
+            {resolveProfileInitial(option.key)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className={`hud-led size-1.5 shrink-0 ${resolveStatusLedClass(status)}`} aria-hidden />
+              <span className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
+                {option.label}
+              </span>
             </span>
+            <span className="mt-0.5 block truncate pl-3.5 text-[10px] text-zinc-500">
+              {description}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
             {metadata?.stability === 'preview' ? (
-              <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-amber-300">
+              <span className="shrink-0 rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-widest text-amber-300">
                 Preview
               </span>
             ) : null}
+            {isActive ? (
+              <Check className="size-3.5 text-[#39FF88]" strokeWidth={2.25} aria-hidden />
+            ) : null}
           </span>
-          <span className="text-[10px] text-zinc-500">{option.subtitle}</span>
         </button>
 
         {isGated ? (
@@ -257,6 +362,7 @@ export function CloudProfileSelector({
   return (
     <div ref={containerRef} className="relative shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         tabIndex={0}
         disabled={selectorDisabled}
@@ -267,51 +373,66 @@ export function CloudProfileSelector({
         onClick={toggleDropdown}
         onKeyDown={handleTriggerKeyDown}
         className={[
-          'flex items-center gap-1 rounded-lg border bg-black/40 px-2.5 py-1.5',
+          'hud-interactive-shell hud-glass flex items-center gap-2 rounded-full px-2.5 py-1.5',
           'font-mono text-[10px] uppercase tracking-wider text-zinc-200',
-          'border-white/10 transition-colors',
-          'hover:border-[#0F4DB8]/40 focus-visible:outline focus-visible:outline-2',
+          'transition-colors hover-blue-subtle',
+          'focus-visible:outline focus-visible:outline-2',
           'focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8]',
           selectorDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
         ].join(' ')}
       >
-        <span className="whitespace-nowrap">{PROFILE_LABELS[activeProfile]}</span>
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0F4DB8]/15 text-[9px] font-bold text-[#7EB3FF]">
+          {resolveProfileInitial(activeProfile)}
+        </span>
+        <span className={`hud-led size-1.5 shrink-0 ${resolveStatusLedClass(activeProfileStatus)}`} aria-hidden />
+        <span className="whitespace-nowrap">{resolveCompactProfileLabel(activeProfile)}</span>
+        <span className="hidden rounded-full border border-white/[0.06] bg-white/[0.04] px-1.5 py-0.5 text-[8px] tracking-[0.14em] text-zinc-500 sm:inline">
+          {activeProviderLabel}
+        </span>
         {isActiveProfilePreview ? (
           <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1 py-0.5 text-[8px] text-amber-300">
             Preview
           </span>
         ) : null}
-        <span className="text-[#0F4DB8]" aria-hidden>
-          ▼
-        </span>
+        <ChevronDown
+          className={`size-3.5 shrink-0 text-[#0F4DB8] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+          strokeWidth={2.25}
+          aria-hidden
+        />
       </button>
 
-      {isOpen ? (
-        <ul
-          role="listbox"
-          aria-label="Select assistant profile"
+      {isOpen && dropdownStyle ? createPortal(
+        <div
+          ref={dropdownRef}
+          style={dropdownStyle}
           className={[
-            'absolute bottom-full right-0 z-50 mb-2 min-w-[12rem] overflow-visible',
-            'rounded-lg border border-white/10 bg-zinc-950/95 shadow-2xl backdrop-blur-md',
+            'hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] overflow-visible',
+            'rounded-xl border border-white/10 p-2 shadow-2xl',
           ].join(' ')}
         >
-          {PROFILE_SECTIONS.map((section, sectionIndex) => (
-            <li key={section.title} role="presentation">
-              {sectionIndex > 0 ? (
-                <div className="mx-2 border-t border-white/10" aria-hidden />
-              ) : null}
-              <div
-                className="px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-500"
-                aria-hidden
-              >
-                {section.title}
-              </div>
-              <ul role="group" aria-label={section.title}>
-                {section.options.map(renderOption)}
-              </ul>
-            </li>
-          ))}
-        </ul>
+          <span className="hud-corner-bl" aria-hidden />
+          <span className="hud-corner-br" aria-hidden />
+          <ul role="listbox" aria-label="Select assistant profile">
+            {PROFILE_SECTIONS.map((section, sectionIndex) => (
+              <li key={section.title} role="presentation">
+                {sectionIndex > 0 ? (
+                  <div className="mx-2 border-t border-white/10" aria-hidden />
+                ) : null}
+                <div
+                  className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-500"
+                  aria-hidden
+                >
+                  <section.icon className="size-3.5 text-zinc-600" aria-hidden />
+                  {section.title}
+                </div>
+                <ul role="group" aria-label={section.title} className="space-y-1">
+                  {section.options.map(renderOption)}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>,
+        document.body,
       ) : null}
     </div>
   )
