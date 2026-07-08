@@ -21,7 +21,6 @@ import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { ReminderListRow } from './components/ReminderListRow'
-import { ReminderTerminal } from './components/ReminderTerminal'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
 import { VocalOrb } from './components/VocalOrb'
@@ -105,8 +104,7 @@ export default function App(): ReactElement {
   const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
   const [prevStatus, setPrevStatus] = useState<string>('idle')
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
-  const [activeTab, setActiveTab] = useState<'assistant' | 'briefing'>('assistant')
-  const [isBriefingNew, setIsBriefingNew] = useState(false)
+  const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const { data: marketData, isLoading: isMarketLoading } = useMarketData()
@@ -204,7 +202,7 @@ export default function App(): ReactElement {
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
-  // Expanded assistant sessions become a left rail on desktop. Smaller
+  // Expanded assistant sessions become a right rail on desktop. Smaller
   // viewports keep the existing bottom tray behavior.
   const isConsoleCompact = isAssistantOpen && !isDormant
 
@@ -224,11 +222,9 @@ export default function App(): ReactElement {
     isConsoleCompact ? 'justify-start pt-2 xl:pt-3' : 'justify-start pt-0'
   } xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
 
-  // The logo is always visible and full-size — it is never displaced by the
-  // assistant console, which lives in its own docked tray below. The insights
-  // panel fully hides (rather than compacting) whenever the tray is open, to
-  // free as much vertical room as possible for the tray.
-  const showDigest = !isDormant && !isConsoleCompact
+  // The logo is always visible and the insights panel stays mounted while the
+  // desktop console opens in the right column.
+  const showDigest = !isDormant
   const digestWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
@@ -343,12 +339,9 @@ export default function App(): ReactElement {
       })
       setLastBriefingTime(formatted)
 
-      if (activeTab !== 'briefing') {
-        setIsBriefingNew(true)
-      }
     }
     setPrevStatus(status)
-  }, [status, prevStatus, activeTab])
+  }, [status, prevStatus])
 
   const cardLedState = resolveTelemetryLedState(status)
   const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
@@ -400,8 +393,7 @@ export default function App(): ReactElement {
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
 
-  // Shared insight list — used identically by the BriefingDigest panel and the
-  // ConsoleTray's Briefing tab so they never show different content.
+  // Shared insight list for the BriefingDigest panel.
   const combinedInsights = [
     ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
     ...(data?.digest?.insights ?? []),
@@ -525,41 +517,102 @@ export default function App(): ReactElement {
             <div
               className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              {isConsoleCompact ? (
-                <div className="hidden h-full min-h-0 xl:flex">
-                  <ConsoleTray
-                    placement="rail"
-                    isExpanded={isAssistantOpen}
-                    setExpanded={setAssistantOpen}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    briefingText={data?.briefing ?? ''}
-                    insights={combinedInsights}
-                    isBriefingNew={isBriefingNew}
-                    setBriefingNew={setIsBriefingNew}
-                    assistantHistory={assistantHistory}
-                    isAssistantQuerying={isAssistantQuerying}
-                    assistantLatestTrace={assistantLatestTrace}
-                    assistantError={assistantError}
-                    profilesStatus={profilesStatus}
-                    profilesStatusHydrated={profilesStatusHydrated}
-                    queryAssistant={queryAssistant}
-                    unloadLocalModel={unloadLocalModel}
-                    resetAssistantSession={resetAssistantSession}
-                    activeProfile={agentProfile}
-                    setActiveProfile={setAgentProfile}
-                    askApexEnabled={Boolean(showAskApexBar)}
-                  />
-                </div>
-              ) : null}
+              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex xl:flex-1`}>
+                {isConsoleCompact ? (
+                  <>
+                    <TelemetryCard
+                      title="Events"
+                      icon={Calendar}
+                      f1TelemetryText={f1ScheduleTelemetryText}
+                      ledState={cardLedState}
+                      compactValue={eventsCompactValue}
+                      className={`hidden min-h-0 xl:flex xl:flex-[1.35_1_0] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                    >
+                      <p className="line-clamp-3 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                        {scheduleBody}
+                      </p>
+                    </TelemetryCard>
 
-              <div className={`flex min-h-0 flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:hidden' : 'xl:flex xl:flex-1'}`}>
-                <MarketTickerCard
-                  data={marketData}
-                  isLoading={isMarketLoading}
-                  isCompact={isConsoleCompact}
-                  className={`h-auto w-full shrink-0 xl:flex-none ${isConsoleCompact ? 'xl:min-h-[3.75rem]' : ''} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
-                />
+                    <TelemetryCard
+                      title="Inbox"
+                      icon={Mail}
+                      ledState={cardLedState}
+                      compactValue={inboxCompactValue}
+                      className="hidden min-h-0 xl:flex xl:flex-[1.35_1_0]"
+                    >
+                      {isBusy(status) ? (
+                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                          Loading inbox...
+                        </p>
+                      ) : emailInfo.items.length > 0 ? (
+                        <ul className="list-fade-mask min-h-0 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
+                          {emailInfo.items.slice(0, 3).map((item, index) => (
+                            <li
+                              key={`${item.subject}-${item.time}-${index}`}
+                              className="flex items-start justify-between gap-3"
+                            >
+                              <span className="flex min-w-0 items-start gap-2">
+                                <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
+                                <span className="truncate text-sm text-zinc-200">
+                                  {item.subject}
+                                </span>
+                              </span>
+                              <span className="shrink-0 font-mono text-xs text-zinc-500">
+                                {item.time}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-[color:var(--hud-muted-text)]">
+                          {status === 'success' ? 'No unread emails.' : error ?? 'Inbox unavailable.'}
+                        </p>
+                      )}
+                    </TelemetryCard>
+
+                    <MarketTickerCard
+                      data={marketData}
+                      isLoading={isMarketLoading}
+                      isCompact
+                      className={`hidden w-full xl:flex xl:min-h-[4.5rem] xl:flex-[0.82_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                    />
+
+                    <TelemetryCard
+                      title="Weather"
+                      icon={CloudSun}
+                      primaryTemperatureF={primaryTemperatureF}
+                      weatherCondition={data?.weatherCondition}
+                      ledState={cardLedState}
+                      isCompact
+                      compactValue={weatherCompactValue}
+                      style={weatherCardStyle}
+                      className={`hidden xl:flex xl:min-h-[4.5rem] xl:flex-[0.82_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                    >
+                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                        {weatherBody}
+                      </p>
+                    </TelemetryCard>
+
+                    <TelemetryCard
+                      title="News Wire"
+                      icon={Newspaper}
+                      ledState={cardLedState}
+                      isCompact
+                      compactValue={newsCompactValue}
+                      className="hidden xl:flex xl:min-h-[4.5rem] xl:flex-[0.82_1_0]"
+                    >
+                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                        {newsItems[0]?.headline ?? (status === 'success' ? 'No news headlines available.' : error ?? 'News unavailable.')}
+                      </p>
+                    </TelemetryCard>
+                  </>
+                ) : (
+                  <>
+                    <MarketTickerCard
+                      data={marketData}
+                      isLoading={isMarketLoading}
+                      className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                    />
 
                 <TelemetryCard
                   title="Weather"
@@ -590,6 +643,8 @@ export default function App(): ReactElement {
                     {scheduleBody}
                   </p>
                 </TelemetryCard>
+                  </>
+                )}
               </div>
             </div>
 
@@ -606,6 +661,7 @@ export default function App(): ReactElement {
               <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
                   insights={combinedInsights}
+                  briefingText={data?.briefing ?? ''}
                   status={status}
                   isLoading={isTriggerLoading}
                   className="w-full h-full min-h-0"
@@ -661,46 +717,31 @@ export default function App(): ReactElement {
             <div
               className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
-              {isConsoleCompact ? (
-                <>
-                  <MarketTickerCard
-                    data={marketData}
-                    isLoading={isMarketLoading}
-                    isCompact
-                    className={`hidden h-auto w-full shrink-0 xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
-                  />
-
-                  <TelemetryCard
-                    title="Weather"
-                    icon={CloudSun}
-                    primaryTemperatureF={primaryTemperatureF}
-                    weatherCondition={data?.weatherCondition}
-                    ledState={cardLedState}
-                    isCompact
-                    compactValue={weatherCompactValue}
-                    style={weatherCardStyle}
-                    className={`hidden xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
-                  >
-                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                      {weatherBody}
-                    </p>
-                  </TelemetryCard>
-
-                  <TelemetryCard
-                    title="Events"
-                    icon={Calendar}
-                    f1TelemetryText={f1ScheduleTelemetryText}
-                    ledState={cardLedState}
-                    isCompact
-                    compactValue={eventsCompactValue}
-                    className={`hidden xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
-                  >
-                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                      {scheduleBody}
-                    </p>
-                  </TelemetryCard>
-                </>
-              ) : null}
+              <div className={`${isAssistantOpen ? 'hidden h-full min-h-0 xl:flex' : 'hidden xl:flex'}`}>
+                <ConsoleTray
+                  placement="rail"
+                  isExpanded={isAssistantOpen}
+                  setExpanded={setAssistantOpen}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  assistantHistory={assistantHistory}
+                  isAssistantQuerying={isAssistantQuerying}
+                  assistantLatestTrace={assistantLatestTrace}
+                  assistantError={assistantError}
+                  profilesStatus={profilesStatus}
+                  profilesStatusHydrated={profilesStatusHydrated}
+                  queryAssistant={queryAssistant}
+                  unloadLocalModel={unloadLocalModel}
+                  resetAssistantSession={resetAssistantSession}
+                  activeProfile={agentProfile}
+                  setActiveProfile={setAgentProfile}
+                  askApexEnabled={Boolean(showAskApexBar)}
+                  activeReminders={activeReminders}
+                  markReminderAsRead={handleMarkReminderRead}
+                  refreshReminders={refreshReminders}
+                  onReminderSaved={handleReminderSaved}
+                />
+              </div>
 
               <TelemetryCard
                 title="Inbox"
@@ -708,7 +749,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
-                className={isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'}
+                className={isConsoleCompact ? 'xl:hidden' : 'flex-none xl:flex-1 xl:min-h-0'}
               >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -759,7 +800,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
-                className={isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'}
+                className={isConsoleCompact ? 'xl:hidden' : 'flex-none xl:flex-1 xl:min-h-0'}
               >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -803,7 +844,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
-                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`${isConsoleCompact ? 'xl:hidden' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
@@ -827,12 +868,6 @@ export default function App(): ReactElement {
                       ))}
                     </ul>
                   )}
-                  <div className="shrink-0">
-                    <ReminderTerminal
-                      refreshReminders={refreshReminders}
-                      onReminderSaved={handleReminderSaved}
-                    />
-                  </div>
                 </div>
               </TelemetryCard>
             </div>
@@ -840,16 +875,12 @@ export default function App(): ReactElement {
       </div>
 
       {!isDormant ? (
-        <div className={`relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-4 ${isConsoleCompact ? 'xl:hidden' : ''}`}>
+        <div className="relative z-[var(--z-bento-hud)] mt-4 flex-none shrink-0 xl:hidden">
           <ConsoleTray
             isExpanded={isAssistantOpen}
             setExpanded={setAssistantOpen}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
-            briefingText={data?.briefing ?? ''}
-            insights={combinedInsights}
-            isBriefingNew={isBriefingNew}
-            setBriefingNew={setIsBriefingNew}
             assistantHistory={assistantHistory}
             isAssistantQuerying={isAssistantQuerying}
             assistantLatestTrace={assistantLatestTrace}
@@ -862,6 +893,10 @@ export default function App(): ReactElement {
             activeProfile={agentProfile}
             setActiveProfile={setAgentProfile}
             askApexEnabled={Boolean(showAskApexBar)}
+            activeReminders={activeReminders}
+            markReminderAsRead={handleMarkReminderRead}
+            refreshReminders={refreshReminders}
+            onReminderSaved={handleReminderSaved}
           />
         </div>
       ) : null}
