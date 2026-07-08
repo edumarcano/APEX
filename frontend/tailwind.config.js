@@ -29,6 +29,7 @@ export default {
           'Arial',
           'sans-serif',
         ],
+        orbitron: ['Orbitron', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       lineHeight: {
         hud: '1.5',

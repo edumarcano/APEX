@@ -133,8 +133,6 @@ function isAssistantProfile(value: string): value is AssistantProfile {
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
-  const [lastBriefingTime, setLastBriefingTime] = useState<string | null>(null)
-  const [prevStatus, setPrevStatus] = useState<string>('idle')
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
   const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
@@ -147,10 +145,10 @@ export default function App(): ReactElement {
     status,
     error,
     pipelineState,
-    isPipelinePolling,
     isSpeaking,
     activeReminders,
     demoModeActive,
+    devModeActive,
     confidenceScore,
     failedConnectors,
     active_tts_engine,
@@ -233,7 +231,6 @@ export default function App(): ReactElement {
   const showCommandTrigger = status === 'idle' || status === 'loading'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
-  const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
   // Expanded assistant sessions become a right rail on desktop. Smaller
   // and height-constrained viewports keep the existing bottom tray behavior.
@@ -330,54 +327,6 @@ export default function App(): ReactElement {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
   }, [status, triggerSynthesis, resetAssistantSession])
-
-  // Load initial last briefing time from history ledger
-  useEffect(() => {
-    let active = true
-    const fetchHistory = async (): Promise<void> => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/api/v1/briefings/history')
-        if (!response.ok) return
-        const body: unknown = await response.json()
-        if (!active) return
-
-        if (Array.isArray(body) && body.length > 0) {
-          const first = body[0]
-          if (first && typeof first === 'object' && 'timestamp' in first) {
-            const ts = first.timestamp
-            if (typeof ts === 'string') {
-              const date = new Date(ts)
-              const formatted = date.toLocaleTimeString([], {
-                hour: 'numeric',
-                minute: '2-digit',
-              })
-              setLastBriefingTime(formatted)
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch briefing history:', err)
-      }
-    }
-    void fetchHistory()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  // Cache last briefing time locally on successful briefing trigger
-  useEffect(() => {
-    if (status === 'success' && prevStatus === 'loading') {
-      const now = new Date()
-      const formatted = now.toLocaleTimeString([], {
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-      setLastBriefingTime(formatted)
-
-    }
-    setPrevStatus(status)
-  }, [status, prevStatus])
 
   const cardLedState = resolveTelemetryLedState(status)
   const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
@@ -482,59 +431,16 @@ export default function App(): ReactElement {
       </div>
 
       <div className="hud-main-shell relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden">
-        <header className="hud-header relative pointer-events-none mb-4 flex h-16 w-full shrink-0 select-none flex-nowrap items-center justify-between gap-4">
-          {/* Identity Pill (Left) */}
-          <div className="hud-interactive-shell hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
-            <ApexLogo
-              step={activeStep}
-              status={status}
-              isSpeaking={isSpeaking}
-              reminderPulseCount={reminderPulseCount}
-              className="h-6 w-auto shrink-0"
-            />
-            <h1
-              className={`m-0 text-lg font-extrabold tracking-widest whitespace-nowrap ${isPipelinePolling
-                ? 'animate-shimmer'
-                : 'text-[color:var(--hud-accent)]'
-                }`}
-            >
-              APEX
-            </h1>
-            {showPendingReminderBadge && (
-              <span
-                className="hidden sm:inline font-mono text-[10px] uppercase tracking-widest text-amber-500/80 animate-pulse whitespace-nowrap"
-                aria-live="polite"
-                data-slot="pending-reminder-badge"
-              >
-                [{pendingReminderCount}{' '}
-                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'}]
-              </span>
-            )}
-            {demoModeActive && (
-              <span
-                className="hidden md:inline border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite] whitespace-nowrap"
-                data-slot="demo-mode-badge"
-              >
-                DEMO
-              </span>
-            )}
-          </div>
-
-          {/* Diagnostics Pill (Right) — absorbs the former Last Briefing capsule into its expanded dropdown */}
-          <div className="flex h-16 items-center shrink-0 pointer-events-auto">
-            <SystemDiagnostics
-              diagnostics={diagnostics}
-              diagnosticsStatus={diagnosticsStatus}
-              isSpeaking={isSpeaking}
-              isPipelinePolling={isPipelinePolling}
-              status={status}
-              confidenceScore={confidenceScore}
-              pipelineStep={activeStep}
-              pipelineLabel={pipelineState?.label ?? null}
-              failedConnectors={failedConnectors}
-              lastBriefingTime={lastBriefingTime}
-            />
-          </div>
+        <header className="hud-header relative pointer-events-none mb-4 flex h-16 w-full shrink-0 select-none flex-nowrap items-center">
+          <SystemDiagnostics
+            diagnostics={diagnostics}
+            diagnosticsStatus={diagnosticsStatus}
+            status={status}
+            confidenceScore={confidenceScore}
+            failedConnectors={failedConnectors}
+            demoModeActive={demoModeActive}
+            devModeActive={devModeActive}
+          />
         </header>
 
         <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>

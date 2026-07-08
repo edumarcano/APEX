@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FocusEvent, KeyboardEvent, ReactElement } from 'react'
 import {
-  Activity,
   Clock,
   Cpu,
   Database,
@@ -51,29 +50,6 @@ function formatConnectorLabel(connectorId: string): string {
   return CONNECTOR_LABELS[normalized] ?? connectorId
 }
 
-function formatCpuFreq(freq: number | null | undefined): string {
-  if (freq == null || !Number.isFinite(freq) || freq === 0) {
-    return 'N/A'
-  }
-  return `${freq.toFixed(1)} GHz`
-}
-
-function formatGbRatio(
-  used: number | null | undefined,
-  total: number | null | undefined,
-): string {
-  if (
-    used == null ||
-    total == null ||
-    !Number.isFinite(used) ||
-    !Number.isFinite(total) ||
-    total === 0
-  ) {
-    return 'N/A'
-  }
-  return `${used.toFixed(1)} / ${total.toFixed(1)} GB`
-}
-
 function getMicroBarColorClass(percentage: number): string {
   if (percentage >= 90) {
     return 'bg-gradient-to-r from-red-600 to-red-400 shadow-[0_0_8px_rgba(239,68,68,0.8)]'
@@ -82,33 +58,6 @@ function getMicroBarColorClass(percentage: number): string {
     return 'bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]'
   }
   return 'bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
-}
-
-function resolvePipelineLedClass({
-  status,
-  pipelineStep,
-  isSpeaking,
-}: {
-  status: 'idle' | 'loading' | 'success' | 'error'
-  pipelineStep: number | null
-  isSpeaking: boolean
-}): string {
-  if (status === 'error') {
-    return 'bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.85)]'
-  }
-  if (pipelineStep === 4 || isSpeaking) {
-    return 'bg-[#FBBF24] shadow-[0_0_8px_rgba(251,191,36,0.85)]'
-  }
-  if (pipelineStep === 3) {
-    return 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.85)]'
-  }
-  if (pipelineStep === 1 || pipelineStep === 2 || status === 'loading') {
-    return 'bg-[#39FF88] shadow-[0_0_8px_rgba(57,255,136,0.85)]'
-  }
-  if (status === 'success') {
-    return 'bg-[#0F4DB8] shadow-[0_0_8px_rgba(15,77,184,0.85)]'
-  }
-  return 'bg-zinc-600 shadow-none'
 }
 
 const EQUALIZER_HEIGHTS: readonly string[] = [
@@ -127,14 +76,11 @@ const EQUALIZER_HEIGHTS: readonly string[] = [
 interface SystemDiagnosticsProps {
   diagnostics: SystemDiagnosticsPayload
   diagnosticsStatus: 'idle' | 'loading' | 'ready' | 'error'
-  isSpeaking: boolean
-  isPipelinePolling: boolean
   status: 'idle' | 'loading' | 'success' | 'error'
   confidenceScore: number
-  pipelineStep: number | null
-  pipelineLabel?: string | null
   failedConnectors?: string[]
-  lastBriefingTime?: string | null
+  demoModeActive?: boolean
+  devModeActive?: boolean
 }
 
 function MetricBar({
@@ -157,57 +103,77 @@ function MetricBar({
   )
 }
 
-function CompactMetric({
+function MetricPill({
   label,
   value,
   percentage,
   unavailable,
   icon: Icon,
+  className = '',
 }: {
   label: string
   value: string
   percentage: number
   unavailable: boolean
   icon: LucideIcon
+  className?: string
 }): ReactElement {
   return (
-    <span className="hidden min-w-0 items-center gap-1.5 md:flex">
-      <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
-      <span className="w-7 shrink-0 text-[9px] text-zinc-500">{label}</span>
-      <span className="w-8 shrink-0 tabular-nums text-[10px] text-zinc-300">{value}</span>
-      <span className="w-12 shrink-0">
-        <MetricBar percentage={percentage} unavailable={unavailable} />
+    <div
+      className={`hud-interactive-shell hud-glass flex h-11 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300 ${className}`}
+    >
+      <span className="hud-inner-lift flex min-w-0 items-center gap-2">
+        <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+        <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-zinc-500">
+          {label}
+        </span>
+        <span className="shrink-0 tabular-nums text-[10px] text-zinc-300">{value}</span>
+        <span className="w-10 shrink-0 sm:w-12">
+          <MetricBar percentage={percentage} unavailable={unavailable} />
+        </span>
       </span>
-    </span>
+    </div>
   )
 }
 
-function DetailMetric({
+function StatusPill({
   label,
   value,
-  detail,
-  percentage,
-  unavailable,
+  ledClass,
   icon: Icon,
+  className = '',
 }: {
   label: string
   value: string
-  detail: string
-  percentage: number
-  unavailable: boolean
+  ledClass: string
   icon: LucideIcon
+  className?: string
 }): ReactElement {
   return (
-    <div className="min-w-0">
-      <div className="mb-1 flex items-center justify-between gap-2 text-[9px]">
-        <span className="flex items-center gap-1 text-zinc-500">
-          <Icon className="size-3 shrink-0" aria-hidden />
+    <div
+      className={`hud-interactive-shell hud-glass flex h-11 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300 ${className}`}
+    >
+      <span className="hud-inner-lift flex min-w-0 items-center gap-2">
+        <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+        <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-zinc-500">
           {label}
         </span>
-        <span className="tabular-nums text-[10px] text-zinc-300">{value}</span>
-      </div>
-      <MetricBar percentage={percentage} unavailable={unavailable} />
-      <p className="mt-1 truncate text-[9px] text-zinc-600">{detail}</p>
+        <span className={`hud-led size-1.5 ${ledClass}`} aria-hidden />
+        <span className="shrink-0 tabular-nums text-[10px] uppercase tracking-[0.12em] text-zinc-300">
+          {value}
+        </span>
+      </span>
+    </div>
+  )
+}
+
+function ClockPill({ time }: { time: string }): ReactElement {
+  return (
+    <div className="hud-interactive-shell hud-glass flex h-11 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300">
+      <span className="hud-inner-lift flex min-w-0 items-center gap-2">
+        <Clock className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+        <span className="tabular-nums whitespace-nowrap text-[10px] text-zinc-300">{time}</span>
+      </span>
     </div>
   )
 }
@@ -215,36 +181,31 @@ function DetailMetric({
 export function SystemDiagnostics({
   diagnostics,
   diagnosticsStatus,
-  isSpeaking,
-  isPipelinePolling,
   status,
   confidenceScore,
-  pipelineStep,
-  pipelineLabel = null,
   failedConnectors = [],
-  lastBriefingTime = null,
+  demoModeActive = false,
+  devModeActive = false,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isOpen, setIsOpen] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
-  const [liveTime, setLiveTime] = useState({ date: '', time: '' })
+  const [liveTime, setLiveTime] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const hasConnectorFailures = failedConnectors.length > 0
+  const modeSubtitle = demoModeActive ? 'DEMO' : devModeActive ? 'DEVELOPER' : null
 
   useEffect(() => {
     const updateClock = (): void => {
-      const now = new Date()
-      const dateStr = now.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: '2-digit',
-      })
-      const timeStr = now.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-      })
-      setLiveTime({ date: dateStr, time: timeStr })
+      setLiveTime(
+        new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        }),
+      )
     }
 
     updateClock()
@@ -314,29 +275,6 @@ export function SystemDiagnostics({
   const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
-  let briefingStateText: string
-
-  if (status === 'error') {
-    briefingStateText = 'Fault'
-  } else if (isPipelinePolling && (pipelineStep === 1 || pipelineStep === 2)) {
-    briefingStateText = 'Collecting Data'
-  } else if (isPipelinePolling && pipelineStep === 3) {
-    briefingStateText = 'Synthesizing'
-  } else if (pipelineStep === 4 || isSpeaking) {
-    briefingStateText = 'Delivering'
-  } else if (status === 'success' && !isSpeaking) {
-    briefingStateText = 'Complete'
-  } else {
-    briefingStateText = 'Standby'
-  }
-
-  const displayPipelineText = pipelineLabel?.trim() || briefingStateText
-  const pipelineLedClass = resolvePipelineLedClass({
-    status,
-    pipelineStep,
-    isSpeaking,
-  })
-
   let syncColorText = 'text-zinc-500'
   let syncColorBar = 'bg-zinc-700'
   let syncColorShadow = ''
@@ -386,141 +324,137 @@ export function SystemDiagnostics({
   const ramText = formatPercentage(diagnostics.ram, isInitializing)
   const diskText = formatPercentage(diagnostics.disk, isInitializing)
 
+  const apexPillShellClass = [
+    'hud-corner-brackets hud-interactive-shell hud-glass relative flex h-11 min-w-[5.5rem] cursor-pointer flex-col items-center justify-center rounded-full px-5 transition-all duration-300',
+    hasConnectorFailures
+      ? 'border border-red-500/70 shadow-[0_0_16px_rgba(220,38,38,0.55),0_0_4px_rgba(220,38,38,0.9)] hover:border-red-400'
+      : 'hover-blue-medium',
+  ].join(' ')
+
   return (
-    <div
-      ref={containerRef}
-      className="relative h-16 w-40 shrink-0 pointer-events-auto sm:w-[min(66vw,44rem)]"
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => {
-        if (!isPinned) setIsOpen(false)
-      }}
-      onBlur={handleBlur}
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={handleToggleClick}
-        onKeyDown={handleTriggerKeyDown}
-        className={`hud-corner-brackets hud-interactive-shell hud-glass absolute right-0 top-1/2 flex h-11 w-[min(100%,31rem)] -translate-y-1/2 cursor-pointer items-center gap-3 overflow-hidden rounded-full px-4 font-mono text-xs text-zinc-300 transition-all duration-300 hover-blue-medium ${
-          isOpen ? 'pointer-events-none translate-x-3 opacity-0' : 'opacity-100'
-        }`}
-        aria-expanded={isOpen}
-        aria-label="System diagnostics"
-      >
-        <span className="hud-corner-bl" aria-hidden />
-        <span className="hud-corner-br" aria-hidden />
-        <span className="hud-inner-lift flex min-w-0 flex-1 items-center gap-3">
-          <span className={`hud-led size-1.5 ${pipelineLedClass}`} aria-hidden title={displayPipelineText} />
-          <span className="min-w-0 flex-1 truncate uppercase tracking-[0.16em] text-zinc-300">
-            {displayPipelineText}
-          </span>
-          <CompactMetric
-            label="CPU"
-            value={cpuText}
-            percentage={cpuPctClamped}
-            unavailable={cpuUnavailable}
-            icon={Cpu}
-          />
-          <CompactMetric
-            label="RAM"
-            value={ramText}
-            percentage={ramPctClamped}
-            unavailable={ramUnavailable}
-            icon={Database}
-          />
-          <span className="hidden items-center gap-1 sm:flex">
-            <Clock className="size-3.5 text-zinc-500" aria-hidden />
-            <span className="tabular-nums whitespace-nowrap">{liveTime.time}</span>
-          </span>
-        </span>
+    <div className="pointer-events-auto flex h-16 w-full min-w-0 items-center justify-between gap-2 sm:gap-3">
+      {/* Left flank — hardware */}
+      <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+        <MetricPill
+          label="CPU"
+          value={cpuText}
+          percentage={cpuPctClamped}
+          unavailable={cpuUnavailable}
+          icon={Cpu}
+        />
+        <MetricPill
+          label="RAM"
+          value={ramText}
+          percentage={ramPctClamped}
+          unavailable={ramUnavailable}
+          icon={Database}
+          className="hidden sm:flex"
+        />
       </div>
 
+      {/* Center — APEX identity + Sync Health popup */}
       <div
-        className={`hud-corner-brackets hud-glass hud-glass-solid absolute right-0 top-0 z-50 flex h-16 w-full min-w-0 origin-right items-center gap-3 overflow-hidden rounded-2xl border border-white/10 px-4 shadow-2xl transition-all duration-300 ${
-          isOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none translate-x-4 opacity-0'
-        }`}
-        role="dialog"
-        aria-label="Full system diagnostics"
-        aria-hidden={!isOpen}
+        ref={containerRef}
+        className="relative z-50 shrink-0"
+        onMouseEnter={() => setIsOpen(true)}
+        onMouseLeave={() => {
+          if (!isPinned) setIsOpen(false)
+        }}
+        onBlur={handleBlur}
       >
-        <span className="hud-corner-bl" aria-hidden />
-        <span className="hud-corner-br" aria-hidden />
-
-        <div className="flex min-w-[8.5rem] flex-col gap-1 font-mono">
-          <p className="truncate text-[9px] font-extrabold uppercase tracking-[0.24em] text-[#7EB3FF]">
-            System Status
-          </p>
-          <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-300">
-            <span className={`hud-led size-1.5 ${pipelineLedClass}`} aria-hidden />
-            <span className="truncate">{displayPipelineText}</span>
-          </div>
-        </div>
-
-        <div className="hidden min-w-[7.5rem] grid-cols-1 gap-1.5 font-mono text-[10px] text-zinc-300 sm:grid">
-          <span className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-zinc-500">
-              <Globe className="size-3.5" aria-hidden />
-              Net
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={handleToggleClick}
+          onKeyDown={handleTriggerKeyDown}
+          className={apexPillShellClass}
+          aria-expanded={isOpen}
+          aria-label={
+            hasConnectorFailures
+              ? 'APEX sync health — connector failures detected'
+              : 'APEX sync health'
+          }
+        >
+          <span className="hud-corner-bl" aria-hidden />
+          <span className="hud-corner-br" aria-hidden />
+          <span className="hud-inner-lift flex flex-col items-center leading-none">
+            <span className="font-orbitron text-sm font-bold uppercase tracking-[0.28em] text-[color:var(--hud-accent)] sm:text-base">
+              APEX
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className={`hud-led size-1.5 ${isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}`} aria-hidden />
-              {isNetworkConnected ? 'Online' : 'Offline'}
-            </span>
+            {modeSubtitle === 'DEMO' && (
+              <span
+                className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.22em] text-amber-400"
+                data-slot="demo-mode-subtitle"
+              >
+                DEMO
+              </span>
+            )}
+            {modeSubtitle === 'DEVELOPER' && (
+              <span
+                className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.22em] text-cyan-400"
+                data-slot="dev-mode-subtitle"
+              >
+                DEVELOPER
+              </span>
+            )}
           </span>
-          <span className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-zinc-500">
-              <Activity className="size-3.5" aria-hidden />
-              Last
-            </span>
-            <span className="truncate text-zinc-300">{lastBriefingTime || 'Standby'}</span>
-          </span>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2.5 lg:grid-cols-3">
-          <DetailMetric
-            label="CPU"
-            value={cpuText}
-            detail={formatCpuFreq(diagnostics.cpu_freq)}
-            percentage={cpuPctClamped}
-            unavailable={cpuUnavailable}
-            icon={Cpu}
-          />
-          <DetailMetric
-            label="RAM"
-            value={ramText}
-            detail={formatGbRatio(diagnostics.ram_used, diagnostics.ram_total)}
-            percentage={ramPctClamped}
-            unavailable={ramUnavailable}
-            icon={Database}
-          />
-          <div className="hidden lg:block">
-            <DetailMetric
-              label="Disk"
-              value={diskText}
-              detail={formatGbRatio(diagnostics.disk_used, diagnostics.disk_total)}
-              percentage={diskPctClamped}
-              unavailable={diskUnavailable}
-              icon={HardDrive}
-            />
+        <div
+          className={`hud-corner-brackets hud-glass hud-glass-solid absolute left-1/2 top-[calc(100%+0.5rem)] z-50 w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 origin-top rounded-2xl border border-white/10 px-4 py-3 shadow-2xl transition-all duration-300 ${
+            isOpen
+              ? 'pointer-events-auto translate-y-0 opacity-100'
+              : 'pointer-events-none -translate-y-1 opacity-0'
+          }`}
+          role="dialog"
+          aria-label="Sync health"
+          aria-hidden={!isOpen}
+        >
+          <span className="hud-corner-bl" aria-hidden />
+          <span className="hud-corner-br" aria-hidden />
+
+          <div className="flex flex-col gap-2 font-mono">
+            <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-500">
+              <span className="flex items-center gap-1.5">
+                <RotateCw className="size-3.5 animate-[spin_12s_linear_infinite]" aria-hidden />
+                Sync Health
+              </span>
+              <span className={`${syncColorText} font-bold`}>
+                {status === 'success' ? `${confidenceScore}%` : '--%'}
+              </span>
+            </div>
+            <div className="flex items-center justify-center gap-0.5 py-1">{syncBlocks}</div>
+            <p
+              className={`truncate text-[9px] leading-tight ${
+                hasConnectorFailures ? 'text-amber-300/90' : 'text-zinc-500'
+              }`}
+            >
+              {hasConnectorFailures
+                ? failedConnectors.map(formatConnectorLabel).join(', ')
+                : 'All connectors clear'}
+            </p>
           </div>
         </div>
+      </div>
 
-        <div className="hidden w-40 shrink-0 flex-col gap-1 font-mono md:flex">
-          <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-500">
-            <span className="flex items-center gap-1.5">
-              <RotateCw className="size-3.5 animate-[spin_12s_linear_infinite]" aria-hidden />
-              Sync Health
-            </span>
-            <span className={`${syncColorText} font-bold`}>
-              {status === 'success' ? `${confidenceScore}%` : '--%'}
-            </span>
-          </div>
-          <div className="flex items-center gap-0.5">{syncBlocks}</div>
-          <p className="truncate text-[9px] leading-tight text-amber-300/80">
-            {failedConnectors.length > 0
-              ? failedConnectors.map(formatConnectorLabel).join(', ')
-              : `${liveTime.date} ${liveTime.time}`}
-          </p>
+      {/* Right flank — disk / net / clock */}
+      <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-2.5">
+        <MetricPill
+          label="DISK"
+          value={diskText}
+          percentage={diskPctClamped}
+          unavailable={diskUnavailable}
+          icon={HardDrive}
+          className="hidden md:flex"
+        />
+        <StatusPill
+          label="NET"
+          value={isNetworkConnected ? 'Online' : 'Offline'}
+          ledClass={isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}
+          icon={Globe}
+        />
+        <div className="hidden sm:block">
+          <ClockPill time={liveTime} />
         </div>
       </div>
     </div>
