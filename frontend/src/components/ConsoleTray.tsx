@@ -672,16 +672,22 @@ export function ConsoleTray({
               onFocusCapture={handleExpand}
             >
               {activeTab === 'assistant' && askApexEnabled ? (
-                <AskApexBar
-                  activeProfile={activeProfile}
-                  onProfileChange={setActiveProfile}
-                  onSubmit={handleAgentSubmit}
-                  profilesStatus={profilesStatus}
-                  profilesStatusHydrated={profilesStatusHydrated}
-                  onSelectChip={handleChipSelect}
-                  isSubmitting={isAssistantQuerying}
-                  integrated
-                />
+                <button
+                  type="button"
+                  onClick={handleExpand}
+                  className="hud-command-surface flex w-full items-center gap-3 rounded-lg bg-zinc-950/20 px-3 py-2 text-left transition-colors hover:border-[#0F4DB8]/40 hover:bg-[#0F4DB8]/10"
+                  aria-label="Ask APEX"
+                >
+                  <span
+                    className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]"
+                    aria-hidden
+                  >
+                    &gt;_
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-zinc-500">
+                    Ask APEX
+                  </span>
+                </button>
               ) : (
                 <button
                   type="button"

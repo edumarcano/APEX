@@ -218,9 +218,8 @@ export default function App(): ReactElement {
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = `h-full min-h-0 flex flex-col ${
-    isConsoleCompact ? 'justify-start pt-2 xl:pt-3' : 'justify-start pt-0'
-  } xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
+  const centerColumnActiveClasses =
+    'h-full min-h-0 flex flex-col justify-start pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
 
   // The logo is always visible and the insights panel stays mounted while the
   // desktop console opens in the right column.
@@ -232,20 +231,16 @@ export default function App(): ReactElement {
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
-  const logoShellClass = isConsoleCompact ? 'min-h-0 flex-1 py-1 xl:py-0' : 'shrink-0 py-4 xl:py-0'
+  const logoShellClass = 'shrink-0 py-4 xl:py-0'
 
   const largeLogoWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
     isDormant
       ? 'h-64 justify-center xl:h-auto xl:flex-1'
-      : isConsoleCompact
-        ? 'h-full min-h-0 justify-center'
-        : 'h-72 justify-center xl:h-80',
+      : 'h-72 justify-center xl:h-80',
   ].join(' ')
 
-  const logoSizeClass = isConsoleCompact
-    ? 'h-full max-h-[clamp(9rem,min(22vw,30vh),19rem)] w-auto'
-    : 'h-48 w-auto sm:h-56 xl:h-64'
+  const logoSizeClass = 'h-48 w-auto sm:h-56 xl:h-64'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -400,29 +395,15 @@ export default function App(): ReactElement {
   ]
 
   const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
+  const weatherConditionCompactValue =
+    primaryTemperatureF != null && weatherBody.trim().length > 0
+      ? `${primaryTemperatureF}°, ${weatherBody}`
+      : weatherCompactValue
   const eventsCompactValue =
     scheduleBody.length > 28 ? `${scheduleBody.slice(0, 28)}…` : scheduleBody
   const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
   const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
-  const reactorStatusLabel =
-    pipelineState?.label ??
-    (status === 'success'
-      ? 'Synthesis complete'
-      : status === 'loading'
-        ? 'Synchronizing'
-        : status === 'error'
-          ? 'Attention required'
-          : 'Standby')
-  const reactorHealthLabel =
-    status === 'error'
-      ? 'Health degraded'
-      : failedConnectors.length > 0
-        ? `${failedConnectors.length} connector alert`
-        : `${Math.round(confidenceScore)}% confidence`
-  const reactorBriefingLabel = lastBriefingTime
-    ? `Last briefing ${lastBriefingTime}`
-    : 'No briefing logged'
 
   return (
     <main
@@ -526,7 +507,7 @@ export default function App(): ReactElement {
                       f1TelemetryText={f1ScheduleTelemetryText}
                       ledState={cardLedState}
                       compactValue={eventsCompactValue}
-                      className={`hidden min-h-0 xl:flex xl:flex-[1.35_1_0] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      className={`hidden min-h-0 xl:flex xl:flex-[2.05_1_0] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                     >
                       <p className="line-clamp-3 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                         {scheduleBody}
@@ -538,7 +519,7 @@ export default function App(): ReactElement {
                       icon={Mail}
                       ledState={cardLedState}
                       compactValue={inboxCompactValue}
-                      className="hidden min-h-0 xl:flex xl:flex-[1.35_1_0]"
+                      className="hidden min-h-0 xl:flex xl:flex-[1.2_1_0]"
                     >
                       {isBusy(status) ? (
                         <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -574,7 +555,7 @@ export default function App(): ReactElement {
                       data={marketData}
                       isLoading={isMarketLoading}
                       isCompact
-                      className={`hidden w-full xl:flex xl:min-h-[4.5rem] xl:flex-[0.82_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      className={`hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
                     />
 
                     <TelemetryCard
@@ -584,9 +565,9 @@ export default function App(): ReactElement {
                       weatherCondition={data?.weatherCondition}
                       ledState={cardLedState}
                       isCompact
-                      compactValue={weatherCompactValue}
+                      compactValue={weatherConditionCompactValue}
                       style={weatherCardStyle}
-                      className={`hidden xl:flex xl:min-h-[4.5rem] xl:flex-[0.82_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      className={`hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                         {weatherBody}
@@ -599,7 +580,7 @@ export default function App(): ReactElement {
                       ledState={cardLedState}
                       isCompact
                       compactValue={newsCompactValue}
-                      className="hidden xl:flex xl:min-h-[4.5rem] xl:flex-[0.82_1_0]"
+                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                         {newsItems[0]?.headline ?? (status === 'success' ? 'No news headlines available.' : error ?? 'News unavailable.')}
@@ -671,7 +652,7 @@ export default function App(): ReactElement {
               <div className={`${logoShellClass} ${largeLogoWrapperClass}`}>
                 <div className="relative flex flex-col items-center">
                   <div
-                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isConsoleCompact ? 'h-full min-h-0' : ''} ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
+                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
                   >
                     <ApexLogo
                       step={activeStep}
@@ -681,19 +662,6 @@ export default function App(): ReactElement {
                       className={logoSizeClass}
                     />
                   </div>
-                  {isConsoleCompact ? (
-                    <div className="pointer-events-none mt-4 hidden max-w-full flex-wrap items-center justify-center gap-2 px-2 xl:flex">
-                      <span className="rounded-full border border-[#0F4DB8]/30 bg-[#0F4DB8]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#7EB3FF] shadow-[0_0_12px_rgba(15,77,184,0.14)]">
-                        {reactorStatusLabel}
-                      </span>
-                      <span className="rounded-full border border-emerald-400/20 bg-emerald-950/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200/80">
-                        {reactorHealthLabel}
-                      </span>
-                      <span className="rounded-full border border-amber-400/20 bg-amber-950/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-amber-200/80">
-                        {reactorBriefingLabel}
-                      </span>
-                    </div>
-                  ) : null}
                   <div
                     className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
@@ -717,32 +685,6 @@ export default function App(): ReactElement {
             <div
               className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
-              <div className={`${isAssistantOpen ? 'hidden h-full min-h-0 xl:flex' : 'hidden xl:flex'}`}>
-                <ConsoleTray
-                  placement="rail"
-                  isExpanded={isAssistantOpen}
-                  setExpanded={setAssistantOpen}
-                  activeTab={activeTab}
-                  setActiveTab={setActiveTab}
-                  assistantHistory={assistantHistory}
-                  isAssistantQuerying={isAssistantQuerying}
-                  assistantLatestTrace={assistantLatestTrace}
-                  assistantError={assistantError}
-                  profilesStatus={profilesStatus}
-                  profilesStatusHydrated={profilesStatusHydrated}
-                  queryAssistant={queryAssistant}
-                  unloadLocalModel={unloadLocalModel}
-                  resetAssistantSession={resetAssistantSession}
-                  activeProfile={agentProfile}
-                  setActiveProfile={setAgentProfile}
-                  askApexEnabled={Boolean(showAskApexBar)}
-                  activeReminders={activeReminders}
-                  markReminderAsRead={handleMarkReminderRead}
-                  refreshReminders={refreshReminders}
-                  onReminderSaved={handleReminderSaved}
-                />
-              </div>
-
               <TelemetryCard
                 title="Inbox"
                 icon={Mail}
@@ -870,6 +812,32 @@ export default function App(): ReactElement {
                   )}
                 </div>
               </TelemetryCard>
+
+              <div className={`${isAssistantOpen ? 'hidden h-full min-h-0 xl:flex xl:mt-auto' : 'hidden xl:flex xl:mt-auto'}`}>
+                <ConsoleTray
+                  placement="rail"
+                  isExpanded={isAssistantOpen}
+                  setExpanded={setAssistantOpen}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  assistantHistory={assistantHistory}
+                  isAssistantQuerying={isAssistantQuerying}
+                  assistantLatestTrace={assistantLatestTrace}
+                  assistantError={assistantError}
+                  profilesStatus={profilesStatus}
+                  profilesStatusHydrated={profilesStatusHydrated}
+                  queryAssistant={queryAssistant}
+                  unloadLocalModel={unloadLocalModel}
+                  resetAssistantSession={resetAssistantSession}
+                  activeProfile={agentProfile}
+                  setActiveProfile={setAgentProfile}
+                  askApexEnabled={Boolean(showAskApexBar)}
+                  activeReminders={activeReminders}
+                  markReminderAsRead={handleMarkReminderRead}
+                  refreshReminders={refreshReminders}
+                  onReminderSaved={handleReminderSaved}
+                />
+              </div>
             </div>
         </div>
       </div>
