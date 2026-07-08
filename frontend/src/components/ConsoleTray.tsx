@@ -29,6 +29,52 @@ import { ReminderListRow } from './ReminderListRow'
 
 const REMINDERS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/reminders'
 
+type ConsoleActivityTone = 'rust' | 'purple'
+
+/**
+ * Subtle clockwise conic border glow for console activity states.
+ * Rust = local model loading; purple = assistant query / tool execution.
+ */
+function ConsoleActivityGlow({
+  tone,
+}: {
+  tone: ConsoleActivityTone | null
+}): ReactElement | null {
+  if (!tone) {
+    return null
+  }
+
+  const accentRgb = tone === 'rust' ? '249, 115, 22' : '168, 85, 247'
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-[1] overflow-hidden rounded-2xl"
+      aria-hidden
+      data-slot="console-activity-glow"
+      data-tone={tone}
+    >
+      <div
+        className="absolute inset-0 animate-border-spin rounded-2xl opacity-90"
+        style={{
+          background: `conic-gradient(from 0deg, transparent 0 68%, rgba(${accentRgb}, 0.05) 76%, rgba(${accentRgb}, 0.95) 88%, transparent 100%)`,
+          padding: '1.5px',
+          WebkitMask:
+            'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+          WebkitMaskComposite: 'xor',
+          mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+          maskComposite: 'exclude',
+        }}
+      />
+      <div
+        className="absolute inset-0 rounded-2xl"
+        style={{
+          boxShadow: `inset 0 0 0 1px rgba(${accentRgb}, 0.4), 0 0 20px rgba(${accentRgb}, 0.22)`,
+        }}
+      />
+    </div>
+  )
+}
+
 interface ConsoleTrayProps {
   placement?: 'bottom' | 'rail'
   isExpanded: boolean
@@ -296,6 +342,9 @@ function AssistantTabContent({
   const activeLocalModel = profilesStatus.find(
     (profile) => profile.provider === 'ollama' && profile.active,
   )
+  const loadingLocalProfile = profilesStatus.find((profile) => profile.loading)
+  const isLocalModelLoading = Boolean(loadingLocalProfile)
+  const loadingDisplayName = loadingLocalProfile?.display_name?.trim() || 'model'
 
   const lastModelIndex = (() => {
     for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -395,14 +444,26 @@ function AssistantTabContent({
       {isQuerying ? (
         <div className="flex items-center gap-3 px-1 py-2">
           <Loader2
-            className="size-4 animate-spin text-[#A855F7]"
+            className={[
+              'size-4 animate-spin',
+              isLocalModelLoading ? 'text-[#F97316]' : 'text-[#A855F7]',
+            ].join(' ')}
             aria-hidden
           />
           <div className="flex flex-col gap-1.5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              APEX processing
+              {isLocalModelLoading
+                ? `Loading (${loadingDisplayName})`
+                : 'APEX processing'}
             </span>
-            <div className="h-2 w-40 animate-pulse rounded-full bg-gradient-to-r from-[#0F4DB8]/20 via-[#A855F7]/40 to-[#0F4DB8]/20" />
+            <div
+              className={[
+                'h-2 w-40 animate-pulse rounded-full bg-gradient-to-r',
+                isLocalModelLoading
+                  ? 'from-[#9A3412]/20 via-[#F97316]/45 to-[#9A3412]/20'
+                  : 'from-[#0F4DB8]/20 via-[#A855F7]/40 to-[#0F4DB8]/20',
+              ].join(' ')}
+            />
           </div>
         </div>
       ) : null}
@@ -592,6 +653,13 @@ export function ConsoleTray({
     [activeProfile, queryAssistant, setActiveTab, setExpanded],
   )
 
+  const isLocalModelLoading = profilesStatus.some((profile) => profile.loading)
+  const activityTone: ConsoleActivityTone | null = isLocalModelLoading
+    ? 'rust'
+    : isAssistantQuerying
+      ? 'purple'
+      : null
+
   const tabBaseClass =
     'hud-command-surface font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
 
@@ -662,8 +730,9 @@ export function ConsoleTray({
         >
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
+          <ConsoleActivityGlow tone={activityTone} />
 
-          <div className="hud-inner-lift flex w-full shrink-0 items-center gap-3 px-3 py-3">
+          <div className="hud-inner-lift relative z-[2] flex w-full shrink-0 items-center gap-3 px-3 py-3">
             {tabs}
 
             <div
@@ -721,8 +790,9 @@ export function ConsoleTray({
       >
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
+        <ConsoleActivityGlow tone={activityTone} />
 
-        <div className="hud-inner-lift flex w-full shrink-0 items-start justify-between gap-3 px-3 py-3">
+        <div className="hud-inner-lift relative z-[2] flex w-full shrink-0 items-start justify-between gap-3 px-3 py-3">
           {tabs}
 
           <div className="flex shrink-0 items-center gap-1">
@@ -747,12 +817,12 @@ export function ConsoleTray({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10 bg-zinc-950/30 p-4 scrollbar-thin">
+        <div className="relative z-[2] min-h-0 flex-1 overflow-y-auto border-t border-white/10 bg-zinc-950/30 p-4 scrollbar-thin">
           {activeContent}
         </div>
 
         {activeTab === 'assistant' && askApexEnabled ? (
-          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
+          <footer className="relative z-[2] shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
             <AskApexBar
               activeProfile={activeProfile}
               onProfileChange={setActiveProfile}
@@ -765,7 +835,7 @@ export function ConsoleTray({
             />
           </footer>
         ) : activeTab === 'reminders' ? (
-          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
+          <footer className="relative z-[2] shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
             <ReminderInput
               refreshReminders={refreshReminders}
               onReminderSaved={onReminderSaved}
@@ -784,9 +854,10 @@ export function ConsoleTray({
     >
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
+      <ConsoleActivityGlow tone={activityTone} />
 
       {/* Persistent docked row — always in normal document flow, never displaces the logo/wings above it */}
-      <div className="hud-inner-lift flex w-full shrink-0 items-center gap-3 px-3 py-2.5 sm:px-4">
+      <div className="hud-inner-lift relative z-[2] flex w-full shrink-0 items-center gap-3 px-3 py-2.5 sm:px-4">
         {tabs}
 
         <div
@@ -843,7 +914,7 @@ export function ConsoleTray({
 
       {/* Inline expandable body — grows via max-height in normal flow, no portal/backdrop */}
       <div
-        className={`console-tray-panel flex min-h-0 flex-col overflow-hidden border-t transition-[max-height,opacity] ${
+        className={`console-tray-panel relative z-[2] flex min-h-0 flex-col overflow-hidden border-t transition-[max-height,opacity] ${
           isExpanded
             ? 'max-h-[min(48vh,30rem)] border-white/10 opacity-100'
             : 'max-h-0 border-transparent opacity-0'
