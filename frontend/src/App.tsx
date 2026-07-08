@@ -592,7 +592,7 @@ export default function App(): ReactElement {
                       </p>
                     )}
                     {emailInfo.items.length > 0 ? (
-                      <ul className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                      <ul className="list-fade-mask min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
                         {emailInfo.items.map((item, index) => (
                           <li
                             key={`${item.subject}-${item.time}-${index}`}
@@ -626,7 +626,7 @@ export default function App(): ReactElement {
                     Loading news…
                   </p>
                 ) : newsItems.length > 0 ? (
-                  <ul className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
+                  <ul className="list-fade-mask min-h-0 overflow-y-auto pr-1 scrollbar-thin">
                     {newsItems.map((item, index) => (
                       <li
                         key={`${item.topic}-${index}`}
@@ -670,7 +670,7 @@ export default function App(): ReactElement {
                       No pending reminders.
                     </p>
                   ) : (
-                    <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                    <ul className="list-fade-mask min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
                       {activeReminders.map((reminder) => (
                         <ReminderListRow
                           key={reminder.id}

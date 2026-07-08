@@ -1,5 +1,5 @@
 import { LineChart } from 'lucide-react'
-import { useMemo, type ReactElement } from 'react'
+import { useId, useMemo, type ReactElement } from 'react'
 
 import type { MarketResponse, MarketTickerItem } from '../types/telemetry'
 
@@ -81,6 +81,7 @@ function buildSparklinePoints(values: number[]): string {
 }
 
 function Sparkline({ values }: { values: number[] }): ReactElement {
+  const filterId = useId()
   const points = useMemo(() => buildSparklinePoints(values), [values])
   const sparkTrend = useMemo(() => resolveSparklineTrend(values), [values])
   const stroke =
@@ -94,7 +95,7 @@ function Sparkline({ values }: { values: number[] }): ReactElement {
     return (
       <svg
         viewBox="0 0 100 30"
-        className="h-7 w-full min-w-[4.5rem] max-w-[5.5rem] opacity-30"
+        className="h-7 w-full min-w-[4.5rem] max-w-[5.5rem] overflow-visible opacity-30"
         aria-hidden
       >
         <line x1="0" y1="15" x2="100" y2="15" stroke="#4b5563" strokeWidth="1" />
@@ -105,9 +106,20 @@ function Sparkline({ values }: { values: number[] }): ReactElement {
   return (
     <svg
       viewBox="0 0 100 30"
-      className="h-7 w-full min-w-[4.5rem] max-w-[5.5rem]"
+      className="h-7 w-full min-w-[4.5rem] max-w-[5.5rem] overflow-visible"
       aria-hidden
     >
+      <defs>
+        <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow
+            dx="0"
+            dy="0"
+            stdDeviation="1.5"
+            floodColor={stroke}
+            floodOpacity="0.6"
+          />
+        </filter>
+      </defs>
       <polyline
         points={points}
         fill="none"
@@ -115,6 +127,7 @@ function Sparkline({ values }: { values: number[] }): ReactElement {
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
+        filter={`url(#${filterId})`}
       />
     </svg>
   )
@@ -176,7 +189,7 @@ function TickerRow({
 
   return (
     <div
-      className={`flex min-w-[8.5rem] flex-1 flex-col gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-2.5 py-2 ${glowClass}`}
+      className={`flex min-w-[8.5rem] flex-1 flex-col gap-1.5 rounded-xl border border-white/[0.06] bg-zinc-950/20 px-2.5 py-2 ${glowClass}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
@@ -193,7 +206,7 @@ function TickerRow({
         <div className="min-w-0">
           <p
             className={`tabular-nums text-base font-semibold leading-none ${
-              isUnavailable ? 'text-zinc-500' : ''
+              isUnavailable ? 'text-zinc-500' : trend !== 'neutral' ? 'mix-blend-screen' : ''
             }`}
             style={isUnavailable ? undefined : { color: trendColor }}
           >
@@ -201,7 +214,7 @@ function TickerRow({
           </p>
           <p
             className={`mt-1 font-mono text-[10px] tabular-nums ${
-              isUnavailable ? 'text-zinc-600' : ''
+              isUnavailable ? 'text-zinc-600' : trend !== 'neutral' ? 'mix-blend-screen' : ''
             }`}
             style={isUnavailable ? undefined : { color: trendColor }}
           >

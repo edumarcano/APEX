@@ -222,23 +222,23 @@ const WEATHER_ICON_BY_CONDITION: Record<WeatherConditionArchetype, LucideIcon> =
 const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> = {
   clear_day: {
     color: '#FFD166',
-    filter: 'drop-shadow(0 0 6px rgba(255, 209, 102, 0.4))',
+    filter: 'drop-shadow(0 0 10px rgba(255, 209, 102, 0.75))',
   },
   clear_night: {
     color: '#A8C8FF',
-    filter: 'drop-shadow(0 0 6px rgba(168, 200, 255, 0.4))',
+    filter: 'drop-shadow(0 0 10px rgba(168, 200, 255, 0.75))',
   },
   clouds: {
     color: '#D0D8E8',
-    filter: 'drop-shadow(0 0 5px rgba(208, 216, 232, 0.3))',
+    filter: 'drop-shadow(0 0 8px rgba(208, 216, 232, 0.55))',
   },
   rain: {
     color: '#7DD3FC',
-    filter: 'drop-shadow(0 0 6px rgba(125, 211, 252, 0.45))',
+    filter: 'drop-shadow(0 0 10px rgba(125, 211, 252, 0.75))',
   },
   thunderstorm: {
     color: '#FFE082',
-    filter: 'drop-shadow(0 0 8px rgba(255, 224, 130, 0.5))',
+    filter: 'drop-shadow(0 0 12px rgba(255, 224, 130, 0.85))',
   },
 }
 
