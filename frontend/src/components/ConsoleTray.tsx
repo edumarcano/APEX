@@ -32,7 +32,9 @@ const REMINDERS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/reminders'
 type ConsoleActivityTone = 'rust' | 'purple'
 
 /**
- * Subtle clockwise conic border glow for console activity states.
+ * Border-rim activity glow: paints ABOVE panel content, masked to the ring
+ * only, so the sweep rides the tray border (not under translucent glass).
+ * Two wide arcs sit 180° apart and rotate together.
  * Rust = local model loading; purple = assistant query / tool execution.
  */
 function ConsoleActivityGlow({
@@ -46,31 +48,84 @@ function ConsoleActivityGlow({
 
   const accentRgb = tone === 'rust' ? '249, 115, 22' : '168, 85, 247'
 
+  // Dual peaks at opposite ends of the rim (~0° and ~180°).
+  const dualSweep = `conic-gradient(from 0deg,
+    rgba(${accentRgb}, 0) 0deg,
+    rgba(${accentRgb}, 0.15) 15deg,
+    rgba(${accentRgb}, 0.95) 45deg,
+    rgba(${accentRgb}, 0.15) 75deg,
+    rgba(${accentRgb}, 0) 90deg,
+    rgba(${accentRgb}, 0) 180deg,
+    rgba(${accentRgb}, 0.15) 195deg,
+    rgba(${accentRgb}, 0.95) 225deg,
+    rgba(${accentRgb}, 0.15) 255deg,
+    rgba(${accentRgb}, 0) 270deg,
+    rgba(${accentRgb}, 0) 360deg)`
+
+  const ringMask = {
+    WebkitMask:
+      'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+    WebkitMaskComposite: 'xor',
+    mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+    maskComposite: 'exclude',
+  } as const
+
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-[1] overflow-hidden rounded-2xl"
+      className="pointer-events-none absolute inset-0 z-[25] rounded-2xl overflow-hidden"
       aria-hidden
       data-slot="console-activity-glow"
       data-tone={tone}
     >
-      <div
-        className="absolute inset-0 animate-border-spin rounded-2xl opacity-90"
-        style={{
-          background: `conic-gradient(from 0deg, transparent 0 68%, rgba(${accentRgb}, 0.05) 76%, rgba(${accentRgb}, 0.95) 88%, transparent 100%)`,
-          padding: '1.5px',
-          WebkitMask:
-            'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-          WebkitMaskComposite: 'xor',
-          mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-          maskComposite: 'exclude',
-        }}
-      />
+      {/* Steady rim tint on the actual border edge */}
       <div
         className="absolute inset-0 rounded-2xl"
         style={{
-          boxShadow: `inset 0 0 0 1px rgba(${accentRgb}, 0.4), 0 0 20px rgba(${accentRgb}, 0.22)`,
+          boxShadow: `inset 0 0 0 1px rgba(${accentRgb}, 0.55), 0 0 18px rgba(${accentRgb}, 0.28)`,
         }}
       />
+
+      {/* Soft dual arcs — wider ring, no blur (blur breaks the mask) */}
+      <div
+        className="absolute inset-0 rounded-2xl overflow-hidden"
+        style={{
+          padding: '5px',
+          ...ringMask,
+        }}
+      >
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div
+            className="animate-border-spin-slow"
+            style={{
+              width: '200vmax',
+              height: '200vmax',
+              background: dualSweep,
+              opacity: 0.55,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Crisp dual highlights on the border ring */}
+      <div
+        className="absolute inset-0 rounded-2xl overflow-hidden"
+        style={{
+          padding: '2px',
+          ...ringMask,
+        }}
+      >
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div
+            className="animate-border-spin-slow"
+            style={{
+              width: '200vmax',
+              height: '200vmax',
+              background: dualSweep,
+              opacity: 1,
+            }}
+          />
+        </div>
+      </div>
     </div>
   )
 }

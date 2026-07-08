@@ -754,6 +754,11 @@
   will-change: transform;
 }
 
+.animate-border-spin-slow {
+  animation: borderSpin 12s linear infinite;
+  will-change: transform;
+}
+
 @keyframes breathingDormant {
   0%,
   100% {
