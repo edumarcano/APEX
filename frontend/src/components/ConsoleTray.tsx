@@ -395,14 +395,14 @@ function AssistantTabContent({
       {isQuerying ? (
         <div className="flex items-center gap-3 px-1 py-2">
           <Loader2
-            className="size-4 animate-spin text-[#39FF88]"
+            className="size-4 animate-spin text-[#A855F7]"
             aria-hidden
           />
           <div className="flex flex-col gap-1.5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
               APEX processing
             </span>
-            <div className="h-2 w-40 animate-pulse rounded-full bg-gradient-to-r from-[#0F4DB8]/20 via-[#39FF88]/40 to-[#0F4DB8]/20" />
+            <div className="h-2 w-40 animate-pulse rounded-full bg-gradient-to-r from-[#0F4DB8]/20 via-[#A855F7]/40 to-[#0F4DB8]/20" />
           </div>
         </div>
       ) : null}

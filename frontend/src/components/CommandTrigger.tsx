@@ -1,25 +1,19 @@
 import { useState, type ReactElement } from 'react'
 
-type CommandTriggerStatus = 'idle' | 'loading'
-
 interface CommandTriggerProps {
-  status: CommandTriggerStatus
   onClick: () => void
   disabled?: boolean
 }
 
 export function CommandTrigger({
-  status,
   onClick,
   disabled = false,
 }: CommandTriggerProps): ReactElement {
   const [isHovered, setIsHovered] = useState(false)
-  const isLoading = status === 'loading'
-  const isInteractive = !isLoading && !disabled
+  const isInteractive = !disabled
 
-  const label = isLoading
-    ? '[ SYNTHESIS INITIALIZING ]'
-    : isHovered && isInteractive
+  const label =
+    isHovered && isInteractive
       ? '> INITIATE SYSTEM SYNTHESIS'
       : '[ INITIATE SYSTEM SYNTHESIS ]'
 
@@ -29,7 +23,6 @@ export function CommandTrigger({
       onClick={onClick}
       disabled={!isInteractive}
       aria-label="Initiate system synthesis"
-      aria-busy={isLoading}
       data-slot="synthesis-trigger"
       onMouseEnter={() => {
         setIsHovered(true)
@@ -43,12 +36,10 @@ export function CommandTrigger({
       onBlur={() => {
         setIsHovered(false)
       }}
-      className={`inline-flex rounded-xl border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.18em] text-[#FBBF24] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] sm:text-[11px] ${
-        isLoading
-          ? 'cursor-not-allowed animate-[pulse_3s_ease-in-out_infinite] opacity-80'
-          : disabled
-            ? 'cursor-not-allowed opacity-40'
-            : 'hover:border-[#0F4DB8]/60 hover:bg-[#0F4DB8]/20'
+      className={`hud-command-surface inline-flex rounded-md border px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] sm:text-[11px] ${
+        disabled
+          ? 'cursor-not-allowed border-white/5 bg-transparent text-zinc-600 opacity-40'
+          : 'border-[#0F4DB8]/40 bg-[#0F4DB8]/10 text-[#FBBF24] shadow-[0_0_10px_rgba(15,77,184,0.2)] hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-[#FBBF24]'
       }`}
     >
       {label}

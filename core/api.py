@@ -41,6 +41,7 @@ from core.agent.providers.ollama_lifecycle import (
     end_local_execution,
     get_active_loaded_model,
     get_idle_unload_remaining_seconds,
+    get_loading_model,
     get_status_snapshot,
     is_local_model_loaded,
     is_local_execution_active,
@@ -849,6 +850,10 @@ class AgentProfileStatus(BaseModel):
     active: bool = Field(
         description="Whether this profile's model is currently loaded in memory.",
     )
+    loading: bool = Field(
+        default=False,
+        description="Whether this profile's model is currently being warmed up.",
+    )
     reason: str | None = Field(
         default=None,
         description="Human-readable explanation when status is not available.",
@@ -1448,6 +1453,7 @@ def _resolve_cloud_profile_status() -> tuple[ProfileAvailabilityStatus, str | No
 def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
     """Build the full profile availability matrix for the HUD."""
     tracked_active_model = get_active_loaded_model()
+    loading_model = get_loading_model()
     idle_remaining = get_idle_unload_remaining_seconds()
 
     ollama_reachable = False
@@ -1482,6 +1488,7 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 loaded_model is not None
                 or is_tracked_active
             )
+            is_loading = loading_model == profile.api_model
             status, reason = _resolve_local_profile_status(
                 profile,
                 is_active=is_active,
@@ -1498,6 +1505,7 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     stability=profile.stability,
                     status=status,
                     active=is_active,
+                    loading=is_loading,
                     reason=reason,
                     idle_unload_remaining_seconds=(
                         idle_remaining if is_tracked_active else None
@@ -1524,6 +1532,7 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 stability=gemini_profile.stability,
                 status=cloud_status,
                 active=False,
+                loading=False,
                 reason=cloud_reason,
             )
         )

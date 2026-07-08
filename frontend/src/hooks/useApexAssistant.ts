@@ -15,6 +15,7 @@ const AGENT_QUERY_ENDPOINT = `${API_BASE}/api/v1/agent/query`
 const AGENT_PROFILES_ENDPOINT = `${API_BASE}/api/v1/agent/profiles`
 const AGENT_LOCAL_UNLOAD_ENDPOINT = `${API_BASE}/api/v1/agent/local/unload`
 const PROFILE_POLL_INTERVAL_MS = 4000
+const PROFILE_POLL_INTERVAL_QUERYING_MS = 1000
 
 export type { AssistantProfile, AgentProfileStatus, ToolOutputItem } from '../types/telemetry'
 
@@ -180,6 +181,7 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     stability,
     status,
     active: typeof record.active === 'boolean' ? record.active : false,
+    loading: typeof record.loading === 'boolean' ? record.loading : false,
     reason: parseNullableString(record.reason),
     idle_unload_remaining_seconds: parseNullableFiniteNumber(record.idle_unload_remaining_seconds),
     loaded_model: parseLoadedOllamaModelStatus(record.loaded_model),
@@ -328,21 +330,24 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
 
     // Self-scheduling loop: the next poll is armed only after the current
     // request settles, so slow backend responses can never stack requests.
-    // Polls are skipped while a query is in flight (status churns server-side
-    // during generation) and while the tab is hidden.
+    // Polls continue during queries (faster interval) so the HUD can observe
+    // local-model loading → active transitions mid-request.
     const pollLoop = async (): Promise<void> => {
       if (cancelled) {
         return
       }
 
-      if (!document.hidden && !isAssistantQueryingRef.current) {
+      if (!document.hidden) {
         await fetchProfilesStatus()
       }
 
       if (!cancelled) {
+        const intervalMs = isAssistantQueryingRef.current
+          ? PROFILE_POLL_INTERVAL_QUERYING_MS
+          : PROFILE_POLL_INTERVAL_MS
         timeoutId = window.setTimeout(() => {
           void pollLoop()
-        }, PROFILE_POLL_INTERVAL_MS)
+        }, intervalMs)
       }
     }
 
@@ -355,6 +360,15 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
       }
     }
   }, [shouldPollProfiles, fetchProfilesStatus])
+
+  // Kick an immediate profile poll when a query starts so the HUD can
+  // observe local-model loading without waiting for the next interval.
+  useEffect(() => {
+    if (!isAssistantQuerying || !shouldPollProfiles) {
+      return
+    }
+    void fetchProfilesStatus()
+  }, [isAssistantQuerying, shouldPollProfiles, fetchProfilesStatus])
 
   const unloadLocalModel = useCallback(async (): Promise<void> => {
     try {
