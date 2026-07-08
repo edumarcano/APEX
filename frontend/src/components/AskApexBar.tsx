@@ -141,7 +141,7 @@ export function AskApexBar({
         className={formClassName}
         aria-label="Ask APEX"
       >
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className={`flex items-center gap-3 ${integrated ? 'px-0 py-1' : 'px-4 py-3'}`}>
           <span
             className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]"
             aria-hidden

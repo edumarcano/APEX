@@ -201,11 +201,11 @@ export default function App(): ReactElement {
   const leftWingDormantClasses =
     'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const leftWingActiveClasses =
-    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const rightWingDormantClasses =
     'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const rightWingActiveClasses =
-    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1'
+    'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col xl:max-w-full xl:flex-1'
   const centerColumnActiveClasses = 'h-full min-h-0 flex flex-col xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
 
@@ -213,7 +213,7 @@ export default function App(): ReactElement {
   const digestWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
-      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4'
+      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4 overflow-visible'
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
@@ -457,7 +457,7 @@ export default function App(): ReactElement {
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-4 xl:overflow-hidden ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-4 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
               <MarketTickerCard
                 data={marketData}
@@ -500,7 +500,7 @@ export default function App(): ReactElement {
                 style={{ background: 'rgba(var(--glow-color), 0.15)' }}
                 aria-hidden
               />
-              <div className={`shrink-0 overflow-hidden flex flex-col ${digestWrapperClass}`}>
+              <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
                   insights={[
                     ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
@@ -692,7 +692,7 @@ export default function App(): ReactElement {
         </div>
       </div>
 
-      <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0">
+      <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-6">
       <SystemDiagnostics
         diagnostics={diagnostics}
         diagnosticsStatus={diagnosticsStatus}
