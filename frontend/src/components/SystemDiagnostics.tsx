@@ -246,63 +246,63 @@ export function SystemDiagnostics({
   const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
 
   return (
-    <footer className="max-w-5xl mx-auto xl:max-w-5xl xl:mx-auto rounded-full px-6 py-2.5 bg-zinc-950/40 border border-white/5 backdrop-blur-md shadow-2xl select-none z-40 transition-all duration-700 ease-in-out hover-blue-medium">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 xl:gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
+    <footer className="w-full max-w-5xl mx-auto xl:max-w-5xl xl:mx-auto rounded-full px-4 sm:px-6 py-2.5 bg-zinc-950/40 border border-white/5 backdrop-blur-md shadow-2xl select-none z-40 transition-all duration-700 ease-in-out hover-blue-medium">
+      <div className="flex flex-nowrap items-center justify-between gap-2 sm:gap-3 min-w-0 text-xs font-mono text-zinc-400 font-medium">
 
-        {/* Column 1: Title */}
-        <div className="flex items-center">
-          <span className="text-[#0F4DB8] font-extrabold tracking-wider uppercase text-xs">
+        {/* Segment: Title */}
+        <div className="hidden sm:flex items-center shrink-0">
+          <span className="text-[#0F4DB8] font-extrabold tracking-wider uppercase text-[10px] sm:text-xs whitespace-nowrap">
             SYSTEM STATUS
           </span>
         </div>
 
-        {/* Column 2: Internet Connection */}
-        <div className="flex items-center gap-3">
-          <Globe className="h-4 w-4 text-zinc-400 shrink-0" />
-          <div className="flex flex-col">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500">
+        {/* Segment: Internet Connection */}
+        <div className="flex items-center gap-2 shrink-0 min-w-0">
+          <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-zinc-400 shrink-0" />
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] tracking-wider uppercase text-zinc-500 whitespace-nowrap">
               Internet
             </span>
-            <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300">
+            <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300 whitespace-nowrap">
               {isNetworkConnected ? (
                 <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#39FF88]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#39FF88] shrink-0" />
                   <span className="text-zinc-200">Connected</span>
                 </>
               ) : (
                 <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#ef4444]" />
-                  <span className="text-zinc-400">Not Connected</span>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#ef4444] shrink-0" />
+                  <span className="text-zinc-400">Offline</span>
                 </>
               )}
             </span>
           </div>
         </div>
 
-        {/* Column 3: Briefing Status */}
-        <div className="flex items-center gap-3">
+        {/* Segment: Briefing Status */}
+        <div className="hidden md:flex items-center gap-2 shrink-0 min-w-0">
           <Activity className="h-4 w-4 text-zinc-400 shrink-0" />
-          <div className="flex flex-col">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500">
-              Briefing Status
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] tracking-wider uppercase text-zinc-500 whitespace-nowrap">
+              Briefing
             </span>
-            <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300">
+            <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300 whitespace-nowrap">
               {briefingDot}
               <span>{briefingStateText}</span>
             </span>
           </div>
         </div>
 
-        {/* Column 4: Sync Health */}
+        {/* Segment: Sync Health */}
         <div
-          className="relative flex items-center gap-3 cursor-default"
+          className="relative hidden lg:flex items-center gap-2 cursor-default shrink-0 min-w-0"
           onMouseEnter={() => setIsSyncHovered(true)}
           onMouseLeave={() => setIsSyncHovered(false)}
         >
           <RotateCw className="h-4 w-4 text-zinc-400 shrink-0 animate-[spin_12s_linear_infinite]" />
-          <div className="flex flex-col gap-1 w-full max-w-[120px]">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500 flex justify-between">
-              <span>Sync Health</span>
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-[10px] tracking-wider uppercase text-zinc-500 flex justify-between gap-2 whitespace-nowrap">
+              <span>Sync</span>
               {status === 'success' ? (
                 <span className={`${syncColorText} font-bold`}>{confidenceScore}%</span>
               ) : (
@@ -338,19 +338,19 @@ export function SystemDiagnostics({
           )}
         </div>
 
-        {/* Column 5: Hardware Resources */}
-        <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+        {/* Segment: Hardware Resources */}
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink">
           {/* CPU */}
           <div
-            className="relative flex flex-col gap-1.5 cursor-default"
+            className="relative flex flex-col gap-1 cursor-default shrink-0"
             onMouseEnter={() => setIsCpuHovered(true)}
             onMouseLeave={() => setIsCpuHovered(false)}
           >
-            <div className="flex items-center gap-1 text-[11px] text-zinc-300">
-              <Cpu className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-300 whitespace-nowrap">
+              <Cpu className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-500 shrink-0" />
               <span>CPU {formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
             </div>
-            <div className="relative w-16 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
+            <div className="relative w-12 sm:w-14 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(cpuPctClamped)}`}
                 style={{ width: `${cpuPctClamped}%` }}
@@ -370,15 +370,15 @@ export function SystemDiagnostics({
 
           {/* RAM */}
           <div
-            className="relative flex flex-col gap-1.5 cursor-default"
+            className="relative flex flex-col gap-1 cursor-default shrink-0"
             onMouseEnter={() => setIsRamHovered(true)}
             onMouseLeave={() => setIsRamHovered(false)}
           >
-            <div className="flex items-center gap-1 text-[11px] text-zinc-300">
-              <Database className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-300 whitespace-nowrap">
+              <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-500 shrink-0" />
               <span>RAM {formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
             </div>
-            <div className="relative w-16 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
+            <div className="relative w-12 sm:w-14 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(ramPctClamped)}`}
                 style={{ width: `${ramPctClamped}%` }}
@@ -398,15 +398,15 @@ export function SystemDiagnostics({
 
           {/* DISK */}
           <div
-            className="relative flex flex-col gap-1.5 cursor-default"
+            className="relative flex flex-col gap-1 cursor-default shrink-0"
             onMouseEnter={() => setIsDiskHovered(true)}
             onMouseLeave={() => setIsDiskHovered(false)}
           >
-            <div className="flex items-center gap-1 text-[11px] text-zinc-300">
-              <HardDrive className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-300 whitespace-nowrap">
+              <HardDrive className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-500 shrink-0" />
               <span>DISK {formatPercentage(resolvedDiagnostics.disk, isInitializing)}</span>
             </div>
-            <div className="relative w-16 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
+            <div className="relative w-12 sm:w-14 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(diskPctClamped)}`}
                 style={{ width: `${diskPctClamped}%` }}
@@ -425,16 +425,16 @@ export function SystemDiagnostics({
           </div>
         </div>
 
-        {/* Column 6: System Time */}
-        <div className="flex items-center gap-3">
-          <Clock className="h-4 w-4 text-zinc-400 shrink-0" />
-          <div className="flex flex-col">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500">
-              SYSTEM TIME
+        {/* Segment: System Time */}
+        <div className="flex items-center gap-2 shrink-0 pl-1">
+          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-zinc-400 shrink-0" />
+          <div className="flex flex-col shrink-0">
+            <span className="text-[10px] tracking-wider uppercase text-zinc-500 whitespace-nowrap">
+              Time
             </span>
-            <div className="flex flex-col mt-0.5 font-mono tabular-nums leading-tight">
-              <span className="text-zinc-300">{liveTime.date}</span>
-              <span className="text-zinc-300">{liveTime.time}</span>
+            <div className="mt-0.5 font-mono tabular-nums leading-tight text-[10px] sm:text-[11px] text-zinc-300">
+              <span className="hidden xl:block whitespace-nowrap">{liveTime.date}</span>
+              <span className="whitespace-nowrap">{liveTime.time}</span>
             </div>
           </div>
         </div>
