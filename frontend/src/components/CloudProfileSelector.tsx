@@ -1,11 +1,14 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactElement,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Check,
   ChevronDown,
@@ -135,6 +138,18 @@ function resolveProfileProviderLabel(
     : 'Cloud'
 }
 
+function resolveProfileDescription(
+  option: ProfileOption,
+  metadata: AgentProfileStatus | null,
+): string {
+  const subtitle = option.subtitle.trim()
+  const tier = metadata?.tier?.trim()
+  if (!tier || tier.toLowerCase() === subtitle.toLowerCase()) {
+    return subtitle
+  }
+  return `${subtitle} / ${tier}`
+}
+
 export function CloudProfileSelector({
   activeProfile,
   onChange,
@@ -143,10 +158,28 @@ export function CloudProfileSelector({
   disabled = false,
 }: CloudProfileSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const closeDropdown = useCallback((): void => {
     setIsOpen(false)
+  }, [])
+
+  const updateDropdownPosition = useCallback((): void => {
+    const trigger = triggerRef.current
+    if (!trigger) {
+      return
+    }
+
+    const rect = trigger.getBoundingClientRect()
+    setDropdownStyle({
+      bottom: window.innerHeight - rect.top + 8,
+      maxWidth: 'calc(100vw - 24px)',
+      right: Math.max(12, window.innerWidth - rect.right),
+      width: '18rem',
+    })
   }, [])
 
   const toggleDropdown = useCallback((): void => {
@@ -194,7 +227,10 @@ export function CloudProfileSelector({
         return
       }
 
-      if (!containerRef.current?.contains(target)) {
+      if (
+        !containerRef.current?.contains(target) &&
+        !dropdownRef.current?.contains(target)
+      ) {
         closeDropdown()
       }
     }
@@ -204,6 +240,21 @@ export function CloudProfileSelector({
       document.removeEventListener('mousedown', handlePointerDown)
     }
   }, [closeDropdown, isOpen])
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    updateDropdownPosition()
+
+    window.addEventListener('resize', updateDropdownPosition)
+    window.addEventListener('scroll', updateDropdownPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateDropdownPosition)
+      window.removeEventListener('scroll', updateDropdownPosition, true)
+    }
+  }, [isOpen, updateDropdownPosition])
 
   const selectorDisabled = disabled || !profilesStatusHydrated
   const activeProfileMetadata = resolveProfileMetadata(activeProfile, profilesStatus)
@@ -226,6 +277,7 @@ export function CloudProfileSelector({
     const isLoading = status === 'unknown'
     const isActive = option.key === activeProfile
     const tooltipText = resolveTooltipText(status, reason)
+    const description = resolveProfileDescription(option, metadata)
 
     return (
       <li key={option.key} role="presentation" className="group/tooltip relative">
@@ -274,7 +326,7 @@ export function CloudProfileSelector({
               </span>
             </span>
             <span className="mt-0.5 block truncate pl-3.5 text-[10px] text-zinc-500">
-              {metadata?.tier ? `${option.subtitle} / ${metadata.tier}` : option.subtitle}
+              {description}
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
@@ -310,6 +362,7 @@ export function CloudProfileSelector({
   return (
     <div ref={containerRef} className="relative shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         tabIndex={0}
         disabled={selectorDisabled}
@@ -346,15 +399,14 @@ export function CloudProfileSelector({
           strokeWidth={2.25}
           aria-hidden
         />
-        <span className="hidden text-[#0F4DB8]" aria-hidden>
-          ▼
-        </span>
       </button>
 
-      {isOpen ? (
+      {isOpen && dropdownStyle ? createPortal(
         <div
+          ref={dropdownRef}
+          style={dropdownStyle}
           className={[
-            'hud-corner-brackets hud-glass hud-glass-solid absolute bottom-full right-0 z-50 mb-2 w-72 overflow-visible',
+            'hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] overflow-visible',
             'rounded-xl border border-white/10 p-2 shadow-2xl',
           ].join(' ')}
         >
@@ -379,7 +431,8 @@ export function CloudProfileSelector({
               </li>
             ))}
           </ul>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   )

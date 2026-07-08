@@ -554,7 +554,7 @@ export function ConsoleTray({
 
   return (
     <section
-      className="hud-corner-brackets hud-interactive-shell hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10"
+      className="hud-corner-brackets hud-interactive-shell hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 flex-col overflow-visible rounded-2xl border border-white/10"
       data-slot="console-tray"
       aria-label="Assistant console"
     >
@@ -621,7 +621,7 @@ export function ConsoleTray({
       <div
         className={`console-tray-panel flex min-h-0 flex-col overflow-hidden border-t transition-[max-height,opacity] ${
           isExpanded
-            ? 'max-h-[min(44vh,28rem)] border-white/10 opacity-100'
+            ? 'max-h-[min(48vh,30rem)] border-white/10 opacity-100'
             : 'max-h-0 border-transparent opacity-0'
         }`}
         aria-hidden={!isExpanded}

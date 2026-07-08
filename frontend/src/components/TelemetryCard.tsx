@@ -312,7 +312,7 @@ export function TelemetryCard({
   const sectionClassName = [
     'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
     isCompact
-      ? 'h-auto min-h-0 shrink-0 flex-none flex-row items-center px-3 py-2'
+      ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
     resolveCardHoverClass(title),
     className,
@@ -375,10 +375,10 @@ export function TelemetryCard({
         </div>
       ) : null}
       {isCompact ? (
-        <div className="hud-inner-lift relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="hud-icon-badge size-6 shrink-0">
+        <div className="hud-inner-lift relative z-10 flex min-w-0 flex-1 items-center gap-3">
+          <span className="hud-icon-badge size-7 shrink-0">
             <Icon
-              className="size-3.5 text-[color:var(--hud-accent)]"
+              className="size-4 text-[color:var(--hud-accent)]"
               strokeWidth={1.75}
               aria-hidden
             />
@@ -390,7 +390,7 @@ export function TelemetryCard({
             {title}
           </span>
           {compactValue != null ? (
-            <span className="min-w-0 max-w-[52%] shrink truncate text-right font-mono text-xs uppercase tracking-wide text-zinc-300">
+            <span className="min-w-0 max-w-[56%] shrink truncate text-right font-mono text-xs uppercase tracking-wide text-zinc-300">
               {compactValue}
             </span>
           ) : null}

@@ -283,7 +283,7 @@ export function MarketTickerCard({
   const sectionClassName = [
     'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out hover-blue-subtle',
     isCompact
-      ? 'h-auto min-h-0 shrink-0 flex-none flex-row items-center px-3 py-2'
+      ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]',
     className,
   ]
@@ -365,13 +365,13 @@ export function MarketTickerCard({
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
         <div className="hud-inner-lift flex min-w-0 flex-1 items-center">
-          <span className="hud-icon-badge size-6 shrink-0">
-            <LineChart className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
+          <span className="hud-icon-badge size-7 shrink-0">
+            <LineChart className="size-4 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
           </span>
-          <span className="ml-2.5 w-14 shrink-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]">
+          <span className="ml-3 w-16 shrink-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]">
             Market
           </span>
-          <div className="ml-2 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
+          <div className="ml-2.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none">
             {data && data.tickers.length > 0 ? (
               data.tickers.map((ticker) => <CompactTickerChip key={ticker.symbol} ticker={ticker} />)
             ) : (

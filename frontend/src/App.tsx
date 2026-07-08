@@ -222,7 +222,7 @@ export default function App(): ReactElement {
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
   const centerColumnActiveClasses = `h-full min-h-0 flex flex-col ${
-    isConsoleCompact ? 'justify-center pt-0' : 'justify-start pt-0'
+    isConsoleCompact ? 'justify-start pt-2 xl:pt-3' : 'justify-start pt-0'
   } xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
 
   // The logo is always visible and full-size — it is never displaced by the
@@ -237,17 +237,19 @@ export default function App(): ReactElement {
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
+  const logoShellClass = isConsoleCompact ? 'min-h-0 flex-1 py-1 xl:py-0' : 'shrink-0 py-4 xl:py-0'
+
   const largeLogoWrapperClass = [
-    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center justify-center opacity-100 scale-100',
+    'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
     isDormant
-      ? 'h-64 xl:h-auto xl:flex-1'
+      ? 'h-64 justify-center xl:h-auto xl:flex-1'
       : isConsoleCompact
-        ? 'h-36 sm:h-40 xl:h-44'
-        : 'h-72 xl:h-80',
+        ? 'h-full min-h-0 justify-center'
+        : 'h-72 justify-center xl:h-80',
   ].join(' ')
 
   const logoSizeClass = isConsoleCompact
-    ? 'h-28 w-auto sm:h-32 xl:h-36'
+    ? 'h-full max-h-[clamp(9rem,min(22vw,30vh),19rem)] w-auto'
     : 'h-48 w-auto sm:h-56 xl:h-64'
 
   useEffect(() => {
@@ -350,7 +352,7 @@ export default function App(): ReactElement {
   }, [status, prevStatus, activeTab])
 
   const cardLedState = resolveTelemetryLedState(status)
-  const wingGapClass = isConsoleCompact ? 'gap-2' : 'gap-4'
+  const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
   const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -510,7 +512,7 @@ export default function App(): ReactElement {
                 data={marketData}
                 isLoading={isMarketLoading}
                 isCompact={isConsoleCompact}
-                className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`h-auto w-full shrink-0 xl:flex-none ${isConsoleCompact ? 'xl:min-h-[3.75rem]' : ''} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
               />
 
               <TelemetryCard
@@ -522,7 +524,7 @@ export default function App(): ReactElement {
                 isCompact={isConsoleCompact}
                 compactValue={weatherCompactValue}
                 style={weatherCardStyle}
-                className={`${isConsoleCompact ? '' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {weatherBody}
@@ -536,7 +538,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={eventsCompactValue}
-                className={`${isConsoleCompact ? '' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {scheduleBody}
@@ -563,10 +565,10 @@ export default function App(): ReactElement {
                 />
               </div>
 
-              <div className={`shrink-0 py-4 xl:py-0 ${largeLogoWrapperClass}`}>
+              <div className={`${logoShellClass} ${largeLogoWrapperClass}`}>
                 <div className="relative flex flex-col items-center">
                   <div
-                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
+                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isConsoleCompact ? 'h-full min-h-0' : ''} ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
                   >
                     <ApexLogo
                       step={activeStep}
@@ -605,7 +607,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
-                className={isConsoleCompact ? '' : 'flex-none xl:flex-1 xl:min-h-0'}
+                className={isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'}
               >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -656,7 +658,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
-                className={isConsoleCompact ? '' : 'flex-none xl:flex-1 xl:min-h-0'}
+                className={isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'}
               >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -700,7 +702,7 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
-                className={`${isConsoleCompact ? '' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
