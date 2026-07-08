@@ -281,7 +281,7 @@ export function MarketTickerCard({
   isCompact = false,
 }: MarketTickerCardProps): ReactElement {
   const sectionClassName = [
-    'hud-corner-brackets relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out hover-blue-subtle',
+    'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out hover-blue-subtle',
     isCompact
       ? 'h-auto min-h-0 shrink-0 flex-none flex-row items-center px-3 py-2'
       : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]',
@@ -364,27 +364,29 @@ export function MarketTickerCard({
       <section className={sectionClassName} aria-label="Market ticker">
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
-        <span className="hud-icon-badge size-6 shrink-0">
-          <LineChart className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
-        </span>
-        <span className="ml-2.5 min-w-0 shrink-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]">
-          Market
-        </span>
-        <div className="ml-3 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
-          {data && data.tickers.length > 0 ? (
-            data.tickers.map((ticker) => <CompactTickerChip key={ticker.symbol} ticker={ticker} />)
-          ) : (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">No tickers</span>
-          )}
+        <div className="hud-inner-lift flex min-w-0 flex-1 items-center">
+          <span className="hud-icon-badge size-6 shrink-0">
+            <LineChart className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
+          </span>
+          <span className="ml-2.5 w-14 shrink-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]">
+            Market
+          </span>
+          <div className="ml-2 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
+            {data && data.tickers.length > 0 ? (
+              data.tickers.map((ticker) => <CompactTickerChip key={ticker.symbol} ticker={ticker} />)
+            ) : (
+              <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">No tickers</span>
+            )}
+          </div>
+          {ledState !== 'none' ? (
+            <span
+              className={`ml-2 shrink-0 ${MARKET_LED_CLASS[ledState]}`}
+              role="status"
+              aria-label={`Market feed ${ledState}`}
+              title={`Market feed ${ledState}`}
+            />
+          ) : null}
         </div>
-        {ledState !== 'none' ? (
-          <span
-            className={`ml-2 shrink-0 ${MARKET_LED_CLASS[ledState]}`}
-            role="status"
-            aria-label={`Market feed ${ledState}`}
-            title={`Market feed ${ledState}`}
-          />
-        ) : null}
       </section>
     )
   }
@@ -393,7 +395,7 @@ export function MarketTickerCard({
     <section className={sectionClassName} aria-label="Market ticker">
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
-      <header className="mb-3 shrink-0">
+      <header className="hud-inner-lift mb-3 shrink-0">
         <div className="flex min-h-9 items-center gap-2.5">
           <span className="hud-icon-badge size-7 shrink-0">
             <LineChart
@@ -421,7 +423,7 @@ export function MarketTickerCard({
         </div>
         <div className="hud-header-divider mt-3" aria-hidden />
       </header>
-      <div className="min-h-0 w-full">{content}</div>
+      <div className="hud-inner-lift min-h-0 w-full">{content}</div>
     </section>
   )
 }

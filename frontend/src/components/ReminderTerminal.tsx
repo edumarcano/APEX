@@ -156,7 +156,7 @@ export function ReminderTerminal({
   }, [])
 
   const containerClassName = [
-    'bg-zinc-950/40 backdrop-blur-md border rounded-xl shadow-2xl transition-all duration-300',
+    'hud-command-surface bg-zinc-950/80 backdrop-blur-md border rounded-xl shadow-2xl transition-all duration-300',
     successPulse
       ? 'border-[#0F4DB8]/80 shadow-[0_0_24px_rgba(15,77,184,0.35)]'
       : 'border-white/10 focus-within:border-[#FBBF24]/50',
@@ -167,7 +167,7 @@ export function ReminderTerminal({
       <button
         type="button"
         onClick={openTerminal}
-        className="mt-3 flex w-full items-center justify-center gap-2 py-1.5 text-sm text-[color:var(--hud-muted-text)] transition-colors hover:text-[color:var(--hud-text)]"
+        className="hud-command-surface mt-3 flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500 transition-colors hover:border-[#0F4DB8]/30 hover:bg-[#0F4DB8]/10 hover:text-zinc-200"
         aria-label="Add a reminder. Press slash to focus."
       >
         <Terminal
@@ -175,7 +175,7 @@ export function ReminderTerminal({
           strokeWidth={1.75}
           aria-hidden
         />
-        <span>Add a reminder… (press / to focus)</span>
+        <span>Add reminder /</span>
       </button>
     )
   }
@@ -212,7 +212,7 @@ export function ReminderTerminal({
               setValue(event.target.value)
             }}
             onKeyDown={handleInputKeyDown}
-            placeholder="Add a reminder…"
+            placeholder="Add a reminder..."
             disabled={isSubmitting}
             className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-500 outline-none"
             aria-label="Reminder text"

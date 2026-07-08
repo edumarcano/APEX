@@ -503,7 +503,7 @@ export function ConsoleTray({
   )
 
   const tabBaseClass =
-    'font-mono text-[10px] uppercase tracking-[0.2em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
+    'hud-command-surface font-mono text-[10px] uppercase tracking-[0.2em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
 
   const tabs = (
     <div className="flex shrink-0 items-center gap-2">
@@ -517,7 +517,7 @@ export function ConsoleTray({
           tabBaseClass,
           activeTab === 'assistant'
             ? 'border-[#0F4DB8]/50 bg-[#0F4DB8]/15 text-[#7EB3FF] shadow-[0_0_10px_rgba(15,77,184,0.25)]'
-            : 'border-white/5 bg-transparent text-zinc-500 hover:border-white/10 hover:text-zinc-300',
+            : 'border-white/5 bg-transparent text-zinc-500 hover:border-[#0F4DB8]/30 hover:text-zinc-300',
         ].join(' ')}
         aria-pressed={activeTab === 'assistant'}
       >
@@ -535,7 +535,7 @@ export function ConsoleTray({
           tabBaseClass,
           activeTab === 'briefing'
             ? 'border-[#FBBF24]/50 bg-[#FBBF24]/10 text-[#FBBF24] shadow-[0_0_10px_rgba(251,191,36,0.2)]'
-            : 'border-white/5 bg-transparent text-zinc-500 hover:border-white/10 hover:text-zinc-300',
+            : 'border-white/5 bg-transparent text-zinc-500 hover:border-[#FBBF24]/30 hover:text-zinc-300',
         ].join(' ')}
         aria-pressed={activeTab === 'briefing'}
       >
@@ -554,7 +554,7 @@ export function ConsoleTray({
 
   return (
     <section
-      className="hud-corner-brackets hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10"
+      className="hud-corner-brackets hud-interactive-shell hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10"
       data-slot="console-tray"
       aria-label="Assistant console"
     >
@@ -562,7 +562,7 @@ export function ConsoleTray({
       <span className="hud-corner-br" aria-hidden />
 
       {/* Persistent docked row — always in normal document flow, never displaces the logo/wings above it */}
-      <div className="flex w-full shrink-0 items-center gap-3 px-3 py-2.5 sm:px-4">
+      <div className="hud-inner-lift flex w-full shrink-0 items-center gap-3 px-3 py-2.5 sm:px-4">
         {tabs}
 
         <div
@@ -626,7 +626,7 @@ export function ConsoleTray({
         }`}
         aria-hidden={!isExpanded}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950/20 p-4 scrollbar-thin">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950/30 p-4 scrollbar-thin">
           {activeTab === 'assistant' ? (
             <AssistantTabContent
               history={assistantHistory}
@@ -644,7 +644,7 @@ export function ConsoleTray({
         </div>
 
         {askApexEnabled ? (
-          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/30 p-4">
+          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-4">
             <AskApexBar
               activeProfile={activeProfile}
               onProfileChange={setActiveProfile}

@@ -281,7 +281,7 @@ export function CloudProfileSelector({
         onClick={toggleDropdown}
         onKeyDown={handleTriggerKeyDown}
         className={[
-          'hud-glass flex items-center gap-2 rounded-lg px-2.5 py-1.5',
+          'hud-interactive-shell hud-glass flex items-center gap-2 rounded-lg px-2.5 py-1.5',
           'font-mono text-[10px] uppercase tracking-wider text-zinc-200',
           'transition-colors hover-blue-subtle',
           'focus-visible:outline focus-visible:outline-2',
@@ -304,7 +304,7 @@ export function CloudProfileSelector({
       {isOpen ? (
         <div
           className={[
-            'hud-corner-brackets hud-glass absolute bottom-full right-0 z-50 mb-2 min-w-[12rem] overflow-visible',
+            'hud-corner-brackets hud-glass hud-glass-solid absolute bottom-full right-0 z-50 mb-2 min-w-[12rem] overflow-visible',
             'rounded-lg shadow-2xl',
           ].join(' ')}
         >

@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
-import type { KeyboardEvent, ReactElement } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { FocusEvent, KeyboardEvent, ReactElement } from 'react'
 import {
-  Globe,
   Activity,
-  RotateCw,
+  Clock,
   Cpu,
   Database,
+  Globe,
   HardDrive,
-  Clock,
+  type LucideIcon,
+  RotateCw,
 } from 'lucide-react'
 
 import {
@@ -30,7 +31,7 @@ function formatPercentage(
   isInitializing: boolean,
 ): string {
   if (isMetricUnavailable(value, isInitializing)) {
-    return '—%'
+    return '--%'
   }
   return `${Math.round(clampPercentage(value!))}%`
 }
@@ -57,8 +58,17 @@ function formatCpuFreq(freq: number | null | undefined): string {
   return `${freq.toFixed(1)} GHz`
 }
 
-function formatGbRatio(used: number | null | undefined, total: number | null | undefined): string {
-  if (used == null || total == null || !Number.isFinite(used) || !Number.isFinite(total) || total === 0) {
+function formatGbRatio(
+  used: number | null | undefined,
+  total: number | null | undefined,
+): string {
+  if (
+    used == null ||
+    total == null ||
+    !Number.isFinite(used) ||
+    !Number.isFinite(total) ||
+    total === 0
+  ) {
     return 'N/A'
   }
   return `${used.toFixed(1)} / ${total.toFixed(1)} GB`
@@ -95,17 +105,86 @@ interface SystemDiagnosticsProps {
   status: 'idle' | 'loading' | 'success' | 'error'
   confidenceScore: number
   pipelineStep: number | null
+  pipelineLabel?: string | null
   failedConnectors?: string[]
-  /** Last completed briefing time label, shown only in the expanded dropdown. */
   lastBriefingTime?: string | null
 }
 
-/**
- * Compact header pill surfacing the four signals that matter at a glance
- * (briefing/pipeline status, CPU, RAM, system time), expanding into a full
- * detail dropdown on hover or click (internet, sync/confidence, disk, and
- * last briefing time).
- */
+function MetricBar({
+  percentage,
+  unavailable,
+}: {
+  percentage: number
+  unavailable: boolean
+}): ReactElement {
+  return (
+    <div className="hud-metric-bar">
+      <div
+        className={[
+          'hud-metric-bar__fill',
+          unavailable ? 'bg-zinc-700/60' : getMicroBarColorClass(percentage),
+        ].join(' ')}
+        style={{ width: `${unavailable ? 18 : percentage}%` }}
+      />
+    </div>
+  )
+}
+
+function CompactMetric({
+  label,
+  value,
+  percentage,
+  unavailable,
+  icon: Icon,
+}: {
+  label: string
+  value: string
+  percentage: number
+  unavailable: boolean
+  icon: LucideIcon
+}): ReactElement {
+  return (
+    <span className="hidden min-w-0 items-center gap-1.5 md:flex">
+      <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+      <span className="w-8 shrink-0 text-zinc-500">{label}</span>
+      <span className="w-9 shrink-0 tabular-nums text-zinc-300">{value}</span>
+      <span className="w-14 shrink-0">
+        <MetricBar percentage={percentage} unavailable={unavailable} />
+      </span>
+    </span>
+  )
+}
+
+function DetailMetric({
+  label,
+  value,
+  detail,
+  percentage,
+  unavailable,
+  icon: Icon,
+}: {
+  label: string
+  value: string
+  detail: string
+  percentage: number
+  unavailable: boolean
+  icon: LucideIcon
+}): ReactElement {
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-zinc-500">
+          <Icon className="size-3.5 shrink-0" aria-hidden />
+          {label}
+        </span>
+        <span className="tabular-nums text-zinc-300">{value}</span>
+      </div>
+      <MetricBar percentage={percentage} unavailable={unavailable} />
+      <p className="mt-1 truncate text-[10px] text-zinc-600">{detail}</p>
+    </div>
+  )
+}
+
 export function SystemDiagnostics({
   diagnostics,
   diagnosticsStatus,
@@ -114,6 +193,7 @@ export function SystemDiagnostics({
   status,
   confidenceScore,
   pipelineStep,
+  pipelineLabel = null,
   failedConnectors = [],
   lastBriefingTime = null,
 }: SystemDiagnosticsProps): ReactElement {
@@ -124,10 +204,10 @@ export function SystemDiagnostics({
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const updateClock = () => {
+    const updateClock = (): void => {
       const now = new Date()
       const dateStr = now.toLocaleDateString('en-US', {
-        weekday: 'long',
+        weekday: 'short',
         month: 'short',
         day: '2-digit',
       })
@@ -146,8 +226,8 @@ export function SystemDiagnostics({
   }, [])
 
   useEffect(() => {
-    const handleOnline = () => setIsBrowserOnline(true)
-    const handleOffline = () => setIsBrowserOnline(false)
+    const handleOnline = (): void => setIsBrowserOnline(true)
+    const handleOffline = (): void => setIsBrowserOnline(false)
 
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -158,7 +238,6 @@ export function SystemDiagnostics({
     }
   }, [])
 
-  // Close the pinned dropdown on outside click (touch/accessibility path).
   useEffect(() => {
     if (!isPinned) return
 
@@ -188,14 +267,26 @@ export function SystemDiagnostics({
       event.preventDefault()
       handleToggleClick()
     }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setIsPinned(false)
+      setIsOpen(false)
+    }
   }
 
-  const resolvedDiagnostics = diagnostics
-  const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
+  const handleBlur = (event: FocusEvent<HTMLDivElement>): void => {
+    const nextTarget = event.relatedTarget
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return
+    }
+    if (!isPinned) {
+      setIsOpen(false)
+    }
+  }
 
+  const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
-  // Segment: Briefing Status resolution
   let briefingStateText: string
   let briefingLedClass: string
 
@@ -219,7 +310,8 @@ export function SystemDiagnostics({
     briefingLedClass = 'hud-led--loading'
   }
 
-  // Segment: Sync Health dynamic 3-tier adaptive color schemes
+  const displayPipelineText = pipelineLabel?.trim() || briefingStateText
+
   let syncColorText = 'text-zinc-500'
   let syncColorBar = 'bg-zinc-700'
   let syncColorShadow = ''
@@ -240,81 +332,87 @@ export function SystemDiagnostics({
     }
   }
 
-  const activeBlocksCount = Math.floor((confidenceScore ?? 0) / 10)
+  const activeBlocksCount = Math.max(0, Math.min(10, Math.floor((confidenceScore ?? 0) / 10)))
   const syncBlocks = Array.from({ length: 10 }, (_, i) => {
     const isSuccess = status === 'success'
     const isActive = isSuccess && i < activeBlocksCount
     return (
       <div
         key={i}
-        className={`w-1 rounded-sm transition-colors duration-500 ${EQUALIZER_HEIGHTS[i]} ${isSuccess
-          ? isActive
-            ? `${syncColorBar} ${syncColorShadow}`
-            : 'bg-zinc-700'
-          : 'bg-zinc-800/40'
-          }`}
+        className={`w-1 rounded-sm transition-colors duration-500 ${EQUALIZER_HEIGHTS[i]} ${
+          isSuccess
+            ? isActive
+              ? `${syncColorBar} ${syncColorShadow}`
+              : 'bg-zinc-700'
+            : 'bg-zinc-800/60'
+        }`}
       />
     )
   })
 
-  // Hardware resource clamped percentages
-  const cpuVal = resolvedDiagnostics.cpu ?? 0
-  const cpuUnavailable = isMetricUnavailable(resolvedDiagnostics.cpu, isInitializing)
-  const cpuPctClamped = cpuUnavailable ? 0 : clampPercentage(cpuVal)
+  const cpuUnavailable = isMetricUnavailable(diagnostics.cpu, isInitializing)
+  const cpuPctClamped = cpuUnavailable ? 0 : clampPercentage(diagnostics.cpu ?? 0)
+  const ramUnavailable = isMetricUnavailable(diagnostics.ram, isInitializing)
+  const ramPctClamped = ramUnavailable ? 0 : clampPercentage(diagnostics.ram ?? 0)
+  const diskUnavailable = isMetricUnavailable(diagnostics.disk, isInitializing)
+  const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diagnostics.disk ?? 0)
 
-  const ramVal = resolvedDiagnostics.ram ?? 0
-  const ramUnavailable = isMetricUnavailable(resolvedDiagnostics.ram, isInitializing)
-  const ramPctClamped = ramUnavailable ? 0 : clampPercentage(ramVal)
-
-  const diskVal = resolvedDiagnostics.disk ?? 0
-  const diskUnavailable = isMetricUnavailable(resolvedDiagnostics.disk, isInitializing)
-  const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
+  const cpuText = formatPercentage(diagnostics.cpu, isInitializing)
+  const ramText = formatPercentage(diagnostics.ram, isInitializing)
+  const diskText = formatPercentage(diagnostics.disk, isInitializing)
 
   return (
     <div
       ref={containerRef}
-      className="relative shrink-0 pointer-events-auto"
+      className="relative h-16 w-40 shrink-0 pointer-events-auto sm:w-[min(66vw,44rem)]"
       onMouseEnter={() => setIsOpen(true)}
       onMouseLeave={() => {
         if (!isPinned) setIsOpen(false)
       }}
+      onBlur={handleBlur}
     >
-      {/* Compact trigger pill — pipeline state / CPU / RAM / time. A div (matching every other
-          header pill) rather than a native button, avoiding inconsistent browser button chrome. */}
       <div
         role="button"
         tabIndex={0}
         onClick={handleToggleClick}
         onKeyDown={handleTriggerKeyDown}
-        className="hud-corner-brackets hud-glass relative flex h-11 shrink-0 cursor-pointer items-center gap-3 rounded-full px-4 font-mono text-xs text-zinc-300 transition-all duration-500 hover-blue-medium"
+        className={`hud-corner-brackets hud-interactive-shell hud-glass absolute right-0 top-1/2 flex h-11 w-[min(100%,31rem)] -translate-y-1/2 cursor-pointer items-center gap-3 overflow-hidden rounded-full px-4 font-mono text-xs text-zinc-300 transition-all duration-300 hover-blue-medium ${
+          isOpen ? 'pointer-events-none translate-x-3 opacity-0' : 'opacity-100'
+        }`}
         aria-expanded={isOpen}
         aria-label="System diagnostics"
       >
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
-
-        <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden title={briefingStateText} />
-
-        <span className="flex items-center gap-1">
-          <Cpu className="size-3.5 text-zinc-500" aria-hidden />
-          <span>{formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
-        </span>
-
-        <span className="flex items-center gap-1">
-          <Database className="size-3.5 text-zinc-500" aria-hidden />
-          <span>{formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
-        </span>
-
-        <span className="hidden items-center gap-1 sm:flex">
-          <Clock className="size-3.5 text-zinc-500" aria-hidden />
-          <span className="tabular-nums whitespace-nowrap">{liveTime.time}</span>
+        <span className="hud-inner-lift flex min-w-0 flex-1 items-center gap-3">
+          <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden title={displayPipelineText} />
+          <span className="min-w-0 flex-1 truncate uppercase tracking-[0.16em] text-zinc-300">
+            {displayPipelineText}
+          </span>
+          <CompactMetric
+            label="CPU"
+            value={cpuText}
+            percentage={cpuPctClamped}
+            unavailable={cpuUnavailable}
+            icon={Cpu}
+          />
+          <CompactMetric
+            label="RAM"
+            value={ramText}
+            percentage={ramPctClamped}
+            unavailable={ramUnavailable}
+            icon={Database}
+          />
+          <span className="hidden items-center gap-1 sm:flex">
+            <Clock className="size-3.5 text-zinc-500" aria-hidden />
+            <span className="tabular-nums whitespace-nowrap">{liveTime.time}</span>
+          </span>
         </span>
       </div>
 
-      {/* Expanded detail dropdown */}
       <div
-        className={`hud-corner-brackets hud-glass absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-white/10 p-4 shadow-2xl transition-all duration-300 ${
-          isOpen ? 'pointer-events-auto scale-100 opacity-100' : 'pointer-events-none scale-95 opacity-0'
+        className={`hud-corner-brackets hud-glass hud-glass-solid absolute right-0 top-0 z-50 flex h-16 w-full min-w-0 origin-right items-center gap-4 overflow-hidden rounded-2xl border border-white/10 px-4 shadow-2xl transition-all duration-300 ${
+          isOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none translate-x-4 opacity-0'
         }`}
         role="dialog"
         aria-label="Full system diagnostics"
@@ -323,132 +421,81 @@ export function SystemDiagnostics({
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
 
-        <p className="mb-3 font-mono text-[10px] font-extrabold uppercase tracking-wider text-[#0F4DB8]">
-          System Status
-        </p>
+        <div className="flex min-w-[9rem] flex-col gap-1 font-mono">
+          <p className="truncate text-[9px] font-extrabold uppercase tracking-[0.24em] text-[#7EB3FF]">
+            System Status
+          </p>
+          <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-300">
+            <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden />
+            <span className="truncate">{displayPipelineText}</span>
+          </div>
+        </div>
 
-        <div className="space-y-3 font-mono text-xs text-zinc-300">
-          {/* Internet */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-zinc-500">
-              <Globe className="size-3.5 shrink-0" aria-hidden />
-              Internet
+        <div className="hidden min-w-[8rem] grid-cols-1 gap-1.5 font-mono text-[10px] text-zinc-300 sm:grid">
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-zinc-500">
+              <Globe className="size-3.5" aria-hidden />
+              Net
             </span>
             <span className="flex items-center gap-1.5">
               <span className={`hud-led size-1.5 ${isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}`} aria-hidden />
-              {isNetworkConnected ? 'Connected' : 'Offline'}
+              {isNetworkConnected ? 'Online' : 'Offline'}
             </span>
-          </div>
+          </span>
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-zinc-500">
+              <Activity className="size-3.5" aria-hidden />
+              Last
+            </span>
+            <span className="truncate text-zinc-300">{lastBriefingTime || 'Standby'}</span>
+          </span>
+        </div>
 
-          {/* Briefing */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-zinc-500">
-              <Activity className="size-3.5 shrink-0" aria-hidden />
-              Briefing
-            </span>
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 lg:grid-cols-3">
+          <DetailMetric
+            label="CPU"
+            value={cpuText}
+            detail={formatCpuFreq(diagnostics.cpu_freq)}
+            percentage={cpuPctClamped}
+            unavailable={cpuUnavailable}
+            icon={Cpu}
+          />
+          <DetailMetric
+            label="RAM"
+            value={ramText}
+            detail={formatGbRatio(diagnostics.ram_used, diagnostics.ram_total)}
+            percentage={ramPctClamped}
+            unavailable={ramUnavailable}
+            icon={Database}
+          />
+          <div className="hidden lg:block">
+            <DetailMetric
+              label="Disk"
+              value={diskText}
+              detail={formatGbRatio(diagnostics.disk_used, diagnostics.disk_total)}
+              percentage={diskPctClamped}
+              unavailable={diskUnavailable}
+              icon={HardDrive}
+            />
+          </div>
+        </div>
+
+        <div className="hidden w-28 shrink-0 flex-col gap-1 font-mono md:flex">
+          <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-500">
             <span className="flex items-center gap-1.5">
-              <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden />
-              {briefingStateText}
+              <RotateCw className="size-3.5 animate-[spin_12s_linear_infinite]" aria-hidden />
+              Sync
+            </span>
+            <span className={`${syncColorText} font-bold`}>
+              {status === 'success' ? `${confidenceScore}%` : '--%'}
             </span>
           </div>
-
-          {/* Last Briefing Time */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-zinc-500">
-              <Clock className="size-3.5 shrink-0" aria-hidden />
-              Last Briefing
-            </span>
-            <span className="text-zinc-300">{lastBriefingTime || 'Standby'}</span>
-          </div>
-
-          {/* Sync / Confidence */}
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-zinc-500">
-                <RotateCw className="size-3.5 shrink-0 animate-[spin_12s_linear_infinite]" aria-hidden />
-                Sync
-              </span>
-              {status === 'success' ? (
-                <span className={`${syncColorText} font-bold`}>{confidenceScore}%</span>
-              ) : (
-                <span className="font-bold text-zinc-500">—%</span>
-              )}
-            </div>
-            <div className="mt-1.5 flex items-center gap-0.5">{syncBlocks}</div>
-            {failedConnectors.length > 0 ? (
-              <ul className="mt-1.5 space-y-0.5 text-[10px] text-amber-300/90">
-                {failedConnectors.map((connectorId) => (
-                  <li key={connectorId}>{formatConnectorLabel(connectorId)} unavailable</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-
-          <div className="hud-header-divider" aria-hidden />
-
-          {/* CPU */}
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-zinc-500">
-                <Cpu className="size-3.5 shrink-0" aria-hidden />
-                CPU
-              </span>
-              <span>{formatPercentage(resolvedDiagnostics.cpu, isInitializing)} · {formatCpuFreq(resolvedDiagnostics.cpu_freq)}</span>
-            </div>
-            <div className="relative mt-1.5 h-2 overflow-hidden rounded-full border border-white/5 bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(cpuPctClamped)}`}
-                style={{ width: `${cpuPctClamped}%` }}
-              />
-            </div>
-          </div>
-
-          {/* RAM */}
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-zinc-500">
-                <Database className="size-3.5 shrink-0" aria-hidden />
-                RAM
-              </span>
-              <span>{formatGbRatio(resolvedDiagnostics.ram_used, resolvedDiagnostics.ram_total)}</span>
-            </div>
-            <div className="relative mt-1.5 h-2 overflow-hidden rounded-full border border-white/5 bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(ramPctClamped)}`}
-                style={{ width: `${ramPctClamped}%` }}
-              />
-            </div>
-          </div>
-
-          {/* DISK */}
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-zinc-500">
-                <HardDrive className="size-3.5 shrink-0" aria-hidden />
-                Disk
-              </span>
-              <span>{formatGbRatio(resolvedDiagnostics.disk_used, resolvedDiagnostics.disk_total)}</span>
-            </div>
-            <div className="relative mt-1.5 h-2 overflow-hidden rounded-full border border-white/5 bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(diskPctClamped)}`}
-                style={{ width: `${diskPctClamped}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="hud-header-divider" aria-hidden />
-
-          {/* Time */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-zinc-500">
-              <Clock className="size-3.5 shrink-0" aria-hidden />
-              Time
-            </span>
-            <span className="tabular-nums text-zinc-300">
-              {liveTime.date} · {liveTime.time}
-            </span>
-          </div>
+          <div className="flex items-center gap-0.5">{syncBlocks}</div>
+          <p className="truncate text-[9px] text-amber-300/80">
+            {failedConnectors.length > 0
+              ? failedConnectors.map(formatConnectorLabel).join(', ')
+              : `${liveTime.date} ${liveTime.time}`}
+          </p>
         </div>
       </div>
     </div>

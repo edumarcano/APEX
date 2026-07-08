@@ -425,9 +425,9 @@ export default function App(): ReactElement {
       </div>
 
       <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="relative pointer-events-none flex flex-nowrap justify-between gap-4 w-full select-none shrink-0 mb-4 h-11 items-center">
+        <header className="relative pointer-events-none flex h-16 w-full shrink-0 select-none flex-nowrap items-center justify-between gap-4 mb-4">
           {/* Identity Pill (Left) */}
-          <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
+          <div className="hud-interactive-shell hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
             <ApexLogo
               step={activeStep}
               status={status}
@@ -464,7 +464,7 @@ export default function App(): ReactElement {
           </div>
 
           {/* Diagnostics Pill (Right) — absorbs the former Last Briefing capsule into its expanded dropdown */}
-          <div className="flex items-center shrink-0 pointer-events-auto">
+          <div className="flex h-16 items-center shrink-0 pointer-events-auto">
             <SystemDiagnostics
               diagnostics={diagnostics}
               diagnosticsStatus={diagnosticsStatus}
@@ -473,6 +473,7 @@ export default function App(): ReactElement {
               status={status}
               confidenceScore={confidenceScore}
               pipelineStep={activeStep}
+              pipelineLabel={pipelineState?.label ?? null}
               failedConnectors={failedConnectors}
               lastBriefingTime={lastBriefingTime}
             />
@@ -480,7 +481,7 @@ export default function App(): ReactElement {
 
           {/* VocalOrb Island — absolutely centered on the header's own box so its position
               never depends on (or is thrown off by) the width of the pills either side. */}
-          <div className="hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div className="hud-interactive-shell hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
             <VocalOrb
               isSpeaking={isSpeaking}
               activeTtsEngine={resolvedTtsEngine}
@@ -696,15 +697,18 @@ export default function App(): ReactElement {
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (
-                    <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                      No pending reminders.
-                    </p>
+                    <div className="rounded-md border border-white/[0.06] bg-zinc-950/20 px-3 py-2">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                        No pending reminders
+                      </p>
+                    </div>
                   ) : (
-                    <ul className="list-fade-mask min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-                      {activeReminders.map((reminder) => (
+                    <ul className="list-fade-mask min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
+                      {activeReminders.map((reminder, index) => (
                         <ReminderListRow
                           key={reminder.id}
                           reminder={reminder}
+                          index={index}
                           onMarkRead={handleMarkReminderRead}
                         />
                       ))}

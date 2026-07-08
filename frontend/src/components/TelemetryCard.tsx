@@ -310,7 +310,7 @@ export function TelemetryCard({
       : null
 
   const sectionClassName = [
-    'hud-corner-brackets relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
+    'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
     isCompact
       ? 'h-auto min-h-0 shrink-0 flex-none flex-row items-center px-3 py-2'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
@@ -375,7 +375,7 @@ export function TelemetryCard({
         </div>
       ) : null}
       {isCompact ? (
-        <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
+        <div className="hud-inner-lift relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
           <span className="hud-icon-badge size-6 shrink-0">
             <Icon
               className="size-3.5 text-[color:var(--hud-accent)]"
@@ -390,7 +390,7 @@ export function TelemetryCard({
             {title}
           </span>
           {compactValue != null ? (
-            <span className="shrink-0 font-mono text-xs uppercase tracking-wide text-zinc-300">
+            <span className="min-w-0 max-w-[52%] shrink truncate text-right font-mono text-xs uppercase tracking-wide text-zinc-300">
               {compactValue}
             </span>
           ) : null}
@@ -404,7 +404,7 @@ export function TelemetryCard({
           ) : null}
         </div>
       ) : (
-      <div className="relative z-10 flex h-full min-h-0 flex-col">
+      <div className="hud-inner-lift relative z-10 flex h-full min-h-0 flex-col">
       {showHeader ? (
         <header className="mb-3 shrink-0">
           <div className="flex min-h-9 items-center gap-2.5">

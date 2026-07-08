@@ -5,26 +5,21 @@ import type { ActiveReminder } from '../types/telemetry'
 
 type ReminderListRowProps = {
   reminder: ActiveReminder
+  index: number
   onMarkRead: (id: number) => void
 }
 
 export function ReminderListRow({
   reminder,
+  index,
   onMarkRead,
 }: ReminderListRowProps): ReactElement {
   const [isDismissing, setIsDismissing] = useState(false)
 
-const handleComplete = useCallback((): void => {
+  const handleComplete = useCallback((): void => {
     if (isDismissing) return
     setIsDismissing(true)
-
-    // Tell the database to mark it read before the animation finishes
-    fetch('http://127.0.0.1:8000/api/v1/reminders/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [reminder.id] })
-    }).catch(() => {})
-}, [isDismissing, reminder.id])
+  }, [isDismissing])
 
   const handleTransitionEnd = useCallback(
     (event: React.TransitionEvent<HTMLLIElement>): void => {
@@ -37,24 +32,27 @@ const handleComplete = useCallback((): void => {
   return (
     <li
       className={[
-        'overflow-hidden rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm transition-all duration-300 ease-in-out',
-        isDismissing ? 'max-h-0 opacity-0 py-0' : 'max-h-24 opacity-100',
+        'group overflow-hidden rounded-md border border-white/[0.06] bg-zinc-950/20 transition-all duration-300 ease-in-out hover:border-[#0F4DB8]/30 hover:bg-[#0F4DB8]/[0.06]',
+        isDismissing ? 'max-h-0 opacity-0 py-0' : 'max-h-16 opacity-100',
       ].join(' ')}
       onTransitionEnd={handleTransitionEnd}
     >
-      <div className="flex items-start gap-3">
-        <p className="min-w-0 flex-1 break-words text-sm leading-relaxed text-[color:var(--hud-text)]">
+      <div className="flex items-center gap-3 px-3 py-2">
+        <span className="hud-log-index w-5 pt-0">
+          {String(index).padStart(2, '0')}
+        </span>
+        <p className="min-w-0 flex-1 truncate text-sm leading-relaxed text-zinc-200">
           {reminder.note}
         </p>
         <button
           type="button"
           onClick={handleComplete}
           disabled={isDismissing}
-          className="group flex size-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--hud-accent)]/60 bg-black/30 text-[color:var(--hud-accent)] transition-colors hover:border-[color:var(--hud-accent)] hover:bg-[color:var(--hud-accent)]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:pointer-events-none"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-black/20 text-zinc-500 transition-colors hover:border-[#39FF88]/40 hover:bg-[#39FF88]/10 hover:text-[#39FF88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:pointer-events-none"
           aria-label={`Mark reminder ${reminder.id} as read`}
         >
           <Check
-            className="size-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+            className="size-4"
             strokeWidth={2.25}
             aria-hidden
           />
