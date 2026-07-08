@@ -621,7 +621,7 @@ export function ConsoleTray({
       <div
         className={`console-tray-panel flex min-h-0 flex-col overflow-hidden border-t transition-[max-height,opacity] ${
           isExpanded
-            ? 'max-h-[68vh] border-white/10 opacity-100'
+            ? 'max-h-[min(44vh,28rem)] border-white/10 opacity-100'
             : 'max-h-0 border-transparent opacity-0'
         }`}
         aria-hidden={!isExpanded}

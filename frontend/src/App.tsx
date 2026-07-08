@@ -221,7 +221,9 @@ export default function App(): ReactElement {
   const rightWingActiveClasses =
     'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const centerColumnDormantClasses = 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = `h-full min-h-0 flex flex-col ${isConsoleCompact ? 'justify-start pt-2 xl:pt-4' : 'justify-center'} xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
+  const centerColumnActiveClasses = `h-full min-h-0 flex flex-col ${
+    isConsoleCompact ? 'justify-center pt-0' : 'justify-start pt-0'
+  } xl:max-w-[33.33%] xl:flex-1 xl:min-h-0`
 
   // The logo is always visible and full-size — it is never displaced by the
   // assistant console, which lives in its own docked tray below. The insights
@@ -231,14 +233,22 @@ export default function App(): ReactElement {
   const digestWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
     showDigest
-      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-4 overflow-visible'
+      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-3 xl:mb-4 overflow-visible'
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
   const largeLogoWrapperClass = [
     'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center justify-center opacity-100 scale-100',
-    isDormant ? 'h-64 xl:h-auto xl:flex-1' : 'h-64 xl:h-72',
+    isDormant
+      ? 'h-64 xl:h-auto xl:flex-1'
+      : isConsoleCompact
+        ? 'h-36 sm:h-40 xl:h-44'
+        : 'h-72 xl:h-80',
   ].join(' ')
+
+  const logoSizeClass = isConsoleCompact
+    ? 'h-28 w-auto sm:h-32 xl:h-36'
+    : 'h-48 w-auto sm:h-56 xl:h-64'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -563,7 +573,7 @@ export default function App(): ReactElement {
                       status={status}
                       isSpeaking={isSpeaking}
                       reminderPulseCount={reminderPulseCount}
-                      className="h-44 w-auto sm:h-52 xl:h-60"
+                      className={logoSizeClass}
                     />
                   </div>
                   <div

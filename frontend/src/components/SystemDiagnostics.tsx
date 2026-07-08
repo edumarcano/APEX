@@ -84,6 +84,33 @@ function getMicroBarColorClass(percentage: number): string {
   return 'bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
 }
 
+function resolvePipelineLedClass({
+  status,
+  pipelineStep,
+  isSpeaking,
+}: {
+  status: 'idle' | 'loading' | 'success' | 'error'
+  pipelineStep: number | null
+  isSpeaking: boolean
+}): string {
+  if (status === 'error') {
+    return 'bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.85)]'
+  }
+  if (pipelineStep === 4 || isSpeaking) {
+    return 'bg-[#FBBF24] shadow-[0_0_8px_rgba(251,191,36,0.85)]'
+  }
+  if (pipelineStep === 3) {
+    return 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.85)]'
+  }
+  if (pipelineStep === 1 || pipelineStep === 2 || status === 'loading') {
+    return 'bg-[#39FF88] shadow-[0_0_8px_rgba(57,255,136,0.85)]'
+  }
+  if (status === 'success') {
+    return 'bg-[#0F4DB8] shadow-[0_0_8px_rgba(15,77,184,0.85)]'
+  }
+  return 'bg-zinc-600 shadow-none'
+}
+
 const EQUALIZER_HEIGHTS: readonly string[] = [
   'h-[6px]',
   'h-[10px]',
@@ -146,9 +173,9 @@ function CompactMetric({
   return (
     <span className="hidden min-w-0 items-center gap-1.5 md:flex">
       <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
-      <span className="w-8 shrink-0 text-zinc-500">{label}</span>
-      <span className="w-9 shrink-0 tabular-nums text-zinc-300">{value}</span>
-      <span className="w-14 shrink-0">
+      <span className="w-7 shrink-0 text-[9px] text-zinc-500">{label}</span>
+      <span className="w-8 shrink-0 tabular-nums text-[10px] text-zinc-300">{value}</span>
+      <span className="w-12 shrink-0">
         <MetricBar percentage={percentage} unavailable={unavailable} />
       </span>
     </span>
@@ -172,15 +199,15 @@ function DetailMetric({
 }): ReactElement {
   return (
     <div className="min-w-0">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-zinc-500">
-          <Icon className="size-3.5 shrink-0" aria-hidden />
+      <div className="mb-1 flex items-center justify-between gap-2 text-[9px]">
+        <span className="flex items-center gap-1 text-zinc-500">
+          <Icon className="size-3 shrink-0" aria-hidden />
           {label}
         </span>
-        <span className="tabular-nums text-zinc-300">{value}</span>
+        <span className="tabular-nums text-[10px] text-zinc-300">{value}</span>
       </div>
       <MetricBar percentage={percentage} unavailable={unavailable} />
-      <p className="mt-1 truncate text-[10px] text-zinc-600">{detail}</p>
+      <p className="mt-1 truncate text-[9px] text-zinc-600">{detail}</p>
     </div>
   )
 }
@@ -288,29 +315,27 @@ export function SystemDiagnostics({
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
   let briefingStateText: string
-  let briefingLedClass: string
 
   if (status === 'error') {
     briefingStateText = 'Fault'
-    briefingLedClass = 'hud-led--error'
   } else if (isPipelinePolling && (pipelineStep === 1 || pipelineStep === 2)) {
     briefingStateText = 'Collecting Data'
-    briefingLedClass = 'hud-led--live'
   } else if (isPipelinePolling && pipelineStep === 3) {
     briefingStateText = 'Synthesizing'
-    briefingLedClass = 'hud-led--live'
   } else if (pipelineStep === 4 || isSpeaking) {
     briefingStateText = 'Delivering'
-    briefingLedClass = 'hud-led--stale'
   } else if (status === 'success' && !isSpeaking) {
     briefingStateText = 'Complete'
-    briefingLedClass = 'hud-led--live'
   } else {
     briefingStateText = 'Standby'
-    briefingLedClass = 'hud-led--loading'
   }
 
   const displayPipelineText = pipelineLabel?.trim() || briefingStateText
+  const pipelineLedClass = resolvePipelineLedClass({
+    status,
+    pipelineStep,
+    isSpeaking,
+  })
 
   let syncColorText = 'text-zinc-500'
   let syncColorBar = 'bg-zinc-700'
@@ -385,7 +410,7 @@ export function SystemDiagnostics({
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
         <span className="hud-inner-lift flex min-w-0 flex-1 items-center gap-3">
-          <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden title={displayPipelineText} />
+          <span className={`hud-led size-1.5 ${pipelineLedClass}`} aria-hidden title={displayPipelineText} />
           <span className="min-w-0 flex-1 truncate uppercase tracking-[0.16em] text-zinc-300">
             {displayPipelineText}
           </span>
@@ -411,7 +436,7 @@ export function SystemDiagnostics({
       </div>
 
       <div
-        className={`hud-corner-brackets hud-glass hud-glass-solid absolute right-0 top-0 z-50 flex h-16 w-full min-w-0 origin-right items-center gap-4 overflow-hidden rounded-2xl border border-white/10 px-4 shadow-2xl transition-all duration-300 ${
+        className={`hud-corner-brackets hud-glass hud-glass-solid absolute right-0 top-0 z-50 flex h-16 w-full min-w-0 origin-right items-center gap-3 overflow-hidden rounded-2xl border border-white/10 px-4 shadow-2xl transition-all duration-300 ${
           isOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none translate-x-4 opacity-0'
         }`}
         role="dialog"
@@ -421,17 +446,17 @@ export function SystemDiagnostics({
         <span className="hud-corner-bl" aria-hidden />
         <span className="hud-corner-br" aria-hidden />
 
-        <div className="flex min-w-[9rem] flex-col gap-1 font-mono">
+        <div className="flex min-w-[8.5rem] flex-col gap-1 font-mono">
           <p className="truncate text-[9px] font-extrabold uppercase tracking-[0.24em] text-[#7EB3FF]">
             System Status
           </p>
           <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-300">
-            <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden />
+            <span className={`hud-led size-1.5 ${pipelineLedClass}`} aria-hidden />
             <span className="truncate">{displayPipelineText}</span>
           </div>
         </div>
 
-        <div className="hidden min-w-[8rem] grid-cols-1 gap-1.5 font-mono text-[10px] text-zinc-300 sm:grid">
+        <div className="hidden min-w-[7.5rem] grid-cols-1 gap-1.5 font-mono text-[10px] text-zinc-300 sm:grid">
           <span className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-zinc-500">
               <Globe className="size-3.5" aria-hidden />
@@ -451,7 +476,7 @@ export function SystemDiagnostics({
           </span>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 lg:grid-cols-3">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2.5 lg:grid-cols-3">
           <DetailMetric
             label="CPU"
             value={cpuText}
@@ -480,18 +505,18 @@ export function SystemDiagnostics({
           </div>
         </div>
 
-        <div className="hidden w-28 shrink-0 flex-col gap-1 font-mono md:flex">
-          <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-500">
+        <div className="hidden w-40 shrink-0 flex-col gap-1 font-mono md:flex">
+          <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-500">
             <span className="flex items-center gap-1.5">
               <RotateCw className="size-3.5 animate-[spin_12s_linear_infinite]" aria-hidden />
-              Sync
+              Sync Health
             </span>
             <span className={`${syncColorText} font-bold`}>
               {status === 'success' ? `${confidenceScore}%` : '--%'}
             </span>
           </div>
           <div className="flex items-center gap-0.5">{syncBlocks}</div>
-          <p className="truncate text-[9px] text-amber-300/80">
+          <p className="truncate text-[9px] leading-tight text-amber-300/80">
             {failedConnectors.length > 0
               ? failedConnectors.map(formatConnectorLabel).join(', ')
               : `${liveTime.date} ${liveTime.time}`}
