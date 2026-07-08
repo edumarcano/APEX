@@ -1072,11 +1072,9 @@ def get_market_snapshot() -> MarketResponse:
         return MarketResponse.model_validate(payload)
     except Exception as exc:
         _LOGGER.exception("Market snapshot endpoint failed")
-        return MarketResponse(
-            status="unavailable",
-            cooldown_active=False,
-            cooldown_remaining_seconds=0,
-            tickers=[],
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market snapshot unavailable.",
         )
 
 

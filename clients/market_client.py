@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import random
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
@@ -14,10 +13,6 @@ from typing import Any, Literal
 
 import requests
 from dotenv import load_dotenv
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from core.config import DEMO_MODE
 
@@ -292,7 +287,7 @@ def _is_simulation_mode() -> bool:
 def _simulate_sparkline(current_price: float, *, seed_ts: float) -> list[float]:
     """Build seven daily closes trending smoothly toward the current mock price."""
     sparkline: list[float] = []
-    for day_offset in range(6, -1, -1):
+    for day_offset in range(0, 7):
         t = seed_ts - day_offset * 86_400
         drift = math.sin(t / 86_400.0) * current_price * 0.012
         retrace = current_price * (1.0 - day_offset * 0.004)
@@ -303,13 +298,16 @@ def _simulate_sparkline(current_price: float, *, seed_ts: float) -> list[float]:
 
 
 def _simulate_ticker(symbol: str, now: datetime) -> dict[str, Any]:
-    """Generate one dynamic demo ticker with sine-wave and jitter variation."""
+    """Generate one dynamic demo ticker with sine-wave variation."""
     base = _DEMO_BASE_PRICES.get(symbol, 100.0)
     t = now.timestamp()
-    wave = math.sin(t / 45.0) * base * 0.008
-    jitter = random.uniform(-base * 0.002, base * 0.002)
-    price = round(base + wave + jitter, 2)
-    prior = round(price - wave - jitter * 0.5, 2)
+
+    wave_now = math.sin(t / 45.0) * base * 0.008
+    price = round(base + wave_now, 2)
+
+    wave_prior = math.sin((t - 86_400) / 45.0) * base * 0.008
+    prior = round(base + wave_prior, 2)
+
     change = round(price - prior, 2)
     change_percent = round((change / prior) * 100.0, 2) if prior else 0.0
     now_iso = _iso_utc(now)
