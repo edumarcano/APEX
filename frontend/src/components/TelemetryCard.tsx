@@ -280,6 +280,10 @@ export type TelemetryCardProps = {
   weatherCondition?: WeatherConditionArchetype | null
   /** Module status LED communicating this card's data freshness, mirroring the unified pipeline state. */
   ledState?: TelemetryLedState
+  /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
+  isCompact?: boolean
+  /** Right-aligned summary content shown only in the compact row. */
+  compactValue?: ReactNode
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -290,6 +294,8 @@ export function TelemetryCard({
   f1TelemetryText,
   weatherCondition,
   ledState = 'none',
+  isCompact = false,
+  compactValue,
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
@@ -304,7 +310,10 @@ export function TelemetryCard({
       : null
 
   const sectionClassName = [
-    'hud-corner-brackets relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out',
+    'hud-corner-brackets relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
+    isCompact
+      ? 'h-auto min-h-0 shrink-0 flex-none flex-row items-center px-3 py-2'
+      : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
     resolveCardHoverClass(title),
     className,
   ]
@@ -352,7 +361,7 @@ export function TelemetryCard({
     >
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
-      {weatherGlow ? (
+      {weatherGlow && !isCompact ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
           <div
             className={[
@@ -365,6 +374,36 @@ export function TelemetryCard({
           />
         </div>
       ) : null}
+      {isCompact ? (
+        <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
+          <span className="hud-icon-badge size-6 shrink-0">
+            <Icon
+              className="size-3.5 text-[color:var(--hud-accent)]"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+          </span>
+          <span
+            id={headingId}
+            className="min-w-0 flex-1 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]"
+          >
+            {title}
+          </span>
+          {compactValue != null ? (
+            <span className="shrink-0 font-mono text-xs uppercase tracking-wide text-zinc-300">
+              {compactValue}
+            </span>
+          ) : null}
+          {ledState !== 'none' ? (
+            <span
+              className={LED_STATE_CLASS[ledState]}
+              role="status"
+              aria-label={LED_STATE_LABEL[ledState]}
+              title={LED_STATE_LABEL[ledState]}
+            />
+          ) : null}
+        </div>
+      ) : (
       <div className="relative z-10 flex h-full min-h-0 flex-col">
       {showHeader ? (
         <header className="mb-3 shrink-0">
@@ -465,6 +504,7 @@ export function TelemetryCard({
         </div>
       </div>
       </div>
+      )}
     </section>
   )
 }

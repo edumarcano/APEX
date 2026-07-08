@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import {
   Globe,
@@ -98,6 +98,11 @@ interface SystemDiagnosticsProps {
   failedConnectors?: string[]
 }
 
+/**
+ * Compact header pill surfacing the three signals that matter at a glance
+ * (briefing status, CPU, RAM), expanding into a full detail dropdown on
+ * hover or click (internet, sync/confidence, disk, live clock).
+ */
 export function SystemDiagnostics({
   diagnostics,
   diagnosticsStatus,
@@ -109,11 +114,10 @@ export function SystemDiagnostics({
   failedConnectors = [],
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
-  const [isSyncHovered, setIsSyncHovered] = useState(false)
-  const [isCpuHovered, setIsCpuHovered] = useState(false)
-  const [isRamHovered, setIsRamHovered] = useState(false)
-  const [isDiskHovered, setIsDiskHovered] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+  const [isPinned, setIsPinned] = useState(false)
   const [liveTime, setLiveTime] = useState({ date: '', time: '' })
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const updateClock = () => {
@@ -150,51 +154,61 @@ export function SystemDiagnostics({
     }
   }, [])
 
+  // Close the pinned dropdown on outside click (touch/accessibility path).
+  useEffect(() => {
+    if (!isPinned) return
+
+    const handleOutsideClick = (event: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsPinned(false)
+        setIsOpen(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      window.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [isPinned])
+
+  const handleToggleClick = (): void => {
+    setIsPinned((prev) => {
+      const next = !prev
+      setIsOpen(next)
+      return next
+    })
+  }
+
   const resolvedDiagnostics = diagnostics
   const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
 
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
 
-  // Segment 2 (Briefing Status) State Resolution
+  // Segment: Briefing Status resolution
   let briefingStateText: string
-  let briefingDot: ReactElement
+  let briefingLedClass: string
 
   if (status === 'error') {
     briefingStateText = 'Fault'
-    briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-    )
-  } else if (
-    isPipelinePolling &&
-    (pipelineStep === 1 || pipelineStep === 2)
-  ) {
+    briefingLedClass = 'hud-led--error'
+  } else if (isPipelinePolling && (pipelineStep === 1 || pipelineStep === 2)) {
     briefingStateText = 'Collecting Data'
-    briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
-    )
+    briefingLedClass = 'hud-led--live'
   } else if (isPipelinePolling && pipelineStep === 3) {
     briefingStateText = 'Synthesizing'
-    briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-[#A855F7] shadow-[0_0_8px_rgba(168,85,247,0.8)] animate-pulse" />
-    )
+    briefingLedClass = 'hud-led--live'
   } else if (pipelineStep === 4 || isSpeaking) {
     briefingStateText = 'Delivering'
-    briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-gold-glow" />
-    )
+    briefingLedClass = 'hud-led--stale'
   } else if (status === 'success' && !isSpeaking) {
     briefingStateText = 'Complete'
-    briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-    )
+    briefingLedClass = 'hud-led--live'
   } else {
     briefingStateText = 'Standby'
-    briefingDot = (
-      <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-    )
+    briefingLedClass = 'hud-led--loading'
   }
 
-  // Segment 3: Sync Health Dynamic 3-tier Adaptive Color Schemes
+  // Segment: Sync Health dynamic 3-tier adaptive color schemes
   let syncColorText = 'text-zinc-500'
   let syncColorBar = 'bg-zinc-700'
   let syncColorShadow = ''
@@ -232,7 +246,7 @@ export function SystemDiagnostics({
     )
   })
 
-  // Hardware Resource Clamped Percentages
+  // Hardware resource clamped percentages
   const cpuVal = resolvedDiagnostics.cpu ?? 0
   const cpuUnavailable = isMetricUnavailable(resolvedDiagnostics.cpu, isInitializing)
   const cpuPctClamped = cpuUnavailable ? 0 : clampPercentage(cpuVal)
@@ -246,206 +260,169 @@ export function SystemDiagnostics({
   const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
 
   return (
-    <footer className="hud-corner-brackets relative w-full max-w-5xl mx-auto xl:max-w-5xl xl:mx-auto rounded-full px-4 sm:px-6 py-2.5 bg-zinc-950/40 border border-white/5 backdrop-blur-md shadow-2xl select-none z-40 transition-all duration-700 ease-in-out hover-blue-medium">
-      <span className="hud-corner-bl" aria-hidden />
-      <span className="hud-corner-br" aria-hidden />
-      <div className="flex flex-nowrap items-center justify-between gap-2 sm:gap-3 min-w-0 text-xs font-mono text-zinc-400 font-medium">
+    <div
+      ref={containerRef}
+      className="relative shrink-0 pointer-events-auto"
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => {
+        if (!isPinned) setIsOpen(false)
+      }}
+    >
+      {/* Compact trigger pill — CPU / RAM / Briefing status only */}
+      <button
+        type="button"
+        onClick={handleToggleClick}
+        className="hud-corner-brackets hud-glass relative flex h-11 shrink-0 items-center gap-2.5 rounded-full px-3 font-mono text-xs text-zinc-300 transition-all duration-500 hover-blue-medium"
+        aria-expanded={isOpen}
+        aria-label="System diagnostics"
+      >
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
 
-        {/* Segment: Title */}
-        <div className="hidden sm:flex items-center gap-2 shrink-0">
-          <span
-            className={`hud-led size-1.5 ${isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}`}
-            aria-hidden
-          />
-          <span className="text-[#0F4DB8] font-extrabold tracking-wider uppercase text-[10px] sm:text-xs whitespace-nowrap">
-            SYSTEM STATUS
-          </span>
-        </div>
+        <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden title={briefingStateText} />
 
-        {/* Segment: Internet Connection */}
-        <div className="flex items-center gap-2 shrink-0 min-w-0">
-          <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-zinc-400 shrink-0" />
-          <div className="flex flex-col min-w-0">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500 whitespace-nowrap">
+        <span className="hidden items-center gap-1 sm:flex">
+          <Cpu className="size-3.5 text-zinc-500" aria-hidden />
+          <span>{formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
+        </span>
+
+        <span className="flex items-center gap-1">
+          <Database className="size-3.5 text-zinc-500" aria-hidden />
+          <span>{formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
+        </span>
+      </button>
+
+      {/* Expanded detail dropdown */}
+      <div
+        className={`hud-corner-brackets hud-glass absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-white/10 p-4 shadow-2xl transition-all duration-300 ${
+          isOpen ? 'pointer-events-auto scale-100 opacity-100' : 'pointer-events-none scale-95 opacity-0'
+        }`}
+        role="dialog"
+        aria-label="Full system diagnostics"
+        aria-hidden={!isOpen}
+      >
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
+
+        <p className="mb-3 font-mono text-[10px] font-extrabold uppercase tracking-wider text-[#0F4DB8]">
+          System Status
+        </p>
+
+        <div className="space-y-3 font-mono text-xs text-zinc-300">
+          {/* Internet */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-zinc-500">
+              <Globe className="size-3.5 shrink-0" aria-hidden />
               Internet
             </span>
-            <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300 whitespace-nowrap">
-              {isNetworkConnected ? (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#39FF88] shrink-0" />
-                  <span className="text-zinc-200">Connected</span>
-                </>
-              ) : (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#ef4444] shrink-0" />
-                  <span className="text-zinc-400">Offline</span>
-                </>
-              )}
+            <span className="flex items-center gap-1.5">
+              <span className={`hud-led size-1.5 ${isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}`} aria-hidden />
+              {isNetworkConnected ? 'Connected' : 'Offline'}
             </span>
           </div>
-        </div>
 
-        {/* Segment: Briefing Status */}
-        <div className="hidden md:flex items-center gap-2 shrink-0 min-w-0">
-          <Activity className="h-4 w-4 text-zinc-400 shrink-0" />
-          <div className="flex flex-col min-w-0">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500 whitespace-nowrap">
+          {/* Briefing */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-zinc-500">
+              <Activity className="size-3.5 shrink-0" aria-hidden />
               Briefing
             </span>
-            <span className="flex items-center gap-1.5 mt-0.5 text-zinc-300 whitespace-nowrap">
-              {briefingDot}
-              <span>{briefingStateText}</span>
+            <span className="flex items-center gap-1.5">
+              <span className={`hud-led size-1.5 ${briefingLedClass}`} aria-hidden />
+              {briefingStateText}
             </span>
           </div>
-        </div>
 
-        {/* Segment: Sync Health */}
-        <div
-          className="relative hidden lg:flex items-center gap-2 cursor-default shrink-0 min-w-0"
-          onMouseEnter={() => setIsSyncHovered(true)}
-          onMouseLeave={() => setIsSyncHovered(false)}
-        >
-          <RotateCw className="h-4 w-4 text-zinc-400 shrink-0 animate-[spin_12s_linear_infinite]" />
-          <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500 flex justify-between gap-2 whitespace-nowrap">
-              <span>Sync</span>
+          {/* Sync / Confidence */}
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-zinc-500">
+                <RotateCw className="size-3.5 shrink-0 animate-[spin_12s_linear_infinite]" aria-hidden />
+                Sync
+              </span>
               {status === 'success' ? (
                 <span className={`${syncColorText} font-bold`}>{confidenceScore}%</span>
               ) : (
-                <span className="text-zinc-500 font-bold">—%</span>
+                <span className="font-bold text-zinc-500">—%</span>
               )}
-            </span>
-            <div className="flex items-center gap-0.5 h-6">{syncBlocks}</div>
+            </div>
+            <div className="mt-1.5 flex items-center gap-0.5">{syncBlocks}</div>
+            {failedConnectors.length > 0 ? (
+              <ul className="mt-1.5 space-y-0.5 text-[10px] text-amber-300/90">
+                {failedConnectors.map((connectorId) => (
+                  <li key={connectorId}>{formatConnectorLabel(connectorId)} unavailable</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
 
-          {/* Sync Health Tooltip */}
-          {isSyncHovered && (
-            <div
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 rounded-xl border border-white/10 bg-zinc-950/90 p-3 text-xs backdrop-blur-md z-50 text-left"
-              role="tooltip"
-            >
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-                Connector Status
-              </div>
-              {!failedConnectors || failedConnectors.length === 0 ? (
-                <p className="text-emerald-400 font-medium">
-                  All connectors fully functional
-                </p>
-              ) : (
-                <ul className="space-y-1 text-zinc-300">
-                  {failedConnectors.map((connectorId) => (
-                    <li key={connectorId}>
-                      • {formatConnectorLabel(connectorId)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
+          <div className="hud-header-divider" aria-hidden />
 
-        {/* Segment: Hardware Resources */}
-        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink">
           {/* CPU */}
-          <div
-            className="relative flex flex-col gap-1 cursor-default shrink-0"
-            onMouseEnter={() => setIsCpuHovered(true)}
-            onMouseLeave={() => setIsCpuHovered(false)}
-          >
-            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-300 whitespace-nowrap">
-              <Cpu className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-500 shrink-0" />
-              <span>CPU {formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-zinc-500">
+                <Cpu className="size-3.5 shrink-0" aria-hidden />
+                CPU
+              </span>
+              <span>{formatPercentage(resolvedDiagnostics.cpu, isInitializing)} · {formatCpuFreq(resolvedDiagnostics.cpu_freq)}</span>
             </div>
-            <div className="relative w-12 sm:w-14 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
+            <div className="relative mt-1.5 h-2 overflow-hidden rounded-full border border-white/5 bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(cpuPctClamped)}`}
                 style={{ width: `${cpuPctClamped}%` }}
               />
             </div>
-
-            {/* CPU Tooltip */}
-            {isCpuHovered && (
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
-                role="tooltip"
-              >
-                CPU Frequency: {formatCpuFreq(resolvedDiagnostics.cpu_freq)}
-              </div>
-            )}
           </div>
 
           {/* RAM */}
-          <div
-            className="relative flex flex-col gap-1 cursor-default shrink-0"
-            onMouseEnter={() => setIsRamHovered(true)}
-            onMouseLeave={() => setIsRamHovered(false)}
-          >
-            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-300 whitespace-nowrap">
-              <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-500 shrink-0" />
-              <span>RAM {formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-zinc-500">
+                <Database className="size-3.5 shrink-0" aria-hidden />
+                RAM
+              </span>
+              <span>{formatGbRatio(resolvedDiagnostics.ram_used, resolvedDiagnostics.ram_total)}</span>
             </div>
-            <div className="relative w-12 sm:w-14 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
+            <div className="relative mt-1.5 h-2 overflow-hidden rounded-full border border-white/5 bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(ramPctClamped)}`}
                 style={{ width: `${ramPctClamped}%` }}
               />
             </div>
-
-            {/* RAM Tooltip */}
-            {isRamHovered && (
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
-                role="tooltip"
-              >
-                RAM Allocation: {formatGbRatio(resolvedDiagnostics.ram_used, resolvedDiagnostics.ram_total)}
-              </div>
-            )}
           </div>
 
           {/* DISK */}
-          <div
-            className="relative flex flex-col gap-1 cursor-default shrink-0"
-            onMouseEnter={() => setIsDiskHovered(true)}
-            onMouseLeave={() => setIsDiskHovered(false)}
-          >
-            <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-300 whitespace-nowrap">
-              <HardDrive className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-500 shrink-0" />
-              <span>DISK {formatPercentage(resolvedDiagnostics.disk, isInitializing)}</span>
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-zinc-500">
+                <HardDrive className="size-3.5 shrink-0" aria-hidden />
+                Disk
+              </span>
+              <span>{formatGbRatio(resolvedDiagnostics.disk_used, resolvedDiagnostics.disk_total)}</span>
             </div>
-            <div className="relative w-12 sm:w-14 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
+            <div className="relative mt-1.5 h-2 overflow-hidden rounded-full border border-white/5 bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(diskPctClamped)}`}
                 style={{ width: `${diskPctClamped}%` }}
               />
             </div>
-
-            {/* DISK Tooltip */}
-            {isDiskHovered && (
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-zinc-950/90 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50"
-                role="tooltip"
-              >
-                DISK Allocation: {formatGbRatio(resolvedDiagnostics.disk_used, resolvedDiagnostics.disk_total)}
-              </div>
-            )}
           </div>
-        </div>
 
-        {/* Segment: System Time */}
-        <div className="flex items-center gap-2 shrink-0 pl-1">
-          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-zinc-400 shrink-0" />
-          <div className="flex flex-col shrink-0">
-            <span className="text-[10px] tracking-wider uppercase text-zinc-500 whitespace-nowrap">
+          <div className="hud-header-divider" aria-hidden />
+
+          {/* Time */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-zinc-500">
+              <Clock className="size-3.5 shrink-0" aria-hidden />
               Time
             </span>
-            <div className="mt-0.5 font-mono tabular-nums leading-tight text-[10px] sm:text-[11px] text-zinc-300">
-              <span className="hidden xl:block whitespace-nowrap">{liveTime.date}</span>
-              <span className="whitespace-nowrap">{liveTime.time}</span>
-            </div>
+            <span className="tabular-nums text-zinc-300">
+              {liveTime.date} · {liveTime.time}
+            </span>
           </div>
         </div>
-
       </div>
-    </footer>
+    </div>
   )
 }

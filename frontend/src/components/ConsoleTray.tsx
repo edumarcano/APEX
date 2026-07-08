@@ -12,7 +12,6 @@ import {
   useRef,
   type ReactElement,
 } from 'react'
-import { createPortal } from 'react-dom'
 
 import { type AgentMessage, type ToolTraceItem } from '../hooks/useApexAssistant'
 import { type AgentProfileStatus, type AssistantProfile } from '../types/telemetry'
@@ -449,8 +448,11 @@ function BriefingTabContent({
 
 /**
  * Bottom console tray: a slim always-docked bar (tabs + AskApex input) that
- * slides up into a fixed overlay drawer when expanded. Never reflows the
- * bento grid or the always-visible reactive logo above it.
+ * expands inline (no overlay/backdrop) via a max-height transition. Because
+ * it lives in normal document flow as a flex sibling of the bento body, its
+ * growth naturally compresses the body row above it — the wings/digest
+ * switch to their compact renderings and the logo (fixed size, unaffected)
+ * visually rises as it re-centers within the shorter column.
  */
 export function ConsoleTray({
   isExpanded,
@@ -476,10 +478,6 @@ export function ConsoleTray({
 }: ConsoleTrayProps): ReactElement {
   const handleExpand = useCallback((): void => {
     setExpanded(true)
-  }, [setExpanded])
-
-  const handleMinimize = useCallback((): void => {
-    setExpanded(false)
   }, [setExpanded])
 
   const handleToggle = useCallback((): void => {
@@ -555,22 +553,23 @@ export function ConsoleTray({
   )
 
   return (
-    <>
-      {/* Collapsed docked bar — stays in normal document flow, never displaces the logo/wings above it */}
-      <section
-        className="hud-corner-brackets hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 items-center gap-3 rounded-2xl border border-white/10 px-3 py-2.5 sm:px-4"
-        data-slot="console-tray-collapsed"
-        aria-label="Assistant console"
-      >
-        <span className="hud-corner-bl" aria-hidden />
-        <span className="hud-corner-br" aria-hidden />
+    <section
+      className="hud-corner-brackets hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10"
+      data-slot="console-tray"
+      aria-label="Assistant console"
+    >
+      <span className="hud-corner-bl" aria-hidden />
+      <span className="hud-corner-br" aria-hidden />
 
+      {/* Persistent docked row — always in normal document flow, never displaces the logo/wings above it */}
+      <div className="flex w-full shrink-0 items-center gap-3 px-3 py-2.5 sm:px-4">
         {tabs}
 
         <div
-          className="min-w-0 flex-1"
+          className={`min-w-0 flex-1 transition-opacity duration-300 ${isExpanded ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
           onClick={handleExpand}
           onFocusCapture={handleExpand}
+          aria-hidden={isExpanded}
         >
           {askApexEnabled ? (
             <AskApexBar
@@ -594,6 +593,17 @@ export function ConsoleTray({
           )}
         </div>
 
+        {isExpanded ? (
+          <button
+            type="button"
+            onClick={resetAssistantSession}
+            className="shrink-0 rounded-md p-1.5 transition-colors hover:bg-white/5"
+            aria-label="Clear session history"
+          >
+            <RotateCcw className="size-4 text-zinc-400 transition-colors hover:text-rose-400" />
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={handleToggle}
@@ -605,88 +615,49 @@ export function ConsoleTray({
             className={`size-4 text-zinc-400 transition-transform duration-500 hover:text-zinc-200 ${isExpanded ? 'rotate-180' : ''}`}
           />
         </button>
-      </section>
+      </div>
 
-      {/* Expanded overlay drawer — fixed to the viewport so the dashboard grid never reflows */}
-      {createPortal(
-        <div
-          className={`fixed inset-0 z-[70] flex flex-col justify-end ${isExpanded ? '' : 'pointer-events-none'}`}
-          aria-hidden={!isExpanded}
-        >
-          <div
-            className={`console-tray-backdrop absolute inset-0 bg-black/65 backdrop-blur-sm ${isExpanded ? 'opacity-100' : 'opacity-0'}`}
-            onClick={handleMinimize}
-            aria-hidden
-          />
+      {/* Inline expandable body — grows via max-height in normal flow, no portal/backdrop */}
+      <div
+        className={`console-tray-panel flex min-h-0 flex-col overflow-hidden border-t transition-[max-height,opacity] ${
+          isExpanded
+            ? 'max-h-[42vh] border-white/10 opacity-100'
+            : 'max-h-0 border-transparent opacity-0'
+        }`}
+        aria-hidden={!isExpanded}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950/20 p-4 scrollbar-thin">
+          {activeTab === 'assistant' ? (
+            <AssistantTabContent
+              history={assistantHistory}
+              isQuerying={isAssistantQuerying}
+              latestTrace={assistantLatestTrace}
+              error={assistantError}
+              profilesStatus={profilesStatus}
+              onUnloadModel={unloadLocalModel}
+              queryAssistant={queryAssistant}
+              activeProfile={activeProfile}
+            />
+          ) : (
+            <BriefingTabContent briefingText={briefingText} insights={insights} />
+          )}
+        </div>
 
-          <div
-            className={`console-tray-panel hud-glass relative z-10 mx-auto flex w-full max-w-6xl flex-col overflow-hidden rounded-t-3xl border-t border-white/10 shadow-2xl ${
-              isExpanded
-                ? 'max-h-[62vh] translate-y-0'
-                : 'max-h-0 translate-y-full'
-            }`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Assistant console"
-          >
-            <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
-              {tabs}
-
-              <div className="flex-1" />
-
-              <button
-                type="button"
-                onClick={resetAssistantSession}
-                className="rounded-md p-1.5 transition-colors hover:bg-white/5"
-                aria-label="Clear session history"
-              >
-                <RotateCcw className="size-4 text-zinc-400 transition-colors hover:text-rose-400" />
-              </button>
-              <button
-                type="button"
-                onClick={handleMinimize}
-                className="rounded-md p-1.5 transition-colors hover:bg-white/5"
-                aria-label="Minimize console"
-              >
-                <ChevronUp className="size-4 rotate-180 text-zinc-400 transition-colors hover:text-zinc-200" />
-              </button>
-            </header>
-
-            <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950/20 p-4 scrollbar-thin">
-              {activeTab === 'assistant' ? (
-                <AssistantTabContent
-                  history={assistantHistory}
-                  isQuerying={isAssistantQuerying}
-                  latestTrace={assistantLatestTrace}
-                  error={assistantError}
-                  profilesStatus={profilesStatus}
-                  onUnloadModel={unloadLocalModel}
-                  queryAssistant={queryAssistant}
-                  activeProfile={activeProfile}
-                />
-              ) : (
-                <BriefingTabContent briefingText={briefingText} insights={insights} />
-              )}
-            </div>
-
-            {askApexEnabled ? (
-              <footer className="shrink-0 border-t border-white/10 bg-zinc-950/30 p-4">
-                <AskApexBar
-                  activeProfile={activeProfile}
-                  onProfileChange={setActiveProfile}
-                  onSubmit={handleAgentSubmit}
-                  profilesStatus={profilesStatus}
-                  profilesStatusHydrated={profilesStatusHydrated}
-                  onSelectChip={handleChipSelect}
-                  isSubmitting={isAssistantQuerying}
-                  integrated
-                />
-              </footer>
-            ) : null}
-          </div>
-        </div>,
-        document.body,
-      )}
-    </>
+        {askApexEnabled ? (
+          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/30 p-4">
+            <AskApexBar
+              activeProfile={activeProfile}
+              onProfileChange={setActiveProfile}
+              onSubmit={handleAgentSubmit}
+              profilesStatus={profilesStatus}
+              profilesStatusHydrated={profilesStatusHydrated}
+              onSelectChip={handleChipSelect}
+              isSubmitting={isAssistantQuerying}
+              integrated
+            />
+          </footer>
+        ) : null}
+      </div>
+    </section>
   )
 }

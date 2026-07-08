@@ -7,6 +7,8 @@ type MarketTickerCardProps = {
   data: MarketResponse | null
   isLoading?: boolean
   className?: string
+  /** When true, renders a single condensed row of symbol/percent chips instead of the full ticker grid. */
+  isCompact?: boolean
 }
 
 const POSITIVE_COLOR = '#39FF88'
@@ -256,13 +258,33 @@ function TickerRow({
   )
 }
 
+function CompactTickerChip({ ticker }: { ticker: MarketTickerItem }): ReactElement {
+  const trend = resolveTrendDirection(ticker.change, ticker.change_percent, ticker.sparkline)
+  const trendColor =
+    trend === 'positive' ? POSITIVE_COLOR : trend === 'negative' ? NEGATIVE_COLOR : '#9ca3af'
+  const isUnavailable = ticker.status === 'unavailable'
+
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/[0.06] bg-zinc-950/30 px-2 py-1 font-mono text-[10px] uppercase tracking-wider">
+      <span className="text-zinc-300">{ticker.symbol}</span>
+      <span style={isUnavailable ? undefined : { color: trendColor }} className={isUnavailable ? 'text-zinc-500' : ''}>
+        {isUnavailable ? '--%' : formatChangePercent(ticker.change_percent)}
+      </span>
+    </span>
+  )
+}
+
 export function MarketTickerCard({
   data,
   isLoading = false,
   className,
+  isCompact = false,
 }: MarketTickerCardProps): ReactElement {
   const sectionClassName = [
-    'hud-corner-brackets relative flex h-auto min-h-0 w-full flex-none flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass p-[var(--hud-panel-pad)] transition-all duration-700 ease-in-out hover-blue-subtle',
+    'hud-corner-brackets relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out hover-blue-subtle',
+    isCompact
+      ? 'h-auto min-h-0 shrink-0 flex-none flex-row items-center px-3 py-2'
+      : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]',
     className,
   ]
     .filter(Boolean)
@@ -336,6 +358,36 @@ export function MarketTickerCard({
       </div>
     )
   })()
+
+  if (isCompact) {
+    return (
+      <section className={sectionClassName} aria-label="Market ticker">
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
+        <span className="hud-icon-badge size-6 shrink-0">
+          <LineChart className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
+        </span>
+        <span className="ml-2.5 min-w-0 shrink-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]">
+          Market
+        </span>
+        <div className="ml-3 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
+          {data && data.tickers.length > 0 ? (
+            data.tickers.map((ticker) => <CompactTickerChip key={ticker.symbol} ticker={ticker} />)
+          ) : (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">No tickers</span>
+          )}
+        </div>
+        {ledState !== 'none' ? (
+          <span
+            className={`ml-2 shrink-0 ${MARKET_LED_CLASS[ledState]}`}
+            role="status"
+            aria-label={`Market feed ${ledState}`}
+            title={`Market feed ${ledState}`}
+          />
+        ) : null}
+      </section>
+    )
+  }
 
   return (
     <section className={sectionClassName} aria-label="Market ticker">

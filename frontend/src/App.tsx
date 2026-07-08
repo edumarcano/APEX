@@ -334,6 +334,10 @@ export default function App(): ReactElement {
   }, [status, prevStatus, activeTab])
 
   const cardLedState = resolveTelemetryLedState(status)
+  // While the console tray is expanded, wings/digest switch to condensed summary rows so the
+  // tray can grow inline without an overlay — the logo (fixed size) simply re-centers higher.
+  const isConsoleCompact = isAssistantOpen && !isDormant
+  const wingGapClass = isConsoleCompact ? 'gap-2' : 'gap-4'
   const marketDimmed = activeStep === 1 || activeStep === 2
   const weatherDimmed = activeStep === 1
   const scheduleDimmed = activeStep === 1 || activeStep === 2
@@ -381,6 +385,13 @@ export default function App(): ReactElement {
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
+
+  const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
+  const eventsCompactValue =
+    scheduleBody.length > 28 ? `${scheduleBody.slice(0, 28)}…` : scheduleBody
+  const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
+  const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
+  const remindersCompactValue = `${pendingReminderCount} pending`
 
   return (
     <main
@@ -452,24 +463,38 @@ export default function App(): ReactElement {
             />
           </div>
 
-          {/* Context Capsule (Right) */}
-          <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-2.5 shrink-0 font-mono text-xs pointer-events-auto whitespace-nowrap">
-            <Clock className="size-3.5 text-[#0F4DB8] shrink-0" />
-            <span className="uppercase tracking-widest text-zinc-400">
-              Last Briefing:{' '}
-              <span className="text-[#FFFFFF]">{lastBriefingTime || 'Standby'}</span>
-            </span>
+          {/* Right cluster: Context Capsule + Diagnostics Pill */}
+          <div className="flex items-center gap-3 shrink-0 pointer-events-auto">
+            <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-2.5 shrink-0 font-mono text-xs whitespace-nowrap">
+              <Clock className="size-3.5 text-[#0F4DB8] shrink-0" />
+              <span className="uppercase tracking-widest text-zinc-400">
+                Last Briefing:{' '}
+                <span className="text-[#FFFFFF]">{lastBriefingTime || 'Standby'}</span>
+              </span>
+            </div>
+
+            <SystemDiagnostics
+              diagnostics={diagnostics}
+              diagnosticsStatus={diagnosticsStatus}
+              isSpeaking={isSpeaking}
+              isPipelinePolling={isPipelinePolling}
+              status={status}
+              confidenceScore={confidenceScore}
+              pipelineStep={activeStep}
+              failedConnectors={failedConnectors}
+            />
           </div>
         </header>
 
         <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-4 ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} xl:h-full xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
               <MarketTickerCard
                 data={marketData}
                 isLoading={isMarketLoading}
+                isCompact={isConsoleCompact}
                 className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
               />
 
@@ -479,8 +504,10 @@ export default function App(): ReactElement {
                 primaryTemperatureF={primaryTemperatureF}
                 weatherCondition={data?.weatherCondition}
                 ledState={cardLedState}
+                isCompact={isConsoleCompact}
+                compactValue={weatherCompactValue}
                 style={weatherCardStyle}
-                className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                className={`${isConsoleCompact ? '' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {weatherBody}
@@ -492,7 +519,9 @@ export default function App(): ReactElement {
                 icon={Calendar}
                 f1TelemetryText={f1ScheduleTelemetryText}
                 ledState={cardLedState}
-                className={`min-h-0 xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                isCompact={isConsoleCompact}
+                compactValue={eventsCompactValue}
+                className={`${isConsoleCompact ? '' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
               >
                 <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                   {scheduleBody}
@@ -518,7 +547,8 @@ export default function App(): ReactElement {
                   ]}
                   status={status}
                   isLoading={isTriggerLoading}
-                  className="w-full h-full min-h-0"
+                  isCompact={isConsoleCompact}
+                  className={isConsoleCompact ? 'w-full' : 'w-full h-full min-h-0'}
                 />
               </div>
 
@@ -556,9 +586,16 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`flex min-w-0 flex-col gap-4 xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-6 ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} xl:h-full xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
-              <TelemetryCard title="Inbox" icon={Mail} ledState={cardLedState} className="flex-none xl:flex-1 xl:min-h-0">
+              <TelemetryCard
+                title="Inbox"
+                icon={Mail}
+                ledState={cardLedState}
+                isCompact={isConsoleCompact}
+                compactValue={inboxCompactValue}
+                className={isConsoleCompact ? '' : 'flex-none xl:flex-1 xl:min-h-0'}
+              >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading inbox…
@@ -602,7 +639,14 @@ export default function App(): ReactElement {
                 )}
               </TelemetryCard>
 
-              <TelemetryCard title="News Wire" icon={Newspaper} ledState={cardLedState} className="flex-none xl:flex-1 xl:min-h-0">
+              <TelemetryCard
+                title="News Wire"
+                icon={Newspaper}
+                ledState={cardLedState}
+                isCompact={isConsoleCompact}
+                compactValue={newsCompactValue}
+                className={isConsoleCompact ? '' : 'flex-none xl:flex-1 xl:min-h-0'}
+              >
                 {isBusy(status) ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading news…
@@ -643,7 +687,9 @@ export default function App(): ReactElement {
                 title="Reminders"
                 icon={CheckSquare}
                 ledState={cardLedState}
-                className={`flex-none xl:flex-1 xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                isCompact={isConsoleCompact}
+                compactValue={remindersCompactValue}
+                className={`${isConsoleCompact ? '' : 'flex-none xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
@@ -676,8 +722,8 @@ export default function App(): ReactElement {
         </div>
       </div>
 
-      <div className="relative z-[var(--z-bento-hud)] flex flex-none shrink-0 flex-col gap-3 mt-6">
-        {!isDormant ? (
+      {!isDormant ? (
+        <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-4">
           <ConsoleTray
             isExpanded={isAssistantOpen}
             setExpanded={setAssistantOpen}
@@ -700,18 +746,8 @@ export default function App(): ReactElement {
             setActiveProfile={setAgentProfile}
             askApexEnabled={Boolean(showAskApexBar)}
           />
-        ) : null}
-        <SystemDiagnostics
-          diagnostics={diagnostics}
-          diagnosticsStatus={diagnosticsStatus}
-          isSpeaking={isSpeaking}
-          isPipelinePolling={isPipelinePolling}
-          status={status}
-          confidenceScore={confidenceScore}
-          pipelineStep={activeStep}
-          failedConnectors={failedConnectors}
-        />
-      </div>
+        </div>
+      ) : null}
     </main>
   )
 }

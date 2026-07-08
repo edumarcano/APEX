@@ -515,16 +515,13 @@
   padding-top: 0.1rem;
 }
 
-/* Console tray slide-up drawer transitions */
-.console-tray-backdrop {
-  transition: opacity 500ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
+/* Console tray inline expand transitions — grows in normal document flow */
 .console-tray-panel {
   transition:
-    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    max-height 600ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform;
+    max-height 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 400ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 400ms ease;
+  will-change: max-height;
 }
 
 @keyframes borderSpin {

@@ -11,11 +11,36 @@ export interface BriefingDigestProps {
   status: SystemState
   isLoading: boolean
   className?: string
+  /** When true, renders a single condensed summary line instead of the full insight list (e.g. while the console tray is open). */
+  isCompact?: boolean
 }
 
-export function BriefingDigest({ insights, status, isLoading, className }: BriefingDigestProps): ReactElement {
+export function BriefingDigest({ insights, status, isLoading, className, isCompact = false }: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
+
+  if (isCompact) {
+    const compactMessage =
+      isLoading || status === 'idle'
+        ? 'Compiling briefing…'
+        : insights.length > 0
+          ? `${insights.length} insight${insights.length === 1 ? '' : 's'} ready — open the Briefing tab`
+          : 'No current highlights.'
+
+    return (
+      <section
+        className={`relative flex shrink-0 flex-none items-center gap-3 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle px-3 py-2 hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
+        aria-labelledby={labelId}
+      >
+        <span className="hud-icon-badge size-6 shrink-0">
+          <FileText className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
+        </span>
+        <p id={labelId} className="min-w-0 flex-1 truncate text-xs font-medium text-[color:var(--hud-text)]">
+          {compactMessage}
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section
