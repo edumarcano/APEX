@@ -23,6 +23,7 @@ _SESSION = requests.Session()
 
 _model_lock = threading.Lock()
 _active_loaded_model: str | None = None
+_loading_model: str | None = None
 _last_activity_time: float = time.monotonic()
 _IDLE_CHECK_INTERVAL_SECONDS = 30
 
@@ -333,6 +334,12 @@ def get_active_loaded_model() -> str | None:
         return _active_loaded_model
 
 
+def get_loading_model() -> str | None:
+    """Return the Ollama model tag currently being warmed up, or None."""
+    with _model_lock:
+        return _loading_model
+
+
 def get_idle_unload_remaining_seconds() -> int | None:
     """
     Return seconds until the active model is auto-unloaded due to inactivity.
@@ -531,6 +538,9 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
     and writes and is never held across HTTP I/O, so status readers stay
     responsive during long warmups.
 
+    While a switch is in progress, ``get_loading_model()`` returns the target
+    tag so the HUD can show a loading state before the model becomes active.
+
     Args:
         profile: Local model profile to switch to.
 
@@ -538,7 +548,7 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
         True if the switch succeeded or was already satisfied.
         False if the warmup/load failed or an unrecoverable error occurred.
     """
-    global _active_loaded_model, _last_activity_time
+    global _active_loaded_model, _loading_model, _last_activity_time
 
     target_model_name = profile.api_model
 
@@ -549,56 +559,66 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
             return True
         previous_model = _active_loaded_model
         _active_loaded_model = None
+        _loading_model = target_model_name
 
-    if previous_model is not None:
-        _LOGGER.info(
-            "Unloading %s before switching to %s",
-            previous_model,
-            target_model_name,
-        )
-        if not _post_unload_request(previous_model):
-            _LOGGER.error("Failed to unload %s; aborting switch", previous_model)
+    try:
+        if previous_model is not None:
+            _LOGGER.info(
+                "Unloading %s before switching to %s",
+                previous_model,
+                target_model_name,
+            )
+            if not _post_unload_request(previous_model):
+                _LOGGER.error("Failed to unload %s; aborting switch", previous_model)
+                with _model_lock:
+                    _active_loaded_model = previous_model
+                return False
+
+        if is_local_model_loaded(target_model_name):
             with _model_lock:
-                _active_loaded_model = previous_model
+                _active_loaded_model = target_model_name
+                _last_activity_time = time.monotonic()
+            _LOGGER.info("Model %s already resident in Ollama", target_model_name)
+            return True
+
+        url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
+        payload = {
+            "model": target_model_name,
+            "messages": [],
+            "stream": False,
+            "options": _build_warmup_options(profile),
+            "think": profile.think,
+            "keep_alive": get_keep_alive_duration(),
+        }
+
+        try:
+            response = _SESSION.post(
+                url, json=payload, timeout=profile.generation_timeout
+            )
+            response.raise_for_status()
+            _LOGGER.info("Loaded model %s into Ollama", target_model_name)
+        except RequestsTimeout:
+            _LOGGER.error(
+                "Timeout loading model %s after %ss",
+                target_model_name,
+                profile.generation_timeout,
+            )
+            return False
+        except (RequestsConnectionError, ConnectionError) as exc:
+            _LOGGER.error(
+                "Ollama unreachable while loading %s: %s", target_model_name, exc
+            )
+            return False
+        except RequestException as exc:
+            _LOGGER.error("Failed to load model %s: %s", target_model_name, exc)
             return False
 
-    if is_local_model_loaded(target_model_name):
         with _model_lock:
             _active_loaded_model = target_model_name
             _last_activity_time = time.monotonic()
-        _LOGGER.info("Model %s already resident in Ollama", target_model_name)
+
         return True
-
-    url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
-    payload = {
-        "model": target_model_name,
-        "messages": [],
-        "stream": False,
-        "options": _build_warmup_options(profile),
-        "think": profile.think,
-        "keep_alive": get_keep_alive_duration(),
-    }
-
-    try:
-        response = _SESSION.post(url, json=payload, timeout=profile.generation_timeout)
-        response.raise_for_status()
-        _LOGGER.info("Loaded model %s into Ollama", target_model_name)
-    except RequestsTimeout:
-        _LOGGER.error(
-            "Timeout loading model %s after %ss",
-            target_model_name,
-            profile.generation_timeout,
-        )
-        return False
-    except (RequestsConnectionError, ConnectionError) as exc:
-        _LOGGER.error("Ollama unreachable while loading %s: %s", target_model_name, exc)
-        return False
-    except RequestException as exc:
-        _LOGGER.error("Failed to load model %s: %s", target_model_name, exc)
-        return False
-
-    with _model_lock:
-        _active_loaded_model = target_model_name
-        _last_activity_time = time.monotonic()
-
-    return True
+    finally:
+        with _model_lock:
+            if _loading_model == target_model_name:
+                _loading_model = None

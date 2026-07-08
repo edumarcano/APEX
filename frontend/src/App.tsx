@@ -191,15 +191,37 @@ export default function App(): ReactElement {
   const isProcessing =
     status === 'loading' ||
     (activeStep !== null && activeStep >= 1 && activeStep <= 3)
+
+  const loadingLocalProfile = useMemo(
+    () => profilesStatus.find((profile) => profile.loading) ?? null,
+    [profilesStatus],
+  )
+  const activeLocalModel = useMemo(
+    () =>
+      profilesStatus.find(
+        (profile) => profile.provider === 'ollama' && profile.active,
+      ) ?? null,
+    [profilesStatus],
+  )
+  const isLocalModelLoading = loadingLocalProfile !== null
+  const isLocalModelLoaded = activeLocalModel !== null
+  const loadingDisplayName = loadingLocalProfile?.display_name ?? null
+
   const glowColor = useMemo((): string => {
     if (status === 'error') {
       return '220, 38, 38' // Red
+    }
+    if (isLocalModelLoading) {
+      return '249, 115, 22' // Rust orange (local model loading)
+    }
+    if (isAssistantQuerying) {
+      return '168, 85, 247' // Purple (assistant working)
     }
     if (activeStep === 4) {
       return '251, 191, 36' // Gold
     }
     if (status === 'success' && !isSpeaking) {
-      return '15, 77, 184' // APEX Blue
+      return isLocalModelLoaded ? '249, 115, 22' : '15, 77, 184'
     }
     if (activeStep === 3) {
       return '168, 85, 247' // Purple/magenta (logo accent)
@@ -207,8 +229,18 @@ export default function App(): ReactElement {
     if (status === 'loading' || activeStep === 1 || activeStep === 2) {
       return '57, 255, 136' // Green
     }
+    if (isLocalModelLoaded) {
+      return '249, 115, 22' // Rust orange (local model loaded)
+    }
     return '15, 23, 42' // Deep Slate Blue
-  }, [status, activeStep, isSpeaking])
+  }, [
+    status,
+    activeStep,
+    isSpeaking,
+    isLocalModelLoading,
+    isAssistantQuerying,
+    isLocalModelLoaded,
+  ])
 
   const weatherBorderByCondition: Record<WeatherConditionArchetype, string> = {
     clear_day: '#1E6BFF',
@@ -228,7 +260,7 @@ export default function App(): ReactElement {
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
-  const showCommandTrigger = status === 'idle' || status === 'loading'
+  const showCommandTrigger = status === 'idle'
   const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
   const isDormant = status === 'idle'
@@ -609,6 +641,9 @@ export default function App(): ReactElement {
                       status={status}
                       isSpeaking={isSpeaking}
                       reminderPulseCount={reminderPulseCount}
+                      isAssistantQuerying={isAssistantQuerying}
+                      isLocalModelLoading={isLocalModelLoading}
+                      isLocalModelLoaded={isLocalModelLoaded}
                       className={logoSizeClass}
                     />
                   </div>
@@ -623,6 +658,9 @@ export default function App(): ReactElement {
                       isSpeaking={isSpeaking}
                       activeTtsEngine={resolvedTtsEngine}
                       systemLoadThrottled={resolvedSystemThrottled}
+                      isAssistantQuerying={isAssistantQuerying}
+                      isLocalModelLoading={isLocalModelLoading}
+                      loadingDisplayName={loadingDisplayName}
                     />
                     <div
                       className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
@@ -632,7 +670,6 @@ export default function App(): ReactElement {
                       }`}
                     >
                       <CommandTrigger
-                        status={isTriggerLoading ? 'loading' : 'idle'}
                         onClick={handleTriggerSynthesis}
                         disabled={isTriggerDisabled}
                       />

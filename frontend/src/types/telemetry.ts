@@ -95,6 +95,7 @@ export interface AgentProfileStatus {
   stability: ProfileStability
   status: ProfileAvailabilityStatus
   active: boolean
+  loading: boolean
   reason: string | null
   idle_unload_remaining_seconds: number | null
   loaded_model: LoadedOllamaModelStatus | null

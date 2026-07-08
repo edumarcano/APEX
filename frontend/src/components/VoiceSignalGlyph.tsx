@@ -8,10 +8,13 @@ export interface VoiceSignalGlyphProps {
   isSpeaking: boolean
   activeTtsEngine?: TtsEngine
   systemLoadThrottled?: boolean
+  isAssistantQuerying?: boolean
+  isLocalModelLoading?: boolean
+  loadingDisplayName?: string | null
   className?: string
 }
 
-type SignalTone = 'standby' | 'emerald' | 'purple' | 'gold'
+type SignalTone = 'standby' | 'emerald' | 'purple' | 'gold' | 'rust'
 
 interface SignalState {
   label: string
@@ -44,7 +47,26 @@ const WAVE_BARS = [
 
 const RAIL_Y = 26
 
-function resolveSignalState(step: number | null, status: SystemState): SignalState {
+function resolveSignalState(
+  step: number | null,
+  status: SystemState,
+  isLocalModelLoading: boolean,
+  loadingDisplayName: string | null,
+  isAssistantQuerying: boolean,
+): SignalState {
+  if (isLocalModelLoading) {
+    const name = loadingDisplayName?.trim() || 'model'
+    return {
+      label: `Loading ${name}`,
+      tone: 'rust',
+      isActive: true,
+    }
+  }
+
+  if (isAssistantQuerying) {
+    return { label: 'Working', tone: 'purple', isActive: true }
+  }
+
   if (step === 4) {
     return { label: 'Delivering', tone: 'gold', isActive: true }
   }
@@ -101,6 +123,16 @@ function resolveToneClasses(tone: SignalTone): {
     }
   }
 
+  if (tone === 'rust') {
+    return {
+      accent: 'stroke-[#F97316]/90',
+      aperture: 'fill-[#F97316]/82 stroke-[#FDBA74]/80 drop-shadow-[0_0_10px_rgba(249,115,22,0.72)]',
+      label: 'text-[#FB923C]',
+      rail: 'stroke-[#F97316]/35',
+      nodeRing: 'stroke-[#FDBA74]/65',
+    }
+  }
+
   return {
     accent: 'stroke-[#6EA8FF]/28',
     aperture: 'fill-[#0F4DB8]/18 stroke-[#6EA8FF]/28',
@@ -116,11 +148,20 @@ export function VoiceSignalGlyph({
   isSpeaking,
   activeTtsEngine = 'google',
   systemLoadThrottled = false,
+  isAssistantQuerying = false,
+  isLocalModelLoading = false,
+  loadingDisplayName = null,
   className = '',
 }: VoiceSignalGlyphProps): ReactElement {
   const filterId = useId().replace(/:/g, '')
   const waveBlur = `url(#${filterId})`
-  const signalState = resolveSignalState(step, status)
+  const signalState = resolveSignalState(
+    step,
+    status,
+    isLocalModelLoading,
+    loadingDisplayName,
+    isAssistantQuerying,
+  )
   const toneClasses = resolveToneClasses(signalState.tone)
   const showFlow = signalState.isActive
 

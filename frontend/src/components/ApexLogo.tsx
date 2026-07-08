@@ -6,6 +6,9 @@ export interface ApexLogoProps {
   status: SystemState
   isSpeaking?: boolean
   reminderPulseCount?: number
+  isAssistantQuerying?: boolean
+  isLocalModelLoading?: boolean
+  isLocalModelLoaded?: boolean
   className?: string
 }
 
@@ -14,6 +17,9 @@ export function ApexLogo({
   status,
   isSpeaking = false,
   reminderPulseCount = 0,
+  isAssistantQuerying = false,
+  isLocalModelLoading = false,
+  isLocalModelLoaded = false,
   className = '',
 }: ApexLogoProps): ReactElement {
   const [pulseActive, setPulseActive] = useState(false)
@@ -28,7 +34,7 @@ export function ApexLogo({
   }, [reminderPulseCount])
 
   const isError = status === 'error'
-  const isDormant = status === 'idle'
+  const isDormant = status === 'idle' && !isAssistantQuerying && !isLocalModelLoading
   const activeStep = step ?? 0
   const hasDelivered = status === 'success' || activeStep >= 4
 
@@ -39,16 +45,37 @@ export function ApexLogo({
   const baseBlue = 'apex-blue-metal apex-blue-metal--base'
   const activeBlue = 'apex-blue-metal apex-blue-metal--active'
   const surgeBlue = 'apex-blue-metal apex-blue-metal--surge'
+  const rustActive = 'apex-blue-metal apex-blue-metal--rust-active'
+  const rustSurge = 'apex-blue-metal apex-blue-metal--rust-surge'
+
+  const STAGE_DELAYS_MS = [0, 150, 300, 450] as const
 
   const getBlueSegmentClass = (segmentStep: number): string => {
     if (pulseActive) {
       return `transition-all duration-300 ease-out ${surgeBlue}`
     }
 
+    if (isLocalModelLoading) {
+      return rustSurge
+    }
+
+    if (isLocalModelLoaded) {
+      return `transition-all duration-700 ease-in-out ${rustActive}`
+    }
+
     const blueMetal =
       activeStep >= segmentStep || hasDelivered ? activeBlue : baseBlue
 
     return `transition-all duration-700 ease-in-out ${blueMetal}`
+  }
+
+  const getBlueStageDelay = (
+    segmentStep: number,
+  ): { animationDelay: string } | undefined => {
+    if (!isLocalModelLoading) {
+      return undefined
+    }
+    return { animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms` }
   }
 
   const surgeBlueCore = 'apex-core-metal apex-core-metal--blue-surge'
@@ -59,13 +86,20 @@ export function ApexLogo({
   const goldActiveCore = 'apex-core-metal apex-core-metal--gold-active'
   const goldActiveBreathing = `${goldActiveCore} animate-[pulse_3s_ease-in-out_infinite]`
 
-  const GOLD_STAGE_DELAYS_MS = [0, 150, 300, 450] as const
-
   const getGoldStageDelay = (segmentStep: number): { animationDelay: string } => ({
-    animationDelay: `${GOLD_STAGE_DELAYS_MS[segmentStep - 1]}ms`,
+    animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms`,
   })
 
   const getGoldSegmentClass = (): string => {
+    // Local-model loading owns the outer shell; keep core dormant while rust surges.
+    if (isLocalModelLoading) {
+      return `transition-all duration-700 ease-in-out ${dormantCore}`
+    }
+
+    if (isAssistantQuerying) {
+      return purpleSurgeCore
+    }
+
     if (isDormant) {
       return 'apex-core-metal apex-core-metal--breathing-dormant'
     }
@@ -208,6 +242,22 @@ export function ApexLogo({
             <stop offset="50%" stopColor="#1E6BFF" />
             <stop offset="100%" stopColor="#0F4DB8" />
           </linearGradient>
+
+          <linearGradient
+            id="apexRustMetal"
+            x1="620"
+            y1="560"
+            x2="4520"
+            y2="4920"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#FDBA74" />
+            <stop offset="18%" stopColor="#FB923C" />
+            <stop offset="40%" stopColor="#F97316" />
+            <stop offset="62%" stopColor="#C2410C" />
+            <stop offset="82%" stopColor="#9A3412" />
+            <stop offset="100%" stopColor="#EA580C" />
+          </linearGradient>
         </defs>
 
         <style>
@@ -227,6 +277,13 @@ export function ApexLogo({
 
             .apex-blue-metal--surge {
               filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
+            }
+
+            .apex-blue-metal--rust-active {
+              fill: url(#apexRustMetal);
+              opacity: 1;
+              filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.75));
+              transition: all 1000ms ease-in-out;
             }
 
             .apex-core-metal {
@@ -269,6 +326,7 @@ export function ApexLogo({
         <path 
           id="blue-crown-top"
           className={getBlueSegmentClass(4)}
+          style={getBlueStageDelay(4)}
           d="M2336.38 954.065L2463.38 757.565C2492.21 711.398 2556.68 607.664 2583.88 562.064C2611.08 516.464 2626.88 527.564 2644.88 553.064L2765.38 754.065L2889.88 954.065C2896.88 982.565 2890.14 1014.8 2847.38 1008.07C2793.38 999.565 2762.88 960.066 2730.38 1036.07L2725.38 1070.57L2719.88 1210.07C2730.38 1229.07 2739.38 1241.92 2805.88 1210.07C2881.88 1173.67 3054.88 1110.23 3136.88 1083.07C3152.38 1077.93 3194.38 1062.57 3173.38 1014.07C3145.54 949.776 2842.74 337.35 2680.77 37.0637C2648.38 -12.4355 2613.38 -10.9349 2575.88 37.0651C2414.38 336.065 2083.08 949.565 2049.88 1011.57C2016.68 1073.57 2061.38 1090.93 2076.88 1096.07C2158.88 1123.23 2341.88 1186.67 2417.88 1223.07C2493.88 1259.47 2489.88 1244.57 2506.38 1210.07V1070.07L2495.88 1036.07C2463.38 960.066 2430.38 1005.49 2377.88 1021.07C2336.38 1033.38 2329.38 982.565 2336.38 954.065Z"
         />
 
@@ -277,11 +335,13 @@ export function ApexLogo({
           <path 
             id="blue-upper-left"
             className={getBlueSegmentClass(3)}
+            style={getBlueStageDelay(3)}
             d="M1670.88 1812.56L1822.38 1519.56L1972.38 1237.06C2025.38 1144.56 2071.88 1168.06 2130.38 1189.56C2195.51 1213.5 2361.88 1321.06 2415.38 1419.56C2472.88 1551.06 2506.88 1780.06 2439.88 1969.06C2397.43 2088.81 2359.88 2116.06 2276.38 2103.06C2121.38 2046.73 1834.38 1935.56 1720.88 1903.06C1647.31 1882 1657.38 1832.4 1670.88 1812.56Z"
           />
           <path 
             id="blue-upper-right"
             className={getBlueSegmentClass(3)}
+            style={getBlueStageDelay(3)}
             d="M3543.38 1814.06L3396.88 1523.06L3245.78 1237.06C3192.78 1144.56 3143.88 1161.06 3085.38 1182.56C3020.24 1206.5 2843.88 1309.56 2802.78 1419.56C2738.88 1521.06 2711.88 1808.56 2766.38 1971.56C2806.67 2092.06 2835.98 2117.06 2936.88 2097.56C3085.88 2025.56 3319.38 1935.89 3489.88 1887.06C3554.48 1868.57 3551.38 1839.06 3543.38 1814.06Z"
           />
         </g>
@@ -291,11 +351,13 @@ export function ApexLogo({
           <path 
             id="blue-lower-left"
             className={getBlueSegmentClass(2)}
+            style={getBlueStageDelay(2)}
             d="M1193.88 2741.56L1389.88 2348.06C1421.21 2286.06 1495.88 2139.16 1543.88 2047.56C1591.88 1955.96 1678.55 1960.06 1715.88 1973.56C1733.55 1981.4 1809.88 2018.66 1973.88 2105.06C2137.88 2191.46 2264.55 2316.73 2307.38 2368.56C2442.38 2517.06 2456.88 2895.06 2389.88 3016.56C2326.17 3132.1 2323.38 3129.56 2191.38 3123.56C1948.38 3030.06 1471.88 2881.06 1295.88 2857.06C1172.41 2840.23 1183.68 2788.43 1193.63 2742.71L1193.88 2741.56Z"
           />
           <path 
             id="blue-lower-right"
             className={getBlueSegmentClass(2)}
+            style={getBlueStageDelay(2)}
             d="M4020.32 2741.56L3824.32 2348.06C3792.98 2286.06 3718.32 2139.16 3670.32 2047.56C3618.44 1948.56 3559.38 1946.49 3498.31 1973.56C3480.65 1981.4 3398.38 2011.66 3234.38 2098.06C3070.38 2184.46 2933.21 2319.73 2890.38 2371.56C2755.38 2520.06 2764.32 2892.96 2811.38 3022.56C2841.88 3106.56 2890.81 3129.56 3022.81 3123.56C3265.81 3030.06 3731.88 2859.56 3899.38 2827.56C3993.8 2809.53 4020.31 2797.06 4020.32 2741.56Z"
           />
         </g>
@@ -305,11 +367,13 @@ export function ApexLogo({
           <path 
             id="blue-base-left"
             className={getBlueSegmentClass(1)}
+            style={getBlueStageDelay(1)}
             d="M1855.38 3842.56L2237.38 3837.06C2403.38 3837.06 2346.88 3842.06 2280.38 3636.06L2222.88 3535.06L2146.38 3440.56C2021.38 3288.56 1776.52 3147.64 1482.88 3014.56C1178.38 2876.56 1148.38 2877.56 1082.38 2984.06L12.3775 5246.56C-19.6218 5304.06 12.3776 5375.56 116.378 5410.56C219.878 5422.06 387.713 5417.06 674.378 5417.06C965.378 5417.06 1009.38 5446.06 1101.88 5300.56C1266.21 4923.9 1612.28 4135.36 1671.88 3996.56C1731.48 3857.76 1804.38 3855.06 1855.38 3842.56Z"
           />
           <path 
             id="blue-base-right"
             className={getBlueSegmentClass(1)}
+            style={getBlueStageDelay(1)}
             d="M3357.14 3842.56H3004.38C2838.38 3842.56 2865.64 3842.06 2932.14 3636.06L2989.64 3535.06L3066.14 3440.56C3191.14 3288.56 3436 3147.64 3729.64 3014.56C4034.14 2876.56 4070.38 2879.06 4136.38 2985.56L5193.88 5244.56C5225.88 5302.06 5200.14 5375.56 5096.14 5410.56C4992.64 5422.06 4824.8 5417.06 4538.14 5417.06C4247.14 5417.06 4203.14 5446.06 4110.64 5300.56C3946.31 4923.9 3600.24 4135.36 3540.64 3996.56C3481.04 3857.76 3408.14 3855.06 3357.14 3842.56Z"
           />
         </g>
