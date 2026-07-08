@@ -387,7 +387,7 @@ export function TelemetryCard({
           <span
             id={headingId}
             className={[
-              'min-w-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]',
+              'min-w-0 truncate font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--hud-text)]',
               isWeatherCard ? 'flex-[0_1_auto]' : 'flex-1',
             ].join(' ')}
           >
@@ -426,7 +426,7 @@ export function TelemetryCard({
             </span>
             <h2
               id={headingId}
-              className="min-w-0 flex-1 truncate text-sm font-semibold leading-none tracking-tight text-[color:var(--hud-text)]"
+              className="min-w-0 flex-1 truncate font-orbitron text-sm font-semibold leading-none tracking-[0.12em] text-[color:var(--hud-text)]"
             >
               {title}
             </h2>

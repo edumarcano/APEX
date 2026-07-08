@@ -1033,6 +1033,8 @@ def get_global_config() -> dict[str, Any]:
         "default_profile": config.DEFAULT_CLOUD_PROFILE,
         "ask_apex_enabled": config.ASK_APEX_ENABLED,
         "max_session_messages": config.MAX_SESSION_MESSAGES,
+        "dev_mode_active": is_dev_mode(),
+        "demo_mode_active": DEMO_MODE,
     }
 
 

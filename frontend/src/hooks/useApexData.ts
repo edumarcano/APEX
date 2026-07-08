@@ -215,6 +215,7 @@ export function useApexData(): UseApexDataReturn {
     isSpeaking: false,
     activeReminders: [],
     demoModeActive: false,
+    devModeActive: false,
     confidenceScore: 100.0,
     failedConnectors: [],
     active_tts_engine: 'google',
@@ -346,7 +347,6 @@ export function useApexData(): UseApexDataReturn {
       ...prev,
       status: 'loading',
       error: null,
-      demoModeActive: false,
       pipelineState: null,
       isSpeaking: false,
     }))
@@ -380,7 +380,6 @@ export function useApexData(): UseApexDataReturn {
           isPipelinePolling: false,
           isSpeaking: false,
           activeReminders: [],
-          demoModeActive: false,
         }))
 
         return
@@ -395,7 +394,6 @@ export function useApexData(): UseApexDataReturn {
           isPipelinePolling: false,
           isSpeaking: false,
           activeReminders: [],
-          demoModeActive: false,
         }))
 
         return
@@ -419,6 +417,7 @@ export function useApexData(): UseApexDataReturn {
           ? (payload.metadata as Record<string, unknown>)
           : null
       const demoModeActive = metadata?.demo_mode_active === true
+      const devModeActive = metadata?.dev_mode_active === true
       const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
       const system_load_throttled = metadata?.system_load_throttled === true
 
@@ -431,7 +430,6 @@ export function useApexData(): UseApexDataReturn {
           isPipelinePolling: false,
           isSpeaking: false,
           activeReminders: [],
-          demoModeActive: false,
         }))
 
         return
@@ -476,6 +474,7 @@ export function useApexData(): UseApexDataReturn {
         error: null,
         activeReminders,
         demoModeActive,
+        devModeActive,
         confidenceScore,
         failedConnectors,
         active_tts_engine,
@@ -497,7 +496,6 @@ export function useApexData(): UseApexDataReturn {
         isPipelinePolling: false,
         isSpeaking: false,
         activeReminders: [],
-        demoModeActive: false,
       }))
     }
   }, [])
@@ -523,6 +521,8 @@ export function useApexData(): UseApexDataReturn {
 
         let defaultProfile: AgentCloudProfile | undefined
         let askApexEnabled: boolean | undefined
+        let demoModeActive: boolean | undefined
+        let devModeActive: boolean | undefined
         if (configResp.ok) {
           try {
             const configBody: unknown = await configResp.json()
@@ -530,10 +530,18 @@ export function useApexData(): UseApexDataReturn {
               const body = configBody as {
                 default_profile?: unknown
                 ask_apex_enabled?: unknown
+                demo_mode_active?: unknown
+                dev_mode_active?: unknown
               }
               defaultProfile = parseDefaultProfile(body.default_profile)
               if (typeof body.ask_apex_enabled === 'boolean') {
                 askApexEnabled = body.ask_apex_enabled
+              }
+              if (typeof body.demo_mode_active === 'boolean') {
+                demoModeActive = body.demo_mode_active
+              }
+              if (typeof body.dev_mode_active === 'boolean') {
+                devModeActive = body.dev_mode_active
               }
             }
           } catch {
@@ -541,8 +549,18 @@ export function useApexData(): UseApexDataReturn {
           }
         }
 
+        const modePatch = {
+          ...(demoModeActive !== undefined ? { demoModeActive } : {}),
+          ...(devModeActive !== undefined ? { devModeActive } : {}),
+        }
+
         if (!remindersResp.ok) {
-          if (defaultProfile !== undefined || askApexEnabled !== undefined) {
+          if (
+            defaultProfile !== undefined ||
+            askApexEnabled !== undefined ||
+            demoModeActive !== undefined ||
+            devModeActive !== undefined
+          ) {
             setState((prev) => {
               if (prev.status !== 'idle') {
                 return prev
@@ -552,6 +570,7 @@ export function useApexData(): UseApexDataReturn {
                 ...prev,
                 defaultProfile,
                 ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                ...modePatch,
                 data: prev.data
                   ? {
                       ...prev.data,
@@ -586,6 +605,7 @@ export function useApexData(): UseApexDataReturn {
             activeReminders,
             ...(defaultProfile !== undefined ? { defaultProfile } : {}),
             ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+            ...modePatch,
             data: prev.data
               ? {
                   ...prev.data,

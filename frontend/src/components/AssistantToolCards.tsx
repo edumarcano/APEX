@@ -409,7 +409,7 @@ function ToolCardFrame({
       <header className={CARD_HEADER}>
         <div className="flex min-w-0 items-center gap-2">
           <span className={`shrink-0 ${accentClass}`}>{icon}</span>
-          <h4 className="truncate font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-300">
+          <h4 className="truncate font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-300">
             {title}
           </h4>
         </div>

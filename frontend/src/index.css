@@ -33,7 +33,7 @@
     margin: 0;
     background-color: var(--hud-bg);
     color: var(--hud-text);
-    font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Exo 2', system-ui, 'Segoe UI', sans-serif;
     line-height: 1.5;
   }
 
@@ -269,6 +269,57 @@
   will-change: transform;
 }
 
+@keyframes signalFlowLeft {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(5px);
+  }
+}
+
+@keyframes signalFlowRight {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-5px);
+  }
+}
+
+@keyframes speechWaveBar {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scaleY(0.55);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.animate-signal-flow-left {
+  animation: signalFlowLeft 1.4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.animate-signal-flow-right {
+  animation: signalFlowRight 1.4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.animate-speech-wave-bar {
+  animation: speechWaveBar 0.95s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
 @keyframes weatherSolar {
   0%,
   100% {
@@ -431,7 +482,10 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-nebula-spin-clockwise,
   .animate-nebula-spin-counter,
-  .animate-shimmer {
+  .animate-shimmer,
+  .animate-signal-flow-left,
+  .animate-signal-flow-right,
+  .animate-speech-wave-bar {
     animation: none !important;
     transition: none !important;
   }

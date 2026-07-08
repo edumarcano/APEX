@@ -182,7 +182,7 @@ function SetupPanel({
     <div
       className={`flex min-h-[4.5rem] flex-col justify-center rounded-xl border px-3 py-2.5 ${toneClasses}`}
     >
-      <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em]">{title}</p>
+      <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.18em]">{title}</p>
       <p className="mt-1 text-[11px] leading-relaxed text-zinc-300/90">{message}</p>
     </div>
   )
@@ -368,7 +368,7 @@ export function MarketTickerCard({
           <span className="hud-icon-badge size-7 shrink-0">
             <LineChart className="size-4 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
           </span>
-          <span className="ml-3 w-16 shrink-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]">
+          <span className="ml-3 w-16 shrink-0 truncate font-orbitron text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--hud-text)]">
             Market
           </span>
           <div className="ml-2.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none">
@@ -404,7 +404,7 @@ export function MarketTickerCard({
               aria-hidden
             />
           </span>
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-[color:var(--hud-text)]">
+          <h2 className="min-w-0 flex-1 truncate font-orbitron text-sm font-semibold tracking-[0.12em] text-[color:var(--hud-text)]">
             Market
           </h2>
           {data && data.status !== 'not_configured' && data.status !== 'provider_unavailable' ? (

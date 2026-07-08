@@ -166,6 +166,7 @@ export interface ApexDataState {
   isSpeaking: boolean
   activeReminders: ActiveReminder[]
   demoModeActive: boolean
+  devModeActive: boolean
   confidenceScore: number
   failedConnectors: string[]
   active_tts_engine: TtsEngine
