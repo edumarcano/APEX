@@ -8,16 +8,28 @@ const BRIEFING_HISTORY_ENDPOINT = 'http://127.0.0.1:8000/api/v1/briefings/histor
 
 export interface BriefingDigestProps {
   insights: string[]
+  briefingText: string
   status: SystemState
   isLoading: boolean
   className?: string
+  defaultTab?: 'insights' | 'briefing'
   /** When true, renders a single condensed summary line instead of the full insight list (e.g. while the console tray is open). */
   isCompact?: boolean
 }
 
-export function BriefingDigest({ insights, status, isLoading, className, isCompact = false }: BriefingDigestProps): ReactElement {
+export function BriefingDigest({
+  insights,
+  briefingText,
+  status,
+  isLoading,
+  className,
+  defaultTab = 'insights',
+  isCompact = false,
+}: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'insights' | 'briefing'>(defaultTab)
+  const trimmedBriefing = briefingText.trim()
 
   if (isCompact) {
     const compactMessage =
@@ -63,38 +75,84 @@ export function BriefingDigest({ insights, status, isLoading, className, isCompa
             Briefing Highlights
           </h2>
         </div>
-        {status === 'success' && (
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-[color:var(--hud-text)] transition-colors hover:border-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-          >
-            <Clock className="size-3 text-[color:var(--hud-accent)]" strokeWidth={2.25} />
-            <span>History</span>
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex rounded-lg border border-white/10 bg-zinc-950/30 p-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('insights')}
+              className={[
+                'rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors',
+                activeTab === 'insights'
+                  ? 'bg-[#0F4DB8]/20 text-[#7EB3FF]'
+                  : 'text-zinc-500 hover:text-zinc-300',
+              ].join(' ')}
+              aria-pressed={activeTab === 'insights'}
+            >
+              Insights
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('briefing')}
+              className={[
+                'rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors',
+                activeTab === 'briefing'
+                  ? 'bg-[#FBBF24]/10 text-[#FBBF24]'
+                  : 'text-zinc-500 hover:text-zinc-300',
+              ].join(' ')}
+              aria-pressed={activeTab === 'briefing'}
+            >
+              Briefing
+            </button>
+          </div>
+          {status === 'success' && (
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-[color:var(--hud-text)] transition-colors hover:border-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+            >
+              <Clock className="size-3 text-[color:var(--hud-accent)]" strokeWidth={2.25} />
+              <span>History</span>
+            </button>
+          )}
+        </div>
         </div>
         <div className="hud-header-divider mt-3" aria-hidden />
       </header>
 
       <div className="hud-inner-lift flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {isLoading || status === 'idle' ? (
-          <div className="space-y-2">
-            <div className="h-3 bg-white/5 rounded animate-pulse w-full" />
-            <div className="h-3 bg-white/5 rounded animate-pulse w-5/6" />
-            <div className="h-3 bg-white/5 rounded animate-pulse w-4/5" />
-          </div>
-        ) : insights.length === 0 ? (
-          <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">No current highlights.</p>
+        {activeTab === 'briefing' ? (
+          trimmedBriefing.length === 0 ? (
+            <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+              Initiate system synthesis to compile briefing transcript.
+            </p>
+          ) : (
+            <div className="list-fade-mask min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
+                {trimmedBriefing}
+              </p>
+            </div>
+          )
         ) : (
-          <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
-            {insights.map((insight, index) => (
-              <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">
-                <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                <span className="text-zinc-200">{insight}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {isLoading || status === 'idle' ? (
+              <div className="space-y-2">
+                <div className="h-3 bg-white/5 rounded animate-pulse w-full" />
+                <div className="h-3 bg-white/5 rounded animate-pulse w-5/6" />
+                <div className="h-3 bg-white/5 rounded animate-pulse w-4/5" />
+              </div>
+            ) : insights.length === 0 ? (
+              <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">No current highlights.</p>
+            ) : (
+              <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+                {insights.map((insight, index) => (
+                  <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">
+                    <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
+                    <span className="text-zinc-200">{insight}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
 

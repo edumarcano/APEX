@@ -308,6 +308,7 @@ export function TelemetryCard({
     weatherCondition != null
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
       : null
+  const isWeatherCard = title.trim() === 'Weather'
 
   const sectionClassName = [
     'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
@@ -385,12 +386,20 @@ export function TelemetryCard({
           </span>
           <span
             id={headingId}
-            className="min-w-0 flex-1 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]"
+            className={[
+              'min-w-0 truncate text-xs font-semibold tracking-tight text-[color:var(--hud-text)]',
+              isWeatherCard ? 'flex-[0_1_auto]' : 'flex-1',
+            ].join(' ')}
           >
             {title}
           </span>
           {compactValue != null ? (
-            <span className="min-w-0 max-w-[56%] shrink truncate text-right font-mono text-xs uppercase tracking-wide text-zinc-300">
+            <span
+              className={[
+                'min-w-0 shrink truncate text-right font-mono text-xs uppercase tracking-wide text-zinc-300',
+                isWeatherCard ? 'max-w-[72%]' : 'max-w-[56%]',
+              ].join(' ')}
+            >
               {compactValue}
             </span>
           ) : null}
@@ -451,6 +460,11 @@ export function TelemetryCard({
                 strokeWidth={1.75}
                 aria-hidden="true"
               />
+            ) : null}
+            {isWeatherCard && compactValue != null ? (
+              <p className="min-w-0 flex-1 line-clamp-2 break-words text-sm leading-snug text-zinc-200">
+                {compactValue}
+              </p>
             ) : null}
           </div>
         ) : null}

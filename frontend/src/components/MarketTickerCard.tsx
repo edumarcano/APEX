@@ -126,7 +126,7 @@ function Sparkline({ values }: { values: number[] }): ReactElement {
     return (
       <svg
         viewBox="0 0 100 30"
-        className="h-7 w-full min-w-[4.5rem] max-w-[5.5rem] overflow-visible opacity-30"
+        className="h-5 w-full min-w-[4rem] max-w-[5rem] overflow-visible opacity-30"
         aria-hidden
       >
         <line x1="0" y1="15" x2="100" y2="15" stroke="#4b5563" strokeWidth="1" />
@@ -137,7 +137,7 @@ function Sparkline({ values }: { values: number[] }): ReactElement {
   return (
     <svg
       viewBox="0 0 100 30"
-      className="h-7 w-full min-w-[4.5rem] max-w-[5.5rem] overflow-visible"
+      className="h-5 w-full min-w-[4rem] max-w-[5rem] overflow-visible"
       aria-hidden
     >
       <defs>
@@ -220,21 +220,13 @@ function TickerRow({
 
   return (
     <div
-      className={`flex min-w-[8.5rem] flex-1 flex-col gap-1.5 rounded-xl border border-white/[0.06] bg-zinc-950/20 px-2.5 py-2 ${glowClass}`}
+      className={`flex min-h-[4.25rem] min-w-[8rem] flex-1 flex-col justify-between gap-1 rounded-lg border border-white/[0.06] bg-zinc-950/20 px-2 py-2 ${glowClass}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
-          {ticker.symbol}
-        </span>
-        {isStale ? (
-          <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-amber-400/80">
-            {staleBadge}
+      <div className={`flex items-start justify-between gap-2 ${isStale ? 'opacity-70' : ''}`}>
+        <div className="min-w-0 space-y-1">
+          <span className="block font-mono text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
+            {ticker.symbol}
           </span>
-        ) : null}
-      </div>
-
-      <div className={`flex items-end justify-between gap-2 ${isStale ? 'opacity-70' : ''}`}>
-        <div className="min-w-0">
           <p
             className={`tabular-nums text-base font-semibold leading-none ${
               isUnavailable ? 'text-zinc-500' : trend !== 'neutral' ? 'mix-blend-screen' : ''
@@ -244,7 +236,7 @@ function TickerRow({
             {isUnavailable ? '--.--' : `$${formatPrice(ticker.price)}`}
           </p>
           <p
-            className={`mt-1 font-mono text-[10px] tabular-nums ${
+            className={`mt-0.5 font-mono text-[10px] tabular-nums ${
               isUnavailable ? 'text-zinc-600' : trend !== 'neutral' ? 'mix-blend-screen' : ''
             }`}
             style={isUnavailable ? undefined : { color: trendColor }}
@@ -252,6 +244,14 @@ function TickerRow({
             {isUnavailable ? '--%' : formatChangePercent(ticker.change_percent)}
           </p>
         </div>
+        {isStale ? (
+          <span className="shrink-0 font-mono text-[9px] font-semibold uppercase tracking-wider text-amber-400/80">
+            {staleBadge}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-1 flex min-h-0 w-full justify-end">
         <Sparkline values={isUnavailable ? [] : ticker.sparkline} />
       </div>
     </div>
@@ -345,7 +345,7 @@ export function MarketTickerCard({
     }
 
     return (
-      <div className="flex flex-wrap gap-2 sm:gap-3">
+      <div className="flex h-full min-h-0 flex-wrap items-stretch gap-1.5 sm:gap-2">
         {data.tickers.map((ticker) => (
           <TickerRow
             key={ticker.symbol}
@@ -395,7 +395,7 @@ export function MarketTickerCard({
     <section className={sectionClassName} aria-label="Market ticker">
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
-      <header className="hud-inner-lift mb-3 shrink-0">
+      <header className="hud-inner-lift mb-2 shrink-0">
         <div className="flex min-h-9 items-center gap-2.5">
           <span className="hud-icon-badge size-7 shrink-0">
             <LineChart
@@ -421,9 +421,9 @@ export function MarketTickerCard({
             />
           ) : null}
         </div>
-        <div className="hud-header-divider mt-3" aria-hidden />
+        <div className="hud-header-divider mt-2" aria-hidden />
       </header>
-      <div className="hud-inner-lift min-h-0 w-full">{content}</div>
+      <div className="hud-inner-lift min-h-0 w-full flex-1">{content}</div>
     </section>
   )
 }

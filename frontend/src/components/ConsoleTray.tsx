@@ -1,5 +1,6 @@
 import {
   Check,
+  CheckSquare,
   ChevronUp,
   Loader2,
   RotateCcw,
@@ -10,25 +11,30 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
+  type FormEvent,
   type ReactElement,
 } from 'react'
 
 import { type AgentMessage, type ToolTraceItem } from '../hooks/useApexAssistant'
-import { type AgentProfileStatus, type AssistantProfile } from '../types/telemetry'
+import {
+  type ActiveReminder,
+  type AgentProfileStatus,
+  type AssistantProfile,
+} from '../types/telemetry'
 
 import { AssistantToolCards } from './AssistantToolCards'
 import { AskApexBar, OPERATION_PROMPT_CHIPS } from './AskApexBar'
+import { ReminderListRow } from './ReminderListRow'
+
+const REMINDERS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/reminders'
 
 interface ConsoleTrayProps {
   placement?: 'bottom' | 'rail'
   isExpanded: boolean
   setExpanded: (open: boolean) => void
-  activeTab: 'assistant' | 'briefing'
-  setActiveTab: (tab: 'assistant' | 'briefing') => void
-  briefingText: string
-  insights: string[]
-  isBriefingNew: boolean
-  setBriefingNew: (val: boolean) => void
+  activeTab: 'assistant' | 'reminders'
+  setActiveTab: (tab: 'assistant' | 'reminders') => void
 
   assistantHistory: AgentMessage[]
   isAssistantQuerying: boolean
@@ -42,6 +48,10 @@ interface ConsoleTrayProps {
   activeProfile: AssistantProfile
   setActiveProfile: (profile: AssistantProfile) => void
   askApexEnabled: boolean
+  activeReminders: ActiveReminder[]
+  markReminderAsRead: (id: number) => void
+  refreshReminders: () => Promise<void>
+  onReminderSaved: () => void
 }
 
 function formatCountdown(seconds: number | null): string {
@@ -402,47 +412,125 @@ function AssistantTabContent({
   )
 }
 
-function BriefingTabContent({
-  briefingText,
-  insights,
+function ReminderInput({
+  refreshReminders,
+  onReminderSaved,
 }: {
-  briefingText: string
-  insights: string[]
+  refreshReminders: () => Promise<void>
+  onReminderSaved: () => void
 }): ReactElement {
-  const trimmed = briefingText.trim()
+  const [value, setValue] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  if (trimmed.length === 0) {
-    return (
-      <p className="py-8 text-center font-mono text-xs uppercase tracking-widest text-zinc-500">
-        APEX STANDBY. Initiate system synthesis to compile briefing data.
-      </p>
-    )
-  }
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+      event.preventDefault()
+
+      const trimmed = value.trim()
+      if (!trimmed || isSubmitting) {
+        return
+      }
+
+      setIsSubmitting(true)
+      setError(null)
+
+      try {
+        const response = await fetch(REMINDERS_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: trimmed }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`Reminder save failed (${response.status})`)
+        }
+
+        setValue('')
+        onReminderSaved()
+        await refreshReminders()
+      } catch {
+        setError('Reminder save failed. Try again.')
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    [isSubmitting, onReminderSaved, refreshReminders, value],
+  )
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-amber-500/30 bg-zinc-900/40 p-4">
-        <MarkdownContent content={trimmed} />
+    <form
+      onSubmit={(event) => {
+        void handleSubmit(event)
+      }}
+      className="hud-command-surface w-full rounded-lg bg-zinc-950/20 shadow-none backdrop-blur-none transition-all duration-300 focus-within:border-[#FBBF24]/40"
+      aria-label="Add reminder"
+    >
+      <div className="flex items-center gap-3 px-3 py-2">
+        <CheckSquare
+          className="size-4 shrink-0 text-[#FBBF24]"
+          strokeWidth={1.75}
+          aria-hidden
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setValue('')
+              event.currentTarget.blur()
+            }
+          }}
+          placeholder="Add a reminder..."
+          disabled={isSubmitting}
+          className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-500 outline-none"
+          aria-label="Reminder text"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {isSubmitting ? (
+          <Loader2 className="size-4 shrink-0 animate-spin text-[#39FF88]" aria-hidden />
+        ) : null}
       </div>
-
-      {insights.length > 0 ? (
-        <div className="space-y-3 border-t border-white/10 pt-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-            [ SUMMARY INSIGHTS ]
-          </p>
-          <ul className="space-y-3">
-            {insights.map((insight, index) => (
-              <li
-                key={`${index}-${insight.slice(0, 24)}`}
-                className="flex items-start gap-3 text-sm leading-relaxed text-zinc-200"
-              >
-                <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                <span>{insight}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {error ? (
+        <p className="border-t border-red-500/20 px-3 py-2 text-xs text-red-300">
+          {error}
+        </p>
       ) : null}
+    </form>
+  )
+}
+
+function RemindersTabContent({
+  activeReminders,
+  markReminderAsRead,
+}: {
+  activeReminders: ActiveReminder[]
+  markReminderAsRead: (id: number) => void
+}): ReactElement {
+  return (
+    <div className="flex min-h-[16rem] flex-col">
+      {activeReminders.length === 0 ? (
+        <div className="flex min-h-[12rem] flex-1 items-center justify-center rounded-xl border border-white/[0.06] bg-zinc-950/20 px-4 py-6">
+          <p className="text-center font-mono text-xs uppercase tracking-widest text-zinc-500">
+            No pending reminders.
+          </p>
+        </div>
+      ) : (
+        <ul className="list-fade-mask min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+          {activeReminders.map((reminder, index) => (
+            <ReminderListRow
+              key={reminder.id}
+              reminder={reminder}
+              index={index}
+              onMarkRead={markReminderAsRead}
+            />
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -461,10 +549,6 @@ export function ConsoleTray({
   setExpanded,
   activeTab,
   setActiveTab,
-  briefingText,
-  insights,
-  isBriefingNew,
-  setBriefingNew,
   assistantHistory,
   isAssistantQuerying,
   assistantLatestTrace,
@@ -477,6 +561,10 @@ export function ConsoleTray({
   activeProfile,
   setActiveProfile,
   askApexEnabled,
+  activeReminders,
+  markReminderAsRead,
+  refreshReminders,
+  onReminderSaved,
 }: ConsoleTrayProps): ReactElement {
   const handleExpand = useCallback((): void => {
     setExpanded(true)
@@ -529,27 +617,18 @@ export function ConsoleTray({
       <button
         type="button"
         onClick={() => {
-          setActiveTab('briefing')
-          setBriefingNew(false)
+          setActiveTab('reminders')
           handleExpand()
         }}
         className={[
           tabBaseClass,
-          activeTab === 'briefing'
+          activeTab === 'reminders'
             ? 'border-[#FBBF24]/50 bg-[#FBBF24]/10 text-[#FBBF24] shadow-[0_0_10px_rgba(251,191,36,0.2)]'
             : 'border-white/5 bg-transparent text-zinc-500 hover:border-[#FBBF24]/30 hover:text-zinc-300',
         ].join(' ')}
-        aria-pressed={activeTab === 'briefing'}
+        aria-pressed={activeTab === 'reminders'}
       >
-        <span className="inline-flex items-center gap-1.5">
-          [ BRIEFING ]
-          {isBriefingNew ? (
-            <span className="relative inline-flex h-1.5 w-1.5" aria-label="New briefing available">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FBBF24]/70 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#FBBF24]" />
-            </span>
-          ) : null}
-        </span>
+        [ REMINDERS ]
       </button>
     </div>
   )
@@ -567,10 +646,73 @@ export function ConsoleTray({
         activeProfile={activeProfile}
       />
     ) : (
-      <BriefingTabContent briefingText={briefingText} insights={insights} />
+      <RemindersTabContent
+        activeReminders={activeReminders}
+        markReminderAsRead={markReminderAsRead}
+      />
     )
 
   if (placement === 'rail') {
+    if (!isExpanded) {
+      return (
+        <section
+          className="hud-corner-brackets hud-interactive-shell hud-glass relative z-[var(--z-bento-hud)] flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10"
+          data-slot="console-tray-rail"
+          aria-label="Assistant console"
+        >
+          <span className="hud-corner-bl" aria-hidden />
+          <span className="hud-corner-br" aria-hidden />
+
+          <div className="hud-inner-lift flex w-full shrink-0 items-center gap-3 px-3 py-3">
+            {tabs}
+
+            <div
+              className="min-w-0 flex-1"
+              onClick={handleExpand}
+              onFocusCapture={handleExpand}
+            >
+              {activeTab === 'assistant' && askApexEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleExpand}
+                  className="hud-command-surface flex w-full items-center gap-3 rounded-lg bg-zinc-950/20 px-3 py-2 text-left transition-colors hover:border-[#0F4DB8]/40 hover:bg-[#0F4DB8]/10"
+                  aria-label="Ask APEX"
+                >
+                  <span
+                    className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]"
+                    aria-hidden
+                  >
+                    &gt;_
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-zinc-500">
+                    Ask APEX
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleExpand}
+                  className="w-full truncate text-left font-mono text-xs uppercase tracking-widest text-zinc-500 hover:text-zinc-300"
+                >
+                  &gt;_ View console
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggle}
+              className="shrink-0 rounded-md p-1.5 transition-colors hover:bg-white/5"
+              aria-label="Expand console"
+              aria-expanded={isExpanded}
+            >
+              <ChevronUp className="size-4 text-zinc-400 transition-colors hover:text-zinc-200" />
+            </button>
+          </div>
+        </section>
+      )
+    }
+
     return (
       <section
         className="hud-corner-brackets hud-interactive-shell hud-glass relative z-[var(--z-bento-hud)] flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10"
@@ -609,7 +751,7 @@ export function ConsoleTray({
           {activeContent}
         </div>
 
-        {askApexEnabled ? (
+        {activeTab === 'assistant' && askApexEnabled ? (
           <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
             <AskApexBar
               activeProfile={activeProfile}
@@ -620,6 +762,13 @@ export function ConsoleTray({
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
               integrated
+            />
+          </footer>
+        ) : activeTab === 'reminders' ? (
+          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
+            <ReminderInput
+              refreshReminders={refreshReminders}
+              onReminderSaved={onReminderSaved}
             />
           </footer>
         ) : null}
@@ -646,7 +795,7 @@ export function ConsoleTray({
           onFocusCapture={handleExpand}
           aria-hidden={isExpanded}
         >
-          {askApexEnabled ? (
+          {activeTab === 'assistant' && askApexEnabled ? (
             <AskApexBar
               activeProfile={activeProfile}
               onProfileChange={setActiveProfile}
@@ -705,7 +854,7 @@ export function ConsoleTray({
           {activeContent}
         </div>
 
-        {askApexEnabled ? (
+        {activeTab === 'assistant' && askApexEnabled ? (
           <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-4">
             <AskApexBar
               activeProfile={activeProfile}
@@ -716,6 +865,13 @@ export function ConsoleTray({
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
               integrated
+            />
+          </footer>
+        ) : activeTab === 'reminders' ? (
+          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-4">
+            <ReminderInput
+              refreshReminders={refreshReminders}
+              onReminderSaved={onReminderSaved}
             />
           </footer>
         ) : null}

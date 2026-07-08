@@ -50,6 +50,106 @@
   }
 }
 
+.hud-layout-fullscreen {
+  overflow: hidden;
+}
+
+.hud-layout-compact {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.hud-app-shell {
+  overscroll-behavior: contain;
+}
+
+.hud-panel-natural {
+  flex: 0 0 auto !important;
+  height: auto !important;
+}
+
+@media (max-width: 1279px), (max-height: 820px) {
+  .hud-app-shell {
+    --hud-panel-pad: 1rem;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .hud-main-shell {
+    flex: 0 0 auto;
+    min-height: max-content;
+    overflow: visible;
+  }
+
+  .hud-body-layout {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: max-content;
+    overflow: visible;
+  }
+
+  .hud-wing-column,
+  .hud-center-column {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    max-width: none !important;
+    min-height: 0;
+  }
+
+  .hud-digest-wrapper {
+    max-height: 13.5rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .hud-logo-shell {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+
+  .hud-logo-wrapper {
+    height: 12rem !important;
+    flex: 0 0 auto !important;
+    justify-content: center;
+  }
+
+  .hud-logo-mark {
+    height: 10rem !important;
+  }
+
+  .hud-corner-brackets {
+    max-width: 100%;
+  }
+
+}
+
+@media (max-width: 767px) {
+  .hud-app-shell {
+    padding: 1rem;
+  }
+
+  .hud-header {
+    gap: 0.75rem;
+  }
+
+  .hud-digest-wrapper {
+    max-height: 12rem !important;
+  }
+
+  .hud-logo-wrapper {
+    height: 10rem !important;
+  }
+
+  .hud-logo-mark {
+    height: 8.5rem !important;
+  }
+}
+
+@media (min-width: 1280px) and (min-height: 821px) {
+  .hud-layout-fullscreen {
+    overflow: hidden;
+  }
+}
+
 @keyframes textShimmer {
   0% {
     background-position: -200% center;
