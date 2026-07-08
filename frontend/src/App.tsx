@@ -502,6 +502,22 @@ export default function App(): ReactElement {
                 {isConsoleCompact ? (
                   <>
                     <TelemetryCard
+                      title="Weather"
+                      icon={CloudSun}
+                      primaryTemperatureF={primaryTemperatureF}
+                      weatherCondition={data?.weatherCondition}
+                      ledState={cardLedState}
+                      isCompact
+                      compactValue={weatherConditionCompactValue}
+                      style={weatherCardStyle}
+                      className={`hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                    >
+                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                        {weatherBody}
+                      </p>
+                    </TelemetryCard>
+
+                    <TelemetryCard
                       title="Events"
                       icon={Calendar}
                       f1TelemetryText={f1ScheduleTelemetryText}
@@ -551,29 +567,6 @@ export default function App(): ReactElement {
                       )}
                     </TelemetryCard>
 
-                    <MarketTickerCard
-                      data={marketData}
-                      isLoading={isMarketLoading}
-                      isCompact
-                      className={`hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
-                    />
-
-                    <TelemetryCard
-                      title="Weather"
-                      icon={CloudSun}
-                      primaryTemperatureF={primaryTemperatureF}
-                      weatherCondition={data?.weatherCondition}
-                      ledState={cardLedState}
-                      isCompact
-                      compactValue={weatherConditionCompactValue}
-                      style={weatherCardStyle}
-                      className={`hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
-                    >
-                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {weatherBody}
-                      </p>
-                    </TelemetryCard>
-
                     <TelemetryCard
                       title="News Wire"
                       icon={Newspaper}
@@ -586,15 +579,16 @@ export default function App(): ReactElement {
                         {newsItems[0]?.headline ?? (status === 'success' ? 'No news headlines available.' : error ?? 'News unavailable.')}
                       </p>
                     </TelemetryCard>
-                  </>
-                ) : (
-                  <>
+
                     <MarketTickerCard
                       data={marketData}
                       isLoading={isMarketLoading}
-                      className={`h-auto w-full shrink-0 xl:flex-none ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      isCompact
+                      className={`hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
                     />
-
+                  </>
+                ) : (
+                  <>
                 <TelemetryCard
                   title="Weather"
                   icon={CloudSun}
@@ -602,9 +596,9 @@ export default function App(): ReactElement {
                   weatherCondition={data?.weatherCondition}
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
-                  compactValue={weatherCompactValue}
+                  compactValue={weatherBody}
                   style={weatherCardStyle}
-                  className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  className={`min-h-0 xl:flex-[0.5_1_0] xl:min-h-0 ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {weatherBody}
@@ -618,12 +612,18 @@ export default function App(): ReactElement {
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
-                  className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  className={`min-h-0 xl:flex-[1.5_1_0] xl:min-h-0 ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {scheduleBody}
                   </p>
                 </TelemetryCard>
+
+                    <MarketTickerCard
+                      data={marketData}
+                      isLoading={isMarketLoading}
+                      className={`min-h-0 w-full xl:flex-[1_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                    />
                   </>
                 )}
               </div>
