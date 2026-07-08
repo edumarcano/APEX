@@ -32,7 +32,7 @@ Making the trigger a long-polling synchronous call simplifies the client signifi
 
 Prior to v1.6.0, `isSpeaking` on the frontend was derived as `isPipelinePolling && activeStep === 4`. This was replaced with a direct `is_speaking` field on the `/api/v1/status` response, backed by `speaker.is_speaking()` which checks `_SPEAK_LOCK` and `pygame.mixer.music.get_busy()`.
 
-The inferred approach had a window where the speaking border and `VocalOrb` animations were skipped if the frontend resolved the trigger before polling step 4. Sourcing the value from the backend means the speaker subsystem is the authority on its own state, and the frontend reacts to what is actually happening rather than what it predicted should happen.
+The inferred approach had a window where the speaking border and voice-state animations were skipped if the frontend resolved the trigger before polling step 4. Sourcing the value from the backend means the speaker subsystem is the authority on its own state, and the frontend reacts to what is actually happening rather than what it predicted should happen.
 
 ### `_speak_and_cleanup` defers pipeline reset until after audio ends
 

@@ -269,6 +269,54 @@
   will-change: transform;
 }
 
+@keyframes pipelineFlow {
+  from {
+    stroke-dashoffset: 136;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes signalBreath {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+}
+
+@keyframes voiceRib {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scaleX(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1.14);
+  }
+}
+
+.animate-pipeline-flow {
+  animation: pipelineFlow 1.45s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+.animate-signal-breath {
+  animation: signalBreath 1.7s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.animate-voice-rib {
+  animation: voiceRib 900ms ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
 @keyframes weatherSolar {
   0%,
   100% {
@@ -431,7 +479,10 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-nebula-spin-clockwise,
   .animate-nebula-spin-counter,
-  .animate-shimmer {
+  .animate-shimmer,
+  .animate-pipeline-flow,
+  .animate-signal-breath,
+  .animate-voice-rib {
     animation: none !important;
     transition: none !important;
   }

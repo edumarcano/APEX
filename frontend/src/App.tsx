@@ -20,10 +20,11 @@ import { ConsoleTray } from './components/ConsoleTray'
 import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
+import { PipelineProgressGlyph } from './components/PipelineProgressGlyph'
 import { ReminderListRow } from './components/ReminderListRow'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
-import { VocalOrb } from './components/VocalOrb'
+import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useMarketData } from './hooks/useMarketData'
@@ -535,17 +536,6 @@ export default function App(): ReactElement {
               lastBriefingTime={lastBriefingTime}
             />
           </div>
-
-          {/* VocalOrb Island — absolutely centered on the header's own box so its position
-              never depends on (or is thrown off by) the width of the pills either side. */}
-          <div className="hud-interactive-shell hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-            <VocalOrb
-              isSpeaking={isSpeaking}
-              activeTtsEngine={resolvedTtsEngine}
-              systemLoadThrottled={resolvedSystemThrottled}
-              className="h-7 w-auto"
-            />
-          </div>
         </header>
 
         <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
@@ -718,19 +708,33 @@ export default function App(): ReactElement {
                     />
                   </div>
                   <div
-                    className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                      isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
-                    } ${
-                      showCommandTrigger
-                        ? 'pointer-events-auto opacity-100'
-                        : 'pointer-events-none opacity-0'
+                    className={`absolute left-1/2 top-full flex -translate-x-1/2 flex-col items-center whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                      isDormant ? 'mt-7 xl:mt-9' : 'mt-2'
                     }`}
                   >
-                    <CommandTrigger
-                      status={isTriggerLoading ? 'loading' : 'idle'}
-                      onClick={handleTriggerSynthesis}
-                      disabled={isTriggerDisabled}
+                    <PipelineProgressGlyph
+                      step={activeStep}
+                      status={status}
+                      isSpeaking={isSpeaking}
                     />
+                    <VoiceSignalGlyph
+                      isSpeaking={isSpeaking}
+                      activeTtsEngine={resolvedTtsEngine}
+                      systemLoadThrottled={resolvedSystemThrottled}
+                    />
+                    <div
+                      className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                        showCommandTrigger
+                          ? 'pointer-events-auto translate-y-0 opacity-100'
+                          : 'pointer-events-none -translate-y-1 opacity-0'
+                      }`}
+                    >
+                      <CommandTrigger
+                        status={isTriggerLoading ? 'loading' : 'idle'}
+                        onClick={handleTriggerSynthesis}
+                        disabled={isTriggerDisabled}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

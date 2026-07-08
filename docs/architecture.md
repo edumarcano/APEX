@@ -207,7 +207,8 @@ apex/
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
 │   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
 │   │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
-│   │   │   ├── VocalOrb.tsx             # SVG speaking-state indicator (stasis line → gyro rings)
+│   │   │   ├── VoiceSignalGlyph.tsx     # Permanent centered speech-aperture indicator
+│   │   │   ├── PipelineProgressGlyph.tsx # Temporary centered briefing progress conduit
 │   │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 │   │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
@@ -401,9 +402,9 @@ Root layout. At `xl` breakpoints the HUD uses a three-column flex row (left wing
 
 **Dormant canvas mode:** When `status === 'idle'` (`isDormant`), the left and right wings collapse: `opacity-0`, outward `translate-x`, `xl:flex-[0_0_0%]`, and `overflow-hidden`. The center column expands to fill the full row width. The `ApexLogo` scales up (`scale-115` / `xl:scale-125`) within a larger container. The `BriefingDigest` panel collapses (`max-h-0 opacity-0 scale-95`). All transitions use `duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]`. When any non-idle status is set, the wings expand back to their active classes (`opacity-100 translate-x-0 xl:flex-1`) and the digest panel reveals.
 
-The header renders: the `VocalOrb` (center), the `APEX` title with subtitle (left), and on the right — a pending-reminder badge (amber, shown whenever unread reminders exist regardless of pipeline state), a "DEMO MODE ACTIVE" amber badge when `demoModeActive` is `true`, and a "Last Briefing: [time]" readout.
+The header renders the `APEX` identity pill on the left and diagnostics on the right. The large center logo stack owns briefing and voice state: `PipelineProgressGlyph` appears beneath `ApexLogo` during steps 1-3, and `VoiceSignalGlyph` remains mounted beneath the logo at all times, animating when `isSpeaking=true`.
 
-The `CommandTrigger` component is mounted **below the `ApexLogo`** in the center column. It is visible (`opacity-100 pointer-events-auto`) when `status === 'idle'` or `status === 'loading'`, and fades out otherwise.
+The `CommandTrigger` component is mounted **below the centered logo accessory stack** in the center column. It is visible (`opacity-100 pointer-events-auto`) when `status === 'idle'` or `status === 'loading'`, and fades out otherwise.
 
 Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
 
@@ -440,9 +441,13 @@ The inner gold core uses `getGoldSegmentClass()` and transitions through:
 
 `reminderPulseCount` prop change triggers an 800 ms `pulseActive` state that overrides both the outer shell and inner core to their blue-surge variants simultaneously.
 
-### `VocalOrb.tsx`
+### `VoiceSignalGlyph.tsx`
 
-SVG speaking-state indicator mounted in the header. In stasis: a single horizontal line. When `isSpeaking=true`: two counter-rotating dashed rings expand around a glowing gold core using `gyroClockwise` / `gyroCounter` CSS keyframe animations.
+Permanent SVG speaking-state indicator mounted under the large `ApexLogo`. In stasis it renders a subtle blue-gold baseline and central aperture. When `isSpeaking=true`, gold waveform ribs expand around the center emitter using the `voiceRib` and `signalBreath` CSS keyframe animations.
+
+### `PipelineProgressGlyph.tsx`
+
+Temporary SVG briefing progress indicator mounted above `VoiceSignalGlyph` in the center logo stack. It renders a thin xylem-like conduit with four nodes; steps 1-2 glow emerald, step 3 glows violet, and the glyph collapses once delivery begins or the run resolves.
 
 ### `BriefingDigest.tsx`
 
