@@ -20,6 +20,7 @@ import { AssistantToolCards } from './AssistantToolCards'
 import { AskApexBar, OPERATION_PROMPT_CHIPS } from './AskApexBar'
 
 interface ConsoleTrayProps {
+  placement?: 'bottom' | 'rail'
   isExpanded: boolean
   setExpanded: (open: boolean) => void
   activeTab: 'assistant' | 'briefing'
@@ -455,6 +456,7 @@ function BriefingTabContent({
  * visually rises as it re-centers within the shorter column.
  */
 export function ConsoleTray({
+  placement = 'bottom',
   isExpanded,
   setExpanded,
   activeTab,
@@ -506,7 +508,7 @@ export function ConsoleTray({
     'hud-command-surface font-mono text-[10px] uppercase tracking-[0.2em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
 
   const tabs = (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className={`flex shrink-0 items-center gap-2 ${placement === 'rail' ? 'min-w-0 flex-wrap' : ''}`}>
       <button
         type="button"
         onClick={() => {
@@ -551,6 +553,79 @@ export function ConsoleTray({
       </button>
     </div>
   )
+
+  const activeContent =
+    activeTab === 'assistant' ? (
+      <AssistantTabContent
+        history={assistantHistory}
+        isQuerying={isAssistantQuerying}
+        latestTrace={assistantLatestTrace}
+        error={assistantError}
+        profilesStatus={profilesStatus}
+        onUnloadModel={unloadLocalModel}
+        queryAssistant={queryAssistant}
+        activeProfile={activeProfile}
+      />
+    ) : (
+      <BriefingTabContent briefingText={briefingText} insights={insights} />
+    )
+
+  if (placement === 'rail') {
+    return (
+      <section
+        className="hud-corner-brackets hud-interactive-shell hud-glass relative z-[var(--z-bento-hud)] flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10"
+        data-slot="console-tray-rail"
+        aria-label="Assistant console"
+      >
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
+
+        <div className="hud-inner-lift flex w-full shrink-0 items-start justify-between gap-3 px-3 py-3">
+          {tabs}
+
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={resetAssistantSession}
+              className="rounded-md p-1.5 transition-colors hover:bg-white/5"
+              aria-label="Clear session history"
+            >
+              <RotateCcw className="size-4 text-zinc-400 transition-colors hover:text-rose-400" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggle}
+              className="rounded-md p-1.5 transition-colors hover:bg-white/5"
+              aria-label="Collapse console"
+              aria-expanded={isExpanded}
+            >
+              <ChevronUp className="size-4 rotate-180 text-zinc-400 transition-colors hover:text-zinc-200" />
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10 bg-zinc-950/30 p-4 scrollbar-thin">
+          {activeContent}
+        </div>
+
+        {askApexEnabled ? (
+          <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
+            <AskApexBar
+              activeProfile={activeProfile}
+              onProfileChange={setActiveProfile}
+              onSubmit={handleAgentSubmit}
+              profilesStatus={profilesStatus}
+              profilesStatusHydrated={profilesStatusHydrated}
+              onSelectChip={handleChipSelect}
+              isSubmitting={isAssistantQuerying}
+              integrated
+            />
+          </footer>
+        ) : null}
+      </section>
+    )
+  }
 
   return (
     <section
@@ -627,20 +702,7 @@ export function ConsoleTray({
         aria-hidden={!isExpanded}
       >
         <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950/30 p-4 scrollbar-thin">
-          {activeTab === 'assistant' ? (
-            <AssistantTabContent
-              history={assistantHistory}
-              isQuerying={isAssistantQuerying}
-              latestTrace={assistantLatestTrace}
-              error={assistantError}
-              profilesStatus={profilesStatus}
-              onUnloadModel={unloadLocalModel}
-              queryAssistant={queryAssistant}
-              activeProfile={activeProfile}
-            />
-          ) : (
-            <BriefingTabContent briefingText={briefingText} insights={insights} />
-          )}
+          {activeContent}
         </div>
 
         {askApexEnabled ? (

@@ -204,14 +204,13 @@ export default function App(): ReactElement {
   const pendingReminderCount = activeReminders.length
   const showPendingReminderBadge = pendingReminderCount > 0
   const isDormant = status === 'idle'
-  // While the console tray is expanded, the insights panel fully hides and the
-  // logo/wings top-align (instead of centering) so the tray can grow much
-  // larger without leaving dead space behind it.
+  // Expanded assistant sessions become a left rail on desktop. Smaller
+  // viewports keep the existing bottom tray behavior.
   const isConsoleCompact = isAssistantOpen && !isDormant
 
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
-  const wingHeightClass = isConsoleCompact ? 'xl:self-start' : 'xl:h-full'
+  const wingHeightClass = 'xl:h-full'
   const leftWingDormantClasses =
     'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const leftWingActiveClasses =
@@ -414,6 +413,24 @@ export default function App(): ReactElement {
   const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
   const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
+  const reactorStatusLabel =
+    pipelineState?.label ??
+    (status === 'success'
+      ? 'Synthesis complete'
+      : status === 'loading'
+        ? 'Synchronizing'
+        : status === 'error'
+          ? 'Attention required'
+          : 'Standby')
+  const reactorHealthLabel =
+    status === 'error'
+      ? 'Health degraded'
+      : failedConnectors.length > 0
+        ? `${failedConnectors.length} connector alert`
+        : `${Math.round(confidenceScore)}% confidence`
+  const reactorBriefingLabel = lastBriefingTime
+    ? `Last briefing ${lastBriefingTime}`
+    : 'No briefing logged'
 
   return (
     <main
@@ -508,42 +525,72 @@ export default function App(): ReactElement {
             <div
               className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              <MarketTickerCard
-                data={marketData}
-                isLoading={isMarketLoading}
-                isCompact={isConsoleCompact}
-                className={`h-auto w-full shrink-0 xl:flex-none ${isConsoleCompact ? 'xl:min-h-[3.75rem]' : ''} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
-              />
+              {isConsoleCompact ? (
+                <div className="hidden h-full min-h-0 xl:flex">
+                  <ConsoleTray
+                    placement="rail"
+                    isExpanded={isAssistantOpen}
+                    setExpanded={setAssistantOpen}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    briefingText={data?.briefing ?? ''}
+                    insights={combinedInsights}
+                    isBriefingNew={isBriefingNew}
+                    setBriefingNew={setIsBriefingNew}
+                    assistantHistory={assistantHistory}
+                    isAssistantQuerying={isAssistantQuerying}
+                    assistantLatestTrace={assistantLatestTrace}
+                    assistantError={assistantError}
+                    profilesStatus={profilesStatus}
+                    profilesStatusHydrated={profilesStatusHydrated}
+                    queryAssistant={queryAssistant}
+                    unloadLocalModel={unloadLocalModel}
+                    resetAssistantSession={resetAssistantSession}
+                    activeProfile={agentProfile}
+                    setActiveProfile={setAgentProfile}
+                    askApexEnabled={Boolean(showAskApexBar)}
+                  />
+                </div>
+              ) : null}
 
-              <TelemetryCard
-                title="Weather"
-                icon={CloudSun}
-                primaryTemperatureF={primaryTemperatureF}
-                weatherCondition={data?.weatherCondition}
-                ledState={cardLedState}
-                isCompact={isConsoleCompact}
-                compactValue={weatherCompactValue}
-                style={weatherCardStyle}
-                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
-              >
-                <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                  {weatherBody}
-                </p>
-              </TelemetryCard>
+              <div className={`flex min-h-0 flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:hidden' : 'xl:flex xl:flex-1'}`}>
+                <MarketTickerCard
+                  data={marketData}
+                  isLoading={isMarketLoading}
+                  isCompact={isConsoleCompact}
+                  className={`h-auto w-full shrink-0 xl:flex-none ${isConsoleCompact ? 'xl:min-h-[3.75rem]' : ''} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                />
 
-              <TelemetryCard
-                title="Events"
-                icon={Calendar}
-                f1TelemetryText={f1ScheduleTelemetryText}
-                ledState={cardLedState}
-                isCompact={isConsoleCompact}
-                compactValue={eventsCompactValue}
-                className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
-              >
-                <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                  {scheduleBody}
-                </p>
-              </TelemetryCard>
+                <TelemetryCard
+                  title="Weather"
+                  icon={CloudSun}
+                  primaryTemperatureF={primaryTemperatureF}
+                  weatherCondition={data?.weatherCondition}
+                  ledState={cardLedState}
+                  isCompact={isConsoleCompact}
+                  compactValue={weatherCompactValue}
+                  style={weatherCardStyle}
+                  className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                >
+                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                    {weatherBody}
+                  </p>
+                </TelemetryCard>
+
+                <TelemetryCard
+                  title="Events"
+                  icon={Calendar}
+                  f1TelemetryText={f1ScheduleTelemetryText}
+                  ledState={cardLedState}
+                  isCompact={isConsoleCompact}
+                  compactValue={eventsCompactValue}
+                  className={`${isConsoleCompact ? 'xl:min-h-[3.75rem]' : 'min-h-0 xl:flex-1 xl:min-h-0'} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                >
+                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                    {scheduleBody}
+                  </p>
+                </TelemetryCard>
+              </div>
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}
@@ -578,6 +625,19 @@ export default function App(): ReactElement {
                       className={logoSizeClass}
                     />
                   </div>
+                  {isConsoleCompact ? (
+                    <div className="pointer-events-none mt-4 hidden max-w-full flex-wrap items-center justify-center gap-2 px-2 xl:flex">
+                      <span className="rounded-full border border-[#0F4DB8]/30 bg-[#0F4DB8]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#7EB3FF] shadow-[0_0_12px_rgba(15,77,184,0.14)]">
+                        {reactorStatusLabel}
+                      </span>
+                      <span className="rounded-full border border-emerald-400/20 bg-emerald-950/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200/80">
+                        {reactorHealthLabel}
+                      </span>
+                      <span className="rounded-full border border-amber-400/20 bg-amber-950/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-amber-200/80">
+                        {reactorBriefingLabel}
+                      </span>
+                    </div>
+                  ) : null}
                   <div
                     className={`absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-8 xl:mt-10' : 'mt-3'
@@ -599,8 +659,49 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
+              {isConsoleCompact ? (
+                <>
+                  <MarketTickerCard
+                    data={marketData}
+                    isLoading={isMarketLoading}
+                    isCompact
+                    className={`hidden h-auto w-full shrink-0 xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  />
+
+                  <TelemetryCard
+                    title="Weather"
+                    icon={CloudSun}
+                    primaryTemperatureF={primaryTemperatureF}
+                    weatherCondition={data?.weatherCondition}
+                    ledState={cardLedState}
+                    isCompact
+                    compactValue={weatherCompactValue}
+                    style={weatherCardStyle}
+                    className={`hidden xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  >
+                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                      {weatherBody}
+                    </p>
+                  </TelemetryCard>
+
+                  <TelemetryCard
+                    title="Events"
+                    icon={Calendar}
+                    f1TelemetryText={f1ScheduleTelemetryText}
+                    ledState={cardLedState}
+                    isCompact
+                    compactValue={eventsCompactValue}
+                    className={`hidden xl:flex xl:min-h-[3.75rem] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  >
+                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                      {scheduleBody}
+                    </p>
+                  </TelemetryCard>
+                </>
+              ) : null}
+
               <TelemetryCard
                 title="Inbox"
                 icon={Mail}
@@ -739,7 +840,7 @@ export default function App(): ReactElement {
       </div>
 
       {!isDormant ? (
-        <div className="relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-4">
+        <div className={`relative z-[var(--z-bento-hud)] flex-none shrink-0 mt-4 ${isConsoleCompact ? 'xl:hidden' : ''}`}>
           <ConsoleTray
             isExpanded={isAssistantOpen}
             setExpanded={setAssistantOpen}
