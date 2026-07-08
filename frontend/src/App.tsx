@@ -396,51 +396,61 @@ export default function App(): ReactElement {
       </div>
 
       <div className="relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="relative mb-3 flex-none grid w-full grid-cols-3 items-center border-b border-[color:var(--hud-border-color)] pb-2">
-          <div className="flex items-baseline justify-self-start">
+        <header className="pointer-events-none flex flex-nowrap justify-between gap-4 w-full select-none shrink-0 mb-4 h-11 items-center">
+          {/* Identity Pill (Left) */}
+          <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-3 shrink-0 pointer-events-auto">
+            <ApexLogo
+              step={activeStep}
+              status={status}
+              isSpeaking={isSpeaking}
+              reminderPulseCount={reminderPulseCount}
+              className="h-6 w-auto shrink-0"
+            />
             <h1
-              className={`m-0 text-2xl font-extrabold tracking-widest md:text-3xl ${isPipelinePolling
+              className={`m-0 text-lg font-extrabold tracking-widest whitespace-nowrap ${isPipelinePolling
                 ? 'animate-shimmer'
                 : 'text-[color:var(--hud-accent)]'
                 }`}
             >
               APEX
             </h1>
-            <span className="mb-1 ml-3 hidden self-end text-[10px] uppercase tracking-widest text-[color:var(--hud-text)] opacity-40 sm:block">
-              AUTOMATED PERSONAL ENVIRONMENT XYLEM
-            </span>
-          </div>
-          <div className="flex justify-center justify-self-center">
-            <VocalOrb
-              isSpeaking={isSpeaking}
-              activeTtsEngine={resolvedTtsEngine}
-              systemLoadThrottled={resolvedSystemThrottled}
-              className="h-12 w-auto"
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2 justify-self-end">
             {showPendingReminderBadge && (
               <span
-                className="font-mono text-[10px] sm:text-[11px] uppercase tracking-widest text-amber-500/80 animate-pulse"
+                className="hidden sm:inline font-mono text-[10px] uppercase tracking-widest text-amber-500/80 animate-pulse whitespace-nowrap"
                 aria-live="polite"
                 data-slot="pending-reminder-badge"
               >
                 [{pendingReminderCount}{' '}
-                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'} Pending]
+                {pendingReminderCount === 1 ? 'Reminder' : 'Reminders'}]
               </span>
             )}
             {demoModeActive && (
               <span
-                className="border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite]"
+                className="hidden md:inline border border-amber-500/30 text-amber-400 bg-amber-950/20 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite] whitespace-nowrap"
                 data-slot="demo-mode-badge"
               >
-                DEMO MODE ACTIVE
+                DEMO
               </span>
             )}
-            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-zinc-400">
-              <Clock className="size-3.5 text-[#0F4DB8]" />
-              <span>Last Briefing: <span className="text-[#FFFFFF]">{lastBriefingTime || 'Standby'}</span></span>
-            </div>
+          </div>
+
+          {/* VocalOrb Island (Center) */}
+          <div className="hud-glass rounded-full h-11 w-11 flex items-center justify-center shrink-0 pointer-events-auto">
+            <VocalOrb
+              isSpeaking={isSpeaking}
+              activeTtsEngine={resolvedTtsEngine}
+              systemLoadThrottled={resolvedSystemThrottled}
+              className="h-7 w-auto"
+            />
+          </div>
+
+          {/* Context Capsule (Right) */}
+          <div className="hud-glass rounded-full px-4 h-11 flex items-center gap-2.5 shrink-0 font-mono text-xs pointer-events-auto whitespace-nowrap">
+            <Clock className="size-3.5 text-[#0F4DB8] shrink-0" />
+            <span className="uppercase tracking-widest text-zinc-400">
+              Last Briefing:{' '}
+              <span className="text-[#FFFFFF]">{lastBriefingTime || 'Standby'}</span>
+            </span>
           </div>
         </header>
 
@@ -484,6 +494,12 @@ export default function App(): ReactElement {
             <div
               className={`relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} xl:gap-6 ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
+              {/* Ambient Logo Glow Projector */}
+              <div
+                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-12 h-[380px] w-[380px] rounded-full blur-[120px] opacity-10 mix-blend-screen"
+                style={{ background: 'rgba(var(--glow-color), 0.15)' }}
+                aria-hidden
+              />
               <div className={`shrink-0 overflow-hidden flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
                   insights={[

@@ -66,13 +66,26 @@ function formatGbRatio(used: number | null | undefined, total: number | null | u
 
 function getMicroBarColorClass(percentage: number): string {
   if (percentage >= 90) {
-    return 'bg-[#ef4444] drop-shadow-[0_0_4px_rgba(239,68,68,0.5)]'
+    return 'bg-gradient-to-r from-red-600 to-red-400 shadow-[0_0_8px_rgba(239,68,68,0.8)]'
   }
   if (percentage >= 80) {
-    return 'bg-[#f59e0b] drop-shadow-[0_0_4px_rgba(245,158,11,0.5)]'
+    return 'bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]'
   }
-  return 'bg-[#3b82f6] drop-shadow-[0_0_4px_rgba(59,130,246,0.3)]'
+  return 'bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
 }
+
+const EQUALIZER_HEIGHTS: readonly string[] = [
+  'h-[6px]',
+  'h-[10px]',
+  'h-[14px]',
+  'h-[18px]',
+  'h-[22px]',
+  'h-[22px]',
+  'h-[18px]',
+  'h-[14px]',
+  'h-[10px]',
+  'h-[6px]',
+]
 
 interface SystemDiagnosticsProps {
   diagnostics: SystemDiagnosticsPayload
@@ -209,7 +222,7 @@ export function SystemDiagnostics({
     return (
       <div
         key={i}
-        className={`h-3 w-1 rounded-sm transition-colors duration-500 ${isSuccess
+        className={`w-1 rounded-sm transition-colors duration-500 ${EQUALIZER_HEIGHTS[i]} ${isSuccess
           ? isActive
             ? `${syncColorBar} ${syncColorShadow}`
             : 'bg-zinc-700'
@@ -233,8 +246,8 @@ export function SystemDiagnostics({
   const diskPctClamped = diskUnavailable ? 0 : clampPercentage(diskVal)
 
   return (
-    <footer className="w-full border border-white/5 bg-zinc-950/40 backdrop-blur-md rounded-xl p-4 mt-auto z-40 select-none transition-all duration-700 ease-in-out hover-blue-medium">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
+    <footer className="max-w-5xl mx-auto xl:max-w-5xl xl:mx-auto rounded-full px-6 py-2.5 bg-zinc-950/40 border border-white/5 backdrop-blur-md shadow-2xl select-none z-40 transition-all duration-700 ease-in-out hover-blue-medium">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 xl:gap-6 items-center justify-between text-xs font-mono text-zinc-400 font-medium">
 
         {/* Column 1: Title */}
         <div className="flex items-center">
@@ -296,7 +309,7 @@ export function SystemDiagnostics({
                 <span className="text-zinc-500 font-bold">—%</span>
               )}
             </span>
-            <div className="flex items-center gap-0.5">{syncBlocks}</div>
+            <div className="flex items-center gap-0.5 h-6">{syncBlocks}</div>
           </div>
 
           {/* Sync Health Tooltip */}
@@ -337,7 +350,7 @@ export function SystemDiagnostics({
               <Cpu className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <span>CPU {formatPercentage(resolvedDiagnostics.cpu, isInitializing)}</span>
             </div>
-            <div className="w-12 h-1 rounded-full bg-white/5 overflow-hidden">
+            <div className="relative w-16 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(cpuPctClamped)}`}
                 style={{ width: `${cpuPctClamped}%` }}
@@ -365,7 +378,7 @@ export function SystemDiagnostics({
               <Database className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <span>RAM {formatPercentage(resolvedDiagnostics.ram, isInitializing)}</span>
             </div>
-            <div className="w-12 h-1 rounded-full bg-white/5 overflow-hidden">
+            <div className="relative w-16 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(ramPctClamped)}`}
                 style={{ width: `${ramPctClamped}%` }}
@@ -393,7 +406,7 @@ export function SystemDiagnostics({
               <HardDrive className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <span>DISK {formatPercentage(resolvedDiagnostics.disk, isInitializing)}</span>
             </div>
-            <div className="w-12 h-1 rounded-full bg-white/5 overflow-hidden">
+            <div className="relative w-16 h-2 rounded-full bg-black/40 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-500 ease-in-out ${getMicroBarColorClass(diskPctClamped)}`}
                 style={{ width: `${diskPctClamped}%` }}
