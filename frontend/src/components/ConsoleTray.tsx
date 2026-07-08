@@ -400,6 +400,9 @@ function AssistantTabContent({
   const loadingLocalProfile = profilesStatus.find((profile) => profile.loading)
   const isLocalModelLoading = Boolean(loadingLocalProfile)
   const loadingDisplayName = loadingLocalProfile?.display_name?.trim() || 'model'
+  const workingDisplayName =
+    profilesStatus.find((profile) => profile.key === activeProfile)?.display_name?.trim() ||
+    'APEX'
 
   const lastModelIndex = (() => {
     for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -509,7 +512,7 @@ function AssistantTabContent({
             <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
               {isLocalModelLoading
                 ? `Loading (${loadingDisplayName})`
-                : 'APEX processing'}
+                : `${workingDisplayName} Working`}
             </span>
             <div
               className={[
@@ -729,7 +732,7 @@ export function ConsoleTray({
         className={[
           tabBaseClass,
           activeTab === 'assistant'
-            ? 'border-[#0F4DB8]/50 bg-[#0F4DB8]/15 text-[#7EB3FF] shadow-[0_0_10px_rgba(15,77,184,0.25)]'
+            ? 'border-[#0F4DB8]/50 bg-[#0F4DB8]/15 text-[#0F4DB8] shadow-[0_0_10px_rgba(15,77,184,0.25)]'
             : 'border-white/5 bg-transparent text-zinc-500 hover:border-[#0F4DB8]/30 hover:text-zinc-300',
         ].join(' ')}
         aria-pressed={activeTab === 'assistant'}
