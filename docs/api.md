@@ -168,6 +168,62 @@ Each psutil query is isolated in a `try/except`; a single hardware read failure 
 
 ---
 
+### `GET /api/v1/market`
+
+Cache-first end-of-day market snapshot for a configured ticker symbol set. Independent of the briefing pipeline and of `DEV_MODE`; polled by the frontend's `useMarketData` hook every 30 seconds.
+
+**Response `200`** — `MarketResponse`
+```json
+{
+  "status": "live",
+  "cooldown_active": false,
+  "cooldown_remaining_seconds": 0,
+  "tickers": [
+    {
+      "symbol": "SPY",
+      "price": 521.34,
+      "change": 1.12,
+      "change_percent": 0.22,
+      "status": "live",
+      "last_updated": "2026-07-08T21:00:00+00:00",
+      "sparkline": [521.34, 520.22, 519.87, 518.90, 519.50, 520.10, 520.75]
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | Aggregate feed state: `"live"`, `"partial"`, `"stale"`, `"unavailable"`, `"not_configured"`, or `"provider_unavailable"` |
+| `cooldown_active` | boolean | `true` when outgoing Alpha Vantage requests are globally paused after a prior provider error |
+| `cooldown_remaining_seconds` | integer | Seconds remaining in the active cooldown window (0 when inactive) |
+| `tickers` | `MarketTickerItem[]` | Ordered snapshots, one per configured symbol |
+
+**`MarketTickerItem` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `symbol` | string | Configured ticker symbol |
+| `price` | float \| null | Latest available daily close price |
+| `change` | float \| null | Absolute close-to-close change versus the prior trading day |
+| `change_percent` | float \| null | Percent close-to-close change, without a trailing `%` sign |
+| `status` | string | Per-symbol freshness: `"live"`, `"stale"`, or `"unavailable"` |
+| `last_updated` | string \| null | UTC ISO-8601 timestamp of the last successful fetch for this symbol |
+| `sparkline` | float[] | Up to 7 recent daily closes, newest first |
+
+**Symbol configuration:** `MARKET_SYMBOLS` (`.env`) is a comma-separated ticker list. When unset, `status` is `"not_configured"` and `tickers` is empty.
+
+**Simulation fallback:** When `DEMO_MODE=true` or `ALPHA_VANTAGE_API_KEY` is unset, the endpoint returns a deterministic simulated feed (fixed symbol set `SPY`, `AAPL`, `MSFT`) with `status: "live"` rather than an error or empty response, so the HUD ticker always has data to render.
+
+**Cache and cooldown behavior:** Each symbol is cached to a local file with a 12-hour TTL. A failed or rate-limited Alpha Vantage request sets a 15-minute cooldown during which no further outbound requests are made for any configured symbol; cached data (marked `"stale"`) is served instead. `cooldown_active` and `cooldown_remaining_seconds` reflect this window.
+
+**Response `503`** — snapshot retrieval raised an unhandled exception
+```json
+{ "detail": "Market snapshot unavailable." }
+```
+
+---
+
 ### `GET /api/v1/reminders`
 
 Returns all unread reminders.
@@ -272,7 +328,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 ```json
 {
   "prompt": "What is the current weather?",
-  "profile": "nova",
+  "profile": "comet",
   "session_id": null,
   "history": []
 }
@@ -281,7 +337,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | Field | Type | Description |
 |---|---|---|
 | `prompt` | string | The user's query for this turn. |
-| `profile` | string | Cloud role tier: `"comet"`, `"nova"`, or `"pulsar"`. Defaults to `"nova"`. |
+| `profile` | string | Cloud role tier: `"comet"`, `"nova"`, or `"pulsar"`. Defaults to `"comet"`. |
 | `session_id` | string \| null | Optional client-generated grouping identifier; passed through unchanged. |
 | `history` | `AgentMessage[]` | Prior turns for this session, including `tool_calls`/`tool_results`. Empty on the first turn. |
 
@@ -295,6 +351,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
   "tool_trace": [
     { "name": "get_current_weather", "status": "ok", "duration_ms": 412.3 }
   ],
+  "tool_outputs": [],
   "session_id": null,
   "error": null
 }
@@ -305,8 +362,11 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `answer` | string | Final synthesized text response. |
 | `profile_used` | object | Full cloud or local model profile dump for the profile that served this request. |
 | `tool_trace` | object[] | One entry per tool executed this turn: `name`, `status` (`"ok"` or `"error"`), `duration_ms`. |
+| `tool_outputs` | object[] | One entry per tool executed this turn with its full structured output: `name`, `status`, `duration_ms`, `output`. Only tools in the output whitelist (see below) return their real `output`; all others return `{"error": "Tool output is not whitelisted for client display."}`. A failed call returns `{"error": "<exception message>"}` regardless of whitelist status. |
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
+
+**Tool output whitelist:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Only tools in `ALLOWED_TOOL_OUTPUT_REGISTRY` (`core/agent/loop.py`) return their real output in this field: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`. `get_current_weather` is deliberately excluded and always returns the placeholder error object, since its result is already fully covered by the synthesized `answer` text.
 
 **Response `403`** — Assistant interface disabled via `config.json` `ask_apex.enabled`
 ```json
@@ -321,7 +381,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 **Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
 
-**Demo path:** When `DEMO_MODE=true`, returns a deterministic canned response selected by keyword-matching the prompt (weather/forecast, F1/standings/calendar, reminders/tasks, or a generic fallback) with a synthetic `tool_trace`. No live Gemini call is made.
+**Demo path:** When `DEMO_MODE=true`, returns a deterministic canned response selected by keyword-matching the prompt against entries in `core/mock/assistant.json` (weather/forecast, F1/standings/calendar, reminders/tasks, or a generic fallback). Each entry supplies its own `answer`, `tool_trace`, and `tool_outputs`. No live Gemini or Ollama call is made.
 
 **Local (Ollama) profile behavior:** Requests targeting a local profile (`lynx`, `acinonyx`, `neofelis`) pass through additional admission checks before the agent loop runs:
 
@@ -366,6 +426,7 @@ Ollama reachability, installed model tags, and host vitals are read from a share
     "stability": "preview",
     "status": "model_not_installed",
     "active": false,
+    "loading": false,
     "reason": "Model tag is not installed locally",
     "idle_unload_remaining_seconds": null,
     "loaded_model": null
@@ -378,6 +439,7 @@ Ollama reachability, installed model tags, and host vitals are read from a share
     "stability": "stable",
     "status": "available",
     "active": false,
+    "loading": false,
     "reason": null,
     "idle_unload_remaining_seconds": null,
     "loaded_model": null
@@ -394,6 +456,7 @@ Ollama reachability, installed model tags, and host vitals are read from a share
 | `stability` | string | `"stable"` or `"preview"` |
 | `status` | string | See `ProfileAvailabilityStatus` values below |
 | `active` | boolean | `true` when this profile's local model is currently loaded in Ollama memory (always `false` for cloud profiles) |
+| `loading` | boolean | `true` while this profile's local model is being warmed up (loaded into Ollama but not yet ready to serve); always `false` for cloud profiles. Distinct from `active`: a model is `loading` before it is `active`. |
 | `reason` | string \| null | Human-readable explanation when `status` is not `"available"` |
 | `idle_unload_remaining_seconds` | integer \| null | Seconds until this local model auto-unloads; populated only for the currently active local profile |
 | `loaded_model` | object \| null | Runtime details reported by Ollama (`name`, `model`, `size_bytes`, `size_vram_bytes`, `processor`, `context`, `expires_at`) when this profile's model is loaded |
@@ -602,9 +665,12 @@ class AgentQueryResponse(BaseModel):
     answer: str
     profile_used: dict[str, Any]
     tool_trace: list[dict[str, Any]] = []
+    tool_outputs: list[dict[str, Any]] = []
     session_id: str | None = None
     error: str | None = None
 ```
+
+`tool_outputs` carries the full structured result for whitelisted tools (see [POST /api/v1/agent/query](#post-apiv1agentquery) above for the whitelist).
 
 ### `AgentProfileStatus`
 
@@ -617,6 +683,7 @@ class AgentProfileStatus(BaseModel):
     stability: Literal["stable", "preview"]
     status: ProfileAvailabilityStatus
     active: bool
+    loading: bool = False
     reason: str | None = None
     idle_unload_remaining_seconds: int | None = None
     loaded_model: LocalLoadedModelStatus | None = None
@@ -682,6 +749,8 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `APEX_ALLOWED_ORIGINS` | _(see below)_ | Comma-separated CORS origins; replaces defaults entirely when set |
+| `ALPHA_VANTAGE_API_KEY` | _(unset)_ | Alpha Vantage API key for `GET /api/v1/market`; when unset, the endpoint serves a simulated ticker feed instead of live data |
+| `MARKET_SYMBOLS` | _(unset)_ | Comma-separated ticker symbols for `GET /api/v1/market`; when unset, the endpoint returns `status: "not_configured"` with an empty ticker list |
 
 **Default CORS origins** (when `APEX_ALLOWED_ORIGINS` is unset):
 ```

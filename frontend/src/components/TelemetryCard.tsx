@@ -244,7 +244,7 @@ export type TelemetryCardProps = {
   primaryTemperatureF?: number | null
   /** Optional F1 telemetry text source used for F1_DATA parsing. */
   f1TelemetryText?: string
-  /** Micro-climate archetype for scoped atmospheric background glow. */
+  /** Micro-climate archetype for per-condition animated weather icons. */
   weatherCondition?: WeatherConditionArchetype | null
   /** Module status LED communicating this card's data freshness, mirroring the unified pipeline state. */
   ledState?: TelemetryLedState

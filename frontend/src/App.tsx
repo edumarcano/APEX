@@ -33,7 +33,7 @@ import {
   resolveAttentionStaggerMs,
   resolveAttentionTier,
 } from './lib/attentionTier'
-import type { AssistantProfile, WeatherConditionArchetype } from './types/telemetry'
+import type { AssistantProfile } from './types/telemetry'
 
 interface ParsedEmail {
   subject: string
@@ -159,21 +159,13 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
   'neofelis',
 ]
 
-const WEATHER_BORDER_BY_CONDITION: Record<WeatherConditionArchetype, string> = {
-  clear_day: '#1E6BFF',
-  clear_night: '#0F4DB8',
-  clouds: '#6E88AB',
-  rain: '#1E6BFF',
-  thunderstorm: '#7EB3FF',
-}
-
 function isAssistantProfile(value: string): value is AssistantProfile {
   return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
 }
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
-  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
+  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('comet')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
   const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
@@ -283,14 +275,6 @@ export default function App(): ReactElement {
     isAssistantQuerying,
     isLocalModelLoaded,
   ])
-
-  const weatherCardStyle = useMemo((): CSSProperties | undefined => {
-    const condition = data?.weatherCondition
-    if (!condition) return undefined
-
-    const borderColor = WEATHER_BORDER_BY_CONDITION[condition]
-    return { '--hud-border-color': borderColor } as CSSProperties
-  }, [data?.weatherCondition])
 
   const hasSuccessfulData = status === 'success' && Boolean(data)
   const isTriggerLoading = status === 'loading'
@@ -564,7 +548,6 @@ export default function App(): ReactElement {
                       compactValue={weatherConditionCompactValue}
                       attentionTier={attentionTiers.weather}
                       attentionStaggerMs={attentionStagger.weather}
-                      style={weatherCardStyle}
                       className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
@@ -702,7 +685,6 @@ export default function App(): ReactElement {
                   compactValue={weatherBody}
                   attentionTier={attentionTiers.weather}
                   attentionStaggerMs={attentionStagger.weather}
-                  style={weatherCardStyle}
                   className={`min-h-0 ${weatherPanelLayoutClass}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">

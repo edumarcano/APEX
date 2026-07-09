@@ -166,7 +166,7 @@ export function resolveWeatherDetail(weatherReport: string | undefined | null): 
 }
 
 /**
- * Micro-climate archetype resolver for scoped Weather card glow and border theming.
+ * Micro-climate archetype resolver for per-condition Weather card icons.
  * Matches condition tokens in the atmospheric detail clause (case-insensitive).
  */
 export function resolveWeatherCondition(detail: string): WeatherConditionArchetype | null {

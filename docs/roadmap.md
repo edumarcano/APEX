@@ -275,7 +275,7 @@ Enable local agentic execution through Ollama-powered models while reducing clou
 
 ## v1.14.0 - Central Command Atmosphere
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
 Rebuild APEX as a fullscreen central command HUD with inline chat, strict bento layout, glass atmosphere, structured tool cards, and a market ticker.

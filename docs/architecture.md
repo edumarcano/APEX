@@ -41,7 +41,7 @@ sequenceDiagram
         Status->>Store: get_state() [acquire lock]
         Store-->>Status: { step, label, timestamp, is_speaking }
         Status-->>App: 200 JSON snapshot
-        Note over App: Step 1: Weather opacity-25<br/>Steps 1–2: Events + Reminders opacity-25<br/>ApexLogo segments light in sequence
+        Note over App: Per-surface attention tier advances (dormant → pending → active → complete)<br/>ApexLogo segments light in sequence
     end
 
     Trigger->>Store: update(2, COLLECTION)
@@ -196,24 +196,28 @@ apex/
 │   │   ├── hooks/
 │   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state, boot config fetch
 │   │   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
-│   │   │   └── useApexAssistant.ts      # Console assistant state: query submission, client-held history, trace, errors
+│   │   │   ├── useApexAssistant.ts      # Console assistant state: query submission, client-held history, trace, errors
+│   │   │   └── useMarketData.ts         # 30 s market poller with stale-fallback on fetch failure
 │   │   ├── types/
 │   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, WeatherConditionArchetype
 │   │   ├── components/
 │   │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
-│   │   │   ├── CommandTrigger.tsx       # Status-driven synthesis trigger button (idle / loading states)
+│   │   │   ├── CommandTrigger.tsx       # Synthesis trigger button (hover/focus label states)
 │   │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
-│   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
+│   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather icons, attention tier
 │   │   │   ├── MarketTickerCard.tsx     # End-of-day market ticker card and compact row
 │   │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
 │   │   │   ├── VoiceSignalGlyph.tsx     # Centered pipeline status, thinking, and speech indicator
 │   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 │   │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
 │   │   │   ├── ConsoleTray.tsx          # Bottom/rail console with assistant and reminders tabs
-│   │   │   └── CloudProfileSelector.tsx # Cloud/local profile dropdown shared by console inputs
+│   │   │   ├── AssistantToolCards.tsx   # Structured per-tool result cards for whitelisted tool_outputs
+│   │   │   ├── CloudProfileSelector.tsx # Cloud/local profile dropdown shared by console inputs
+│   │   │   └── weather/                # Per-condition animated SVG icons (ClearDay, ClearNight, Clouds, Rain, Thunderstorm)
 │   │   ├── lib/
 │   │   │   ├── api.ts                   # Shared local API endpoint constants
+│   │   │   ├── attentionTier.ts         # Pipeline-driven attention-tier reveal schedule and resolvers
 │   │   │   └── promptChips.ts           # Shared assistant prompt chip definitions
 │   │   ├── App.tsx          # Root layout: three-column bento grid, nebula glow, demo badge
 │   │   └── main.tsx         # Vite entry point
@@ -291,11 +295,11 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 
 **`core/agent/providers/ollama_models.py`** — Defines `OllamaModelProfile` and three fixed local profiles in `OLLAMA_MODEL_PROFILES`, each targeting a distinct `qwen3` model tag:
 
-| Profile | Display Name | Model | Tier | Context Window | Tool-Select Tokens | Final-Answer Tokens | Threads | Timeout | RAM Limit | CPU Limit |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `lynx` | Apex Lynx | `qwen3:1.7b` | lightweight | 4096 | 128 | 512 | 4 | 120s | 88% | 95% |
-| `acinonyx` | Apex Acinonyx | `qwen3:4b-instruct` | balanced | 4096 | 128 | 768 | 6 | 150s | 78% | 90% |
-| `neofelis` | Apex Neofelis | `qwen3:8b` | heavy | 4096 | 128 | 1024 | 4 | 180s | 68% | 85% |
+| Profile | Display Name | Model | Tier | Stability | Context Window | Tool-Select Tokens | Final-Answer Tokens | Threads | Timeout | RAM Limit | CPU Limit |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `lynx` | Apex Lynx | `qwen3:1.7b` | lightweight | stable | 4096 | 128 | 512 | 4 | 120s | 88% | 95% |
+| `acinonyx` | Apex Acinonyx | `qwen3:4b-instruct` | balanced | stable | 4096 | 128 | 768 | 6 | 150s | 78% | 90% |
+| `neofelis` | Apex Neofelis | `qwen3:8b` | heavy | preview | 4096 | 128 | 1024 | 4 | 180s | 68% | 85% |
 
 `max_tool_turns` and `max_tool_calls` mirror `AGENT_MAX_TURNS`/`AGENT_MAX_TOOL_CALLS` the same way the Gemini profiles do (Lynx applies a lower fixed ceiling: `min(2, AGENT_MAX_TURNS)` / `min(3, AGENT_MAX_TOOL_CALLS)`). All three profiles default `think=False` (Ollama's chain-of-thought phase is disabled) and `default_temperature=0.2` (`0.1` for Neofelis). RAM and CPU limits are percentage thresholds evaluated by the resource gate before a cold load; they are configurable per profile via `config.json` `ollama.resource_gates.{lynx,acinonyx,neofelis}.{ram_limit,cpu_limit}`, defaulting to the values above.
 
@@ -323,6 +327,8 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 All tools are read-only; none can mutate reminders, settings, or telemetry state.
 
 **`core/agent/loop.py`** — `run_agent_loop()` drives a bounded turn loop: each turn calls `provider.generate_turn()`, appends the model's message to history, and if the model requested tool calls, dispatches them via `default_tools_dispatcher()` before looping again. `default_tools_dispatcher` validates and coerces arguments against each tool's type hints (int arguments are clamped per-tool, e.g. `get_weather_forecast` days to 1–5) and raises on missing required arguments. The loop terminates when the model returns a message with no tool calls (success), when `profile.max_tool_calls` total executions are reached, or when `profile.max_tool_turns` turns elapse without a final answer — the latter two return the best available partial answer with `error` populated rather than looping indefinitely. Any unhandled exception in the loop is caught and converted into a generic unavailability message plus a `traceback.format_exc()` in `error`.
+
+**Tool output whitelist:** alongside `tool_trace` (name/status/duration only), the loop builds `tool_outputs`, a parallel list carrying the full structured result for tools in `ALLOWED_TOOL_OUTPUT_REGISTRY` — every registered tool except `get_current_weather`. A non-whitelisted or failed call contributes an `{"error": "..."}` placeholder in place of its real output. The frontend's `AssistantToolCards.tsx` (see Frontend Components below) renders one result card per `tool_outputs` entry.
 
 **`core/agent/providers/gemini.py`** — `GeminiProvider` implements the `AgentProvider` protocol. `_messages_to_contents()` converts the internal `AgentMessage` history into Gemini `types.Content` objects; `_content_to_agent_message()` converts the reply back, including any `function_call` parts into `ToolCall`s. Tool call arguments are sent with `automatic_function_calling` disabled — APEX's own loop drives execution, not the SDK's built-in auto-calling.
 
@@ -407,9 +413,9 @@ The header renders the `APEX` identity pill on the left and diagnostics on the r
 
 The `CommandTrigger` component is mounted **below the centered logo accessory stack** in the center column. It is visible (`opacity-100 pointer-events-auto`) when `status === 'idle'` or `status === 'loading'`, and fades out otherwise.
 
-Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
+**Attention-tier reveal:** Telemetry card visibility is driven by `resolveAttentionTier()` (`frontend/src/lib/attentionTier.ts`), not by direct opacity toggles in `App.tsx`. See [Attention-Tier Reveal System](#attention-tier-reveal-system) below.
 
-**Assistant wiring:** `App.tsx` holds `agentProfile` state (default `'nova'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useApexAssistant()` directly. `ConsoleTray` owns the assistant/reminders console UI and renders as a bottom tray on compact layouts or a right rail on large desktop layouts. `AskApexBar` is gated by `showAskApexBar = status === 'success' && askApexEnabled`, so it appears only after a briefing has been delivered and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetAssistantSession()`) clears any open assistant conversation first. `queryAssistant()` opens the console, switches to the Assistant tab, and appends the user/model turn to client-held history.
+**Assistant wiring:** `App.tsx` holds `agentProfile` state (default `'comet'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useApexAssistant()` directly. `ConsoleTray` owns the assistant/reminders console UI and renders as a bottom tray on compact layouts or a right rail on large desktop layouts. `AskApexBar` is gated by `showAskApexBar = status === 'success' && askApexEnabled`, so it appears only after a briefing has been delivered and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetAssistantSession()`) clears any open assistant conversation first. `queryAssistant()` opens the console, switches to the Assistant tab, and appends the user/model turn to client-held history.
 
 ### `CelestialBackground.tsx`
 
@@ -438,13 +444,16 @@ The inner gold core uses `getGoldSegmentClass()` and transitions through:
 - **Step 3** — purple surge (`apexPurpleMetal`)
 - **Delivered / speaking** — `apex-core-metal--gold-active` (gold glow); adds `animate-[pulse_3s_ease-in-out_infinite]` while `isSpeaking === true`
 - **Error** — `apex-core-metal--red` (red glow)
+- **Local model loading (`isLocalModelLoading`)** — rust-orange treatment on the outer shell; the inner core stays dormant while the shell surges, keeping this state visually distinct from the purple "assistant querying" state
 - **Reminder pulse** — overrides all states with `apex-core-metal--blue-surge` for 800 ms
 
-`reminderPulseCount` prop change triggers an 800 ms `pulseActive` state that overrides both the outer shell and inner core to their blue-surge variants simultaneously.
+`reminderPulseCount` prop change triggers an 800 ms `pulseActive` state that overrides both the outer shell and inner core to their blue-surge variants simultaneously. `isDormant` is `false` whenever `isAssistantQuerying` or `isLocalModelLoading` is `true`, even if `status === 'idle'`, so the assistant panel can animate the logo independently of the briefing pipeline.
 
 ### `VoiceSignalGlyph.tsx`
 
 Permanent all-in-one SVG status indicator mounted under the large `ApexLogo`. It maps pipeline state to visible labels and stage colors: standby dim blue, steps 1-2 emerald, step 3 purple, and step 4 gold. The glyph is a horizontal signal conduit: a stage-toned rail with mirrored flow dashes (`signalFlowLeft` / `signalFlowRight`) traveling toward a center diamond during active processing. When `isSpeaking=true`, the center becomes a cyan audio waveform (`speechWaveBar`) while the rail, flow accents, aperture ring, and label keep the current stage tone.
+
+**Local model loading:** When `isLocalModelLoading` is `true`, the glyph switches to a rust-orange tone and displays `Loading {loadingDisplayName}` (falling back to `Loading model` when no display name is available) in place of the pipeline stage label, taking precedence over the standard step-based label mapping.
 
 ### `BriefingDigest.tsx`
 
@@ -452,25 +461,28 @@ Displays insight bullet strings from `DigestPayload.insights` in the center colu
 
 ### `CommandTrigger.tsx`
 
-A focused button component that renders the primary synthesis trigger below the `ApexLogo` in the center column. Accepts `status` (`'idle' | 'loading'`), `onClick`, and an optional `disabled` flag.
+A focused button component that renders the primary synthesis trigger below the `ApexLogo` in the center column. Accepts `onClick` and an optional `disabled` flag; owns no pipeline-status prop of its own (the previous internal loading state and label were removed).
 
-Label behavior:
+Label behavior, based on local hover/focus state and the `disabled` prop:
 
-- Idle, not hovered: `[ INITIATE SYSTEM SYNTHESIS ]`
-- Idle, hovered or focused: `> INITIATE SYSTEM SYNTHESIS`
-- Loading: `[ SYNTHESIS INITIALIZING ]` (disabled, `pulse` animation)
+- Not hovered/focused: `[ INITIATE SYSTEM SYNTHESIS ]`
+- Hovered or focused (and interactive): `> INITIATE SYSTEM SYNTHESIS`
+- `disabled`: dimmed, non-interactive styling; label stays `[ INITIATE SYSTEM SYNTHESIS ]`
 
-Rendered in `App.tsx` when `status === 'idle'` or `status === 'loading'` (`showCommandTrigger`). Disabled while `isProcessing` is `true`. Visibility is controlled by opacity and `pointer-events` rather than conditional mounting, so layout does not shift when it fades out.
+Rendered in `App.tsx` when `status === 'idle'` or `status === 'loading'` (`showCommandTrigger`), which also computes the `disabled` value passed in. Visibility is controlled by opacity and `pointer-events` rather than conditional mounting, so layout does not shift when it fades out.
 
 ---
 
 ### `TelemetryCard.tsx`
 
-Shared card frame. Additional responsibilities:
+Shared card frame. Accepts `title`, `icon`, `primaryTemperatureF`, `f1TelemetryText`, `weatherCondition`, `ledState`, `isCompact`, `compactValue`, `attentionTier`, and `attentionStaggerMs`. Additional responsibilities:
 
-- **F1 renderer** — activates when `title` trims and lowercases to `"next f1 race"`. Parses `F1_DATA:` prefix from `rawScheduleText` using `extractF1DataJson` (balanced-brace walker) and renders race details with a country flag from the CDN or a `🏁` checkered fallback.
+- **F1 renderer** — activates whenever the `f1TelemetryText` prop is supplied and non-empty (no longer gated by card title). Parses the `F1_DATA:` prefix from `f1TelemetryText` using `extractF1DataJson` (balanced-brace walker) and renders race details with a country flag from the CDN or a `🏁` checkered fallback.
 - **VTE** — when `primaryTemperatureF` is provided, applies `resolveTemperatureFontWeight()` as an inline `style` on the temperature readout.
-- **Weather glow** — per-archetype animated background glow and border color driven by `weatherCondition`.
+- **Weather icon** — when `weatherCondition` is provided, renders the matching animated SVG icon from `frontend/src/components/weather/` next to the temperature readout (see [Weather Condition Micro-Climate](#weather-condition-micro-climate)).
+- **Module status LED** — `ledState` (`'live' | 'stale' | 'loading' | 'error' | 'none'`) renders a small colored dot next to the title communicating this card's data freshness.
+- **Attention tier** — `attentionTier` (default `'dormant'`) applies the shell glass-power class and gates the body curtain reveal; `attentionStaggerMs` delays that reveal for staggered same-step unlocks. See [Attention-Tier Reveal System](#attention-tier-reveal-system).
+- **Compact mode** — `isCompact` renders a single condensed summary row (icon, title, `compactValue`, LED) instead of the full card body, used while the console tray is open.
 
 ### `SystemDiagnostics.tsx`
 
@@ -488,6 +500,12 @@ Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `conf
 ### `ConsoleTray.tsx`
 
 Bottom/rail console for assistant chat and reminder entry. The bottom placement renders a compact docked row plus inline expandable body; the rail placement renders inside the right column on large desktop layouts. The Assistant tab shows active local model state, message history, tool trace/output cards, and `AskApexBar`; the Reminders tab shows active reminders plus a `POST /api/v1/reminders` input. Submitting a query switches to the Assistant tab and expands the console.
+
+**Activity glow and chat actions:** The console shell renders a rotating border glow whose color reflects the current activity tone — rust-orange while a local model is loading, purple while a query is in flight. Two distinct history actions are exposed: `clearAssistantChat` clears message history and tool trace but leaves the console open, while `resetAssistantSession` clears history and also closes the console; the tray exposes both as separate controls rather than one combined action.
+
+### `AssistantToolCards.tsx`
+
+Renders one structured result card per whitelisted tool executed during an assistant turn, reading from `AgentMessage.tool_outputs` (see [tool output whitelist](api.md#post-apiv1agentquery) in the API reference). Dedicated card layouts exist for `get_weather_forecast` (per-day high/low/condition rows), `get_f1_driver_standings` and `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, and `get_briefing_history`. A tool call outside the whitelist, or one that failed, renders no card since its `output` is replaced server-side with an opaque error placeholder. Mounted inside `ConsoleTray.tsx` beneath each model turn's text answer.
 
 ### `ReminderListRow.tsx`
 
@@ -520,6 +538,10 @@ Exposes `triggerSynthesis`, `refreshReminders` (best-effort re-sync after new su
 
 Polls `GET /api/v1/diagnostics` every 1,000 ms. Exposes `{ diagnostics, status }`. No dependency on the trigger or pipeline state.
 
+### `useMarketData`
+
+Polls `GET /api/v1/market` every 30,000 ms via `MARKET_POLL_INTERVAL_MS`. Exposes `{ data, isLoading }`. No dependency on the trigger or pipeline state. On a failed fetch, a non-2xx response, or an unparseable body, the hook does not discard the previously held snapshot — it downgrades it through `toStaleFallback()` (`"live"`/`"partial"` global status and any `"live"` per-ticker status become `"stale"`) so a transient poll failure degrades freshness rather than clearing the ticker.
+
 ---
 
 ## Context and Types
@@ -536,11 +558,38 @@ Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `Pipelin
 
 ---
 
+<a id="attention-tier-reveal-system"></a>
+
+## Attention-Tier Reveal System
+
+`frontend/src/lib/attentionTier.ts` replaced the earlier direct-opacity card dimming with a schedule-driven reveal keyed to each surface's data-source latency. `resolveAttentionTier(surface, step, status)` maps a pipeline step and `SystemState` to one of four tiers:
+
+- `dormant` — `status === 'idle'`.
+- `pending` — surface has not reached its scheduled step yet; body content is masked behind a curtain.
+- `active` — surface has reached its `activeAt` step; curtain unmasks.
+- `complete` — surface has reached its `completeAt` step, or `status` is `'success'` / `'error'`.
+
+`SURFACE_SCHEDULE` orders surfaces by source latency:
+
+| Surface | Active at step | Complete at step | Stagger (ms) |
+|---|---|---|---|
+| `reminders` | 1 | 2 | 0 |
+| `weather` | 2 | 2 | 0 |
+| `news` | 2 | 2 | 120 |
+| `events` | 2 | 3 | 280 |
+| `market` | 2 | 3 | 360 |
+| `inbox` | 2 | 3 | 440 |
+| `insights` | 3 | 4 | 0 |
+
+`App.tsx` computes one tier per surface via `resolveAttentionTier()` and passes it as the `attentionTier` prop to each `TelemetryCard`. `attentionShellClass(tier)` applies a shell CSS class (`attention-shell--{tier}`) that drives glass power; `attentionCurtainRevealed(tier)` gates the body curtain unmask (`true` for every tier except `pending`). `resolveAttentionStaggerMs(surface)` supplies a per-surface delay so same-step surfaces (news, events, market, inbox) unlock in a staggered sequence rather than simultaneously.
+
+---
+
 ## Theming Systems
 
 ### Weather Condition Micro-Climate
 
-`resolveWeatherCondition()` in `useApexData.ts` maps the parsed condition detail string to a `WeatherConditionArchetype`. This archetype drives per-card animated background glow, border color, and condition icon (`CloudLightning`, `CloudRain`, `Cloud`, `Sun`, `Moon` from lucide-react) in `TelemetryCard.tsx`.
+`resolveWeatherCondition()` in `useApexData.ts` maps the parsed condition detail string to a `WeatherConditionArchetype`. This archetype selects one of five animated SVG icon components in `frontend/src/components/weather/` (`ClearDayIcon`, `ClearNightIcon`, `CloudsIcon`, `RainIcon`, `ThunderstormIcon`) rendered by `TelemetryCard.tsx`, each with a per-condition color and drop-shadow style.
 
 Theming is resolved directly inside `useApexData.ts` and passed as a prop through the component tree. There is no React Context provider for theme state.
 
@@ -607,6 +656,37 @@ All datetimes use `ZoneInfo("America/New_York")` and format to `"%A, %B %d at %I
 ### Country Flag Lookup
 
 `COUNTRY_FLAG_MAP` in `TelemetryCard.tsx` maps lowercase country names to ISO 3166-1 alpha-2 codes. Flag images are pulled from `https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/{code}.svg` with `loading="lazy"` and `decoding="async"`. An `onError` handler replaces a broken image with the `🏁` checkered flag fallback.
+
+---
+
+## Market Data Contract
+
+`clients/market_client.py` (backing `GET /api/v1/market`) is a file-backed, cache-first aggregator for Alpha Vantage's `TIME_SERIES_DAILY` endpoint. It runs on its own poll cycle (`useMarketData.ts`, 30 seconds), independent of the briefing pipeline and of `DEV_MODE`.
+
+### File-Backed Cache and Cooldown
+
+`clients/.market_cache.json` stores, per symbol, the latest price/change/sparkline and a `market_fetched_at` timestamp, plus a global `cooldown_until` timestamp:
+
+1. On each request, symbols with a cache entry younger than the 12-hour TTL (`_MARKET_TTL`) are served from cache with no network call.
+2. Stale or missing entries trigger a live `TIME_SERIES_DAILY` request, guarded by a 2.5-second timeout.
+3. Any request failure, timeout, rate-limit response, or unparseable payload sets a 15-minute cooldown (`_set_cooldown()`); no further Alpha Vantage requests are attempted for any symbol until the cooldown clears. Cached data is served as `"stale"` during the cooldown.
+4. A symbol with no cached data at all and no successful fetch reports `"unavailable"`.
+
+`fetch_market_data()` is guarded by a module-level `threading.Lock` (`_MARKET_LOCK`) so concurrent requests do not race on the cache file.
+
+### Simulation Fallback
+
+`_is_simulation_mode()` returns `true` whenever `DEMO_MODE=true` or `ALPHA_VANTAGE_API_KEY` is unset. In that case, `fetch_market_data()` skips the cache and network path entirely and returns a deterministic sine-wave-driven simulated feed for a fixed three-symbol set (`SPY`, `AAPL`, `MSFT`) with `status: "live"`, so the ticker always renders live-looking data rather than an empty or error state when unconfigured.
+
+### Global Status Resolution
+
+`_resolve_global_status()` derives the top-level `status` field from the per-symbol statuses: `"live"` if every symbol is live, `"partial"` if some but not all are live, `"stale"` if none are live but at least one has cached data, and `"unavailable"` otherwise. `MARKET_SYMBOLS` being unset short-circuits to `"not_configured"` with an empty ticker list before any cache or network logic runs.
+
+### Frontend Consumption
+
+`useMarketData.ts` polls `GET /api/v1/market` every 30 seconds. On a failed fetch, malformed response, or non-2xx status, it does not clear existing data — it downgrades the previously held response via `toStaleFallback()` (any `"live"`/`"partial"` global status becomes `"stale"`; any `"live"` per-ticker status becomes `"stale"`), so a transient backend hiccup degrades the ticker's freshness indicator rather than blanking it.
+
+See [docs/api.md](api.md#get-apiv1market) for the full response contract.
 
 ---
 

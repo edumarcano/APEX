@@ -42,7 +42,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 ## Features
 
 - **Context-aware gate** — checks home Wi-Fi (SSID), AC power, and a 1-hour cooldown before any API call is made (`scanner.py`)
-- **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window)
+- **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window), Alpha Vantage (EOD market ticker)
 - **AI briefing synthesis** — raw connector output passed to Gemini 3.1 Flash Lite; falls back to reading raw data if the API call fails
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
 - **Text-to-speech** — Google Cloud TTS primary with native pyttsx3 fallback; Kokoro ONNX available as an optional local engine that falls back to Google on failure; pre-warmed singletons, serialized `_SPEAK_LOCK`
@@ -53,9 +53,12 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Confidence scoring** — each production run produces a `confidence_score` (0–100) and `failed_connectors` list from connector output evaluation; displayed as a color-coded segmented block bar in the system status footer with a per-connector hover tooltip
 - **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
 - **APEX assistant** — a conversational assistant with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with six selectable performance profiles across two providers — cloud (Gemini: Comet, Nova, Pulsar) and local (Ollama: Lynx, Acinonyx, Neofelis)
-- **Local Ollama inference** — optional on-device model execution for the APEX assistant with automatic model load/unload, a single-loaded-model policy, idle auto-unload, RAM/CPU resource gating per profile, and a manual unload control in the assistant drawer
+- **Structured tool output cards** — assistant responses render a dedicated card per executed tool (weather forecast, F1 standings/calendar, calendar events, reminders, briefing history) in the console tray, in addition to the synthesized text answer
+- **Local Ollama inference** — optional on-device model execution for the APEX assistant with automatic model load/unload, a single-loaded-model policy, idle auto-unload, RAM/CPU resource gating per profile, a manual unload control in the assistant drawer, and a distinct model-loading indicator separate from the active-query state
+- **EOD market ticker** — end-of-day price, change, and 7-day sparkline for a configurable symbol set via Alpha Vantage, with file-backed caching and a provider-error cooldown; runs independently of the briefing pipeline
 - **Demo mode** — `DEMO_MODE=true` intercepts the trigger, runs a staged simulation with static mock telemetry, and displays a badge in the HUD; no external API calls are made
-- **Atmospheric theming** — weather condition drives HUD background color, accent color, card glow, and condition icons in real time
+- **Atmospheric theming** — weather condition selects an animated per-condition icon on the Weather card
+- **Pipeline attention-tier reveal** — each telemetry surface unlocks on a schedule keyed to its data-source latency (reminders, then weather/news, then events/market/inbox, then insights), driving a glass-power and curtain-reveal transition per card
 - **Variable Typography Engine** — primary temperature font weight linearly interpolated from `font-weight: 300` (40°F) to `font-weight: 800` (90°F)
 
 ---
@@ -73,6 +76,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 | Database | SQLite3 |
 | TTS | Google Cloud TTS, pyttsx3, Kokoro ONNX (optional) |
 | Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, `google-cloud-texttospeech`, `google-genai`, `pygame-ce`, `tzdata`, `kokoro-onnx`, `onnxruntime`, `numpy` |
+| Market Data | Alpha Vantage (`TIME_SERIES_DAILY`, EOD only) |
 
 ---
 
@@ -159,7 +163,7 @@ cp .env.example .env          # macOS / Linux
 copy .env.example .env        # Windows
 ```
 
-`.env.example` documents every key with inline comments. Required keys: `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `GNEWS_API_KEY`, `HOME_SSID`. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default.
+`.env.example` documents every key with inline comments. Required keys: `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `GNEWS_API_KEY`, `HOME_SSID`. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default. `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` (comma-separated ticker symbols) are optional; when either is unset, `GET /api/v1/market` serves a simulated ticker feed instead of an error.
 
 **5. Set up Google OAuth credentials (Gmail + Calendar)**
 
