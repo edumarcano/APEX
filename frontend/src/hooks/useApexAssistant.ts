@@ -280,6 +280,7 @@ export interface UseApexAssistantResult {
   profilesStatusHydrated: boolean
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
   unloadLocalModel: () => Promise<void>
+  clearAssistantChat: () => void
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
 }
@@ -466,12 +467,16 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     [assistantHistory, fetchProfilesStatus],
   )
 
-  const resetAssistantSession = useCallback((): void => {
+  const clearAssistantChat = useCallback((): void => {
     setAssistantHistory([])
     setAssistantLatestTrace([])
     setAssistantError(null)
-    setAssistantOpen(false)
   }, [])
+
+  const resetAssistantSession = useCallback((): void => {
+    clearAssistantChat()
+    setAssistantOpen(false)
+  }, [clearAssistantChat])
 
   return {
     assistantHistory,
@@ -483,6 +488,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     profilesStatusHydrated,
     queryAssistant,
     unloadLocalModel,
+    clearAssistantChat,
     resetAssistantSession,
     setAssistantOpen,
   }

@@ -433,11 +433,15 @@
     box-shadow 500ms cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-.hud-glass:hover {
+/* Glass catch-light — material hover, not a blue border ramp */
+.hud-glass:hover,
+.hud-glass:focus-within {
+  border-color: rgba(255, 255, 255, 0.09) !important;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
-    inset 1px 0 0 0 rgba(255, 255, 255, 0.10),
-    0 20px 48px -10px rgba(0, 0, 0, 0.80) !important;
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.34),
+    inset 1px 0 0 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.05),
+    0 24px 56px -12px rgba(0, 0, 0, 0.88) !important;
 }
 
 .hud-glass-solid {
@@ -459,17 +463,20 @@
   transform: translate3d(0, -1px, 0);
 }
 
+/* Chrome ignition — badge + divider brighten without painting the outer rim blue */
 .hud-interactive-shell:hover .hud-icon-badge,
 .hud-interactive-shell:focus-within .hud-icon-badge {
-  border-color: rgba(126, 179, 255, 0.28);
-  background: rgba(15, 77, 184, 0.11);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 10px rgba(255, 255, 255, 0.06);
 }
 
 .hud-interactive-shell:hover .hud-header-divider,
 .hud-interactive-shell:focus-within .hud-header-divider {
   opacity: 1;
-  filter: drop-shadow(0 0 6px rgba(15, 77, 184, 0.35));
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.28));
 }
 
 .list-fade-mask {
@@ -477,6 +484,79 @@
   -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
   will-change: transform;
   transform: translate3d(0, 0, 0);
+}
+
+/* Attention tiers — glass power states (replaces opacity dimming) */
+.attention-shell {
+  transition:
+    border-color 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 700ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.attention-shell--dormant,
+.attention-shell--complete {
+  filter: none;
+}
+
+.attention-shell--pending {
+  border-color: rgba(255, 255, 255, 0.04) !important;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 8px 24px -10px rgba(0, 0, 0, 0.55) !important;
+  filter: saturate(0.72) brightness(0.88);
+}
+
+.attention-shell--pending .hud-icon-badge {
+  opacity: 0.55;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.attention-shell--pending .hud-header-divider {
+  opacity: 0.35;
+}
+
+.attention-shell--active {
+  border-color: rgba(126, 179, 255, 0.28) !important;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+    inset 1px 0 0 0 rgba(255, 255, 255, 0.06),
+    0 0 20px -6px rgba(15, 77, 184, 0.35),
+    0 12px 32px -8px rgba(0, 0, 0, 0.65) !important;
+  filter: none;
+}
+
+.attention-shell--active .hud-header-divider {
+  opacity: 1;
+  filter: drop-shadow(0 0 6px rgba(15, 77, 184, 0.4));
+}
+
+/* Body curtain — shell stays planted; content unmasks.
+   Mask closes instantly (avoids Loading… flash on pending);
+   only the open/reveal is animated. */
+.attention-curtain {
+  clip-path: inset(0 0 100% 0);
+  transform: translate3d(0, 0.4rem, 0);
+  filter: saturate(0.7);
+  opacity: 0;
+  pointer-events: none;
+  will-change: clip-path, transform, filter, opacity;
+  transition: none;
+  transition-delay: 0ms;
+}
+
+.attention-curtain--revealed {
+  clip-path: inset(0 0 0 0);
+  transform: translate3d(0, 0, 0);
+  filter: none;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    clip-path 800ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 800ms cubic-bezier(0.4, 0, 0.2, 1),
+    filter 800ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 800ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition-delay: var(--attention-stagger, 0ms);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -495,6 +575,19 @@
   .hud-interactive-shell:focus-within .hud-inner-lift {
     transform: none !important;
     transition: none !important;
+  }
+
+  .attention-shell,
+  .attention-curtain {
+    transition: none !important;
+    transition-delay: 0ms !important;
+  }
+
+  .attention-curtain {
+    clip-path: inset(0 0 0 0);
+    transform: none;
+    filter: none;
+    opacity: 1;
   }
 }
 
@@ -602,7 +695,7 @@
   height: 12px;
   pointer-events: none;
   opacity: 0.25;
-  transition: opacity 500ms ease, border-color 500ms ease;
+  transition: opacity 500ms ease, border-color 500ms ease, filter 500ms ease;
   border-color: var(--hud-bracket-color, rgba(255, 255, 255, 0.5));
   z-index: 20;
 }
@@ -642,8 +735,14 @@
 .hud-corner-brackets:hover::before,
 .hud-corner-brackets:hover::after,
 .hud-corner-brackets:hover > .hud-corner-br,
-.hud-corner-brackets:hover > .hud-corner-bl {
-  opacity: 0.65;
+.hud-corner-brackets:hover > .hud-corner-bl,
+.hud-corner-brackets:focus-within::before,
+.hud-corner-brackets:focus-within::after,
+.hud-corner-brackets:focus-within > .hud-corner-br,
+.hud-corner-brackets:focus-within > .hud-corner-bl {
+  opacity: 0.92;
+  border-color: rgba(255, 255, 255, 0.85);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.35));
 }
 
 /* Status LED dot — communicates per-module freshness/state */

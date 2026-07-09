@@ -145,7 +145,7 @@ interface ConsoleTrayProps {
   profilesStatusHydrated: boolean
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
   unloadLocalModel: () => Promise<void>
-  resetAssistantSession: () => void
+  clearAssistantChat: () => void
   activeProfile: AssistantProfile
   setActiveProfile: (profile: AssistantProfile) => void
   askApexEnabled: boolean
@@ -676,7 +676,7 @@ export function ConsoleTray({
   profilesStatusHydrated,
   queryAssistant,
   unloadLocalModel,
-  resetAssistantSession,
+  clearAssistantChat,
   activeProfile,
   setActiveProfile,
   askApexEnabled,
@@ -856,7 +856,7 @@ export function ConsoleTray({
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={resetAssistantSession}
+              onClick={clearAssistantChat}
               className="rounded-md p-1.5 transition-colors hover:bg-white/5"
               aria-label="Clear session history"
             >
@@ -949,7 +949,7 @@ export function ConsoleTray({
         {isExpanded ? (
           <button
             type="button"
-            onClick={resetAssistantSession}
+            onClick={clearAssistantChat}
             className="shrink-0 rounded-md p-1.5 transition-colors hover:bg-white/5"
             aria-label="Clear session history"
           >

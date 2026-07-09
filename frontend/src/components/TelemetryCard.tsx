@@ -1,13 +1,11 @@
-import {
-  Cloud,
-  CloudLightning,
-  CloudRain,
-  Moon,
-  Sun,
-  type LucideIcon,
-} from 'lucide-react'
+import { type LucideIcon } from 'lucide-react'
 import type * as React from 'react'
 
+import {
+  attentionCurtainRevealed,
+  attentionShellClass,
+  type AttentionTier,
+} from '../lib/attentionTier'
 import type { WeatherConditionArchetype } from '../types/telemetry'
 import {
   useId,
@@ -17,6 +15,12 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
+
+import { ClearDayIcon } from './weather/ClearDayIcon'
+import { ClearNightIcon } from './weather/ClearNightIcon'
+import { CloudsIcon } from './weather/CloudsIcon'
+import { RainIcon } from './weather/RainIcon'
+import { ThunderstormIcon } from './weather/ThunderstormIcon'
 
 /** Variable Typography Engine — closed interval for ambient temperature (°F). */
 export const VTE_TEMP_MIN_F = 40
@@ -180,43 +184,15 @@ export function resolveTemperatureFontWeight(
   return Math.round(interpolatedWeight)
 }
 
-const WEATHER_GLOW_BY_CONDITION: Record<
+const WEATHER_ICON_BY_CONDITION: Record<
   WeatherConditionArchetype,
-  { bgClass: string; opacityClass: string; animateClass: string }
+  React.ComponentType<React.ComponentPropsWithoutRef<'svg'>>
 > = {
-  clear_day: {
-    bgClass: 'bg-[#F4B22A]',
-    opacityClass: 'opacity-25',
-    animateClass: 'animate-weather-solar',
-  },
-  clear_night: {
-    bgClass: 'bg-[#4F8FFF]',
-    opacityClass: 'opacity-24',
-    animateClass: 'animate-weather-night',
-  },
-  clouds: {
-    bgClass: 'bg-[#8EA7C7]',
-    opacityClass: 'opacity-16',
-    animateClass: 'animate-weather-hover',
-  },
-  rain: {
-    bgClass: 'bg-[#37A6FF]',
-    opacityClass: 'opacity-30',
-    animateClass: 'animate-weather-breath',
-  },
-  thunderstorm: {
-    bgClass: 'bg-[#4F8FFF]',
-    opacityClass: 'opacity-20',
-    animateClass: 'animate-weather-surge',
-  },
-}
-
-const WEATHER_ICON_BY_CONDITION: Record<WeatherConditionArchetype, LucideIcon> = {
-  clear_day: Sun,
-  clear_night: Moon,
-  clouds: Cloud,
-  rain: CloudRain,
-  thunderstorm: CloudLightning,
+  clear_day: ClearDayIcon,
+  clear_night: ClearNightIcon,
+  clouds: CloudsIcon,
+  rain: RainIcon,
+  thunderstorm: ThunderstormIcon,
 }
 
 const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> = {
@@ -240,14 +216,6 @@ const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> 
     color: '#FFE082',
     filter: 'drop-shadow(0 0 12px rgba(255, 224, 130, 0.85))',
   },
-}
-
-function resolveCardHoverClass(title: string): string {
-  const normalized = title.trim()
-  if (normalized === 'Weather') return 'hover-weather-bright'
-  if (normalized === 'Events') return 'hover-blue-medium'
-  if (normalized === 'Reminders') return 'hover-blue-strong'
-  return 'hover-blue-subtle'
 }
 
 export type TelemetryLedState = 'live' | 'stale' | 'loading' | 'error' | 'none'
@@ -284,6 +252,10 @@ export type TelemetryCardProps = {
   isCompact?: boolean
   /** Right-aligned summary content shown only in the compact row. */
   compactValue?: ReactNode
+  /** Pipeline attention tier — glass power + body curtain (shell-only in compact). */
+  attentionTier?: AttentionTier
+  /** Curtain unlock delay in ms for staggered reveals within a shared step. */
+  attentionStaggerMs?: number
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -296,26 +268,31 @@ export function TelemetryCard({
   ledState = 'none',
   isCompact = false,
   compactValue,
+  attentionTier = 'dormant',
+  attentionStaggerMs = 0,
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
   const showHeader = title.trim().length > 0
 
   const headingId = useId()
-  const weatherGlow =
-    weatherCondition != null ? WEATHER_GLOW_BY_CONDITION[weatherCondition] : null
   const WeatherConditionIcon =
     weatherCondition != null
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
       : null
   const isWeatherCard = title.trim() === 'Weather'
+  const curtainRevealed = attentionCurtainRevealed(attentionTier)
+  const curtainStyle: CSSProperties | undefined =
+    attentionStaggerMs > 0
+      ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
+      : undefined
 
   const sectionClassName = [
     'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
     isCompact
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
-    resolveCardHoverClass(title),
+    attentionShellClass(attentionTier),
     className,
   ]
     .filter(Boolean)
@@ -362,19 +339,7 @@ export function TelemetryCard({
     >
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
-      {weatherGlow && !isCompact ? (
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
-          <div
-            className={[
-              'weather-glow-core absolute inset-0 blur-[64px] transition-opacity duration-500',
-              weatherGlow.bgClass,
-              weatherGlow.opacityClass,
-              weatherGlow.animateClass,
-            ].join(' ')}
-            aria-hidden
-          />
-        </div>
-      ) : null}
+
       {isCompact ? (
         <div className="hud-inner-lift relative z-10 flex min-w-0 flex-1 items-center gap-3">
           <span className="hud-icon-badge size-7 shrink-0">
@@ -442,7 +407,15 @@ export function TelemetryCard({
           <div className="hud-header-divider mt-3" aria-hidden />
         </header>
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={[
+          'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden attention-curtain',
+          curtainRevealed ? 'attention-curtain--revealed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={curtainStyle}
+      >
         {primaryTemperatureF != null ? (
           <div className="mb-3 flex shrink-0 items-center gap-4">
             <p

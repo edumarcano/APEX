@@ -28,6 +28,10 @@ import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useMarketData } from './hooks/useMarketData'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
+import {
+  resolveAttentionStaggerMs,
+  resolveAttentionTier,
+} from './lib/attentionTier'
 import type { AssistantProfile, WeatherConditionArchetype } from './types/telemetry'
 
 interface ParsedEmail {
@@ -104,6 +108,33 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
   })
 }
 
+interface ParsedCalendarEvent {
+  summary: string
+  start: string
+}
+
+function parseCalendarTelemetry(
+  calendarText: string,
+): { count: number; items: ParsedCalendarEvent[] } {
+  if (!calendarText || calendarText.includes('No upcoming events')) {
+    return { count: 0, items: [] }
+  }
+
+  const stripped = calendarText
+    .replace(/^Calendar Telemetry\s*\(48h\)\s*:\s*/i, '')
+    .trim()
+  if (!stripped || /no upcoming events/i.test(stripped)) {
+    return { count: 0, items: [] }
+  }
+
+  const matches = [...stripped.matchAll(/'([^']+)'\s+at\s+([^|]+)/g)]
+  const items = matches.map((m) => ({
+    summary: m[1],
+    start: m[2].trim(),
+  }))
+  return { count: items.length, items }
+}
+
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
@@ -171,6 +202,7 @@ export default function App(): ReactElement {
     profilesStatusHydrated,
     queryAssistant,
     unloadLocalModel,
+    clearAssistantChat,
     resetAssistantSession,
     setAssistantOpen,
   } = useApexAssistant(showAskApexBar)
@@ -376,11 +408,32 @@ export default function App(): ReactElement {
     : useRightRailConsole
       ? 'flex-none xl:flex-1 xl:min-h-0'
       : 'hud-panel-natural min-h-[10rem]'
-  const marketDimmed = activeStep === 1 || activeStep === 2
-  const weatherDimmed = activeStep === 1
-  const scheduleDimmed = activeStep === 1 || activeStep === 2
-  const staggerTransition =
-    'transition-opacity duration-700 ease-in-out'
+
+  const attentionTiers = useMemo(
+    () => ({
+      reminders: resolveAttentionTier('reminders', activeStep, status),
+      weather: resolveAttentionTier('weather', activeStep, status),
+      news: resolveAttentionTier('news', activeStep, status),
+      events: resolveAttentionTier('events', activeStep, status),
+      market: resolveAttentionTier('market', activeStep, status),
+      inbox: resolveAttentionTier('inbox', activeStep, status),
+      insights: resolveAttentionTier('insights', activeStep, status),
+    }),
+    [activeStep, status],
+  )
+
+  const attentionStagger = useMemo(
+    () => ({
+      reminders: resolveAttentionStaggerMs('reminders'),
+      weather: resolveAttentionStaggerMs('weather'),
+      news: resolveAttentionStaggerMs('news'),
+      events: resolveAttentionStaggerMs('events'),
+      market: resolveAttentionStaggerMs('market'),
+      inbox: resolveAttentionStaggerMs('inbox'),
+      insights: resolveAttentionStaggerMs('insights'),
+    }),
+    [],
+  )
 
   const weatherBody = (() => {
     if (hasSuccessfulData) {
@@ -395,17 +448,6 @@ export default function App(): ReactElement {
 
   const primaryTemperatureF =
     hasSuccessfulData && data?.temperatureF != null ? data.temperatureF : null
-
-  const scheduleBody = (() => {
-    if (hasSuccessfulData) {
-      const calendar = data?.calendar?.trim() ?? ''
-      return calendar.length > 0 ? calendar : 'No schedule entries.'
-    }
-    if (isBusy(status)) {
-      return 'Loading schedule…'
-    }
-    return error ?? 'Schedule unavailable.'
-  })()
 
   const handleMarkReminderRead = (id: number): void => {
     void markReminderAsRead(id)
@@ -423,6 +465,7 @@ export default function App(): ReactElement {
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
+  const calendarInfo = parseCalendarTelemetry(data?.calendar ?? '')
 
   // Shared insight list for the BriefingDigest panel.
   const combinedInsights = [
@@ -436,7 +479,11 @@ export default function App(): ReactElement {
       ? `${primaryTemperatureF}°, ${weatherBody}`
       : weatherCompactValue
   const eventsCompactValue =
-    scheduleBody.length > 28 ? `${scheduleBody.slice(0, 28)}…` : scheduleBody
+    status === 'success'
+      ? calendarInfo.count > 0
+        ? `${calendarInfo.count} events`
+        : 'No events'
+      : null
   const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
   const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
@@ -491,8 +538,10 @@ export default function App(): ReactElement {
                       ledState={cardLedState}
                       isCompact
                       compactValue={weatherConditionCompactValue}
+                      attentionTier={attentionTiers.weather}
+                      attentionStaggerMs={attentionStagger.weather}
                       style={weatherCardStyle}
-                      className={`hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                         {weatherBody}
@@ -505,11 +554,53 @@ export default function App(): ReactElement {
                       f1TelemetryText={f1ScheduleTelemetryText}
                       ledState={cardLedState}
                       compactValue={eventsCompactValue}
-                      className={`hidden min-h-0 xl:flex xl:flex-[2.05_1_0] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      attentionTier={attentionTiers.events}
+                      attentionStaggerMs={attentionStagger.events}
+                      className="hidden min-h-0 xl:flex xl:flex-[2.05_1_0]"
                     >
-                      <p className="line-clamp-3 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {scheduleBody}
-                      </p>
+                      {isBusy(status) ? (
+                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                          Loading schedule…
+                        </p>
+                      ) : (
+                        <>
+                          {status === 'success' && calendarInfo.count > 0 && (
+                            <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
+                              {calendarInfo.count} Upcoming
+                            </p>
+                          )}
+                          {calendarInfo.items.length > 0 ? (
+                            <ul className="list-fade-mask min-h-0 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
+                              {calendarInfo.items.slice(0, 3).map((item, index) => (
+                                <li
+                                  key={`${item.summary}-${item.start}-${index}`}
+                                  className="flex items-start justify-between gap-3"
+                                >
+                                  <span className="flex min-w-0 items-start gap-2">
+                                    <span className="hud-log-index">
+                                      {String(index).padStart(2, '0')}
+                                    </span>
+                                    <span className="break-words text-sm text-zinc-200">
+                                      {item.summary}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 font-mono text-xs text-zinc-500">
+                                    {item.start}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : status === 'success' ? (
+                            <p className="text-sm text-[color:var(--hud-muted-text)]">
+                              No upcoming events.
+                            </p>
+                          ) : (
+                            <p className="text-sm text-[color:var(--hud-muted-text)]">
+                              {error ?? 'Schedule unavailable.'}
+                            </p>
+                          )}
+                        </>
+                      )}
                     </TelemetryCard>
 
                     <TelemetryCard
@@ -517,6 +608,8 @@ export default function App(): ReactElement {
                       icon={Mail}
                       ledState={cardLedState}
                       compactValue={inboxCompactValue}
+                      attentionTier={attentionTiers.inbox}
+                      attentionStaggerMs={attentionStagger.inbox}
                       className="hidden min-h-0 xl:flex xl:flex-[1.2_1_0]"
                     >
                       {isBusy(status) ? (
@@ -555,6 +648,8 @@ export default function App(): ReactElement {
                       ledState={cardLedState}
                       isCompact
                       compactValue={newsCompactValue}
+                      attentionTier={attentionTiers.news}
+                      attentionStaggerMs={attentionStagger.news}
                       className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
@@ -566,7 +661,9 @@ export default function App(): ReactElement {
                       data={marketData}
                       isLoading={isMarketLoading}
                       isCompact
-                      className={`hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      attentionTier={attentionTiers.market}
+                      attentionStaggerMs={attentionStagger.market}
+                      className="hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     />
                   </>
                 ) : (
@@ -579,8 +676,10 @@ export default function App(): ReactElement {
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
                   compactValue={weatherBody}
+                  attentionTier={attentionTiers.weather}
+                  attentionStaggerMs={attentionStagger.weather}
                   style={weatherCardStyle}
-                  className={`min-h-0 ${weatherPanelLayoutClass} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  className={`min-h-0 ${weatherPanelLayoutClass}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {weatherBody}
@@ -594,17 +693,61 @@ export default function App(): ReactElement {
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
-                  className={`min-h-0 ${eventsPanelLayoutClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  attentionTier={attentionTiers.events}
+                  attentionStaggerMs={attentionStagger.events}
+                  className={`min-h-0 ${eventsPanelLayoutClass}`}
                 >
-                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                    {scheduleBody}
-                  </p>
+                  {isBusy(status) ? (
+                    <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                      Loading schedule…
+                    </p>
+                  ) : (
+                    <>
+                      {status === 'success' && calendarInfo.count > 0 && (
+                        <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
+                          {calendarInfo.count} Upcoming
+                        </p>
+                      )}
+                      {calendarInfo.items.length > 0 ? (
+                        <ul className="list-fade-mask min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                          {calendarInfo.items.map((item, index) => (
+                            <li
+                              key={`${item.summary}-${item.start}-${index}`}
+                              className="flex items-start justify-between gap-3"
+                            >
+                              <span className="flex min-w-0 items-start gap-2">
+                                <span className="hud-log-index">
+                                  {String(index).padStart(2, '0')}
+                                </span>
+                                <span className="break-words text-sm text-zinc-200">
+                                  {item.summary}
+                                </span>
+                              </span>
+                              <span className="shrink-0 font-mono text-xs text-zinc-500">
+                                {item.start}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : status === 'success' ? (
+                        <p className="text-sm text-[color:var(--hud-muted-text)]">
+                          No upcoming events.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-[color:var(--hud-muted-text)]">
+                          {error ?? 'Schedule unavailable.'}
+                        </p>
+                      )}
+                    </>
+                  )}
                 </TelemetryCard>
 
                     <MarketTickerCard
                       data={marketData}
                       isLoading={isMarketLoading}
-                      className={`min-h-0 w-full ${marketPanelLayoutClass} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      attentionTier={attentionTiers.market}
+                      attentionStaggerMs={attentionStagger.market}
+                      className={`min-h-0 w-full ${marketPanelLayoutClass}`}
                     />
                   </>
                 )}
@@ -627,6 +770,8 @@ export default function App(): ReactElement {
                   briefingText={data?.briefing ?? ''}
                   status={status}
                   isLoading={isTriggerLoading}
+                  attentionTier={attentionTiers.insights}
+                  attentionStaggerMs={attentionStagger.insights}
                   className="w-full h-full min-h-0"
                 />
               </div>
@@ -689,6 +834,8 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
+                attentionTier={attentionTiers.inbox}
+                attentionStaggerMs={attentionStagger.inbox}
                 className={rightTelemetryPanelClass}
               >
                 {isBusy(status) ? (
@@ -740,6 +887,8 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
+                attentionTier={attentionTiers.news}
+                attentionStaggerMs={attentionStagger.news}
                 className={rightTelemetryPanelClass}
               >
                 {isBusy(status) ? (
@@ -784,7 +933,9 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
-                className={`${rightTelemetryPanelClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                attentionTier={attentionTiers.reminders}
+                attentionStaggerMs={attentionStagger.reminders}
+                className={rightTelemetryPanelClass}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
@@ -826,7 +977,7 @@ export default function App(): ReactElement {
                   profilesStatusHydrated={profilesStatusHydrated}
                   queryAssistant={queryAssistant}
                   unloadLocalModel={unloadLocalModel}
-                  resetAssistantSession={resetAssistantSession}
+                  clearAssistantChat={clearAssistantChat}
                   activeProfile={agentProfile}
                   setActiveProfile={setAgentProfile}
                   askApexEnabled={Boolean(showAskApexBar)}
@@ -855,7 +1006,7 @@ export default function App(): ReactElement {
             profilesStatusHydrated={profilesStatusHydrated}
             queryAssistant={queryAssistant}
             unloadLocalModel={unloadLocalModel}
-            resetAssistantSession={resetAssistantSession}
+            clearAssistantChat={clearAssistantChat}
             activeProfile={agentProfile}
             setActiveProfile={setAgentProfile}
             askApexEnabled={Boolean(showAskApexBar)}
