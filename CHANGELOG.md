@@ -2,6 +2,71 @@
 
 ---
 
+## v1.14.0 — Central Command Atmosphere
+
+**Released:** July 9, 2026
+
+This release replaces the separate `AssistantDrawer` and `BriefingPanel` surfaces with a single `ConsoleTray` panel, overhauls the HUD glass design system, introduces a live EOD market ticker backed by Alpha Vantage, and adds structured tool output cards to assistant responses. Layout containment, typography, and responsive breakpoints were reworked across the entire HUD. Local Ollama profiles Lynx and Acinonyx were promoted from preview to stable.
+
+---
+
+### What's New
+
+- Replaced `AssistantDrawer` and `BriefingPanel` with a unified `CentralCommandPanel` (later renamed `ConsoleTray`) combining assistant chat and briefing content behind tabbed navigation.
+- Added a market data pipeline backed by Alpha Vantage: a file-cached aggregator with per-symbol TTL, cooldown handling, and a demo-mode simulation path when no API key is present.
+- Exposed market data via `GET /api/v1/market` and added a `MarketTickerCard` component with sparkline trend rendering and a `useMarketData` polling hook.
+- Added `tool_outputs` to agent query responses; the agent loop now collects name, status, duration, and output for each dispatched tool on all exit paths, with whitelisting for six displayable tools.
+- Introduced `AssistantToolCards` with dedicated renderers for weather, F1, calendar, reminders, and briefing history tool results.
+- Added a pipeline-driven attention tier system (`attentionTier.ts`) that controls glass opacity, curtain reveal state, and LED status across all telemetry cards, replacing the previous opacity-based dimming logic.
+- Replaced static weather condition icons with animated SVG weather icons; removed the `WEATHER_BORDER_BY_CONDITION` glow/border logic.
+- Replaced `VocalOrb` with `VoiceSignalGlyph`, combining pipeline status, thinking state, and speech indication into a single stage-colored glyph.
+- Added Exo 2 and Orbitron web fonts applied across HUD typography and card titles.
+- Added developer-mode detection end-to-end: backend config field, `useApexData` extraction, and a header subtitle indicator alongside the existing demo-mode badge.
+- Merged the F1 schedule into the Events card as a pinned compact row; removed the standalone Next F1 Race card.
+- Extended calendar parsing to display multiple upcoming events instead of one truncated entry.
+- Split assistant "clear chat" from "reset session" so clearing history no longer closes the assistant panel; auto-switches to the Assistant tab when a query is submitted from the panel footer or suggestion chips.
+- Promoted Lynx (`qwen3:1.7b`) and Acinonyx (`qwen3:4b-instruct`) local profiles from `preview` to `stable`.
+- Added local model warmup state tracking in the backend (`loading` field on agent profile status); added a rust-orange loading treatment to the logo, voice glyph, and console tray distinct from the assistant-querying state.
+- Changed the default agent profile from `nova` to `comet`.
+
+### Architecture Changes
+
+- Locked the dashboard layout to viewport height with scroll containment at the card level; all scrolling is now internal to each panel or card.
+- Docked the console tray as a right-rail panel on large desktop viewports; added responsive CSS breakpoints so the layout collapses to auto-height and scrolls on smaller screens.
+- Introduced `TelemetryLedState` (`live / stale / loading / error / none`) with glow-mapped CSS classes and ARIA labels; `isCompact` prop on `TelemetryCard` switches between a single-row summary and full card body based on console expansion state.
+- Folded the APEX identity pill and sync-health popup into `SystemDiagnostics`; rebuilt `SystemDiagnostics` as a compact horizontal metrics strip.
+- Centralized all backend endpoint URLs into `src/lib/api.ts` and extracted the shared prompt chips list into `src/lib/promptChips.ts`, removing duplicated hardcoded strings across hooks and components.
+- `clients/market_client.py` added as a standalone file-backed aggregator; `GET /api/v1/market` wired in `core/api.py` with typed response models.
+- Removed unused `fetchError` state from `useMarketData`; deduplicated `ConsoleTray` prop wiring in `App.tsx` into a single shared props object.
+- Removed the SQLite ledger write from the demo briefing flow.
+
+### API Changes
+
+- Added `GET /api/v1/market`, returning per-symbol price, change, percent change, volume, and sparkline data; supports demo-mode simulation.
+- `POST /api/v1/agent/query` response extended with `tool_outputs`: an array of `{name, status, duration_ms, output}` objects for each tool dispatched during the turn.
+- `GET /api/v1/agent/profiles` extended with a `loading` boolean field on each profile entry to surface active model warmup state.
+- Removed `get_current_weather` from the agent tool registry.
+- Added `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` to `.env.example`.
+
+### Frontend Changes
+
+- Removed `AssistantDrawer.tsx`, `BriefingPanel.tsx`, `VocalOrb.tsx`, `ReminderTerminal.tsx`, and `App.css`.
+- Removed unused static assets (`favicon.svg`, `icons.svg`, `hero.png`, `react.svg`, `vite.svg`) and pruned ~155 lines of dead CSS from `index.css`.
+- Added `ConsoleTray.tsx`, `VoiceSignalGlyph.tsx`, `AssistantToolCards.tsx`, `MarketTickerCard.tsx`, and five animated weather icon components under `components/weather/`.
+- Added `src/lib/api.ts` and `src/lib/promptChips.ts` as shared constant modules.
+- Added HUD chrome token classes: corner brackets, LED status dots, header divider, icon badge, log index prefix, metric bar, and command surface.
+- Added `prefers-reduced-motion` block suppressing nebula, shimmer, and lift animations.
+- Added `hud-glass-solid` variant and revised existing `hud-glass` blur, opacity, and hover shadow values.
+
+### Documentation Updates
+
+- Expanded `docs/api.md` with `GET /api/v1/market`, agent profile polling, local model unload, and `tool_outputs` field documentation.
+- Expanded `docs/architecture.md` with the market data pipeline, `useMarketData` hook, Alpha Vantage config, `DEMO_MODE` simulation details, and updated component structure to reflect removed and added components.
+- Added two entries to `docs/decisions.md` clarifying profile stability label semantics by provider.
+- Updated `README.md`, `frontend/README.md`, and `docs/roadmap.md` for v1.14.
+
+---
+
 ## v1.13.0 — Cortex: Local Ollama Provider
 
 **Released:** July 5, 2026
