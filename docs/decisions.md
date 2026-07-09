@@ -123,6 +123,8 @@ Local profiles solve a different problem: hardware cost. Running models through 
 
 The current assistant tool set is intentionally small and read-only, so the difference between speed and reasoning depth is not always dramatic. The profile system is still useful now because it establishes the routing contract before the tool surface grows. As APEX gains more complex tool-calling workflows, longer reasoning chains, and higher-impact operations, explicit model selection will matter more: some tasks should prioritize fast interaction, while others should spend more compute for stronger planning and synthesis.
 
+Each profile's `stable`/`preview` label follows a different basis by provider. Cloud profiles take the label directly from the corresponding Gemini model's own release documentation. Local profiles have no equivalent upstream signal, so the label reflects informal confidence from hands-on use. A local profile may stay `preview` even after enough testing elsewhere would call it stable, simply pending more use.
+
 ### APEX assistant sessions are stateless on the server
 
 The APEX assistant (`POST /api/v1/agent/query`) does not persist conversation history server-side. The client sends the full message history with every request, and the server appends the new turn and returns the updated response without writing anything to a session store.
