@@ -104,6 +104,33 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
   })
 }
 
+interface ParsedCalendarEvent {
+  summary: string
+  start: string
+}
+
+function parseCalendarTelemetry(
+  calendarText: string,
+): { count: number; items: ParsedCalendarEvent[] } {
+  if (!calendarText || calendarText.includes('No upcoming events')) {
+    return { count: 0, items: [] }
+  }
+
+  const stripped = calendarText
+    .replace(/^Calendar Telemetry\s*\(48h\)\s*:\s*/i, '')
+    .trim()
+  if (!stripped || /no upcoming events/i.test(stripped)) {
+    return { count: 0, items: [] }
+  }
+
+  const matches = [...stripped.matchAll(/'([^']+)'\s+at\s+([^|]+)/g)]
+  const items = matches.map((m) => ({
+    summary: m[1],
+    start: m[2].trim(),
+  }))
+  return { count: items.length, items }
+}
+
 function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
   return status === 'idle' || status === 'loading'
 }
@@ -171,6 +198,7 @@ export default function App(): ReactElement {
     profilesStatusHydrated,
     queryAssistant,
     unloadLocalModel,
+    clearAssistantChat,
     resetAssistantSession,
     setAssistantOpen,
   } = useApexAssistant(showAskApexBar)
@@ -396,17 +424,6 @@ export default function App(): ReactElement {
   const primaryTemperatureF =
     hasSuccessfulData && data?.temperatureF != null ? data.temperatureF : null
 
-  const scheduleBody = (() => {
-    if (hasSuccessfulData) {
-      const calendar = data?.calendar?.trim() ?? ''
-      return calendar.length > 0 ? calendar : 'No schedule entries.'
-    }
-    if (isBusy(status)) {
-      return 'Loading schedule…'
-    }
-    return error ?? 'Schedule unavailable.'
-  })()
-
   const handleMarkReminderRead = (id: number): void => {
     void markReminderAsRead(id)
   }
@@ -423,6 +440,7 @@ export default function App(): ReactElement {
   const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(data?.email ?? '')
   const newsItems = parseNewsTelemetry(data?.news ?? '')
+  const calendarInfo = parseCalendarTelemetry(data?.calendar ?? '')
 
   // Shared insight list for the BriefingDigest panel.
   const combinedInsights = [
@@ -436,7 +454,11 @@ export default function App(): ReactElement {
       ? `${primaryTemperatureF}°, ${weatherBody}`
       : weatherCompactValue
   const eventsCompactValue =
-    scheduleBody.length > 28 ? `${scheduleBody.slice(0, 28)}…` : scheduleBody
+    status === 'success'
+      ? calendarInfo.count > 0
+        ? `${calendarInfo.count} events`
+        : 'No events'
+      : null
   const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
   const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
@@ -507,9 +529,49 @@ export default function App(): ReactElement {
                       compactValue={eventsCompactValue}
                       className={`hidden min-h-0 xl:flex xl:flex-[2.05_1_0] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                     >
-                      <p className="line-clamp-3 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {scheduleBody}
-                      </p>
+                      {isBusy(status) ? (
+                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                          Loading schedule…
+                        </p>
+                      ) : (
+                        <>
+                          {status === 'success' && calendarInfo.count > 0 && (
+                            <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
+                              {calendarInfo.count} Upcoming
+                            </p>
+                          )}
+                          {calendarInfo.items.length > 0 ? (
+                            <ul className="list-fade-mask min-h-0 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
+                              {calendarInfo.items.slice(0, 3).map((item, index) => (
+                                <li
+                                  key={`${item.summary}-${item.start}-${index}`}
+                                  className="flex items-start justify-between gap-3"
+                                >
+                                  <span className="flex min-w-0 items-start gap-2">
+                                    <span className="hud-log-index">
+                                      {String(index).padStart(2, '0')}
+                                    </span>
+                                    <span className="break-words text-sm text-zinc-200">
+                                      {item.summary}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 font-mono text-xs text-zinc-500">
+                                    {item.start}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : status === 'success' ? (
+                            <p className="text-sm text-[color:var(--hud-muted-text)]">
+                              No upcoming events.
+                            </p>
+                          ) : (
+                            <p className="text-sm text-[color:var(--hud-muted-text)]">
+                              {error ?? 'Schedule unavailable.'}
+                            </p>
+                          )}
+                        </>
+                      )}
                     </TelemetryCard>
 
                     <TelemetryCard
@@ -596,9 +658,49 @@ export default function App(): ReactElement {
                   compactValue={eventsCompactValue}
                   className={`min-h-0 ${eventsPanelLayoutClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
-                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                    {scheduleBody}
-                  </p>
+                  {isBusy(status) ? (
+                    <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
+                      Loading schedule…
+                    </p>
+                  ) : (
+                    <>
+                      {status === 'success' && calendarInfo.count > 0 && (
+                        <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
+                          {calendarInfo.count} Upcoming
+                        </p>
+                      )}
+                      {calendarInfo.items.length > 0 ? (
+                        <ul className="list-fade-mask min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                          {calendarInfo.items.map((item, index) => (
+                            <li
+                              key={`${item.summary}-${item.start}-${index}`}
+                              className="flex items-start justify-between gap-3"
+                            >
+                              <span className="flex min-w-0 items-start gap-2">
+                                <span className="hud-log-index">
+                                  {String(index).padStart(2, '0')}
+                                </span>
+                                <span className="break-words text-sm text-zinc-200">
+                                  {item.summary}
+                                </span>
+                              </span>
+                              <span className="shrink-0 font-mono text-xs text-zinc-500">
+                                {item.start}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : status === 'success' ? (
+                        <p className="text-sm text-[color:var(--hud-muted-text)]">
+                          No upcoming events.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-[color:var(--hud-muted-text)]">
+                          {error ?? 'Schedule unavailable.'}
+                        </p>
+                      )}
+                    </>
+                  )}
                 </TelemetryCard>
 
                     <MarketTickerCard
@@ -826,7 +928,7 @@ export default function App(): ReactElement {
                   profilesStatusHydrated={profilesStatusHydrated}
                   queryAssistant={queryAssistant}
                   unloadLocalModel={unloadLocalModel}
-                  resetAssistantSession={resetAssistantSession}
+                  clearAssistantChat={clearAssistantChat}
                   activeProfile={agentProfile}
                   setActiveProfile={setAgentProfile}
                   askApexEnabled={Boolean(showAskApexBar)}
@@ -855,7 +957,7 @@ export default function App(): ReactElement {
             profilesStatusHydrated={profilesStatusHydrated}
             queryAssistant={queryAssistant}
             unloadLocalModel={unloadLocalModel}
-            resetAssistantSession={resetAssistantSession}
+            clearAssistantChat={clearAssistantChat}
             activeProfile={agentProfile}
             setActiveProfile={setAgentProfile}
             askApexEnabled={Boolean(showAskApexBar)}

@@ -704,13 +704,6 @@ def _run_demo_briefing() -> BriefingResponse:
             active_tts_engine=active_tts_engine,
             system_load_throttled=system_load_throttled,
         )
-        if not is_dev_mode():
-            try:
-                print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
-                database.save_briefing(final_briefing, digest.model_dump())
-                database.prune_historical_ledger()
-            except Exception as exc:
-                print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
 
         voice_thread = threading.Thread(
             target=_speak_and_cleanup,
