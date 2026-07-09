@@ -524,19 +524,18 @@
   filter: drop-shadow(0 0 6px rgba(15, 77, 184, 0.4));
 }
 
-/* Body curtain — shell stays planted; content unmasks */
+/* Body curtain — shell stays planted; content unmasks.
+   Mask closes instantly (avoids Loading… flash on pending);
+   only the open/reveal is animated. */
 .attention-curtain {
   clip-path: inset(0 0 100% 0);
   transform: translate3d(0, 0.4rem, 0);
   filter: saturate(0.7);
-  opacity: 0.55;
+  opacity: 0;
+  pointer-events: none;
   will-change: clip-path, transform, filter, opacity;
-  transition:
-    clip-path 800ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 800ms cubic-bezier(0.4, 0, 0.2, 1),
-    filter 800ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 800ms cubic-bezier(0.4, 0, 0.2, 1);
-  transition-delay: var(--attention-stagger, 0ms);
+  transition: none;
+  transition-delay: 0ms;
 }
 
 .attention-curtain--revealed {
@@ -544,6 +543,13 @@
   transform: translate3d(0, 0, 0);
   filter: none;
   opacity: 1;
+  pointer-events: auto;
+  transition:
+    clip-path 800ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 800ms cubic-bezier(0.4, 0, 0.2, 1),
+    filter 800ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 800ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition-delay: var(--attention-stagger, 0ms);
 }
 
 @media (prefers-reduced-motion: reduce) {
