@@ -1,11 +1,4 @@
-import {
-  Cloud,
-  CloudLightning,
-  CloudRain,
-  Moon,
-  Sun,
-  type LucideIcon,
-} from 'lucide-react'
+import { type LucideIcon } from 'lucide-react'
 import type * as React from 'react'
 
 import type { WeatherConditionArchetype } from '../types/telemetry'
@@ -17,6 +10,12 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
+
+import { ClearDayIcon } from './weather/ClearDayIcon'
+import { ClearNightIcon } from './weather/ClearNightIcon'
+import { CloudsIcon } from './weather/CloudsIcon'
+import { RainIcon } from './weather/RainIcon'
+import { ThunderstormIcon } from './weather/ThunderstormIcon'
 
 /** Variable Typography Engine — closed interval for ambient temperature (°F). */
 export const VTE_TEMP_MIN_F = 40
@@ -180,43 +179,15 @@ export function resolveTemperatureFontWeight(
   return Math.round(interpolatedWeight)
 }
 
-const WEATHER_GLOW_BY_CONDITION: Record<
+const WEATHER_ICON_BY_CONDITION: Record<
   WeatherConditionArchetype,
-  { bgClass: string; opacityClass: string; animateClass: string }
+  React.ComponentType<React.ComponentPropsWithoutRef<'svg'>>
 > = {
-  clear_day: {
-    bgClass: 'bg-[#F4B22A]',
-    opacityClass: 'opacity-25',
-    animateClass: 'animate-weather-solar',
-  },
-  clear_night: {
-    bgClass: 'bg-[#4F8FFF]',
-    opacityClass: 'opacity-24',
-    animateClass: 'animate-weather-night',
-  },
-  clouds: {
-    bgClass: 'bg-[#8EA7C7]',
-    opacityClass: 'opacity-16',
-    animateClass: 'animate-weather-hover',
-  },
-  rain: {
-    bgClass: 'bg-[#37A6FF]',
-    opacityClass: 'opacity-30',
-    animateClass: 'animate-weather-breath',
-  },
-  thunderstorm: {
-    bgClass: 'bg-[#4F8FFF]',
-    opacityClass: 'opacity-20',
-    animateClass: 'animate-weather-surge',
-  },
-}
-
-const WEATHER_ICON_BY_CONDITION: Record<WeatherConditionArchetype, LucideIcon> = {
-  clear_day: Sun,
-  clear_night: Moon,
-  clouds: Cloud,
-  rain: CloudRain,
-  thunderstorm: CloudLightning,
+  clear_day: ClearDayIcon,
+  clear_night: ClearNightIcon,
+  clouds: CloudsIcon,
+  rain: RainIcon,
+  thunderstorm: ThunderstormIcon,
 }
 
 const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> = {
@@ -302,8 +273,6 @@ export function TelemetryCard({
   const showHeader = title.trim().length > 0
 
   const headingId = useId()
-  const weatherGlow =
-    weatherCondition != null ? WEATHER_GLOW_BY_CONDITION[weatherCondition] : null
   const WeatherConditionIcon =
     weatherCondition != null
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
@@ -362,19 +331,7 @@ export function TelemetryCard({
     >
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
-      {weatherGlow && !isCompact ? (
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
-          <div
-            className={[
-              'weather-glow-core absolute inset-0 blur-[64px] transition-opacity duration-500',
-              weatherGlow.bgClass,
-              weatherGlow.opacityClass,
-              weatherGlow.animateClass,
-            ].join(' ')}
-            aria-hidden
-          />
-        </div>
-      ) : null}
+
       {isCompact ? (
         <div className="hud-inner-lift relative z-10 flex min-w-0 flex-1 items-center gap-3">
           <span className="hud-icon-badge size-7 shrink-0">
