@@ -218,14 +218,6 @@ const weatherIconStyles: Record<WeatherConditionArchetype, React.CSSProperties> 
   },
 }
 
-function resolveCardHoverClass(title: string): string {
-  const normalized = title.trim()
-  if (normalized === 'Weather') return 'hover-weather-bright'
-  if (normalized === 'Events') return 'hover-blue-medium'
-  if (normalized === 'Reminders') return 'hover-blue-strong'
-  return 'hover-blue-subtle'
-}
-
 export type TelemetryLedState = 'live' | 'stale' | 'loading' | 'error' | 'none'
 
 const LED_STATE_CLASS: Record<TelemetryLedState, string> = {
@@ -300,7 +292,6 @@ export function TelemetryCard({
     isCompact
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
-    resolveCardHoverClass(title),
     attentionShellClass(attentionTier),
     className,
   ]

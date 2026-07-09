@@ -65,7 +65,7 @@ export function BriefingDigest({
 
     return (
       <section
-        className={`hud-corner-brackets hud-interactive-shell relative flex shrink-0 flex-none items-center gap-3 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle px-3 py-2 hud-glass transition-all duration-1000 ease-in-out shadow-none ${shellClass}${className ? ` ${className}` : ''}`}
+        className={`hud-corner-brackets hud-interactive-shell relative flex shrink-0 flex-none items-center gap-3 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] px-3 py-2 hud-glass transition-all duration-1000 ease-in-out shadow-none ${shellClass}${className ? ` ${className}` : ''}`}
         aria-labelledby={labelId}
       >
         <span className="hud-corner-bl" aria-hidden />
@@ -84,7 +84,7 @@ export function BriefingDigest({
 
   return (
     <section
-      className={`hud-corner-brackets hud-interactive-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none ${shellClass}${className ? ` ${className}` : ''}`}
+      className={`hud-corner-brackets hud-interactive-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none ${shellClass}${className ? ` ${className}` : ''}`}
       aria-labelledby={labelId}
     >
       <span className="hud-corner-bl" aria-hidden />

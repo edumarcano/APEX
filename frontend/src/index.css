@@ -433,11 +433,15 @@
     box-shadow 500ms cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-.hud-glass:hover {
+/* Glass catch-light — material hover, not a blue border ramp */
+.hud-glass:hover,
+.hud-glass:focus-within {
+  border-color: rgba(255, 255, 255, 0.09) !important;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
-    inset 1px 0 0 0 rgba(255, 255, 255, 0.10),
-    0 20px 48px -10px rgba(0, 0, 0, 0.80) !important;
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.34),
+    inset 1px 0 0 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.05),
+    0 24px 56px -12px rgba(0, 0, 0, 0.88) !important;
 }
 
 .hud-glass-solid {
@@ -459,17 +463,20 @@
   transform: translate3d(0, -1px, 0);
 }
 
+/* Chrome ignition — badge + divider brighten without painting the outer rim blue */
 .hud-interactive-shell:hover .hud-icon-badge,
 .hud-interactive-shell:focus-within .hud-icon-badge {
-  border-color: rgba(126, 179, 255, 0.28);
-  background: rgba(15, 77, 184, 0.11);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 10px rgba(255, 255, 255, 0.06);
 }
 
 .hud-interactive-shell:hover .hud-header-divider,
 .hud-interactive-shell:focus-within .hud-header-divider {
   opacity: 1;
-  filter: drop-shadow(0 0 6px rgba(15, 77, 184, 0.35));
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.28));
 }
 
 .list-fade-mask {
@@ -688,7 +695,7 @@
   height: 12px;
   pointer-events: none;
   opacity: 0.25;
-  transition: opacity 500ms ease, border-color 500ms ease;
+  transition: opacity 500ms ease, border-color 500ms ease, filter 500ms ease;
   border-color: var(--hud-bracket-color, rgba(255, 255, 255, 0.5));
   z-index: 20;
 }
@@ -728,8 +735,14 @@
 .hud-corner-brackets:hover::before,
 .hud-corner-brackets:hover::after,
 .hud-corner-brackets:hover > .hud-corner-br,
-.hud-corner-brackets:hover > .hud-corner-bl {
-  opacity: 0.65;
+.hud-corner-brackets:hover > .hud-corner-bl,
+.hud-corner-brackets:focus-within::before,
+.hud-corner-brackets:focus-within::after,
+.hud-corner-brackets:focus-within > .hud-corner-br,
+.hud-corner-brackets:focus-within > .hud-corner-bl {
+  opacity: 0.92;
+  border-color: rgba(255, 255, 255, 0.85);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.35));
 }
 
 /* Status LED dot — communicates per-module freshness/state */

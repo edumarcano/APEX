@@ -298,7 +298,7 @@ export function MarketTickerCard({
       : undefined
 
   const sectionClassName = [
-    'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out hover-blue-subtle',
+    'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out',
     isCompact
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]',
