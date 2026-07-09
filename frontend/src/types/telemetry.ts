@@ -111,7 +111,7 @@ export interface TelemetryPayload {
   temperatureF: number | null
   /** Condition or summary text excluding the primary temperature numeral. */
   weatherDetail: string
-  /** Parsed micro-climate archetype for scoped card glow and border theming. */
+  /** Parsed micro-climate archetype for per-condition Weather card icons. */
   weatherCondition?: WeatherConditionArchetype | null
   briefing: string
   sports: string
