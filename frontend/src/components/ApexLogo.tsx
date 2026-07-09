@@ -27,6 +27,7 @@ export function ApexLogo({
   // Listen to reminder submission events to trigger an 800ms system-wide flash
   useEffect(() => {
     if (reminderPulseCount > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop changes intentionally trigger a short-lived visual pulse.
       setPulseActive(true)
       const timer = window.setTimeout(() => setPulseActive(false), 800)
       return () => window.clearTimeout(timer)

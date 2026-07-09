@@ -9,11 +9,11 @@ import type {
   ProfileStability,
   ToolOutputItem,
 } from '../types/telemetry'
+import { API_ENDPOINTS } from '../lib/api'
 
-const API_BASE = 'http://127.0.0.1:8000'
-const AGENT_QUERY_ENDPOINT = `${API_BASE}/api/v1/agent/query`
-const AGENT_PROFILES_ENDPOINT = `${API_BASE}/api/v1/agent/profiles`
-const AGENT_LOCAL_UNLOAD_ENDPOINT = `${API_BASE}/api/v1/agent/local/unload`
+const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.agentQuery
+const AGENT_PROFILES_ENDPOINT = API_ENDPOINTS.agentProfiles
+const AGENT_LOCAL_UNLOAD_ENDPOINT = API_ENDPOINTS.agentLocalUnload
 const PROFILE_POLL_INTERVAL_MS = 4000
 const PROFILE_POLL_INTERVAL_QUERYING_MS = 1000
 
@@ -368,6 +368,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     if (!isAssistantQuerying || !shouldPollProfiles) {
       return
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Immediate sync keeps local model loading state visible at query start.
     void fetchProfilesStatus()
   }, [isAssistantQuerying, shouldPollProfiles, fetchProfilesStatus])
 

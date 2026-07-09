@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { MarketResponse, MarketResponseStatus, MarketTickerItem } from '../types/telemetry'
+import { API_ENDPOINTS } from '../lib/api'
 
-const MARKET_ENDPOINT = 'http://127.0.0.1:8000/api/v1/market'
+const MARKET_ENDPOINT = API_ENDPOINTS.market
 const MARKET_POLL_INTERVAL_MS = 30_000
 
 const VALID_MARKET_STATUSES: readonly MarketResponseStatus[] = [
@@ -23,7 +24,6 @@ const VALID_TICKER_STATUSES: readonly MarketTickerItem['status'][] = [
 export type MarketDataState = {
   data: MarketResponse | null
   isLoading: boolean
-  fetchError: boolean
 }
 
 function parseNumber(value: unknown): number | null {
@@ -106,8 +106,8 @@ function toStaleFallback(previous: MarketResponse): MarketResponse {
 export function useMarketData(): MarketDataState {
   const [data, setData] = useState<MarketResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(false)
   const dataRef = useRef<MarketResponse | null>(null)
+  // eslint-disable-next-line react-hooks/refs -- Poll fallback needs the latest committed market payload without resubscribing the interval.
   dataRef.current = data
 
   useEffect(() => {
@@ -122,7 +122,6 @@ export function useMarketData(): MarketDataState {
         }
 
         if (!response.ok) {
-          setFetchError(true)
           if (dataRef.current) {
             setData(toStaleFallback(dataRef.current))
           }
@@ -134,7 +133,6 @@ export function useMarketData(): MarketDataState {
           body = await response.json()
         } catch {
           if (!cancelled) {
-            setFetchError(true)
             if (dataRef.current) {
               setData(toStaleFallback(dataRef.current))
             }
@@ -145,7 +143,6 @@ export function useMarketData(): MarketDataState {
         const parsed = parseMarketResponse(body)
         if (cancelled || !parsed) {
           if (!cancelled) {
-            setFetchError(true)
             if (dataRef.current) {
               setData(toStaleFallback(dataRef.current))
             }
@@ -154,10 +151,8 @@ export function useMarketData(): MarketDataState {
         }
 
         setData(parsed)
-        setFetchError(false)
       } catch {
         if (!cancelled) {
-          setFetchError(true)
           if (dataRef.current) {
             setData(toStaleFallback(dataRef.current))
           }
@@ -181,5 +176,5 @@ export function useMarketData(): MarketDataState {
     }
   }, [])
 
-  return { data, isLoading, fetchError }
+  return { data, isLoading }
 }

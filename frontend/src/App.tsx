@@ -10,6 +10,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type ReactElement,
 } from 'react'
@@ -158,6 +159,14 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
   'neofelis',
 ]
 
+const WEATHER_BORDER_BY_CONDITION: Record<WeatherConditionArchetype, string> = {
+  clear_day: '#1E6BFF',
+  clear_night: '#0F4DB8',
+  clouds: '#6E88AB',
+  rain: '#1E6BFF',
+  thunderstorm: '#7EB3FF',
+}
+
 function isAssistantProfile(value: string): value is AssistantProfile {
   return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
 }
@@ -211,6 +220,7 @@ export default function App(): ReactElement {
   useEffect(() => {
     const profile = data?.defaultProfile
     if (profile && isAssistantProfile(profile)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors backend boot config into the user's selectable profile state.
       setAgentProfile(profile)
     }
   }, [data?.defaultProfile])
@@ -274,19 +284,11 @@ export default function App(): ReactElement {
     isLocalModelLoaded,
   ])
 
-  const weatherBorderByCondition: Record<WeatherConditionArchetype, string> = {
-    clear_day: '#1E6BFF',
-    clear_night: '#0F4DB8',
-    clouds: '#6E88AB',
-    rain: '#1E6BFF',
-    thunderstorm: '#7EB3FF',
-  }
-
   const weatherCardStyle = useMemo((): CSSProperties | undefined => {
     const condition = data?.weatherCondition
     if (!condition) return undefined
 
-    const borderColor = weatherBorderByCondition[condition]
+    const borderColor = WEATHER_BORDER_BY_CONDITION[condition]
     return { '--hud-border-color': borderColor } as CSSProperties
   }, [data?.weatherCondition])
 
@@ -487,6 +489,28 @@ export default function App(): ReactElement {
   const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
   const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
+  const consoleTrayProps = {
+    isExpanded: isAssistantOpen,
+    setExpanded: setAssistantOpen,
+    activeTab,
+    setActiveTab,
+    assistantHistory,
+    isAssistantQuerying,
+    assistantLatestTrace,
+    assistantError,
+    profilesStatus,
+    profilesStatusHydrated,
+    queryAssistant,
+    unloadLocalModel,
+    clearAssistantChat,
+    activeProfile: agentProfile,
+    setActiveProfile: setAgentProfile,
+    askApexEnabled: Boolean(showAskApexBar),
+    activeReminders,
+    markReminderAsRead: handleMarkReminderRead,
+    refreshReminders,
+    onReminderSaved: handleReminderSaved,
+  } satisfies ComponentProps<typeof ConsoleTray>
 
   return (
     <main
@@ -525,7 +549,7 @@ export default function App(): ReactElement {
         <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`hud-wing-column ${useRightRailConsole ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingGapClass} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`hud-wing-column ${useRightRailConsole ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
               <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex ${useRightRailConsole ? 'xl:flex-1' : ''}`}>
                 {isConsoleCompact ? (
@@ -826,7 +850,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingGapClass} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Inbox"
@@ -964,27 +988,8 @@ export default function App(): ReactElement {
 
               <div className={`${useRightRailConsole ? (isAssistantOpen ? 'hidden h-full min-h-0 xl:flex xl:mt-auto' : 'hidden xl:flex xl:mt-auto') : 'hidden'}`}>
                 <ConsoleTray
+                  {...consoleTrayProps}
                   placement="rail"
-                  isExpanded={isAssistantOpen}
-                  setExpanded={setAssistantOpen}
-                  activeTab={activeTab}
-                  setActiveTab={setActiveTab}
-                  assistantHistory={assistantHistory}
-                  isAssistantQuerying={isAssistantQuerying}
-                  assistantLatestTrace={assistantLatestTrace}
-                  assistantError={assistantError}
-                  profilesStatus={profilesStatus}
-                  profilesStatusHydrated={profilesStatusHydrated}
-                  queryAssistant={queryAssistant}
-                  unloadLocalModel={unloadLocalModel}
-                  clearAssistantChat={clearAssistantChat}
-                  activeProfile={agentProfile}
-                  setActiveProfile={setAgentProfile}
-                  askApexEnabled={Boolean(showAskApexBar)}
-                  activeReminders={activeReminders}
-                  markReminderAsRead={handleMarkReminderRead}
-                  refreshReminders={refreshReminders}
-                  onReminderSaved={handleReminderSaved}
                 />
               </div>
             </div>
@@ -994,26 +999,7 @@ export default function App(): ReactElement {
       {!isDormant && !useRightRailConsole ? (
         <div className="hud-console-bottom-tray relative z-[var(--z-bento-hud)] mt-4 flex-none shrink-0">
           <ConsoleTray
-            isExpanded={isAssistantOpen}
-            setExpanded={setAssistantOpen}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            assistantHistory={assistantHistory}
-            isAssistantQuerying={isAssistantQuerying}
-            assistantLatestTrace={assistantLatestTrace}
-            assistantError={assistantError}
-            profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
-            queryAssistant={queryAssistant}
-            unloadLocalModel={unloadLocalModel}
-            clearAssistantChat={clearAssistantChat}
-            activeProfile={agentProfile}
-            setActiveProfile={setAgentProfile}
-            askApexEnabled={Boolean(showAskApexBar)}
-            activeReminders={activeReminders}
-            markReminderAsRead={handleMarkReminderRead}
-            refreshReminders={refreshReminders}
-            onReminderSaved={handleReminderSaved}
+            {...consoleTrayProps}
           />
         </div>
       ) : null}

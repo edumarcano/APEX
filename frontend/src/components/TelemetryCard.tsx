@@ -23,14 +23,14 @@ import { RainIcon } from './weather/RainIcon'
 import { ThunderstormIcon } from './weather/ThunderstormIcon'
 
 /** Variable Typography Engine — closed interval for ambient temperature (°F). */
-export const VTE_TEMP_MIN_F = 40
-export const VTE_TEMP_MAX_F = 90
+const VTE_TEMP_MIN_F = 40
+const VTE_TEMP_MAX_F = 90
 
 /** Variable Typography Engine — closed interval for primary readout font weight. */
-export const VTE_WEIGHT_MIN = 300
-export const VTE_WEIGHT_MAX = 800
+const VTE_WEIGHT_MIN = 300
+const VTE_WEIGHT_MAX = 800
 
-export type VariableTypographyInput = {
+type VariableTypographyInput = {
   temperatureFahrenheit: number
 }
 
@@ -166,7 +166,7 @@ function resolveCountryFlag(country: string): string {
  * Maps temperatureFahrenheit on [VTE_TEMP_MIN_F, VTE_TEMP_MAX_F] to font weight
  * on [VTE_WEIGHT_MIN, VTE_WEIGHT_MAX] for the primary temperature readout.
  */
-export function resolveTemperatureFontWeight(
+function resolveTemperatureFontWeight(
   input: VariableTypographyInput,
 ): number {
   const temp = input.temperatureFahrenheit
