@@ -43,7 +43,7 @@ class AgentQueryRequest(BaseModel):
     profile: Literal[
         "comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"
     ] = Field(
-        default="nova",
+        default="comet",
         description="The APEX agent role tier (cloud or local Ollama profile).",
     )
     session_id: Optional[str] = Field(

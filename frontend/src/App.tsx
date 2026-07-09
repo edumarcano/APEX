@@ -173,7 +173,7 @@ function isAssistantProfile(value: string): value is AssistantProfile {
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
-  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('nova')
+  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('comet')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
   const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
