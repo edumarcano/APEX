@@ -67,7 +67,7 @@ Unlike the trigger/status pipeline, an assistant query is a single request-respo
 
 ```mermaid
 sequenceDiagram
-    participant Bar as Frontend: AskApexBar / AssistantDrawer
+    participant Bar as Frontend: AskApexBar / ConsoleTray
     participant Hook as Frontend: useApexAssistant (history state)
     participant Query as Backend: /api/v1/agent/query
     participant DB as Backend: SQLite (latest briefing)
@@ -196,23 +196,25 @@ apex/
 │   │   ├── hooks/
 │   │   │   ├── useApexData.ts           # Central hook: trigger, polling, telemetry, reminder state, boot config fetch
 │   │   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
-│   │   │   └── useApexAssistant.ts      # Assistant bar / drawer state: query submission, client-held history, trace, errors
+│   │   │   └── useApexAssistant.ts      # Console assistant state: query submission, client-held history, trace, errors
 │   │   ├── types/
-│   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
+│   │   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics, WeatherConditionArchetype
 │   │   ├── components/
 │   │   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
 │   │   │   ├── CommandTrigger.tsx       # Status-driven synthesis trigger button (idle / loading states)
 │   │   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
-│   │   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
 │   │   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
 │   │   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
+│   │   │   ├── MarketTickerCard.tsx     # End-of-day market ticker card and compact row
 │   │   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
 │   │   │   ├── VoiceSignalGlyph.tsx     # Centered pipeline status, thinking, and speech indicator
-│   │   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
 │   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 │   │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
-│   │   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, follow-up input
-│   │   │   └── CloudProfileSelector.tsx # Comet/Nova/Pulsar profile dropdown shared by the bar and drawer
+│   │   │   ├── ConsoleTray.tsx          # Bottom/rail console with assistant and reminders tabs
+│   │   │   └── CloudProfileSelector.tsx # Cloud/local profile dropdown shared by console inputs
+│   │   ├── lib/
+│   │   │   ├── api.ts                   # Shared local API endpoint constants
+│   │   │   └── promptChips.ts           # Shared assistant prompt chip definitions
 │   │   ├── App.tsx          # Root layout: three-column bento grid, nebula glow, demo badge
 │   │   └── main.tsx         # Vite entry point
 │   ├── index.html
@@ -407,7 +409,7 @@ The `CommandTrigger` component is mounted **below the centered logo accessory st
 
 Step-driven card opacity: Weather dims at step 1; Events and Reminders dim at steps 1 and 2.
 
-**Assistant wiring:** `App.tsx` holds `agentProfile` state (default `'nova'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useApexAssistant()` directly. The `AskApexBar` renders below the `ApexLogo`, gated by `showAskApexBar = status === 'success' && askApexEnabled` — it only appears after a briefing has been delivered, and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetAssistantSession()`) clears any open assistant conversation first. The `AssistantDrawer` is always mounted (visibility controlled by `translate-x` transform, not conditional mounting) and slides in from the right whenever `queryAssistant()` is called from either the bar or the drawer's own follow-up input.
+**Assistant wiring:** `App.tsx` holds `agentProfile` state (default `'nova'`, synchronized from `data.defaultProfile` once `GET /api/v1/config` resolves) and consumes `useApexAssistant()` directly. `ConsoleTray` owns the assistant/reminders console UI and renders as a bottom tray on compact layouts or a right rail on large desktop layouts. `AskApexBar` is gated by `showAskApexBar = status === 'success' && askApexEnabled`, so it appears only after a briefing has been delivered and not at all when `ask_apex.enabled` is `false`. Pressing `Enter` to trigger a new briefing (`resetAssistantSession()`) clears any open assistant conversation first. `queryAssistant()` opens the console, switches to the Assistant tab, and appends the user/model turn to client-held history.
 
 ### `CelestialBackground.tsx`
 
@@ -421,7 +423,7 @@ A persistent `memo`-wrapped starfield rendered behind all HUD content. Uses a se
 | Mid (24 stars) | `star-tier-mid` | 28 px |
 | Near (8 stars) | `star-tier-near` | 48 px |
 
-`--mouse-x` and `--mouse-y` are CSS custom properties set on `document.documentElement` by a `passive` `mousemove` listener in `App.tsx`. Values are normalized to `[-0.5, 0.5]` relative to viewport center. Each tier uses `translate3d` with `will-change: transform` (via `transform-gpu` in Tailwind) and a `transition: transform 0.1s ease-out` for smooth trailing. Stars with larger depth multipliers appear to move more, creating a layered depth effect.
+`--mouse-x` and `--mouse-y` are CSS custom properties set on `document.documentElement` by a `passive` `mousemove` listener in `App.tsx`. Values are normalized to `[-0.5, 0.5]` relative to viewport center. Each tier uses `translate3d`, `will-change: transform`, and a `transition: transform 0.1s ease-out` for smooth trailing. Stars with larger depth multipliers appear to move more, creating a layered depth effect.
 
 ### `ApexLogo.tsx`
 
@@ -447,12 +449,6 @@ Permanent all-in-one SVG status indicator mounted under the large `ApexLogo`. It
 ### `BriefingDigest.tsx`
 
 Displays insight bullet strings from `DigestPayload.insights` in the center column above the `ApexLogo`. Each bullet is prefixed with a gold `>` glyph. When `status === 'success'`, a "History" button appears in the card header; clicking it opens `HistoryLedgerModal` as a portal-mounted dialog. The modal fetches `GET /api/v1/briefings/history` on mount and renders each `BriefingHistoryRecord` with a formatted timestamp, briefing prose, and insight bullets. The modal closes on backdrop click or `Escape`.
-
-### `BriefingPanel.tsx`
-
-Renders the synthesized briefing text with a `clip-path` curtain-reveal animation on delivery. A `SpeakingBorderMask` activates at pipeline stage 4: a spinning conic-gradient border overlay that persists while `isSpeaking && activeStep === 4`.
-
-`BriefingPanel` is wrapped in a collapsible container in `App.tsx` (`showSubtitleBar = isSpeaking && activeStep === 4`). The container uses `max-h-0 opacity-0` when collapsed and `max-h-24 opacity-100` when visible, with a 700 ms ease-in-out transition. The component is not rendered in the DOM unless the delivery condition is met.
 
 ### `CommandTrigger.tsx`
 
@@ -489,9 +485,9 @@ Shared card frame. Additional responsibilities:
 
 Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `confidenceScore`, `pipelineStep`, and `failedConnectors` as props from `App.tsx`. Pulls hardware metric values internally via a second `useSystemDiagnostics()` call.
 
-### `ReminderTerminal.tsx`
+### `ConsoleTray.tsx`
 
-An inline collapsible dock inside the Reminders card. A dock button expands to a form. Submitting calls `POST /api/v1/reminders`, clears the input, fires `onReminderSaved`, and auto-collapses. `Escape` key press and focus-out also collapse. Submitting while a previous request is in flight is blocked by an `isSubmitting` guard. Mounted via `createPortal` to resolve z-index stacking.
+Bottom/rail console for assistant chat and reminder entry. The bottom placement renders a compact docked row plus inline expandable body; the rail placement renders inside the right column on large desktop layouts. The Assistant tab shows active local model state, message history, tool trace/output cards, and `AskApexBar`; the Reminders tab shows active reminders plus a `POST /api/v1/reminders` input. Submitting a query switches to the Assistant tab and expands the console.
 
 ### `ReminderListRow.tsx`
 
@@ -530,7 +526,7 @@ Polls `GET /api/v1/diagnostics` every 1,000 ms. Exposes `{ diagnostics, status }
 
 ### `telemetry.ts`
 
-Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `PipelineState`, `SystemDiagnostics`, `AtmosphericTheme`, `WeatherConditionArchetype`, `DigestPayload`, `ActiveReminder`.
+Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `PipelineState`, `SystemDiagnostics`, `WeatherConditionArchetype`, `DigestPayload`, `ActiveReminder`.
 
 `WeatherConditionArchetype` union: `'clear_day' | 'clear_night' | 'clouds' | 'rain' | 'thunderstorm'`. The `clear_day` / `clear_night` split is resolved against the local clock hour at parse time (before 06:00 or from 18:00 → `clear_night`).
 

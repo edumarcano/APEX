@@ -31,44 +31,45 @@ The dev server is for local development only. The production path served by `lau
 
 ## Project Structure
 
-```
+```text
 frontend/
-├── src/
-│   ├── hooks/
-│   │   ├── useApexData.ts           # Central data hook: trigger, polling, telemetry, reminder state, boot config fetch
-│   │   ├── useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
-│   │   └── useApexAssistant.ts      # Assistant bar / drawer state: query submission, history, tool trace
-│   ├── types/
-│   │   └── telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload,
-│   │                                #   SystemDiagnostics, AtmosphericTheme, WeatherConditionArchetype
-│   ├── components/
-│   │   ├── ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
-│   │   ├── CommandTrigger.tsx       # Status-driven synthesis trigger button (idle / loading states)
-│   │   ├── BriefingDigest.tsx       # Insight bullets panel with history ledger modal
-│   │   ├── BriefingPanel.tsx        # Briefing text with curtain-reveal and speaking border mask
-│   │   ├── CelestialBackground.tsx  # Seeded starfield — 80 stars across three twinkling tiers
-│   │   ├── TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
-│   │   ├── SystemDiagnostics.tsx    # Six-column status footer: internet, briefing state, sync health, hardware resources, system time
-│   │   ├── VoiceSignalGlyph.tsx     # Centered pipeline status, thinking, and speech indicator
-│   │   ├── ReminderTerminal.tsx     # Reminder input dock (POST /api/v1/reminders)
-│   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
-│   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
-│   │   ├── AssistantDrawer.tsx      # Slide-out assistant drawer: message history, tool trace, active local model panel with manual unload
-│   │   └── CloudProfileSelector.tsx # Cloud/local assistant profile dropdown with live availability gating and stability badges
-│   ├── App.tsx      # Root layout: three-column bento grid, nebula glow, demo badge
-│   └── main.tsx     # Vite entry point
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-└── tsconfig.json
+|-- src/
+|   |-- hooks/
+|   |   |-- useApexData.ts           # Central data hook: trigger, polling, telemetry, reminder state, boot config fetch
+|   |   |-- useSystemDiagnostics.ts  # 1,000 ms diagnostics poller
+|   |   `-- useApexAssistant.ts      # Console assistant state: query submission, history, tool trace
+|   |-- types/
+|   |   `-- telemetry.ts             # TelemetryPayload, ApexDataState, PipelineState, DigestPayload, SystemDiagnostics
+|   |-- lib/
+|   |   |-- api.ts                   # Shared local API endpoint constants
+|   |   `-- promptChips.ts           # Shared assistant prompt chip definitions
+|   |-- components/
+|   |   |-- ApexLogo.tsx             # State-driven SVG reactor: segment activation by pipeline step
+|   |   |-- CommandTrigger.tsx       # Status-driven synthesis trigger button
+|   |   |-- BriefingDigest.tsx       # Insight bullets panel with history ledger modal
+|   |   |-- CelestialBackground.tsx  # Seeded starfield across three twinkling tiers
+|   |   |-- TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather glow
+|   |   |-- MarketTickerCard.tsx     # End-of-day market ticker card and compact row
+|   |   |-- SystemDiagnostics.tsx    # Header diagnostics, sync health, hardware resources, system time
+|   |   |-- VoiceSignalGlyph.tsx     # Centered pipeline status, thinking, and speech indicator
+|   |   |-- ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
+|   |   |-- AskApexBar.tsx           # Inline assistant query input and profile selector
+|   |   |-- ConsoleTray.tsx          # Bottom/rail console with assistant and reminders tabs
+|   |   `-- CloudProfileSelector.tsx # Cloud/local assistant profile dropdown with live availability gating
+|   |-- App.tsx                      # Root layout: three-column HUD, nebula glow, console placement
+|   `-- main.tsx                     # Vite entry point
+|-- index.html
+|-- package.json
+|-- vite.config.ts
+|-- tailwind.config.js
+`-- tsconfig.json
 ```
 
 ---
 
 ## API Base URL
 
-The API base URL is hardcoded to `http://127.0.0.1:8000` in `src/hooks/useApexData.ts`. This matches the uvicorn bind address set in `core/api.py` and `launcher.py`. Change both if you serve the backend on a different port, and update `APEX_ALLOWED_ORIGINS` in `.env` accordingly.
+The API base URL is centralized in `src/lib/api.ts` as `http://127.0.0.1:8000`. This matches the uvicorn bind address set in `core/api.py` and `launcher.py`. Change both if you serve the backend on a different port, and update `APEX_ALLOWED_ORIGINS` in `.env` accordingly.
 
 ---
 
@@ -84,11 +85,11 @@ Polls `GET /api/v1/diagnostics` every 1,000 ms. Returns `{ diagnostics, status }
 
 ### `useApexAssistant`
 
-State for the assistant bar and assistant drawer. `queryAssistant(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `assistantHistory` array, then appends the resulting user/model message pair to local state on success. There is no server-side session — this hook is the sole owner of conversation history for the tab's lifetime.
+State for the assistant console. `queryAssistant(prompt, profile)` posts to `POST /api/v1/agent/query` with the prompt, selected profile, and the full accumulated `assistantHistory` array, then appends the resulting user/model message pair to local state on success. There is no server-side session; this hook is the sole owner of conversation history for the tab's lifetime.
 
-The hook also self-schedules a poll of `GET /api/v1/agent/profiles` every 4 seconds (only while the drawer is open or profile polling is otherwise enabled, and skipped while a query is in flight or the tab is hidden) to keep cloud/local profile availability, active-model, and idle-unload-countdown state current. `unloadLocalModel()` posts to `POST /api/v1/agent/local/unload` and re-syncs profile status afterward.
+The hook also self-schedules a poll of `GET /api/v1/agent/profiles` every 4 seconds while the console is open or profile polling is otherwise enabled, with a faster cadence during queries and skipped while the tab is hidden. It keeps cloud/local profile availability, active-model, and idle-unload-countdown state current. `unloadLocalModel()` posts to `POST /api/v1/agent/local/unload` and re-syncs profile status afterward.
 
-Exposes `assistantHistory`, `isAssistantQuerying`, `isAssistantOpen`, `assistantLatestTrace` (the most recent turn's tool executions), `assistantError`, `profilesStatus` / `profilesStatusHydrated` (the polled profile availability matrix), `queryAssistant`, `unloadLocalModel`, `resetAssistantSession` (clears history and closes the drawer), and `setAssistantOpen`.
+Exposes `assistantHistory`, `isAssistantQuerying`, `isAssistantOpen`, `assistantLatestTrace` (the most recent turn's tool executions), `assistantError`, `profilesStatus` / `profilesStatusHydrated` (the polled profile availability matrix), `queryAssistant`, `unloadLocalModel`, `resetAssistantSession` (clears history and closes the console), and `setAssistantOpen`.
 
 ---
 

@@ -150,44 +150,6 @@
   }
 }
 
-@keyframes textShimmer {
-  0% {
-    background-position: -200% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
-}
-
-.animate-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--hud-text) 0%,
-    var(--hud-accent) 50%,
-    var(--hud-text) 100%
-  );
-  background-size: 200% auto;
-  color: transparent;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: textShimmer 3s linear infinite;
-}
-
-.briefing-curtain {
-  clip-path: inset(0 0 100% 0);
-  transform: translate3d(0, 0.5rem, 0);
-  will-change: clip-path, transform;
-  backface-visibility: hidden;
-  transition:
-    clip-path 1000ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 1000ms cubic-bezier(0.4, 0, 0.2, 1) 120ms;
-}
-
-.briefing-curtain--revealed {
-  clip-path: inset(0 0 0 0);
-  transform: translate3d(0, 0, 0);
-}
-
 /* Distorted Gaseous Light Fields */
 .bg-nebula-swirl-1 {
   background-image: radial-gradient(ellipse at 45% 45%, rgba(var(--glow-color), 0.28) 0%, rgba(var(--glow-color), 0.08) 50%, rgba(0, 0, 0, 0) 80%);
@@ -231,42 +193,12 @@
 /* High-Performance Animation Handles */
 .animate-nebula-spin-clockwise {
   animation: nebulaSpinClockwise 32s cubic-bezier(0.445, 0.05, 0.55, 0.95) infinite;
-  transform-gpu: true;
   backface-visibility: hidden;
 }
 
 .animate-nebula-spin-counter {
   animation: nebulaSpinCounter 24s cubic-bezier(0.445, 0.05, 0.55, 0.95) infinite;
-  transform-gpu: true;
   backface-visibility: hidden;
-}
-
-@keyframes gyroClockwise {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes gyroCounter {
-  from {
-    transform: rotate(360deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
-}
-
-.animate-gyro-clockwise {
-  animation: gyroClockwise 4s linear infinite;
-  will-change: transform;
-}
-
-.animate-gyro-counter {
-  animation: gyroCounter 2s linear infinite;
-  will-change: transform;
 }
 
 @keyframes signalFlowLeft {
@@ -562,7 +494,6 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-nebula-spin-clockwise,
   .animate-nebula-spin-counter,
-  .animate-shimmer,
   .animate-signal-flow-left,
   .animate-signal-flow-right,
   .animate-speech-wave-bar {
@@ -591,18 +522,6 @@
   }
 }
 
-.hover-weather-bright {
-  transition: border-color 500ms ease;
-}
-
-.hover-weather-bright:hover {
-  border-color: rgba(30, 107, 255, 0.45);
-}
-
-.hover-weather-bright:hover .weather-glow-core {
-  opacity: 0.5 !important;
-}
-
 .hover-blue-subtle {
   transition: border-color 500ms ease, box-shadow 500ms ease;
 }
@@ -619,59 +538,6 @@
 .hover-blue-medium:hover {
   border-color: rgba(31, 111, 229, 0.45) !important;
   box-shadow: 0 0 14px rgba(31, 111, 229, 0.10) !important;
-}
-
-.hover-blue-strong {
-  transition: border-color 500ms ease, box-shadow 500ms ease;
-}
-
-.hover-blue-strong:hover {
-  border-color: rgba(31, 111, 229, 0.65) !important;
-  box-shadow: 0 0 18px rgba(31, 111, 229, 0.15) !important;
-}
-
-.hover-warm-subtle {
-  transition: border-color 500ms ease;
-}
-
-.hover-warm-subtle:hover {
-  border-color: rgba(244, 178, 42, 0.25);
-}
-
-.hover-warm-medium {
-  transition: border-color 500ms ease;
-}
-
-.hover-warm-medium:hover {
-  border-color: rgba(244, 178, 42, 0.45);
-}
-
-.hover-warm-strong {
-  transition: border-color 500ms ease;
-}
-
-.hover-warm-strong:hover {
-  border-color: rgba(244, 178, 42, 0.65);
-}
-
-@keyframes diagnosticsScan {
-  0% { transform: translateY(-100%); opacity: 0; }
-  15%, 85% { opacity: 0.35; }
-  50% { transform: translateY(120%); opacity: 0.35; }
-  100% { transform: translateY(220%); opacity: 0; }
-}
-
-.animate-sensor-sweep {
-  animation: diagnosticsScan 20s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  will-change: transform, opacity;
-}
-
-.hover-diagnostics-neutral {
-  transition: border-color 500ms ease;
-}
-
-.hover-diagnostics-neutral:hover {
-  border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
 /* =========================================================
@@ -848,11 +714,6 @@
   100% { transform: rotate(360deg); }
 }
 
-.animate-border-spin {
-  animation: borderSpin 4s linear infinite;
-  will-change: transform;
-}
-
 .animate-border-spin-slow {
   animation: borderSpin 12s linear infinite;
   will-change: transform;
@@ -974,17 +835,6 @@
     }
   }
 
-  @keyframes goldGlow {
-    0%, 100% {
-      opacity: 0.6;
-      box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
-    }
-    50% {
-      opacity: 1;
-      box-shadow: 0 0 12px rgba(245, 158, 11, 0.9);
-    }
-  }
-
   .animate-twinkle-slow {
     animation: twinkleSlow 15s ease-in-out infinite;
     will-change: opacity;
@@ -998,11 +848,6 @@
   .animate-twinkle-fast {
     animation: twinkleFast 4s ease-in-out infinite;
     will-change: opacity;
-  }
-
-  .animate-gold-glow {
-    animation: goldGlow 3s ease-in-out infinite;
-    will-change: opacity, box-shadow;
   }
 
   .star-tier-far {

@@ -14,9 +14,10 @@ import {
   attentionShellClass,
   type AttentionTier,
 } from '../lib/attentionTier'
+import { API_ENDPOINTS } from '../lib/api'
 import type { DigestPayload, SystemState } from '../types/telemetry'
 
-const BRIEFING_HISTORY_ENDPOINT = 'http://127.0.0.1:8000/api/v1/briefings/history'
+const BRIEFING_HISTORY_ENDPOINT = API_ENDPOINTS.briefingHistory
 
 export interface BriefingDigestProps {
   insights: string[]

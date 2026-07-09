@@ -17,6 +17,8 @@ import {
 } from 'react'
 
 import { type AgentMessage, type ToolTraceItem } from '../hooks/useApexAssistant'
+import { API_ENDPOINTS } from '../lib/api'
+import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 import {
   type ActiveReminder,
   type AgentProfileStatus,
@@ -24,10 +26,10 @@ import {
 } from '../types/telemetry'
 
 import { AssistantToolCards } from './AssistantToolCards'
-import { AskApexBar, OPERATION_PROMPT_CHIPS } from './AskApexBar'
+import { AskApexBar } from './AskApexBar'
 import { ReminderListRow } from './ReminderListRow'
 
-const REMINDERS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/reminders'
+const REMINDERS_ENDPOINT = API_ENDPOINTS.reminders
 
 type ConsoleActivityTone = 'rust' | 'purple'
 

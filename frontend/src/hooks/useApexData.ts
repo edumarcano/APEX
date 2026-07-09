@@ -11,12 +11,12 @@ import type {
   TtsEngine,
   WeatherConditionArchetype,
 } from '../types/telemetry'
+import { API_ENDPOINTS } from '../lib/api'
 
-const API_BASE = 'http://127.0.0.1:8000'
-const STATUS_ENDPOINT = `${API_BASE}/api/v1/status`
-const REMINDERS_ENDPOINT = `${API_BASE}/api/v1/reminders`
-const REMINDERS_READ_ENDPOINT = `${API_BASE}/api/v1/reminders/read`
-const CONFIG_ENDPOINT = `${API_BASE}/api/v1/config`
+const STATUS_ENDPOINT = API_ENDPOINTS.status
+const REMINDERS_ENDPOINT = API_ENDPOINTS.reminders
+const REMINDERS_READ_ENDPOINT = API_ENDPOINTS.remindersRead
+const CONFIG_ENDPOINT = API_ENDPOINTS.config
 
 export type { ApexDataState } from '../types/telemetry'
 
@@ -352,7 +352,7 @@ export function useApexData(): UseApexDataReturn {
     }))
 
     try {
-      const response = await fetch(`${API_BASE}/api/v1/trigger`, {
+      const response = await fetch(API_ENDPOINTS.trigger, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -721,6 +721,7 @@ export function useApexData(): UseApexDataReturn {
       cancelled = true
       window.clearInterval(intervalId)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- The polling transition is keyed to public lifecycle state only.
   }, [state.status, state.pipelineState?.step])
 
   return { ...state, refreshReminders, markReminderAsRead, triggerSynthesis }

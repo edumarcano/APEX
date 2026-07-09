@@ -4,8 +4,9 @@ import {
   DEFAULT_SYSTEM_DIAGNOSTICS,
   type SystemDiagnostics,
 } from '../types/telemetry'
+import { API_ENDPOINTS } from '../lib/api'
 
-const DIAGNOSTICS_ENDPOINT = 'http://127.0.0.1:8000/api/v1/diagnostics'
+const DIAGNOSTICS_ENDPOINT = API_ENDPOINTS.diagnostics
 
 export type SystemDiagnosticsState = {
   diagnostics: SystemDiagnostics
@@ -72,6 +73,7 @@ export function useSystemDiagnostics(): SystemDiagnosticsState {
       }
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Poller status should flip to loading as the subscription starts.
     setStatus('loading')
     void pollDiagnostics()
 
