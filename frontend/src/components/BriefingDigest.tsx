@@ -1,7 +1,19 @@
 import { ChevronRight, Clock, FileText, X } from 'lucide-react'
-import { useCallback, useEffect, useState, type MouseEvent, type ReactElement } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement,
+} from 'react'
 import { createPortal } from 'react-dom'
 
+import {
+  attentionCurtainRevealed,
+  attentionShellClass,
+  type AttentionTier,
+} from '../lib/attentionTier'
 import type { DigestPayload, SystemState } from '../types/telemetry'
 
 const BRIEFING_HISTORY_ENDPOINT = 'http://127.0.0.1:8000/api/v1/briefings/history'
@@ -15,6 +27,10 @@ export interface BriefingDigestProps {
   defaultTab?: 'insights' | 'briefing'
   /** When true, renders a single condensed summary line instead of the full insight list (e.g. while the console tray is open). */
   isCompact?: boolean
+  /** Pipeline attention tier — glass power + body curtain. */
+  attentionTier?: AttentionTier
+  /** Curtain unlock delay in ms. */
+  attentionStaggerMs?: number
 }
 
 export function BriefingDigest({
@@ -25,11 +41,19 @@ export function BriefingDigest({
   className,
   defaultTab = 'insights',
   isCompact = false,
+  attentionTier = 'dormant',
+  attentionStaggerMs = 0,
 }: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'insights' | 'briefing'>(defaultTab)
   const trimmedBriefing = briefingText.trim()
+  const curtainRevealed = attentionCurtainRevealed(attentionTier)
+  const curtainStyle: CSSProperties | undefined =
+    attentionStaggerMs > 0
+      ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
+      : undefined
+  const shellClass = attentionShellClass(attentionTier)
 
   if (isCompact) {
     const compactMessage =
@@ -41,7 +65,7 @@ export function BriefingDigest({
 
     return (
       <section
-        className={`hud-corner-brackets hud-interactive-shell relative flex shrink-0 flex-none items-center gap-3 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle px-3 py-2 hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
+        className={`hud-corner-brackets hud-interactive-shell relative flex shrink-0 flex-none items-center gap-3 overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle px-3 py-2 hud-glass transition-all duration-1000 ease-in-out shadow-none ${shellClass}${className ? ` ${className}` : ''}`}
         aria-labelledby={labelId}
       >
         <span className="hud-corner-bl" aria-hidden />
@@ -60,7 +84,7 @@ export function BriefingDigest({
 
   return (
     <section
-      className={`hud-corner-brackets hud-interactive-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none${className ? ` ${className}` : ''}`}
+      className={`hud-corner-brackets hud-interactive-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hover-blue-subtle p-[var(--hud-panel-pad)] hud-glass transition-all duration-1000 ease-in-out shadow-none ${shellClass}${className ? ` ${className}` : ''}`}
       aria-labelledby={labelId}
     >
       <span className="hud-corner-bl" aria-hidden />
@@ -119,7 +143,15 @@ export function BriefingDigest({
         <div className="hud-header-divider mt-3" aria-hidden />
       </header>
 
-      <div className="hud-inner-lift flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={[
+          'hud-inner-lift flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden attention-curtain',
+          curtainRevealed ? 'attention-curtain--revealed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={curtainStyle}
+      >
         {activeTab === 'briefing' ? (
           trimmedBriefing.length === 0 ? (
             <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">

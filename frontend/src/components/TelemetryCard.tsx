@@ -1,6 +1,11 @@
 import { type LucideIcon } from 'lucide-react'
 import type * as React from 'react'
 
+import {
+  attentionCurtainRevealed,
+  attentionShellClass,
+  type AttentionTier,
+} from '../lib/attentionTier'
 import type { WeatherConditionArchetype } from '../types/telemetry'
 import {
   useId,
@@ -255,6 +260,10 @@ export type TelemetryCardProps = {
   isCompact?: boolean
   /** Right-aligned summary content shown only in the compact row. */
   compactValue?: ReactNode
+  /** Pipeline attention tier — glass power + body curtain (shell-only in compact). */
+  attentionTier?: AttentionTier
+  /** Curtain unlock delay in ms for staggered reveals within a shared step. */
+  attentionStaggerMs?: number
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -267,6 +276,8 @@ export function TelemetryCard({
   ledState = 'none',
   isCompact = false,
   compactValue,
+  attentionTier = 'dormant',
+  attentionStaggerMs = 0,
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
@@ -278,6 +289,11 @@ export function TelemetryCard({
       ? WEATHER_ICON_BY_CONDITION[weatherCondition]
       : null
   const isWeatherCard = title.trim() === 'Weather'
+  const curtainRevealed = attentionCurtainRevealed(attentionTier)
+  const curtainStyle: CSSProperties | undefined =
+    attentionStaggerMs > 0
+      ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
+      : undefined
 
   const sectionClassName = [
     'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
@@ -285,6 +301,7 @@ export function TelemetryCard({
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
     resolveCardHoverClass(title),
+    attentionShellClass(attentionTier),
     className,
   ]
     .filter(Boolean)
@@ -399,7 +416,15 @@ export function TelemetryCard({
           <div className="hud-header-divider mt-3" aria-hidden />
         </header>
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={[
+          'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden attention-curtain',
+          curtainRevealed ? 'attention-curtain--revealed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={curtainStyle}
+      >
         {primaryTemperatureF != null ? (
           <div className="mb-3 flex shrink-0 items-center gap-4">
             <p

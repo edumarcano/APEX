@@ -1,6 +1,11 @@
 import { LineChart } from 'lucide-react'
-import { useId, useMemo, type ReactElement } from 'react'
+import { useId, useMemo, type CSSProperties, type ReactElement } from 'react'
 
+import {
+  attentionCurtainRevealed,
+  attentionShellClass,
+  type AttentionTier,
+} from '../lib/attentionTier'
 import type { MarketResponse, MarketTickerItem } from '../types/telemetry'
 
 type MarketTickerCardProps = {
@@ -9,6 +14,10 @@ type MarketTickerCardProps = {
   className?: string
   /** When true, renders a single condensed row of symbol/percent chips instead of the full ticker grid. */
   isCompact?: boolean
+  /** Pipeline attention tier — glass power + body curtain (shell-only in compact). */
+  attentionTier?: AttentionTier
+  /** Curtain unlock delay in ms for staggered reveals within a shared step. */
+  attentionStaggerMs?: number
 }
 
 const POSITIVE_COLOR = '#39FF88'
@@ -279,12 +288,21 @@ export function MarketTickerCard({
   isLoading = false,
   className,
   isCompact = false,
+  attentionTier = 'dormant',
+  attentionStaggerMs = 0,
 }: MarketTickerCardProps): ReactElement {
+  const curtainRevealed = attentionCurtainRevealed(attentionTier)
+  const curtainStyle: CSSProperties | undefined =
+    attentionStaggerMs > 0
+      ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
+      : undefined
+
   const sectionClassName = [
     'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out hover-blue-subtle',
     isCompact
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]',
+    attentionShellClass(attentionTier),
     className,
   ]
     .filter(Boolean)
@@ -423,7 +441,17 @@ export function MarketTickerCard({
         </div>
         <div className="hud-header-divider mt-2" aria-hidden />
       </header>
-      <div className="hud-inner-lift min-h-0 w-full flex-1">{content}</div>
+      <div
+        className={[
+          'hud-inner-lift min-h-0 w-full flex-1 attention-curtain',
+          curtainRevealed ? 'attention-curtain--revealed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={curtainStyle}
+      >
+        {content}
+      </div>
     </section>
   )
 }

@@ -28,6 +28,10 @@ import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useMarketData } from './hooks/useMarketData'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
+import {
+  resolveAttentionStaggerMs,
+  resolveAttentionTier,
+} from './lib/attentionTier'
 import type { AssistantProfile, WeatherConditionArchetype } from './types/telemetry'
 
 interface ParsedEmail {
@@ -404,11 +408,32 @@ export default function App(): ReactElement {
     : useRightRailConsole
       ? 'flex-none xl:flex-1 xl:min-h-0'
       : 'hud-panel-natural min-h-[10rem]'
-  const marketDimmed = activeStep === 1 || activeStep === 2
-  const weatherDimmed = activeStep === 1
-  const scheduleDimmed = activeStep === 1 || activeStep === 2
-  const staggerTransition =
-    'transition-opacity duration-700 ease-in-out'
+
+  const attentionTiers = useMemo(
+    () => ({
+      reminders: resolveAttentionTier('reminders', activeStep, status),
+      weather: resolveAttentionTier('weather', activeStep, status),
+      news: resolveAttentionTier('news', activeStep, status),
+      events: resolveAttentionTier('events', activeStep, status),
+      market: resolveAttentionTier('market', activeStep, status),
+      inbox: resolveAttentionTier('inbox', activeStep, status),
+      insights: resolveAttentionTier('insights', activeStep, status),
+    }),
+    [activeStep, status],
+  )
+
+  const attentionStagger = useMemo(
+    () => ({
+      reminders: resolveAttentionStaggerMs('reminders'),
+      weather: resolveAttentionStaggerMs('weather'),
+      news: resolveAttentionStaggerMs('news'),
+      events: resolveAttentionStaggerMs('events'),
+      market: resolveAttentionStaggerMs('market'),
+      inbox: resolveAttentionStaggerMs('inbox'),
+      insights: resolveAttentionStaggerMs('insights'),
+    }),
+    [],
+  )
 
   const weatherBody = (() => {
     if (hasSuccessfulData) {
@@ -513,8 +538,10 @@ export default function App(): ReactElement {
                       ledState={cardLedState}
                       isCompact
                       compactValue={weatherConditionCompactValue}
+                      attentionTier={attentionTiers.weather}
+                      attentionStaggerMs={attentionStagger.weather}
                       style={weatherCardStyle}
-                      className={`hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                         {weatherBody}
@@ -527,7 +554,9 @@ export default function App(): ReactElement {
                       f1TelemetryText={f1ScheduleTelemetryText}
                       ledState={cardLedState}
                       compactValue={eventsCompactValue}
-                      className={`hidden min-h-0 xl:flex xl:flex-[2.05_1_0] ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      attentionTier={attentionTiers.events}
+                      attentionStaggerMs={attentionStagger.events}
+                      className="hidden min-h-0 xl:flex xl:flex-[2.05_1_0]"
                     >
                       {isBusy(status) ? (
                         <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -579,6 +608,8 @@ export default function App(): ReactElement {
                       icon={Mail}
                       ledState={cardLedState}
                       compactValue={inboxCompactValue}
+                      attentionTier={attentionTiers.inbox}
+                      attentionStaggerMs={attentionStagger.inbox}
                       className="hidden min-h-0 xl:flex xl:flex-[1.2_1_0]"
                     >
                       {isBusy(status) ? (
@@ -617,6 +648,8 @@ export default function App(): ReactElement {
                       ledState={cardLedState}
                       isCompact
                       compactValue={newsCompactValue}
+                      attentionTier={attentionTiers.news}
+                      attentionStaggerMs={attentionStagger.news}
                       className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
@@ -628,7 +661,9 @@ export default function App(): ReactElement {
                       data={marketData}
                       isLoading={isMarketLoading}
                       isCompact
-                      className={`hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0] ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      attentionTier={attentionTiers.market}
+                      attentionStaggerMs={attentionStagger.market}
+                      className="hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     />
                   </>
                 ) : (
@@ -641,8 +676,10 @@ export default function App(): ReactElement {
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
                   compactValue={weatherBody}
+                  attentionTier={attentionTiers.weather}
+                  attentionStaggerMs={attentionStagger.weather}
                   style={weatherCardStyle}
-                  className={`min-h-0 ${weatherPanelLayoutClass} ${staggerTransition} ${weatherDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  className={`min-h-0 ${weatherPanelLayoutClass}`}
                 >
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {weatherBody}
@@ -656,7 +693,9 @@ export default function App(): ReactElement {
                   ledState={cardLedState}
                   isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
-                  className={`min-h-0 ${eventsPanelLayoutClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                  attentionTier={attentionTiers.events}
+                  attentionStaggerMs={attentionStagger.events}
+                  className={`min-h-0 ${eventsPanelLayoutClass}`}
                 >
                   {isBusy(status) ? (
                     <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
@@ -706,7 +745,9 @@ export default function App(): ReactElement {
                     <MarketTickerCard
                       data={marketData}
                       isLoading={isMarketLoading}
-                      className={`min-h-0 w-full ${marketPanelLayoutClass} ${staggerTransition} ${marketDimmed ? 'opacity-25' : 'opacity-100'}`}
+                      attentionTier={attentionTiers.market}
+                      attentionStaggerMs={attentionStagger.market}
+                      className={`min-h-0 w-full ${marketPanelLayoutClass}`}
                     />
                   </>
                 )}
@@ -729,6 +770,8 @@ export default function App(): ReactElement {
                   briefingText={data?.briefing ?? ''}
                   status={status}
                   isLoading={isTriggerLoading}
+                  attentionTier={attentionTiers.insights}
+                  attentionStaggerMs={attentionStagger.insights}
                   className="w-full h-full min-h-0"
                 />
               </div>
@@ -791,6 +834,8 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
+                attentionTier={attentionTiers.inbox}
+                attentionStaggerMs={attentionStagger.inbox}
                 className={rightTelemetryPanelClass}
               >
                 {isBusy(status) ? (
@@ -842,6 +887,8 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
+                attentionTier={attentionTiers.news}
+                attentionStaggerMs={attentionStagger.news}
                 className={rightTelemetryPanelClass}
               >
                 {isBusy(status) ? (
@@ -886,7 +933,9 @@ export default function App(): ReactElement {
                 ledState={cardLedState}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
-                className={`${rightTelemetryPanelClass} ${staggerTransition} ${scheduleDimmed ? 'opacity-25' : 'opacity-100'}`}
+                attentionTier={attentionTiers.reminders}
+                attentionStaggerMs={attentionStagger.reminders}
+                className={rightTelemetryPanelClass}
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
