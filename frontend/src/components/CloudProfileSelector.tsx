@@ -38,7 +38,7 @@ const CLOUD_PROFILE_OPTIONS: readonly ProfileOption[] = [
 const LOCAL_PROFILE_OPTIONS: readonly ProfileOption[] = [
   { key: 'lynx', label: 'Apex Lynx', subtitle: 'Lightweight' },
   { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Balanced' },
-  { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Heavy' },
+  { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Capable' },
 ]
 
 const PROFILE_LABELS: Record<AssistantProfile, string> = {

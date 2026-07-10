@@ -194,7 +194,7 @@ The APEX assistant can run entirely on-device instead of calling Gemini. To enab
   ```bash
   ollama pull qwen3:1.7b          # Lynx (lightweight)
   ollama pull qwen3:4b-instruct   # Acinonyx (balanced)
-  ollama pull qwen3:8b            # Neofelis (heavy)
+  ollama pull qwen3:8b            # Neofelis (capable)
   ```
 - No `.env` keys are required for local inference. `config.json` `ollama.host` defaults to `http://localhost:11434`; change it only if Ollama runs on a different host or port.
 - A profile whose model tag isn't installed reports `model_not_installed` in the HUD's profile selector rather than failing a query. Set `ollama.enabled: false` in `config.json` to hide local profiles entirely.

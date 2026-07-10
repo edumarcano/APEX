@@ -299,7 +299,7 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `lynx` | Apex Lynx | `qwen3:1.7b` | lightweight | stable | 4096 | 128 | 512 | 4 | 120s | 88% | 95% |
 | `acinonyx` | Apex Acinonyx | `qwen3:4b-instruct` | balanced | stable | 4096 | 128 | 768 | 6 | 150s | 78% | 90% |
-| `neofelis` | Apex Neofelis | `qwen3:8b` | heavy | preview | 4096 | 128 | 1024 | 4 | 180s | 68% | 85% |
+| `neofelis` | Apex Neofelis | `qwen3:8b` | capable | stable | 4096 | 128 | 1024 | 4 | 180s | 68% | 85% |
 
 `max_tool_turns` and `max_tool_calls` mirror `AGENT_MAX_TURNS`/`AGENT_MAX_TOOL_CALLS` the same way the Gemini profiles do (Lynx applies a lower fixed ceiling: `min(2, AGENT_MAX_TURNS)` / `min(3, AGENT_MAX_TOOL_CALLS)`). All three profiles default `think=False` (Ollama's chain-of-thought phase is disabled) and `default_temperature=0.2` (`0.1` for Neofelis). RAM and CPU limits are percentage thresholds evaluated by the resource gate before a cold load; they are configurable per profile via `config.json` `ollama.resource_gates.{lynx,acinonyx,neofelis}.{ram_limit,cpu_limit}`, defaulting to the values above.
 

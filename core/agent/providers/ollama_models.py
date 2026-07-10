@@ -19,7 +19,7 @@ class OllamaModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
     profile_version: str = Field(description="Internal configuration profile version.")
     api_model: str = Field(description="Exact Ollama model tag string.")
-    tier: Literal["lightweight", "balanced", "heavy"] = Field(
+    tier: Literal["lightweight", "balanced", "capable"] = Field(
         description="Computational performance classification for local inference."
     )
     stability: Literal["stable", "preview"] = Field(
@@ -113,8 +113,8 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         display_name="Apex Neofelis",
         profile_version="1.0",
         api_model="qwen3:8b",
-        tier="heavy",
-        stability="preview",
+        tier="capable",
+        stability="stable",
         default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
@@ -126,6 +126,6 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=NEOFELIS_RAM_LIMIT,
         cpu_limit=NEOFELIS_CPU_LIMIT,
-        description="Heavy local reasoning for complex multi-source questions inside APEX.",
+        description="Capable local reasoning for complex multi-source questions inside APEX.",
     ),
 }
