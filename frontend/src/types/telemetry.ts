@@ -7,6 +7,19 @@ export interface PipelineState {
   is_speaking: boolean
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
+  synthesis?: SynthesisLiveState | null
+}
+
+export type SynthesisProvider = 'gemini' | 'ollama' | 'raw' | 'demo'
+export type SynthesisProfile = 'comet' | 'lynx' | 'acinonyx' | 'neofelis'
+export type SynthesisStrategy = 'llm' | 'slm' | 'raw' | 'demo'
+
+export interface SynthesisLiveState {
+  phase: 'idle' | 'loading' | 'ready' | 'generating' | 'fallback' | 'complete'
+  provider: SynthesisProvider | null
+  profile: SynthesisProfile | null
+  loading: boolean
+  fallback_reason: string | null
 }
 
 export interface SystemDiagnostics {
@@ -176,4 +189,8 @@ export interface ApexDataState {
   system_load_throttled: boolean
   defaultProfile?: AssistantProfile
   askApexEnabled?: boolean
+  synthesisStrategy: SynthesisStrategy
+  synthesisProvider: SynthesisProvider | null
+  synthesisProfile: SynthesisProfile | null
+  synthesisFallbackReason: string | null
 }

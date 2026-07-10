@@ -6,6 +6,10 @@ import type {
   ApexDataState,
   AssistantProfile,
   PipelineState,
+  SynthesisLiveState,
+  SynthesisProfile,
+  SynthesisProvider,
+  SynthesisStrategy,
   SystemState,
   TelemetryPayload,
   TtsEngine,
@@ -98,6 +102,13 @@ function getStringField(
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_AGENT_PROFILES: readonly AgentCloudProfile[] = ['comet', 'nova', 'pulsar']
+const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = ['gemini', 'ollama', 'raw', 'demo']
+const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = ['comet', 'lynx', 'acinonyx', 'neofelis']
+const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['llm', 'slm', 'raw', 'demo']
+
+function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
+  return typeof value === 'string' && values.includes(value as T) ? value as T : null
+}
 
 function parseDefaultProfile(value: unknown): AgentCloudProfile | undefined {
   if (typeof value === 'string' && VALID_AGENT_PROFILES.includes(value as AgentCloudProfile)) {
@@ -123,6 +134,21 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
     return null
   }
 
+  const rawSynthesis = record.synthesis
+  let synthesis: SynthesisLiveState | null = null
+  if (rawSynthesis && typeof rawSynthesis === 'object') {
+    const item = rawSynthesis as Record<string, unknown>
+    const phase = typeof item.phase === 'string' ? item.phase : 'idle'
+    if (['idle', 'loading', 'ready', 'generating', 'fallback', 'complete'].includes(phase)) {
+      synthesis = {
+        phase: phase as SynthesisLiveState['phase'],
+        provider: parseEnum(item.provider, VALID_SYNTHESIS_PROVIDERS),
+        profile: parseEnum(item.profile, VALID_SYNTHESIS_PROFILES),
+        loading: item.loading === true,
+        fallback_reason: typeof item.fallback_reason === 'string' ? item.fallback_reason : null,
+      }
+    }
+  }
   return {
     step: record.step,
     label: record.label,
@@ -130,6 +156,7 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
     is_speaking: record.is_speaking === true,
     active_tts_engine: parseTtsEngine(record.active_tts_engine),
     system_load_throttled: record.system_load_throttled === true,
+    synthesis,
   }
 }
 
@@ -221,6 +248,10 @@ export function useApexData(): UseApexDataReturn {
     active_tts_engine: 'google',
     system_load_throttled: false,
     askApexEnabled: true,
+    synthesisStrategy: 'llm',
+    synthesisProvider: 'gemini',
+    synthesisProfile: 'comet',
+    synthesisFallbackReason: null,
   })
 
   const stateRef = useRef(state)
@@ -420,6 +451,12 @@ export function useApexData(): UseApexDataReturn {
       const devModeActive = metadata?.dev_mode_active === true
       const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
       const system_load_throttled = metadata?.system_load_throttled === true
+      const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
+      const synthesisProfile = parseEnum(metadata?.synthesis_profile, VALID_SYNTHESIS_PROFILES)
+      const synthesisFallbackReason =
+        typeof metadata?.synthesis_fallback_reason === 'string'
+          ? metadata.synthesis_fallback_reason
+          : null
 
       if (!telemetry || typeof telemetry !== 'object') {
         setState((prev) => ({
@@ -479,6 +516,9 @@ export function useApexData(): UseApexDataReturn {
         failedConnectors,
         active_tts_engine,
         system_load_throttled,
+        synthesisProvider,
+        synthesisProfile,
+        synthesisFallbackReason,
       }))
     } catch (err) {
       if (
@@ -523,6 +563,8 @@ export function useApexData(): UseApexDataReturn {
         let askApexEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
         let devModeActive: boolean | undefined
+        let synthesisStrategy: SynthesisStrategy | undefined
+        let synthesisProfile: SynthesisProfile | null | undefined
         if (configResp.ok) {
           try {
             const configBody: unknown = await configResp.json()
@@ -532,6 +574,8 @@ export function useApexData(): UseApexDataReturn {
                 ask_apex_enabled?: unknown
                 demo_mode_active?: unknown
                 dev_mode_active?: unknown
+                synthesis_strategy?: unknown
+                synthesis_profile?: unknown
               }
               defaultProfile = parseDefaultProfile(body.default_profile)
               if (typeof body.ask_apex_enabled === 'boolean') {
@@ -543,6 +587,8 @@ export function useApexData(): UseApexDataReturn {
               if (typeof body.dev_mode_active === 'boolean') {
                 devModeActive = body.dev_mode_active
               }
+              synthesisStrategy = parseEnum(body.synthesis_strategy, VALID_SYNTHESIS_STRATEGIES) ?? undefined
+              synthesisProfile = parseEnum(body.synthesis_profile, VALID_SYNTHESIS_PROFILES)
             }
           } catch {
             // Config hydration is best-effort; preserve dormant idle state on parse failure.
@@ -559,7 +605,8 @@ export function useApexData(): UseApexDataReturn {
             defaultProfile !== undefined ||
             askApexEnabled !== undefined ||
             demoModeActive !== undefined ||
-            devModeActive !== undefined
+            devModeActive !== undefined ||
+            synthesisStrategy !== undefined
           ) {
             setState((prev) => {
               if (prev.status !== 'idle') {
@@ -571,6 +618,16 @@ export function useApexData(): UseApexDataReturn {
                 defaultProfile,
                 ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 ...modePatch,
+                ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
+                ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),
+                synthesisProvider:
+                  synthesisStrategy === 'raw'
+                    ? 'raw'
+                    : synthesisStrategy === 'demo'
+                      ? 'demo'
+                      : synthesisStrategy === 'slm'
+                        ? 'ollama'
+                        : prev.synthesisProvider,
                 data: prev.data
                   ? {
                       ...prev.data,
@@ -606,6 +663,16 @@ export function useApexData(): UseApexDataReturn {
             ...(defaultProfile !== undefined ? { defaultProfile } : {}),
             ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
             ...modePatch,
+            ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
+            ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),
+            synthesisProvider:
+              synthesisStrategy === 'raw'
+                ? 'raw'
+                : synthesisStrategy === 'demo'
+                  ? 'demo'
+                  : synthesisStrategy === 'slm'
+                    ? 'ollama'
+                    : prev.synthesisProvider,
             data: prev.data
               ? {
                   ...prev.data,

@@ -16,6 +16,7 @@ import {
 } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
+import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
 import { ConsoleTray } from './components/ConsoleTray'
 import { CommandTrigger } from './components/CommandTrigger'
@@ -186,6 +187,9 @@ export default function App(): ReactElement {
     active_tts_engine,
     system_load_throttled,
     askApexEnabled,
+    synthesisProvider,
+    synthesisProfile,
+    synthesisFallbackReason,
     refreshReminders,
     markReminderAsRead,
     triggerSynthesis,
@@ -206,7 +210,7 @@ export default function App(): ReactElement {
     clearAssistantChat,
     resetAssistantSession,
     setAssistantOpen,
-  } = useApexAssistant(showAskApexBar)
+  } = useApexAssistant(true)
 
   // Synchronize the active profile state with the backend's configured defaults on boot
   useEffect(() => {
@@ -220,6 +224,10 @@ export default function App(): ReactElement {
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
+  const liveSynthesis = pipelineState?.synthesis
+  const resolvedSynthesisProvider = liveSynthesis?.provider ?? synthesisProvider
+  const resolvedSynthesisProfile = liveSynthesis?.profile ?? synthesisProfile
+  const resolvedSynthesisReason = liveSynthesis?.fallback_reason ?? synthesisFallbackReason
 
   const activeStep = pipelineState?.step ?? null
   const isProcessing =
@@ -237,9 +245,13 @@ export default function App(): ReactElement {
       ) ?? null,
     [profilesStatus],
   )
-  const isLocalModelLoading = loadingLocalProfile !== null
+  const isLocalModelLoading =
+    loadingLocalProfile !== null ||
+    (liveSynthesis?.provider === 'ollama' && liveSynthesis.loading)
   const isLocalModelLoaded = activeLocalModel !== null
-  const loadingDisplayName = loadingLocalProfile?.display_name ?? null
+  const loadingDisplayName =
+    loadingLocalProfile?.display_name ??
+    (liveSynthesis?.profile ? `Apex ${liveSynthesis.profile}` : null)
 
   const glowColor = useMemo((): string => {
     if (status === 'error') {
@@ -485,7 +497,6 @@ export default function App(): ReactElement {
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant,
-    unloadLocalModel,
     clearAssistantChat,
     activeProfile: agentProfile,
     setActiveProfile: setAgentProfile,
@@ -527,6 +538,9 @@ export default function App(): ReactElement {
             failedConnectors={failedConnectors}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
+            synthesisProvider={resolvedSynthesisProvider}
+            synthesisProfile={resolvedSynthesisProfile}
+            synthesisFallbackReason={resolvedSynthesisReason}
           />
         </header>
 
@@ -812,6 +826,12 @@ export default function App(): ReactElement {
                       isAssistantQuerying={isAssistantQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       loadingDisplayName={loadingDisplayName}
+                    />
+                    <LocalModelControl
+                      profile={activeLocalModel}
+                      loadingProfile={loadingLocalProfile}
+                      busy={isAssistantQuerying || liveSynthesis?.phase === 'generating'}
+                      onUnload={unloadLocalModel}
                     />
                     <div
                       className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${

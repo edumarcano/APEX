@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 
 import {
+  type SynthesisProfile,
+  type SynthesisProvider,
   type SystemDiagnostics as SystemDiagnosticsPayload,
 } from '../types/telemetry'
 
@@ -81,6 +83,41 @@ interface SystemDiagnosticsProps {
   failedConnectors?: string[]
   demoModeActive?: boolean
   devModeActive?: boolean
+  synthesisProvider?: SynthesisProvider | null
+  synthesisProfile?: SynthesisProfile | null
+  synthesisFallbackReason?: string | null
+}
+
+function SynthesisPill({
+  provider,
+  profile,
+  reason,
+}: {
+  provider: SynthesisProvider | null
+  profile: SynthesisProfile | null
+  reason: string | null
+}): ReactElement {
+  const label = provider === 'ollama' ? (profile ?? 'lynx').toUpperCase() : provider === 'raw' ? 'RAW' : provider === 'demo' ? 'DEMO' : 'COMET'
+  const tone = provider === 'ollama'
+    ? 'border-orange-500/50 text-orange-300 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
+    : provider === 'raw'
+      ? 'border-red-500/50 text-red-300 shadow-[0_0_12px_rgba(220,38,38,0.25)]'
+      : 'border-blue-500/50 text-blue-300 shadow-[0_0_12px_rgba(59,130,246,0.25)]'
+  const dot = provider === 'ollama' ? 'bg-orange-500' : provider === 'raw' ? 'bg-red-500' : 'bg-blue-500'
+  const explanation = reason ? `Fallback: ${reason.replaceAll('_', ' ')}` : `Synthesis engine: ${label}`
+  return (
+    <div
+      className={`group relative flex h-9 min-w-[5.5rem] items-center justify-center gap-2 rounded-full border bg-black/20 px-3 font-mono text-[10px] font-bold tracking-widest ${tone}`}
+      tabIndex={0}
+      aria-label={explanation}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden />
+      {label}
+      <span className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-52 rounded border border-white/10 bg-slate-950 p-2 text-left text-[9px] font-normal normal-case tracking-normal text-zinc-300 group-hover:block group-focus:block">
+        {explanation}
+      </span>
+    </div>
+  )
 }
 
 function MetricBar({
@@ -186,6 +223,9 @@ export function SystemDiagnostics({
   failedConnectors = [],
   demoModeActive = false,
   devModeActive = false,
+  synthesisProvider = 'gemini',
+  synthesisProfile = 'comet',
+  synthesisFallbackReason = null,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isOpen, setIsOpen] = useState(false)
@@ -349,6 +389,11 @@ export function SystemDiagnostics({
           unavailable={ramUnavailable}
           icon={Database}
           className="hidden sm:flex"
+        />
+        <SynthesisPill
+          provider={synthesisProvider}
+          profile={synthesisProfile}
+          reason={synthesisFallbackReason}
         />
       </div>
 

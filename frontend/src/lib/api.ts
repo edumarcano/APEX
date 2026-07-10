@@ -1,7 +1,7 @@
 export const API_BASE = 'http://127.0.0.1:8000'
 
 export const API_ENDPOINTS = {
-  agentLocalUnload: `${API_BASE}/api/v1/agent/local/unload`,
+  agentLocalUnload: `${API_BASE}/api/v1/local-model/unload`,
   agentProfiles: `${API_BASE}/api/v1/agent/profiles`,
   agentQuery: `${API_BASE}/api/v1/agent/query`,
   briefingHistory: `${API_BASE}/api/v1/briefings/history`,

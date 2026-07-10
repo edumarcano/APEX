@@ -146,7 +146,6 @@ interface ConsoleTrayProps {
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
-  unloadLocalModel: () => Promise<void>
   clearAssistantChat: () => void
   activeProfile: AssistantProfile
   setActiveProfile: (profile: AssistantProfile) => void
@@ -155,130 +154,6 @@ interface ConsoleTrayProps {
   markReminderAsRead: (id: number) => void
   refreshReminders: () => Promise<void>
   onReminderSaved: () => void
-}
-
-function formatCountdown(seconds: number | null): string {
-  if (seconds === null || seconds < 0) {
-    return '--:--'
-  }
-
-  const total = Math.floor(seconds)
-  const minutes = Math.floor(total / 60)
-  const remainingSeconds = total % 60
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
-}
-
-function formatBytes(bytes: number | null): string | null {
-  if (bytes === null || !Number.isFinite(bytes) || bytes <= 0) {
-    return null
-  }
-
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unitIndex = 0
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-
-  const precision = unitIndex >= 3 ? 1 : 0
-  return `${value.toFixed(precision)} ${units[unitIndex]}`
-}
-
-function buildLoadedModelDetails(
-  loadedModel: AgentProfileStatus['loaded_model'],
-): string[] {
-  if (!loadedModel) {
-    return []
-  }
-
-  const details: string[] = []
-  if (loadedModel.processor) {
-    details.push(loadedModel.processor)
-  }
-  if (loadedModel.context) {
-    details.push(`ctx ${loadedModel.context}`)
-  }
-
-  const size = formatBytes(loadedModel.size_bytes)
-  if (size) {
-    details.push(`size ${size}`)
-  }
-
-  const vram = formatBytes(loadedModel.size_vram_bytes)
-  if (vram) {
-    details.push(`vram ${vram}`)
-  }
-
-  return details
-}
-
-function ActiveLocalModelPanel({
-  activeLocalModel,
-  isQuerying,
-  onUnloadModel,
-}: {
-  activeLocalModel: AgentProfileStatus
-  isQuerying: boolean
-  onUnloadModel: () => Promise<void>
-}): ReactElement {
-  const idleSeconds = activeLocalModel.idle_unload_remaining_seconds
-  const countdownText =
-    idleSeconds === null ? '--:--' : formatCountdown(idleSeconds)
-  const loadedModelDetails = buildLoadedModelDetails(activeLocalModel.loaded_model)
-
-  const handleUnload = useCallback((): void => {
-    void onUnloadModel()
-  }, [onUnloadModel])
-
-  return (
-    <div
-      className={[
-        'mb-3 flex items-center justify-between rounded-lg border border-amber-500/20',
-        'bg-amber-950/10 p-3 text-xs transition-opacity duration-300',
-      ].join(' ')}
-      data-slot="active-local-model"
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center">
-          <span
-            className="relative mr-2 inline-flex h-2 w-2 shrink-0"
-            aria-hidden
-          >
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FBBF24]/60 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FBBF24]" />
-          </span>
-          <span className="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-amber-200">
-            {activeLocalModel.display_name} [LOADED]
-          </span>
-        </div>
-        <span className="mt-1 block font-mono text-[10px] text-zinc-500">
-          Auto-unload in {countdownText}
-        </span>
-        {loadedModelDetails.length > 0 ? (
-          <span className="mt-1 block truncate font-mono text-[10px] text-zinc-500">
-            {loadedModelDetails.join(' | ')}
-          </span>
-        ) : null}
-      </div>
-
-      <button
-        type="button"
-        onClick={handleUnload}
-        disabled={isQuerying}
-        className={[
-          'ml-3 shrink-0 rounded border border-white/10 px-2 py-1',
-          'font-mono text-[10px] uppercase transition-colors',
-          'hover:bg-red-950/20 hover:text-red-400',
-          isQuerying ? 'cursor-not-allowed opacity-40' : 'text-zinc-300',
-        ].join(' ')}
-        aria-label={`Unload ${activeLocalModel.display_name}`}
-      >
-        Unload
-      </button>
-    </div>
-  )
 }
 
 function escapeHtml(text: string): string {
@@ -381,7 +256,6 @@ function AssistantTabContent({
   latestTrace,
   error,
   profilesStatus,
-  onUnloadModel,
   queryAssistant,
   activeProfile,
 }: {
@@ -390,15 +264,11 @@ function AssistantTabContent({
   latestTrace: ToolTraceItem[]
   error: string | null
   profilesStatus: AgentProfileStatus[]
-  onUnloadModel: () => Promise<void>
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
   activeProfile: AssistantProfile
 }): ReactElement {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  const activeLocalModel = profilesStatus.find(
-    (profile) => profile.provider === 'ollama' && profile.active,
-  )
   const loadingLocalProfile = profilesStatus.find((profile) => profile.loading)
   const isLocalModelLoading = Boolean(loadingLocalProfile)
   const loadingDisplayName = loadingLocalProfile?.display_name?.trim() || 'model'
@@ -429,14 +299,6 @@ function AssistantTabContent({
 
   return (
     <div className="space-y-4">
-      {activeLocalModel ? (
-        <ActiveLocalModelPanel
-          activeLocalModel={activeLocalModel}
-          isQuerying={isQuerying}
-          onUnloadModel={onUnloadModel}
-        />
-      ) : null}
-
       {history.length === 0 && !isQuerying ? (
         <div className="flex min-h-[12rem] flex-col items-center justify-center gap-6 py-6">
           <p className="text-center font-mono text-xs uppercase tracking-widest text-zinc-500">
@@ -677,7 +539,6 @@ export function ConsoleTray({
   profilesStatus,
   profilesStatusHydrated,
   queryAssistant,
-  unloadLocalModel,
   clearAssistantChat,
   activeProfile,
   setActiveProfile,
@@ -769,7 +630,6 @@ export function ConsoleTray({
         latestTrace={assistantLatestTrace}
         error={assistantError}
         profilesStatus={profilesStatus}
-        onUnloadModel={unloadLocalModel}
         queryAssistant={queryAssistant}
         activeProfile={activeProfile}
       />
