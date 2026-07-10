@@ -365,7 +365,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
   "answer": "Current conditions are 78°F with clear skies.",
   "profile_used": { "display_name": "Apex Nova", "api_model": "gemini-3-flash-preview", "...": "..." },
   "tool_trace": [
-    { "name": "get_current_weather", "status": "ok", "duration_ms": 412.3 }
+    { "name": "get_weather_forecast", "status": "ok", "duration_ms": 412.3 }
   ],
   "tool_outputs": [],
   "session_id": null,
@@ -382,7 +382,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
 
-**Tool output whitelist:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Only tools in `ALLOWED_TOOL_OUTPUT_REGISTRY` (`core/agent/loop.py`) return their real output in this field: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`. `get_current_weather` is deliberately excluded and always returns the placeholder error object, since its result is already fully covered by the synthesized `answer` text.
+**Tool output whitelist:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Only tools in `ALLOWED_TOOL_OUTPUT_REGISTRY` (`core/agent/loop.py`) return their real output in this field: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`.
 
 **Response `403`** — Assistant interface disabled via `config.json` `ask_apex.enabled`
 ```json
