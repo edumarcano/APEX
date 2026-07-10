@@ -7,7 +7,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 </p>
 
 <p align="center">
-  <em>Dormant standby mode with centralized command trigger, reminder badge, parallax starfield, and live system diagnostics.</em>
+  <em>Dormant standby mode with centralized command trigger, parallax starfield, and live system diagnostics.</em>
 </p>
 
 ---
@@ -34,7 +34,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 </p>
 
 <p align="center">
-  <em>Active briefing mode with synthesized output, live data modules, reminder controls, demo-mode telemetry, sync health, and system diagnostics rendered in the full HUD layout.</em>
+  <em>Active briefing mode in demo mode, showcasing simulated telemetry panels, staged briefing delivery, the AskApex bar, the closed console tray (with assistant and reminders tabs), and live system diagnostics rendered in the full HUD layout.</em>
 </p>
 
 ---
