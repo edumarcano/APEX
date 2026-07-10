@@ -3,7 +3,7 @@ google-api-python-client
 google-auth
 google-auth-oauthlib
 google-cloud-texttospeech
-google-genai
+google-genai>=1.56.0
 psutil
 python-dotenv
 pyttsx3

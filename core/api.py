@@ -837,6 +837,12 @@ class AgentProfileStatus(BaseModel):
     stability: Literal["stable", "preview"] = Field(
         description="Release stage classification for this profile.",
     )
+    thinking_level: str | None = Field(
+        default=None,
+        description=(
+            "Gemini thinking level for this profile. Null for Ollama profiles."
+        ),
+    )
     status: ProfileAvailabilityStatus = Field(
         description="Current availability state for this profile.",
     )
@@ -1496,6 +1502,7 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     provider="ollama",
                     tier=profile.tier,
                     stability=profile.stability,
+                    thinking_level=None,
                     status=status,
                     active=is_active,
                     loading=is_loading,
@@ -1523,6 +1530,7 @@ def _build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 provider="gemini",
                 tier=gemini_profile.tier,
                 stability=gemini_profile.stability,
+                thinking_level=gemini_profile.thinking_level,
                 status=cloud_status,
                 active=False,
                 loading=False,

@@ -179,6 +179,7 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     provider,
     tier,
     stability,
+    thinking_level: parseNullableString(record.thinking_level),
     status,
     active: typeof record.active === 'boolean' ? record.active : false,
     loading: typeof record.loading === 'boolean' ? record.loading : false,
