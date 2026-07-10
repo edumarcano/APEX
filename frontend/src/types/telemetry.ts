@@ -93,6 +93,8 @@ export interface AgentProfileStatus {
   provider: 'ollama' | 'gemini'
   tier: string
   stability: ProfileStability
+  /** Gemini thinking level; null/omitted for Ollama or older API responses. */
+  thinking_level?: string | null
   status: ProfileAvailabilityStatus
   active: boolean
   loading: boolean

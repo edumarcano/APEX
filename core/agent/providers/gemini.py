@@ -135,6 +135,10 @@ class GeminiProvider:
             )
             + _SECURITY_BOUNDARY_DIRECTIVE,
         }
+        if isinstance(profile, GeminiModelProfile):
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_level=profile.thinking_level,
+            )
         if tools:
             config_kwargs["tools"] = tools
             config_kwargs["automatic_function_calling"] = (

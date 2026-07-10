@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field
 from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS, DEFAULT_AGENT_SYSTEM_PROMPT
 
 
+GeminiThinkingLevel = Literal["minimal", "medium", "high"]
+
+
 class GeminiModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
     profile_version: str = Field(description="Internal configuration profile version.")
@@ -14,6 +17,12 @@ class GeminiModelProfile(BaseModel):
     )
     stability: Literal["stable", "preview"] = Field(
         description="Release stage classification of the target model."
+    )
+    thinking_level: GeminiThinkingLevel = Field(
+        description=(
+            "Gemini thinking effort for GenerateContentConfig.thinking_config. "
+            "Tied to the profile; not independently selectable in the HUD."
+        ),
     )
     default_temperature: float = Field(
         default=0.2,
@@ -42,6 +51,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         api_model="gemini-3.1-flash-lite",
         tier="fast",
         stability="stable",
+        thinking_level="minimal",
         default_temperature=0.2,
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
@@ -53,6 +63,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         api_model="gemini-3-flash-preview",
         tier="balanced",
         stability="preview",
+        thinking_level="medium",
         default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
@@ -64,6 +75,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         api_model="gemini-3.5-flash",
         tier="advanced",
         stability="stable",
+        thinking_level="high",
         default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,

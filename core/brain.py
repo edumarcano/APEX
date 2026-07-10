@@ -4,6 +4,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 from core.config import ENV_PATH, SYSTEM_PROMPT, is_dev_mode
 
@@ -106,6 +107,9 @@ def process_telemetry(raw_data: str) -> dict[str, Any]:
         response = client.models.generate_content(
             model="gemini-3.1-flash-lite",
             contents=[full_prompt],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
+            ),
         )
         if response.text and response.text.strip():
             briefing, insights = _parse_model_output(response.text.strip())
