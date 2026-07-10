@@ -32,7 +32,11 @@ from clients import (
 from core import brain, database, scanner, speaker, config
 from core.agent.loop import default_tools_dispatcher, run_agent_loop
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
+from core.agent.providers.gemini_models import (
+    GEMINI_MODEL_PROFILES,
+    GeminiModelProfile,
+    GeminiThinkingLevel,
+)
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     SystemVitals,
@@ -68,6 +72,7 @@ from core.config import (
     OLLAMA_MANUAL_UNLOAD_ENABLED,
     is_dev_mode,
 )
+from core.synthesis import CalendarFact, F1Fact, SynthesisInput, SynthesisRouter
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -85,6 +90,7 @@ _LOGGER = logging.getLogger(__name__)
 async def _app_lifespan(_app: FastAPI):
     """Start background workers on API boot and cancel them on shutdown."""
     idle_model_task: asyncio.Task[None] | None = None
+    database.initialize_db()
 
     if OLLAMA_ENABLED:
         idle_model_task = asyncio.create_task(check_idle_models_loop())
@@ -151,6 +157,13 @@ class PipelineState:
         self._timestamp = datetime.now(timezone.utc).isoformat()
         self._active_tts_engine = "google"
         self._system_load_throttled = False
+        self._synthesis: dict[str, Any] = {
+            "phase": "idle",
+            "provider": None,
+            "profile": None,
+            "loading": False,
+            "fallback_reason": None,
+        }
 
     def update(
         self,
@@ -179,6 +192,23 @@ class PipelineState:
             if system_load_throttled is not None:
                 self._system_load_throttled = system_load_throttled
 
+    def update_synthesis(
+        self,
+        phase: str,
+        provider: str | None,
+        profile: str | None,
+        fallback_reason: str | None,
+    ) -> None:
+        """Update live synthesis routing state without changing the pipeline step."""
+        with self._lock:
+            self._synthesis = {
+                "phase": phase,
+                "provider": provider,
+                "profile": profile,
+                "loading": phase == "loading",
+                "fallback_reason": fallback_reason,
+            }
+
     def reset(self) -> None:
         """Restore the tracker to idle or pre-run defaults."""
         with self._lock:
@@ -188,6 +218,13 @@ class PipelineState:
             self._timestamp = datetime.now(timezone.utc).isoformat()
             self._active_tts_engine = "google"
             self._system_load_throttled = False
+            self._synthesis = {
+                "phase": "idle",
+                "provider": None,
+                "profile": None,
+                "loading": False,
+                "fallback_reason": None,
+            }
 
     def get_state(self) -> dict[str, Any] | None:
         """
@@ -206,6 +243,7 @@ class PipelineState:
                 "is_speaking": speaker.is_speaking(),
                 "active_tts_engine": self._active_tts_engine,
                 "system_load_throttled": self._system_load_throttled,
+                "synthesis": dict(self._synthesis),
             }
 
 
@@ -243,6 +281,11 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
+    synthesis_provider: Literal["gemini", "ollama", "raw", "demo"] | None = None
+    synthesis_profile: Literal["comet", "lynx", "acinonyx", "neofelis"] | None = None
+    synthesis_fallback_reason: str | None = None
+    synthesis_warmup_ms: int | None = None
+    synthesis_generation_ms: int | None = None
     tts_strategy: Literal["google", "kokoro", "pyttsx3"] = Field(
         description="Active text-to-speech backend (google, kokoro, or pyttsx3).",
     )
@@ -317,6 +360,16 @@ def _parse_digest_payload(raw_digest: Any) -> DigestPayload:
         return DigestPayload.model_validate(raw_digest)
     except Exception:
         return DigestPayload(confidence_score=0.0)
+
+
+def _parse_runtime_metadata(raw_metadata: Any) -> RuntimeMetadata | None:
+    """Parse optional history metadata without breaking legacy rows."""
+    if not isinstance(raw_metadata, dict):
+        return None
+    try:
+        return RuntimeMetadata.model_validate(raw_metadata)
+    except Exception:
+        return None
 
 
 def _split_sports_report(sports_report: str) -> tuple[str, str]:
@@ -725,7 +778,8 @@ def _run_demo_briefing() -> BriefingResponse:
             metadata=RuntimeMetadata(
                 dev_mode_active=True,
                 demo_mode_active=True,
-                synthesis_strategy="slm",
+                synthesis_strategy="demo",
+                synthesis_provider="demo",
                 tts_strategy=DEMO_TTS,
                 active_tts_engine=active_tts_engine,
                 system_load_throttled=system_load_throttled,
@@ -837,7 +891,7 @@ class AgentProfileStatus(BaseModel):
     stability: Literal["stable", "preview"] = Field(
         description="Release stage classification for this profile.",
     )
-    thinking_level: str | None = Field(
+    thinking_level: GeminiThinkingLevel | None = Field(
         default=None,
         description=(
             "Gemini thinking level for this profile. Null for Ollama profiles."
@@ -879,6 +933,15 @@ class BriefingHistoryRecord(BaseModel):
     timestamp: str
     briefing: str
     digest: DigestPayload
+    metadata: RuntimeMetadata | None = None
+
+
+class PipelineSynthesisState(BaseModel):
+    phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
+    provider: Literal["gemini", "ollama", "raw", "demo"] | None = None
+    profile: Literal["comet", "lynx", "acinonyx", "neofelis"] | None = None
+    loading: bool = False
+    fallback_reason: str | None = None
 
 
 class PipelineStatusSnapshot(BaseModel):
@@ -894,6 +957,7 @@ class PipelineStatusSnapshot(BaseModel):
     system_load_throttled: bool = Field(
         description="True when hardware throttle thresholds forced a local-engine fallback.",
     )
+    synthesis: PipelineSynthesisState | None = None
 
 
 MarketTickerStatus = Literal["live", "stale", "unavailable"]
@@ -1039,6 +1103,13 @@ def get_global_config() -> dict[str, Any]:
         "max_session_messages": config.MAX_SESSION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
+        "synthesis_strategy": (
+            "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "llm"
+        ),
+        "synthesis_profile": (
+            None if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw") else
+            "lynx" if is_dev_mode() and DEV_AI_SYNTHESIS == "slm" else "comet"
+        ),
     }
 
 
@@ -1123,6 +1194,9 @@ def trigger_briefing() -> BriefingResponse:
 
         try:
             dev_mode = is_dev_mode()
+            synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "llm"
+            synthesis_router = SynthesisRouter(global_pipeline_state.update_synthesis)
+            warmup = synthesis_router.prepare(synthesis_strategy)
 
             if not dev_mode:
                 database.log_run()
@@ -1138,11 +1212,12 @@ def trigger_briefing() -> BriefingResponse:
                 weather_report = ""
 
             if FEATURE_SPORTS:
-                sports_report, f1_cache_refreshed = sports_client.fetch_sports_data()
+                sports_report, f1_cache_refreshed, f1_map = sports_client.fetch_sports_snapshot()
             else:
                 print("[SYSTEM]: Sports module bypassed via user preference")
                 sports_report = ""
                 f1_cache_refreshed = True
+                f1_map = None
 
             if FEATURE_NEWS:
                 news_report = news_client.fetch_news_data()
@@ -1183,6 +1258,7 @@ def trigger_briefing() -> BriefingResponse:
             if not FEATURE_CALENDAR:
                 print("[SYSTEM]: Calendar module bypassed via user preference")
                 calendar_report = ""
+                calendar_data: list[dict[str, Any]] = []
             else:
                 try:
                     calendar_service = google_auth.get_service("calendar", "v3")
@@ -1205,6 +1281,7 @@ def trigger_briefing() -> BriefingResponse:
                 except Exception as exc:
                     print(f"[SYSTEM]: Calendar fetch failed: ({exc})")
                     calendar_report = "ERROR: Check connection"
+                    calendar_data = []
 
             unread_records = database.fetch_unread_reminders()
             if unread_records:
@@ -1219,6 +1296,43 @@ def trigger_briefing() -> BriefingResponse:
                 f"{calendar_report} | {news_report} | {memory_report}"
             )
 
+            f1_cache_penalty = FEATURE_SPORTS and MODULE_F1 and not f1_cache_refreshed
+            confidence_score, failed_connectors = _compute_confidence_and_failures(
+                weather_report=weather_report,
+                sports_report=sports_report,
+                news_report=news_report,
+                email_report=email_report,
+                calendar_report=calendar_report,
+                f1_cache_penalty=f1_cache_penalty,
+            )
+
+            next_event: CalendarFact | None = None
+            if calendar_data:
+                raw_event = calendar_data[0]
+                raw_start = str(raw_event.get("start", "")).strip()
+                next_event = CalendarFact(
+                    title=str(raw_event.get("summary", "Untitled event")),
+                    start=raw_start or "Time unavailable",
+                    all_day=bool(raw_start and "T" not in raw_start),
+                )
+            f1_fact: F1Fact | None = None
+            if isinstance(f1_map, dict) and f1_map.get("relativeWeek") == "This week":
+                f1_fact = F1Fact(
+                    race_name=str(f1_map.get("raceName", "Unknown race")),
+                    start=str(f1_map.get("raceDateTimeEST", "Unscheduled")),
+                    sprint_scheduled=bool(f1_map.get("sprintScheduled")),
+                )
+            synthesis_input = SynthesisInput(
+                weather_summary=weather_report or None,
+                calendar_event_count=len(calendar_data),
+                next_calendar_event=next_event,
+                pending_reminder_count=len(unread_records),
+                first_pending_reminder=(str(unread_records[0][1]) if unread_records else None),
+                f1_this_week=f1_fact,
+                failed_connectors=failed_connectors,
+                generated_at=datetime.now(timezone.utc).isoformat(),
+            )
+
             global_pipeline_state.update(3, "SYNTHESIS")
             print("[SYSTEM]: Synthesizing briefing...")
 
@@ -1230,25 +1344,19 @@ def trigger_briefing() -> BriefingResponse:
             )
             filler_thread.start()
 
-            brain_output = brain.process_telemetry(combined_raw_data)
+            brain_output = brain.process_telemetry(
+                combined_raw_data,
+                synthesis_input=synthesis_input,
+                strategy=synthesis_strategy,
+                warmup=warmup,
+                router=synthesis_router,
+            )
             final_briefing = brain_output["briefing"]
             briefing_insights = brain_output["insights"]
 
             filler_thread.join()
 
-            f1_cache_penalty = FEATURE_SPORTS and MODULE_F1 and not f1_cache_refreshed
-
-            confidence_score, failed_connectors = _compute_confidence_and_failures(
-                weather_report=weather_report,
-                sports_report=sports_report,
-                news_report=news_report,
-                email_report=email_report,
-                calendar_report=calendar_report,
-                f1_cache_penalty=f1_cache_penalty,
-            )
-
             if dev_mode:
-                synthesis_strategy = DEV_AI_SYNTHESIS
                 tts_strategy = DEV_TTS_PLAYBACK
             else:
                 synthesis_strategy = "llm"
@@ -1269,11 +1377,26 @@ def trigger_briefing() -> BriefingResponse:
                 failed_connectors=failed_connectors,
                 insights=briefing_insights,
             )
+            runtime_metadata = RuntimeMetadata(
+                dev_mode_active=dev_mode,
+                demo_mode_active=False,
+                synthesis_strategy=synthesis_strategy,
+                synthesis_provider=brain_output.get("provider"),
+                synthesis_profile=brain_output.get("profile"),
+                synthesis_fallback_reason=brain_output.get("fallback_reason"),
+                synthesis_warmup_ms=brain_output.get("warmup_ms"),
+                synthesis_generation_ms=brain_output.get("generation_ms"),
+                tts_strategy=tts_strategy,
+                active_tts_engine=active_tts_engine,
+                system_load_throttled=system_load_throttled,
+            )
             if not dev_mode:
                 try:
                     print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
                     database.save_briefing(
-                        final_briefing, digest_payload.model_dump()
+                        final_briefing,
+                        digest_payload.model_dump(),
+                        runtime_metadata.model_dump(),
                     )
                     database.prune_historical_ledger()
                 except Exception as exc:
@@ -1303,14 +1426,7 @@ def trigger_briefing() -> BriefingResponse:
                     reminders=memory_report,
                 ),
                 digest=digest_payload,
-                metadata=RuntimeMetadata(
-                    dev_mode_active=dev_mode,
-                    demo_mode_active=False,
-                    synthesis_strategy=synthesis_strategy,
-                    tts_strategy=tts_strategy,
-                    active_tts_engine=active_tts_engine,
-                    system_load_throttled=system_load_throttled,
-                ),
+                metadata=runtime_metadata,
             )
         finally:
             if not voice_thread_started:
@@ -1338,6 +1454,7 @@ def get_briefing_history() -> list[dict[str, Any]]:
             "timestamp": row["timestamp"],
             "briefing": row["briefing"],
             "digest": _parse_digest_payload(row["digest"]),
+            "metadata": _parse_runtime_metadata(row.get("metadata")),
         }
         for row in rows
     ]
@@ -1557,7 +1674,11 @@ def list_agent_profiles() -> list[AgentProfileStatus]:
     "/api/v1/agent/local/unload",
     response_model=LocalUnloadResponse,
 )
-def unload_active_local_agent_model() -> LocalUnloadResponse:
+@app.post(
+    "/api/v1/local-model/unload",
+    response_model=LocalUnloadResponse,
+)
+def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     """
     Manually unload the currently active local Ollama model from memory.
 

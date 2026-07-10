@@ -137,7 +137,7 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def fetch_sports_data() -> tuple[str, bool]:
+def fetch_sports_snapshot() -> tuple[str, bool, Dict[str, Any] | None]:
     """Connect to sports APIs and retrieve current sports telemetry.
 
     Args:
@@ -154,6 +154,7 @@ def fetch_sports_data() -> tuple[str, bool]:
     """
     intel = []
     f1_cache_refreshed = True
+    resolved_f1_map: Dict[str, Any] | None = None
 
     if MODULE_F1:
         cache_payload = _read_f1_cache()
@@ -177,11 +178,13 @@ def fetch_sports_data() -> tuple[str, bool]:
                 f1_map = _build_f1_map_from_race(race)
                 _write_f1_cache(f1_map)
                 f1_cache_refreshed = True
+            resolved_f1_map = f1_map
             intel.append(f"F1_DATA:{json.dumps(f1_map, separators=(',', ':'))}")
         except Exception as exc:
             sys.stderr.write(f"[SPORTS][F1] {exc}\n")
             f1_cache_refreshed = False
             if cached_map:
+                resolved_f1_map = cached_map
                 intel.append(f"F1_DATA:{json.dumps(cached_map, separators=(',', ':'))}")
             else:
                 intel.append("F1 race telemetry unavailable.")
@@ -235,7 +238,13 @@ def fetch_sports_data() -> tuple[str, bool]:
             sys.stderr.write(f"[SPORTS][FOOTBALL] {exc}\n")
             intel.append("Barcelona fixture telemetry unavailable.")
 
-    return " ".join(intel), f1_cache_refreshed
+    return " ".join(intel), f1_cache_refreshed, resolved_f1_map
+
+
+def fetch_sports_data() -> tuple[str, bool]:
+    """Compatibility façade returning the legacy report/freshness pair."""
+    report, refreshed, _f1_map = fetch_sports_snapshot()
+    return report, refreshed
 
 
 def fetch_f1_driver_standings() -> Dict[str, Any]:

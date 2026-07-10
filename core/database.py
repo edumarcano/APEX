@@ -24,13 +24,17 @@ def initialize_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
             briefing TEXT NOT NULL,
-            digest_json TEXT NOT NULL
+            digest_json TEXT NOT NULL,
+            metadata_json TEXT
         )
     ''')
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_briefings_timestamp "
         "ON briefings(timestamp DESC)"
     )
+    cursor.execute("PRAGMA table_info(briefings)")
+    if "metadata_json" not in {str(row[1]) for row in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE briefings ADD COLUMN metadata_json TEXT")
 
     conn.commit()
     conn.close()
@@ -94,7 +98,11 @@ def fetch_unread_reminders() -> list[tuple[int, str]]:
     return records
 
 
-def save_briefing(briefing: str, digest_dict: dict) -> None:
+def save_briefing(
+    briefing: str,
+    digest_dict: dict,
+    metadata_dict: dict | None = None,
+) -> None:
     """
     Persist a briefing run and its structured digest payload to the ledger.
 
@@ -105,9 +113,15 @@ def save_briefing(briefing: str, digest_dict: dict) -> None:
     conn = sqlite3.connect(DB_NAME, timeout=30.0)
     cursor = conn.cursor()
     digest_json = json.dumps(digest_dict, separators=(",", ":"))
+    metadata_json = (
+        json.dumps(metadata_dict, separators=(",", ":"))
+        if metadata_dict is not None
+        else None
+    )
     cursor.execute(
-        "INSERT INTO briefings (timestamp, briefing, digest_json) VALUES (?, ?, ?)",
-        (datetime.now().isoformat(), briefing, digest_json),
+        "INSERT INTO briefings (timestamp, briefing, digest_json, metadata_json) "
+        "VALUES (?, ?, ?, ?)",
+        (datetime.now().isoformat(), briefing, digest_json, metadata_json),
     )
     conn.commit()
     conn.close()
@@ -127,7 +141,7 @@ def fetch_briefing_history(limit: int = 50) -> list[dict[str, Any]]:
     conn = sqlite3.connect(DB_NAME, timeout=30.0)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, timestamp, briefing, digest_json "
+        "SELECT id, timestamp, briefing, digest_json, metadata_json "
         "FROM briefings ORDER BY timestamp DESC LIMIT ?",
         (limit,),
     )
@@ -140,12 +154,17 @@ def fetch_briefing_history(limit: int = 50) -> list[dict[str, Any]]:
             parsed_digest = json.loads(row[3])
         except (json.JSONDecodeError, TypeError):
             parsed_digest = {}
+        try:
+            parsed_metadata = json.loads(row[4]) if row[4] else None
+        except (json.JSONDecodeError, TypeError):
+            parsed_metadata = None
         records.append(
             {
                 "id": row[0],
                 "timestamp": row[1],
                 "briefing": row[2],
                 "digest": parsed_digest,
+                "metadata": parsed_metadata,
             }
         )
     return records

@@ -35,7 +35,7 @@ export function ApexLogo({
   }, [reminderPulseCount])
 
   const isError = status === 'error'
-  const isDormant = status === 'idle' && !isAssistantQuerying && !isLocalModelLoading
+  const isDormant = status === 'idle' && !isAssistantQuerying
   const activeStep = step ?? 0
   const hasDelivered = status === 'success' || activeStep >= 4
 
@@ -92,11 +92,6 @@ export function ApexLogo({
   })
 
   const getGoldSegmentClass = (): string => {
-    // Local-model loading owns the outer shell; keep core dormant while rust surges.
-    if (isLocalModelLoading) {
-      return `transition-all duration-700 ease-in-out ${dormantCore}`
-    }
-
     if (isAssistantQuerying) {
       return purpleSurgeCore
     }

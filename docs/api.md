@@ -28,7 +28,11 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
 {
   "default_profile": "comet",
   "ask_apex_enabled": true,
-  "max_session_messages": 6
+  "max_session_messages": 6,
+  "dev_mode_active": false,
+  "demo_mode_active": false,
+  "synthesis_strategy": "llm",
+  "synthesis_profile": "comet"
 }
 ```
 
@@ -37,6 +41,8 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
 | `default_profile` | string | Default APEX assistant profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
 | `ask_apex_enabled` | boolean | Whether the assistant bar and assistant drawer are enabled, from `config.json` `ask_apex.enabled` |
 | `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
+| `synthesis_strategy` | string | Initial HUD route: `llm`, `slm`, `raw`, or `demo` |
+| `synthesis_profile` | string \| null | Nominal initial profile (`comet` or `lynx`) when applicable |
 
 ---
 
@@ -88,7 +94,12 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 |---|---|---|
 | `dev_mode_active` | boolean | `true` when `DEV_MODE=true` was active for the run |
 | `demo_mode_active` | boolean | `true` when `DEMO_MODE=true` was active for the run |
-| `synthesis_strategy` | string | Active synthesis backend: `"llm"` in production; `"raw"`, `"slm"`, or `"llm"` in dev mode; `"slm"` in demo mode |
+| `synthesis_strategy` | string | Configured route: `"llm"` in production; `"raw"`, `"slm"`, or `"llm"` in dev mode; `"demo"` in demo mode |
+| `synthesis_provider` | string \| null | Resolved briefing provider: `gemini`, `ollama`, `raw`, or `demo` |
+| `synthesis_profile` | string \| null | Resolved profile: `comet`, `lynx`, `acinonyx`, or `neofelis` |
+| `synthesis_fallback_reason` | string \| null | Machine-readable reason when routing changed or raw fallback was used |
+| `synthesis_warmup_ms` | integer \| null | Local warmup duration when applicable |
+| `synthesis_generation_ms` | integer \| null | Resolved provider generation duration when applicable |
 | `tts_strategy` | string | Configured TTS strategy: `"google"`, `"kokoro"`, or `"pyttsx3"` in production; reflects `DEV_TTS_PLAYBACK` or `DEMO_TTS` otherwise |
 | `active_tts_engine` | string | Resolved active TTS engine used for playback (e.g., `"google"`, `"kokoro"`, or `"pyttsx3"`); may differ from `tts_strategy` if system resource throttling triggers local fallback |
 | `system_load_throttled` | boolean | `true` when hardware resource utilization exceeds throttle limits and triggers local fallback |
@@ -423,7 +434,8 @@ Ollama reachability, installed model tags, and host vitals are read from a share
     "display_name": "Apex Lynx",
     "provider": "ollama",
     "tier": "lightweight",
-    "stability": "preview",
+    "stability": "stable",
+    "thinking_level": null,
     "status": "model_not_installed",
     "active": false,
     "loading": false,
@@ -454,6 +466,7 @@ Ollama reachability, installed model tags, and host vitals are read from a share
 | `provider` | string | `"ollama"` or `"gemini"` |
 | `tier` | string | Performance tier label (e.g., `"lightweight"`, `"fast"`, `"advanced"`) |
 | `stability` | string | `"stable"` or `"preview"` |
+| `thinking_level` | string \| null | Gemini profile effort (`minimal`, `low`, `medium`, `high`); null for Ollama |
 | `status` | string | See `ProfileAvailabilityStatus` values below |
 | `active` | boolean | `true` when this profile's local model is currently loaded in Ollama memory (always `false` for cloud profiles) |
 | `loading` | boolean | `true` while this profile's local model is being warmed up (loaded into Ollama but not yet ready to serve); always `false` for cloud profiles. Distinct from `active`: a model is `loading` before it is `active`. |
@@ -474,7 +487,9 @@ Ollama reachability, installed model tags, and host vitals are read from a share
 
 ---
 
-### `POST /api/v1/agent/local/unload`
+### `POST /api/v1/local-model/unload`
+
+Provider-neutral manual unload for the active APEX local model. The legacy `POST /api/v1/agent/local/unload` route remains as a compatibility alias.
 
 Manually unloads the currently active local Ollama model from memory, ahead of the automatic idle-unload timer.
 
@@ -745,7 +760,7 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `DEV_MODE` | `false` | Bypasses scanner gate and run logging; Gmail/Calendar connectors still make live requests with content masked to `[HIDDEN]`; Gemini bypass depends on `DEV_AI_SYNTHESIS` |
 | `DEMO_MODE` | `false` | Intercepts trigger; serves static mock telemetry |
 | `ENABLE_STARTUP_GATE` | `true` | When `false`, skips Wi-Fi/power/cooldown while keeping live APIs |
-| `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `slm` (placeholder), `llm` |
+| `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `slm` (local → raw), `llm` (Gemini → local → raw) |
 | `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `APEX_ALLOWED_ORIGINS` | _(see below)_ | Comma-separated CORS origins; replaces defaults entirely when set |

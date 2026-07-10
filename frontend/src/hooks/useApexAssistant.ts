@@ -280,7 +280,7 @@ export interface UseApexAssistantResult {
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
   queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
-  unloadLocalModel: () => Promise<void>
+  unloadLocalModel: () => Promise<boolean>
   clearAssistantChat: () => void
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
@@ -373,7 +373,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     void fetchProfilesStatus()
   }, [isAssistantQuerying, shouldPollProfiles, fetchProfilesStatus])
 
-  const unloadLocalModel = useCallback(async (): Promise<void> => {
+  const unloadLocalModel = useCallback(async (): Promise<boolean> => {
     try {
       const response = await fetch(AGENT_LOCAL_UNLOAD_ENDPOINT, {
         method: 'POST',
@@ -383,14 +383,16 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
         console.warn(
           `[useApexAssistant] Local model unload failed (${response.status}).`,
         )
-        return
+        return false
       }
 
       await fetchProfilesStatus()
+      return true
     } catch (fetchError) {
       const message =
         fetchError instanceof Error ? fetchError.message : 'Unknown unload error'
       console.warn(`[useApexAssistant] Local model unload error: ${message}`)
+      return false
     }
   }, [fetchProfilesStatus])
 

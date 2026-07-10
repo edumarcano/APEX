@@ -2,6 +2,8 @@
 
 React/TypeScript HUD served by Vite. Communicates with the FastAPI backend at `http://127.0.0.1:8000`.
 
+The header synthesis pill reports the engine used for the current briefing. A shared rust-orange control beneath the logo reports Ollama loading, residency, auto-unload countdown, and manual unload state for both briefing synthesis and assistant queries.
+
 ---
 
 ## Stack
