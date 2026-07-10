@@ -256,7 +256,7 @@ apex/
 
 ### `core/brain.py`
 
-`process_telemetry(raw_data)` constructs a `genai.Client` with `GEMINI_API_KEY`, prepends `SYSTEM_PROMPT` from `config.json`, and calls `gemini-3.1-flash-lite`. The function returns a `dict[str, Any]` with keys `briefing` (TTS prose string) and `insights` (list of bullet strings).
+`core/brain.py` is a compatibility façade over `core/synthesis/`. The synthesis router validates one result contract across Gemini, Ollama, and deterministic raw output. Gemini receives rich telemetry; local and raw paths receive only sanitized weather, basic calendar, reminders, this-week F1, and connector-failure facts.
 
 **Gemini output protocol:** The system prompt instructs the model to return exactly two sections separated by markers:
 
@@ -267,9 +267,9 @@ apex/
 
 When `DEV_MODE=true`:
 
-- `DEV_AI_SYNTHESIS=raw` — returns the raw data string as `briefing` with a single placeholder insight. No model call.
-- `DEV_AI_SYNTHESIS=slm` — returns a placeholder briefing string. Local SLM integration is not yet implemented.
-- `DEV_AI_SYNTHESIS=llm` — falls through to the live Gemini call and logs a network-leakage warning.
+- `DEV_AI_SYNTHESIS=raw` — returns deterministic privacy-safe compact output. No model call.
+- `DEV_AI_SYNTHESIS=slm` — reuses a resident APEX model or warms Lynx during collection, then falls back to raw.
+- `DEV_AI_SYNTHESIS=llm` — calls Comet, then an eligible local model/Lynx, then raw.
 
 On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
 
@@ -283,11 +283,11 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 
 <a id="cloud-agent-profiles"></a>
 
-| Profile | Display Name | Model | Tier | Stability | Max Turns | Max Tool Calls | Temperature |
-|---|---|---|---|---|---|---|---|
-| `comet` | Apex Comet | `gemini-3.1-flash-lite` | fast | stable | `min(2, AGENT_MAX_TURNS)` | `min(3, AGENT_MAX_TOOL_CALLS)` | 0.2 |
-| `nova` | Apex Nova | `gemini-3-flash-preview` | balanced | preview | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.2 |
-| `pulsar` | Apex Pulsar | `gemini-3.5-flash` | advanced | stable | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.1 |
+| Profile | Display Name | Model | Tier | Stability | Thinking | Max Turns | Max Tool Calls | Temperature |
+|---|---|---|---|---|---|---|---|---|
+| `comet` | Apex Comet | `gemini-3.1-flash-lite` | fast | stable | minimal | `min(2, AGENT_MAX_TURNS)` | `min(3, AGENT_MAX_TOOL_CALLS)` | 0.2 |
+| `nova` | Apex Nova | `gemini-3-flash-preview` | balanced | preview | low | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.2 |
+| `pulsar` | Apex Pulsar | `gemini-3.5-flash` | advanced | stable | medium | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.1 |
 
 `AGENT_MAX_TURNS` (1–5, default 3) and `AGENT_MAX_TOOL_CALLS` (1–10, default 4) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`; Comet always applies a lower fixed ceiling regardless of configured values.
 
@@ -310,7 +310,7 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 - **Resource gate** (`check_resource_gate()`) — compares fresh `psutil` CPU/RAM percentages against a profile's `ram_limit`/`cpu_limit`, returning the specific breached dimension (`insufficient_ram` or `cpu_overloaded`) so the caller can surface an accurate reason.
 - **Model switching** (`switch_local_model()`) — enforces a single loaded model: unloads whatever is currently active (if different), then loads the target model with a warmup request mirroring its real runtime options (context window, thread count, `think`) so the first real turn doesn't pay a second setup cost.
 - **Idle auto-unload** (`check_idle_models_loop()` / `_maybe_unload_idle_model()`) — a 30-second polling loop (started as an API lifespan task) that unloads the active model after `ollama.idle_unload_timeout_minutes` of inactivity, tracked via monotonic time so wall-clock changes cannot trigger a premature unload.
-- **Manual unload** (`unload_active_local_model()`) — used by `POST /api/v1/agent/local/unload`; falls back to an `/api/ps` probe to recover the active model name after an API restart if the in-process tracker was reset.
+- **Manual unload** (`unload_active_local_model()`) — used by canonical `POST /api/v1/local-model/unload` and the legacy agent-route alias; falls back to an `/api/ps` probe after API restart.
 
 **`core/agent/tools.py`** — `AGENT_TOOLS_REGISTRY` maps tool names to Python callables, each documented with a Google-style docstring the model uses as its function-calling schema:
 
@@ -372,13 +372,13 @@ To prevent system resource starvation and audio lag, APEX evaluates hardware vit
 
 ### `core/database.py`
 
-SQLite database file: `apex_memory.db`. Three tables, all created by `initialize_db()`:
+SQLite database file: `apex_memory.db`. Three tables, all created by `initialize_db()`; briefing rows include nullable `metadata_json` for resolved synthesis diagnostics while legacy rows remain valid:
 
 - `runs (id INTEGER PRIMARY KEY, timestamp TEXT)` — written by `log_run()` on each production trigger; read by `get_last_run()` for cooldown enforcement.
 - `reminders (id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)` — managed by `save_reminder()`, `fetch_unread_reminders()`, and `mark_reminders_read()`.
 - `briefings (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, briefing TEXT, digest_json TEXT)` — written by `save_briefing()` after each production run; indexed on `timestamp DESC` for efficient history queries.
 
-`initialize_db()` is called at the start of `should_run()`, ensuring the schema exists before any read or write.
+`initialize_db()` is called during API lifespan startup and again at the start of `should_run()`, ensuring schema upgrades exist before history reads or trigger writes.
 
 **Briefing ledger functions:**
 

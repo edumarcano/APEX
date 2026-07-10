@@ -68,11 +68,11 @@ The active engine is controlled by `primary_tts` in `config.json`. Regardless of
 - pyttsx3 (terminal local OS fallback)
 - Kokoro ONNX (optional local neural, selected via `primary_tts`; falls back to Google on failure)
 
-### Why `DEV_AI_SYNTHESIS=slm` is a placeholder
+### Why local briefing synthesis shares the assistant lifecycle
 
-`DEV_AI_SYNTHESIS=slm` is registered as a valid value and appears in `.env.example` and README documentation. When selected, `brain.py` returns a placeholder string and logs a notice. This placeholder is scoped specifically to briefing synthesis (`brain.py`); it does not describe the state of Ollama integration in APEX as a whole.
+`DEV_AI_SYNTHESIS=slm` now routes briefing synthesis through the same Ollama provider, execution lock, model profiles, resource gates, and idle lifecycle used by the assistant. A recognized resident APEX model is reused; otherwise Lynx warms concurrently with collection. The route never queues behind local assistant work and falls back to a compact deterministic briefing when the model is unavailable or misses its grace deadline.
 
-Ollama is fully integrated and in production use for the APEX assistant (Cortex agent) via the local Lynx, Acinonyx, and Neofelis profiles - see `core/agent/providers/ollama.py`, `ollama_lifecycle.py`, and `ollama_models.py`. Using a local model to synthesize the periodic briefing itself (the `brain.py` code path controlled by `DEV_AI_SYNTHESIS=slm`) is a separate, still-unimplemented piece of work. Despite Ollama already being integrated for the assistant, routing briefing synthesis through a local model remains planned for a future release.
+Synthesis remains isolated from assistant behavior: it receives no tools or history, disables thinking, uses a 512-token ceiling, and accepts only privacy-bounded weather, basic calendar, reminder, F1, and failure facts.
 
 The `slm` value exists in the config surface now so that the routing contract is established and the `metadata.synthesis_strategy` field in API responses accurately reflects the intended enum (`raw | slm | llm`) without requiring a contract change later.
 
@@ -80,7 +80,7 @@ The `slm` value exists in the config surface now so that the routing contract is
 
 APEX is designed around progressive degradation rather than dependence on a single synthesis path. The primary briefing pipeline uses Gemini for synthesis. A single Gemini API key is sufficient to call multiple Gemini models; model-tier failover is a direction for a future release, not a current implementation.
 
-If the Gemini call fails, APEX falls back to reading raw connector data directly, ensuring a briefing is always delivered. A code placeholder for Ollama-hosted local briefing synthesis exists (`DEV_AI_SYNTHESIS=slm`), but that specific integration has not been implemented. This is distinct from the APEX assistant, where Ollama is already fully integrated (see the local agent profiles in [docs/architecture.md](architecture.md#local-agent-profiles)). Despite Ollama already being integrated for the assistant, using a local model for briefing synthesis remains planned for the future.
+If Gemini fails, APEX first reuses an eligible resident local model or briefly warms Lynx, then falls back to deterministic compact output. Raw fallback is rendered from the same sanitized allowlist as local synthesis rather than from full connector strings.
 
 This layered approach prioritizes reliability, offline capability, and graceful degradation.
 
