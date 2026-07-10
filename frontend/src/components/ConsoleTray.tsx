@@ -230,9 +230,6 @@ function ToolTracePanel({ trace }: { trace: ToolTraceItem[] }): ReactElement | n
 
   return (
     <div className="mt-3 rounded-lg border border-white/10 bg-zinc-900/70 p-3">
-      <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-        🔧 Tools Executed
-      </p>
       <ul className="space-y-1.5">
         {trace.map((item, index) => (
           <li
