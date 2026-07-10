@@ -284,7 +284,7 @@ Rebuild APEX as a fullscreen central command HUD with inline chat, strict bento 
 
 ## v1.15.0 - Synthesis Routing and Profile Tuning
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
 Add profile-specific Gemini thinking levels, introduce local Ollama briefing synthesis, expose live and resolved synthesis state to the HUD, and centralize local-model lifecycle controls beneath the APEX logo.

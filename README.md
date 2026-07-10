@@ -19,8 +19,8 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
                           ↓
-core/api.py → scanner.py → [Data Connectors] → brain.py → speaker.py
-              (Gate)         (Collection)     (Synthesis)  (Delivery)
+core/api.py → scanner.py → [Data Connectors] → core/synthesis/ → speaker.py
+              (Gate)         (Collection)        (Synthesis)      (Delivery)
 ```
 
 Full pipeline walkthrough, mermaid sequence diagram, component inventory, and data contracts are in [docs/architecture.md](docs/architecture.md).
@@ -43,7 +43,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 - **Context-aware gate** — checks home Wi-Fi (SSID), AC power, and a 1-hour cooldown before any API call is made (`scanner.py`)
 - **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window), Alpha Vantage (EOD market ticker)
-- **AI briefing synthesis** — raw connector output passed to Gemini 3.1 Flash Lite; falls back to reading raw data if the API call fails
+- **AI briefing synthesis** — connector output routed through a provider-neutral `SynthesisRouter`; uses Gemini 3.1 Flash Lite (LLM strategy), a resident or warmed Ollama model (SLM strategy), or deterministic compact output (raw fallback) depending on the configured strategy and provider availability
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
 - **Text-to-speech** — Google Cloud TTS primary with native pyttsx3 fallback; Kokoro ONNX available as an optional local engine that falls back to Google on failure; pre-warmed singletons, serialized `_SPEAK_LOCK`
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
@@ -70,7 +70,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 | Language | Python 3.10+ |
 | API Framework | FastAPI, uvicorn |
 | AI Engine (cloud) | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
-| AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers) |
+| AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers; optional briefing synthesis via SLM strategy) |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Icons | lucide-react |
 | Database | SQLite3 |
@@ -107,6 +107,12 @@ Individual connectors are switched on or off in `config.json`. When a connector 
   "modules":     { "f1": true, "football": false },
   "tts_settings": { "primary_tts": "google", "voice_gender": "female" },
   "system_prompt": "You are APEX. Deliver a concise briefing in under 75 words. No emojis or markdown.",
+  "synthesis": {
+    "gemini_system_prompt": "...",
+    "ollama_system_prompt": "...",
+    "local_primary_grace_seconds": 5,
+    "local_fallback_grace_seconds": 5
+  },
   "agent_system_prompt": "You are APEX, a cloud-powered agent assisting Chief with operations.",
   "local_agent_system_prompt": "You are APEX, a local operations assistant assisting Chief with operations.",
   "ask_apex": { "enabled": true, "default_cloud_profile": "comet", "max_session_messages": 6 },
@@ -127,6 +133,8 @@ Individual connectors are switched on or off in `config.json`. When a connector 
 ```
 
 `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
+
+`synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the SLM strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and SLM is the fallback. Both omit the key to accept the defaults.
 
 `agent_system_prompt` sets the cloud APEX assistant persona; `local_agent_system_prompt` sets the equivalent persona for local Ollama profiles. Both are independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query for both cloud and local profiles. See [docs/api.md](docs/api.md) for the full agent query contract.
 

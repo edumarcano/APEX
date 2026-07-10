@@ -81,6 +81,11 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
     "dev_mode_active": false,
     "demo_mode_active": false,
     "synthesis_strategy": "llm",
+    "synthesis_provider": "gemini",
+    "synthesis_profile": "comet",
+    "synthesis_fallback_reason": null,
+    "synthesis_warmup_ms": null,
+    "synthesis_generation_ms": 1240,
     "tts_strategy": "google",
     "active_tts_engine": "google",
     "system_load_throttled": false

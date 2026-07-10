@@ -10,7 +10,7 @@ With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST /api/v1/trig
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
-3. **Synthesis** — raw outputs are joined into a pipe-delimited string and passed to Gemini 3.1 Flash Lite. `brain.py` prepends the persona prompt from `config.json`. A filler phrase plays on a background thread while the model processes. The model response is parsed for `===SPEECH===` and `===INSIGHTS===` markers; the speech section becomes the TTS briefing and the insights section yields structured bullet strings. If the Gemini call fails, the raw data string is returned as the briefing with a single fallback insight.
+3. **Synthesis** — `core/api.py` constructs a `SynthesisInput` from privacy-bounded facts (weather, calendar, reminders, F1, connector failures) and passes the full telemetry string and the `SynthesisInput` to `SynthesisRouter.synthesize()`. The router selects a strategy: `llm` calls Gemini 3.1 Flash Lite via `_gemini()`; `slm` attempts a resident or warmed Ollama model via `_ollama()`; `raw` produces a deterministic compact briefing. Both model paths parse the response with `parse_model_output()` for `===SPEECH===` / `===INSIGHTS===` markers. Any path can fall back to `_raw()`. The resolved `SynthesisResult` carries `provider`, `profile`, `fallback_reason`, `warmup_ms`, and `generation_ms` for diagnostics.
 4. **Delivery** — connector outputs are evaluated for trust, producing a `DigestPayload` with a `confidence_score` and `failed_connectors` list. The trigger endpoint returns the briefing text, telemetry, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=llm`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
@@ -163,7 +163,7 @@ The `metadata.demo_mode_active` field is `true` in the trigger response. `useApe
 apex/
 ├── core/
 │   ├── api.py           # FastAPI app — routes, PipelineState, Pydantic models, clean_for_tts
-│   ├── brain.py         # Briefing synthesis via Gemini 3.1 Flash Lite (google-genai)
+│   ├── brain.py         # Compatibility façade over core/synthesis/; routes synthesize() calls to SynthesisRouter
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite session logging and reminder CRUD
@@ -179,6 +179,11 @@ apex/
 │   │   │   ├── ollama_models.py   # OllamaModelProfile + Lynx/Acinonyx/Neofelis profile definitions
 │   │   │   └── ollama_lifecycle.py # Model load/unload/switch, idle auto-unload loop, resource gate, status snapshot cache
 │   │   └── __init__.py
+│   ├── synthesis/
+│   │   ├── __init__.py      # Package init; re-exports SynthesisRouter, SynthesisInput, SynthesisResult
+│   │   ├── router.py        # SynthesisRouter: LLM/SLM/raw strategy dispatch, WarmupHandle warmup threading
+│   │   ├── formatting.py    # compact_payload, parse_model_output, deterministic_fallback; 2,000-byte input cap
+│   │   └── models.py        # SynthesisInput, SynthesisResult, SynthesisProvider/Profile/Phase literals
 │   ├── mock/
 │   │   └── telemetry.json   # Static telemetry payload for DEMO_MODE runs
 │   └── __init__.py
@@ -226,6 +231,11 @@ apex/
 │   ├── vite.config.ts
 │   └── tsconfig.json
 ├── dist/                    # Compiled Vite output — served by http.server
+├── scripts/
+│   └── smoke_local_synthesis.py # Manual end-to-end smoke test for the local Ollama synthesis path
+├── tests/
+│   ├── __init__.py
+│   └── test_synthesis.py        # Unit tests for formatting, routing, warmup timeout, and DB migration
 ├── launcher.py              # Orchestrator: servers, readiness polling, kiosk browser, shutdown hooks
 ├── config.json              # Persona prompt, feature toggles, TTS settings (committed)
 ├── CHANGELOG.md             # Full version history
@@ -272,6 +282,28 @@ When `DEV_MODE=true`:
 - `DEV_AI_SYNTHESIS=llm` — calls Comet, then an eligible local model/Lynx, then raw.
 
 On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
+
+### `core/synthesis/`
+
+The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synthesize()` on every trigger.
+
+**`core/synthesis/models.py`** — Pydantic types used across the subsystem:
+
+- `SynthesisInput` — privacy-bounded context object passed to local and raw paths: `weather_summary`, `calendar_event_count`, `next_calendar_event` (`CalendarFact`), `pending_reminder_count`, `first_pending_reminder`, `f1_this_week` (`F1Fact`), `failed_connectors`, `generated_at`, `timezone`.
+- `SynthesisResult` — router output: `briefing`, `insights`, `provider`, `profile`, `fallback_reason`, `warmup_ms`, `generation_ms`.
+- Literal type aliases: `SynthesisProvider` (`gemini | ollama | raw | demo`), `SynthesisProfile` (`comet | lynx | acinonyx | neofelis`), `SynthesisPhase` (`idle | loading | ready | generating | fallback | complete`).
+
+**`core/synthesis/formatting.py`** — three pure functions:
+
+- `compact_payload(source)` — serializes a `SynthesisInput` into a short human-readable text string under a 2,000-byte cap, sanitized for local model input.
+- `parse_model_output(text)` — splits on `===SPEECH===` / `===INSIGHTS===` markers, strips bullet prefixes, and returns `(briefing, insights)`. Falls back to the full text as the briefing with an empty insights list when markers are absent.
+- `deterministic_fallback(source)` — builds a briefing and insight list from `SynthesisInput` without any model call; used by the `raw` strategy and as the terminal fallback on all exceptions.
+
+**`core/synthesis/router.py`** — `SynthesisRouter` drives strategy resolution:
+
+- `prepare(strategy)` — called during the Collection stage. When `strategy == "slm"`, checks for a resident APEX model; if none is found, spawns a background `WarmupHandle` thread that calls `switch_local_model(lynx)` concurrently with data collection.
+- `synthesize(source, full_telemetry, strategy, warmup)` — resolves the briefing: `raw` calls `_raw()` immediately; `llm` calls `_gemini()` and falls through to SLM/raw on failure; `slm` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so `api.py` can propagate live synthesis state to `/api/v1/status`.
+- `WarmupHandle` — a `threading.Event`-backed dataclass tracking warmup success, reason, and timing. `elapsed_ms` is computed from a monotonic start timestamp.
 
 ### `core/agent/` — Cortex reasoning engine for the APEX assistant
 
@@ -495,13 +527,21 @@ Shared card frame. Accepts `title`, `icon`, `primaryTemperatureF`, `f1TelemetryT
 5. **Hardware Resources** — CPU, RAM, and DISK percentage labels each backed by a horizontal micro-bar. Color thresholds: blue (< 80%), amber (≥ 80%), red (≥ 90%). Hover tooltips show CPU frequency in GHz and RAM/disk as used/total GB.
 6. **System Time** — live clock updated every 1,000 ms via `setInterval`.
 
-Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `confidenceScore`, `pipelineStep`, and `failedConnectors` as props from `App.tsx`. Pulls hardware metric values internally via a second `useSystemDiagnostics()` call.
+A `SynthesisPill` is rendered between the Hardware Resources column and the System Time column. It displays the resolved synthesis provider and profile as a color-coded pill (blue for Gemini, orange for Ollama, red for raw), with a hover tooltip that shows the `fallback_reason` when applicable. Props: `synthesisProvider`, `synthesisProfile`, `synthesisFallbackReason` (all forwarded from `App.tsx`).
+
+Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `confidenceScore`, `pipelineStep`, `failedConnectors`, `synthesisProvider`, `synthesisProfile`, and `synthesisFallbackReason` as props from `App.tsx`. Pulls hardware metric values internally via a second `useSystemDiagnostics()` call.
 
 ### `ConsoleTray.tsx`
 
-Bottom/rail console for assistant chat and reminder entry. The bottom placement renders a compact docked row plus inline expandable body; the rail placement renders inside the right column on large desktop layouts. The Assistant tab shows active local model state, message history, tool trace/output cards, and `AskApexBar`; the Reminders tab shows active reminders plus a `POST /api/v1/reminders` input. Submitting a query switches to the Assistant tab and expands the console.
+Bottom/rail console for assistant chat and reminder entry. The bottom placement renders a compact docked row plus inline expandable body; the rail placement renders inside the right column on large desktop layouts. The Assistant tab shows message history, tool trace/output cards, and `AskApexBar`; the Reminders tab shows active reminders plus a `POST /api/v1/reminders` input. Submitting a query switches to the Assistant tab and expands the console.
+
+The local model control panel (active model status, auto-unload countdown, and unload button) was extracted from `ConsoleTray` into the standalone `LocalModelControl.tsx` component and mounted in `App.tsx` beneath `ApexLogo`, making it visible in both dormant and active states independently of whether the console is open.
 
 **Activity glow and chat actions:** The console shell renders a rotating border glow whose color reflects the current activity tone — rust-orange while a local model is loading, purple while a query is in flight. Two distinct history actions are exposed: `clearAssistantChat` clears message history and tool trace but leaves the console open, while `resetAssistantSession` clears history and also closes the console; the tray exposes both as separate controls rather than one combined action.
+
+### `LocalModelControl.tsx`
+
+Provider-neutral local model lifecycle control mounted beneath `ApexLogo` in `App.tsx`. Renders when any local profile is active or loading. Displays the active model's display name, load/loading/unloading state, and the auto-unload countdown. The single rust-orange button triggers `unloadLocalModel()` from `useApexAssistant`; it is disabled while the model is loading, while a local generation is in progress (`busy`), or while an unload is already in flight. An inline error label appears if the unload request fails. The component is hidden when no local model is active or warming.
 
 ### `AssistantToolCards.tsx`
 
