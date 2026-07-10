@@ -282,7 +282,16 @@ Rebuild APEX as a fullscreen central command HUD with inline chat, strict bento 
 
 ---
 
-## v1.15.0 - Cortex: Command Console & Runtime Control Deck
+## v1.15.0 - Synthesis Routing and Profile Tuning
+
+**Status:** Planned
+
+**Objective:**
+Add profile-specific Gemini thinking levels, introduce local Ollama briefing synthesis, expose live and resolved synthesis state to the HUD, and centralize local-model lifecycle controls beneath the APEX logo.
+
+---
+
+## v1.16.0 - Cortex: Command Console & Runtime Control Deck
 
 **Status:** Planned
 
@@ -291,7 +300,7 @@ Give APEX runtime control surfaces for configuration, model/provider behavior, s
 
 ---
 
-## v1.16.0 - Cortex: Assistant Runtime Decoupling
+## v1.17.0 - Cortex: Assistant Runtime Decoupling
 
 **Status:** Planned
 
@@ -300,7 +309,7 @@ Separate HUD activation, telemetry collection, assistant availability, briefing 
 
 ---
 
-## v1.17.0 - Cortex: Tooling Framework & Connector Registry
+## v1.18.0 - Cortex: Tooling Framework & Connector Registry
 
 **Status:** Planned
 
@@ -309,7 +318,7 @@ Standardize APEX tool calling so new connectors and capabilities can be added sa
 
 ---
 
-## v1.18.0 - Cortex: Personal Action Tools
+## v1.19.0 - Cortex: Personal Action Tools
 
 **Status:** Planned
 
@@ -318,7 +327,7 @@ Expand APEX from read-only assistance into approval-gated personal action execut
 
 ---
 
-## v1.19.0 - Cortex: Personal Context & Memory Layer
+## v1.20.0 - Cortex: Personal Context & Memory Layer
 
 **Status:** Planned
 
@@ -327,7 +336,7 @@ Give APEX durable local understanding of personal preferences, routines, project
 
 ---
 
-## v1.20.0 - Cortex: Workflow Orchestration & Assistant Reliability
+## v1.21.0 - Cortex: Workflow Orchestration & Assistant Reliability
 
 **Status:** Planned
 
