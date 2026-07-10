@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS, DEFAULT_AGENT_SYSTEM_PROMPT
 
 
-GeminiThinkingLevel = Literal["minimal", "medium", "high"]
+GeminiThinkingLevel = Literal["minimal", "low", "medium", "high"]
 
 
 class GeminiModelProfile(BaseModel):
@@ -63,7 +63,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         api_model="gemini-3-flash-preview",
         tier="balanced",
         stability="preview",
-        thinking_level="medium",
+        thinking_level="low",
         default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
@@ -75,7 +75,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         api_model="gemini-3.5-flash",
         tier="advanced",
         stability="stable",
-        thinking_level="high",
+        thinking_level="medium",
         default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
