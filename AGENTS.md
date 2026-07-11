@@ -33,6 +33,7 @@
 
 ## Scoped Guidance
 
+- All documentation and repository communication must follow `docs/agent-guidance/writing.md`.
 - Backend work must follow `docs/agent-guidance/backend.md`.
 - Frontend work must follow `docs/agent-guidance/frontend.md` and `docs/design-system.md` when visual behavior changes.
 - Launcher, dependency, environment, or configuration work must follow `docs/agent-guidance/infrastructure.md`.
