@@ -45,7 +45,7 @@ export function ApexLogo({
 
   const baseBlue = 'apex-blue-metal apex-blue-metal--base'
   const activeBlue = 'apex-blue-metal apex-blue-metal--active'
-  const surgeBlue = 'apex-blue-metal apex-blue-metal--surge'
+  const reminderSurge = 'apex-blue-metal apex-blue-metal--reminder-surge'
   const rustActive = 'apex-blue-metal apex-blue-metal--rust-active'
   const rustSurge = 'apex-blue-metal apex-blue-metal--rust-surge'
 
@@ -53,7 +53,7 @@ export function ApexLogo({
 
   const getBlueSegmentClass = (segmentStep: number): string => {
     if (pulseActive) {
-      return `transition-all duration-300 ease-out ${surgeBlue}`
+      return `transition-all duration-300 ease-out ${reminderSurge}`
     }
 
     if (isLocalModelLoading) {
@@ -79,7 +79,7 @@ export function ApexLogo({
     return { animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms` }
   }
 
-  const surgeBlueCore = 'apex-core-metal apex-core-metal--blue-surge'
+  const reminderSurgeCore = 'apex-core-metal apex-core-metal--reminder-surge'
   const dormantCore = 'apex-core-metal apex-core-metal--dormant'
   const greenSurgeCore = 'apex-core-metal apex-core-metal--green-surge'
   const purpleSurgeCore = 'apex-core-metal apex-core-metal--purple-surge'
@@ -101,7 +101,7 @@ export function ApexLogo({
     }
 
     if (pulseActive) {
-      return `transition-all duration-300 ease-out ${surgeBlueCore}`
+      return `transition-all duration-300 ease-out ${reminderSurgeCore}`
     }
 
     if (isError) {
@@ -275,6 +275,10 @@ export function ApexLogo({
               filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
             }
 
+            .apex-blue-metal--reminder-surge {
+              filter: drop-shadow(0 0 24px rgba(57, 255, 136, 1));
+            }
+
             .apex-blue-metal--rust-active {
               fill: url(#apexRustMetal);
               opacity: 1;
@@ -310,6 +314,11 @@ export function ApexLogo({
             .apex-core-metal--blue-surge {
               fill: url(#apexBlueSurgeMetal);
               filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
+            }
+
+            .apex-core-metal--reminder-surge {
+              fill: url(#apexGreenMetal);
+              filter: drop-shadow(0 0 24px rgba(57, 255, 136, 1));
             }
           `}
         </style>
