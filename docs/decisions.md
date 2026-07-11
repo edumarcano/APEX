@@ -70,25 +70,25 @@ The active engine is controlled by `primary_tts` in `config.json`. Regardless of
 
 ### Why local briefing synthesis shares the assistant lifecycle
 
-`DEV_AI_SYNTHESIS=slm` now routes briefing synthesis through the same Ollama provider, execution lock, model profiles, resource gates, and idle lifecycle used by the assistant. A recognized resident APEX model is reused; otherwise Lynx warms concurrently with collection. The route never queues behind local assistant work and falls back to a compact deterministic briefing when the model is unavailable or misses its grace deadline.
+`DEV_AI_SYNTHESIS=local` now routes briefing synthesis through the same Ollama provider, execution lock, model profiles, resource gates, and idle lifecycle used by the assistant. A recognized resident APEX model is reused; otherwise Lynx warms concurrently with collection. The route never queues behind local assistant work and falls back to a compact deterministic briefing when the model is unavailable or misses its grace deadline.
 
 Synthesis remains isolated from assistant behavior: it receives no tools or history, disables thinking, uses a 512-token ceiling, and accepts only privacy-bounded weather, basic calendar, reminder, F1, and failure facts.
 
-The `slm` value exists in the config surface now so that the routing contract is established and the `metadata.synthesis_strategy` field in API responses accurately reflects the intended enum (`raw | slm | llm`) without requiring a contract change later.
+The `local` value exists in the config surface now so that the routing contract is established and the `metadata.synthesis_strategy` field in API responses accurately reflects the intended enum (`raw | local | cloud`) without requiring a contract change later.
 
 ### Multi-tier synthesis fallback strategy
 
-APEX routes briefing synthesis through three strategies, selected by `DEV_AI_SYNTHESIS` in dev mode or locked to `llm` in production:
+APEX routes briefing synthesis through three strategies, selected by `DEV_AI_SYNTHESIS` in dev mode or locked to `cloud` in production:
 
-- **`llm`** — calls Gemini 3.1 Flash Lite. On any failure, checks for a resident APEX Ollama model and uses it if available. If no model is loaded, starts a Lynx warmup bounded by `synthesis.local_fallback_grace_seconds` and attempts the local path. If that also fails or times out, falls through to raw.
-- **`slm`** — skips Gemini entirely. Checks for a resident model first; if none is loaded, starts a Lynx warmup bounded by `synthesis.local_primary_grace_seconds`. Falls through to raw on warmup failure or timeout.
+- **`cloud`** — calls Gemini 3.1 Flash Lite. On any failure, checks for a resident APEX Ollama model and uses it if available. If no model is loaded, starts a Lynx warmup bounded by `synthesis.local_fallback_grace_seconds` and attempts the local path. If that also fails or times out, falls through to raw.
+- **`local`** — skips Gemini entirely. Checks for a resident model first; if none is loaded, starts a Lynx warmup bounded by `synthesis.local_primary_grace_seconds`. Falls through to raw on warmup failure or timeout.
 - **`raw`** — produces a deterministic compact briefing from `SynthesisInput` immediately, with no model call.
 
 Raw fallback is built from the same privacy-bounded field set used by local synthesis (`SynthesisInput`), not from the full connector strings sent to Gemini. This keeps the fallback safe to generate without sending personal data to a model.
 
 Gemini 3.1 Flash Lite is the sole cloud synthesis model. Multiple Gemini model tiers are not planned: the Flash Lite free tier is sufficient for single-user periodic briefing synthesis, and local models already provide a capable offline path when the cloud is unavailable.
 
-**Implemented:** Gemini synthesis (Gemini 3.1 Flash Lite), local Ollama briefing synthesis (SLM path via `SynthesisRouter`), offline deterministic raw fallback.
+**Implemented:** Gemini synthesis (Gemini 3.1 Flash Lite), local Ollama briefing synthesis (local path via `SynthesisRouter`), offline deterministic raw fallback.
 
 ### TTS engine priority restructure: mobile CPU oversubscription and hardware-conditional Kokoro standby
 

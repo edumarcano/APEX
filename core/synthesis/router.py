@@ -140,7 +140,7 @@ class SynthesisRouter:
         return handle
 
     def prepare(self, strategy: str) -> WarmupHandle | None:
-        if strategy != "slm":
+        if strategy != "local":
             return None
         resident = resident_profile_key()
         if resident:
@@ -225,7 +225,7 @@ class SynthesisRouter:
             return result
 
         gemini_reason: str | None = None
-        if strategy == "llm":
+        if strategy == "cloud":
             try:
                 result = self._gemini(full_telemetry)
                 self._state("complete", result.provider, result.profile, None)
@@ -246,7 +246,7 @@ class SynthesisRouter:
 
         if warmup is None:
             warmup = self.start_lynx_warmup()
-        grace = LOCAL_PRIMARY_GRACE_SECONDS if strategy == "slm" else LOCAL_FALLBACK_GRACE_SECONDS
+        grace = LOCAL_PRIMARY_GRACE_SECONDS if strategy == "local" else LOCAL_FALLBACK_GRACE_SECONDS
         if not warmup.event.wait(grace):
             return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
         if not warmup.success:

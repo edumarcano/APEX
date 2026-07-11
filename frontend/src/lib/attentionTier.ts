@@ -27,7 +27,7 @@ type SurfaceSchedule = {
  * 1. Reminders (local DB) — gate
  * 2. Weather + News (public APIs) — unlock during collection
  * 3. Events + Market + Inbox (heavier / auth’d APIs) — active through collection
- * 4. Insights (LLM synthesis) — synthesis → delivery
+ * 4. Insights (AI synthesis) — synthesis → delivery
  */
 const SURFACE_SCHEDULE: Record<AttentionSurfaceId, SurfaceSchedule> = {
   reminders: { activeAt: 1, completeAt: 2, staggerMs: 0 },

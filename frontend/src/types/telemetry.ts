@@ -12,7 +12,7 @@ export interface PipelineState {
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'raw' | 'demo'
 export type SynthesisProfile = 'comet' | 'lynx' | 'acinonyx' | 'neofelis'
-export type SynthesisStrategy = 'llm' | 'slm' | 'raw' | 'demo'
+export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
   phase: 'idle' | 'loading' | 'ready' | 'generating' | 'fallback' | 'complete'

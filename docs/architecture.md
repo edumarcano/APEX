@@ -10,10 +10,10 @@ With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST /api/v1/trig
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
-3. **Synthesis** — `core/api.py` constructs a `SynthesisInput` from privacy-bounded facts (weather, calendar, reminders, F1, connector failures) and passes the full telemetry string and the `SynthesisInput` to `SynthesisRouter.synthesize()`. The router selects a strategy: `llm` calls Gemini 3.1 Flash Lite via `_gemini()`; `slm` attempts a resident or warmed Ollama model via `_ollama()`; `raw` produces a deterministic compact briefing. Both model paths parse the response with `parse_model_output()` for `===SPEECH===` / `===INSIGHTS===` markers. Any path can fall back to `_raw()`. The resolved `SynthesisResult` carries `provider`, `profile`, `fallback_reason`, `warmup_ms`, and `generation_ms` for diagnostics.
+3. **Synthesis** — `core/api.py` constructs a `SynthesisInput` from privacy-bounded facts (weather, calendar, reminders, F1, connector failures) and passes the full telemetry string and the `SynthesisInput` to `SynthesisRouter.synthesize()`. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite via `_gemini()`; `local` attempts a resident or warmed Ollama model via `_ollama()`; `raw` produces a deterministic compact briefing. Both model paths parse the response with `parse_model_output()` for `===SPEECH===` / `===INSIGHTS===` markers. Any path can fall back to `_raw()`. The resolved `SynthesisResult` carries `provider`, `profile`, `fallback_reason`, `warmup_ms`, and `generation_ms` for diagnostics.
 4. **Delivery** — connector outputs are evaluated for trust, producing a `DigestPayload` with a `confidence_score` and `failed_connectors` list. The trigger endpoint returns the briefing text, telemetry, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
-With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=llm`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
+With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
 **API lifespan worker:** `core/api.py` registers a FastAPI lifespan handler that starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`. It runs independently of the trigger/briefing pipeline described above.
 
@@ -181,7 +181,7 @@ apex/
 │   │   └── __init__.py
 │   ├── synthesis/
 │   │   ├── __init__.py      # Package init; re-exports SynthesisRouter, SynthesisInput, SynthesisResult
-│   │   ├── router.py        # SynthesisRouter: LLM/SLM/raw strategy dispatch, WarmupHandle warmup threading
+│   │   ├── router.py        # SynthesisRouter: cloud/local/raw strategy dispatch, WarmupHandle warmup threading
 │   │   ├── formatting.py    # compact_payload, parse_model_output, deterministic_fallback; 2,000-byte input cap
 │   │   └── models.py        # SynthesisInput, SynthesisResult, SynthesisProvider/Profile/Phase literals
 │   ├── mock/
@@ -278,8 +278,8 @@ apex/
 When `DEV_MODE=true`:
 
 - `DEV_AI_SYNTHESIS=raw` — returns deterministic privacy-safe compact output. No model call.
-- `DEV_AI_SYNTHESIS=slm` — reuses a resident APEX model or warms Lynx during collection, then falls back to raw.
-- `DEV_AI_SYNTHESIS=llm` — calls Comet, then an eligible local model/Lynx, then raw.
+- `DEV_AI_SYNTHESIS=local` — reuses a resident APEX model or warms Lynx during collection, then falls back to raw.
+- `DEV_AI_SYNTHESIS=cloud` — calls Comet, then an eligible local model/Lynx, then raw.
 
 On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
 
@@ -301,8 +301,8 @@ The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synth
 
 **`core/synthesis/router.py`** — `SynthesisRouter` drives strategy resolution:
 
-- `prepare(strategy)` — called during the Collection stage. When `strategy == "slm"`, checks for a resident APEX model; if none is found, spawns a background `WarmupHandle` thread that calls `switch_local_model(lynx)` concurrently with data collection.
-- `synthesize(source, full_telemetry, strategy, warmup)` — resolves the briefing: `raw` calls `_raw()` immediately; `llm` calls `_gemini()` and falls through to SLM/raw on failure; `slm` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so `api.py` can propagate live synthesis state to `/api/v1/status`.
+- `prepare(strategy)` — called during the Collection stage. When `strategy == "local"`, checks for a resident APEX model; if none is found, spawns a background `WarmupHandle` thread that calls `switch_local_model(lynx)` concurrently with data collection.
+- `synthesize(source, full_telemetry, strategy, warmup)` — resolves the briefing: `raw` calls `_raw()` immediately; `cloud` calls `_gemini()` and falls through to local/raw on failure; `local` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so `api.py` can propagate live synthesis state to `/api/v1/status`.
 - `WarmupHandle` — a `threading.Event`-backed dataclass tracking warmup success, reason, and timing. `elapsed_ms` is computed from a monotonic start timestamp.
 
 ### `core/agent/` — Cortex reasoning engine for the APEX assistant

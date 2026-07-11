@@ -1104,11 +1104,11 @@ def get_global_config() -> dict[str, Any]:
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
         "synthesis_strategy": (
-            "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "llm"
+            "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "cloud"
         ),
         "synthesis_profile": (
             None if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw") else
-            "lynx" if is_dev_mode() and DEV_AI_SYNTHESIS == "slm" else "comet"
+            "lynx" if is_dev_mode() and DEV_AI_SYNTHESIS == "local" else "comet"
         ),
     }
 
@@ -1194,7 +1194,7 @@ def trigger_briefing() -> BriefingResponse:
 
         try:
             dev_mode = is_dev_mode()
-            synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "llm"
+            synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "cloud"
             synthesis_router = SynthesisRouter(global_pipeline_state.update_synthesis)
             warmup = synthesis_router.prepare(synthesis_strategy)
 
@@ -1359,7 +1359,7 @@ def trigger_briefing() -> BriefingResponse:
             if dev_mode:
                 tts_strategy = DEV_TTS_PLAYBACK
             else:
-                synthesis_strategy = "llm"
+                synthesis_strategy = "cloud"
                 tts_strategy = config.PRIMARY_TTS
 
             active_tts_engine, system_load_throttled = _resolve_tts_diagnostics(

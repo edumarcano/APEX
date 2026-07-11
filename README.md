@@ -43,7 +43,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 - **Context-aware gate** — checks home Wi-Fi (SSID), AC power, and a 1-hour cooldown before any API call is made (`scanner.py`)
 - **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window), Alpha Vantage (EOD market ticker)
-- **AI briefing synthesis** — connector output routed through a provider-neutral `SynthesisRouter`; uses Gemini 3.1 Flash Lite (LLM strategy), a resident or warmed Ollama model (SLM strategy), or deterministic compact output (raw fallback) depending on the configured strategy and provider availability
+- **AI briefing synthesis** — connector output routed through a provider-neutral `SynthesisRouter`; uses Gemini 3.1 Flash Lite (cloud strategy), a resident or warmed Ollama model (local strategy), or deterministic compact output (raw fallback) depending on the configured strategy and provider availability
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
 - **Text-to-speech** — Google Cloud TTS primary with native pyttsx3 fallback; Kokoro ONNX available as an optional local engine that falls back to Google on failure; pre-warmed singletons, serialized `_SPEAK_LOCK`
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
@@ -70,7 +70,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 | Language | Python 3.10+ |
 | API Framework | FastAPI, uvicorn |
 | AI Engine (cloud) | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
-| AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers; optional briefing synthesis via SLM strategy) |
+| AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers; optional briefing synthesis via local strategy) |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Icons | lucide-react |
 | Database | SQLite3 |
@@ -93,7 +93,7 @@ Both flags are read from `.env`. Values are normalized at read time (`true`, `Tr
 
 `DEMO_MODE` intercepts the trigger entirely and serves static mock telemetry from `core/mock/telemetry.json`. It does not run any connectors or write to the database. `DEV_MODE` and `DEMO_MODE` are independent flags; `DEMO_MODE` takes priority in the trigger path when both are set.
 
-Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `slm` routes to local Ollama then raw, `llm` routes Gemini → eligible local model → raw) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, or `kokoro`). Local briefing input is privacy-bounded to weather, basic calendar, reminders, this-week F1, and connector failures; email, news, football, tools, and assistant history are excluded.
+Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `local` routes to local Ollama then raw, `cloud` routes Gemini → eligible local model → raw) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, or `kokoro`). Local briefing input is privacy-bounded to weather, basic calendar, reminders, this-week F1, and connector failures; email, news, football, tools, and assistant history are excluded.
 
 ---
 
@@ -134,7 +134,7 @@ Individual connectors are switched on or off in `config.json`. When a connector 
 
 `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
-`synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the SLM strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and SLM is the fallback. Both omit the key to accept the defaults.
+`synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the local strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and local is the fallback. Both omit the key to accept the defaults.
 
 `agent_system_prompt` sets the cloud APEX assistant persona; `local_agent_system_prompt` sets the equivalent persona for local Ollama profiles. Both are independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query for both cloud and local profiles. See [docs/api.md](docs/api.md) for the full agent query contract.
 

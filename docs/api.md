@@ -31,7 +31,7 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
   "max_session_messages": 6,
   "dev_mode_active": false,
   "demo_mode_active": false,
-  "synthesis_strategy": "llm",
+  "synthesis_strategy": "cloud",
   "synthesis_profile": "comet"
 }
 ```
@@ -41,7 +41,7 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
 | `default_profile` | string | Default APEX assistant profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
 | `ask_apex_enabled` | boolean | Whether the assistant bar and assistant drawer are enabled, from `config.json` `ask_apex.enabled` |
 | `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
-| `synthesis_strategy` | string | Initial HUD route: `llm`, `slm`, `raw`, or `demo` |
+| `synthesis_strategy` | string | Initial HUD route: `cloud`, `local`, `raw`, or `demo` |
 | `synthesis_profile` | string \| null | Nominal initial profile (`comet` or `lynx`) when applicable |
 
 ---
@@ -80,7 +80,7 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
   "metadata": {
     "dev_mode_active": false,
     "demo_mode_active": false,
-    "synthesis_strategy": "llm",
+    "synthesis_strategy": "cloud",
     "synthesis_provider": "gemini",
     "synthesis_profile": "comet",
     "synthesis_fallback_reason": null,
@@ -99,7 +99,7 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 |---|---|---|
 | `dev_mode_active` | boolean | `true` when `DEV_MODE=true` was active for the run |
 | `demo_mode_active` | boolean | `true` when `DEMO_MODE=true` was active for the run |
-| `synthesis_strategy` | string | Configured route: `"llm"` in production; `"raw"`, `"slm"`, or `"llm"` in dev mode; `"demo"` in demo mode |
+| `synthesis_strategy` | string | Configured route: `"cloud"` in production; `"raw"`, `"local"`, or `"cloud"` in dev mode; `"demo"` in demo mode |
 | `synthesis_provider` | string \| null | Resolved briefing provider: `gemini`, `ollama`, `raw`, or `demo` |
 | `synthesis_profile` | string \| null | Resolved profile: `comet`, `lynx`, `acinonyx`, or `neofelis` |
 | `synthesis_fallback_reason` | string \| null | Machine-readable reason when routing changed or raw fallback was used |
@@ -557,7 +557,7 @@ Each field contains the raw string produced by the corresponding connector, or a
 class RuntimeMetadata(BaseModel):
     dev_mode_active: bool
     demo_mode_active: bool
-    synthesis_strategy: str   # "raw" | "slm" | "llm"
+    synthesis_strategy: str   # "raw" | "local" | "cloud"
     tts_strategy: str         # "pyttsx3" | "google" | "kokoro"
     active_tts_engine: str    # "pyttsx3" | "google" | "kokoro"
     system_load_throttled: bool
@@ -765,7 +765,7 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `DEV_MODE` | `false` | Bypasses scanner gate and run logging; Gmail/Calendar connectors still make live requests with content masked to `[HIDDEN]`; Gemini bypass depends on `DEV_AI_SYNTHESIS` |
 | `DEMO_MODE` | `false` | Intercepts trigger; serves static mock telemetry |
 | `ENABLE_STARTUP_GATE` | `true` | When `false`, skips Wi-Fi/power/cooldown while keeping live APIs |
-| `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `slm` (local → raw), `llm` (Gemini → local → raw) |
+| `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `local` (local → raw), `cloud` (Gemini → local → raw) |
 | `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `APEX_ALLOWED_ORIGINS` | _(see below)_ | Comma-separated CORS origins; replaces defaults entirely when set |
