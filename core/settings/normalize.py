@@ -44,7 +44,12 @@ def recursive_overlay(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str
     return result
 
 
-def normalize_layer(raw: dict[str, Any], *, layer_name: str) -> dict[str, Any]:
+def normalize_layer(
+    raw: dict[str, Any],
+    *,
+    layer_name: str,
+    validation_errors: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Normalize a single config layer for editable settings.
 
@@ -76,25 +81,37 @@ def normalize_layer(raw: dict[str, Any], *, layer_name: str) -> dict[str, Any]:
             continue
 
         if key == "features":
-            normalized["features"] = _normalize_features(value, layer_name=layer_name)
+            normalized["features"] = _normalize_features(
+                value, layer_name, validation_errors
+            )
         elif key == "modules":
-            normalized["modules"] = _normalize_modules(value, layer_name=layer_name)
+            normalized["modules"] = _normalize_modules(
+                value, layer_name, validation_errors
+            )
         elif key == "ask_apex":
-            ask_apex = _normalize_ask_apex(value, layer_name=layer_name)
+            ask_apex = _normalize_ask_apex(value, layer_name, validation_errors)
             if ask_apex:
                 normalized["ask_apex"] = ask_apex
         elif key == "tts_settings":
-            tts = _normalize_tts_settings(value, layer_name=layer_name)
+            tts = _normalize_tts_settings(value, layer_name, validation_errors)
             if tts:
                 normalized["tts_settings"] = tts
 
     return normalized
 
 
-def _normalize_features(value: Any, *, layer_name: str) -> dict[str, bool]:
+def _record_error(errors: list[str] | None, message: str) -> None:
+    if errors is not None:
+        errors.append(message)
+
+
+def _normalize_features(
+    value: Any, layer_name: str, errors: list[str] | None
+) -> dict[str, bool]:
     result: dict[str, bool] = {}
     if not isinstance(value, dict):
         if value is not None:
+            _record_error(errors, "features must be a JSON object")
             _LOGGER.warning(
                 'Config key "features" in %s must be a JSON object.', layer_name
             )
@@ -109,6 +126,7 @@ def _normalize_features(value: Any, *, layer_name: str) -> dict[str, bool]:
         if isinstance(raw, bool):
             result[key] = raw
         elif raw is not None:
+            _record_error(errors, f"features.{key} must be a boolean")
             _LOGGER.warning(
                 "Feature %r in %s must be a boolean; ignoring invalid value.",
                 key,
@@ -117,10 +135,13 @@ def _normalize_features(value: Any, *, layer_name: str) -> dict[str, bool]:
     return result
 
 
-def _normalize_modules(value: Any, *, layer_name: str) -> dict[str, bool]:
+def _normalize_modules(
+    value: Any, layer_name: str, errors: list[str] | None
+) -> dict[str, bool]:
     result: dict[str, bool] = {}
     if not isinstance(value, dict):
         if value is not None:
+            _record_error(errors, "modules must be a JSON object")
             _LOGGER.warning(
                 'Config key "modules" in %s must be a JSON object.', layer_name
             )
@@ -135,6 +156,7 @@ def _normalize_modules(value: Any, *, layer_name: str) -> dict[str, bool]:
         if isinstance(raw, bool):
             result[key] = raw
         elif raw is not None:
+            _record_error(errors, f"modules.{key} must be a boolean")
             _LOGGER.warning(
                 "Module %r in %s must be a boolean; ignoring invalid value.",
                 key,
@@ -143,10 +165,13 @@ def _normalize_modules(value: Any, *, layer_name: str) -> dict[str, bool]:
     return result
 
 
-def _normalize_ask_apex(value: Any, *, layer_name: str) -> dict[str, Any]:
+def _normalize_ask_apex(
+    value: Any, layer_name: str, errors: list[str] | None
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
         if value is not None:
+            _record_error(errors, "ask_apex must be a JSON object")
             _LOGGER.warning(
                 'Config key "ask_apex" in %s must be a JSON object.', layer_name
             )
@@ -168,6 +193,7 @@ def _normalize_ask_apex(value: Any, *, layer_name: str) -> dict[str, Any]:
     if isinstance(enabled_raw, bool):
         result["enabled"] = enabled_raw
     elif enabled_raw is not None:
+        _record_error(errors, "ask_apex.enabled must be a boolean")
         _LOGGER.warning(
             "ask_apex.enabled in %s must be a boolean; ignoring.",
             layer_name,
@@ -179,6 +205,7 @@ def _normalize_ask_apex(value: Any, *, layer_name: str) -> dict[str, Any]:
             value.get("default_profile"),
             key="ask_apex.default_profile",
             layer_name=layer_name,
+            errors=errors,
         )
         if preferred is not None:
             result["default_profile"] = preferred
@@ -187,6 +214,7 @@ def _normalize_ask_apex(value: Any, *, layer_name: str) -> dict[str, Any]:
                 value.get("default_cloud_profile"),
                 key="ask_apex.default_cloud_profile",
                 layer_name=layer_name,
+                errors=errors,
             )
             if legacy is not None:
                 result["default_profile"] = legacy
@@ -195,6 +223,7 @@ def _normalize_ask_apex(value: Any, *, layer_name: str) -> dict[str, Any]:
             value.get("default_cloud_profile"),
             key="ask_apex.default_cloud_profile",
             layer_name=layer_name,
+            errors=errors,
         )
         if legacy is not None:
             result["default_profile"] = legacy
@@ -202,9 +231,12 @@ def _normalize_ask_apex(value: Any, *, layer_name: str) -> dict[str, Any]:
     return result
 
 
-def _coerce_profile(raw: Any, *, key: str, layer_name: str) -> str | None:
+def _coerce_profile(
+    raw: Any, *, key: str, layer_name: str, errors: list[str] | None
+) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
+            _record_error(errors, f"{key} must be a string")
             _LOGGER.warning(
                 "Config key %r in %s must be a string; ignoring.",
                 key,
@@ -214,6 +246,7 @@ def _coerce_profile(raw: Any, *, key: str, layer_name: str) -> str | None:
     normalized = raw.strip().lower()
     if normalized in VALID_ASSISTANT_PROFILES:
         return normalized
+    _record_error(errors, f"{key} is not a valid profile")
     _LOGGER.warning(
         "Config key %r=%r in %s is not a valid profile; ignoring.",
         key,
@@ -223,10 +256,13 @@ def _coerce_profile(raw: Any, *, key: str, layer_name: str) -> str | None:
     return None
 
 
-def _normalize_tts_settings(value: Any, *, layer_name: str) -> dict[str, Any]:
+def _normalize_tts_settings(
+    value: Any, layer_name: str, errors: list[str] | None
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
         if value is not None:
+            _record_error(errors, "tts_settings must be a JSON object")
             _LOGGER.warning(
                 'Config key "tts_settings" in %s must be a JSON object.',
                 layer_name,
@@ -235,11 +271,11 @@ def _normalize_tts_settings(value: Any, *, layer_name: str) -> dict[str, Any]:
 
     for key, raw in value.items():
         if key == "primary_tts":
-            engine = _coerce_engine(raw, layer_name=layer_name)
+            engine = _coerce_engine(raw, layer_name=layer_name, errors=errors)
             if engine is not None:
                 result["primary_tts"] = engine
         elif key == "voice_gender":
-            gender = _coerce_gender(raw, layer_name=layer_name)
+            gender = _coerce_gender(raw, layer_name=layer_name, errors=errors)
             if gender is not None:
                 result["voice_gender"] = gender
         else:
@@ -249,9 +285,12 @@ def _normalize_tts_settings(value: Any, *, layer_name: str) -> dict[str, Any]:
     return result
 
 
-def _coerce_engine(raw: Any, *, layer_name: str) -> str | None:
+def _coerce_engine(
+    raw: Any, *, layer_name: str, errors: list[str] | None
+) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
+            _record_error(errors, "tts_settings.primary_tts must be a string")
             _LOGGER.warning(
                 "tts_settings.primary_tts in %s must be a string; ignoring.",
                 layer_name,
@@ -266,6 +305,7 @@ def _coerce_engine(raw: Any, *, layer_name: str) -> str | None:
         return "pyttsx3"
     if normalized in VALID_VOICE_ENGINES:
         return normalized
+    _record_error(errors, "tts_settings.primary_tts is not a valid engine")
     _LOGGER.warning(
         "tts_settings.primary_tts=%r in %s is not a valid engine; ignoring.",
         raw,
@@ -274,9 +314,12 @@ def _coerce_engine(raw: Any, *, layer_name: str) -> str | None:
     return None
 
 
-def _coerce_gender(raw: Any, *, layer_name: str) -> str | None:
+def _coerce_gender(
+    raw: Any, *, layer_name: str, errors: list[str] | None
+) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
+            _record_error(errors, "tts_settings.voice_gender must be a string")
             _LOGGER.warning(
                 "tts_settings.voice_gender in %s must be a string; ignoring.",
                 layer_name,
@@ -285,6 +328,7 @@ def _coerce_gender(raw: Any, *, layer_name: str) -> str | None:
     normalized = raw.strip().lower()
     if normalized in VALID_VOICE_GENDERS:
         return normalized
+    _record_error(errors, "tts_settings.voice_gender is not valid")
     _LOGGER.warning(
         "tts_settings.voice_gender=%r in %s is not valid; ignoring.",
         raw,

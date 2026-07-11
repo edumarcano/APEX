@@ -97,6 +97,18 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.voice.gender, "female")
         self.assertTrue(store.local_file_present)
 
+    def test_local_agent_profile_loading(self) -> None:
+        for profile in ("lynx", "acinonyx", "neofelis"):
+            with self.subTest(profile=profile):
+                _write_json(
+                    self.local_path,
+                    {"ask_apex": {"default_profile": profile}},
+                )
+                store = self._store()
+                self.assertEqual(
+                    store.get_snapshot().assistant.default_profile, profile
+                )
+
     def test_recursive_precedence(self) -> None:
         base = {"features": {"weather": True, "sports": False}, "modules": {"f1": True}}
         local = {"features": {"sports": True}, "modules": {"football": True}}
@@ -175,7 +187,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(store.get_snapshot().features.weather)
         self.assertIsNotNone(store.load_warning)
 
-    def test_unknown_and_invalid_local_values(self) -> None:
+    def test_invalid_local_value_discards_entire_override(self) -> None:
         _write_json(
             self.local_path,
             {
@@ -195,6 +207,21 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.assistant.default_profile, "comet")
         # Invalid engine ignored → base google remains.
         self.assertEqual(snap.voice.engine, "google")
+        self.assertIsNotNone(store.load_warning)
+        self.assertFalse(store.local_file_present)
+
+    def test_unknown_local_keys_are_ignored_without_rejecting_layer(self) -> None:
+        _write_json(
+            self.local_path,
+            {
+                "features": {"news": True, "future_feature": True},
+                "future_section": {"enabled": True},
+            },
+        )
+        store = self._store()
+        self.assertTrue(store.get_snapshot().features.news)
+        self.assertIsNone(store.load_warning)
+        self.assertTrue(store.local_file_present)
 
 
 class SettingsStorePatchTests(unittest.TestCase):
@@ -234,6 +261,14 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch.model_validate({"features": {"weather": True, "xyz": True}})
         with self.assertRaises(ValidationError):
             SettingsPatch.model_validate({"unknown_root": {"a": 1}})
+
+    def test_local_profiles_are_valid_patch_values(self) -> None:
+        for profile in ("lynx", "acinonyx", "neofelis"):
+            with self.subTest(profile=profile):
+                patch = SettingsPatch.model_validate(
+                    {"assistant": {"default_profile": profile}}
+                )
+                self.assertEqual(patch.assistant.default_profile, profile)
 
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
         store = self._store()

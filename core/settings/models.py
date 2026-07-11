@@ -6,11 +6,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AssistantProfile = Literal["comet", "nova", "pulsar"]
+AssistantProfile = Literal[
+    "comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"
+]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 
-VALID_ASSISTANT_PROFILES: frozenset[str] = frozenset({"comet", "nova", "pulsar"})
+VALID_ASSISTANT_PROFILES: frozenset[str] = frozenset(
+    {"comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"}
+)
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 

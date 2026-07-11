@@ -104,11 +104,20 @@ class RuntimeSettingsStore:
                         local_warning,
                     )
                 else:
+                    validation_errors: list[str] = []
                     local_normalized = normalize_layer(
-                        local_raw, layer_name="config.local.json"
+                        local_raw,
+                        layer_name="config.local.json",
+                        validation_errors=validation_errors,
                     )
-                    # If normalize emptied an invalid object that was non-empty
-                    # but produced no usable editable keys, still treat as present.
+                    if validation_errors:
+                        warning = (
+                            "Invalid config.local.json; using tracked defaults: "
+                            + "; ".join(validation_errors)
+                        )
+                        local_normalized = {}
+                        local_present = False
+                        _LOGGER.warning(warning)
             else:
                 local_normalized = {}
 
