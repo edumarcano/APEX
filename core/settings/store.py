@@ -28,6 +28,9 @@ _DEFAULT_LOCAL_CONFIG_PATH: Path = _PROJECT_ROOT / "config.local.json"
 
 _REPLACE_MAX_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
+_EDITABLE_ROOT_KEYS = frozenset(
+    {"features", "modules", "ask_apex", "tts_settings"}
+)
 
 
 class SettingsPersistenceError(RuntimeError):
@@ -54,8 +57,10 @@ class RuntimeSettingsStore:
         self._snapshot: RuntimeSettingsSnapshot = RuntimeSettingsSnapshot()
         self._base_ondisk: dict[str, Any] = {}
         self._local_ondisk: dict[str, Any] = {}
+        self._local_raw: dict[str, Any] = {}
         self._load_warning: str | None = None
         self._local_file_present = False
+        self._local_override_active = False
         self.reload()
 
     @property
@@ -66,9 +71,15 @@ class RuntimeSettingsStore:
 
     @property
     def local_file_present(self) -> bool:
-        """Whether ``config.local.json`` existed at the last successful load/write."""
+        """Whether ``config.local.json`` existed at the last load or write."""
         with self._lock:
             return self._local_file_present
+
+    @property
+    def local_override_active(self) -> bool:
+        """Whether the local override loaded successfully and is active."""
+        with self._lock:
+            return self._local_override_active
 
     def get_snapshot(self) -> RuntimeSettingsSnapshot:
         """Return the published immutable snapshot."""
@@ -90,7 +101,9 @@ class RuntimeSettingsStore:
             self._base_ondisk = base_normalized
 
             local_normalized: dict[str, Any] = {}
+            local_raw: dict[str, Any] = {}
             local_present = self._local_config_path.is_file()
+            local_active = False
             if local_present:
                 local_raw, local_warning = self._load_json_file(
                     self._local_config_path, missing_ok=False
@@ -98,7 +111,6 @@ class RuntimeSettingsStore:
                 if local_warning:
                     warning = local_warning
                     local_normalized = {}
-                    local_present = False
                     _LOGGER.warning(
                         "Discarding config.local.json and using tracked defaults: %s",
                         local_warning,
@@ -116,8 +128,9 @@ class RuntimeSettingsStore:
                             + "; ".join(validation_errors)
                         )
                         local_normalized = {}
-                        local_present = False
                         _LOGGER.warning(warning)
+                    else:
+                        local_active = True
             else:
                 local_normalized = {}
 
@@ -125,9 +138,9 @@ class RuntimeSettingsStore:
             snapshot = snapshot_from_merged(merged)
 
             self._local_ondisk = local_normalized
-            self._local_file_present = local_present and bool(
-                self._local_config_path.is_file()
-            )
+            self._local_raw = local_raw
+            self._local_file_present = self._local_config_path.is_file()
+            self._local_override_active = local_active
             self._load_warning = warning
             self._snapshot = snapshot
             return snapshot
@@ -146,24 +159,63 @@ class RuntimeSettingsStore:
             if not patch_ondisk:
                 return current
 
-            next_local = recursive_overlay(self._local_ondisk, patch_ondisk)
+            latest_raw = self._load_latest_raw_for_write()
+            next_raw = recursive_overlay(latest_raw, patch_ondisk)
+            next_local = normalize_layer(next_raw, layer_name="config.local.json")
 
             prior_snapshot = self._snapshot
             prior_local = copy_dict(self._local_ondisk)
+            prior_raw = copy_dict(self._local_raw)
             prior_present = self._local_file_present
+            prior_active = self._local_override_active
+            prior_warning = self._load_warning
 
             try:
-                self._atomic_write_local(next_local)
+                self._atomic_write_local(next_raw)
             except SettingsPersistenceError:
                 self._snapshot = prior_snapshot
                 self._local_ondisk = prior_local
+                self._local_raw = prior_raw
                 self._local_file_present = prior_present
+                self._local_override_active = prior_active
+                self._load_warning = prior_warning
                 raise
 
             self._local_ondisk = next_local
+            self._local_raw = next_raw
             self._local_file_present = True
+            self._local_override_active = True
+            self._load_warning = None
             self._snapshot = merged_snapshot
             return merged_snapshot
+
+    def _load_latest_raw_for_write(self) -> dict[str, Any]:
+        """Read the latest local document while preserving only safe invalid content."""
+        if not self._local_config_path.is_file():
+            return {}
+
+        raw, warning = self._load_json_file(
+            self._local_config_path, missing_ok=False
+        )
+        if warning:
+            return {}
+
+        validation_errors: list[str] = []
+        normalize_layer(
+            raw,
+            layer_name="config.local.json",
+            validation_errors=validation_errors,
+        )
+        if not validation_errors:
+            return raw
+
+        # The invalid editable layer was never activated. Preserve unrelated
+        # content, but remove all editable roots so a patch repairs the file.
+        return {
+            key: value
+            for key, value in raw.items()
+            if key not in _EDITABLE_ROOT_KEYS
+        }
 
     def _load_json_file(
         self, path: Path, *, missing_ok: bool

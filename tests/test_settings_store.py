@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import threading
 import time
 import unittest
@@ -31,9 +32,9 @@ def _write_json(path: Path, payload: dict) -> None:
 
 class SettingsStoreLoadTests(unittest.TestCase):
     def setUp(self) -> None:
-        import tempfile
-
-        self._dir = Path(tempfile.mkdtemp(prefix="apex_settings_"))
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_settings_")
+        self.addCleanup(self._temp_dir.cleanup)
+        self._dir = Path(self._temp_dir.name)
         self.config_path = self._dir / "config.json"
         self.local_path = self._dir / "config.local.json"
         self.base = {
@@ -76,6 +77,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "female")
         self.assertFalse(store.local_file_present)
+        self.assertFalse(store.local_override_active)
         self.assertIsNone(store.load_warning)
 
     def test_base_plus_local_loading(self) -> None:
@@ -96,6 +98,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.voice.engine, "kokoro")
         self.assertEqual(snap.voice.gender, "female")
         self.assertTrue(store.local_file_present)
+        self.assertTrue(store.local_override_active)
 
     def test_local_agent_profile_loading(self) -> None:
         for profile in ("lynx", "acinonyx", "neofelis"):
@@ -170,6 +173,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
     def test_missing_local_file(self) -> None:
         store = self._store()
         self.assertFalse(store.local_file_present)
+        self.assertFalse(store.local_override_active)
         self.assertIsNone(store.load_warning)
 
     def test_malformed_local_uses_base_with_warning(self) -> None:
@@ -179,20 +183,23 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(snap.features.weather)
         self.assertEqual(snap.assistant.default_profile, "comet")
         self.assertIsNotNone(store.load_warning)
-        self.assertFalse(store.local_file_present)
+        self.assertTrue(store.local_file_present)
+        self.assertFalse(store.local_override_active)
 
     def test_invalid_local_root_uses_base_with_warning(self) -> None:
         self.local_path.write_text("[1, 2, 3]\n", encoding="utf-8")
         store = self._store()
         self.assertTrue(store.get_snapshot().features.weather)
         self.assertIsNotNone(store.load_warning)
+        self.assertTrue(store.local_file_present)
+        self.assertFalse(store.local_override_active)
 
     def test_invalid_local_value_discards_entire_override(self) -> None:
         _write_json(
             self.local_path,
             {
                 "features": {"weather": "yes", "unknown_feature": True},
-                "modules": {"f1": True, "hockey": True},
+                "modules": {"f1": False, "hockey": True},
                 "ask_apex": {"default_profile": "not-a-profile", "mystery": 1},
                 "tts_settings": {"primary_tts": "watson", "extra": True},
                 "totally_unknown": {"x": 1},
@@ -200,15 +207,14 @@ class SettingsStoreLoadTests(unittest.TestCase):
         )
         store = self._store()
         snap = store.get_snapshot()
-        # Invalid weather ignored → base True remains.
+        # One invalid known value rejects every local editable override.
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.modules.f1)
-        # Invalid profile ignored → base comet remains.
         self.assertEqual(snap.assistant.default_profile, "comet")
-        # Invalid engine ignored → base google remains.
         self.assertEqual(snap.voice.engine, "google")
         self.assertIsNotNone(store.load_warning)
-        self.assertFalse(store.local_file_present)
+        self.assertTrue(store.local_file_present)
+        self.assertFalse(store.local_override_active)
 
     def test_unknown_local_keys_are_ignored_without_rejecting_layer(self) -> None:
         _write_json(
@@ -222,13 +228,14 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(store.get_snapshot().features.news)
         self.assertIsNone(store.load_warning)
         self.assertTrue(store.local_file_present)
+        self.assertTrue(store.local_override_active)
 
 
 class SettingsStorePatchTests(unittest.TestCase):
     def setUp(self) -> None:
-        import tempfile
-
-        self._dir = Path(tempfile.mkdtemp(prefix="apex_settings_patch_"))
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_settings_patch_")
+        self.addCleanup(self._temp_dir.cleanup)
+        self._dir = Path(self._temp_dir.name)
         self.config_path = self._dir / "config.json"
         self.local_path = self._dir / "config.local.json"
         _write_json(
@@ -283,6 +290,50 @@ class SettingsStorePatchTests(unittest.TestCase):
         self.assertTrue(self.local_path.is_file())
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertEqual(written["features"]["sports"], True)
+
+    def test_successful_patch_clears_load_warning(self) -> None:
+        self.local_path.write_text("{not-json", encoding="utf-8")
+        store = self._store()
+        self.assertIsNotNone(store.load_warning)
+        self.assertFalse(store.local_override_active)
+
+        snap = store.apply_patch(
+            SettingsPatch(features=FeaturesPatch(sports=True))
+        )
+
+        self.assertTrue(snap.features.sports)
+        self.assertIsNone(store.load_warning)
+        self.assertTrue(store.local_file_present)
+        self.assertTrue(store.local_override_active)
+
+    def test_patch_preserves_noneditable_and_unknown_local_keys(self) -> None:
+        _write_json(
+            self.local_path,
+            {
+                "system_prompt": "preserve me",
+                "ask_apex": {"max_session_messages": 12},
+                "future_section": {"enabled": True},
+            },
+        )
+        store = self._store()
+
+        store.apply_patch(SettingsPatch(features=FeaturesPatch(sports=True)))
+
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["system_prompt"], "preserve me")
+        self.assertEqual(written["ask_apex"]["max_session_messages"], 12)
+        self.assertEqual(written["future_section"], {"enabled": True})
+        self.assertTrue(written["features"]["sports"])
+
+    def test_patch_preserves_external_edit_made_after_load(self) -> None:
+        store = self._store()
+        _write_json(self.local_path, {"future_section": {"version": 2}})
+
+        store.apply_patch(SettingsPatch(modules=ModulesPatch(f1=True)))
+
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["future_section"], {"version": 2})
+        self.assertTrue(written["modules"]["f1"])
 
     def test_transient_replace_retry_succeeds(self) -> None:
         store = self._store()
@@ -349,9 +400,9 @@ class SettingsStorePatchTests(unittest.TestCase):
 
 class SettingsStoreConcurrencyTests(unittest.TestCase):
     def setUp(self) -> None:
-        import tempfile
-
-        self._dir = Path(tempfile.mkdtemp(prefix="apex_settings_conc_"))
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_settings_conc_")
+        self.addCleanup(self._temp_dir.cleanup)
+        self._dir = Path(self._temp_dir.name)
         self.config_path = self._dir / "config.json"
         self.local_path = self._dir / "config.local.json"
         _write_json(
