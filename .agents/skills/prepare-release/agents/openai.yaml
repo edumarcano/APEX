@@ -1,4 +1,4 @@
 interface:
   display_name: "Prepare Release"
-  short_description: "Prepare evidence-based release materials"
-  default_prompt: "Use $prepare-release to inspect the branch and prepare its release materials."
+  short_description: "Prepare PRs, merges, and milestone releases"
+  default_prompt: "Use $prepare-release to prepare the requested PR, merge, changelog, or release phase from repository evidence."
