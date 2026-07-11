@@ -22,7 +22,7 @@ def process_telemetry(
         weather_summary=raw_data,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
-    resolved_strategy = strategy or (DEV_AI_SYNTHESIS if is_dev_mode() else "llm")
+    resolved_strategy = strategy or (DEV_AI_SYNTHESIS if is_dev_mode() else "cloud")
     result = (router or SynthesisRouter()).synthesize(
         source,
         raw_data,

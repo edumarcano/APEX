@@ -88,7 +88,7 @@ class RoutingTests(unittest.TestCase):
         with patch.object(router, "_gemini", return_value=expected), patch(
             "core.synthesis.router.resident_profile_key", return_value=None
         ):
-            result = router.synthesize(sample_input(), "full", "llm")
+            result = router.synthesize(sample_input(), "full", "cloud")
         self.assertEqual(result, expected)
 
     def test_resident_neofelis_reused_after_gemini_failure(self) -> None:
@@ -97,7 +97,7 @@ class RoutingTests(unittest.TestCase):
         with patch.object(router, "_gemini", side_effect=RuntimeError("gemini_error")), patch.object(
             router, "_ollama", return_value=expected
         ) as ollama, patch("core.synthesis.router.resident_profile_key", return_value="neofelis"):
-            result = router.synthesize(sample_input(), "full", "llm")
+            result = router.synthesize(sample_input(), "full", "cloud")
         self.assertEqual(result.profile, "neofelis")
         ollama.assert_called_once_with(unittest.mock.ANY, "neofelis", None)
 
@@ -107,7 +107,7 @@ class RoutingTests(unittest.TestCase):
         with patch("core.synthesis.router.LOCAL_PRIMARY_GRACE_SECONDS", 0), patch(
             "core.synthesis.router.resident_profile_key", return_value=None
         ):
-            result = router.synthesize(sample_input(), "full", "slm", handle)
+            result = router.synthesize(sample_input(), "full", "local", handle)
         self.assertEqual(result.provider, "raw")
         self.assertEqual(result.fallback_reason, "local_warmup_timeout")
         self.assertFalse(handle.event.is_set())
@@ -117,7 +117,7 @@ class RoutingTests(unittest.TestCase):
         handle.event.set()
         router = SynthesisRouter()
         with patch("core.synthesis.router.resident_profile_key", return_value=None):
-            result = router.synthesize(sample_input(), "full", "slm", handle)
+            result = router.synthesize(sample_input(), "full", "local", handle)
         self.assertEqual(result.fallback_reason, "local_model_missing")
 
     def test_ollama_generation_has_no_tools_history_or_thinking(self) -> None:

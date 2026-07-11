@@ -70,9 +70,9 @@ load_dotenv(dotenv_path=ENV_PATH)
 
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
-_VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"slm", "llm", "raw"})
+_VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"local", "cloud", "raw"})
 _VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro"})
-DevAiSynthesisMode = Literal["slm", "llm", "raw"]
+DevAiSynthesisMode = Literal["local", "cloud", "raw"]
 DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro"]
 
 
@@ -117,6 +117,12 @@ def _parse_dev_ai_synthesis(raw: str | None) -> DevAiSynthesisMode:
         return "raw"
 
     normalized = raw.strip().lower().strip("'\"")
+    if normalized == "llm":
+        _LOGGER.warning("DEV_AI_SYNTHESIS='llm' is deprecated; use 'cloud' instead.")
+        return "cloud"
+    if normalized == "slm":
+        _LOGGER.warning("DEV_AI_SYNTHESIS='slm' is deprecated; use 'local' instead.")
+        return "local"
     if normalized in _VALID_DEV_AI_SYNTHESIS:
         return cast(DevAiSynthesisMode, normalized)
 

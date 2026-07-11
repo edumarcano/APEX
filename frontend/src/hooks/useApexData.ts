@@ -104,7 +104,7 @@ const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_AGENT_PROFILES: readonly AgentCloudProfile[] = ['comet', 'nova', 'pulsar']
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = ['gemini', 'ollama', 'raw', 'demo']
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = ['comet', 'lynx', 'acinonyx', 'neofelis']
-const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['llm', 'slm', 'raw', 'demo']
+const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
   return typeof value === 'string' && values.includes(value as T) ? value as T : null
@@ -248,7 +248,7 @@ export function useApexData(): UseApexDataReturn {
     active_tts_engine: 'google',
     system_load_throttled: false,
     askApexEnabled: true,
-    synthesisStrategy: 'llm',
+    synthesisStrategy: 'cloud',
     synthesisProvider: 'gemini',
     synthesisProfile: 'comet',
     synthesisFallbackReason: null,
@@ -625,7 +625,7 @@ export function useApexData(): UseApexDataReturn {
                     ? 'raw'
                     : synthesisStrategy === 'demo'
                       ? 'demo'
-                      : synthesisStrategy === 'slm'
+                      : synthesisStrategy === 'local'
                         ? 'ollama'
                         : prev.synthesisProvider,
                 data: prev.data
@@ -670,7 +670,7 @@ export function useApexData(): UseApexDataReturn {
                 ? 'raw'
                 : synthesisStrategy === 'demo'
                   ? 'demo'
-                  : synthesisStrategy === 'slm'
+                  : synthesisStrategy === 'local'
                     ? 'ollama'
                     : prev.synthesisProvider,
             data: prev.data

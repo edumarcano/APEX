@@ -54,7 +54,8 @@ frontend/
 |   |   |-- CelestialBackground.tsx  # Seeded starfield across three twinkling tiers
 |   |   |-- TelemetryCard.tsx        # Shared card frame, VTE interpolation, F1 renderer, weather icons, attention tier
 |   |   |-- MarketTickerCard.tsx     # End-of-day market ticker card and compact row
-|   |   |-- SystemDiagnostics.tsx    # Header diagnostics, sync health, hardware resources, system time
+|   |   |-- LocalModelControl.tsx    # Provider-neutral local model load/unload button and auto-unload countdown
+|   |   |-- SystemDiagnostics.tsx    # Header diagnostics, sync health, hardware resources, SynthesisPill, system time
 |   |   |-- VoiceSignalGlyph.tsx     # Centered pipeline status, thinking, and speech indicator
 |   |   |-- ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 |   |   |-- AskApexBar.tsx           # Inline assistant query input and profile selector
