@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Regression"
+  short_description: "Diagnose and repair regressions safely"
+  default_prompt: "Use $fix-regression to reproduce, repair, and verify this APEX regression."

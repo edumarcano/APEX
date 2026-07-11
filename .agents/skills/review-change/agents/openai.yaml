@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Change"
+  short_description: "Review changes with file-backed findings"
+  default_prompt: "Use $review-change to perform a read-only review of these APEX changes."

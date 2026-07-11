@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Documentation"
+  short_description: "Find drift between APEX docs and behavior"
+  default_prompt: "Use $audit-documentation to audit APEX documentation against repository evidence."

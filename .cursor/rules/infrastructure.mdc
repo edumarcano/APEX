@@ -1,0 +1,8 @@
+---
+description: APEX configuration, secrets, dependencies, launcher, environment, and deployment invariants.
+globs: config.json, .env*, requirements*.txt, launcher.py, *.bat, frontend/package.json, frontend/package-lock.json
+alwaysApply: false
+---
+
+Follow `@../../docs/agent-guidance/infrastructure.md`.
+
