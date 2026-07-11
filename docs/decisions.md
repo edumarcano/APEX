@@ -163,22 +163,30 @@ Live connector data (calendar event titles, news headlines, Gmail subjects) is w
 
 ## Development Process
 
-### Development workflow and review roles
+### Agent instructions, scoped guidance, and skills
 
-The project maintains a set of specialized development rules to provide task-focused guidance across backend development, frontend development, operations, implementation, analysis, auditing, and documentation work.
+APEX replaced the earlier nine-persona rule set (`analyst`, `auditor`, `builder`, `communicator`, `devops`, `mechanic`, plus inlined backend/frontend/global content) with a thinner instruction stack. The old model duplicated long personas across `.agents/rules/` and `.cursor/rules/`, required a pre-flight validation block and post-change handoff on every edit, and treated implementation as gated behind a separate sign-off step. That created drift between the two rule surfaces and mixed always-on ceremony with task-specific procedures.
 
-Multiple rule formats exist to support the development environments used by the project. Depending on the environment, rules may be activated automatically based on context, selected explicitly by the developer, or used as part of specialized review workflows.
+The current stack separates three concerns:
 
-The purpose is quality control: each rule defines the type of work it is meant to support, the risks it should watch for, and the boundaries it should respect.
+1. **Repository-wide instructions** live in `AGENTS.md`. That file is the single source for project context, working agreement, secrets boundaries, and validation commands. An explicit request to implement or fix something is treated as authorization for in-scope edits; there is no separate always-on approval gate.
+2. **Scoped engineering guidance** lives in `docs/agent-guidance/` (`writing.md`, `backend.md`, `frontend.md`, `infrastructure.md`), with visual defaults in `docs/design-system.md`. Thin glob rules in `.agents/rules/` and `.cursor/rules/` point at those documents when matching files are in play, instead of inlining the same prose twice.
+3. **Reusable procedures** live in `.agents/skills/`. Skills are loaded only when the task matches; they are not always-on behavior.
 
-| Rule | Activation | Role |
+Dual editor surfaces remain intentional. Cursor loads `AGENTS.md` as always-on repository instructions, so `.cursor/rules/` keeps only glob-scoped pointers for backend, frontend, and infrastructure work. The Antigravity-oriented `.agents/rules/` surface keeps an `always_on` `global` rule that points at `AGENTS.md`, plus the same three scoped pointers. Guidance content is shared; only the activation wiring differs.
+
+| Surface | Activation | Purpose |
 |---|---|---|
-| `global` | automatic | Port constants, full code articulation, pre-flight validation gate, post-implementation handoff section, documentation language standards |
-| `analyst` | contextual | API parameter mapping, nested JSON payload tracing, package ecosystem evaluation, mathematical logic analysis. Read-only; never modifies code |
-| `auditor` | manual | Security and stability audits: thread races, deadlocks, blocking async calls, resource leaks, secrets isolation, SQLite transaction safety, documentation accuracy |
-| `backend` | contextual | FastAPI routes, async orchestration, SQLite persistence, N+1 elimination, bounded retries, explicit timeout handling |
-| `builder` | manual | Complete production-ready implementations after explicit sign-off. No placeholder scaffolding |
-| `communicator` | manual | PR descriptions, merge summaries, release notes, repository documentation |
-| `devops` | contextual | Launchers, dependency lockfiles, configuration management, environment boundaries |
-| `frontend` | contextual | HUD layout, Vite/React/TypeScript/Tailwind, unified `useApexData()` hook contract, no per-component loading spinners |
-| `mechanic` | manual | Compile-time failures, runtime crashes, typing conflicts, test suite generation |
+| `AGENTS.md` | Always on (Cursor native; `.agents/rules/global.md` for Antigravity) | Project context, working agreement, secrets, validation, pointers to scoped guidance and skills |
+| `docs/agent-guidance/writing.md` | Via `AGENTS.md` for documentation and repository communication | Plain-language standards for docs, PRs, changelog, and release notes |
+| `docs/agent-guidance/backend.md` | Glob: `core/`, `clients/`, `tests/` Python | FastAPI, async safety, SQLite, contracts, connector trust boundaries |
+| `docs/agent-guidance/frontend.md` plus `docs/design-system.md` | Glob: frontend TS/CSS/HTML; design system when visuals change | State ownership (`useApexData()` vs independent flows such as `useMarketData()`), accessibility, responsive layout, HUD visual language |
+| `docs/agent-guidance/infrastructure.md` | Glob: config, env, lockfiles, launcher, package manifests | Secrets vs `config.json`, dependencies, `DEV_MODE` / `DEMO_MODE`, launcher behavior |
+| `research-feature` | On demand | Evidence-backed research handoff using `docs/agent-handoffs/template.md` |
+| `implement-plan` | On demand | Reconcile an approved plan with the repo and implement complete behavior |
+| `fix-regression` | On demand | Diagnose, repair, and verify defects with focused regression coverage |
+| `review-change` | On demand | Read-only review of a diff or PR, including documentation impact of that change |
+| `audit-documentation` | On demand | Evidence-backed documentation drift audit across a range or the full repo |
+| `prepare-release` | On demand | Feature PR/merge, milestone changelog, or tag/release phases with explicit approval for external actions |
+
+The trade-off is less persona flavor and less automatic ceremony in exchange for one canonical instruction file, shared guidance that can be updated once, and procedures that load only when needed. Historical changelog entries that mention the nine-rule layout remain accurate as history; they do not describe the current agent configuration.
