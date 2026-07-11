@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement Plan"
+  short_description: "Validate and implement approved plans"
+  default_prompt: "Use $implement-plan to validate this plan against APEX and implement it completely."

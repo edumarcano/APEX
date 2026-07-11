@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Release"
+  short_description: "Prepare evidence-based release materials"
+  default_prompt: "Use $prepare-release to inspect the branch and prepare its release materials."

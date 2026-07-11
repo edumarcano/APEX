@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Feature"
+  short_description: "Research ideas into evidence-backed plans"
+  default_prompt: "Use $research-feature to research this APEX idea and produce an implementation handoff."
