@@ -293,7 +293,7 @@ Add profile-specific Gemini thinking levels, introduce local Ollama briefing syn
 
 ## v1.16.0 - Cortex: Command Console & Runtime Control Deck
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Give APEX runtime control surfaces for configuration, model/provider behavior, service state, and operational visibility.

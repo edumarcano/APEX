@@ -1,5 +1,6 @@
 venv/
 .env
+config.local.json
 __pycache__/
 *.db
 *.db-wal
