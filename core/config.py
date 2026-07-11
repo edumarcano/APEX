@@ -179,19 +179,6 @@ ENABLE_STARTUP_GATE: Final[bool] = _parse_env_bool(
 )
 
 
-_FEATURE_KEYS: Final[tuple[str, ...]] = (
-    "weather",
-    "sports",
-    "news",
-    "email",
-    "calendar",
-)
-
-_MODULE_KEYS: Final[tuple[str, ...]] = (
-    "football",
-    "f1",
-)
-
 try:
     with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
         _CONFIG_DATA: dict[str, Any] = json.load(config_file)
@@ -295,46 +282,38 @@ else:
     )
     LOCAL_AGENT_SYSTEM_PROMPT = DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
 
-tts_settings = _CONFIG_DATA.get("tts_settings", {})
-PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
-VOICE_GENDER: Final[str] = tts_settings.get("voice_gender", "female")
 CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")
+
+# Editable settings are resolved through the runtime settings store
+# (config.json + optional config.local.json). Non-editable sections below
+# continue to read from ``_CONFIG_DATA`` only.
+from core.settings import get_settings_store  # noqa: E402
+
+_SETTINGS_SNAPSHOT = get_settings_store().get_snapshot()
+
+PRIMARY_TTS: Final[str] = _SETTINGS_SNAPSHOT.voice.engine
+VOICE_GENDER: Final[str] = _SETTINGS_SNAPSHOT.voice.gender
 
 
 def load_feature_flags() -> dict[str, bool]:
-    """Load feature toggles from module-level ``_CONFIG_DATA``."""
-    result = dict.fromkeys(_FEATURE_KEYS, False)
-    features = _CONFIG_DATA.get("features")
-    if not isinstance(features, dict):
-        if features is not None:
-            _LOGGER.warning('Config key "features" must be a JSON object.')
-        return result
-
-    for key in _FEATURE_KEYS:
-        value = features.get(key)
-        if isinstance(value, bool):
-            result[key] = value
-        elif value is not None:
-            _LOGGER.warning('Feature %r must be a boolean; ignoring invalid value.', key)
-    return result
+    """Return resolved feature toggles from the runtime settings snapshot."""
+    features = _SETTINGS_SNAPSHOT.features
+    return {
+        "weather": features.weather,
+        "sports": features.sports,
+        "news": features.news,
+        "email": features.email,
+        "calendar": features.calendar,
+    }
 
 
 def load_module_flags() -> dict[str, bool]:
-    """Load granular sub-module toggles from module-level ``_CONFIG_DATA``."""
-    result = dict.fromkeys(_MODULE_KEYS, False)
-    modules = _CONFIG_DATA.get("modules")
-    if not isinstance(modules, dict):
-        if modules is not None:
-            _LOGGER.warning('Config key "modules" must be a JSON object.')
-        return result
-
-    for key in _MODULE_KEYS:
-        value = modules.get(key)
-        if isinstance(value, bool):
-            result[key] = value
-        elif value is not None:
-            _LOGGER.warning('Module %r must be a boolean; ignoring invalid value.', key)
-    return result
+    """Return resolved module toggles from the runtime settings snapshot."""
+    modules = _SETTINGS_SNAPSHOT.modules
+    return {
+        "football": modules.football,
+        "f1": modules.f1,
+    }
 
 
 _feature_map = load_feature_flags()
@@ -349,8 +328,6 @@ _module_map = load_module_flags()
 
 MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
 MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
-
-_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset({"comet", "nova", "pulsar"})
 
 
 def _parse_config_bool(raw: Any, *, key: str, default: bool) -> bool:
@@ -480,26 +457,8 @@ def _parse_resource_gate(
     return ram, cpu
 
 
-def _parse_cloud_profile(raw: Any, *, key: str, default: str) -> str:
-    """Validate a cloud profile identifier against known Gemini tiers."""
-    if not isinstance(raw, str):
-        if raw is not None:
-            _LOGGER.warning("Config key %r must be a string; using default %r.", key, default)
-        return default
-
-    normalized = raw.strip().lower()
-    if normalized in _VALID_CLOUD_PROFILES:
-        return normalized
-
-    _LOGGER.warning(
-        "Config key %r=%r is not in %s; using default %r.",
-        key,
-        raw,
-        sorted(_VALID_CLOUD_PROFILES),
-        default,
-    )
-    return default
-
+ASK_APEX_ENABLED: Final[bool] = _SETTINGS_SNAPSHOT.assistant.enabled
+DEFAULT_CLOUD_PROFILE: Final[str] = _SETTINGS_SNAPSHOT.assistant.default_profile
 
 try:
     _ask_apex_cfg = _CONFIG_DATA.get("ask_apex", {})
@@ -507,16 +466,6 @@ try:
         _LOGGER.warning('Config key "ask_apex" must be a JSON object; using defaults.')
         _ask_apex_cfg = {}
 
-    ASK_APEX_ENABLED: Final[bool] = _parse_config_bool(
-        _ask_apex_cfg.get("enabled"),
-        key="ask_apex.enabled",
-        default=True,
-    )
-    DEFAULT_CLOUD_PROFILE: Final[str] = _parse_cloud_profile(
-        _ask_apex_cfg.get("default_cloud_profile"),
-        key="ask_apex.default_cloud_profile",
-        default="comet",
-    )
     MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
         _ask_apex_cfg.get("max_session_messages"),
         key="ask_apex.max_session_messages",
@@ -526,8 +475,6 @@ try:
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
-    ASK_APEX_ENABLED = True
-    DEFAULT_CLOUD_PROFILE = "comet"
     MAX_SESSION_MESSAGES = 6
 
 try:
