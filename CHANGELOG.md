@@ -2,6 +2,57 @@
 
 ---
 
+## v1.15.0 — Synthesis Routing and Profile Tuning
+
+**Released:** July 11, 2026
+
+This release extracts briefing synthesis into a provider-neutral router with cloud Gemini, local Ollama, and deterministic raw fallback paths; exposes live and resolved synthesis state in the HUD; adds profile-bound Gemini thinking levels; and renames the synthesis strategy contract from `llm`/`slm` to `cloud`/`local`. Local-model unload controls move under the APEX logo, Neofelis is promoted to stable, and the agent instruction stack is rebuilt around `AGENTS.md`, scoped guidance, and on-demand skills.
+
+---
+
+### What's New
+
+- Introduced a `core/synthesis/` package with `SynthesisRouter` that routes briefing generation across `cloud` (Gemini → optional local → raw), `local` (Ollama → raw), and `raw` (deterministic offline) strategies.
+- Enabled local Ollama briefing synthesis through the same provider, execution lock, model profiles, resource gates, and idle lifecycle used by the assistant, with bounded Lynx warmup and grace-second timeouts.
+- Added a `SynthesisPill` in `SystemDiagnostics` showing the resolved provider and profile, with a tooltip for fallback reasons.
+- Extracted `LocalModelControl` from `ConsoleTray` so idle countdown and manual unload sit beneath the APEX logo instead of inside the console tray.
+- Added profile-bound Gemini thinking levels: Comet `minimal`, Nova `low`, Pulsar `medium`; briefing cloud synthesis uses `minimal`.
+- Renamed `DEV_AI_SYNTHESIS` values from `llm`/`slm` to `cloud`/`local` across backend, frontend, tests, and docs, with deprecation shims that map the old values and log a warning.
+- Promoted Neofelis (`qwen3:8b`) from `preview` to `stable` and renamed its tier from `heavy` to `capable`.
+- Replaced the nine-persona agent rule set with `AGENTS.md`, shared scoped guidance under `docs/agent-guidance/`, on-demand skills under `.agents/skills/`, and `docs/design-system.md`.
+
+### Architecture Changes
+
+- Moved synthesis out of the monolithic `core/brain.py` path into `SynthesisRouter.synthesize`, with `compact_payload`, `parse_model_output`, and `deterministic_fallback` in a dedicated formatting module (2 000-byte local input cap; email, news, and speech-prefix content stripped from the local path).
+- Added a `synthesis` config block (`gemini_system_prompt`, `ollama_system_prompt`, `local_primary_grace_seconds`, `local_fallback_grace_seconds`); preserved `system_prompt` as a compatibility alias for the Gemini synthesis prompt.
+- Added `metadata_json` to the `briefings` table with an `ALTER TABLE` migration guard; briefing history now returns persisted synthesis metadata.
+- Added `fetch_sports_snapshot()` returning the structured F1 map alongside the legacy report string; `fetch_sports_data()` remains as a compatibility façade.
+- Raised the `google-genai` floor to `>=1.56.0` for thinking-level support.
+- Collapsed dual editor persona rules into thin glob pointers; Cursor loads `AGENTS.md` as always-on repository instructions.
+
+### API Changes
+
+- Extended config and briefing `metadata` with `synthesis_strategy`, `synthesis_provider`, `synthesis_profile`, `synthesis_fallback_reason`, `synthesis_warmup_ms`, and `synthesis_generation_ms`.
+- Extended `GET /api/v1/status` with a live `synthesis` object (`phase`, `provider`, `profile`, `loading`, `fallback_reason`).
+- Extended `GET /api/v1/agent/profiles` with optional `thinking_level` (`minimal` | `low` | `medium` | `high` for Gemini; `null` for Ollama).
+- Added `POST /api/v1/local-model/unload` as the provider-neutral manual unload route; `POST /api/v1/agent/local/unload` remains as a compatibility alias.
+- `DEV_AI_SYNTHESIS` accepted values are now `raw`, `local`, and `cloud` (legacy `llm`/`slm` still accepted with a deprecation warning).
+
+### Frontend Changes
+
+- Added `LocalModelControl.tsx` and `SynthesisPill` (in `SystemDiagnostics.tsx`); removed the console-tray `ActiveLocalModelPanel`.
+- Extended telemetry types and `useApexData` to parse synthesis strategy, provider, profile, fallback reason, and live pipeline synthesis phase.
+- Updated `SynthesisStrategy` from `'llm' | 'slm' | ...` to `'cloud' | 'local' | ...` and renamed the stage-4 attention label to "AI synthesis".
+
+### Documentation Updates
+
+- Documented the synthesis config block, routing metadata fields, thinking levels, and local-model unload alias in `docs/api.md`, `docs/architecture.md`, and `README.md`.
+- Rewrote the multi-tier synthesis fallback section in `docs/decisions.md` for the implemented `cloud` / `local` / `raw` routes; marked local Ollama briefing synthesis as implemented.
+- Marked roadmap `v1.15.0` Complete and recorded the agent-instruction stack change in `docs/decisions.md`.
+- Added `AGENTS.md`, `docs/agent-guidance/*`, `docs/design-system.md`, `docs/agent-handoffs/template.md`, and six `.agents/skills/*/SKILL.md` files.
+
+---
+
 ## v1.14.0 — Central Command Atmosphere
 
 **Released:** July 9, 2026

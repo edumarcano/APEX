@@ -145,7 +145,14 @@ Diagnostic snapshot of the active pipeline run. Readable only while a trigger is
   "timestamp": "2026-06-06T12:34:56.789012+00:00",
   "is_speaking": false,
   "active_tts_engine": "google",
-  "system_load_throttled": false
+  "system_load_throttled": false,
+  "synthesis": {
+    "phase": "idle",
+    "provider": null,
+    "profile": null,
+    "loading": false,
+    "fallback_reason": null
+  }
 }
 ```
 
@@ -157,6 +164,12 @@ Diagnostic snapshot of the active pipeline run. Readable only while a trigger is
 | `is_speaking` | boolean | `true` when `_SPEAK_LOCK` is held or `pygame.mixer.music.get_busy()` is active |
 | `active_tts_engine` | string | Resolved active TTS engine used for playback (e.g., `"google"`, `"kokoro"`, or `"pyttsx3"`) |
 | `system_load_throttled` | boolean | `true` when hardware resource utilization exceeds throttle limits and triggers local fallback |
+| `synthesis` | object \| null | Live synthesis routing state for the active run |
+| `synthesis.phase` | string | `idle`, `loading`, `ready`, `generating`, `fallback`, or `complete` |
+| `synthesis.provider` | string \| null | Resolved provider while routing: `gemini`, `ollama`, `raw`, or `demo` |
+| `synthesis.profile` | string \| null | Resolved profile when applicable (`comet`, `lynx`, `acinonyx`, `neofelis`) |
+| `synthesis.loading` | boolean | `true` while local model warmup is in progress (`phase == "loading"`) |
+| `synthesis.fallback_reason` | string \| null | Machine-readable reason when routing changed or raw fallback was used |
 
 **Response `404`** — no active run. The frontend treats this as the idle signal, clears the polling interval, and marks `isSpeaking` as `false`.
 
@@ -557,7 +570,12 @@ Each field contains the raw string produced by the corresponding connector, or a
 class RuntimeMetadata(BaseModel):
     dev_mode_active: bool
     demo_mode_active: bool
-    synthesis_strategy: str   # "raw" | "local" | "cloud"
+    synthesis_strategy: str   # "raw" | "local" | "cloud" | "demo"
+    synthesis_provider: str | None   # "gemini" | "ollama" | "raw" | "demo"
+    synthesis_profile: str | None    # "comet" | "lynx" | "acinonyx" | "neofelis"
+    synthesis_fallback_reason: str | None
+    synthesis_warmup_ms: int | None
+    synthesis_generation_ms: int | None
     tts_strategy: str         # "pyttsx3" | "google" | "kokoro"
     active_tts_engine: str    # "pyttsx3" | "google" | "kokoro"
     system_load_throttled: bool
@@ -573,6 +591,7 @@ class PipelineStatusSnapshot(BaseModel):
     is_speaking: bool
     active_tts_engine: str    # "pyttsx3" | "google" | "kokoro"
     system_load_throttled: bool
+    synthesis: PipelineSynthesisState | None
 ```
 
 ### `ReminderRecord`
