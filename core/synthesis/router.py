@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -30,6 +31,9 @@ from core.config import (
 )
 from core.synthesis.formatting import compact_payload, deterministic_fallback, parse_model_output
 from core.synthesis.models import SynthesisInput, SynthesisResult
+
+_LOGGER = logging.getLogger(__name__)
+
 
 StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
@@ -165,7 +169,8 @@ class SynthesisRouter:
             raise RuntimeError("gemini_unavailable")
         self._state("generating", "gemini", "comet", None)
         started = time.monotonic()
-        response = genai.Client(api_key=api_key).models.generate_content(
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
             model="gemini-3.1-flash-lite",
             contents=[full_telemetry],
             config=types.GenerateContentConfig(
@@ -231,6 +236,7 @@ class SynthesisRouter:
                 self._state("complete", result.provider, result.profile, None)
                 return result
             except Exception as exc:
+                _LOGGER.exception("Gemini briefing synthesis failed; falling back to local/raw.")
                 gemini_reason = str(exc) if str(exc).startswith("gemini_") else "gemini_error"
 
         resident = resident_profile_key()
