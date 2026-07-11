@@ -2,6 +2,24 @@
 
 ---
 
+## v1.15.1 — Gemini Client GC Fix & Console Diagnostics
+
+**Released:** July 11, 2026
+
+This release fixes a critical runtime exception in the Gemini briefing synthesis router when running in production mode, ensuring the client instance is not garbage collected mid-request. It also introduces logging for synthesis exceptions to provide console visibility during fallback events.
+
+---
+
+### What's New
+
+- Added standard Python logging to the synthesis module to expose exceptions to the operator terminal when the cloud pipeline fails.
+
+### Bug Fixes
+
+- Resolved a `RuntimeError: Cannot send a request, as the client has been closed` issue in `_gemini` by keeping a local reference to `genai.Client` and preventing premature garbage collection under Python 3.14.
+
+---
+
 ## v1.15.0 — Synthesis Routing and Profile Tuning
 
 **Released:** July 11, 2026
