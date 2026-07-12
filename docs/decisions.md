@@ -10,11 +10,17 @@ This document records the major engineering trade-offs behind APEX so the reason
 
 ### `.env` vs `config.json` separation
 
-`config.json` holds application state: which connectors are enabled, the persona prompt, TTS voice settings, and sports sub-module flags. It is committed to version control so the expected configuration shape is visible at a glance and can be modified without touching environment-specific secrets.
+`config.json` holds committed application defaults: which connectors are enabled, the persona prompt, TTS voice settings, and sports sub-module flags. It is committed to version control so the expected configuration shape is visible at a glance and can be modified without touching environment-specific secrets.
 
-`.env` holds secrets: API keys, OAuth tokens, machine-specific paths. It is gitignored.
+`.env` holds secrets: API keys, OAuth tokens, machine-specific paths, and environment-only switches such as `DEV_MODE` / `DEMO_MODE`. It is gitignored.
 
 Keeping them separate means: the defaults are visible in version control, `.env.example` stays focused on secrets without getting cluttered with toggles, and you can change the persona or a feature flag without touching anything near your credentials.
+
+### `config.local.json` as the mutable overlay
+
+Editable operator preferences (connectors, sports modules, assistant enablement/default profile, TTS engine/gender) are managed at runtime through `GET` / `PATCH /api/v1/settings`. Patches persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults. This keeps local machine preference changes out of version control while preserving a readable committed baseline.
+
+`DEV_MODE`, `DEMO_MODE`, and other `.env` switches remain read-only through the settings API and are never written by PATCH.
 
 ---
 

@@ -61,16 +61,18 @@ from core.config import (
     DEV_AI_SYNTHESIS,
     DEV_TTS_PLAYBACK,
     ENV_PATH,
-    FEATURE_CALENDAR,
-    FEATURE_EMAIL,
-    FEATURE_NEWS,
-    FEATURE_SPORTS,
-    FEATURE_WEATHER,
-    MODULE_F1,
-    MODULE_FOOTBALL,
     OLLAMA_ENABLED,
     OLLAMA_MANUAL_UNLOAD_ENABLED,
     is_dev_mode,
+)
+from core.settings import (
+    SETTINGS_SCHEMA_VERSION,
+    FeaturesSettings,
+    ModulesSettings,
+    SettingsPatch,
+    SettingsPersistenceError,
+    SettingsResponse,
+    get_settings_store,
 )
 from core.synthesis import CalendarFact, F1Fact, SynthesisInput, SynthesisRouter
 
@@ -259,11 +261,12 @@ def _speak_and_cleanup(
     text: str,
     *,
     tts_override: str | None = None,
+    voice_gender: str | None = None,
     lock: threading.Lock | None = None,
 ) -> None:
     """Play briefing audio on a worker thread and reset pipeline state when playback ends."""
     try:
-        speaker.speak(text, tts_override=tts_override)
+        speaker.speak(text, tts_override=tts_override, voice_gender=voice_gender)
     finally:
         global_pipeline_state.reset()
         if lock is not None:
@@ -385,6 +388,8 @@ def _split_sports_report(sports_report: str) -> tuple[str, str]:
 
 def _evaluate_sports_trust(
     sports_report: str,
+    *,
+    modules: ModulesSettings,
 ) -> tuple[float, float, bool]:
     """
     Return earned weight, total weight, and whether any sports subdivision failed.
@@ -393,14 +398,14 @@ def _evaluate_sports_trust(
     when both F1 and football are enabled.
     """
     active_modules: list[tuple[re.Pattern[str], str]] = []
-    if MODULE_F1 and MODULE_FOOTBALL:
+    if modules.f1 and modules.football:
         f1_part, fb_part = _split_sports_report(sports_report)
     else:
         f1_part, fb_part = sports_report, sports_report
 
-    if MODULE_F1:
+    if modules.f1:
         active_modules.append((SPORTS_F1_FAILED_RE, f1_part))
-    if MODULE_FOOTBALL:
+    if modules.football:
         active_modules.append((SPORTS_FB_FAILED_RE, fb_part))
 
     if not active_modules:
@@ -426,6 +431,8 @@ def _compute_confidence_and_failures(
     email_report: str,
     calendar_report: str,
     f1_cache_penalty: bool,
+    features: FeaturesSettings,
+    modules: ModulesSettings,
 ) -> tuple[float, list[str]]:
     """Evaluate active connector telemetry and derive trust score plus failures."""
     failed_connectors: list[str] = []
@@ -433,10 +440,10 @@ def _compute_confidence_and_failures(
     total_weight = 0.0
 
     connector_checks: list[tuple[str, bool, str, re.Pattern[str]]] = [
-        ("weather", FEATURE_WEATHER, weather_report, WEATHER_FAILED_RE),
-        ("news", FEATURE_NEWS, news_report, NEWS_FAILED_RE),
-        ("email", FEATURE_EMAIL, email_report, EMAIL_FAILED_RE),
-        ("calendar", FEATURE_CALENDAR, calendar_report, CALENDAR_FAILED_RE),
+        ("weather", features.weather, weather_report, WEATHER_FAILED_RE),
+        ("news", features.news, news_report, NEWS_FAILED_RE),
+        ("email", features.email, email_report, EMAIL_FAILED_RE),
+        ("calendar", features.calendar, calendar_report, CALENDAR_FAILED_RE),
     ]
 
     for connector_name, enabled, report, failure_pattern in connector_checks:
@@ -448,9 +455,10 @@ def _compute_confidence_and_failures(
         else:
             earned_weight += 1.0
 
-    if FEATURE_SPORTS:
+    if features.sports:
         sports_earned, sports_total, sports_failed = _evaluate_sports_trust(
-            sports_report
+            sports_report,
+            modules=modules,
         )
         total_weight += sports_total
         earned_weight += sports_earned
@@ -763,6 +771,7 @@ def _run_demo_briefing() -> BriefingResponse:
             kwargs={
                 "text": final_briefing,
                 "tts_override": active_tts_engine,
+                "voice_gender": get_settings_store().get_snapshot().voice.gender,
                 "lock": _TRIGGER_LOCK,
             },
             daemon=True,
@@ -1097,9 +1106,10 @@ def health_check() -> dict[str, Any]:
 @app.get("/api/v1/config")
 def get_global_config() -> dict[str, Any]:
     """Expose global system configurations to the frontend HUD on boot."""
+    snapshot = get_settings_store().get_snapshot()
     return {
-        "default_profile": config.DEFAULT_CLOUD_PROFILE,
-        "ask_apex_enabled": config.ASK_APEX_ENABLED,
+        "default_profile": snapshot.assistant.default_profile,
+        "ask_apex_enabled": snapshot.assistant.enabled,
         "max_session_messages": config.MAX_SESSION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
@@ -1111,6 +1121,52 @@ def get_global_config() -> dict[str, Any]:
             "lynx" if is_dev_mode() and DEV_AI_SYNTHESIS == "local" else "comet"
         ),
     }
+
+
+def _build_settings_response() -> SettingsResponse:
+    """Assemble the public settings envelope from the runtime store."""
+    store = get_settings_store()
+    return SettingsResponse(
+        schema_version=SETTINGS_SCHEMA_VERSION,
+        settings=store.get_snapshot(),
+        local_file_present=store.local_file_present,
+        local_override_active=store.local_override_active,
+        load_warning=store.load_warning,
+        dev_mode_active=is_dev_mode(),
+        demo_mode_active=DEMO_MODE,
+    )
+
+
+@app.get("/api/v1/settings", response_model=SettingsResponse)
+def get_runtime_settings() -> SettingsResponse:
+    """Return resolved editable settings and read-only runtime mode state."""
+    return _build_settings_response()
+
+
+@app.patch("/api/v1/settings", response_model=SettingsResponse)
+def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
+    """
+    Merge dirty nested fields into the runtime settings store.
+
+    Persists transactionally to ``config.local.json`` and publishes only after
+    a successful write. Permanent persistence failures leave the active
+    snapshot unchanged.
+    """
+    store = get_settings_store()
+    dirty = payload.model_dump(exclude_none=True)
+    if not dirty:
+        return _build_settings_response()
+    try:
+        store.apply_patch(payload)
+    except SettingsPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Failed to persist settings to config.local.json. "
+                f"Active settings were not changed. ({exc})"
+            ),
+        ) from exc
+    return _build_settings_response()
 
 
 @app.get("/api/v1/status", response_model=PipelineStatusSnapshot)
@@ -1193,6 +1249,10 @@ def trigger_briefing() -> BriefingResponse:
             )
 
         try:
+            briefing_settings = get_settings_store().get_snapshot()
+            features = briefing_settings.features
+            modules = briefing_settings.modules
+
             dev_mode = is_dev_mode()
             synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "cloud"
             synthesis_router = SynthesisRouter(global_pipeline_state.update_synthesis)
@@ -1205,27 +1265,30 @@ def trigger_briefing() -> BriefingResponse:
 
             global_pipeline_state.update(2, "COLLECTION")
             print("[SYSTEM]: Fetching data...")
-            if FEATURE_WEATHER:
+            if features.weather:
                 weather_report = weather_client.fetch_weather_data()
             else:
                 print("[SYSTEM]: Weather module bypassed via user preference")
                 weather_report = ""
 
-            if FEATURE_SPORTS:
-                sports_report, f1_cache_refreshed, f1_map = sports_client.fetch_sports_snapshot()
+            if features.sports:
+                sports_report, f1_cache_refreshed, f1_map = sports_client.fetch_sports_snapshot(
+                    f1=modules.f1,
+                    football=modules.football,
+                )
             else:
                 print("[SYSTEM]: Sports module bypassed via user preference")
                 sports_report = ""
                 f1_cache_refreshed = True
                 f1_map = None
 
-            if FEATURE_NEWS:
+            if features.news:
                 news_report = news_client.fetch_news_data()
             else:
                 print("[SYSTEM]: News module bypassed via user preference")
                 news_report = ""
 
-            if not FEATURE_EMAIL:
+            if not features.email:
                 print("[SYSTEM]: Email module bypassed via user preference")
                 email_report = ""
             else:
@@ -1255,7 +1318,7 @@ def trigger_briefing() -> BriefingResponse:
                     print(f"[SYSTEM]: Email fetch failed: ({exc})")
                     email_report = "ERROR: Check connection"
 
-            if not FEATURE_CALENDAR:
+            if not features.calendar:
                 print("[SYSTEM]: Calendar module bypassed via user preference")
                 calendar_report = ""
                 calendar_data: list[dict[str, Any]] = []
@@ -1296,7 +1359,9 @@ def trigger_briefing() -> BriefingResponse:
                 f"{calendar_report} | {news_report} | {memory_report}"
             )
 
-            f1_cache_penalty = FEATURE_SPORTS and MODULE_F1 and not f1_cache_refreshed
+            f1_cache_penalty = (
+                features.sports and modules.f1 and not f1_cache_refreshed
+            )
             confidence_score, failed_connectors = _compute_confidence_and_failures(
                 weather_report=weather_report,
                 sports_report=sports_report,
@@ -1304,6 +1369,8 @@ def trigger_briefing() -> BriefingResponse:
                 email_report=email_report,
                 calendar_report=calendar_report,
                 f1_cache_penalty=f1_cache_penalty,
+                features=features,
+                modules=modules,
             )
 
             next_event: CalendarFact | None = None
@@ -1356,11 +1423,12 @@ def trigger_briefing() -> BriefingResponse:
 
             filler_thread.join()
 
+            delivery_voice = get_settings_store().get_snapshot().voice
             if dev_mode:
                 tts_strategy = DEV_TTS_PLAYBACK
             else:
                 synthesis_strategy = "cloud"
-                tts_strategy = config.PRIMARY_TTS
+                tts_strategy = delivery_voice.engine
 
             active_tts_engine, system_load_throttled = _resolve_tts_diagnostics(
                 dev_mode=dev_mode,
@@ -1407,6 +1475,7 @@ def trigger_briefing() -> BriefingResponse:
                 kwargs={
                     "text": final_briefing,
                     "tts_override": active_tts_engine,
+                    "voice_gender": delivery_voice.gender,
                     "lock": _TRIGGER_LOCK,
                 },
                 daemon=True,
@@ -1805,7 +1874,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     switch (503 on load failure). Already-loaded target models bypass the
     resource gate because their memory footprint is already present.
     """
-    if not config.ASK_APEX_ENABLED:
+    if not get_settings_store().get_snapshot().assistant.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="APEX is currently disabled in system settings.",

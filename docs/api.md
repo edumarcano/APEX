@@ -23,6 +23,8 @@ Health check. Returns a minimal payload for launcher readiness polling.
 
 Exposes global system configuration to the frontend HUD on boot. Called once alongside `GET /api/v1/reminders` while the HUD is idle.
 
+Editable fields (`default_profile`, `ask_apex_enabled`) are sourced from the process-wide runtime settings store (`config.json` overlaid by `config.local.json`), not from import-time frozen constants. Non-editable fields (`max_session_messages`, synthesis boot hints, DEV/DEMO flags) continue to come from `config.json` / environment as before.
+
 **Response `200`**
 ```json
 {
@@ -38,11 +40,96 @@ Exposes global system configuration to the frontend HUD on boot. Called once alo
 
 | Field | Type | Description |
 |---|---|---|
-| `default_profile` | string | Default APEX assistant profile (`"comet"`, `"nova"`, or `"pulsar"`) read from `config.json` `ask_apex.default_cloud_profile` |
-| `ask_apex_enabled` | boolean | Whether the assistant bar and assistant drawer are enabled, from `config.json` `ask_apex.enabled` |
+| `default_profile` | string | Default APEX assistant profile identity (`"comet"`, `"nova"`, `"pulsar"`, `"lynx"`, `"acinonyx"`, or `"neofelis"`) from the runtime settings store (`ask_apex.default_profile`, with legacy `default_cloud_profile` fallback at load time) |
+| `ask_apex_enabled` | boolean | Whether the assistant bar and assistant drawer are enabled, from the runtime settings store |
 | `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
 | `synthesis_strategy` | string | Initial HUD route: `cloud`, `local`, `raw`, or `demo` |
 | `synthesis_profile` | string \| null | Nominal initial profile (`comet` or `lynx`) when applicable |
+
+---
+
+### `GET /api/v1/settings`
+
+Returns the resolved editable settings snapshot plus read-only runtime metadata. Safe to call without the HUD.
+
+**Response `200`** — `SettingsResponse`
+```json
+{
+  "schema_version": 1,
+  "settings": {
+    "features": {
+      "weather": true,
+      "sports": true,
+      "news": false,
+      "email": false,
+      "calendar": true
+    },
+    "modules": {
+      "football": false,
+      "f1": true
+    },
+    "assistant": {
+      "enabled": true,
+      "default_profile": "comet"
+    },
+    "voice": {
+      "engine": "google",
+      "gender": "female"
+    }
+  },
+  "local_file_present": false,
+  "local_override_active": false,
+  "load_warning": null,
+  "dev_mode_active": false,
+  "demo_mode_active": false
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `schema_version` | integer | Settings contract version (currently `1`) |
+| `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `voice`) |
+| `local_file_present` | boolean | Whether `config.local.json` exists on disk |
+| `local_override_active` | boolean | Whether a valid local overlay is active |
+| `load_warning` | string \| null | Diagnostic from the last load when local overlay was discarded |
+| `dev_mode_active` | boolean | Read-only `DEV_MODE` env state |
+| `demo_mode_active` | boolean | Read-only `DEMO_MODE` env state |
+
+---
+
+### `PATCH /api/v1/settings`
+
+Merges dirty nested fields into the runtime settings store, validates, persists transactionally to `config.local.json`, and publishes only after a successful write. Omit unchanged sections and fields. Unknown fields are rejected.
+
+**Request body** — `SettingsPatch` (all sections optional; nested fields optional)
+```json
+{
+  "features": { "news": true },
+  "voice": { "gender": "male" }
+}
+```
+
+| Section | Fields |
+|---|---|
+| `features` | `weather`, `sports`, `news`, `email`, `calendar` (booleans) |
+| `modules` | `football`, `f1` (booleans) |
+| `assistant` | `enabled` (boolean), `default_profile` (one of the six profile identities) |
+| `voice` | `engine` (`google` \| `pyttsx3` \| `kokoro`), `gender` (`male` \| `female`) |
+
+**Response `200`** — same `SettingsResponse` envelope as GET after the patch applies.
+
+**Response `422`** — invalid or unknown fields (FastAPI/Pydantic validation).
+
+**Response `500`** — permanent persistence failure; active settings are not changed.
+```json
+{ "detail": "Failed to persist settings to config.local.json. Active settings were not changed. (...)" }
+```
+
+Empty patches (`{}`) return the current envelope without writing.
+
+`DEV_MODE` and `DEMO_MODE` are not patchable through this endpoint.
+
+**Effective timing:** connector and module flags are captured at briefing start; assistant enablement is checked when a query begins (in-flight queries finish); voice engine/gender are bound when delivery/`speak` begins.
 
 ---
 
@@ -397,7 +484,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 **Tool output whitelist:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Only tools in `ALLOWED_TOOL_OUTPUT_REGISTRY` (`core/agent/loop.py`) return their real output in this field: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`.
 
-**Response `403`** — Assistant interface disabled via `config.json` `ask_apex.enabled`
+**Response `403`** — Assistant interface disabled via runtime settings (`assistant.enabled` / `ask_apex.enabled`)
 ```json
 { "detail": "APEX is currently disabled in system settings." }
 ```

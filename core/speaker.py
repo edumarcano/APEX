@@ -26,6 +26,7 @@ import pyttsx3
 from dotenv import load_dotenv
 
 from core import config
+from core.settings import get_settings_store
 
 load_dotenv(dotenv_path=config.ENV_PATH)
 
@@ -43,14 +44,24 @@ def _infer_language_code(voice_id: str) -> str:
     return "en-US"
 
 
-def _get_active_kokoro_voice() -> str:
-    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
+def _normalize_voice_gender(gender: str | None) -> str:
+    """Return a normalized male/female gender string."""
+    if gender is None:
+        return "female"
+    normalized = gender.strip().lower()
+    return "male" if normalized == "male" else "female"
+
+
+def _get_active_kokoro_voice(gender: str) -> str:
     return "am_michael" if gender == "male" else "af_sky"
 
 
-def _get_active_google_voice() -> str:
-    gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
-    return "en-US-Chirp3-HD-Sadachbia" if gender == "male" else "en-US-Chirp3-HD-Laomedeia"
+def _get_active_google_voice(gender: str) -> str:
+    return (
+        "en-US-Chirp3-HD-Sadachbia"
+        if gender == "male"
+        else "en-US-Chirp3-HD-Laomedeia"
+    )
 
 
 def _warm_system_subsystems() -> None:
@@ -82,7 +93,10 @@ def _get_kokoro_client() -> Kokoro:
 
 def _warm_local_kokoro() -> None:
     """Pre-warm the local Kokoro ONNX client when kokoro is the configured active engine."""
-    primary = str(getattr(config, "PRIMARY_TTS", "pyttsx3")).strip().lower()
+    try:
+        primary = get_settings_store().get_snapshot().voice.engine
+    except Exception:  # noqa: BLE001
+        primary = "pyttsx3"
     dev_tts = str(getattr(config, "DEV_TTS_PLAYBACK", "pyttsx3")).strip().lower()
 
     if primary != "kokoro" and dev_tts != "kokoro":
@@ -94,7 +108,7 @@ def _warm_local_kokoro() -> None:
             client = _get_kokoro_client()
             client.create(
                 "warm",
-                voice=_get_active_kokoro_voice(),
+                voice=_get_active_kokoro_voice("female"),
                 speed=1.0,
                 lang="en-us",
             )
@@ -189,7 +203,7 @@ def _play_audio_bytes(data: bytes) -> None:
             unload()
 
 
-def _speak_kokoro_local(text: str) -> None:
+def _speak_kokoro_local(text: str, *, gender: str) -> None:
     """Synthesize and play text via the in-process Kokoro ONNX engine."""
     if np is None:
         raise ImportError("numpy is not installed.")
@@ -197,7 +211,7 @@ def _speak_kokoro_local(text: str) -> None:
     client = _get_kokoro_client()
     samples, sample_rate = client.create(
         text,
-        voice=_get_active_kokoro_voice(),
+        voice=_get_active_kokoro_voice(gender),
         speed=1.0,
         lang="en-us",
     )
@@ -207,7 +221,7 @@ def _speak_kokoro_local(text: str) -> None:
     print("[SPEAKER] Local Kokoro ONNX playback completed.")
 
 
-def _speak_pyttsx3_local(text: str) -> None:
+def _speak_pyttsx3_local(text: str, *, gender: str) -> None:
     """Speak text with a thread-local pyttsx3 engine."""
     if os.name == "nt":
         try:
@@ -222,7 +236,6 @@ def _speak_pyttsx3_local(text: str) -> None:
 
         voices = engine.getProperty("voices")
         if voices:
-            gender = getattr(config, "VOICE_GENDER", "female").strip().lower()
             selected_id = None
             for voice in voices:
                 name_lower = (getattr(voice, "name", "") or "").lower()
@@ -249,9 +262,9 @@ def _speak_pyttsx3_local(text: str) -> None:
         print(f"[SPEAKER] Local pyttsx3 playback failed ({type(exc).__name__}).")
 
 
-def _try_google_tts(content: str) -> bool:
+def _try_google_tts(content: str, *, gender: str) -> bool:
     """Return True if Google cloud TTS played successfully."""
-    active_voice = _get_active_google_voice()
+    active_voice = _get_active_google_voice(gender)
     if not active_voice.strip():
         print("[SPEAKER] Skipping Google TTS: active_voice is not configured.")
         return False
@@ -278,7 +291,7 @@ def is_speaking() -> bool:
     return False
 
 
-def _route_tts_playback(text: str, tts_strategy: str) -> None:
+def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> None:
     """Route speech through a safe, low-latency fallback chain keyed by ``tts_strategy``."""
     normalized = tts_strategy.strip().lower()
 
@@ -291,64 +304,75 @@ def _route_tts_playback(text: str, tts_strategy: str) -> None:
 
     if normalized == "google":
         print("[SPEAKER] Routing to Google Cloud TTS client API.")
-        if _try_google_tts(text):
+        if _try_google_tts(text, gender=gender):
             return
         print("[SPEAKER] Google TTS failed; falling back to pyttsx3.")
-        _speak_pyttsx3_local(text)
+        _speak_pyttsx3_local(text, gender=gender)
         return
 
     if normalized == "kokoro":
         print("[SPEAKER] Routing to local Kokoro ONNX engine.")
         try:
-            _speak_kokoro_local(text)
+            _speak_kokoro_local(text, gender=gender)
         except Exception as exc:  # noqa: BLE001
             print(
                 f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
                 "falling back to Google Cloud TTS."
             )
-            _route_tts_playback(text, "google")
+            _route_tts_playback(text, "google", gender=gender)
         return
 
     if normalized == "pyttsx3":
         print("[SPEAKER] Routing directly to local pyttsx3 execution.")
-        _speak_pyttsx3_local(text)
+        _speak_pyttsx3_local(text, gender=gender)
         return
 
     print(
         f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
         "defaulting to local pyttsx3."
     )
-    _route_tts_playback(text, "pyttsx3")
+    _route_tts_playback(text, "pyttsx3", gender=gender)
 
 
-def speak(text: str, *, tts_override: str | None = None) -> None:
-    """Speak text parameters using pre-warmed cloud structures, defaulting to dynamic local thread loops.
+def speak(
+    text: str,
+    *,
+    tts_override: str | None = None,
+    voice_gender: str | None = None,
+) -> None:
+    """Speak text using bound engine/gender for the duration of this call.
 
     Protects and linearizes all executing threads via a universal lock block to guarantee
     thread-safe audio routing across asynchronous invocation checkpoints.
 
     Args:
         text: Plain-text payload for playback.
-        tts_override: When set, bypasses DEV_MODE and PRIMARY_TTS routing for this call.
+        tts_override: When set, bypasses DEV_MODE and runtime engine routing for this call.
+        voice_gender: When set, binds male/female for this call; otherwise uses the
+            runtime settings snapshot captured at speak entry.
     """
     with _SPEAK_LOCK:
         print(f"[SPEAKER] Speak request received (chars={len(text)}).")
 
+        snapshot = get_settings_store().get_snapshot()
+        bound_gender = _normalize_voice_gender(
+            voice_gender if voice_gender is not None else snapshot.voice.gender
+        )
+
         if tts_override is not None:
             print(f"[SPEAKER] TTS override active; routing vector is {tts_override!r}.")
-            _route_tts_playback(text, tts_override)
+            _route_tts_playback(text, tts_override, gender=bound_gender)
             return
 
         if config.is_dev_mode():
             dev_tts = config.DEV_TTS_PLAYBACK
             print(f"[SPEAKER] DEV_MODE active; DEV_TTS_PLAYBACK routing vector is {dev_tts!r}.")
-
-            _route_tts_playback(text, dev_tts)
+            _route_tts_playback(text, dev_tts, gender=bound_gender)
             return
 
-        primary_raw = getattr(config, "PRIMARY_TTS", "pyttsx3")
-        print(f"[SPEAKER] Configured PRIMARY_TTS routing vector is {primary_raw!r}.")
-        _route_tts_playback(text, str(primary_raw))
+        primary = snapshot.voice.engine
+        print(f"[SPEAKER] Configured PRIMARY_TTS routing vector is {primary!r}.")
+        _route_tts_playback(text, primary, gender=bound_gender)
 
 
 _warm_system_subsystems()
