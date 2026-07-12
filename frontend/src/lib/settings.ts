@@ -53,7 +53,8 @@ function parseFeatures(value: unknown): FeaturesSettings | null {
     typeof value.sports !== 'boolean' ||
     typeof value.news !== 'boolean' ||
     typeof value.email !== 'boolean' ||
-    typeof value.calendar !== 'boolean'
+    typeof value.calendar !== 'boolean' ||
+    typeof value.market !== 'boolean'
   ) {
     return null
   }
@@ -63,6 +64,7 @@ function parseFeatures(value: unknown): FeaturesSettings | null {
     news: value.news,
     email: value.email,
     calendar: value.calendar,
+    market: value.market,
   }
 }
 
@@ -246,6 +248,10 @@ export function resolveEffectiveTiming(
 ): SettingsEffectiveTiming {
   if (group === 'features' || group === 'modules') {
     return runtime.briefingActive ? 'Applies next briefing' : 'Active'
+  }
+
+  if (group === 'market') {
+    return 'Active'
   }
 
   if (group === 'assistant') {

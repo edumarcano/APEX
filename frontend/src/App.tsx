@@ -176,7 +176,6 @@ export default function App(): ReactElement {
   const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
-  const { data: marketData, isLoading: isMarketLoading } = useMarketData()
   const apexData = useApexData()
   const {
     data,
@@ -192,6 +191,7 @@ export default function App(): ReactElement {
     active_tts_engine,
     system_load_throttled,
     askApexEnabled,
+    marketEnabled,
     synthesisProvider,
     synthesisProfile,
     synthesisFallbackReason,
@@ -201,6 +201,7 @@ export default function App(): ReactElement {
     triggerSynthesis,
     applyBootSettings,
   } = apexData
+  const { data: marketData, isLoading: isMarketLoading } = useMarketData(marketEnabled)
 
   const showAskApexBar = status === 'success' && askApexEnabled
 
@@ -235,6 +236,7 @@ export default function App(): ReactElement {
       applyBootSettings({
         askApexEnabled: response.settings.assistant.enabled,
         defaultProfile: response.settings.assistant.default_profile,
+        marketEnabled: response.settings.features.market,
       })
     },
     [applyBootSettings],
@@ -717,6 +719,7 @@ export default function App(): ReactElement {
                     <MarketTickerCard
                       data={marketData}
                       isLoading={isMarketLoading}
+                      enabled={marketEnabled}
                       isCompact
                       attentionTier={attentionTiers.market}
                       attentionStaggerMs={attentionStagger.market}
@@ -801,6 +804,7 @@ export default function App(): ReactElement {
                     <MarketTickerCard
                       data={marketData}
                       isLoading={isMarketLoading}
+                      enabled={marketEnabled}
                       attentionTier={attentionTiers.market}
                       attentionStaggerMs={attentionStagger.market}
                       className={`min-h-0 w-full ${marketPanelLayoutClass}`}

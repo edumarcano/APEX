@@ -18,7 +18,7 @@ VALID_ASSISTANT_PROFILES: frozenset[str] = frozenset(
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 
-SETTINGS_SCHEMA_VERSION: int = 1
+SETTINGS_SCHEMA_VERSION: int = 2
 
 
 class FeaturesSettings(BaseModel):
@@ -31,6 +31,7 @@ class FeaturesSettings(BaseModel):
     news: bool = False
     email: bool = False
     calendar: bool = False
+    market: bool = False
 
 
 class ModulesSettings(BaseModel):
@@ -81,6 +82,7 @@ class FeaturesPatch(BaseModel):
     news: bool | None = None
     email: bool | None = None
     calendar: bool | None = None
+    market: bool | None = None
 
 
 class ModulesPatch(BaseModel):

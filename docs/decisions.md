@@ -18,7 +18,7 @@ Keeping them separate means: the defaults are visible in version control, `.env.
 
 ### `config.local.json` as the mutable overlay
 
-Editable operator preferences (connectors, sports modules, assistant enablement/default profile, TTS engine/gender) are managed at runtime through `GET` / `PATCH /api/v1/settings`. Patches persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults. This keeps local machine preference changes out of version control while preserving a readable committed baseline.
+Editable operator preferences (briefing connectors, the independent Market poller, sports modules, assistant enablement/default profile, TTS engine/gender) are managed at runtime through `GET` / `PATCH /api/v1/settings`. Patches persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults. This keeps local machine preference changes out of version control while preserving a readable committed baseline.
 
 `DEV_MODE`, `DEMO_MODE`, and other `.env` switches remain read-only through the settings API and are never written by PATCH.
 

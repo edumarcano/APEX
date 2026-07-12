@@ -30,6 +30,7 @@ export type UseApexDataReturn = ApexDataState & {
   applyBootSettings: (next: {
     askApexEnabled: boolean
     defaultProfile: AssistantProfile
+    marketEnabled: boolean
   }) => void
 }
 
@@ -258,6 +259,7 @@ export function useApexData(): UseApexDataReturn {
     active_tts_engine: 'google',
     system_load_throttled: false,
     askApexEnabled: true,
+    marketEnabled: true,
     synthesisStrategy: 'cloud',
     synthesisProvider: 'gemini',
     synthesisProfile: 'comet',
@@ -287,11 +289,12 @@ export function useApexData(): UseApexDataReturn {
   }, [])
 
   const applyBootSettings = useCallback(
-    (next: { askApexEnabled: boolean; defaultProfile: AssistantProfile }): void => {
+    (next: { askApexEnabled: boolean; defaultProfile: AssistantProfile; marketEnabled: boolean }): void => {
       setState((prev) => ({
         ...prev,
         askApexEnabled: next.askApexEnabled,
         defaultProfile: next.defaultProfile,
+        marketEnabled: next.marketEnabled,
         data: prev.data
           ? {
               ...prev.data,
@@ -589,6 +592,7 @@ export function useApexData(): UseApexDataReturn {
 
         let defaultProfile: AssistantProfile | undefined
         let askApexEnabled: boolean | undefined
+        let marketEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
         let devModeActive: boolean | undefined
         let synthesisStrategy: SynthesisStrategy | undefined
@@ -600,6 +604,7 @@ export function useApexData(): UseApexDataReturn {
               const body = configBody as {
                 default_profile?: unknown
                 ask_apex_enabled?: unknown
+                market_enabled?: unknown
                 demo_mode_active?: unknown
                 dev_mode_active?: unknown
                 synthesis_strategy?: unknown
@@ -608,6 +613,9 @@ export function useApexData(): UseApexDataReturn {
               defaultProfile = parseDefaultProfile(body.default_profile)
               if (typeof body.ask_apex_enabled === 'boolean') {
                 askApexEnabled = body.ask_apex_enabled
+              }
+              if (typeof body.market_enabled === 'boolean') {
+                marketEnabled = body.market_enabled
               }
               if (typeof body.demo_mode_active === 'boolean') {
                 demoModeActive = body.demo_mode_active
@@ -632,6 +640,7 @@ export function useApexData(): UseApexDataReturn {
           if (
             defaultProfile !== undefined ||
             askApexEnabled !== undefined ||
+            marketEnabled !== undefined ||
             demoModeActive !== undefined ||
             devModeActive !== undefined ||
             synthesisStrategy !== undefined
@@ -645,6 +654,7 @@ export function useApexData(): UseApexDataReturn {
                 ...prev,
                 defaultProfile,
                 ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                ...(marketEnabled !== undefined ? { marketEnabled } : {}),
                 ...modePatch,
                 ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
                 ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),
@@ -690,6 +700,7 @@ export function useApexData(): UseApexDataReturn {
             activeReminders,
             ...(defaultProfile !== undefined ? { defaultProfile } : {}),
             ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+            ...(marketEnabled !== undefined ? { marketEnabled } : {}),
             ...modePatch,
             ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
             ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),

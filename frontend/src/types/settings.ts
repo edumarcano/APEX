@@ -8,6 +8,7 @@ export interface FeaturesSettings {
   news: boolean
   email: boolean
   calendar: boolean
+  market: boolean
 }
 
 export interface ModulesSettings {
@@ -38,6 +39,7 @@ export interface FeaturesPatch {
   news?: boolean
   email?: boolean
   calendar?: boolean
+  market?: boolean
 }
 
 export interface ModulesPatch {
@@ -79,7 +81,7 @@ export type SettingsEffectiveTiming =
   | 'Applies next response'
   | 'Applies next delivery'
 
-export type SettingsTimingFieldGroup = 'features' | 'modules' | 'assistant' | 'voice'
+export type SettingsTimingFieldGroup = 'features' | 'market' | 'modules' | 'assistant' | 'voice'
 
 export interface SettingsTimingRuntime {
   briefingActive: boolean

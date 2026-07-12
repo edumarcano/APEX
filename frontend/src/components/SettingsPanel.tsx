@@ -39,6 +39,7 @@ const FEATURE_CONTROLS: readonly {
   { key: 'news', label: 'News' },
   { key: 'email', label: 'Email' },
   { key: 'calendar', label: 'Calendar' },
+  { key: 'market', label: 'Market' },
 ]
 
 const MODULE_CONTROLS: readonly {
@@ -188,10 +189,10 @@ function SettingsSelect<T extends string>({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as T)}
-        className="hud-command-surface w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 font-mono text-xs text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="hud-command-surface w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 [color-scheme:dark] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value} value={option.value} className="bg-zinc-950 text-zinc-100">
             {option.label}
           </option>
         ))}
@@ -247,6 +248,9 @@ function resolveConnectorStatus(
 ): { value: string; tone: 'neutral' | 'ok' | 'warn' | 'error' } {
   if (!enabled) {
     return { value: 'Disabled', tone: 'neutral' }
+  }
+  if (connectorKey === 'market') {
+    return { value: 'Enabled', tone: 'ok' }
   }
   if (!hasBriefingEvidence) {
     return { value: 'Not yet checked', tone: 'neutral' }
@@ -307,6 +311,7 @@ export default function SettingsPanel({
   )
 
   const featuresTiming = resolveEffectiveTiming('features', timingRuntime)
+  const marketTiming = resolveEffectiveTiming('market', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
   const assistantTiming = resolveEffectiveTiming('assistant', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
@@ -460,7 +465,7 @@ export default function SettingsPanel({
                         id={`settings-feature-${control.key}`}
                         label={control.label}
                         checked={draft.features[control.key]}
-                        timing={featuresTiming}
+                        timing={control.key === 'market' ? marketTiming : featuresTiming}
                         onChange={(next) =>
                           setDraft((prev) => ({
                             ...prev,

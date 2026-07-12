@@ -20,6 +20,7 @@ describe('settings response parsing', () => {
 
   it.each([
     ['feature boolean', ['settings', 'features', 'weather'], 'yes'],
+    ['market boolean', ['settings', 'features', 'market'], 'yes'],
     ['module boolean', ['settings', 'modules', 'f1'], 1],
     ['assistant boolean', ['settings', 'assistant', 'enabled'], null],
     ['assistant profile', ['settings', 'assistant', 'default_profile'], 'invalid'],
@@ -71,11 +72,12 @@ describe('settings editing utilities', () => {
   it('generates a patch containing only dirty fields', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.features.weather = false
+    draft.features.market = false
     draft.assistant.default_profile = 'lynx'
     draft.voice.gender = 'male'
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
-      features: { weather: false },
+      features: { weather: false, market: false },
       assistant: { default_profile: 'lynx' },
       voice: { gender: 'male' },
     })
@@ -119,6 +121,7 @@ describe('effective timing', () => {
     expect(resolveEffectiveTiming('features', runtime)).toBe(
       'Applies next briefing',
     )
+    expect(resolveEffectiveTiming('market', runtime)).toBe('Active')
     expect(resolveEffectiveTiming('modules', runtime)).toBe(
       'Applies next briefing',
     )

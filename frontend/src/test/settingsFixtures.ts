@@ -7,6 +7,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     news: true,
     email: false,
     calendar: false,
+    market: true,
   },
   modules: {
     football: false,
@@ -26,7 +27,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 1,
+    schema_version: 2,
     settings,
     local_file_present: false,
     local_override_active: false,

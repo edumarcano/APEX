@@ -103,15 +103,23 @@ function toStaleFallback(previous: MarketResponse): MarketResponse {
   }
 }
 
-export function useMarketData(): MarketDataState {
+export function useMarketData(enabled: boolean): MarketDataState {
   const [data, setData] = useState<MarketResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(enabled)
   const dataRef = useRef<MarketResponse | null>(null)
   // eslint-disable-next-line react-hooks/refs -- Poll fallback needs the latest committed market payload without resubscribing the interval.
   dataRef.current = data
 
   useEffect(() => {
+    if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Disabled is an explicit external lifecycle state.
+      setData(null)
+      setIsLoading(false)
+      return
+    }
+
     let cancelled = false
+    setIsLoading(true)
 
     const pollMarket = async (): Promise<void> => {
       try {
@@ -174,7 +182,7 @@ export function useMarketData(): MarketDataState {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [])
+  }, [enabled])
 
   return { data, isLoading }
 }

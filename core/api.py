@@ -1110,6 +1110,7 @@ def get_global_config() -> dict[str, Any]:
     return {
         "default_profile": snapshot.assistant.default_profile,
         "ask_apex_enabled": snapshot.assistant.enabled,
+        "market_enabled": snapshot.features.market,
         "max_session_messages": config.MAX_SESSION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
