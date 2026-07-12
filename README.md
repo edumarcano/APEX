@@ -114,7 +114,7 @@ Tracked `config.json` remains the committed baseline for all configuration, incl
 
 ```json
 {
-  "features":    { "weather": true, "sports": true, "news": true, "email": false, "calendar": false },
+  "features":    { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
   "modules":     { "f1": true, "football": false },
   "tts_settings": { "primary_tts": "google", "voice_gender": "female" },
   "system_prompt": "You are APEX. Deliver a concise briefing in under 75 words. No emojis or markdown.",
