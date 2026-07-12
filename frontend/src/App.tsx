@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -23,6 +24,7 @@ import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { ReminderListRow } from './components/ReminderListRow'
+import SettingsPanel from './components/SettingsPanel'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
 import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
@@ -35,6 +37,7 @@ import {
   resolveAttentionTier,
 } from './lib/attentionTier'
 import type { AssistantProfile } from './types/telemetry'
+import type { SettingsResponse } from './types/settings'
 
 interface ParsedEmail {
   subject: string
@@ -168,6 +171,8 @@ export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('comet')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
@@ -190,9 +195,11 @@ export default function App(): ReactElement {
     synthesisProvider,
     synthesisProfile,
     synthesisFallbackReason,
+    defaultProfile,
     refreshReminders,
     markReminderAsRead,
     triggerSynthesis,
+    applyBootSettings,
   } = apexData
 
   const showAskApexBar = status === 'success' && askApexEnabled
@@ -212,14 +219,26 @@ export default function App(): ReactElement {
     setAssistantOpen,
   } = useApexAssistant(true)
 
-  // Synchronize the active profile state with the backend's configured defaults on boot
+  // Synchronize the active profile with backend defaults when idle (not mid-query).
   useEffect(() => {
-    const profile = data?.defaultProfile
-    if (profile && isAssistantProfile(profile)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors backend boot config into the user's selectable profile state.
-      setAgentProfile(profile)
+    if (isAssistantQuerying) {
+      return
     }
-  }, [data?.defaultProfile])
+    if (defaultProfile && isAssistantProfile(defaultProfile)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors backend boot/settings config into selectable profile state.
+      setAgentProfile(defaultProfile)
+    }
+  }, [defaultProfile, isAssistantQuerying])
+
+  const handleSettingsApplied = useCallback(
+    (response: SettingsResponse) => {
+      applyBootSettings({
+        askApexEnabled: response.settings.assistant.enabled,
+        defaultProfile: response.settings.assistant.default_profile,
+      })
+    },
+    [applyBootSettings],
+  )
 
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
@@ -541,8 +560,25 @@ export default function App(): ReactElement {
             synthesisProvider={resolvedSynthesisProvider}
             synthesisProfile={resolvedSynthesisProfile}
             synthesisFallbackReason={resolvedSynthesisReason}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            settingsButtonRef={settingsButtonRef}
           />
         </header>
+
+        <SettingsPanel
+          open={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          restoreFocusRef={settingsButtonRef}
+          status={status}
+          pipelineStep={activeStep}
+          isSpeaking={isSpeaking}
+          isAssistantQuerying={isAssistantQuerying}
+          profilesStatus={profilesStatus}
+          profilesStatusHydrated={profilesStatusHydrated}
+          failedConnectors={failedConnectors}
+          hasBriefingEvidence={status === 'success' || status === 'error'}
+          onApplied={handleSettingsApplied}
+        />
 
         <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
             {/* COLUMN 1: LEFT WING */}

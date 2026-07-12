@@ -27,6 +27,10 @@ export type UseApexDataReturn = ApexDataState & {
   refreshReminders: () => Promise<void>
   markReminderAsRead: (id: number) => Promise<void>
   triggerSynthesis: () => Promise<void>
+  applyBootSettings: (next: {
+    askApexEnabled: boolean
+    defaultProfile: AssistantProfile
+  }) => void
 }
 
 type ReminderRecord = {
@@ -281,6 +285,24 @@ export function useApexData(): UseApexDataReturn {
         : createStandbyTelemetryPayload(activeReminders, reminders, prev.defaultProfile),
     }))
   }, [])
+
+  const applyBootSettings = useCallback(
+    (next: { askApexEnabled: boolean; defaultProfile: AssistantProfile }): void => {
+      setState((prev) => ({
+        ...prev,
+        askApexEnabled: next.askApexEnabled,
+        defaultProfile: next.defaultProfile,
+        data: prev.data
+          ? {
+              ...prev.data,
+              askApexEnabled: next.askApexEnabled,
+              defaultProfile: next.defaultProfile,
+            }
+          : prev.data,
+      }))
+    },
+    [],
+  )
 
   const refreshReminders = useCallback(async (): Promise<void> => {
     try {
@@ -797,5 +819,5 @@ export function useApexData(): UseApexDataReturn {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- The polling transition is keyed to public lifecycle state only.
   }, [state.status, state.pipelineState?.step])
 
-  return { ...state, refreshReminders, markReminderAsRead, triggerSynthesis }
+  return { ...state, refreshReminders, markReminderAsRead, triggerSynthesis, applyBootSettings }
 }

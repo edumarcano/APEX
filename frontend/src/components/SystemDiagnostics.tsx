@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FocusEvent, KeyboardEvent, ReactElement } from 'react'
+import type { FocusEvent, KeyboardEvent, ReactElement, RefObject } from 'react'
 import {
   Clock,
   Cpu,
   Database,
   Globe,
   HardDrive,
+  Settings,
   type LucideIcon,
   RotateCw,
 } from 'lucide-react'
@@ -86,6 +87,8 @@ interface SystemDiagnosticsProps {
   synthesisProvider?: SynthesisProvider | null
   synthesisProfile?: SynthesisProfile | null
   synthesisFallbackReason?: string | null
+  onOpenSettings?: () => void
+  settingsButtonRef?: RefObject<HTMLButtonElement | null>
 }
 
 function SynthesisPill({
@@ -226,6 +229,8 @@ export function SystemDiagnostics({
   synthesisProvider = 'gemini',
   synthesisProfile = 'comet',
   synthesisFallbackReason = null,
+  onOpenSettings,
+  settingsButtonRef,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isOpen, setIsOpen] = useState(false)
@@ -498,6 +503,19 @@ export function SystemDiagnostics({
           ledClass={isNetworkConnected ? 'hud-led--live' : 'hud-led--error'}
           icon={Globe}
         />
+        {onOpenSettings ? (
+          <button
+            ref={settingsButtonRef}
+            type="button"
+            onClick={onOpenSettings}
+            className="hud-interactive-shell hud-glass flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-300 transition-colors hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+            aria-label="Open settings"
+          >
+            <span className="hud-inner-lift inline-flex items-center justify-center">
+              <Settings className="size-3.5" strokeWidth={2} aria-hidden="true" />
+            </span>
+          </button>
+        ) : null}
         <div className="hidden sm:block">
           <ClockPill time={liveTime} />
         </div>
