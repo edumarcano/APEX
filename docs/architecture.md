@@ -449,7 +449,7 @@ Process-wide runtime settings store for editable operator preferences:
 
 `GET` / `PATCH /api/v1/settings` and editable fields on `GET /api/v1/config` read this snapshot. Patches merge dirty nested fields under a lock, validate, write atomically to `config.local.json`, and publish only after replacement succeeds. Malformed or invalid local files fall back to tracked defaults and retain a diagnostic `load_warning`.
 
-Active paths capture snapshots at operation boundaries: features/modules at briefing start, assistant enablement at query begin, and voice engine/gender when delivery/`speak` begins.
+Active paths capture snapshots at operation boundaries: briefing features/modules at briefing start, assistant enablement at query begin, and voice engine/gender when delivery/`speak` begins. Market takes effect immediately by enabling or disabling its independent HUD poller.
 
 ---
 
@@ -605,6 +605,8 @@ Polls `GET /api/v1/diagnostics` every 1,000 ms. Exposes `{ diagnostics, status }
 
 ### `useMarketData`
 
+Market polling runs immediately and every 30 seconds only while `features.market` is enabled. Disabling it stops requests and leaves an explicit disabled card visible; re-enabling it fetches immediately. This remains independent from the briefing pipeline.
+
 Polls `GET /api/v1/market` every 30,000 ms via `MARKET_POLL_INTERVAL_MS`. Exposes `{ data, isLoading }`. No dependency on the trigger or pipeline state. On a failed fetch, a non-2xx response, or an unparseable body, the hook does not discard the previously held snapshot — it downgrades it through `toStaleFallback()` (`"live"`/`"partial"` global status and any `"live"` per-ticker status become `"stale"`) so a transient poll failure degrades freshness rather than clearing the ticker.
 
 ---
@@ -748,6 +750,8 @@ All datetimes use `ZoneInfo("America/New_York")` and format to `"%A, %B %d at %I
 `_resolve_global_status()` derives the top-level `status` field from the per-symbol statuses: `"live"` if every symbol is live, `"partial"` if some but not all are live, `"stale"` if none are live but at least one has cached data, and `"unavailable"` otherwise. `MARKET_SYMBOLS` being unset short-circuits to `"not_configured"` with an empty ticker list before any cache or network logic runs.
 
 ### Frontend Consumption
+
+Automatic local briefing loads animate the central logo and signal glyph without activating the assistant console. The console uses rust only when an assistant query owns the local-model load and purple for other assistant work.
 
 `useMarketData.ts` polls `GET /api/v1/market` every 30 seconds. On a failed fetch, malformed response, or non-2xx status, it does not clear existing data — it downgrades the previously held response via `toStaleFallback()` (any `"live"`/`"partial"` global status becomes `"stale"`; any `"live"` per-ticker status becomes `"stale"`), so a transient backend hiccup degrades the ticker's freshness indicator rather than blanking it.
 

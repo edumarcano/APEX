@@ -37,6 +37,7 @@ class SettingsApiTests(unittest.TestCase):
                 "news": False,
                 "email": False,
                 "calendar": True,
+                "market": True,
             },
             "modules": {"football": False, "f1": True},
             "ask_apex": {
@@ -72,7 +73,8 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertTrue(payload["settings"]["modules"]["f1"])
         self.assertEqual(payload["settings"]["assistant"]["default_profile"], "comet")
@@ -82,6 +84,17 @@ class SettingsApiTests(unittest.TestCase):
         self.assertIn("load_warning", payload)
         self.assertIn("dev_mode_active", payload)
         self.assertIn("demo_mode_active", payload)
+
+    def test_market_patch_is_exposed_by_boot_config(self) -> None:
+        response = self.client.patch(
+            "/api/v1/settings", json={"features": {"market": False}}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["settings"]["features"]["market"])
+
+        boot = self.client.get("/api/v1/config")
+        self.assertEqual(boot.status_code, 200)
+        self.assertFalse(boot.json()["market_enabled"])
 
     def test_partial_patch_persists_and_returns_resolved(self) -> None:
         response = self.client.patch(

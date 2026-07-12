@@ -189,6 +189,7 @@ export interface ApexDataState {
   system_load_throttled: boolean
   defaultProfile?: AssistantProfile
   askApexEnabled?: boolean
+  marketEnabled: boolean
   synthesisStrategy: SynthesisStrategy
   synthesisProvider: SynthesisProvider | null
   synthesisProfile: SynthesisProfile | null

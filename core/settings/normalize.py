@@ -21,7 +21,7 @@ from core.settings.models import (
 _LOGGER = logging.getLogger(__name__)
 
 _FEATURE_KEYS: frozenset[str] = frozenset(
-    {"weather", "sports", "news", "email", "calendar"}
+    {"weather", "sports", "news", "email", "calendar", "market"}
 )
 _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 _EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
@@ -350,6 +350,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         news=bool(features_raw.get("news", False)),
         email=bool(features_raw.get("email", False)),
         calendar=bool(features_raw.get("calendar", False)),
+        market=bool(features_raw.get("market", False)),
     )
     modules = ModulesSettings(
         football=bool(modules_raw.get("football", False)),

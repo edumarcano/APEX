@@ -23,13 +23,14 @@ Health check. Returns a minimal payload for launcher readiness polling.
 
 Exposes global system configuration to the frontend HUD on boot. Called once alongside `GET /api/v1/reminders` while the HUD is idle.
 
-Editable fields (`default_profile`, `ask_apex_enabled`) are sourced from the process-wide runtime settings store (`config.json` overlaid by `config.local.json`), not from import-time frozen constants. Non-editable fields (`max_session_messages`, synthesis boot hints, DEV/DEMO flags) continue to come from `config.json` / environment as before.
+Editable fields (`default_profile`, `ask_apex_enabled`, `market_enabled`) are sourced from the process-wide runtime settings store (`config.json` overlaid by `config.local.json`), not from import-time frozen constants. Non-editable fields (`max_session_messages`, synthesis boot hints, DEV/DEMO flags) continue to come from `config.json` / environment as before.
 
 **Response `200`**
 ```json
 {
   "default_profile": "comet",
   "ask_apex_enabled": true,
+  "market_enabled": true,
   "max_session_messages": 6,
   "dev_mode_active": false,
   "demo_mode_active": false,
@@ -42,6 +43,7 @@ Editable fields (`default_profile`, `ask_apex_enabled`) are sourced from the pro
 |---|---|---|
 | `default_profile` | string | Default APEX assistant profile identity (`"comet"`, `"nova"`, `"pulsar"`, `"lynx"`, `"acinonyx"`, or `"neofelis"`) from the runtime settings store (`ask_apex.default_profile`, with legacy `default_cloud_profile` fallback at load time) |
 | `ask_apex_enabled` | boolean | Whether the assistant bar and assistant drawer are enabled, from the runtime settings store |
+| `market_enabled` | boolean | Whether the HUD market connector polls and displays live data, from the runtime settings store |
 | `max_session_messages` | integer | Client-side chat history cap, from `config.json` `ask_apex.max_session_messages` |
 | `synthesis_strategy` | string | Initial HUD route: `cloud`, `local`, `raw`, or `demo` |
 | `synthesis_profile` | string \| null | Nominal initial profile (`comet` or `lynx`) when applicable |
@@ -55,14 +57,15 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 **Response `200`** — `SettingsResponse`
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "settings": {
     "features": {
       "weather": true,
       "sports": true,
       "news": false,
       "email": false,
-      "calendar": true
+      "calendar": true,
+      "market": true
     },
     "modules": {
       "football": false,
@@ -87,7 +90,7 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | integer | Settings contract version (currently `1`) |
+| `schema_version` | integer | Settings contract version (currently `2`) |
 | `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `voice`) |
 | `local_file_present` | boolean | Whether `config.local.json` exists on disk |
 | `local_override_active` | boolean | Whether a valid local overlay is active |
@@ -111,7 +114,7 @@ Merges dirty nested fields into the runtime settings store, validates, persists 
 
 | Section | Fields |
 |---|---|
-| `features` | `weather`, `sports`, `news`, `email`, `calendar` (booleans) |
+| `features` | `weather`, `sports`, `news`, `email`, `calendar`, `market` (booleans) |
 | `modules` | `football`, `f1` (booleans) |
 | `assistant` | `enabled` (boolean), `default_profile` (one of the six profile identities) |
 | `voice` | `engine` (`google` \| `pyttsx3` \| `kokoro`), `gender` (`male` \| `female`) |
@@ -129,7 +132,7 @@ Empty patches (`{}`) return the current envelope without writing.
 
 `DEV_MODE` and `DEMO_MODE` are not patchable through this endpoint.
 
-**Effective timing:** connector and module flags are captured at briefing start; assistant enablement is checked when a query begins (in-flight queries finish); voice engine/gender are bound when delivery/`speak` begins.
+**Effective timing:** briefing connector and module flags are captured at briefing start; `features.market` immediately starts or stops HUD polling; assistant enablement is checked when a query begins (in-flight queries finish); voice engine/gender are bound when delivery/`speak` begins.
 
 ---
 
@@ -286,7 +289,7 @@ Each psutil query is isolated in a `try/except`; a single hardware read failure 
 
 ### `GET /api/v1/market`
 
-Cache-first end-of-day market snapshot for a configured ticker symbol set. Independent of the briefing pipeline and of `DEV_MODE`; polled by the frontend's `useMarketData` hook every 30 seconds.
+Cache-first end-of-day market snapshot for a configured ticker symbol set. Independent of the briefing pipeline and of `DEV_MODE`; polled by the frontend's `useMarketData` hook every 30 seconds only while `features.market` is enabled. The endpoint remains available when HUD polling is disabled.
 
 **Response `200`** — `MarketResponse`
 ```json

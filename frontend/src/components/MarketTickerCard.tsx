@@ -11,6 +11,7 @@ import type { MarketResponse, MarketTickerItem } from '../types/telemetry'
 type MarketTickerCardProps = {
   data: MarketResponse | null
   isLoading?: boolean
+  enabled?: boolean
   className?: string
   /** When true, renders a single condensed row of symbol/percent chips instead of the full ticker grid. */
   isCompact?: boolean
@@ -286,6 +287,7 @@ function CompactTickerChip({ ticker }: { ticker: MarketTickerItem }): ReactEleme
 export function MarketTickerCard({
   data,
   isLoading = false,
+  enabled = true,
   className,
   isCompact = false,
   attentionTier = 'dormant',
@@ -311,6 +313,16 @@ export function MarketTickerCard({
   const ledState = resolveMarketLedState(data, isLoading)
 
   const content = (() => {
+    if (!enabled) {
+      return (
+        <SetupPanel
+          tone="muted"
+          title="MARKET MONITOR DISABLED"
+          message="Market connector disabled in Runtime Settings."
+        />
+      )
+    }
+
     if (!data) {
       if (isLoading) {
         return (

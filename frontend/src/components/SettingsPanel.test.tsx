@@ -179,4 +179,24 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Write failed.'))
     expect(weather).toHaveAttribute('aria-checked', 'false')
   })
+
+  it('renders the Market toggle with immediate timing and dark selects', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    renderPanel()
+
+    expect(await screen.findByRole('switch', { name: 'Market' })).toBeVisible()
+    const market = screen.getByRole('switch', { name: 'Market' }).closest('div')
+    expect(market).toHaveTextContent('Active')
+    const runtimeSection = screen.getByRole('heading', { name: 'Runtime Status' }).closest('section')
+    expect(runtimeSection).not.toBeNull()
+    const marketStatus = within(runtimeSection as HTMLElement).getByText('Market').parentElement
+    expect(marketStatus).not.toBeNull()
+    expect(within(marketStatus as HTMLElement).getByText('Enabled')).toBeVisible()
+    for (const select of screen.getAllByRole('combobox')) {
+      expect(select).toHaveClass('bg-zinc-950', 'text-zinc-100', '[color-scheme:dark]')
+      for (const option of within(select).getAllByRole('option')) {
+        expect(option).toHaveClass('bg-zinc-950', 'text-zinc-100')
+      }
+    }
+  })
 })

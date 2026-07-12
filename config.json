@@ -4,7 +4,8 @@
     "sports": true,
     "news": true,
     "email": true,
-    "calendar": true
+    "calendar": true,
+    "market": true
   },
   "modules": {
     "football": false,

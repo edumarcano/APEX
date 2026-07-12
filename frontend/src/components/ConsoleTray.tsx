@@ -18,6 +18,7 @@ import {
 
 import { type AgentMessage, type ToolTraceItem } from '../hooks/useApexAssistant'
 import { API_ENDPOINTS } from '../lib/api'
+import { resolveConsoleActivityTone, type ConsoleActivityTone } from '../lib/consoleActivity'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 import {
   type ActiveReminder,
@@ -30,8 +31,6 @@ import { AskApexBar } from './AskApexBar'
 import { ReminderListRow } from './ReminderListRow'
 
 const REMINDERS_ENDPOINT = API_ENDPOINTS.reminders
-
-type ConsoleActivityTone = 'rust' | 'purple'
 
 /**
  * Border-rim activity glow: paints ABOVE panel content, masked to the ring
@@ -572,11 +571,10 @@ export function ConsoleTray({
   )
 
   const isLocalModelLoading = profilesStatus.some((profile) => profile.loading)
-  const activityTone: ConsoleActivityTone | null = isLocalModelLoading
-    ? 'rust'
-    : isAssistantQuerying
-      ? 'purple'
-      : null
+  const activityTone = resolveConsoleActivityTone(
+    isAssistantQuerying,
+    isLocalModelLoading,
+  )
 
   const tabBaseClass =
     'hud-command-surface font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-300 px-3 py-1.5 rounded-md border shrink-0'
