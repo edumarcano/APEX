@@ -18,6 +18,8 @@ VALID_ASSISTANT_PROFILES: frozenset[str] = frozenset(
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 
+SETTINGS_SCHEMA_VERSION: int = 1
+
 
 class FeaturesSettings(BaseModel):
     """Connector feature toggles."""
@@ -117,3 +119,17 @@ class SettingsPatch(BaseModel):
     modules: ModulesPatch | None = None
     assistant: AssistantPatch | None = None
     voice: VoicePatch | None = None
+
+
+class SettingsResponse(BaseModel):
+    """Public settings API envelope for GET and successful PATCH."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = SETTINGS_SCHEMA_VERSION
+    settings: RuntimeSettingsSnapshot
+    local_file_present: bool
+    local_override_active: bool
+    load_warning: str | None = None
+    dev_mode_active: bool
+    demo_mode_active: bool

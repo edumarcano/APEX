@@ -167,7 +167,12 @@ apex/
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite session logging and reminder CRUD
-│   ├── config.py        # Feature flags, module flags, system prompt, TTS settings, agent/ask_apex settings loader
+│   ├── config.py        # Import-time loader for non-editable config and env flags; legacy Final constants retained
+│   ├── settings/        # Runtime editable settings: models, normalize/overlay, transactional store
+│   │   ├── models.py        # RuntimeSettingsSnapshot, SettingsPatch, SettingsResponse
+│   │   ├── normalize.py     # Legacy-key normalize, recursive overlay, on-disk mapping
+│   │   ├── store.py         # Process-wide RuntimeSettingsStore + config.local.json persistence
+│   │   └── __init__.py
 │   ├── agent/
 │   │   ├── loop.py              # Bounded tool-calling loop: turn/call ceilings, tool dispatch and validation
 │   │   ├── tools.py              # Registered read-only agent tools + AGENT_TOOLS_REGISTRY
@@ -235,9 +240,13 @@ apex/
 │   └── smoke_local_synthesis.py # Manual end-to-end smoke test for the local Ollama synthesis path
 ├── tests/
 │   ├── __init__.py
-│   └── test_synthesis.py        # Unit tests for formatting, routing, warmup timeout, and DB migration
+│   ├── test_synthesis.py        # Unit tests for formatting, routing, warmup timeout, and DB migration
+│   ├── test_settings_store.py   # Runtime settings store load/patch/concurrency tests
+│   ├── test_settings_api.py     # GET/PATCH /api/v1/settings and boot config tests
+│   └── test_settings_runtime.py # Briefing/assistant/voice snapshot integration and import audit
 ├── launcher.py              # Orchestrator: servers, readiness polling, kiosk browser, shutdown hooks
-├── config.json              # Persona prompt, feature toggles, TTS settings (committed)
+├── config.json              # Tracked defaults: persona, connectors, TTS, agent settings (committed)
+├── config.local.json        # Mutable local overlay for editable settings (gitignored; optional)
 ├── CHANGELOG.md             # Full version history
 ├── LICENSE
 ├── apex_memory.db           # Auto-generated on first run (gitignored)
@@ -379,16 +388,17 @@ Three warm-up functions run at module import time:
 - `_warm_cloud_clients()` — instantiates a `TextToSpeechClient` singleton when `GOOGLE_APPLICATION_CREDENTIALS` is present. Logs a skip message when absent rather than raising.
 - `_warm_local_kokoro()` — instantiates the local Kokoro ONNX model session in a background daemon thread to eliminate initialization latency on the first briefing run.
 
-`speak(text, *, tts_override=None)` acquires `_SPEAK_LOCK` (a module-level `threading.Lock`) before routing. All concurrent invocations serialize through this lock, preventing audio interleaving. Routing order:
+`speak(text, *, tts_override=None, voice_gender=None)` acquires `_SPEAK_LOCK` (a module-level `threading.Lock`) before routing. All concurrent invocations serialize through this lock, preventing audio interleaving. At speak entry the call binds engine and gender for the duration of that lock hold (a store change mid-speech applies to the next delivery). Routing order:
 
-1. If `tts_override` is set, route directly to the named engine (used by `DEMO_MODE`).
+1. If `tts_override` is set, route directly to the named engine (used by briefing delivery and `DEMO_MODE`).
 2. If `DEV_MODE=true`, route to `DEV_TTS_PLAYBACK`.
-3. Otherwise route to `PRIMARY_TTS` from `config.json`.
+3. Otherwise route to `voice.engine` from the runtime settings snapshot.
+4. Gender comes from the explicit `voice_gender` argument when provided, otherwise from `voice.gender` on the snapshot captured at speak entry.
 
 `_route_tts_playback` routes audio generation through a cascading fallback chain keyed by the resolved engine name:
 - `"google"`: Synthesizes text to MP3 using Google Cloud TTS and plays via Pygame. If it fails, falls back to `"pyttsx3"`. This is the default primary engine.
 - `"pyttsx3"`: Synthesizes text locally using the OS-native speech engine. Terminal fallback, no external dependency.
-- `"kokoro"`: Synthesizes text to PCM using local Kokoro ONNX and plays via Pygame. If it fails, falls back to `"google"`. Selected only when `primary_tts` is set to `"kokoro"` in `config.json`.
+- `"kokoro"`: Synthesizes text to PCM using local Kokoro ONNX and plays via Pygame. If it fails, falls back to `"google"`. Selected when the runtime voice engine is `"kokoro"`.
 
 `is_speaking()` returns `True` when `_SPEAK_LOCK` is held or `pygame.mixer.music.get_busy()` is active. This is the value exposed through `GET /api/v1/status`.
 
@@ -419,11 +429,27 @@ SQLite database file: `apex_memory.db`. Three tables, all created by `initialize
 
 ### `core/config.py`
 
-Loads `config.json` at module import. All environment flags (`DEV_MODE`, `DEMO_MODE`, `ENABLE_STARTUP_GATE`, `DEV_AI_SYNTHESIS`, `DEV_TTS_PLAYBACK`, `DEMO_TTS`) are parsed via `_parse_env_bool()` or typed literal validators with normalization and logged fallbacks for unrecognized values. If `config.json` is missing or malformed, feature flags default to `False` and `SYSTEM_PROMPT` falls back to a neutral placeholder.
+Loads `config.json` at module import for non-editable surfaces and environment flags. All environment flags (`DEV_MODE`, `DEMO_MODE`, `ENABLE_STARTUP_GATE`, `DEV_AI_SYNTHESIS`, `DEV_TTS_PLAYBACK`, `DEMO_TTS`) are parsed via `_parse_env_bool()` or typed literal validators with normalization and logged fallbacks for unrecognized values. If `config.json` is missing or malformed, feature-flag Finals default to `False` and `SYSTEM_PROMPT` falls back to a neutral placeholder.
 
-Also loads the assistant config surface for the Cortex engine: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `LOCAL_AGENT_SYSTEM_PROMPT` (`config.json` `local_agent_system_prompt`, used as the base persona for local Ollama profiles instead of `AGENT_SYSTEM_PROMPT`), `ASK_APEX_ENABLED` / `DEFAULT_CLOUD_PROFILE` / `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.*`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
+Also loads the assistant config surface for the Cortex engine: `AGENT_SYSTEM_PROMPT` (`config.json` `agent_system_prompt`), `LOCAL_AGENT_SYSTEM_PROMPT` (`config.json` `local_agent_system_prompt`, used as the base persona for local Ollama profiles instead of `AGENT_SYSTEM_PROMPT`), `MAX_SESSION_MESSAGES` (`config.json` `ask_apex.max_session_messages`), and `AGENT_MAX_TURNS` / `AGENT_MAX_TOOL_CALLS` (`config.json` `gemini.*`). Each is validated and clamped independently, with fallback defaults on malformed input (see [Cloud Agent Profiles](#cloud-agent-profiles)).
+
+Editable connector, module, assistant enablement/default-profile, and voice settings are **not** consumed from import-time Finals on active execution paths. Those values come from `core/settings` (see below). Legacy Finals such as `FEATURE_*`, `MODULE_*`, `ASK_APEX_ENABLED`, `DEFAULT_CLOUD_PROFILE`, `PRIMARY_TTS`, and `VOICE_GENDER` remain defined for compatibility but are not the live control plane.
 
 Local Ollama runtime settings are parsed from `config.json` `ollama.*` into `OLLAMA_ENABLED`, `OLLAMA_HOST` (default `http://localhost:11434`), `OLLAMA_IDLE_UNLOAD_MINUTES` (1–60, default 5), `OLLAMA_SINGLE_LOADED_MODEL` (parsed for forward compatibility; `ollama_lifecycle` always enforces a single loaded model today regardless of this flag), and `OLLAMA_MANUAL_UNLOAD_ENABLED`. Per-profile `ram_limit`/`cpu_limit` pairs are parsed from `ollama.resource_gates.{lynx,acinonyx,neofelis}` into `LYNX_RAM_LIMIT`/`LYNX_CPU_LIMIT`, `ACINONYX_RAM_LIMIT`/`ACINONYX_CPU_LIMIT`, and `NEOFELIS_RAM_LIMIT`/`NEOFELIS_CPU_LIMIT` (see [Local Agent Profiles](#local-agent-profiles) for defaults). Any parsing failure across the whole `ollama` block falls back to the documented defaults rather than raising at import time.
+
+### `core/settings/`
+
+Process-wide runtime settings store for editable operator preferences:
+
+1. Load tracked `config.json`.
+2. Normalize legacy keys (prefer `ask_apex.default_profile`; fall back to `default_cloud_profile`; map deprecated `piper` → `pyttsx3`).
+3. Load and normalize optional `config.local.json`.
+4. Recursively overlay local values onto tracked defaults.
+5. Validate and publish an immutable `RuntimeSettingsSnapshot`.
+
+`GET` / `PATCH /api/v1/settings` and editable fields on `GET /api/v1/config` read this snapshot. Patches merge dirty nested fields under a lock, validate, write atomically to `config.local.json`, and publish only after replacement succeeds. Malformed or invalid local files fall back to tracked defaults and retain a diagnostic `load_warning`.
+
+Active paths capture snapshots at operation boundaries: features/modules at briefing start, assistant enablement at query begin, and voice engine/gender when delivery/`speak` begins.
 
 ---
 

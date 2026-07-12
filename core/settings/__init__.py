@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from core.settings.models import (
+    SETTINGS_SCHEMA_VERSION,
     AssistantPatch,
     AssistantSettings,
     FeaturesPatch,
@@ -11,6 +12,7 @@ from core.settings.models import (
     ModulesSettings,
     RuntimeSettingsSnapshot,
     SettingsPatch,
+    SettingsResponse,
     VoicePatch,
     VoiceSettings,
 )
@@ -22,6 +24,7 @@ from core.settings.store import (
 )
 
 __all__ = [
+    "SETTINGS_SCHEMA_VERSION",
     "AssistantPatch",
     "AssistantSettings",
     "FeaturesPatch",
@@ -32,6 +35,7 @@ __all__ = [
     "RuntimeSettingsStore",
     "SettingsPatch",
     "SettingsPersistenceError",
+    "SettingsResponse",
     "VoicePatch",
     "VoiceSettings",
     "get_settings_store",

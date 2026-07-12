@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
-from core.config import MODULE_FOOTBALL, MODULE_F1
+from core.settings import get_settings_store
 
 load_dotenv()
 
@@ -137,16 +137,21 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def fetch_sports_snapshot() -> tuple[str, bool, Dict[str, Any] | None]:
+def fetch_sports_snapshot(
+    *,
+    f1: bool,
+    football: bool,
+) -> tuple[str, bool, Dict[str, Any] | None]:
     """Connect to sports APIs and retrieve current sports telemetry.
 
     Args:
-        None
+        f1: Whether Formula 1 collection is enabled for this run.
+        football: Whether football collection is enabled for this run.
 
     Returns:
-        tuple[str, bool]: A formatted sports telemetry string and whether the
-            F1 cache path used fresh data (fresh disk cache hit or successful
-            network fetch/cache write).
+        tuple[str, bool, dict | None]: A formatted sports telemetry string,
+            whether the F1 cache path used fresh data (fresh disk cache hit or
+            successful network fetch/cache write), and the optional F1 map.
 
     Raises:
         None: All transport and parsing failures are handled internally and
@@ -156,7 +161,7 @@ def fetch_sports_snapshot() -> tuple[str, bool, Dict[str, Any] | None]:
     f1_cache_refreshed = True
     resolved_f1_map: Dict[str, Any] | None = None
 
-    if MODULE_F1:
+    if f1:
         cache_payload = _read_f1_cache()
         cached_map = None
         if cache_payload and isinstance(cache_payload.get("f1_map"), dict):
@@ -189,7 +194,7 @@ def fetch_sports_snapshot() -> tuple[str, bool, Dict[str, Any] | None]:
             else:
                 intel.append("F1 race telemetry unavailable.")
 
-    if MODULE_FOOTBALL:
+    if football:
         try:
             football_api_key = os.getenv("FOOTBALL_API_KEY")
             if not football_api_key:
@@ -243,7 +248,11 @@ def fetch_sports_snapshot() -> tuple[str, bool, Dict[str, Any] | None]:
 
 def fetch_sports_data() -> tuple[str, bool]:
     """Compatibility façade returning the legacy report/freshness pair."""
-    report, refreshed, _f1_map = fetch_sports_snapshot()
+    modules = get_settings_store().get_snapshot().modules
+    report, refreshed, _f1_map = fetch_sports_snapshot(
+        f1=modules.f1,
+        football=modules.football,
+    )
     return report, refreshed
 
 
