@@ -9,5 +9,5 @@
 - Build responsive layouts from content constraints and breakpoints. Fixed values are acceptable for bounded primitives such as borders, icons, focus rings, and minimum touch targets; avoid arbitrary fixed dimensions that prevent adaptation.
 - Reuse established API constants, visual tokens, and shared components before introducing parallel abstractions.
 - Follow `docs/design-system.md` for visual changes while allowing explicit product requirements to override defaults.
-- Run `npm run lint` and `npm run build` from `frontend/` after frontend changes.
+- Run `npm test`, `npm run lint`, and `npm run build` from `frontend/` after frontend changes.
 
