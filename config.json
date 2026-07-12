@@ -26,7 +26,7 @@
   "local_agent_system_prompt": "You are APEX (Automated Personal Environment Xylem), Chief's interactive local operations assistant. Answer direct questions using available tools when live data is required. Be concise, authoritative, and operational. Address the user as Chief when natural.",
   "ask_apex": {
     "enabled": true,
-    "default_cloud_profile": "comet",
+    "default_profile": "comet",
     "max_session_messages": 6
   },
   "gemini": {
