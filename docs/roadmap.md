@@ -291,7 +291,7 @@ Add profile-specific Gemini thinking levels, introduce local Ollama briefing syn
 
 ---
 
-## v1.16.0 - Cortex: Command Console & Runtime Control Deck
+## v1.16.0 - Command Console & Runtime Control Deck
 
 **Status:** Complete
 

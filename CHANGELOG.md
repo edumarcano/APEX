@@ -2,6 +2,52 @@
 
 ---
 
+## v1.16.0 — Command Console & Runtime Control Deck
+
+**Released:** July 12, 2026
+
+This release adds a runtime settings layer that lets operators edit assistant, briefing, market, and sports configuration from a HUD panel without restarting the process. Patches persist to `config.local.json` as a transactional overlay on `config.json`, are validated against strict typed models, and take effect on the next read of the affected snapshot. It also separates the assistant's own local-model loading indicator from the briefing pipeline's loading state and establishes the frontend's first unit-test suite.
+
+---
+
+### What's New
+
+- Added a runtime settings HUD panel opened from the diagnostics header, editing assistant enablement/profile, briefing cadence, market symbols/polling, and sports submodules; only dirty fields are submitted on Save.
+- Exposed `GET /api/v1/settings` and `PATCH /api/v1/settings` backed by a thread-safe `RuntimeSettingsStore` that loads `config.json`, overlays `config.local.json`, and persists patches atomically.
+- Wired live runtime settings into the briefing, assistant, and voice paths so boot-config-editable fields are read from the store instead of static `config.json` values.
+- Added live Market connector settings (symbols, polling interval) to the settings panel and normalized settings contracts to schema version 2.
+- Separated the assistant's own local-model loading animation from the briefing pipeline's loading state so the two no longer visually conflict on the console tray and logo.
+- Styled native settings `<select>` elements for the dark HUD glass surfaces.
+- Added a Vitest/jsdom frontend unit-test foundation with coverage for settings utilities, the settings editor hook, and key components (`SettingsPanel`, `ConsoleTray`, `MarketTickerCard`).
+- Renamed `ask_apex.default_cloud_profile` to `ask_apex.default_profile` in `config.json` (with legacy-key normalization) and added `market` to the README configuration feature block.
+
+### Architecture Changes
+
+- Added `core/settings/` (`models.py`, `normalize.py`, `store.py`, `__init__.py`): typed `*Settings` snapshots, strict `*Patch` models that reject unknown fields, per-layer normalization with legacy-key compatibility, recursive overlay construction, and atomic persistence (temp file + `os.replace()` with retry/backoff on Windows `PermissionError`, rollback on permanent failure).
+- Added `config.local.json` to `.gitignore` as the untracked runtime-overlay file.
+- Added `useSettingsEditor` and `useFocusTrap` frontend hooks and a `settings.ts` client library for fetching, diffing, and patching runtime settings.
+- Added `frontend/src/lib/consoleActivity.ts` to centralize assistant-vs-briefing loading-state derivation previously inlined in `ConsoleTray`.
+
+### API Changes
+
+- Added `GET /api/v1/settings`, returning the current resolved settings snapshot across assistant, briefing, market, and sports domains.
+- Added `PATCH /api/v1/settings`, accepting partial patches per domain, validating against strict typed models, and persisting only dirty fields to `config.local.json`.
+- Bumped the settings contract to schema version 2.
+
+### Frontend Changes
+
+- Added `SettingsPanel.tsx` as a fixed portal dialog with focus trapping, effective-timing labels, and preservation of inactive Sports submodules across edits.
+- Added `useSettingsEditor.ts` and `useFocusTrap.ts` hooks; extended `useApexData.ts` and `useMarketData.ts` to expose live settings and polling control.
+- Added a Vitest configuration (`frontend/vite.config.ts`, `frontend/src/test/setup.ts`) and `npm test` script; added test fixtures under `frontend/src/test/settingsFixtures.ts`.
+
+### Documentation Updates
+
+- Documented the settings API contracts, schema version 2, and Market timing/animation ownership in `docs/api.md`, `docs/architecture.md`, and `docs/decisions.md`.
+- Documented the HUD settings panel and `config.local.json` overlay file in `README.md`.
+- Removed `v1.16.0` from the Cortex initiative.
+
+---
+
 ## v1.15.1 — Gemini Client GC Fix & Console Diagnostics
 
 **Released:** July 11, 2026
