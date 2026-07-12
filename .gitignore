@@ -21,4 +21,4 @@ weights/
 *.raw
 *.wav
 *.mp3
-plan.md
+.local-plans/

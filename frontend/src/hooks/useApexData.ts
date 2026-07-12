@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type {
   ActiveReminder,
-  AgentCloudProfile,
   ApexDataState,
   AssistantProfile,
   PipelineState,
@@ -101,7 +100,14 @@ function getStringField(
 }
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
-const VALID_AGENT_PROFILES: readonly AgentCloudProfile[] = ['comet', 'nova', 'pulsar']
+const VALID_AGENT_PROFILES: readonly AssistantProfile[] = [
+  'comet',
+  'nova',
+  'pulsar',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+]
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = ['gemini', 'ollama', 'raw', 'demo']
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = ['comet', 'lynx', 'acinonyx', 'neofelis']
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
@@ -110,9 +116,9 @@ function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | 
   return typeof value === 'string' && values.includes(value as T) ? value as T : null
 }
 
-function parseDefaultProfile(value: unknown): AgentCloudProfile | undefined {
-  if (typeof value === 'string' && VALID_AGENT_PROFILES.includes(value as AgentCloudProfile)) {
-    return value as AgentCloudProfile
+function parseDefaultProfile(value: unknown): AssistantProfile | undefined {
+  if (typeof value === 'string' && VALID_AGENT_PROFILES.includes(value as AssistantProfile)) {
+    return value as AssistantProfile
   }
   return undefined
 }
@@ -559,7 +565,7 @@ export function useApexData(): UseApexDataReturn {
           return
         }
 
-        let defaultProfile: AgentCloudProfile | undefined
+        let defaultProfile: AssistantProfile | undefined
         let askApexEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
         let devModeActive: boolean | undefined
