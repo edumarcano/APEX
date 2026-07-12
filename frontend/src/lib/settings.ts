@@ -44,20 +44,25 @@ function isVoiceGender(value: unknown): value is VoiceGender {
   )
 }
 
-function parseBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === 'boolean' ? value : fallback
-}
-
 function parseFeatures(value: unknown): FeaturesSettings | null {
   if (!isRecord(value)) {
     return null
   }
+  if (
+    typeof value.weather !== 'boolean' ||
+    typeof value.sports !== 'boolean' ||
+    typeof value.news !== 'boolean' ||
+    typeof value.email !== 'boolean' ||
+    typeof value.calendar !== 'boolean'
+  ) {
+    return null
+  }
   return {
-    weather: parseBoolean(value.weather, false),
-    sports: parseBoolean(value.sports, false),
-    news: parseBoolean(value.news, false),
-    email: parseBoolean(value.email, false),
-    calendar: parseBoolean(value.calendar, false),
+    weather: value.weather,
+    sports: value.sports,
+    news: value.news,
+    email: value.email,
+    calendar: value.calendar,
   }
 }
 
@@ -65,9 +70,12 @@ function parseModules(value: unknown): ModulesSettings | null {
   if (!isRecord(value)) {
     return null
   }
+  if (typeof value.football !== 'boolean' || typeof value.f1 !== 'boolean') {
+    return null
+  }
   return {
-    football: parseBoolean(value.football, false),
-    f1: parseBoolean(value.f1, false),
+    football: value.football,
+    f1: value.f1,
   }
 }
 
@@ -82,6 +90,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     return null
   }
 
+  if (typeof value.assistant.enabled !== 'boolean') {
+    return null
+  }
   if (!isAssistantProfile(value.assistant.default_profile)) {
     return null
   }
@@ -93,7 +104,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     features,
     modules,
     assistant: {
-      enabled: parseBoolean(value.assistant.enabled, true),
+      enabled: value.assistant.enabled,
       default_profile: value.assistant.default_profile,
     },
     voice: {

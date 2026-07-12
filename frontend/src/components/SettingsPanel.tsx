@@ -284,6 +284,7 @@ export default function SettingsPanel({
     loadStatus,
     loadError,
     envelope,
+    baseline,
     draft,
     isDirty,
     saving,
@@ -292,7 +293,7 @@ export default function SettingsPanel({
     save,
   } = useSettingsEditor({ open, onApplied })
 
-  useFocusTrap(open && loadStatus !== 'loading', dialogRef, restoreFocusRef)
+  useFocusTrap(open, dialogRef, restoreFocusRef)
 
   const timingRuntime = useMemo(
     () =>
@@ -585,7 +586,7 @@ export default function SettingsPanel({
                   {FEATURE_CONTROLS.map((control) => {
                     const connectorStatus = resolveConnectorStatus(
                       control.key,
-                      draft.features[control.key],
+                      baseline?.features[control.key] ?? false,
                       failedConnectors,
                       hasBriefingEvidence,
                     )
