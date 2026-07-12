@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
   market: `${API_BASE}/api/v1/market`,
   reminders: `${API_BASE}/api/v1/reminders`,
   remindersRead: `${API_BASE}/api/v1/reminders/read`,
+  settings: `${API_BASE}/api/v1/settings`,
   status: `${API_BASE}/api/v1/status`,
   trigger: `${API_BASE}/api/v1/trigger`,
 } as const

@@ -99,7 +99,18 @@ Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, 
 
 ## Feature Toggles
 
-Individual connectors are switched on or off in `config.json`. When a connector is off, no API call or auth attempt is made, and the module is excluded from the Gemini context.
+Editable operator preferences—connectors, sports modules, assistant enablement/default profile, and TTS engine/gender—are managed at runtime from the HUD **Runtime Settings** panel (diagnostics header) or through `GET` / `PATCH /api/v1/settings`. Saves persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults so machine-local preference changes stay out of version control.
+
+**When changes take effect**
+
+- Connector and sports module flags are captured at briefing start (a save during an active briefing applies to the next briefing).
+- Assistant enablement is checked when a query begins (in-flight queries finish; later submissions are blocked while disabled).
+- Default profile updates immediately when idle, or after an active assistant query finishes.
+- Voice engine and gender bind when delivery/`speak` begins (a change during collection/synthesis can affect that delivery; a change during speech applies to the next delivery).
+
+`DEV_MODE` and `DEMO_MODE` remain environment-only and appear as read-only status in the settings panel.
+
+Tracked `config.json` remains the committed baseline for all configuration, including non-editable keys (prompts, Ollama host/gates, synthesis grace windows, and so on):
 
 ```json
 {
@@ -115,7 +126,7 @@ Individual connectors are switched on or off in `config.json`. When a connector 
   },
   "agent_system_prompt": "You are APEX, a cloud-powered agent assisting Chief with operations.",
   "local_agent_system_prompt": "You are APEX, a local operations assistant assisting Chief with operations.",
-  "ask_apex": { "enabled": true, "default_cloud_profile": "comet", "max_session_messages": 6 },
+  "ask_apex": { "enabled": true, "default_profile": "comet", "max_session_messages": 6 },
   "gemini": { "agent_max_turns": 3, "agent_max_tool_calls": 4 },
   "ollama": {
     "enabled": true,
@@ -132,11 +143,11 @@ Individual connectors are switched on or off in `config.json`. When a connector 
 }
 ```
 
-`modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
+When a connector is off, no API call or auth attempt is made for it, and the module is excluded from the Gemini briefing context. `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
 `synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the local strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and local is the fallback. Both omit the key to accept the defaults.
 
-`agent_system_prompt` sets the cloud APEX assistant persona; `local_agent_system_prompt` sets the equivalent persona for local Ollama profiles. Both are independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled); `default_cloud_profile` accepts `"comet"`, `"nova"`, or `"pulsar"`; `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query for both cloud and local profiles. See [docs/api.md](docs/api.md) for the full agent query contract.
+`agent_system_prompt` sets the cloud APEX assistant persona; `local_agent_system_prompt` sets the equivalent persona for local Ollama profiles. Both are independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled). Prefer `ask_apex.default_profile` (`"comet"`, `"nova"`, `"pulsar"`, `"lynx"`, `"acinonyx"`, or `"neofelis"`); legacy `default_cloud_profile` is still accepted as a read-time fallback. `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query for both cloud and local profiles. See [docs/api.md](docs/api.md) for the settings and agent query contracts.
 
 `ollama.enabled` toggles local inference off entirely. `ollama.host` points at the Ollama daemon's HTTP address. `ollama.idle_unload_timeout_minutes` (1–60) sets how long an unused local model stays loaded before automatic unload. `ollama.manual_unload_enabled` toggles the shared rust-orange unload control beneath the APEX logo. `synthesis.local_primary_grace_seconds` and `local_fallback_grace_seconds` default to 5 and accept 0–30 seconds. `ollama.resource_gates.{lynx,acinonyx,neofelis}` set the RAM/CPU utilization thresholds above which a cold load is blocked; a resident model is reused without another gate.
 
