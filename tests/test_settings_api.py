@@ -56,7 +56,9 @@ class SettingsApiTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
         self._store_patches = [
-            mock.patch("core.api.get_settings_store", return_value=self.store),
+            mock.patch(
+                "core.api.routers.system.get_settings_store", return_value=self.store
+            ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
         ]
         for patcher in self._store_patches:

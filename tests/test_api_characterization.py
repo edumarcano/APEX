@@ -54,9 +54,16 @@ class ApiCharacterizationBase(unittest.TestCase):
             local_config_path=self.local_path,
         )
         self._patches = [
-            mock.patch("core.api.get_settings_store", return_value=self.store),
+            mock.patch(
+                "core.api.routers.system.get_settings_store", return_value=self.store
+            ),
+            mock.patch("core.api.briefing.get_settings_store", return_value=self.store),
+            mock.patch(
+                "core.api.assistant.get_settings_store", return_value=self.store
+            ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
-            mock.patch("core.api.OLLAMA_ENABLED", False),
+            mock.patch("core.api.app.OLLAMA_ENABLED", False),
+            mock.patch("core.api.assistant.OLLAMA_ENABLED", False),
             mock.patch("core.database.DB_NAME", str(self.db_path)),
         ]
         for patcher in self._patches:
@@ -102,9 +109,9 @@ class HealthAndStatusTests(ApiCharacterizationBase):
         self.assertIn("synthesis", payload)
 
     def test_boot_config_exposes_runtime_mode_flags(self) -> None:
-        with mock.patch("core.api.is_dev_mode", return_value=True), mock.patch(
-            "core.api.DEMO_MODE", False
-        ):
+        with mock.patch(
+            "core.api.routers.system.is_dev_mode", return_value=True
+        ), mock.patch("core.api.routers.system.DEMO_MODE", False):
             response = self.client.get("/api/v1/config")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -114,9 +121,9 @@ class HealthAndStatusTests(ApiCharacterizationBase):
 
 class ParserAndSanitizerTests(unittest.TestCase):
     def test_parse_digest_payload_accepts_valid(self) -> None:
-        from core.api import DigestPayload, _parse_digest_payload
+        from core.api.models import DigestPayload, parse_digest_payload
 
-        parsed = _parse_digest_payload(
+        parsed = parse_digest_payload(
             {
                 "confidence_score": 80.0,
                 "failed_connectors": ["news"],
@@ -129,25 +136,25 @@ class ParserAndSanitizerTests(unittest.TestCase):
         self.assertEqual(parsed.insights, ["Check calendar"])
 
     def test_parse_digest_payload_malformed_falls_back(self) -> None:
-        from core.api import _parse_digest_payload
+        from core.api.models import parse_digest_payload
 
-        parsed = _parse_digest_payload("not-a-dict")
+        parsed = parse_digest_payload("not-a-dict")
         self.assertEqual(parsed.confidence_score, 0.0)
         self.assertEqual(parsed.failed_connectors, [])
         self.assertEqual(parsed.insights, [])
 
-        parsed_partial = _parse_digest_payload({"confidence_score": "bad"})
+        parsed_partial = parse_digest_payload({"confidence_score": "bad"})
         self.assertEqual(parsed_partial.confidence_score, 0.0)
 
     def test_parse_runtime_metadata_legacy_and_malformed(self) -> None:
-        from core.api import _parse_runtime_metadata
+        from core.api.models import parse_runtime_metadata
 
-        self.assertIsNone(_parse_runtime_metadata(None))
-        self.assertIsNone(_parse_runtime_metadata("legacy-string"))
+        self.assertIsNone(parse_runtime_metadata(None))
+        self.assertIsNone(parse_runtime_metadata("legacy-string"))
         self.assertIsNone(
-            _parse_runtime_metadata({"dev_mode_active": True})  # missing required fields
+            parse_runtime_metadata({"dev_mode_active": True})  # missing required fields
         )
-        valid = _parse_runtime_metadata(
+        valid = parse_runtime_metadata(
             {
                 "dev_mode_active": False,
                 "demo_mode_active": False,
@@ -162,7 +169,7 @@ class ParserAndSanitizerTests(unittest.TestCase):
         self.assertEqual(valid.synthesis_strategy, "cloud")
 
     def test_clean_for_tts_strips_markdown_and_non_ascii(self) -> None:
-        from core.api import clean_for_tts
+        from core.api.tts import clean_for_tts
 
         cleaned = clean_for_tts(
             "# Header\n**bold** and *italic*\n- list item\n`code`\n予定 emoji 🙂"
@@ -179,7 +186,7 @@ class ParserAndSanitizerTests(unittest.TestCase):
 
 class TriggerLockAndCleanupTests(ApiCharacterizationBase):
     def test_trigger_returns_409_when_lock_held(self) -> None:
-        from core.api import _TRIGGER_LOCK
+        from core.api.state import _TRIGGER_LOCK
 
         acquired = _TRIGGER_LOCK.acquire(blocking=False)
         self.assertTrue(acquired)
@@ -191,13 +198,13 @@ class TriggerLockAndCleanupTests(ApiCharacterizationBase):
         self.assertEqual(response.json()["detail"], "Pipeline run already active.")
 
     def test_speak_and_cleanup_releases_lock_and_resets_state(self) -> None:
-        from core.api import _TRIGGER_LOCK, _speak_and_cleanup, global_pipeline_state
+        from core.api.state import _TRIGGER_LOCK, _speak_and_cleanup, global_pipeline_state
 
         acquired = _TRIGGER_LOCK.acquire(blocking=False)
         self.assertTrue(acquired)
         global_pipeline_state.update(4, "DELIVERY")
 
-        with mock.patch("core.api.speaker.speak") as speak_mock:
+        with mock.patch("core.api.state.speaker.speak") as speak_mock:
             _speak_and_cleanup(
                 "Briefing complete.",
                 tts_override="pyttsx3",
@@ -210,14 +217,14 @@ class TriggerLockAndCleanupTests(ApiCharacterizationBase):
         self.assertIsNone(global_pipeline_state.get_state())
 
     def test_speak_and_cleanup_releases_lock_when_speak_raises(self) -> None:
-        from core.api import _TRIGGER_LOCK, _speak_and_cleanup, global_pipeline_state
+        from core.api.state import _TRIGGER_LOCK, _speak_and_cleanup, global_pipeline_state
 
         acquired = _TRIGGER_LOCK.acquire(blocking=False)
         self.assertTrue(acquired)
         global_pipeline_state.update(4, "DELIVERY")
 
         with mock.patch(
-            "core.api.speaker.speak", side_effect=RuntimeError("tts boom")
+            "core.api.state.speaker.speak", side_effect=RuntimeError("tts boom")
         ):
             with self.assertRaises(RuntimeError):
                 _speak_and_cleanup("Briefing", lock=_TRIGGER_LOCK)
@@ -228,10 +235,10 @@ class TriggerLockAndCleanupTests(ApiCharacterizationBase):
 
 class TriggerModeCharacterizationTests(ApiCharacterizationBase):
     def test_production_gate_failure_returns_403_and_releases_lock(self) -> None:
-        from core.api import _TRIGGER_LOCK
+        from core.api.state import _TRIGGER_LOCK
 
-        with mock.patch("core.api.DEMO_MODE", False), mock.patch(
-            "core.api.scanner.should_run", return_value=False
+        with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
+            "core.api.briefing.scanner.should_run", return_value=False
         ):
             response = self.client.post("/api/v1/trigger")
 
@@ -240,7 +247,7 @@ class TriggerModeCharacterizationTests(ApiCharacterizationBase):
         self.assertFalse(_TRIGGER_LOCK.locked())
 
     def test_demo_mode_returns_success_payload_shape(self) -> None:
-        from core.api import _TRIGGER_LOCK
+        from core.api.state import _TRIGGER_LOCK
 
         def _immediate_thread(*_a: object, target=None, kwargs=None, **_k: object):
             thread = mock.Mock()
@@ -253,12 +260,14 @@ class TriggerModeCharacterizationTests(ApiCharacterizationBase):
             thread.join = mock.Mock()
             return thread
 
-        with mock.patch("core.api.DEMO_MODE", True), mock.patch(
-            "core.api._DEMO_STAGE_DELAY_SECONDS", 0
+        with mock.patch("core.api.briefing.DEMO_MODE", True), mock.patch(
+            "core.api.briefing._DEMO_STAGE_DELAY_SECONDS", 0
         ), mock.patch(
-            "core.api.scanner.is_system_throttled", return_value=False
-        ), mock.patch("core.api.speaker.speak"), mock.patch(
-            "core.api.threading.Thread", side_effect=_immediate_thread
+            "core.api.tts.scanner.is_system_throttled", return_value=False
+        ), mock.patch("core.api.briefing.speaker.speak"), mock.patch(
+            "core.api.state.speaker.speak"
+        ), mock.patch(
+            "core.api.briefing.threading.Thread", side_effect=_immediate_thread
         ):
             response = self.client.post("/api/v1/trigger")
 
@@ -273,7 +282,7 @@ class TriggerModeCharacterizationTests(ApiCharacterizationBase):
         self.assertFalse(_TRIGGER_LOCK.locked())
 
     def test_dev_mode_skips_ledger_and_uses_dev_tts(self) -> None:
-        from core.api import _TRIGGER_LOCK
+        from core.api.state import _TRIGGER_LOCK
         from core.synthesis.models import SynthesisResult
 
         def _immediate_thread(*_a: object, target=None, kwargs=None, **_k: object):
@@ -294,35 +303,39 @@ class TriggerModeCharacterizationTests(ApiCharacterizationBase):
             fallback_reason="configured_raw",
         )
 
-        with mock.patch("core.api.DEMO_MODE", False), mock.patch(
-            "core.api.is_dev_mode", return_value=True
-        ), mock.patch("core.api.DEV_AI_SYNTHESIS", "raw"), mock.patch(
-            "core.api.DEV_TTS_PLAYBACK", "pyttsx3"
+        with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
+            "core.api.briefing.is_dev_mode", return_value=True
+        ), mock.patch("core.api.briefing.DEV_AI_SYNTHESIS", "raw"), mock.patch(
+            "core.api.briefing.DEV_TTS_PLAYBACK", "pyttsx3"
         ), mock.patch(
-            "core.api.scanner.should_run", return_value=True
+            "core.api.briefing.scanner.should_run", return_value=True
         ), mock.patch(
-            "core.api.database.log_run"
+            "core.api.briefing.database.log_run"
         ) as log_run, mock.patch(
-            "core.api.database.save_briefing"
+            "core.api.briefing.database.save_briefing"
         ) as save_briefing, mock.patch(
-            "core.api.weather_client.fetch_weather_data",
+            "core.api.briefing.weather_client.fetch_weather_data",
             return_value="Current temperature is 70 degrees.",
         ), mock.patch(
-            "core.api.sports_client.fetch_sports_snapshot",
+            "core.api.briefing.sports_client.fetch_sports_snapshot",
             return_value=("F1 telemetry clear.", True, None),
         ), mock.patch(
-            "core.api.news_client.fetch_news_data", return_value=""
+            "core.api.briefing.news_client.fetch_news_data", return_value=""
         ), mock.patch(
-            "core.api.database.fetch_unread_reminders", return_value=[]
+            "core.api.briefing.database.fetch_unread_reminders", return_value=[]
         ), mock.patch(
-            "core.api.brain.process_telemetry",
+            "core.api.briefing.brain.process_telemetry",
             return_value=synthesis.model_dump(),
         ), mock.patch(
-            "core.api.speaker.speak"
+            "core.api.briefing.speaker.speak"
         ), mock.patch(
-            "core.api.threading.Thread", side_effect=_immediate_thread
+            "core.api.state.speaker.speak"
         ), mock.patch(
-            "core.api.SynthesisRouter.prepare", return_value=None
+            "core.api.briefing.threading.Thread", side_effect=_immediate_thread
+        ), mock.patch(
+            "core.api.briefing.SynthesisRouter.prepare", return_value=None
+        ), mock.patch(
+            "core.api.tts.scanner.is_system_throttled", return_value=False
         ):
             response = self.client.post("/api/v1/trigger")
 
@@ -339,7 +352,7 @@ class TriggerModeCharacterizationTests(ApiCharacterizationBase):
 
 class ConcurrentTriggerLockTests(ApiCharacterizationBase):
     def test_second_concurrent_trigger_gets_409(self) -> None:
-        from core.api import _TRIGGER_LOCK
+        from core.api.state import _TRIGGER_LOCK
 
         gate = threading.Event()
         first_entered = threading.Event()
@@ -351,8 +364,8 @@ class ConcurrentTriggerLockTests(ApiCharacterizationBase):
             return False
 
         def _first_call() -> None:
-            with mock.patch("core.api.DEMO_MODE", False), mock.patch(
-                "core.api.scanner.should_run", side_effect=_blocking_should_run
+            with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
+                "core.api.briefing.scanner.should_run", side_effect=_blocking_should_run
             ):
                 response = self.client.post("/api/v1/trigger")
             results.append(response.status_code)
@@ -360,7 +373,7 @@ class ConcurrentTriggerLockTests(ApiCharacterizationBase):
         worker = threading.Thread(target=_first_call)
         worker.start()
         self.assertTrue(first_entered.wait(timeout=5))
-        with mock.patch("core.api.DEMO_MODE", False):
+        with mock.patch("core.api.briefing.DEMO_MODE", False):
             second = self.client.post("/api/v1/trigger")
         results.append(second.status_code)
         gate.set()

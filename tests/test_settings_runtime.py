@@ -10,10 +10,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from core.api import (
+from core.api.assistant import query_agent
+from core.api.briefing import (
     _compute_confidence_and_failures,
     _evaluate_sports_trust,
-    query_agent,
 )
 from core.agent.types import AgentQueryRequest
 from core.settings.models import (
@@ -158,7 +158,7 @@ class AssistantGateTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
         self._patcher = mock.patch(
-            "core.api.get_settings_store",
+            "core.api.assistant.get_settings_store",
             return_value=self.store,
         )
         self._patcher.start()
@@ -204,7 +204,7 @@ class FrozenImportAuditTests(unittest.TestCase):
     def test_active_paths_do_not_import_frozen_editable_constants(self) -> None:
         root = Path(__file__).resolve().parents[1]
         targets = [
-            root / "core" / "api.py",
+            *sorted((root / "core" / "api").rglob("*.py")),
             root / "core" / "speaker.py",
             root / "clients" / "sports_client.py",
         ]

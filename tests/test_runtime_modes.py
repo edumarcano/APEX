@@ -148,9 +148,9 @@ class DemoHistoryEndpointTests(unittest.TestCase):
 
         from core.api import app
 
-        with mock.patch("core.api.DEMO_MODE", True), mock.patch(
-            "core.api.OLLAMA_ENABLED", False
-        ), mock.patch("core.api.database.initialize_db"):
+        with mock.patch("core.api.routers.briefings.DEMO_MODE", True), mock.patch(
+            "core.api.app.OLLAMA_ENABLED", False
+        ), mock.patch("core.api.app.database.initialize_db"):
             client = TestClient(app)
             response = client.get("/api/v1/briefings/history")
 

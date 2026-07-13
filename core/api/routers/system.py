@@ -1,0 +1,118 @@
+"""System, configuration, settings, status, and diagnostics routes."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, status
+
+from core import config, scanner
+from core.api.models import PipelineStatusSnapshot
+from core.api.state import global_pipeline_state
+from core.config import DEMO_MODE, DEV_AI_SYNTHESIS, is_dev_mode
+from core.settings import (
+    SETTINGS_SCHEMA_VERSION,
+    SettingsPatch,
+    SettingsPersistenceError,
+    SettingsResponse,
+    get_settings_store,
+)
+
+router = APIRouter(tags=["system"])
+
+
+@router.get("/")
+def health_check() -> dict[str, Any]:
+    """
+    Return a minimal health payload for monitoring and readiness probes.
+    """
+    return {"status": "online", "system": "APEX"}
+
+
+@router.get("/api/v1/config")
+def get_global_config() -> dict[str, Any]:
+    """Expose global system configurations to the frontend HUD on boot."""
+    snapshot = get_settings_store().get_snapshot()
+    return {
+        "default_profile": snapshot.assistant.default_profile,
+        "ask_apex_enabled": snapshot.assistant.enabled,
+        "market_enabled": snapshot.features.market,
+        "max_session_messages": config.MAX_SESSION_MESSAGES,
+        "dev_mode_active": is_dev_mode(),
+        "demo_mode_active": DEMO_MODE,
+        "synthesis_strategy": (
+            "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "cloud"
+        ),
+        "synthesis_profile": (
+            None if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw") else
+            "lynx" if is_dev_mode() and DEV_AI_SYNTHESIS == "local" else "comet"
+        ),
+    }
+
+
+def _build_settings_response() -> SettingsResponse:
+    """Assemble the public settings envelope from the runtime store."""
+    store = get_settings_store()
+    return SettingsResponse(
+        schema_version=SETTINGS_SCHEMA_VERSION,
+        settings=store.get_snapshot(),
+        local_file_present=store.local_file_present,
+        local_override_active=store.local_override_active,
+        load_warning=store.load_warning,
+        dev_mode_active=is_dev_mode(),
+        demo_mode_active=DEMO_MODE,
+    )
+
+
+@router.get("/api/v1/settings", response_model=SettingsResponse)
+def get_runtime_settings() -> SettingsResponse:
+    """Return resolved editable settings and read-only runtime mode state."""
+    return _build_settings_response()
+
+
+@router.patch("/api/v1/settings", response_model=SettingsResponse)
+def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
+    """
+    Merge dirty nested fields into the runtime settings store.
+
+    Persists transactionally to ``config.local.json`` and publishes only after
+    a successful write. Permanent persistence failures leave the active
+    snapshot unchanged.
+    """
+    store = get_settings_store()
+    dirty = payload.model_dump(exclude_none=True)
+    if not dirty:
+        return _build_settings_response()
+    try:
+        store.apply_patch(payload)
+    except SettingsPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Failed to persist settings to config.local.json. "
+                f"Active settings were not changed. ({exc})"
+            ),
+        ) from exc
+    return _build_settings_response()
+
+
+@router.get("/api/v1/status", response_model=PipelineStatusSnapshot)
+def get_pipeline_diagnostic_status() -> PipelineStatusSnapshot:
+    """
+    Diagnostic snapshot keyed off global_pipeline_state for operators and probes.
+    """
+    snapshot = global_pipeline_state.get_state()
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No active pipeline run. System is OFFLINE.",
+        )
+    return PipelineStatusSnapshot(**snapshot)
+
+
+@router.get("/api/v1/diagnostics")
+def get_system_diagnostics() -> dict[str, float]:
+    """
+    Hardware utilization snapshot for operators and HUD diagnostics panels.
+    """
+    return scanner.sample_system_vitals()
