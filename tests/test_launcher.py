@@ -112,6 +112,20 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertIsNotNone(uvicorn_proc)
         self.assertIsNotNone(static_proc)
 
+    def test_launch_background_servers_cleans_up_after_second_spawn_failure(self) -> None:
+        uvicorn_proc = mock.Mock(spec=subprocess.Popen)
+        uvicorn_proc.poll.return_value = None
+
+        with mock.patch.object(
+            launcher.subprocess,
+            "Popen",
+            side_effect=[uvicorn_proc, OSError("static spawn failed")],
+        ), mock.patch.object(launcher, "_terminate_process") as terminate:
+            with self.assertRaises(OSError):
+                launcher.launch_background_servers()
+
+        terminate.assert_called_once_with(uvicorn_proc)
+
     def test_main_suppresses_browser_when_api_times_out(self) -> None:
         uvicorn_proc = mock.Mock(spec=subprocess.Popen)
         static_proc = mock.Mock(spec=subprocess.Popen)
@@ -178,6 +192,30 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         launch_browser.assert_not_called()
         self.assertGreaterEqual(terminate.call_count, 2)
+
+    def test_main_closes_browser_and_fails_when_server_exits_after_startup(self) -> None:
+        uvicorn_proc = mock.Mock(spec=subprocess.Popen)
+        static_proc = mock.Mock(spec=subprocess.Popen)
+        browser_proc = mock.Mock(spec=subprocess.Popen)
+        browser_proc.poll.return_value = None
+        uvicorn_proc.poll.return_value = 1
+        static_proc.poll.return_value = None
+
+        with mock.patch.object(
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+        ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
+            launcher, "wait_for_services", return_value=None
+        ), mock.patch.object(
+            launcher, "launch_kiosk_browser", return_value=browser_proc
+        ), mock.patch.object(
+            launcher, "_terminate_process"
+        ) as terminate:
+            exit_code = launcher.main()
+
+        self.assertEqual(exit_code, 1)
+        terminate.assert_any_call(browser_proc)
+        terminate.assert_any_call(uvicorn_proc)
+        terminate.assert_any_call(static_proc)
 
 
 if __name__ == "__main__":

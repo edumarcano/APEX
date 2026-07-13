@@ -203,7 +203,7 @@ interface BriefingHistoryItem {
   timestamp: string
   briefing: string
   digest?: DigestPayload | null
-  digest_status?: 'valid' | 'legacy' | 'malformed' | 'unavailable' | 'zero_health'
+  digest_status?: 'valid' | 'legacy' | 'malformed' | 'zero_health'
   metadata?: {
     run_id?: string | null
     [key: string]: unknown

@@ -1,7 +1,23 @@
+import logging
 from typing import Any, Callable
 
 from clients.sports_client import fetch_f1_driver_standings, fetch_f1_season_calendar
 from clients.weather_client import fetch_weather_forecast
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _stable_tool_result(
+    result: dict[str, Any],
+    *,
+    tool_name: str,
+    failure_message: str,
+) -> dict[str, Any]:
+    """Replace provider exception details with a stable assistant-tool error."""
+    if "error" not in result:
+        return result
+    _LOGGER.warning("Agent tool unavailable: tool=%s", tool_name)
+    return {"error": failure_message}
 
 
 def get_weather_forecast(days: int = 5) -> dict[str, Any]:
@@ -20,7 +36,11 @@ def get_weather_forecast(days: int = 5) -> dict[str, Any]:
             ``condition``), or an ``error`` key on failure.
     """
     clamped_days = max(1, min(5, days))
-    return fetch_weather_forecast(clamped_days)
+    return _stable_tool_result(
+        fetch_weather_forecast(clamped_days),
+        tool_name="get_weather_forecast",
+        failure_message="Weather forecast unavailable.",
+    )
 
 
 def get_f1_driver_standings() -> dict[str, Any]:
@@ -35,7 +55,11 @@ def get_f1_driver_standings() -> dict[str, Any]:
             ``driver_name``, ``driver_code``, and ``team``), or an ``error``
             key on failure.
     """
-    return fetch_f1_driver_standings()
+    return _stable_tool_result(
+        fetch_f1_driver_standings(),
+        tool_name="get_f1_driver_standings",
+        failure_message="F1 standings unavailable.",
+    )
 
 
 def get_f1_season_calendar() -> dict[str, Any]:
@@ -49,7 +73,11 @@ def get_f1_season_calendar() -> dict[str, Any]:
             with ``round``, ``raceName``, ``circuitName``, ``country``,
             ``date``, and ``time``), or an ``error`` key on failure.
     """
-    return fetch_f1_season_calendar()
+    return _stable_tool_result(
+        fetch_f1_season_calendar(),
+        tool_name="get_f1_season_calendar",
+        failure_message="F1 calendar unavailable.",
+    )
 
 
 def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
@@ -70,7 +98,7 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
             (list of dicts, each containing ``summary`` and ``start``). On
             authentication failure, ``{"error": "Calendar authentication failed
             or Google Workspace service is offline."}``. On other failures,
-            ``{"error": "<exception message>"}``.
+            ``{"error": "Calendar data unavailable."}``.
     """
     days = max(1, min(14, days))
     try:
@@ -100,7 +128,11 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
         events = fetch_events(service, days=days)
         return {"days_queried": days, "events": events}
     except Exception as exc:
-        return {"error": str(exc)}
+        _LOGGER.warning(
+            "Agent tool unavailable: tool=get_upcoming_calendar_events error_type=%s",
+            type(exc).__name__,
+        )
+        return {"error": "Calendar data unavailable."}
 
 
 def get_active_reminders() -> list[dict[str, Any]]:
@@ -143,8 +175,8 @@ def get_briefing_history(limit: int = 5) -> dict[str, Any]:
             "briefings": [<records>]}`` where each record contains ``id``,
             ``timestamp``, ``briefing``, and ``insights`` (list). When no
             records exist, ``{"message": "No briefings have been recorded in
-            the system ledger yet."}``. On failure, ``{"error": "<exception
-            message>"}``.
+            the system ledger yet."}``. On failure, returns the stable message
+            ``{"error": "Briefing history unavailable."}``.
     """
     limit = max(1, min(5, limit))
     try:
@@ -171,7 +203,11 @@ def get_briefing_history(limit: int = 5) -> dict[str, Any]:
             )
         return {"limit_requested": limit, "briefings": briefings}
     except Exception as exc:
-        return {"error": str(exc)}
+        _LOGGER.warning(
+            "Agent tool unavailable: tool=get_briefing_history error_type=%s",
+            type(exc).__name__,
+        )
+        return {"error": "Briefing history unavailable."}
 
 
 AGENT_TOOLS_REGISTRY: dict[str, Callable[..., Any]] = {

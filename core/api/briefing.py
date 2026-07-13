@@ -32,7 +32,7 @@ from core.config import (
 from core.connectors.collect import collect_calendar, collect_email, collect_reminders
 from core.connectors.models import ConnectorResult
 from core.connectors.scoring import compute_sync_health
-from core.runtime_logging import run_id_scope
+from core.runtime_logging import bind_run_id_context, run_id_scope
 from core.settings import FeaturesSettings, ModulesSettings, get_settings_store
 from core.synthesis import (
     CalendarFact,
@@ -300,7 +300,7 @@ def _run_demo_briefing(*, run_id: str) -> BriefingResponse:
         )
 
         voice_thread = threading.Thread(
-            target=_speak_and_cleanup,
+            target=bind_run_id_context(_speak_and_cleanup),
             kwargs={
                 "text": final_briefing,
                 "tts_override": active_tts_engine,
@@ -402,7 +402,7 @@ def trigger_briefing() -> BriefingResponse:
                 _LOGGER.info("Synthesizing briefing")
 
                 filler_thread = threading.Thread(
-                    target=speaker.speak,
+                    target=bind_run_id_context(speaker.speak),
                     args=("Generating briefing... Please wait...",),
                     daemon=True,
                 )
@@ -467,7 +467,7 @@ def trigger_briefing() -> BriefingResponse:
                         )
 
                 voice_thread = threading.Thread(
-                    target=_speak_and_cleanup,
+                    target=bind_run_id_context(_speak_and_cleanup),
                     kwargs={
                         "text": final_briefing,
                         "tts_override": active_tts_engine,

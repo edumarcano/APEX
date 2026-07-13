@@ -14,7 +14,6 @@ DigestStatus = Literal[
     "valid",
     "legacy",
     "malformed",
-    "unavailable",
     "zero_health",
 ]
 
@@ -337,7 +336,7 @@ class BriefingHistoryRecord(BaseModel):
         default="valid",
         description=(
             "History quality classification: valid, legacy, malformed, "
-            "unavailable, or zero_health."
+            "or zero_health."
         ),
     )
 

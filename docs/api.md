@@ -489,7 +489,7 @@ Returns up to 50 recent briefing ledger entries ordered by timestamp descending.
 
 | Field | Type | Description |
 |---|---|---|
-| `digest_status` | string | History quality: `valid`, `legacy`, `malformed`, `unavailable`, or `zero_health` |
+| `digest_status` | string | History quality: `valid`, `legacy`, `malformed`, or `zero_health` |
 
 Returns an empty list `[]` when no briefings have been stored. Malformed rows still return a safe digest fallback for HUD compatibility, but `digest_status` distinguishes them from genuine zero-health scores. History fetch failures return `503` with `"Briefing history unavailable."`
 

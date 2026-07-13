@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Iterator
+from functools import wraps
+from typing import Callable, Iterator, ParamSpec, TypeVar
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 _RUN_ID: ContextVar[str | None] = ContextVar("apex_run_id", default=None)
 _BOOTSTRAPPED = False
@@ -37,6 +41,20 @@ def run_id_scope(run_id: str) -> Iterator[str]:
         yield run_id
     finally:
         _RUN_ID.reset(token)
+
+
+def bind_run_id_context(callback: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Bind the current run ID to ``callback`` for execution in another thread."""
+    run_id = get_run_id()
+
+    @wraps(callback)
+    def bound(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        if run_id is None:
+            return callback(*args, **kwargs)
+        with run_id_scope(run_id):
+            return callback(*args, **kwargs)
+
+    return bound
 
 
 def configure_logging(level: int = logging.INFO) -> None:

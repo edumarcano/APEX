@@ -127,12 +127,16 @@ def launch_background_servers() -> tuple[
         env=uvicorn_env,
         stdin=subprocess.DEVNULL,
     )
-    static_proc = subprocess.Popen(
-        static_server_cmd,
-        cwd=ROOT_DIR,
-        env=static_env,
-        stdin=subprocess.DEVNULL,
-    )
+    try:
+        static_proc = subprocess.Popen(
+            static_server_cmd,
+            cwd=ROOT_DIR,
+            env=static_env,
+            stdin=subprocess.DEVNULL,
+        )
+    except Exception:
+        _terminate_process(uvicorn_proc)
+        raise
     return uvicorn_proc, static_proc
 
 
@@ -287,16 +291,24 @@ def fail_startup(
 def main() -> int:
     """Run the orchestration sequence: servers, warm-up, browser, then wait."""
     configure_logging()
-    uvicorn_proc, static_proc = launch_background_servers()
+    try:
+        uvicorn_proc, static_proc = launch_background_servers()
+    except (OSError, subprocess.SubprocessError) as exc:
+        _LOGGER.error(
+            "Unable to start APEX child processes: error_type=%s",
+            type(exc).__name__,
+        )
+        return 1
     register_shutdown_hooks(uvicorn_proc, static_proc)
 
     failure = wait_for_services(uvicorn_proc, static_proc)
     if failure is not None:
         return fail_startup(failure, uvicorn_proc, static_proc)
 
-    browser_proc = launch_kiosk_browser(FRONTEND_URL)
-
+    browser_proc: subprocess.Popen[bytes] | None = None
+    exit_code = 0
     try:
+        browser_proc = launch_kiosk_browser(FRONTEND_URL)
         if browser_proc is not None:
             while True:
                 if browser_proc.poll() is not None:
@@ -307,10 +319,12 @@ def main() -> int:
                 api_exit = _child_exit_reason("uvicorn", uvicorn_proc)
                 if api_exit:
                     _LOGGER.error("%s", api_exit)
+                    exit_code = 1
                     break
                 static_exit = _child_exit_reason("http.server", static_proc)
                 if static_exit:
                     _LOGGER.error("%s", static_exit)
+                    exit_code = 1
                     break
                 time.sleep(1)
             _LOGGER.info("APEX shutdown complete.")
@@ -320,19 +334,31 @@ def main() -> int:
                 "http.server."
             )
             while True:
-                if uvicorn_proc.poll() is not None:
-                    _LOGGER.error("uvicorn exited unexpectedly.")
+                api_exit = _child_exit_reason("uvicorn", uvicorn_proc)
+                if api_exit:
+                    _LOGGER.error("%s", api_exit)
+                    exit_code = 1
                     break
-                if static_proc.poll() is not None:
-                    _LOGGER.error("Static http.server exited unexpectedly.")
+                static_exit = _child_exit_reason("http.server", static_proc)
+                if static_exit:
+                    _LOGGER.error("%s", static_exit)
+                    exit_code = 1
                     break
                 time.sleep(1)
+    except OSError as exc:
+        _LOGGER.error(
+            "Unable to launch the APEX browser: error_type=%s",
+            type(exc).__name__,
+        )
+        exit_code = 1
     except KeyboardInterrupt:
         pass
     finally:
+        if browser_proc is not None:
+            _terminate_process(browser_proc)
         _terminate_process(uvicorn_proc)
         _terminate_process(static_proc)
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
