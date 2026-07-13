@@ -106,10 +106,14 @@ class DigestPayload(BaseModel):
         payload = dict(data)
         sync_score = payload.get("sync_health_score")
         confidence = payload.get("confidence_score")
-        if sync_score is None and isinstance(confidence, (int, float)):
-            payload["sync_health_score"] = float(confidence)
-        elif confidence is None and isinstance(sync_score, (int, float)):
-            payload["confidence_score"] = float(sync_score)
+        if isinstance(sync_score, (int, float)) and not isinstance(sync_score, bool):
+            canonical_score = float(sync_score)
+            payload["sync_health_score"] = canonical_score
+            payload["confidence_score"] = canonical_score
+        elif isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
+            canonical_score = float(confidence)
+            payload["sync_health_score"] = canonical_score
+            payload["confidence_score"] = canonical_score
         return payload
 
 

@@ -33,6 +33,7 @@ def collect_news() -> ConnectorResult:
     formatted_headlines: list[str] = []
     successes = 0
     failures = 0
+    invalid_payloads = 0
 
     for topic in topics:
         time.sleep(1.1)
@@ -44,9 +45,16 @@ def collect_news() -> ConnectorResult:
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError("News response root must be an object.")
             articles = data.get("articles") or []
+            if not isinstance(articles, list):
+                raise ValueError("News articles must be a list.")
             if articles:
-                headline = str(articles[0].get("title") or "").strip() or "Untitled"
+                article = articles[0]
+                if not isinstance(article, dict):
+                    raise ValueError("News article must be an object.")
+                headline = str(article.get("title") or "").strip() or "Untitled"
                 headlines.append({"topic": topic, "headline": headline})
                 formatted_headlines.append(f"[{topic}] {headline}")
                 successes += 1
@@ -57,13 +65,18 @@ def collect_news() -> ConnectorResult:
             print("[NEWS] Error: Failed to fetch headline telemetry for a topic.")
             formatted_headlines.append(f"[{topic}]: Telemetry unavailable.")
             failures += 1
+        except (TypeError, ValueError):
+            print("[NEWS] Error: Invalid headline telemetry payload for a topic.")
+            formatted_headlines.append(f"[{topic}]: Telemetry unavailable.")
+            failures += 1
+            invalid_payloads += 1
 
     display = "[NEWS TELEMETRY]\n" + " | ".join(formatted_headlines)
     data: dict[str, Any] = {"headlines": headlines, "topic_count": len(topics)}
 
     if successes == 0:
         status = "unavailable"
-        reason = "provider_error"
+        reason = "invalid_payload" if invalid_payloads == failures else "provider_error"
         freshness = "none"
     elif failures > 0:
         status = "degraded"

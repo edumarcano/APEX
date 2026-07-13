@@ -244,7 +244,11 @@ class SynthesisRouter:
                 self._state("complete", result.provider, result.profile, None)
                 return result
             except Exception as exc:
-                _LOGGER.exception("Gemini briefing synthesis failed; falling back to local/raw.")
+                _LOGGER.error(
+                    "Gemini briefing synthesis failed; falling back to local/raw. "
+                    "error_type=%s",
+                    type(exc).__name__,
+                )
                 gemini_reason = str(exc) if str(exc).startswith("gemini_") else "gemini_error"
 
         resident = resident_profile_key()

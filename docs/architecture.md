@@ -305,7 +305,7 @@ apex/
 - `===SPEECH===` — everything after this marker and before `===INSIGHTS===` becomes the `briefing` string.
 - `===INSIGHTS===` — everything after this marker is split into lines; bullet prefixes (`•`, `-`, `*`, `>`) are stripped, and non-empty lines become the `insights` list.
 
-`_parse_model_output(text)` performs this split. If neither marker is present, the full response is used as the briefing with an empty insights list.
+`parse_model_output(text)` requires exactly one marker for each section in the expected order. Missing, duplicated, reversed, or empty speech sections are rejected. Speech is capped at 75 words, and at most three insight lines of 12 words each are retained.
 
 When `DEV_MODE=true`:
 
@@ -313,7 +313,7 @@ When `DEV_MODE=true`:
 - `DEV_AI_SYNTHESIS=local` — reuses a resident APEX model or warms Lynx during collection, then falls back to raw.
 - `DEV_AI_SYNTHESIS=cloud` — calls Comet, then an eligible local model/Lynx, then raw.
 
-On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
+On any provider, validation, or output-format failure, the router records a stable privacy-safe reason and produces a deterministic briefing from the same bounded `SynthesisInput`. Raw connector strings are never used as the fallback briefing.
 
 ### `core/synthesis/`
 

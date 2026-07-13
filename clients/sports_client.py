@@ -136,12 +136,25 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _is_valid_f1_map(f1_map: object) -> bool:
+    """Return whether cached F1 telemetry has the facts required downstream."""
+    if not isinstance(f1_map, dict):
+        return False
+    required_text = ("raceName", "raceDateTimeEST", "relativeWeek")
+    if not all(
+        isinstance(f1_map.get(key), str) and bool(f1_map[key].strip())
+        for key in required_text
+    ):
+        return False
+    return isinstance(f1_map.get("sprintScheduled"), bool)
+
+
 def collect_f1() -> ConnectorResult:
     """Collect Formula 1 next-race telemetry as a typed connector result."""
     observed_at = utc_now_iso()
     cache_payload = _read_f1_cache()
     cached_map = None
-    if cache_payload and isinstance(cache_payload.get("f1_map"), dict):
+    if cache_payload and _is_valid_f1_map(cache_payload.get("f1_map")):
         cached_map = cache_payload["f1_map"]
 
     try:
@@ -154,9 +167,11 @@ def collect_f1() -> ConnectorResult:
             response.raise_for_status()
             f1_data = response.json()
             races = f1_data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-            if not races:
+            if not isinstance(races, list) or not races or not isinstance(races[0], dict):
                 raise ValueError("No F1 races in payload.")
             f1_map = _build_f1_map_from_race(races[0])
+            if not _is_valid_f1_map(f1_map):
+                raise ValueError("Invalid F1 race payload.")
             _write_f1_cache(f1_map)
             freshness = "live"
         return ConnectorResult(

@@ -30,8 +30,12 @@ def sanitize_fact(value: object, limit: int = 240) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     if len(text) <= limit:
         return text
-    shortened = text[: limit + 1].rsplit(" ", 1)[0].strip()
-    return shortened or text[:limit].strip()
+    prefix = text[: limit + 1]
+    if " " in prefix:
+        shortened = prefix.rsplit(" ", 1)[0].strip()
+        if shortened:
+            return shortened
+    return text[:limit].strip()
 
 
 def _shrink_candidates(data: dict[str, Any]) -> list[tuple[Any, Any, str]]:
@@ -63,6 +67,33 @@ def _shrink_candidates(data: dict[str, Any]) -> list[tuple[Any, Any, str]]:
 def _candidate_length(entry: tuple[Any, Any, str]) -> int:
     container, key, _kind = entry
     return len(str(container[key]))
+
+
+def _drop_optional_payload_item(data: dict[str, Any]) -> bool:
+    """Remove one optional value so payload reduction always makes progress."""
+    for key in (
+        "email_recent_subjects",
+        "news_headlines",
+        "connector_health",
+        "failed_connectors",
+    ):
+        values = data.get(key)
+        if isinstance(values, list) and values:
+            values.pop()
+            return True
+
+    for key in (
+        "first_pending_reminder",
+        "weather",
+        "weather_condition",
+        "next_calendar_event",
+        "f1_this_week",
+        "football_next_fixture",
+    ):
+        if data.get(key) not in (None, ""):
+            data[key] = None
+            return True
+    return False
 
 
 def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
@@ -125,25 +156,19 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
         if len(rendered) <= max_chars:
             return rendered
 
-        candidates = _shrink_candidates(data)
-        if not candidates:
-            data["failed_connectors"] = []
-            data["connector_health"] = []
-            rendered = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-            if len(rendered) <= max_chars:
-                return rendered
-            raise ValueError("Compact synthesis payload could not be bounded safely.")
-
-        container, key, kind = max(candidates, key=_candidate_length)
-        current = str(container[key])
-        if len(current) <= 32:
-            if kind == "list":
-                del container[key]
-            else:
-                data["failed_connectors"] = []
-                data["connector_health"] = []
+        candidates = [
+            candidate
+            for candidate in _shrink_candidates(data)
+            if _candidate_length(candidate) > 32
+        ]
+        if candidates:
+            container, key, _kind = max(candidates, key=_candidate_length)
+            current = str(container[key])
+            container[key] = sanitize_fact(current, max(32, len(current) - 64))
             continue
-        container[key] = sanitize_fact(current, max(32, len(current) - 64))
+
+        if not _drop_optional_payload_item(data):
+            raise ValueError("Compact synthesis payload could not be bounded safely.")
 
 
 def wrap_untrusted_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
