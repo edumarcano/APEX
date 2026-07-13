@@ -191,8 +191,10 @@ def mock_briefing_history() -> list[dict[str, Any]]:
                 "upcoming_events_count": 1,
                 "f1_sprint_active": False,
                 "reminders_pending_count": 2,
+                "sync_health_score": 100.0,
                 "confidence_score": 100.0,
                 "failed_connectors": [],
+                "connector_health": [],
             },
         },
         {
@@ -210,8 +212,10 @@ def mock_briefing_history() -> list[dict[str, Any]]:
                 "upcoming_events_count": 2,
                 "f1_sprint_active": True,
                 "reminders_pending_count": 1,
+                "sync_health_score": 92.5,
                 "confidence_score": 92.5,
                 "failed_connectors": ["news"],
+                "connector_health": [],
             },
         },
         {
@@ -228,8 +232,10 @@ def mock_briefing_history() -> list[dict[str, Any]]:
                 "upcoming_events_count": 0,
                 "f1_sprint_active": False,
                 "reminders_pending_count": 1,
+                "sync_health_score": 78.0,
                 "confidence_score": 78.0,
                 "failed_connectors": ["email", "calendar"],
+                "connector_health": [],
             },
         },
     ]

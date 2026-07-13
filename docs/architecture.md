@@ -10,8 +10,8 @@ With both servers up, `core.api` listens on `127.0.0.1:8000`. A `POST /api/v1/tr
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
-3. **Synthesis** — `core/api/briefing.py` constructs a `SynthesisInput` from privacy-bounded facts (weather, calendar, reminders, F1, connector failures) and passes the full telemetry string and the `SynthesisInput` to `SynthesisRouter.synthesize()`. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite via `_gemini()`; `local` attempts a resident or warmed Ollama model via `_ollama()`; `raw` produces a deterministic compact briefing. Both model paths parse the response with `parse_model_output()` for `===SPEECH===` / `===INSIGHTS===` markers. Any path can fall back to `_raw()`. The resolved `SynthesisResult` carries `provider`, `profile`, `fallback_reason`, `warmup_ms`, and `generation_ms` for diagnostics.
-4. **Delivery** — connector outputs are evaluated for trust, producing a `DigestPayload` with a `confidence_score` and `failed_connectors` list. The trigger endpoint returns the briefing text, telemetry, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
+3. **Synthesis** — `core/api/briefing.py` constructs a privacy-bounded `SynthesisInput` from typed connector facts (weather, email, news, calendar, reminders, F1, football, and connector health). Gemini and Ollama both receive the same sanitized payload wrapped in `<untrusted_connector_data>` markers. Concatenated raw telemetry is never sent to a model. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite; `local` attempts a resident or warmed Ollama model; `raw` produces a deterministic compact briefing. Model paths are tool-free, capped at 512 output tokens, and reject malformed `===SPEECH===` / `===INSIGHTS===` output before falling back to `_raw()`.
+4. **Delivery** — typed connector statuses produce a `DigestPayload` with `sync_health_score`, `connector_health`, legacy `confidence_score` / `failed_connectors`, and insights. The trigger endpoint returns the briefing text, telemetry display strings, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
@@ -149,7 +149,7 @@ See [Local Agent Profiles](#local-agent-profiles) for the per-profile `ram_limit
 When `DEMO_MODE=true` in `.env`, the trigger endpoint branches into `_run_demo_briefing()` before the normal pipeline runs. The simulation:
 
 1. Advances `global_pipeline_state` through all four stages with a **1.5-second delay** between each step so the frontend polling loop has time to observe each stage.
-2. Loads static mock telemetry and a pre-built `DigestPayload` from `core/mock/telemetry.json` via `_load_mock_telemetry()`. The mock telemetry file includes a `digest` sub-object with `weather_archetype`, counts, `confidence_score`, `failed_connectors`, and `insights` bullets.
+2. Loads static mock telemetry and a pre-built `DigestPayload` from `core/mock/telemetry.json` via `_load_mock_telemetry()`. The mock telemetry file includes a `digest` sub-object with `weather_archetype`, counts, `sync_health_score`, `connector_health`, legacy `confidence_score` / `failed_connectors`, and `insights` bullets.
 3. Returns a deterministic briefing string built by `_build_demo_briefing()`.
 4. Starts `_speak_and_cleanup` with the `DEMO_TTS` engine override.
 
@@ -196,8 +196,13 @@ apex/
 │   ├── synthesis/
 │   │   ├── __init__.py      # Package init; re-exports SynthesisRouter, SynthesisInput, SynthesisResult
 │   │   ├── router.py        # SynthesisRouter: cloud/local/raw strategy dispatch, WarmupHandle warmup threading
-│   │   ├── formatting.py    # compact_payload, parse_model_output, deterministic_fallback; 2,000-byte input cap
+│   │   ├── formatting.py    # compact_payload, wrap_untrusted_payload, parse_model_output, deterministic_fallback
 │   │   └── models.py        # SynthesisInput, SynthesisResult, SynthesisProvider/Profile/Phase literals
+│   ├── connectors/
+│   │   ├── __init__.py      # Typed ConnectorResult and sync-health exports
+│   │   ├── models.py        # ConnectorResult, ConnectorHealthEntry, SyncHealthReport
+│   │   ├── scoring.py       # Equal-weight sync health scoring
+│   │   └── collect.py       # Email, calendar, and reminders collectors
 │   ├── mock/
 │   │   └── telemetry.json   # Static telemetry payload for DEMO_MODE runs
 │   └── __init__.py
@@ -293,14 +298,14 @@ apex/
 
 ### `core/brain.py`
 
-`core/brain.py` is a compatibility façade over `core/synthesis/`. The synthesis router validates one result contract across Gemini, Ollama, and deterministic raw output. Gemini receives rich telemetry; local and raw paths receive only sanitized weather, basic calendar, reminders, this-week F1, and connector-failure facts.
+`core/brain.py` is a compatibility façade over `core/synthesis/`. The synthesis router validates one result contract across Gemini, Ollama, and deterministic raw output. Cloud, local, and raw paths all consume the same sanitized `SynthesisInput` payload; raw connector strings are retained only for HUD display telemetry and are never forwarded to a model.
 
 **Gemini output protocol:** The system prompt instructs the model to return exactly two sections separated by markers:
 
 - `===SPEECH===` — everything after this marker and before `===INSIGHTS===` becomes the `briefing` string.
 - `===INSIGHTS===` — everything after this marker is split into lines; bullet prefixes (`•`, `-`, `*`, `>`) are stripped, and non-empty lines become the `insights` list.
 
-`_parse_model_output(text)` performs this split. If neither marker is present, the full response is used as the briefing with an empty insights list.
+`parse_model_output(text)` requires exactly one marker for each section in the expected order. Missing, duplicated, reversed, or empty speech sections are rejected. Speech is capped at 75 words, and at most three insight lines of 12 words each are retained.
 
 When `DEV_MODE=true`:
 
@@ -308,7 +313,7 @@ When `DEV_MODE=true`:
 - `DEV_AI_SYNTHESIS=local` — reuses a resident APEX model or warms Lynx during collection, then falls back to raw.
 - `DEV_AI_SYNTHESIS=cloud` — calls Comet, then an eligible local model/Lynx, then raw.
 
-On any exception (missing key, empty speech section, API error), the function catches it, logs diagnostics, and returns `{ "briefing": raw_data, "insights": ["Telemetry data loaded directly."] }` so the run completes.
+On any provider, validation, or output-format failure, the router records a stable privacy-safe reason and produces a deterministic briefing from the same bounded `SynthesisInput`. Raw connector strings are never used as the fallback briefing.
 
 ### `core/synthesis/`
 
@@ -316,7 +321,7 @@ The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synth
 
 **`core/synthesis/models.py`** — Pydantic types used across the subsystem:
 
-- `SynthesisInput` — privacy-bounded context object passed to local and raw paths: `weather_summary`, `calendar_event_count`, `next_calendar_event` (`CalendarFact`), `pending_reminder_count`, `first_pending_reminder`, `f1_this_week` (`F1Fact`), `failed_connectors`, `generated_at`, `timezone`.
+- `SynthesisInput` — privacy-bounded context object passed to cloud, local, and raw paths: weather summary/temp/condition, bounded email subjects and unread count, news headlines, calendar facts, reminders, this-week F1, next football fixture, connector health, legacy `failed_connectors`, `generated_at`, and `timezone`. Fields are sanitized, truncated, and capped before serialization.
 - `SynthesisResult` — router output: `briefing`, `insights`, `provider`, `profile`, `fallback_reason`, `warmup_ms`, `generation_ms`.
 - Literal type aliases: `SynthesisProvider` (`gemini | ollama | raw | demo`), `SynthesisProfile` (`comet | lynx | acinonyx | neofelis`), `SynthesisPhase` (`idle | loading | ready | generating | fallback | complete`).
 
@@ -329,7 +334,7 @@ The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synth
 **`core/synthesis/router.py`** — `SynthesisRouter` drives strategy resolution:
 
 - `prepare(strategy)` — called during the Collection stage. When `strategy == "local"`, checks for a resident APEX model; if none is found, spawns a background `WarmupHandle` thread that calls `switch_local_model(lynx)` concurrently with data collection.
-- `synthesize(source, full_telemetry, strategy, warmup)` — resolves the briefing: `raw` calls `_raw()` immediately; `cloud` calls `_gemini()` and falls through to local/raw on failure; `local` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so briefing orchestration can propagate live synthesis state to `/api/v1/status`.
+- `synthesize(source, strategy, warmup)` — resolves the briefing from typed `SynthesisInput` only: `raw` calls `_raw()` immediately; `cloud` calls `_gemini()` and falls through to local/raw on failure; `local` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so briefing orchestration can propagate live synthesis state to `/api/v1/status`.
 - `WarmupHandle` — a `threading.Event`-backed dataclass tracking warmup success, reason, and timing. `elapsed_ms` is computed from a monotonic start timestamp.
 
 ### `core/agent/` — Cortex reasoning engine for the APEX assistant
@@ -566,7 +571,7 @@ Shared card frame. Accepts `title`, `icon`, `primaryTemperatureF`, `f1TelemetryT
 1. **SYSTEM STATUS** — label column.
 2. **Internet** — `navigator.onLine` combined with `diagnosticsStatus !== 'error'`; green dot (Connected) or red dot (Not Connected).
 3. **Briefing Status** — reflects the pipeline lifecycle: Standby, Processing (pulsing emerald, steps 1–3), Delivering (amber, step 4 / speaking), Complete (blue), or Fault (rose).
-4. **Sync Health** — a row of 10 segmented blocks filled proportional to `confidenceScore`; color-coded emerald (≥ 90%), amber (≥ 50%), red (< 50%). A hover tooltip lists `failedConnectors` or confirms all connectors are functional.
+4. **Sync Health** — a row of 10 segmented blocks filled proportional to `sync_health_score` (falling back to legacy `confidenceScore`); color-coded emerald (≥ 90%), amber (≥ 50%), red (< 50%). The popup lists degraded/unavailable connectors from `connector_health`, or legacy `failedConnectors` when the newer field is absent.
 5. **Hardware Resources** — CPU, RAM, and DISK percentage labels each backed by a horizontal micro-bar. Color thresholds: blue (< 80%), amber (≥ 80%), red (≥ 90%). Hover tooltips show CPU frequency in GHz and RAM/disk as used/total GB.
 6. **System Time** — live clock updated every 1,000 ms via `setInterval`.
 
@@ -612,7 +617,7 @@ The trigger is not fired on mount. When `triggerSynthesis()` is called (via the 
 3. Starts a `setInterval` at 500 ms to poll `GET /api/v1/status`.
 4. On trigger resolution, parses weather string fields via `resolvePipelineTemperatureF` and `resolveWeatherDetail`.
 5. Derives `weatherCondition` via `resolveWeatherCondition`.
-6. Extracts `digest.confidence_score`, `digest.failed_connectors`, and `digest.insights` from the trigger response body and populates `confidenceScore`, `failedConnectors`, and `insights` on `ApexDataState`.
+6. Extracts `digest.sync_health_score` (falling back to `confidence_score`), `digest.connector_health`, `digest.failed_connectors`, and `digest.insights` from the trigger response body and populates Sync Health fields on `ApexDataState`.
 7. Clears the polling interval when `/api/v1/status` returns `404`.
 
 Exposes `triggerSynthesis`, `refreshReminders` (best-effort re-sync after new submission), and `markReminderAsRead` (optimistic remove with rollback).
@@ -639,7 +644,7 @@ Central type file. Key interfaces: `TelemetryPayload`, `ApexDataState`, `Pipelin
 
 `DigestPayload` (frontend): `{ insights: string[] }`. The hook assembles this from the trigger response `digest.insights` array. `TelemetryPayload` carries an optional `digest?: DigestPayload` field.
 
-`ApexDataState` includes three fields sourced from the trigger `digest` object: `confidenceScore: number` (defaults to `100.0` before trigger resolution), `failedConnectors: string[]`, and `insights: string[]`.
+`ApexDataState` includes Sync Health fields sourced from the trigger `digest` object: `confidenceScore` (from `sync_health_score` with legacy fallback, default `100.0`), `failedConnectors`, `connectorHealth`, and digest insights.
 
 ---
 
@@ -777,43 +782,33 @@ See [docs/api.md](api.md#get-apiv1market) for the full response contract.
 
 ---
 
-## Confidence Scoring
+## Sync Health Scoring
 
-After the Collection stage, `core/api/briefing.py` evaluates all enabled connector outputs to produce a `confidence_score` (0–100) and a `failed_connectors` list. These populate the `DigestPayload` returned in the trigger response.
+After the Collection stage, each enabled connector returns a typed `ConnectorResult` with structured data, display text, status (`healthy` / `degraded` / `unavailable`), freshness, a stable reason code, and an observation time. `core/connectors/scoring.py` converts those results into `sync_health_score`, `connector_health`, and legacy `failed_connectors` fields on `DigestPayload`.
 
-### Connector Failure Detection
+### Connector status
 
-Each enabled connector's output string is tested against a regex pattern. A match counts as a failure:
+Status is set by the collector, never inferred from rendered prose:
 
-| Connector | Failure pattern |
-|---|---|
-| `weather` | `offline`, `error`, `failed` (case-insensitive) |
-| `sports` (F1) | `telemetry unavailable` |
-| `sports` (football) | `telemetry unavailable`, `throttled` |
-| `news` | `telemetry unavailable`, `offline` |
-| `email` | `error`, `check connection` |
-| `calendar` | `error`, `check connection` |
+| Status | Weight | Typical causes |
+|---|---|---|
+| `healthy` | `1.0` | Live fetch or fresh validated cache |
+| `degraded` | `0.5` | Stale cache fallback or partial topic success |
+| `unavailable` | `0.0` | Missing credentials, provider/network failure, empty required payload |
 
-### Weighting Algorithm
+Enabled modules scored independently: `weather`, `news`, `email`, `calendar`, `f1`, `football`, and `reminders`. Disabled modules are excluded. Fresh validated cache counts as healthy; stale fallback counts as degraded. There is no separate F1 percentage penalty.
 
-Each enabled connector contributes weight toward the final score:
+`sync_health_score = (earned_weight / enabled_count) × 100`, rounded to one decimal place and clamped to `[0.0, 100.0]`. When no connectors are enabled, the score defaults to `100.0`.
 
-- **Single sports sub-module active** (F1 only or football only) — sports contributes a weight of `1.0`.
-- **Both F1 and football enabled** — each contributes `0.5`, total sports weight `1.0`.
-- All other connectors (weather, news, email, calendar) each contribute `1.0`.
-- Disabled connectors contribute no weight and are excluded from the calculation.
+### Legacy compatibility
 
-`confidence_score = (earned_weight / total_weight) × 100`, rounded to one decimal place and clamped to `[0.0, 100.0]`.
-
-When all connectors are disabled, the score defaults to `100.0`.
-
-### F1 Cache Penalty
-
-A 10% penalty is applied when the sports client reports a stale cache hit. `sports_client.fetch_sports_data()` returns an explicit boolean `f1_cache_refreshed` flag. When this flag is `False`, briefing orchestration applies the penalty: `confidence_score *= 0.90`. The sports client sets the flag to `True` only when a live network fetch to the Jolpica/Ergast API succeeds and writes a new cache entry; a fresh cache hit or any network failure that falls back to disk leaves the flag `False`.
+- `confidence_score` remains as an alias of `sync_health_score`.
+- `failed_connectors` lists unavailable connectors only. Independent `f1` / `football` failures map to the legacy `"sports"` label.
+- `connector_health` exposes the per-module rows used by newer HUD consumers.
 
 ### Output
 
-The score and the list of failed connector names are passed to `DigestPayload`. The frontend reads `confidenceScore` and `failedConnectors` from `ApexDataState` and displays them in the Sync Health column of `SystemDiagnostics` as a segmented block bar with a hover tooltip listing any failed connectors.
+The frontend prefers `sync_health_score` and `connector_health`, falling back to `confidence_score` / `failed_connectors` for legacy payloads. Sync Health in `SystemDiagnostics` renders the segmented block bar and lists degraded or unavailable connectors when present.
 
 ---
 

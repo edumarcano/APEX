@@ -132,8 +132,39 @@ class ParserAndSanitizerTests(unittest.TestCase):
         )
         self.assertIsInstance(parsed, DigestPayload)
         self.assertEqual(parsed.confidence_score, 80.0)
+        self.assertEqual(parsed.sync_health_score, 80.0)
         self.assertEqual(parsed.failed_connectors, ["news"])
         self.assertEqual(parsed.insights, ["Check calendar"])
+
+        aliased = parse_digest_payload(
+            {
+                "sync_health_score": 70.0,
+                "connector_health": [
+                    {
+                        "name": "weather",
+                        "status": "healthy",
+                        "freshness": "live",
+                        "reason_code": "ok",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(aliased.sync_health_score, 70.0)
+        self.assertEqual(aliased.confidence_score, 70.0)
+        self.assertEqual(aliased.connector_health[0].name, "weather")
+
+    def test_sync_health_is_canonical_when_legacy_alias_disagrees(self) -> None:
+        from core.api.models import parse_digest_payload
+
+        parsed = parse_digest_payload(
+            {
+                "sync_health_score": 75.0,
+                "confidence_score": 10.0,
+            }
+        )
+
+        self.assertEqual(parsed.sync_health_score, 75.0)
+        self.assertEqual(parsed.confidence_score, 75.0)
 
     def test_parse_digest_payload_malformed_falls_back(self) -> None:
         from core.api.models import parse_digest_payload

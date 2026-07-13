@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from core.agent.providers.gemini_models import GeminiThinkingLevel
+from core.connectors.models import ConnectorHealthEntry
 
 
 class RuntimeMetadata(BaseModel):
@@ -65,17 +66,55 @@ class DigestPayload(BaseModel):
         default=0,
         description="Count of unread reminders awaiting briefing inclusion.",
     )
+    sync_health_score: float | None = Field(
+        default=None,
+        description=(
+            "Equal-weight connector sync health score (0–100) derived from typed "
+            "connector statuses."
+        ),
+    )
+    connector_health: list[ConnectorHealthEntry] = Field(
+        default_factory=list,
+        description=(
+            "Per-connector health rows with status, freshness, reason code, and "
+            "observation time."
+        ),
+    )
     confidence_score: float = Field(
-        description="Aggregate trust score for connector telemetry (0–100).",
+        description=(
+            "Compatibility alias for sync_health_score. Legacy consumers should "
+            "prefer sync_health_score when present."
+        ),
     )
     failed_connectors: list[str] = Field(
         default_factory=list,
-        description="Connector module names that failed during collection.",
+        description=(
+            "Legacy unavailable-connector labels. F1 and football failures map to "
+            "'sports'."
+        ),
     )
     insights: list[str] = Field(
         default_factory=list,
         description="Cross-correlated action-oriented insight bullets for HUD display.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_sync_health(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        sync_score = payload.get("sync_health_score")
+        confidence = payload.get("confidence_score")
+        if isinstance(sync_score, (int, float)) and not isinstance(sync_score, bool):
+            canonical_score = float(sync_score)
+            payload["sync_health_score"] = canonical_score
+            payload["confidence_score"] = canonical_score
+        elif isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
+            canonical_score = float(confidence)
+            payload["sync_health_score"] = canonical_score
+            payload["confidence_score"] = canonical_score
+        return payload
 
 
 class BriefingResponse(BaseModel):

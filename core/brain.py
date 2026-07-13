@@ -10,22 +10,25 @@ from core.synthesis import SynthesisInput, SynthesisRouter, WarmupHandle
 
 
 def process_telemetry(
-    raw_data: str,
+    raw_data: str = "",
     *,
     synthesis_input: SynthesisInput | None = None,
     strategy: str | None = None,
     warmup: WarmupHandle | None = None,
     router: SynthesisRouter | None = None,
 ) -> dict[str, Any]:
-    """Synthesize telemetry while preserving the historical dictionary return shape."""
+    """Synthesize telemetry while preserving the historical dictionary return shape.
+
+    ``raw_data`` remains accepted for compatibility but is never forwarded to a
+    model. Callers should supply a typed ``SynthesisInput``.
+    """
     source = synthesis_input or SynthesisInput(
-        weather_summary=raw_data,
+        weather_summary=raw_data or None,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
     resolved_strategy = strategy or (DEV_AI_SYNTHESIS if is_dev_mode() else "cloud")
     result = (router or SynthesisRouter()).synthesize(
         source,
-        raw_data,
         resolved_strategy,
         warmup,
     )

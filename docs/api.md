@@ -163,6 +163,16 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
     "upcoming_events_count": 1,
     "f1_sprint_active": false,
     "reminders_pending_count": 0,
+    "sync_health_score": 95.0,
+    "connector_health": [
+      {
+        "name": "weather",
+        "status": "healthy",
+        "freshness": "live",
+        "reason_code": "ok",
+        "observed_at": "2026-07-13T16:00:00+00:00"
+      }
+    ],
     "confidence_score": 95.0,
     "failed_connectors": [],
     "insights": ["..."]
@@ -208,9 +218,11 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 | `upcoming_events_count` | integer | Count of calendar events within the 48-hour briefing window |
 | `f1_sprint_active` | boolean | `true` when an F1 sprint session is scheduled this week |
 | `reminders_pending_count` | integer | Count of unread reminders included in the briefing |
-| `confidence_score` | float | Aggregate connector trust score (0–100); reduced by 10% when the sports client reports a stale F1 cache hit |
-| `failed_connectors` | string[] | Names of connectors that returned a failure signal: `"weather"`, `"news"`, `"email"`, `"calendar"`, `"sports"` |
-| `insights` | string[] | Cross-correlated action-oriented bullet strings produced by the Gemini `===INSIGHTS===` output section |
+| `sync_health_score` | float | Equal-weight typed connector sync health (0–100) |
+| `connector_health` | object[] | Per-connector rows: `name`, `status`, `freshness`, `reason_code`, `observed_at` |
+| `confidence_score` | float | Compatibility alias of `sync_health_score` for legacy consumers |
+| `failed_connectors` | string[] | Legacy unavailable-connector labels: `"weather"`, `"news"`, `"email"`, `"calendar"`, `"sports"` (F1/football map to `"sports"`) |
+| `insights` | string[] | Cross-correlated action-oriented bullet strings produced by the synthesis `===INSIGHTS===` output section |
 
 **Demo path:** When the demo path is active, the response always returns `demo_mode_active: true` and `dev_mode_active: true` regardless of the `DEV_MODE` flag value. The `digest` object is loaded from `core/mock/telemetry.json`.
 
@@ -724,17 +736,19 @@ class MarkReadResponse(BaseModel):
 
 ```python
 class DigestPayload(BaseModel):
-    weather_archetype: str | None = None   # Normalized condition label for HUD display
-    unread_emails_count: int = 0           # Unread primary inbox count
-    upcoming_events_count: int = 0         # Calendar events in the 48-hour window
-    f1_sprint_active: bool = False         # True when a sprint session is this week
-    reminders_pending_count: int = 0       # Unread reminders included in the run
-    confidence_score: float                # Aggregate trust score (0–100)
-    failed_connectors: list[str] = []      # Connector names that returned failure signals
-    insights: list[str] = []              # Cross-correlated insight bullets from Gemini
+    weather_archetype: str | None = None
+    unread_emails_count: int = 0
+    upcoming_events_count: int = 0
+    f1_sprint_active: bool = False
+    reminders_pending_count: int = 0
+    sync_health_score: float | None = None
+    connector_health: list[ConnectorHealthEntry] = []
+    confidence_score: float                # Alias of sync_health_score
+    failed_connectors: list[str] = []      # Legacy unavailable labels; F1/football -> "sports"
+    insights: list[str] = []
 ```
 
-`confidence_score` is computed from the ratio of connectors that returned valid data. When only one sports sub-module is active it contributes a full weight of 1.0; when both F1 and football are enabled they each contribute 0.5. A 10% penalty is applied when the sports client reports a stale F1 cache hit.
+`sync_health_score` averages equal weights across enabled modules (`weather`, `news`, `email`, `calendar`, `f1`, `football`, `reminders`) using typed statuses: healthy `1.0`, degraded `0.5`, unavailable `0.0`. Fresh validated cache is healthy; stale fallback is degraded. Regex prose inference and the former F1 10% penalty are not used.
 
 ### `BriefingHistoryRecord`
 

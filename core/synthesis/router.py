@@ -29,7 +29,11 @@ from core.config import (
     OLLAMA_ENABLED,
     OLLAMA_SYNTHESIS_PROMPT,
 )
-from core.synthesis.formatting import compact_payload, deterministic_fallback, parse_model_output
+from core.synthesis.formatting import (
+    deterministic_fallback,
+    parse_model_output,
+    wrap_untrusted_payload,
+)
 from core.synthesis.models import SynthesisInput, SynthesisResult
 
 _LOGGER = logging.getLogger(__name__)
@@ -163,7 +167,7 @@ class SynthesisRouter:
             warmup_ms=warmup_ms,
         )
 
-    def _gemini(self, full_telemetry: str) -> SynthesisResult:
+    def _gemini(self, source: SynthesisInput) -> SynthesisResult:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("gemini_unavailable")
@@ -172,9 +176,10 @@ class SynthesisRouter:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model="gemini-3.1-flash-lite",
-            contents=[full_telemetry],
+            contents=[wrap_untrusted_payload(source)],
             config=types.GenerateContentConfig(
                 system_instruction=GEMINI_SYNTHESIS_PROMPT,
+                max_output_tokens=512,
                 thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             ),
         )
@@ -201,7 +206,7 @@ class SynthesisRouter:
             )
             self._state("generating", "ollama", profile_key, None)
             message = OllamaProvider().generate_turn(
-                [AgentMessage(role="user", content=compact_payload(source))],
+                [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
                 [],
                 profile,
             )
@@ -220,10 +225,13 @@ class SynthesisRouter:
     def synthesize(
         self,
         source: SynthesisInput,
-        full_telemetry: str,
         strategy: str,
         warmup: WarmupHandle | None = None,
+        *,
+        full_telemetry: str | None = None,
     ) -> SynthesisResult:
+        # full_telemetry is retained only as an unused compatibility keyword.
+        _ = full_telemetry
         if strategy == "raw":
             result = self._raw(source, "configured_raw")
             self._state("complete", result.provider, result.profile, result.fallback_reason)
@@ -232,11 +240,15 @@ class SynthesisRouter:
         gemini_reason: str | None = None
         if strategy == "cloud":
             try:
-                result = self._gemini(full_telemetry)
+                result = self._gemini(source)
                 self._state("complete", result.provider, result.profile, None)
                 return result
             except Exception as exc:
-                _LOGGER.exception("Gemini briefing synthesis failed; falling back to local/raw.")
+                _LOGGER.error(
+                    "Gemini briefing synthesis failed; falling back to local/raw. "
+                    "error_type=%s",
+                    type(exc).__name__,
+                )
                 gemini_reason = str(exc) if str(exc).startswith("gemini_") else "gemini_error"
 
         resident = resident_profile_key()
