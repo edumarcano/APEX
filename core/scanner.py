@@ -1,6 +1,7 @@
+import logging
 import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import psutil
 from dotenv import load_dotenv
@@ -13,6 +14,7 @@ load_dotenv(dotenv_path=ENV_PATH)
 COOLDOWN_SECONDS = 3600
 CPU_THROTTLE_LIMIT = 80.0
 RAM_THROTTLE_LIMIT = 85.0
+_LOGGER = logging.getLogger(__name__)
 
 
 def get_current_ssid() -> str | None:
@@ -26,7 +28,7 @@ def get_current_ssid() -> str | None:
         for line in results.split("\n"):
             if "SSID" in line and "BSSID" not in line:
                 return line.split(":", 1)[1].strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
     return None
 
@@ -61,15 +63,15 @@ def sample_system_vitals() -> dict[str, float]:
 
     try:
         vitals["cpu"] = float(psutil.cpu_percent(interval=None))
-    except Exception as exc:
-        print(f"[SCANNER]: CPU vitals query failed: {exc}")
+    except (OSError, AttributeError, TypeError, ValueError) as exc:
+        _LOGGER.warning("CPU vitals query failed: %s", type(exc).__name__)
         vitals["cpu"] = 0.0
 
     try:
         freq = psutil.cpu_freq()
         vitals["cpu_freq"] = round(float(freq.current) / 1000.0, 1) if freq else 0.0
-    except Exception as exc:
-        print(f"[SCANNER]: CPU frequency query failed: {exc}")
+    except (OSError, AttributeError, TypeError, ValueError) as exc:
+        _LOGGER.warning("CPU frequency query failed: %s", type(exc).__name__)
         vitals["cpu_freq"] = 0.0
 
     try:
@@ -77,8 +79,8 @@ def sample_system_vitals() -> dict[str, float]:
         vitals["ram"] = float(mem.percent)
         vitals["ram_used"] = _bytes_to_gb(mem.used)
         vitals["ram_total"] = _bytes_to_gb(mem.total)
-    except Exception as exc:
-        print(f"[SCANNER]: Memory vitals query failed: {exc}")
+    except (OSError, AttributeError, TypeError, ValueError) as exc:
+        _LOGGER.warning("Memory vitals query failed: %s", type(exc).__name__)
         vitals["ram"] = 0.0
         vitals["ram_used"] = 0.0
         vitals["ram_total"] = 0.0
@@ -89,8 +91,8 @@ def sample_system_vitals() -> dict[str, float]:
         vitals["disk"] = float(disk.percent)
         vitals["disk_used"] = _bytes_to_gb(disk.used)
         vitals["disk_total"] = _bytes_to_gb(disk.total)
-    except Exception as exc:
-        print(f"[SCANNER]: Disk vitals query failed: {exc}")
+    except (OSError, AttributeError, TypeError, ValueError) as exc:
+        _LOGGER.warning("Disk vitals query failed: %s", type(exc).__name__)
         vitals["disk"] = 0.0
         vitals["disk_used"] = 0.0
         vitals["disk_total"] = 0.0
@@ -111,7 +113,7 @@ def is_system_throttled() -> bool:
     try:
         try:
             ram_percent = float(psutil.virtual_memory().percent)
-        except Exception:
+        except (OSError, AttributeError, TypeError, ValueError):
             ram_percent = 0.0
 
         if ram_percent >= RAM_THROTTLE_LIMIT:
@@ -121,8 +123,8 @@ def is_system_throttled() -> bool:
         cpu_sample_2 = float(psutil.cpu_percent(interval=0.1))
 
         return cpu_sample_1 > CPU_THROTTLE_LIMIT and cpu_sample_2 > CPU_THROTTLE_LIMIT
-    except Exception as exc:
-        print(f"[SCANNER]: Hardware throttle assessment failed: {exc}")
+    except (OSError, AttributeError, TypeError, ValueError) as exc:
+        _LOGGER.warning("Hardware throttle assessment failed: %s", type(exc).__name__)
         return False
 
 
@@ -133,24 +135,26 @@ def _enforce_production_gate() -> bool:
     is_plugged = check_power()
 
     if not target_wifi or current_wifi != target_wifi:
-        print("[SCANNER]: Checks failed. Unauthorized WiFi connection detected.")
+        _LOGGER.warning("Checks failed. Unauthorized WiFi connection detected.")
         return False
     if not is_plugged:
-        print("[SCANNER]: Checks failed. AC power not detected.")
+        _LOGGER.warning("Checks failed. AC power not detected.")
         return False
 
     last_successful_run = database.get_last_run()
     cooldown_period = timedelta(seconds=COOLDOWN_SECONDS)
+    now = datetime.now(timezone.utc)
 
     on_cooldown = (
-        last_successful_run
-        and (datetime.now() - last_successful_run) < cooldown_period
+        last_successful_run is not None
+        and (now - last_successful_run.astimezone(timezone.utc)) < cooldown_period
     )
 
     if on_cooldown:
-        print(
-            "[SCANNER]: Checks failed. System still on cooldown. "
-            f"Time since last run: {datetime.now() - last_successful_run}"
+        elapsed = now - last_successful_run.astimezone(timezone.utc)
+        _LOGGER.warning(
+            "Checks failed. System still on cooldown. Time since last run: %s",
+            elapsed,
         )
         return False
 
@@ -166,15 +170,15 @@ def should_run() -> bool:
     database.initialize_db()
 
     if is_dev_mode():
-        print(
-            "[SCANNER]: DEV_MODE active — bypassing Wi-Fi SSID validation, "
+        _LOGGER.info(
+            "DEV_MODE active — bypassing Wi-Fi SSID validation, "
             "AC power connectivity check, and execution cooldown."
         )
         return True
 
     if not ENABLE_STARTUP_GATE:
-        print(
-            "[SCANNER]: Production setup with ENABLE_STARTUP_GATE=false — "
+        _LOGGER.info(
+            "Production setup with ENABLE_STARTUP_GATE=false — "
             "skipping Wi-Fi SSID validation, AC power connectivity check, "
             "and execution cooldown. Live API pipelines remain enabled."
         )

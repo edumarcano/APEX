@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import io
+import logging
 import os
 import threading
 import wave
@@ -30,6 +31,7 @@ from core.settings import get_settings_store
 
 load_dotenv(dotenv_path=config.ENV_PATH)
 
+_LOGGER = logging.getLogger(__name__)
 _SPEAK_LOCK = threading.Lock()
 _KOKORO_LOCK = threading.Lock()
 _GOOGLE_TTS_CLIENT: Any | None = None
@@ -68,9 +70,9 @@ def _warm_system_subsystems() -> None:
     """Initialize and hold the pygame hardware mixer channel at import time."""
     try:
         pygame.mixer.init()
-        print("[SPEAKER] Pygame hardware mixer channel pre-warmed successfully.")
+        _LOGGER.info("Pygame hardware mixer channel pre-warmed successfully.")
     except Exception as exc:
-        print(f"[SPEAKER] Pygame mixer pre-warm failed ({type(exc).__name__}).")
+        _LOGGER.warning("Pygame mixer pre-warm failed (%s).", type(exc).__name__)
 
 
 def _get_kokoro_client() -> Kokoro:
@@ -100,7 +102,9 @@ def _warm_local_kokoro() -> None:
     dev_tts = str(getattr(config, "DEV_TTS_PLAYBACK", "pyttsx3")).strip().lower()
 
     if primary != "kokoro" and dev_tts != "kokoro":
-        print("[SPEAKER] Local Kokoro ONNX is not selected as active. Skipping background warmup.")
+        _LOGGER.info(
+            "Local Kokoro ONNX is not selected as active. Skipping background warmup."
+        )
         return
 
     def _warm() -> None:
@@ -112,9 +116,12 @@ def _warm_local_kokoro() -> None:
                 speed=1.0,
                 lang="en-us",
             )
-            print("[SPEAKER] Local Kokoro ONNX client pre-warmed successfully.")
+            _LOGGER.info("Local Kokoro ONNX client pre-warmed successfully.")
         except Exception as exc:  # noqa: BLE001
-            print(f"[SPEAKER] Kokoro client pre-warm bypassed or failed ({type(exc).__name__}).")
+            _LOGGER.warning(
+                "Kokoro client pre-warm bypassed or failed (%s).",
+                type(exc).__name__,
+            )
 
     threading.Thread(target=_warm, daemon=True).start()
 
@@ -136,8 +143,8 @@ def _warm_cloud_clients() -> None:
     global _GOOGLE_TTS_CLIENT
 
     if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-        print(
-            "[SPEAKER] Skipping Google TTS client pre-warm: "
+        _LOGGER.info(
+            "Skipping Google TTS client pre-warm: "
             "GOOGLE_APPLICATION_CREDENTIALS not present in environment variables."
         )
         return
@@ -145,9 +152,12 @@ def _warm_cloud_clients() -> None:
     try:
         from google.cloud import texttospeech
         _GOOGLE_TTS_CLIENT = texttospeech.TextToSpeechClient()
-        print("[SPEAKER] Cloud Text-to-Speech Client pre-warmed successfully.")
+        _LOGGER.info("Cloud Text-to-Speech Client pre-warmed successfully.")
     except Exception as exc:  # noqa: BLE001
-        print(f"[SPEAKER] Google TTS client pre-warm bypassed or failed ({type(exc).__name__}).")
+        _LOGGER.warning(
+            "Google TTS client pre-warm bypassed or failed (%s).",
+            type(exc).__name__,
+        )
         _GOOGLE_TTS_CLIENT = None
 
 
@@ -218,7 +228,7 @@ def _speak_kokoro_local(text: str, *, gender: str) -> None:
     pcm_data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
     wav_bytes = _pack_pcm_to_wav_bytes(pcm_data, sample_rate)
     _play_audio_bytes(wav_bytes)
-    print("[SPEAKER] Local Kokoro ONNX playback completed.")
+    _LOGGER.info("Local Kokoro ONNX playback completed.")
 
 
 def _speak_pyttsx3_local(text: str, *, gender: str) -> None:
@@ -229,7 +239,7 @@ def _speak_pyttsx3_local(text: str, *, gender: str) -> None:
         except OSError:
             pass
 
-    print("[SPEAKER] Local pyttsx3 route selected.")
+    _LOGGER.info("Local pyttsx3 route selected.")
     try:
         engine = pyttsx3.init()
         engine.setProperty("rate", 175)
@@ -257,25 +267,25 @@ def _speak_pyttsx3_local(text: str, *, gender: str) -> None:
 
         engine.say(text)
         engine.runAndWait()
-        print("[SPEAKER] Local pyttsx3 playback completed.")
+        _LOGGER.info("Local pyttsx3 playback completed.")
     except Exception as exc:
-        print(f"[SPEAKER] Local pyttsx3 playback failed ({type(exc).__name__}).")
+        _LOGGER.warning("Local pyttsx3 playback failed (%s).", type(exc).__name__)
 
 
 def _try_google_tts(content: str, *, gender: str) -> bool:
     """Return True if Google cloud TTS played successfully."""
     active_voice = _get_active_google_voice(gender)
     if not active_voice.strip():
-        print("[SPEAKER] Skipping Google TTS: active_voice is not configured.")
+        _LOGGER.info("Skipping Google TTS: active_voice is not configured.")
         return False
-    print("[SPEAKER] Google Cloud TTS route selected.")
+    _LOGGER.info("Google Cloud TTS route selected.")
     try:
         audio = fetch_google_audio(content, active_voice)
         _play_audio_bytes(audio)
-        print("[SPEAKER] Google Cloud TTS playback completed.")
+        _LOGGER.info("Google Cloud TTS playback completed.")
         return True
     except Exception as exc:  # noqa: BLE001 - broad catch drops execution to the next fallback loop safely
-        print(f"[SPEAKER] Google Cloud TTS playback failed ({type(exc).__name__}).")
+        _LOGGER.warning("Google Cloud TTS playback failed (%s).", type(exc).__name__)
         return False
 
 
@@ -296,40 +306,41 @@ def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> None:
     normalized = tts_strategy.strip().lower()
 
     if normalized == "piper":
-        print(
-            "[SPEAKER] WARNING: Piper engine has been deprecated. "
+        _LOGGER.warning(
+            "WARNING: Piper engine has been deprecated. "
             "Gracefully redirecting to pyttsx3."
         )
         normalized = "pyttsx3"
 
     if normalized == "google":
-        print("[SPEAKER] Routing to Google Cloud TTS client API.")
+        _LOGGER.info("Routing to Google Cloud TTS client API.")
         if _try_google_tts(text, gender=gender):
             return
-        print("[SPEAKER] Google TTS failed; falling back to pyttsx3.")
+        _LOGGER.info("Google TTS failed; falling back to pyttsx3.")
         _speak_pyttsx3_local(text, gender=gender)
         return
 
     if normalized == "kokoro":
-        print("[SPEAKER] Routing to local Kokoro ONNX engine.")
+        _LOGGER.info("Routing to local Kokoro ONNX engine.")
         try:
             _speak_kokoro_local(text, gender=gender)
         except Exception as exc:  # noqa: BLE001
-            print(
-                f"[SPEAKER] Local Kokoro ONNX playback failed ({type(exc).__name__}); "
-                "falling back to Google Cloud TTS."
+            _LOGGER.warning(
+                "Local Kokoro ONNX playback failed (%s); "
+                "falling back to Google Cloud TTS.",
+                type(exc).__name__,
             )
             _route_tts_playback(text, "google", gender=gender)
         return
 
     if normalized == "pyttsx3":
-        print("[SPEAKER] Routing directly to local pyttsx3 execution.")
+        _LOGGER.info("Routing directly to local pyttsx3 execution.")
         _speak_pyttsx3_local(text, gender=gender)
         return
 
-    print(
-        f"[SPEAKER] Unrecognized TTS strategy {tts_strategy!r}; "
-        "defaulting to local pyttsx3."
+    _LOGGER.warning(
+        "Unrecognized TTS strategy %r; defaulting to local pyttsx3.",
+        tts_strategy,
     )
     _route_tts_playback(text, "pyttsx3", gender=gender)
 
@@ -352,7 +363,7 @@ def speak(
             runtime settings snapshot captured at speak entry.
     """
     with _SPEAK_LOCK:
-        print(f"[SPEAKER] Speak request received (chars={len(text)}).")
+        _LOGGER.info("Speak request received (chars=%s).", len(text))
 
         snapshot = get_settings_store().get_snapshot()
         bound_gender = _normalize_voice_gender(
@@ -360,18 +371,21 @@ def speak(
         )
 
         if tts_override is not None:
-            print(f"[SPEAKER] TTS override active; routing vector is {tts_override!r}.")
+            _LOGGER.info("TTS override active; routing vector is %r.", tts_override)
             _route_tts_playback(text, tts_override, gender=bound_gender)
             return
 
         if config.is_dev_mode():
             dev_tts = config.DEV_TTS_PLAYBACK
-            print(f"[SPEAKER] DEV_MODE active; DEV_TTS_PLAYBACK routing vector is {dev_tts!r}.")
+            _LOGGER.info(
+                "DEV_MODE active; DEV_TTS_PLAYBACK routing vector is %r.",
+                dev_tts,
+            )
             _route_tts_playback(text, dev_tts, gender=bound_gender)
             return
 
         primary = snapshot.voice.engine
-        print(f"[SPEAKER] Configured PRIMARY_TTS routing vector is {primary!r}.")
+        _LOGGER.info("Configured PRIMARY_TTS routing vector is %r.", primary)
         _route_tts_playback(text, primary, gender=bound_gender)
 
 

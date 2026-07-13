@@ -68,7 +68,9 @@ from core.api.routers.system import (
     get_runtime_settings,
     get_system_diagnostics,
     health_check,
+    liveness,
     patch_runtime_settings,
+    readiness,
 )
 from core.api.tts import clean_for_tts, resolve_tts_diagnostics as _resolve_tts_diagnostics
 
@@ -126,10 +128,12 @@ __all__ = [
     "health_check",
     "list_agent_profiles",
     "list_unread_reminders",
+    "liveness",
     "main",
     "mark_reminders_read",
     "patch_runtime_settings",
     "query_agent",
+    "readiness",
     "trigger_briefing",
     "unload_active_local_model_endpoint",
 ]

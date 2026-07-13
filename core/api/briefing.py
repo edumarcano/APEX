@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -29,6 +32,7 @@ from core.config import (
 from core.connectors.collect import collect_calendar, collect_email, collect_reminders
 from core.connectors.models import ConnectorResult
 from core.connectors.scoring import compute_sync_health
+from core.runtime_logging import run_id_scope
 from core.settings import FeaturesSettings, ModulesSettings, get_settings_store
 from core.synthesis import (
     CalendarFact,
@@ -41,6 +45,7 @@ from core.synthesis import (
 )
 
 _DEMO_STAGE_DELAY_SECONDS = 1.5
+_LOGGER = logging.getLogger(__name__)
 
 
 def _compute_confidence_and_failures(
@@ -192,34 +197,34 @@ def _collect_connector_results(
     if features.weather:
         results["weather"] = weather_client.collect_weather()
     else:
-        print("[SYSTEM]: Weather module bypassed via user preference")
+        _LOGGER.info("Weather module bypassed via user preference")
 
     if features.sports and modules.f1:
         results["f1"] = sports_client.collect_f1()
     elif features.sports and not modules.f1:
-        print("[SYSTEM]: F1 module bypassed via user preference")
+        _LOGGER.info("F1 module bypassed via user preference")
     elif not features.sports:
-        print("[SYSTEM]: Sports module bypassed via user preference")
+        _LOGGER.info("Sports module bypassed via user preference")
 
     if features.sports and modules.football:
         results["football"] = sports_client.collect_football()
     elif features.sports and not modules.football:
-        print("[SYSTEM]: Football module bypassed via user preference")
+        _LOGGER.info("Football module bypassed via user preference")
 
     if features.news:
         results["news"] = news_client.collect_news()
     else:
-        print("[SYSTEM]: News module bypassed via user preference")
+        _LOGGER.info("News module bypassed via user preference")
 
     if features.email:
         results["email"] = collect_email()
     else:
-        print("[SYSTEM]: Email module bypassed via user preference")
+        _LOGGER.info("Email module bypassed via user preference")
 
     if features.calendar:
         results["calendar"] = collect_calendar()
     else:
-        print("[SYSTEM]: Calendar module bypassed via user preference")
+        _LOGGER.info("Calendar module bypassed via user preference")
 
     results["reminders"] = collect_reminders()
     return results
@@ -264,11 +269,12 @@ def _build_digest(
     )
 
 
-def _run_demo_briefing() -> BriefingResponse:
+def _run_demo_briefing(*, run_id: str) -> BriefingResponse:
     """Execute the staged simulation path when ``DEMO_MODE`` is active."""
     voice_thread_started = False
 
     try:
+        global_pipeline_state.begin_run(run_id)
         global_pipeline_state.update(1, "GATE")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
@@ -312,6 +318,7 @@ def _run_demo_briefing() -> BriefingResponse:
             telemetry=telemetry,
             digest=digest,
             metadata=RuntimeMetadata(
+                run_id=run_id,
                 dev_mode_active=True,
                 demo_mode_active=True,
                 synthesis_strategy="demo",
@@ -348,149 +355,155 @@ def trigger_briefing() -> BriefingResponse:
             detail="Pipeline run already active.",
         )
 
+    run_id = str(uuid.uuid4())
     voice_thread_started = False
-    try:
-        if DEMO_MODE:
-            demo_res = _run_demo_briefing()
-            voice_thread_started = True  # Lock ownership transferred to demo thread
-            return demo_res
-
-        global_pipeline_state.update(1, "GATE")
-
-        if not scanner.should_run():
-            global_pipeline_state.reset()
-            raise HTTPException(
-                status_code=403,
-                detail="System gate failed: scanner.should_run() is False.",
-            )
-
+    with run_id_scope(run_id):
         try:
-            briefing_settings = get_settings_store().get_snapshot()
-            features = briefing_settings.features
-            modules = briefing_settings.modules
+            if DEMO_MODE:
+                demo_res = _run_demo_briefing(run_id=run_id)
+                voice_thread_started = True  # Lock ownership transferred to demo thread
+                return demo_res
 
-            dev_mode = is_dev_mode()
-            synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "cloud"
-            synthesis_router = SynthesisRouter(global_pipeline_state.update_synthesis)
-            warmup = synthesis_router.prepare(synthesis_strategy)
+            global_pipeline_state.begin_run(run_id)
+            global_pipeline_state.update(1, "GATE")
 
-            if not dev_mode:
-                database.log_run()
+            if not scanner.should_run():
+                global_pipeline_state.reset()
+                raise HTTPException(
+                    status_code=403,
+                    detail="System gate failed: scanner.should_run() is False.",
+                )
 
-            speaker.speak("APEX online. Preparing situational overview.")
+            try:
+                briefing_settings = get_settings_store().get_snapshot()
+                features = briefing_settings.features
+                modules = briefing_settings.modules
 
-            global_pipeline_state.update(2, "COLLECTION")
-            print("[SYSTEM]: Fetching data...")
-            results = _collect_connector_results(features=features, modules=modules)
-            health = compute_sync_health(results)
-            synthesis_input = _build_synthesis_input(
-                results=results,
-                failed_connectors=health.failed_connectors,
-            )
+                dev_mode = is_dev_mode()
+                synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "cloud"
+                synthesis_router = SynthesisRouter(global_pipeline_state.update_synthesis)
+                warmup = synthesis_router.prepare(synthesis_strategy)
 
-            global_pipeline_state.update(3, "SYNTHESIS")
-            print("[SYSTEM]: Synthesizing briefing...")
+                if not dev_mode:
+                    database.log_run()
 
-            filler_thread = threading.Thread(
-                target=speaker.speak,
-                args=("Generating briefing... Please wait...",),
-                daemon=True,
-            )
-            filler_thread.start()
+                speaker.speak("APEX online. Preparing situational overview.")
 
-            brain_output = brain.process_telemetry(
-                "",
-                synthesis_input=synthesis_input,
-                strategy=synthesis_strategy,
-                warmup=warmup,
-                router=synthesis_router,
-            )
-            final_briefing = brain_output["briefing"]
-            briefing_insights = brain_output["insights"]
+                global_pipeline_state.update(2, "COLLECTION")
+                _LOGGER.info("Fetching connector data")
+                results = _collect_connector_results(features=features, modules=modules)
+                health = compute_sync_health(results)
+                synthesis_input = _build_synthesis_input(
+                    results=results,
+                    failed_connectors=health.failed_connectors,
+                )
 
-            filler_thread.join()
+                global_pipeline_state.update(3, "SYNTHESIS")
+                _LOGGER.info("Synthesizing briefing")
 
-            delivery_voice = get_settings_store().get_snapshot().voice
-            if dev_mode:
-                tts_strategy = DEV_TTS_PLAYBACK
-            else:
-                synthesis_strategy = "cloud"
-                tts_strategy = delivery_voice.engine
+                filler_thread = threading.Thread(
+                    target=speaker.speak,
+                    args=("Generating briefing... Please wait...",),
+                    daemon=True,
+                )
+                filler_thread.start()
 
-            active_tts_engine, system_load_throttled = resolve_tts_diagnostics(
-                dev_mode=dev_mode,
-                configured_tts=tts_strategy,
-            )
-            global_pipeline_state.update(
-                4,
-                "DELIVERY",
-                active_tts_engine=active_tts_engine,
-                system_load_throttled=system_load_throttled,
-            )
-            digest_payload = _build_digest(results=results, insights=briefing_insights)
-            runtime_metadata = RuntimeMetadata(
-                dev_mode_active=dev_mode,
-                demo_mode_active=False,
-                synthesis_strategy=synthesis_strategy,
-                synthesis_provider=brain_output.get("provider"),
-                synthesis_profile=brain_output.get("profile"),
-                synthesis_fallback_reason=brain_output.get("fallback_reason"),
-                synthesis_warmup_ms=brain_output.get("warmup_ms"),
-                synthesis_generation_ms=brain_output.get("generation_ms"),
-                tts_strategy=tts_strategy,
-                active_tts_engine=active_tts_engine,
-                system_load_throttled=system_load_throttled,
-            )
-            if not dev_mode:
-                try:
-                    print("[SYSTEM] Logging briefing run to persistent SQLite ledger.")
-                    database.save_briefing(
-                        final_briefing,
-                        digest_payload.model_dump(),
-                        runtime_metadata.model_dump(),
-                    )
-                    database.prune_historical_ledger()
-                except Exception:
-                    print("[SYSTEM]: Briefing ledger persistence failed: persistence_error")
+                brain_output = brain.process_telemetry(
+                    "",
+                    synthesis_input=synthesis_input,
+                    strategy=synthesis_strategy,
+                    warmup=warmup,
+                    router=synthesis_router,
+                )
+                final_briefing = brain_output["briefing"]
+                briefing_insights = brain_output["insights"]
 
-            voice_thread = threading.Thread(
-                target=_speak_and_cleanup,
-                kwargs={
-                    "text": final_briefing,
-                    "tts_override": active_tts_engine,
-                    "voice_gender": delivery_voice.gender,
-                    "lock": _TRIGGER_LOCK,
-                },
-                daemon=True,
-            )
-            voice_thread.start()
-            voice_thread_started = True
+                filler_thread.join()
 
-            return BriefingResponse(
-                status="success",
-                briefing=final_briefing,
-                telemetry=TelemetryPayload(
-                    weather=_display_text(results.get("weather")),
-                    sports=" ".join(
-                        part
-                        for part in (
-                            _display_text(results.get("f1")),
-                            _display_text(results.get("football")),
+                delivery_voice = get_settings_store().get_snapshot().voice
+                if dev_mode:
+                    tts_strategy = DEV_TTS_PLAYBACK
+                else:
+                    synthesis_strategy = "cloud"
+                    tts_strategy = delivery_voice.engine
+
+                active_tts_engine, system_load_throttled = resolve_tts_diagnostics(
+                    dev_mode=dev_mode,
+                    configured_tts=tts_strategy,
+                )
+                global_pipeline_state.update(
+                    4,
+                    "DELIVERY",
+                    active_tts_engine=active_tts_engine,
+                    system_load_throttled=system_load_throttled,
+                )
+                digest_payload = _build_digest(results=results, insights=briefing_insights)
+                runtime_metadata = RuntimeMetadata(
+                    run_id=run_id,
+                    dev_mode_active=dev_mode,
+                    demo_mode_active=False,
+                    synthesis_strategy=synthesis_strategy,
+                    synthesis_provider=brain_output.get("provider"),
+                    synthesis_profile=brain_output.get("profile"),
+                    synthesis_fallback_reason=brain_output.get("fallback_reason"),
+                    synthesis_warmup_ms=brain_output.get("warmup_ms"),
+                    synthesis_generation_ms=brain_output.get("generation_ms"),
+                    tts_strategy=tts_strategy,
+                    active_tts_engine=active_tts_engine,
+                    system_load_throttled=system_load_throttled,
+                )
+                if not dev_mode:
+                    try:
+                        _LOGGER.info("Persisting briefing run to SQLite ledger")
+                        database.save_briefing(
+                            final_briefing,
+                            digest_payload.model_dump(),
+                            runtime_metadata.model_dump(),
                         )
-                        if part
+                        database.prune_historical_ledger()
+                    except (sqlite3.Error, OSError, TypeError, ValueError):
+                        _LOGGER.exception(
+                            "Briefing ledger persistence failed: persistence_error"
+                        )
+
+                voice_thread = threading.Thread(
+                    target=_speak_and_cleanup,
+                    kwargs={
+                        "text": final_briefing,
+                        "tts_override": active_tts_engine,
+                        "voice_gender": delivery_voice.gender,
+                        "lock": _TRIGGER_LOCK,
+                    },
+                    daemon=True,
+                )
+                voice_thread.start()
+                voice_thread_started = True
+
+                return BriefingResponse(
+                    status="success",
+                    briefing=final_briefing,
+                    telemetry=TelemetryPayload(
+                        weather=_display_text(results.get("weather")),
+                        sports=" ".join(
+                            part
+                            for part in (
+                                _display_text(results.get("f1")),
+                                _display_text(results.get("football")),
+                            )
+                            if part
+                        ),
+                        news=_display_text(results.get("news")),
+                        email=_display_text(results.get("email")),
+                        calendar=_display_text(results.get("calendar")),
+                        reminders=_display_text(results.get("reminders")),
                     ),
-                    news=_display_text(results.get("news")),
-                    email=_display_text(results.get("email")),
-                    calendar=_display_text(results.get("calendar")),
-                    reminders=_display_text(results.get("reminders")),
-                ),
-                digest=digest_payload,
-                metadata=runtime_metadata,
-            )
+                    digest=digest_payload,
+                    metadata=runtime_metadata,
+                )
+            finally:
+                if not voice_thread_started:
+                    global_pipeline_state.reset()
         finally:
             if not voice_thread_started:
-                global_pipeline_state.reset()
-    finally:
-        if not voice_thread_started:
-            if _TRIGGER_LOCK.locked():
-                _TRIGGER_LOCK.release()
+                if _TRIGGER_LOCK.locked():
+                    _TRIGGER_LOCK.release()

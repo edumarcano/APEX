@@ -10,7 +10,20 @@ from core.agent.providers.gemini_models import GeminiThinkingLevel
 from core.connectors.models import ConnectorHealthEntry
 
 
+DigestStatus = Literal[
+    "valid",
+    "legacy",
+    "malformed",
+    "unavailable",
+    "zero_health",
+]
+
+
 class RuntimeMetadata(BaseModel):
+    run_id: str | None = Field(
+        default=None,
+        description="Correlation ID for the briefing pipeline run.",
+    )
     dev_mode_active: bool = Field(
         description="Whether unified DEV_MODE is active for this run.",
     )
@@ -131,12 +144,53 @@ class BriefingResponse(BaseModel):
     )
 
 
+def classify_digest_payload(
+    raw_digest: Any,
+    *,
+    digest_parse_error: str | None = None,
+) -> tuple[DigestPayload, DigestStatus]:
+    """
+    Parse a digest and classify history quality.
+
+    Distinguishes malformed rows from genuine zero-health and legacy
+    confidence-only payloads. Safe HUD defaults are always returned.
+    """
+    if digest_parse_error:
+        return DigestPayload(confidence_score=0.0), "malformed"
+
+    if not isinstance(raw_digest, dict):
+        return DigestPayload(confidence_score=0.0), "malformed"
+
+    if not raw_digest:
+        return DigestPayload(confidence_score=0.0), "malformed"
+
+    has_sync = "sync_health_score" in raw_digest or "connector_health" in raw_digest
+    has_confidence = "confidence_score" in raw_digest
+
+    try:
+        parsed = DigestPayload.model_validate(raw_digest)
+    except Exception:
+        return DigestPayload(confidence_score=0.0), "malformed"
+
+    score = parsed.sync_health_score
+    if score is None:
+        score = parsed.confidence_score
+
+    if has_sync and score == 0.0:
+        return parsed, "zero_health"
+    if has_sync:
+        return parsed, "valid"
+    if has_confidence:
+        if score == 0.0:
+            return parsed, "zero_health"
+        return parsed, "legacy"
+    return parsed, "legacy"
+
+
 def parse_digest_payload(raw_digest: Any) -> DigestPayload:
     """Safely parse a digest sub-object with fallback defaults on validation failure."""
-    try:
-        return DigestPayload.model_validate(raw_digest)
-    except Exception:
-        return DigestPayload(confidence_score=0.0)
+    digest, _status = classify_digest_payload(raw_digest)
+    return digest
 
 
 def parse_runtime_metadata(raw_metadata: Any) -> RuntimeMetadata | None:
@@ -279,6 +333,13 @@ class BriefingHistoryRecord(BaseModel):
     briefing: str
     digest: DigestPayload
     metadata: RuntimeMetadata | None = None
+    digest_status: DigestStatus = Field(
+        default="valid",
+        description=(
+            "History quality classification: valid, legacy, malformed, "
+            "unavailable, or zero_health."
+        ),
+    )
 
 
 class PipelineSynthesisState(BaseModel):
@@ -290,6 +351,10 @@ class PipelineSynthesisState(BaseModel):
 
 
 class PipelineStatusSnapshot(BaseModel):
+    run_id: str | None = Field(
+        default=None,
+        description="Correlation ID for the active briefing pipeline run.",
+    )
     step: int = Field(description="Monotonic pipeline step index for the active run.")
     label: str = Field(description="Short stage label for dashboards and probes.")
     timestamp: str = Field(description="UTC ISO-8601 timestamp of the last stage update.")

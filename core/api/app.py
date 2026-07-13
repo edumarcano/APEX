@@ -16,6 +16,7 @@ from core.api.routers import assistant, briefings, market, reminders, system
 from core.config import ENV_PATH, OLLAMA_ENABLED
 from core.agent.providers.ollama_lifecycle import check_idle_models_loop
 from core import database
+from core.runtime_logging import configure_logging
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -25,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
     """Start background workers on API boot and cancel them on shutdown."""
+    configure_logging()
     idle_model_task: asyncio.Task[None] | None = None
     database.initialize_db()
 

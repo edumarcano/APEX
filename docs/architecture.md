@@ -4,14 +4,14 @@
 
 ## Pipeline Overview
 
-`launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes, then polls `GET /` on the API up to 30 times at 500 ms intervals. The browser kiosk window opens only after that health check returns `200`. When the browser window closes, `launcher.py` detects the exit and terminates uvicorn. `atexit` hooks and signal handlers are registered for `Ctrl+C` and `SIGTERM`.
+`launcher.py` is the entry point for a full local session. It starts uvicorn (`127.0.0.1:8000`) and `http.server` (`127.0.0.1:5500`) as parallel child processes, then polls `GET /api/v1/health/ready` and frontend HTTP availability up to 30 times at 500 ms intervals while monitoring both children for early exit. The browser kiosk window opens only after both services are ready. On timeout, bind conflict, or early child exit, the launcher terminates both children, suppresses the browser, and exits nonzero. When the browser window closes, `launcher.py` detects the exit and terminates both server children. `atexit` hooks and signal handlers are registered for `Ctrl+C` and `SIGTERM`.
 
 With both servers up, `core.api` listens on `127.0.0.1:8000`. A `POST /api/v1/trigger` runs a four-stage pipeline:
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
 3. **Synthesis** — `core/api/briefing.py` constructs a privacy-bounded `SynthesisInput` from typed connector facts (weather, email, news, calendar, reminders, F1, football, and connector health). Gemini and Ollama both receive the same sanitized payload wrapped in `<untrusted_connector_data>` markers. Concatenated raw telemetry is never sent to a model. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite; `local` attempts a resident or warmed Ollama model; `raw` produces a deterministic compact briefing. Model paths are tool-free, capped at 512 output tokens, and reject malformed `===SPEECH===` / `===INSIGHTS===` output before falling back to `_raw()`.
-4. **Delivery** — typed connector statuses produce a `DigestPayload` with `sync_health_score`, `connector_health`, legacy `confidence_score` / `failed_connectors`, and insights. The trigger endpoint returns the briefing text, telemetry display strings, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
+4. **Delivery** — typed connector statuses produce a `DigestPayload` with `sync_health_score`, `connector_health`, legacy `confidence_score` / `failed_connectors`, and insights. The trigger endpoint returns the briefing text, telemetry display strings, digest, and metadata (including a per-run `run_id`) as JSON. On production runs, `trigger_briefing` persists the briefing, digest, and runtime metadata to the SQLite `briefings` ledger and prunes to 50 rows before starting TTS playback. `global_pipeline_state.reset()` is called inside `_speak_and_cleanup` after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
@@ -438,17 +438,19 @@ To prevent system resource starvation and audio lag, APEX evaluates hardware vit
 
 SQLite database file: `apex_memory.db`. Three tables, all created by `initialize_db()`; briefing rows include nullable `metadata_json` for resolved synthesis diagnostics while legacy rows remain valid:
 
-- `runs (id INTEGER PRIMARY KEY, timestamp TEXT)` — written by `log_run()` on each production trigger; read by `get_last_run()` for cooldown enforcement.
+- `runs (id INTEGER PRIMARY KEY, timestamp TEXT)` — written by `log_run()` on each production trigger with timezone-aware UTC ISO timestamps; read by `get_last_run()` for cooldown enforcement. Legacy naive timestamps are accepted on read as local wall-clock values.
 - `reminders (id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)` — managed by `save_reminder()`, `fetch_unread_reminders()`, and `mark_reminders_read()`.
-- `briefings (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, briefing TEXT, digest_json TEXT)` — written by `save_briefing()` after each production run; indexed on `timestamp DESC` for efficient history queries.
+- `briefings (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, briefing TEXT, digest_json TEXT, metadata_json TEXT)` — written by `save_briefing()` after each production run; indexed on `timestamp DESC` for efficient history queries.
+
+Connections are context-managed with WAL enabled. Writes use explicit SQLite transactions that roll back on failure. `probe_db()` runs a lightweight `SELECT 1` for readiness checks. Malformed history JSON is logged with record ID and error category only — never stored briefing or personal content.
 
 `initialize_db()` is called during API lifespan startup and again at the start of `should_run()`, ensuring schema upgrades exist before history reads or trigger writes.
 
 **Briefing ledger functions:**
 
-- `save_briefing(briefing, digest_dict)` — persists the briefing text and a compact JSON-encoded `DigestPayload` dict to the `briefings` table.
-- `fetch_briefing_history(limit=50)` — returns up to 50 rows ordered by `timestamp DESC`, with the `digest_json` field parsed back into a dict.
-- `prune_historical_ledger()` — deletes all rows not in the 50 most recent by timestamp. Called inside `_speak_and_cleanup` immediately after `save_briefing()`. Uses an explicit `BEGIN` / `ROLLBACK` transaction for safety.
+- `save_briefing(briefing, digest_dict, metadata_dict=None)` — persists the briefing text, compact JSON-encoded `DigestPayload`, and optional runtime metadata (including `run_id`) to the `briefings` table.
+- `fetch_briefing_history(limit=50)` — returns up to 50 rows ordered by `timestamp DESC`, with `digest_json` / `metadata_json` parsed back into dicts and parse-error categories attached when JSON is invalid.
+- `prune_historical_ledger()` — deletes all rows not in the 50 most recent by timestamp. Called from `trigger_briefing` immediately after `save_briefing()` inside an explicit transaction.
 
 ### `core/config.py`
 
@@ -844,17 +846,17 @@ The `webbrowser` fallback path (used when no supported browser binary is found) 
 
 ## Logging Conventions
 
-Every module prefixes terminal output with a bracketed tag:
+Operational diagnostics use the standard library `logging` module (`logging.getLogger(__name__)`), bootstrapped from the API lifespan and launcher. Briefing runs bind a `run_id` into log context. Malformed history logging includes record IDs and error categories only; source connector content and credentials must not enter error logs.
 
-| Tag | Module |
+| Logger name | Module |
 |---|---|
-| `[BRAIN]` | `core/brain.py` |
-| `[SCANNER]` | `core/scanner.py` |
-| `[SPEAKER]` | `core/speaker.py` |
-| `[WEATHER]` | `clients/weather_client.py` |
-| `[SPORTS]` | `clients/sports_client.py` |
-| `[NEWS]` | `clients/news_client.py` |
-| `[GMAIL]` | `clients/gmail_client.py` |
-| `[CALENDAR]` | `clients/calendar_client.py` |
-| `[SYSTEM]` | `core/api/briefing.py` |
-| `[LAUNCHER]` | `launcher.py` |
+| `core.brain` | `core/brain.py` |
+| `core.scanner` | `core/scanner.py` |
+| `core.speaker` | `core/speaker.py` |
+| `clients.weather_client` | `clients/weather_client.py` |
+| `clients.sports_client` | `clients/sports_client.py` |
+| `clients.news_client` | `clients/news_client.py` |
+| `clients.gmail_client` | `clients/gmail_client.py` |
+| `clients.calendar_client` | `clients/calendar_client.py` |
+| `core.api.briefing` | `core/api/briefing.py` |
+| `launcher` | `launcher.py` |

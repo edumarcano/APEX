@@ -203,7 +203,13 @@ interface BriefingHistoryItem {
   timestamp: string
   briefing: string
   digest?: DigestPayload | null
+  digest_status?: 'valid' | 'legacy' | 'malformed' | 'unavailable' | 'zero_health'
+  metadata?: {
+    run_id?: string | null
+    [key: string]: unknown
+  } | null
 }
+
 
 function formatHistoryTimestamp(timestamp: string): string {
   return new Date(timestamp).toLocaleString('en-US', {
