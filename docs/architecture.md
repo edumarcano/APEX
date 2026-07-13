@@ -6,16 +6,16 @@
 
 `launcher.py` is the entry point for a full local session. It starts uvicorn and `http.server` as parallel child processes, then polls `GET /` on the API up to 30 times at 500 ms intervals. The browser kiosk window opens only after that health check returns `200`. When the browser window closes, `launcher.py` detects the exit and terminates uvicorn. `atexit` hooks and signal handlers are registered for `Ctrl+C` and `SIGTERM`.
 
-With both servers up, `api.py` listens on `127.0.0.1:8000`. A `POST /api/v1/trigger` runs a four-stage pipeline:
+With both servers up, `core.api` listens on `127.0.0.1:8000`. A `POST /api/v1/trigger` runs a four-stage pipeline:
 
 1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
-3. **Synthesis** — `core/api.py` constructs a `SynthesisInput` from privacy-bounded facts (weather, calendar, reminders, F1, connector failures) and passes the full telemetry string and the `SynthesisInput` to `SynthesisRouter.synthesize()`. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite via `_gemini()`; `local` attempts a resident or warmed Ollama model via `_ollama()`; `raw` produces a deterministic compact briefing. Both model paths parse the response with `parse_model_output()` for `===SPEECH===` / `===INSIGHTS===` markers. Any path can fall back to `_raw()`. The resolved `SynthesisResult` carries `provider`, `profile`, `fallback_reason`, `warmup_ms`, and `generation_ms` for diagnostics.
+3. **Synthesis** — `core/api/briefing.py` constructs a `SynthesisInput` from privacy-bounded facts (weather, calendar, reminders, F1, connector failures) and passes the full telemetry string and the `SynthesisInput` to `SynthesisRouter.synthesize()`. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite via `_gemini()`; `local` attempts a resident or warmed Ollama model via `_ollama()`; `raw` produces a deterministic compact briefing. Both model paths parse the response with `parse_model_output()` for `===SPEECH===` / `===INSIGHTS===` markers. Any path can fall back to `_raw()`. The resolved `SynthesisResult` carries `provider`, `profile`, `fallback_reason`, `warmup_ms`, and `generation_ms` for diagnostics.
 4. **Delivery** — connector outputs are evaluated for trust, producing a `DigestPayload` with a `confidence_score` and `failed_connectors` list. The trigger endpoint returns the briefing text, telemetry, digest, and metadata as JSON. On production runs, `_speak_and_cleanup` persists the briefing and digest to the SQLite `briefings` ledger before starting TTS playback. `global_pipeline_state.reset()` is called inside that thread after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
 With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
-**API lifespan worker:** `core/api.py` registers a FastAPI lifespan handler that starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`. It runs independently of the trigger/briefing pipeline described above.
+**API lifespan worker:** `core/api/app.py` registers a FastAPI lifespan handler that starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`. It runs independently of the trigger/briefing pipeline described above.
 
 ---
 
@@ -23,7 +23,7 @@ With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run l
 
 A full briefing run is a blocking HTTP call. Rather than streaming partial JSON out of the trigger response, execution and observation are kept separate. When the operator clicks "INITIATE SYSTEM SYNTHESIS" or presses `Enter`, `useApexData.triggerSynthesis()` fires a single `POST /api/v1/trigger` and holds it open, while a `setInterval` loop at **500 ms** inside the same hook polls `GET /api/v1/status`.
 
-On the backend, `core/api.py` calls `global_pipeline_state.update(step, label)` at each stage boundary. The state is read under a `threading.Lock` on every poll. At step 4 (Delivery), the trigger response returns while TTS plays on a worker thread. Once `_speak_and_cleanup` calls `global_pipeline_state.reset()`, the next poll returns `404`. The hook treats `404` as idle, clears the interval, and the HUD fills its cards from the trigger response body.
+On the backend, `core/api/briefing.py` calls `global_pipeline_state.update(step, label)` at each stage boundary. The state is read under a `threading.Lock` on every poll. At step 4 (Delivery), the trigger response returns while TTS plays on a worker thread. Once `_speak_and_cleanup` calls `global_pipeline_state.reset()`, the next poll returns `404`. The hook treats `404` as idle, clears the interval, and the HUD fills its cards from the trigger response body.
 
 ```mermaid
 sequenceDiagram
@@ -97,7 +97,7 @@ The `hud_context` injected before the loop starts is built fresh on every reques
 
 ### Local (Ollama) Query Path
 
-When `profile` resolves to a local profile, `query_agent()` in `core/api.py` runs three admission checks before handing off to `run_agent_loop()`, replacing the direct `Loop->>Gemini` call above with a call to `OllamaProvider.generate_turn()` against the Ollama `/api/chat` REST endpoint:
+When `profile` resolves to a local profile, `query_agent()` in `core/api/assistant.py` runs three admission checks before handing off to `run_agent_loop()`, replacing the direct `Loop->>Gemini` call above with a call to `OllamaProvider.generate_turn()` against the Ollama `/api/chat` REST endpoint:
 
 ```mermaid
 sequenceDiagram
@@ -162,7 +162,16 @@ The `metadata.demo_mode_active` field is `true` in the trigger response. `useApe
 ```
 apex/
 ├── core/
-│   ├── api.py           # FastAPI app — routes, PipelineState, Pydantic models, clean_for_tts
+│   ├── api/             # FastAPI package — app construction, models, state, briefing orchestration, routers
+│   │   ├── __init__.py      # Re-exports app and selected public/test helpers
+│   │   ├── app.py           # FastAPI construction, CORS, lifespan, router registration
+│   │   ├── models.py        # Public request/response Pydantic models
+│   │   ├── state.py         # PipelineState, trigger lock, speak-and-cleanup
+│   │   ├── tts.py           # clean_for_tts + TTS diagnostics resolution
+│   │   ├── briefing.py      # Connector trust scoring and trigger orchestration
+│   │   ├── demo.py          # DEMO_MODE mock telemetry/assistant/history payloads
+│   │   ├── assistant.py     # Agent profile status, unload, and query orchestration
+│   │   └── routers/         # system, briefings, reminders, assistant, market route modules
 │   ├── brain.py         # Compatibility façade over core/synthesis/; routes synthesize() calls to SynthesisRouter
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
@@ -320,7 +329,7 @@ The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synth
 **`core/synthesis/router.py`** — `SynthesisRouter` drives strategy resolution:
 
 - `prepare(strategy)` — called during the Collection stage. When `strategy == "local"`, checks for a resident APEX model; if none is found, spawns a background `WarmupHandle` thread that calls `switch_local_model(lynx)` concurrently with data collection.
-- `synthesize(source, full_telemetry, strategy, warmup)` — resolves the briefing: `raw` calls `_raw()` immediately; `cloud` calls `_gemini()` and falls through to local/raw on failure; `local` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so `api.py` can propagate live synthesis state to `/api/v1/status`.
+- `synthesize(source, full_telemetry, strategy, warmup)` — resolves the briefing: `raw` calls `_raw()` immediately; `cloud` calls `_gemini()` and falls through to local/raw on failure; `local` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so briefing orchestration can propagate live synthesis state to `/api/v1/status`.
 - `WarmupHandle` — a `threading.Event`-backed dataclass tracking warmup success, reason, and timing. `elapsed_ms` is computed from a monotonic start timestamp.
 
 ### `core/agent/` — Cortex reasoning engine for the APEX assistant
@@ -770,7 +779,7 @@ See [docs/api.md](api.md#get-apiv1market) for the full response contract.
 
 ## Confidence Scoring
 
-After the Collection stage, `api.py` evaluates all enabled connector outputs to produce a `confidence_score` (0–100) and a `failed_connectors` list. These populate the `DigestPayload` returned in the trigger response.
+After the Collection stage, `core/api/briefing.py` evaluates all enabled connector outputs to produce a `confidence_score` (0–100) and a `failed_connectors` list. These populate the `DigestPayload` returned in the trigger response.
 
 ### Connector Failure Detection
 
@@ -800,7 +809,7 @@ When all connectors are disabled, the score defaults to `100.0`.
 
 ### F1 Cache Penalty
 
-A 10% penalty is applied when the sports client reports a stale cache hit. `sports_client.fetch_sports_data()` returns an explicit boolean `f1_cache_refreshed` flag. When this flag is `False`, `api.py` applies the penalty: `confidence_score *= 0.90`. The sports client sets the flag to `True` only when a live network fetch to the Jolpica/Ergast API succeeds and writes a new cache entry; a fresh cache hit or any network failure that falls back to disk leaves the flag `False`.
+A 10% penalty is applied when the sports client reports a stale cache hit. `sports_client.fetch_sports_data()` returns an explicit boolean `f1_cache_refreshed` flag. When this flag is `False`, briefing orchestration applies the penalty: `confidence_score *= 0.90`. The sports client sets the flag to `True` only when a live network fetch to the Jolpica/Ergast API succeeds and writes a new cache entry; a fresh cache hit or any network failure that falls back to disk leaves the flag `False`.
 
 ### Output
 
@@ -852,5 +861,5 @@ Every module prefixes terminal output with a bracketed tag:
 | `[NEWS]` | `clients/news_client.py` |
 | `[GMAIL]` | `clients/gmail_client.py` |
 | `[CALENDAR]` | `clients/calendar_client.py` |
-| `[SYSTEM]` | `core/api.py` |
+| `[SYSTEM]` | `core/api/briefing.py` |
 | `[LAUNCHER]` | `launcher.py` |

@@ -76,7 +76,7 @@ frontend/
 
 ## API Base URL
 
-The API base URL is centralized in `src/lib/api.ts` as `http://127.0.0.1:8000`. This matches the uvicorn bind address set in `core/api.py` and `launcher.py`. Change both if you serve the backend on a different port, and update `APEX_ALLOWED_ORIGINS` in `.env` accordingly.
+The API base URL is centralized in `src/lib/api.ts` as `http://127.0.0.1:8000`. This matches the uvicorn bind address set in `core/api/app.py` and `launcher.py`. Change both if you serve the backend on a different port, and update `APEX_ALLOWED_ORIGINS` in `.env` accordingly.
 
 ---
 

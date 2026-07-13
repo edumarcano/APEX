@@ -19,7 +19,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
                           ↓
-core/api.py → scanner.py → [Data Connectors] → core/synthesis/ → speaker.py
+core/api/ → scanner.py → [Data Connectors] → core/synthesis/ → speaker.py
               (Gate)         (Collection)        (Synthesis)      (Delivery)
 ```
 
