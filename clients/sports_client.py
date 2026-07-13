@@ -1,11 +1,18 @@
+"""Sports connectors with typed F1 and football briefing results."""
+
+from __future__ import annotations
+
 import json
 import os
 import sys
-import requests
-from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
+
+import requests
+from dotenv import load_dotenv
+
+from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings import get_settings_store
 
 load_dotenv()
@@ -20,12 +27,10 @@ except Exception:
 
 
 def _get_f1_cache_path() -> str:
-    # Resolve the on-disk cache path for F1 telemetry.
     return os.path.join(os.path.dirname(__file__), F1_CACHE_FILENAME)
 
 
 def _read_f1_cache() -> Optional[Dict[str, Any]]:
-    # Load cached F1 telemetry from disk if available and valid.
     cache_path = _get_f1_cache_path()
     if not os.path.exists(cache_path):
         return None
@@ -38,7 +43,6 @@ def _read_f1_cache() -> Optional[Dict[str, Any]]:
 
 
 def _write_f1_cache(f1_map: Dict[str, Any]) -> None:
-    # Persist the normalized F1 telemetry map to local cache.
     try:
         cache_payload = {
             "cached_at": datetime.now(timezone.utc).isoformat(),
@@ -47,12 +51,11 @@ def _write_f1_cache(f1_map: Dict[str, Any]) -> None:
         cache_path = _get_f1_cache_path()
         with open(cache_path, "w", encoding="utf-8") as cache_file:
             json.dump(cache_payload, cache_file, separators=(",", ":"))
-    except (OSError, TypeError) as exc:
-        sys.stderr.write(f"[SPORTS][F1][CACHE] {exc}\n")
+    except (OSError, TypeError):
+        sys.stderr.write("[SPORTS][F1][CACHE] write_failed\n")
 
 
 def _is_f1_cache_fresh(cache_payload: Dict[str, Any]) -> bool:
-    # Check whether cached F1 data is still within the TTL window.
     cached_at_raw = cache_payload.get("cached_at")
     if not isinstance(cached_at_raw, str):
         return False
@@ -70,7 +73,6 @@ def _is_f1_cache_fresh(cache_payload: Dict[str, Any]) -> bool:
 
 
 def _safe_parse_utc_datetime(date_value: str, time_value: str) -> Optional[datetime]:
-    # Parse race date/time strings into a timezone-aware UTC datetime.
     if not date_value:
         return None
 
@@ -83,7 +85,6 @@ def _safe_parse_utc_datetime(date_value: str, time_value: str) -> Optional[datet
 
 
 def _format_est_edt(dt_utc: Optional[datetime]) -> str:
-    # Convert UTC race datetime into human-readable Eastern time text.
     if dt_utc is None:
         return "Unscheduled"
 
@@ -92,7 +93,6 @@ def _format_est_edt(dt_utc: Optional[datetime]) -> str:
 
 
 def _relative_week_label(dt_utc: Optional[datetime]) -> str:
-    # Compute a relative week label for the race in Eastern time.
     if dt_utc is None:
         return "Unscheduled"
 
@@ -110,7 +110,6 @@ def _relative_week_label(dt_utc: Optional[datetime]) -> str:
 
 
 def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
-    # Normalize the next-race payload into the F1 telemetry map shape.
     race_dt_utc = _safe_parse_utc_datetime(race.get("date", ""), race.get("time", ""))
     sprint = race.get("Sprint")
     sprint_available = isinstance(sprint, dict)
@@ -137,113 +136,175 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def collect_f1() -> ConnectorResult:
+    """Collect Formula 1 next-race telemetry as a typed connector result."""
+    observed_at = utc_now_iso()
+    cache_payload = _read_f1_cache()
+    cached_map = None
+    if cache_payload and isinstance(cache_payload.get("f1_map"), dict):
+        cached_map = cache_payload["f1_map"]
+
+    try:
+        f1_url = "https://api.jolpi.ca/ergast/f1/current/next.json"
+        if cache_payload and cached_map and _is_f1_cache_fresh(cache_payload):
+            f1_map = cached_map
+            freshness = "fresh_cache"
+        else:
+            response = requests.get(f1_url, timeout=10)
+            response.raise_for_status()
+            f1_data = response.json()
+            races = f1_data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+            if not races:
+                raise ValueError("No F1 races in payload.")
+            f1_map = _build_f1_map_from_race(races[0])
+            _write_f1_cache(f1_map)
+            freshness = "live"
+        return ConnectorResult(
+            name="f1",
+            status="healthy",
+            freshness=freshness,  # type: ignore[arg-type]
+            reason_code="ok",
+            observed_at=observed_at,
+            display_text=f"F1_DATA:{json.dumps(f1_map, separators=(',', ':'))}",
+            data={"f1_map": f1_map, "cache_refreshed": True},
+        )
+    except Exception:
+        sys.stderr.write("[SPORTS][F1] fetch_failed\n")
+        if cached_map:
+            return ConnectorResult(
+                name="f1",
+                status="degraded",
+                freshness="stale",
+                reason_code="stale_cache",
+                observed_at=observed_at,
+                display_text=f"F1_DATA:{json.dumps(cached_map, separators=(',', ':'))}",
+                data={"f1_map": cached_map, "cache_refreshed": False},
+            )
+        return ConnectorResult(
+            name="f1",
+            status="unavailable",
+            freshness="none",
+            reason_code="provider_error",
+            observed_at=observed_at,
+            display_text="F1 race telemetry unavailable.",
+            data={"f1_map": None, "cache_refreshed": False},
+        )
+
+
+def collect_football() -> ConnectorResult:
+    """Collect Barcelona fixture telemetry as a typed connector result."""
+    observed_at = utc_now_iso()
+    try:
+        football_api_key = os.getenv("FOOTBALL_API_KEY")
+        if not football_api_key:
+            return ConnectorResult(
+                name="football",
+                status="unavailable",
+                freshness="none",
+                reason_code="missing_credentials",
+                observed_at=observed_at,
+                display_text="Barcelona fixture telemetry unavailable.",
+            )
+
+        barcelona_url = (
+            "https://api.football-data.org/v4/teams/81/matches"
+            "?status=SCHEDULED&limit=1"
+        )
+        headers = {"X-Auth-Token": football_api_key}
+        response = requests.get(barcelona_url, headers=headers, timeout=10)
+
+        if response.status_code == 429:
+            return ConnectorResult(
+                name="football",
+                status="unavailable",
+                freshness="none",
+                reason_code="throttled",
+                observed_at=observed_at,
+                display_text="Barcelona fixture telemetry throttled",
+            )
+
+        if response.status_code != 200:
+            return ConnectorResult(
+                name="football",
+                status="unavailable",
+                freshness="none",
+                reason_code="provider_error",
+                observed_at=observed_at,
+                display_text="Barcelona fixture telemetry unavailable.",
+            )
+
+        matches = response.json().get("matches", [])
+        if not matches:
+            return ConnectorResult(
+                name="football",
+                status="unavailable",
+                freshness="none",
+                reason_code="empty_payload",
+                observed_at=observed_at,
+                display_text="Barcelona fixture telemetry unavailable.",
+            )
+
+        match = matches[0]
+        if str(match["homeTeam"]["id"]) == "81":
+            opponent = match["awayTeam"]["name"]
+        else:
+            opponent = match["homeTeam"]["name"]
+
+        match_dt = datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+        day = match_dt.day
+        suffix = (
+            "th"
+            if 11 <= day % 100 <= 13
+            else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+        )
+        fixture_date = match_dt.strftime("%A, %B ") + f"{day}{suffix}"
+        display = f"Barcelona plays {opponent} on {fixture_date}."
+        return ConnectorResult(
+            name="football",
+            status="healthy",
+            freshness="live",
+            reason_code="ok",
+            observed_at=observed_at,
+            display_text=display,
+            data={
+                "opponent": opponent,
+                "fixture_date": fixture_date,
+                "summary": display,
+            },
+        )
+    except Exception:
+        sys.stderr.write("[SPORTS][FOOTBALL] fetch_failed\n")
+        return ConnectorResult(
+            name="football",
+            status="unavailable",
+            freshness="none",
+            reason_code="network_error",
+            observed_at=observed_at,
+            display_text="Barcelona fixture telemetry unavailable.",
+        )
+
+
 def fetch_sports_snapshot(
     *,
     f1: bool,
     football: bool,
 ) -> tuple[str, bool, Dict[str, Any] | None]:
-    """Connect to sports APIs and retrieve current sports telemetry.
-
-    Args:
-        f1: Whether Formula 1 collection is enabled for this run.
-        football: Whether football collection is enabled for this run.
-
-    Returns:
-        tuple[str, bool, dict | None]: A formatted sports telemetry string,
-            whether the F1 cache path used fresh data (fresh disk cache hit or
-            successful network fetch/cache write), and the optional F1 map.
-
-    Raises:
-        None: All transport and parsing failures are handled internally and
-            converted to fallback telemetry strings.
-    """
-    intel = []
+    """Compatibility snapshot returning combined text plus F1 freshness/map."""
+    segments: list[str] = []
     f1_cache_refreshed = True
     resolved_f1_map: Dict[str, Any] | None = None
 
     if f1:
-        cache_payload = _read_f1_cache()
-        cached_map = None
-        if cache_payload and isinstance(cache_payload.get("f1_map"), dict):
-            cached_map = cache_payload["f1_map"]
-
-        try:
-            f1_url = "https://api.jolpi.ca/ergast/f1/current/next.json"
-            if cache_payload and cached_map and _is_f1_cache_fresh(cache_payload):
-                f1_map = cached_map
-                f1_cache_refreshed = True
-            else:
-                response = requests.get(f1_url, timeout=10)
-                response.raise_for_status()
-                f1_data = response.json()
-                races = f1_data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-                if not races:
-                    raise ValueError("No F1 races in payload.")
-                race = races[0]
-                f1_map = _build_f1_map_from_race(race)
-                _write_f1_cache(f1_map)
-                f1_cache_refreshed = True
-            resolved_f1_map = f1_map
-            intel.append(f"F1_DATA:{json.dumps(f1_map, separators=(',', ':'))}")
-        except Exception as exc:
-            sys.stderr.write(f"[SPORTS][F1] {exc}\n")
-            f1_cache_refreshed = False
-            if cached_map:
-                resolved_f1_map = cached_map
-                intel.append(f"F1_DATA:{json.dumps(cached_map, separators=(',', ':'))}")
-            else:
-                intel.append("F1 race telemetry unavailable.")
+        f1_result = collect_f1()
+        segments.append(f1_result.display_text)
+        f1_cache_refreshed = bool(f1_result.data.get("cache_refreshed", False))
+        f1_map = f1_result.data.get("f1_map")
+        resolved_f1_map = f1_map if isinstance(f1_map, dict) else None
 
     if football:
-        try:
-            football_api_key = os.getenv("FOOTBALL_API_KEY")
-            if not football_api_key:
-                intel.append("Barcelona fixture telemetry unavailable.")
-            else:
-                barcelona_url = (
-                    "https://api.football-data.org/v4/teams/81/matches"
-                    "?status=SCHEDULED&limit=1"
-                )
-                headers = {"X-Auth-Token": football_api_key}
-                response = requests.get(barcelona_url, headers=headers, timeout=10)
+        segments.append(collect_football().display_text)
 
-                if response.status_code == 429:
-                    intel.append("Barcelona fixture telemetry throttled")
-                elif response.status_code == 200:
-                    matches = response.json().get('matches', [])
-                    if not matches:
-                        intel.append("Barcelona fixture telemetry unavailable.")
-                    else:
-                        match = matches[0]
-                        if str(match['homeTeam']['id']) == '81':
-                            opponent = match['awayTeam']['name']
-                        else:
-                            opponent = match['homeTeam']['name']
-
-                        match_dt = datetime.fromisoformat(
-                            match['utcDate'].replace('Z', '+00:00')
-                        )
-                        day = match_dt.day
-                        suffix = (
-                            'th'
-                            if 11 <= day % 100 <= 13
-                            else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
-                        )
-                        fixture_date = (
-                            match_dt.strftime('%A, %B ')
-                            + f"{day}{suffix}"
-                        )
-
-                        intel.append(
-                            f"Barcelona plays {opponent} on {fixture_date}."
-                        )
-                else:
-                    intel.append("Barcelona fixture telemetry unavailable.")
-        except Exception as exc:
-            sys.stderr.write(f"[SPORTS][FOOTBALL] {exc}\n")
-            intel.append("Barcelona fixture telemetry unavailable.")
-
-    return " ".join(intel), f1_cache_refreshed, resolved_f1_map
+    return " ".join(segments), f1_cache_refreshed, resolved_f1_map
 
 
 def fetch_sports_data() -> tuple[str, bool]:

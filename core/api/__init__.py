@@ -15,9 +15,7 @@ from core.api.assistant import (
 from core.api.briefing import (
     _DEMO_STAGE_DELAY_SECONDS,
     _compute_confidence_and_failures,
-    _evaluate_sports_trust,
     _run_demo_briefing,
-    _split_sports_report,
     trigger_briefing,
 )
 from core.api.demo import (
@@ -100,7 +98,6 @@ __all__ = [
     "_build_demo_briefing",
     "_build_settings_response",
     "_compute_confidence_and_failures",
-    "_evaluate_sports_trust",
     "_execute_agent_turn",
     "_load_mock_agent_responses",
     "_load_mock_telemetry",
@@ -113,7 +110,6 @@ __all__ = [
     "_run_demo_agent_query",
     "_run_demo_briefing",
     "_speak_and_cleanup",
-    "_split_sports_report",
     "_trim_agent_history",
     "_validate_mock_agent_response",
     "app",

@@ -188,6 +188,7 @@ export default function App(): ReactElement {
     devModeActive,
     confidenceScore,
     failedConnectors,
+    connectorHealth,
     active_tts_engine,
     system_load_throttled,
     askApexEnabled,
@@ -557,6 +558,7 @@ export default function App(): ReactElement {
             status={status}
             confidenceScore={confidenceScore}
             failedConnectors={failedConnectors}
+            connectorHealth={connectorHealth}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
             synthesisProvider={resolvedSynthesisProvider}

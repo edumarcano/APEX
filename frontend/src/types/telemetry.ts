@@ -118,6 +118,21 @@ export interface AgentProfileStatus {
 
 export interface DigestPayload {
   insights: string[]
+  sync_health_score?: number
+  confidence_score?: number
+  failed_connectors?: string[]
+  connector_health?: ConnectorHealthEntry[]
+}
+
+export type ConnectorHealthStatus = 'healthy' | 'degraded' | 'unavailable'
+export type ConnectorFreshness = 'live' | 'fresh_cache' | 'stale' | 'none'
+
+export interface ConnectorHealthEntry {
+  name: string
+  status: ConnectorHealthStatus
+  freshness?: ConnectorFreshness
+  reason_code?: string
+  observed_at?: string | null
 }
 
 export interface TelemetryPayload {
@@ -138,6 +153,7 @@ export interface TelemetryPayload {
   diagnostics?: SystemDiagnostics | null
   confidenceScore: number
   failedConnectors: string[]
+  connectorHealth: ConnectorHealthEntry[]
   digest?: DigestPayload
   defaultProfile?: AssistantProfile
   askApexEnabled?: boolean
@@ -185,6 +201,7 @@ export interface ApexDataState {
   devModeActive: boolean
   confidenceScore: number
   failedConnectors: string[]
+  connectorHealth: ConnectorHealthEntry[]
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
   defaultProfile?: AssistantProfile

@@ -4,6 +4,7 @@ import type {
   ActiveReminder,
   ApexDataState,
   AssistantProfile,
+  ConnectorHealthEntry,
   PipelineState,
   SynthesisLiveState,
   SynthesisProfile,
@@ -81,6 +82,7 @@ function createStandbyTelemetryPayload(
     activeReminders,
     confidenceScore: 100.0,
     failedConnectors: [],
+    connectorHealth: [],
     ...(defaultProfile !== undefined ? { defaultProfile } : {}),
   }
 }
@@ -239,6 +241,39 @@ async function fetchUnreadReminderRecords(): Promise<ReminderRecord[]> {
   return parseReminderRecords(body)
 }
 
+function parseConnectorHealth(raw: unknown): ConnectorHealthEntry[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const entries: ConnectorHealthEntry[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as Record<string, unknown>
+    if (typeof row.name !== 'string' || typeof row.status !== 'string') continue
+    entries.push({
+      name: row.name,
+      status: row.status as ConnectorHealthEntry['status'],
+      freshness:
+        typeof row.freshness === 'string'
+          ? (row.freshness as ConnectorHealthEntry['freshness'])
+          : undefined,
+      reason_code: typeof row.reason_code === 'string' ? row.reason_code : undefined,
+      observed_at: typeof row.observed_at === 'string' ? row.observed_at : null,
+    })
+  }
+  return entries
+}
+
+function resolveSyncHealthScore(digest: Record<string, unknown>): number {
+  if (typeof digest.sync_health_score === 'number') {
+    return digest.sync_health_score
+  }
+  if (typeof digest.confidence_score === 'number') {
+    return digest.confidence_score
+  }
+  return 100.0
+}
+
 function isSynthesisGuarded(status: SystemState, isPipelinePolling: boolean): boolean {
   return status === 'loading' || isPipelinePolling
 }
@@ -256,6 +291,7 @@ export function useApexData(): UseApexDataReturn {
     devModeActive: false,
     confidenceScore: 100.0,
     failedConnectors: [],
+    connectorHealth: [],
     active_tts_engine: 'google',
     system_load_throttled: false,
     askApexEnabled: true,
@@ -470,9 +506,16 @@ export function useApexData(): UseApexDataReturn {
       const digest = (body as { digest?: unknown })?.digest
       const d = digest && typeof digest === 'object' ? (digest as Record<string, unknown>) : {}
       const insights = Array.isArray(d.insights) ? d.insights.map(String) : []
-      const confidenceScore = typeof d.confidence_score === 'number' ? d.confidence_score : 100.0
+      const confidenceScore = resolveSyncHealthScore(d)
+      const connectorHealth = parseConnectorHealth(d.connector_health)
       const rawFailedConnectors = Array.isArray(d.failed_connectors) ? d.failed_connectors : []
-      const failedConnectors = rawFailedConnectors.map(String)
+      const failedConnectors =
+        rawFailedConnectors.length > 0
+          ? rawFailedConnectors.map(String)
+          : connectorHealth
+              .filter((entry) => entry.status === 'unavailable')
+              .map((entry) => (entry.name === 'f1' || entry.name === 'football' ? 'sports' : entry.name))
+              .filter((name, index, all) => all.indexOf(name) === index)
       const telemetry = payload.telemetry
       const metadata =
         payload.metadata && typeof payload.metadata === 'object'
@@ -532,7 +575,8 @@ export function useApexData(): UseApexDataReturn {
         activeReminders,
         confidenceScore,
         failedConnectors,
-        digest: { insights },
+        connectorHealth,
+        digest: { insights, connector_health: connectorHealth },
       }
 
       setState((prev) => ({
@@ -545,6 +589,7 @@ export function useApexData(): UseApexDataReturn {
         devModeActive,
         confidenceScore,
         failedConnectors,
+        connectorHealth,
         active_tts_engine,
         system_load_throttled,
         synthesisProvider,

@@ -11,11 +11,9 @@ from pathlib import Path
 from unittest import mock
 
 from core.api.assistant import query_agent
-from core.api.briefing import (
-    _compute_confidence_and_failures,
-    _evaluate_sports_trust,
-)
+from core.api.briefing import _compute_confidence_and_failures
 from core.agent.types import AgentQueryRequest
+from core.connectors.models import ConnectorResult
 from core.settings.models import (
     FeaturesSettings,
     ModulesSettings,
@@ -34,27 +32,37 @@ def _write_json(path: Path, payload: dict) -> None:
 
 class ConfidenceSnapshotTests(unittest.TestCase):
     def test_sports_parent_disabled_ignores_modules(self) -> None:
+        # Disabled sports modules are excluded before scoring; only weather remains.
         score, failures = _compute_confidence_and_failures(
-            weather_report="clear",
-            sports_report="F1 race telemetry unavailable. Barcelona fixture telemetry unavailable.",
-            news_report="",
-            email_report="",
-            calendar_report="",
-            f1_cache_penalty=False,
-            features=FeaturesSettings(weather=True, sports=False),
-            modules=ModulesSettings(f1=True, football=True),
+            results={
+                "weather": ConnectorResult(
+                    name="weather",
+                    status="healthy",
+                    freshness="live",
+                    reason_code="ok",
+                    display_text="clear",
+                ),
+                "f1": None,
+                "football": None,
+            }
         )
         self.assertEqual(score, 100.0)
         self.assertEqual(failures, [])
 
     def test_sports_trust_uses_explicit_modules(self) -> None:
-        earned, total, failed = _evaluate_sports_trust(
-            "F1 race telemetry unavailable.",
-            modules=ModulesSettings(f1=True, football=False),
+        score, failures = _compute_confidence_and_failures(
+            results={
+                "f1": ConnectorResult(
+                    name="f1",
+                    status="unavailable",
+                    freshness="none",
+                    reason_code="provider_error",
+                    display_text="F1 race telemetry unavailable.",
+                ),
+            }
         )
-        self.assertEqual(total, 1.0)
-        self.assertEqual(earned, 0.0)
-        self.assertTrue(failed)
+        self.assertEqual(score, 0.0)
+        self.assertEqual(failures, ["sports"])
 
 
 class SportsClientSnapshotTests(unittest.TestCase):
@@ -242,14 +250,23 @@ class BriefingCaptureTests(unittest.TestCase):
         self.assertTrue(features.sports)
         self.assertFalse(later.sports)
         score, failures = _compute_confidence_and_failures(
-            weather_report="ok",
-            sports_report="F1_DATA:{}",
-            news_report="",
-            email_report="",
-            calendar_report="",
-            f1_cache_penalty=False,
-            features=features,
-            modules=modules,
+            results={
+                "weather": ConnectorResult(
+                    name="weather",
+                    status="healthy",
+                    freshness="live",
+                    reason_code="ok",
+                    display_text="ok",
+                ),
+                "f1": ConnectorResult(
+                    name="f1",
+                    status="healthy",
+                    freshness="live",
+                    reason_code="ok",
+                    display_text="F1_DATA:{}",
+                    data={"f1_map": {}, "cache_refreshed": True},
+                ),
+            }
         )
         self.assertNotIn("sports", failures)
         self.assertGreaterEqual(score, 50.0)

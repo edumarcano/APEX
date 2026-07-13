@@ -14,6 +14,15 @@
     "upcoming_events_count": 1,
     "f1_sprint_active": false,
     "reminders_pending_count": 2,
+    "sync_health_score": 100.0,
+    "connector_health": [
+      {"name": "weather", "status": "healthy", "freshness": "live", "reason_code": "ok"},
+      {"name": "news", "status": "healthy", "freshness": "live", "reason_code": "ok"},
+      {"name": "email", "status": "healthy", "freshness": "live", "reason_code": "ok"},
+      {"name": "calendar", "status": "healthy", "freshness": "live", "reason_code": "ok"},
+      {"name": "f1", "status": "healthy", "freshness": "fresh_cache", "reason_code": "ok"},
+      {"name": "reminders", "status": "healthy", "freshness": "live", "reason_code": "ok"}
+    ],
     "confidence_score": 100.0,
     "failed_connectors": [],
     "insights": [

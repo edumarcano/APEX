@@ -1,3 +1,7 @@
+"""OpenWeatherMap connector with typed briefing results."""
+
+from __future__ import annotations
+
 import os
 from collections import Counter
 from typing import Any
@@ -5,39 +9,99 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+from core.connectors.models import ConnectorResult, utc_now_iso
+
 load_dotenv()
 
 
-def fetch_weather_data():
-    """
-    Connects to the OpenWeatherMap API to retrieve current weather data.
+def _weather_result(
+    *,
+    status: str,
+    reason_code: str,
+    display_text: str,
+    data: dict[str, Any] | None = None,
+    freshness: str = "none",
+) -> ConnectorResult:
+    return ConnectorResult(
+        name="weather",
+        status=status,  # type: ignore[arg-type]
+        freshness=freshness,  # type: ignore[arg-type]
+        reason_code=reason_code,
+        observed_at=utc_now_iso(),
+        display_text=display_text,
+        data=data or {},
+    )
 
-    Returns:
-        str: A formatted string containing the temperature and weather condition, 
-             or an error message if the connection fails.
-    """    
+
+def collect_weather() -> ConnectorResult:
+    """Collect current weather as a typed connector result."""
     api_key = os.getenv("OPENWEATHER_API_KEY")
     location = os.getenv("TARGET_LOCATION")
-    
-    if not api_key or not location:
-        return "Weather API offline: Missing API key or location."
 
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}&units=imperial"
-    
+    if not api_key or not location:
+        return _weather_result(
+            status="unavailable",
+            reason_code="missing_credentials",
+            display_text="Weather API offline: Missing API key or location.",
+        )
+
+    url = (
+        f"http://api.openweathermap.org/data/2.5/weather"
+        f"?q={location}&appid={api_key}&units=imperial"
+    )
+
     try:
         response = requests.get(url, timeout=10.0)
-        data = response.json()
-        
+        payload = response.json()
+
         if response.status_code == 200:
-            temp = round(data["main"]["temp"])
-            condition = data["weather"][0]["description"]
-            
-            return f"Current temperature is {temp} degrees with {condition}."
-        else:
-            return f"Weather API error: {data.get('message', 'Unknown error')}."
-            
+            temp = round(payload["main"]["temp"])
+            condition = payload["weather"][0]["description"]
+            display = f"Current temperature is {temp} degrees with {condition}."
+            return _weather_result(
+                status="healthy",
+                reason_code="ok",
+                freshness="live",
+                display_text=display,
+                data={
+                    "temp_f": temp,
+                    "condition": condition,
+                    "location": location,
+                    "archetype": _condition_archetype(condition),
+                },
+            )
+
+        return _weather_result(
+            status="unavailable",
+            reason_code="provider_error",
+            display_text=(
+                f"Weather API error: {payload.get('message', 'Unknown error')}."
+            ),
+        )
     except Exception:
-        return "Failed to connect to Weather API."
+        return _weather_result(
+            status="unavailable",
+            reason_code="network_error",
+            display_text="Failed to connect to Weather API.",
+        )
+
+
+def _condition_archetype(condition: str) -> str:
+    lowered = condition.lower()
+    if "thunder" in lowered:
+        return "thunderstorm"
+    if any(token in lowered for token in ("rain", "drizzle", "shower")):
+        return "rain"
+    if any(token in lowered for token in ("cloud", "overcast", "mist", "fog")):
+        return "clouds"
+    if any(token in lowered for token in ("clear", "sun")):
+        return "clear_day"
+    return "clouds"
+
+
+def fetch_weather_data() -> str:
+    """Compatibility façade returning display text for non-briefing callers."""
+    return collect_weather().display_text
 
 
 def fetch_weather_forecast(days: int = 5) -> dict[str, Any]:

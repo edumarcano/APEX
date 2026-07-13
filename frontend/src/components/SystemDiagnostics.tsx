@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 
 import {
+  type ConnectorHealthEntry,
   type SynthesisProfile,
   type SynthesisProvider,
   type SystemDiagnostics as SystemDiagnosticsPayload,
@@ -43,14 +44,42 @@ const CONNECTOR_LABELS: Record<string, string> = {
   news: 'News',
   email: 'Email',
   calendar: 'Calendar',
-  sports: 'Sports (F1)',
+  sports: 'Sports',
+  f1: 'Formula 1',
+  football: 'Barcelona Football',
   sports_f1: 'Formula 1',
   sports_football: 'Barcelona Football',
+  reminders: 'Reminders',
 }
 
 function formatConnectorLabel(connectorId: string): string {
   const normalized = connectorId.trim().toLowerCase()
   return CONNECTOR_LABELS[normalized] ?? connectorId
+}
+
+function formatHealthSummary(
+  connectorHealth: ConnectorHealthEntry[],
+  failedConnectors: string[],
+): { hasIssues: boolean; text: string } {
+  if (connectorHealth.length > 0) {
+    const degraded = connectorHealth.filter((entry) => entry.status === 'degraded')
+    const unavailable = connectorHealth.filter((entry) => entry.status === 'unavailable')
+    if (unavailable.length === 0 && degraded.length === 0) {
+      return { hasIssues: false, text: 'All connectors clear' }
+    }
+    const parts = [
+      ...unavailable.map((entry) => `${formatConnectorLabel(entry.name)} unavailable`),
+      ...degraded.map((entry) => `${formatConnectorLabel(entry.name)} degraded`),
+    ]
+    return { hasIssues: true, text: parts.join(', ') }
+  }
+  if (failedConnectors.length > 0) {
+    return {
+      hasIssues: true,
+      text: failedConnectors.map(formatConnectorLabel).join(', '),
+    }
+  }
+  return { hasIssues: false, text: 'All connectors clear' }
 }
 
 function getMicroBarColorClass(percentage: number): string {
@@ -82,6 +111,7 @@ interface SystemDiagnosticsProps {
   status: 'idle' | 'loading' | 'success' | 'error'
   confidenceScore: number
   failedConnectors?: string[]
+  connectorHealth?: ConnectorHealthEntry[]
   demoModeActive?: boolean
   devModeActive?: boolean
   synthesisProvider?: SynthesisProvider | null
@@ -224,6 +254,7 @@ export function SystemDiagnostics({
   status,
   confidenceScore,
   failedConnectors = [],
+  connectorHealth = [],
   demoModeActive = false,
   devModeActive = false,
   synthesisProvider = 'gemini',
@@ -238,7 +269,8 @@ export function SystemDiagnostics({
   const [liveTime, setLiveTime] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const hasConnectorFailures = failedConnectors.length > 0
+  const healthSummary = formatHealthSummary(connectorHealth, failedConnectors)
+  const hasConnectorFailures = healthSummary.hasIssues
   const modeSubtitle = demoModeActive ? 'DEMO' : devModeActive ? 'DEVELOPER' : null
 
   useEffect(() => {
@@ -479,9 +511,7 @@ export function SystemDiagnostics({
                 hasConnectorFailures ? 'text-amber-300/90' : 'text-zinc-500'
               }`}
             >
-              {hasConnectorFailures
-                ? failedConnectors.map(formatConnectorLabel).join(', ')
-                : 'All connectors clear'}
+              {healthSummary.text}
             </p>
           </div>
         </div>

@@ -1,23 +1,14 @@
-"""Connector trust scoring and briefing pipeline orchestration."""
+"""Typed connector collection and briefing pipeline orchestration."""
 
 from __future__ import annotations
 
-import re
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import HTTPException, status
 
-from clients import (
-    calendar_client,
-    gmail_client,
-    google_auth,
-    news_client,
-    sports_client,
-    weather_client,
-)
+from clients import news_client, sports_client, weather_client
 from core import brain, database, scanner, speaker
 from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.api.models import (
@@ -35,119 +26,242 @@ from core.config import (
     DEV_TTS_PLAYBACK,
     is_dev_mode,
 )
+from core.connectors.collect import collect_calendar, collect_email, collect_reminders
+from core.connectors.models import ConnectorResult
+from core.connectors.scoring import compute_sync_health
 from core.settings import FeaturesSettings, ModulesSettings, get_settings_store
-from core.synthesis import CalendarFact, F1Fact, SynthesisInput, SynthesisRouter
-
-WEATHER_FAILED_RE = re.compile(r"(offline|error|failed)", re.IGNORECASE)
-SPORTS_F1_FAILED_RE = re.compile(r"(telemetry unavailable)", re.IGNORECASE)
-SPORTS_FB_FAILED_RE = re.compile(r"(telemetry unavailable|throttled)", re.IGNORECASE)
-NEWS_FAILED_RE = re.compile(r"(telemetry unavailable|offline)", re.IGNORECASE)
-EMAIL_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
-CALENDAR_FAILED_RE = re.compile(r"(error|check connection)", re.IGNORECASE)
+from core.synthesis import (
+    CalendarFact,
+    ConnectorHealthFact,
+    F1Fact,
+    FootballFact,
+    NewsFact,
+    SynthesisInput,
+    SynthesisRouter,
+)
 
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 
 
-def _split_sports_report(sports_report: str) -> tuple[str, str]:
-    """Split combined sports telemetry into F1 and football segments."""
-    marker = " Barcelona "
-    if marker in sports_report:
-        f1_part, remainder = sports_report.split(marker, 1)
-        return f1_part, f"Barcelona {remainder}"
-    if sports_report.startswith("Barcelona "):
-        return "", sports_report
-    return sports_report, ""
-
-
-def _evaluate_sports_trust(
-    sports_report: str,
-    *,
-    modules: ModulesSettings,
-) -> tuple[float, float, bool]:
-    """
-    Return earned weight, total weight, and whether any sports subdivision failed.
-
-    Sports weight is 1.0 when a single sub-module is active, or 0.5 per sub-module
-    when both F1 and football are enabled.
-    """
-    active_modules: list[tuple[re.Pattern[str], str]] = []
-    if modules.f1 and modules.football:
-        f1_part, fb_part = _split_sports_report(sports_report)
-    else:
-        f1_part, fb_part = sports_report, sports_report
-
-    if modules.f1:
-        active_modules.append((SPORTS_F1_FAILED_RE, f1_part))
-    if modules.football:
-        active_modules.append((SPORTS_FB_FAILED_RE, fb_part))
-
-    if not active_modules:
-        return 1.0, 1.0, False
-
-    module_weight = 1.0 / len(active_modules)
-    earned_weight = 0.0
-    sports_failed = False
-    for failure_pattern, module_report in active_modules:
-        if failure_pattern.search(module_report):
-            sports_failed = True
-        else:
-            earned_weight += module_weight
-
-    return earned_weight, 1.0, sports_failed
-
-
 def _compute_confidence_and_failures(
     *,
-    weather_report: str,
-    sports_report: str,
-    news_report: str,
-    email_report: str,
-    calendar_report: str,
-    f1_cache_penalty: bool,
-    features: FeaturesSettings,
-    modules: ModulesSettings,
+    results: dict[str, ConnectorResult | None],
 ) -> tuple[float, list[str]]:
-    """Evaluate active connector telemetry and derive trust score plus failures."""
-    failed_connectors: list[str] = []
-    earned_weight = 0.0
-    total_weight = 0.0
+    """Compatibility wrapper returning sync health score and legacy failures."""
+    report = compute_sync_health(results)
+    return report.sync_health_score, report.failed_connectors
 
-    connector_checks: list[tuple[str, bool, str, re.Pattern[str]]] = [
-        ("weather", features.weather, weather_report, WEATHER_FAILED_RE),
-        ("news", features.news, news_report, NEWS_FAILED_RE),
-        ("email", features.email, email_report, EMAIL_FAILED_RE),
-        ("calendar", features.calendar, calendar_report, CALENDAR_FAILED_RE),
+
+def _build_synthesis_input(
+    *,
+    results: dict[str, ConnectorResult | None],
+    failed_connectors: list[str],
+) -> SynthesisInput:
+    weather = results.get("weather")
+    news = results.get("news")
+    email = results.get("email")
+    calendar = results.get("calendar")
+    f1 = results.get("f1")
+    football = results.get("football")
+    reminders = results.get("reminders")
+
+    weather_data = weather.data if weather else {}
+    email_data = email.data if email else {}
+    calendar_data = calendar.data if calendar else {}
+    reminder_data = reminders.data if reminders else {}
+    f1_map = f1.data.get("f1_map") if f1 else None
+    football_data = football.data if football else {}
+
+    next_event: CalendarFact | None = None
+    events = calendar_data.get("events") if isinstance(calendar_data, dict) else None
+    if isinstance(events, list) and events:
+        raw_event = events[0]
+        if isinstance(raw_event, dict):
+            raw_start = str(raw_event.get("start", "")).strip()
+            next_event = CalendarFact(
+                title=str(raw_event.get("summary", "Untitled event")),
+                start=raw_start or "Time unavailable",
+                all_day=bool(raw_start and "T" not in raw_start),
+            )
+
+    f1_fact: F1Fact | None = None
+    if isinstance(f1_map, dict) and f1_map.get("relativeWeek") == "This week":
+        f1_fact = F1Fact(
+            race_name=str(f1_map.get("raceName", "Unknown race")),
+            start=str(f1_map.get("raceDateTimeEST", "Unscheduled")),
+            sprint_scheduled=bool(f1_map.get("sprintScheduled")),
+        )
+
+    football_fact: FootballFact | None = None
+    if football and football.status != "unavailable" and football_data.get("opponent"):
+        football_fact = FootballFact(
+            opponent=str(football_data.get("opponent", "")),
+            fixture_date=str(football_data.get("fixture_date", "")),
+            summary=str(football_data.get("summary") or "") or None,
+        )
+
+    news_headlines: list[NewsFact] = []
+    if news and isinstance(news.data.get("headlines"), list):
+        for item in news.data["headlines"][:2]:
+            if not isinstance(item, dict):
+                continue
+            topic = str(item.get("topic", "")).strip()
+            headline = str(item.get("headline", "")).strip()
+            if topic and headline:
+                news_headlines.append(NewsFact(topic=topic, headline=headline))
+
+    email_subjects: list[str] = []
+    emails = email_data.get("emails") if isinstance(email_data, dict) else None
+    if isinstance(emails, list):
+        for item in emails[:3]:
+            if isinstance(item, dict):
+                subject = str(item.get("subject", "")).strip()
+                if subject:
+                    email_subjects.append(subject)
+
+    reminder_notes = reminder_data.get("notes") if isinstance(reminder_data, dict) else None
+    first_reminder = None
+    pending_count = 0
+    if isinstance(reminder_notes, list) and reminder_notes:
+        pending_count = len(reminder_notes)
+        first_reminder = str(reminder_notes[0])
+
+    connector_health = [
+        ConnectorHealthFact(
+            name=result.name,
+            status=result.status,
+            reason_code=result.reason_code,
+        )
+        for result in results.values()
+        if result is not None
     ]
 
-    for connector_name, enabled, report, failure_pattern in connector_checks:
-        if not enabled:
-            continue
-        total_weight += 1.0
-        if failure_pattern.search(report):
-            failed_connectors.append(connector_name)
-        else:
-            earned_weight += 1.0
+    weather_summary = None
+    if weather and weather.status != "unavailable":
+        weather_summary = weather.display_text or None
+        if weather_data.get("temp_f") is not None and weather_data.get("condition"):
+            weather_summary = (
+                f"Current temperature is {weather_data['temp_f']} degrees "
+                f"with {weather_data['condition']}."
+            )
 
-    if features.sports:
-        sports_earned, sports_total, sports_failed = _evaluate_sports_trust(
-            sports_report,
-            modules=modules,
-        )
-        total_weight += sports_total
-        earned_weight += sports_earned
-        if sports_failed:
-            failed_connectors.append("sports")
+    return SynthesisInput(
+        weather_summary=weather_summary,
+        weather_temp_f=(
+            int(weather_data["temp_f"])
+            if isinstance(weather_data, dict) and isinstance(weather_data.get("temp_f"), (int, float))
+            else None
+        ),
+        weather_condition=(
+            str(weather_data.get("condition"))
+            if isinstance(weather_data, dict) and weather_data.get("condition")
+            else None
+        ),
+        email_unread_count=int(email_data.get("count", 0) or 0) if isinstance(email_data, dict) else 0,
+        email_recent_subjects=email_subjects,
+        news_headlines=news_headlines,
+        calendar_event_count=int(calendar_data.get("count", 0) or 0)
+        if isinstance(calendar_data, dict)
+        else 0,
+        next_calendar_event=next_event,
+        pending_reminder_count=pending_count,
+        first_pending_reminder=first_reminder,
+        f1_this_week=f1_fact,
+        football_next_fixture=football_fact,
+        connector_health=connector_health,
+        failed_connectors=failed_connectors,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
 
-    if total_weight == 0.0:
-        confidence_score = 100.0
+
+def _collect_connector_results(
+    *,
+    features: FeaturesSettings,
+    modules: ModulesSettings,
+) -> dict[str, ConnectorResult | None]:
+    results: dict[str, ConnectorResult | None] = {
+        "weather": None,
+        "news": None,
+        "email": None,
+        "calendar": None,
+        "f1": None,
+        "football": None,
+        "reminders": None,
+    }
+
+    if features.weather:
+        results["weather"] = weather_client.collect_weather()
     else:
-        confidence_score = (earned_weight / total_weight) * 100.0
+        print("[SYSTEM]: Weather module bypassed via user preference")
 
-    if f1_cache_penalty:
-        confidence_score *= 0.90
+    if features.sports and modules.f1:
+        results["f1"] = sports_client.collect_f1()
+    elif features.sports and not modules.f1:
+        print("[SYSTEM]: F1 module bypassed via user preference")
+    elif not features.sports:
+        print("[SYSTEM]: Sports module bypassed via user preference")
 
-    confidence_score = round(max(0.0, min(100.0, confidence_score)), 1)
-    return confidence_score, failed_connectors
+    if features.sports and modules.football:
+        results["football"] = sports_client.collect_football()
+    elif features.sports and not modules.football:
+        print("[SYSTEM]: Football module bypassed via user preference")
+
+    if features.news:
+        results["news"] = news_client.collect_news()
+    else:
+        print("[SYSTEM]: News module bypassed via user preference")
+
+    if features.email:
+        results["email"] = collect_email()
+    else:
+        print("[SYSTEM]: Email module bypassed via user preference")
+
+    if features.calendar:
+        results["calendar"] = collect_calendar()
+    else:
+        print("[SYSTEM]: Calendar module bypassed via user preference")
+
+    results["reminders"] = collect_reminders()
+    return results
+
+
+def _display_text(result: ConnectorResult | None) -> str:
+    return result.display_text if result is not None else ""
+
+
+def _build_digest(
+    *,
+    results: dict[str, ConnectorResult | None],
+    insights: list[str],
+) -> DigestPayload:
+    report = compute_sync_health(results)
+    weather = results.get("weather")
+    email = results.get("email")
+    calendar = results.get("calendar")
+    f1 = results.get("f1")
+    reminders = results.get("reminders")
+
+    weather_archetype = None
+    if weather and isinstance(weather.data.get("archetype"), str):
+        weather_archetype = weather.data["archetype"]
+
+    f1_sprint_active = False
+    f1_map = f1.data.get("f1_map") if f1 else None
+    if isinstance(f1_map, dict):
+        f1_sprint_active = bool(f1_map.get("sprintScheduled"))
+
+    return DigestPayload(
+        weather_archetype=weather_archetype,
+        unread_emails_count=int((email.data.get("count", 0) if email else 0) or 0),
+        upcoming_events_count=int((calendar.data.get("count", 0) if calendar else 0) or 0),
+        f1_sprint_active=f1_sprint_active,
+        reminders_pending_count=int((reminders.data.get("count", 0) if reminders else 0) or 0),
+        sync_health_score=report.sync_health_score,
+        connector_health=report.connector_health,
+        confidence_score=report.confidence_score,
+        failed_connectors=report.failed_connectors,
+        insights=insights,
+    )
 
 
 def _run_demo_briefing() -> BriefingResponse:
@@ -267,145 +381,16 @@ def trigger_briefing() -> BriefingResponse:
 
             global_pipeline_state.update(2, "COLLECTION")
             print("[SYSTEM]: Fetching data...")
-            if features.weather:
-                weather_report = weather_client.fetch_weather_data()
-            else:
-                print("[SYSTEM]: Weather module bypassed via user preference")
-                weather_report = ""
-
-            if features.sports:
-                sports_report, f1_cache_refreshed, f1_map = sports_client.fetch_sports_snapshot(
-                    f1=modules.f1,
-                    football=modules.football,
-                )
-            else:
-                print("[SYSTEM]: Sports module bypassed via user preference")
-                sports_report = ""
-                f1_cache_refreshed = True
-                f1_map = None
-
-            if features.news:
-                news_report = news_client.fetch_news_data()
-            else:
-                print("[SYSTEM]: News module bypassed via user preference")
-                news_report = ""
-
-            if not features.email:
-                print("[SYSTEM]: Email module bypassed via user preference")
-                email_report = ""
-            else:
-                try:
-                    email_service = google_auth.get_service("gmail", "v1")
-                    email_data = gmail_client.get_unread_gmail_data(email_service)
-
-                    count = email_data.get("count", 0)
-                    items = email_data.get("emails", [])
-
-                    if items:
-                        recent_emails = [
-                            f"'{email['subject']}' at {email['time']}"
-                            for email in items
-                        ]
-                        recent_emails_str = ", ".join(recent_emails)
-                    else:
-                        recent_emails_str = (
-                            "Email Telemetry (24h): No unread emails"
-                        )
-
-                    email_report = (
-                        f"Email Telemetry: {count} unread primary emails. "
-                        f"Most recent: {recent_emails_str}"
-                    )
-                except Exception as exc:
-                    print(f"[SYSTEM]: Email fetch failed: ({exc})")
-                    email_report = "ERROR: Check connection"
-
-            if not features.calendar:
-                print("[SYSTEM]: Calendar module bypassed via user preference")
-                calendar_report = ""
-                calendar_data: list[dict[str, Any]] = []
-            else:
-                try:
-                    calendar_service = google_auth.get_service("calendar", "v3")
-                    calendar_data = calendar_client.get_upcoming_calendar_events(
-                        calendar_service
-                    )
-                    if calendar_data:
-                        calendar_entries = [
-                            f"'{event['summary']}' at {event['start']}"
-                            for event in calendar_data
-                        ]
-                        calendar_report = (
-                            "Calendar Telemetry (48h): "
-                            + " | ".join(calendar_entries)
-                        )
-                    else:
-                        calendar_report = (
-                            "Calendar Telemetry (48h): No upcoming events"
-                        )
-                except Exception as exc:
-                    print(f"[SYSTEM]: Calendar fetch failed: ({exc})")
-                    calendar_report = "ERROR: Check connection"
-                    calendar_data = []
-
-            unread_records = database.fetch_unread_reminders()
-            if unread_records:
-                notes = [note for _, note in unread_records]
-                notes_str = ", ".join(notes)
-                memory_report = f"Pending Reminders: {notes_str}"
-            else:
-                memory_report = "No pending reminders."
-
-            combined_raw_data = (
-                f"{weather_report} | {sports_report} | {email_report} | "
-                f"{calendar_report} | {news_report} | {memory_report}"
-            )
-
-            f1_cache_penalty = (
-                features.sports and modules.f1 and not f1_cache_refreshed
-            )
-            confidence_score, failed_connectors = _compute_confidence_and_failures(
-                weather_report=weather_report,
-                sports_report=sports_report,
-                news_report=news_report,
-                email_report=email_report,
-                calendar_report=calendar_report,
-                f1_cache_penalty=f1_cache_penalty,
-                features=features,
-                modules=modules,
-            )
-
-            next_event: CalendarFact | None = None
-            if calendar_data:
-                raw_event = calendar_data[0]
-                raw_start = str(raw_event.get("start", "")).strip()
-                next_event = CalendarFact(
-                    title=str(raw_event.get("summary", "Untitled event")),
-                    start=raw_start or "Time unavailable",
-                    all_day=bool(raw_start and "T" not in raw_start),
-                )
-            f1_fact: F1Fact | None = None
-            if isinstance(f1_map, dict) and f1_map.get("relativeWeek") == "This week":
-                f1_fact = F1Fact(
-                    race_name=str(f1_map.get("raceName", "Unknown race")),
-                    start=str(f1_map.get("raceDateTimeEST", "Unscheduled")),
-                    sprint_scheduled=bool(f1_map.get("sprintScheduled")),
-                )
-            synthesis_input = SynthesisInput(
-                weather_summary=weather_report or None,
-                calendar_event_count=len(calendar_data),
-                next_calendar_event=next_event,
-                pending_reminder_count=len(unread_records),
-                first_pending_reminder=(str(unread_records[0][1]) if unread_records else None),
-                f1_this_week=f1_fact,
-                failed_connectors=failed_connectors,
-                generated_at=datetime.now(timezone.utc).isoformat(),
+            results = _collect_connector_results(features=features, modules=modules)
+            health = compute_sync_health(results)
+            synthesis_input = _build_synthesis_input(
+                results=results,
+                failed_connectors=health.failed_connectors,
             )
 
             global_pipeline_state.update(3, "SYNTHESIS")
             print("[SYSTEM]: Synthesizing briefing...")
 
-            # Execute filler audio concurrently to hide the Gemini processing time
             filler_thread = threading.Thread(
                 target=speaker.speak,
                 args=("Generating briefing... Please wait...",),
@@ -414,7 +399,7 @@ def trigger_briefing() -> BriefingResponse:
             filler_thread.start()
 
             brain_output = brain.process_telemetry(
-                combined_raw_data,
+                "",
                 synthesis_input=synthesis_input,
                 strategy=synthesis_strategy,
                 warmup=warmup,
@@ -442,11 +427,7 @@ def trigger_briefing() -> BriefingResponse:
                 active_tts_engine=active_tts_engine,
                 system_load_throttled=system_load_throttled,
             )
-            digest_payload = DigestPayload(
-                confidence_score=confidence_score,
-                failed_connectors=failed_connectors,
-                insights=briefing_insights,
-            )
+            digest_payload = _build_digest(results=results, insights=briefing_insights)
             runtime_metadata = RuntimeMetadata(
                 dev_mode_active=dev_mode,
                 demo_mode_active=False,
@@ -469,8 +450,8 @@ def trigger_briefing() -> BriefingResponse:
                         runtime_metadata.model_dump(),
                     )
                     database.prune_historical_ledger()
-                except Exception as exc:
-                    print(f"[SYSTEM]: Briefing ledger persistence failed: ({exc})")
+                except Exception:
+                    print("[SYSTEM]: Briefing ledger persistence failed: persistence_error")
 
             voice_thread = threading.Thread(
                 target=_speak_and_cleanup,
@@ -489,12 +470,19 @@ def trigger_briefing() -> BriefingResponse:
                 status="success",
                 briefing=final_briefing,
                 telemetry=TelemetryPayload(
-                    weather=weather_report,
-                    sports=sports_report,
-                    news=news_report,
-                    email=email_report,
-                    calendar=calendar_report,
-                    reminders=memory_report,
+                    weather=_display_text(results.get("weather")),
+                    sports=" ".join(
+                        part
+                        for part in (
+                            _display_text(results.get("f1")),
+                            _display_text(results.get("football")),
+                        )
+                        if part
+                    ),
+                    news=_display_text(results.get("news")),
+                    email=_display_text(results.get("email")),
+                    calendar=_display_text(results.get("calendar")),
+                    reminders=_display_text(results.get("reminders")),
                 ),
                 digest=digest_payload,
                 metadata=runtime_metadata,
