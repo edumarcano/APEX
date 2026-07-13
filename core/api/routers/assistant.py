@@ -30,10 +30,14 @@ def list_agent_profiles() -> list[AgentProfileStatus]:
 @router.post(
     "/api/v1/agent/local/unload",
     response_model=LocalUnloadResponse,
+    operation_id="unload_active_local_model_endpoint_api_v1_agent_local_unload_post",
+    summary="Unload Active Local Model Endpoint",
 )
 @router.post(
     "/api/v1/local-model/unload",
     response_model=LocalUnloadResponse,
+    operation_id="unload_active_local_model_endpoint_api_v1_local_model_unload_post",
+    summary="Unload Active Local Model Endpoint",
 )
 def unload_local_model() -> LocalUnloadResponse:
     """
@@ -44,7 +48,12 @@ def unload_local_model() -> LocalUnloadResponse:
     return unload_active_local_model_endpoint()
 
 
-@router.post("/api/v1/agent/query", response_model=AgentQueryResponse)
+@router.post(
+    "/api/v1/agent/query",
+    response_model=AgentQueryResponse,
+    operation_id="query_agent_api_v1_agent_query_post",
+    summary="Query Agent",
+)
 def agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     """
     Execute an APEX assistant turn with optional tool calling.

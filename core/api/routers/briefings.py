@@ -15,7 +15,12 @@ from core.config import DEMO_MODE
 router = APIRouter(tags=["briefings"])
 
 
-@router.post("/api/v1/trigger", response_model=BriefingResponse)
+@router.post(
+    "/api/v1/trigger",
+    response_model=BriefingResponse,
+    operation_id="trigger_briefing_api_v1_trigger_post",
+    summary="Trigger Briefing",
+)
 def trigger_briefing_endpoint() -> BriefingResponse:
     """
     HTTP entry point for a full APEX run.
