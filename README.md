@@ -67,7 +67,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 | Layer | Tool |
 |---|---|
-| Language | Python 3.10+ |
+| Language | Python 3.14 |
 | API Framework | FastAPI, uvicorn |
 | AI Engine (cloud) | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
 | AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers; optional briefing synthesis via local strategy) |
@@ -162,14 +162,24 @@ cd apex
 ```
 
 **2. Install Python dependencies**
+
+APEX uses [uv](https://docs.astral.sh/uv/) with a locked dependency set. From the repository root:
+
 ```bash
-pip install -r requirements.txt
+uv sync --locked
+```
+
+This creates a local virtual environment and installs the exact versions recorded in `uv.lock`. Run Python commands through that environment with `uv run`:
+
+```bash
+uv run python -m unittest discover -s tests
+uv run python launcher.py
 ```
 
 **3. Install and build the frontend**
 ```bash
 cd frontend
-npm install
+npm ci
 npm run build
 cd ..
 ```
@@ -232,17 +242,17 @@ Set `DEV_MODE=true` in `.env` for local development. The scanner gate, run loggi
 
 **Recommended — full orchestrator:**
 ```bash
-python launcher.py
+uv run python launcher.py
 ```
 Starts both servers, polls the health check, opens the HUD in a kiosk window. Closing the window shuts down uvicorn automatically. `Ctrl+C` also works.
 
 **Manual — two terminals:**
 ```bash
 # Terminal 1 — API server
-python -m uvicorn core.api:app --reload
+uv run python -m uvicorn core.api:app --reload
 
 # Terminal 2 — static file server
-python -m http.server 5500 --directory dist
+uv run python -m http.server 5500 --directory dist
 ```
 Then open `http://127.0.0.1:5500`. Run both commands from the project root.
 
