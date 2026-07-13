@@ -1,7 +1,12 @@
 venv/
+.venv/
 .env
 config.local.json
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 *.db
 *.db-wal
 *.db-shm

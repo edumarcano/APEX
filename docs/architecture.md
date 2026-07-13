@@ -240,11 +240,20 @@ apex/
 │   └── smoke_local_synthesis.py # Manual end-to-end smoke test for the local Ollama synthesis path
 ├── tests/
 │   ├── __init__.py
-│   ├── test_synthesis.py        # Unit tests for formatting, routing, warmup timeout, and DB migration
-│   ├── test_settings_store.py   # Runtime settings store load/patch/concurrency tests
-│   ├── test_settings_api.py     # GET/PATCH /api/v1/settings and boot config tests
-│   └── test_settings_runtime.py # Briefing/assistant/voice snapshot integration and import audit
+│   ├── test_api_characterization.py  # Health, status, trigger lock, parsers, mode payload shapes
+│   ├── test_database_history.py      # Briefing ledger persistence, malformed rows, prune, reminders
+│   ├── test_launcher.py              # Launcher env sanitization, browser resolution, startup helpers
+│   ├── test_runtime_modes.py         # DEV_MODE/DEMO_MODE/gate parsing and synthesis fallback shape
+│   ├── test_synthesis.py             # Unit tests for formatting, routing, warmup timeout, and DB migration
+│   ├── test_settings_store.py        # Runtime settings store load/patch/concurrency tests
+│   ├── test_settings_api.py          # GET/PATCH /api/v1/settings and boot config tests
+│   └── test_settings_runtime.py      # Briefing/assistant/voice snapshot integration and import audit
+├── .github/
+│   └── workflows/
+│       └── ci.yml               # Windows CI: uv sync --locked, unittest, npm ci/test/lint/build, smoke
 ├── launcher.py              # Orchestrator: servers, readiness polling, kiosk browser, shutdown hooks
+├── pyproject.toml           # Canonical Python project manifest (requires-python ==3.14.*)
+├── uv.lock                  # Locked Python dependency set for `uv sync --locked`
 ├── config.json              # Tracked defaults: persona, connectors, TTS, agent settings (committed)
 ├── config.local.json        # Mutable local overlay for editable settings (gitignored; optional)
 ├── CHANGELOG.md             # Full version history

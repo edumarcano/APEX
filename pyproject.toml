@@ -1,0 +1,28 @@
+[project]
+name = "apex"
+version = "1.16.0"
+description = "Local-first personal intelligence HUD"
+readme = "README.md"
+requires-python = "==3.14.*"
+dependencies = [
+    "fastapi",
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-oauthlib",
+    "google-cloud-texttospeech",
+    "google-genai>=1.56.0",
+    "kokoro-onnx",
+    "numpy",
+    "onnxruntime",
+    "psutil",
+    "pydantic",
+    "pygame-ce",
+    "python-dotenv",
+    "pyttsx3",
+    "requests",
+    "tzdata",
+    "uvicorn[standard]",
+]
+
+[tool.uv]
+package = false
