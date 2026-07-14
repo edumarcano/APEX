@@ -1,6 +1,6 @@
 # APEX: Automated Personal Environment Xylem
 
-A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, pulls live data from a set of configurable connectors, passes everything to Gemini 3.1 Flash Lite for synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
+A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, collects live data from configurable connectors, converts it into bounded structured facts, routes those facts through cloud, local, or deterministic synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
 
 <p align="center">
   <img src="docs/assets/apex-hero.png" alt="APEX dormant standby HUD" width="900">
@@ -14,7 +14,7 @@ A Python-based personal HUD that delivers a synchronized audio-visual briefing o
 
 ## Architecture Overview
 
-`launcher.py` starts a FastAPI server (port 8000) and a static file server (port 5500) as parallel child processes, polls the API health check, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM SYNTHESIS" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
+`launcher.py` starts loopback-bound FastAPI (port 8000) and static frontend (port 5500) child processes, waits for backend readiness and frontend HTTP availability, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM SYNTHESIS" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
 
 ```
 launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
@@ -49,7 +49,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 - **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
 - **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as color-coded micro-bars in a six-column status footer; additional columns show internet connectivity, briefing lifecycle state, sync health, and live system time
 - **Dormant ambient HUD mode** — idle state collapses peripheral data wings, expands the central command area, surfaces pending reminders, and animates the APEX logo with pipeline-driven color states and parallax background motion
-- **Pipeline state visibility** — step, label, timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
+- **Pipeline state visibility** — run ID, step, label, UTC timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
 - **Sync Health scoring** — each production run produces typed connector results and a `sync_health_score` (0–100) with `connector_health` rows; `confidence_score` and `failed_connectors` remain as compatibility fields and render in the system status Sync Health popup
 - **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
 - **APEX assistant** — a conversational assistant with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with six selectable performance profiles across two providers — cloud (Gemini: Comet, Nova, Pulsar) and local (Ollama: Lynx, Acinonyx, Neofelis)
@@ -67,7 +67,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 | Layer | Tool |
 |---|---|
-| Language | Python 3.14 |
+| Language | Python `==3.14.*` with dependencies locked by uv |
 | API Framework | FastAPI, uvicorn |
 | AI Engine (cloud) | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
 | AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers; optional briefing synthesis via local strategy) |
@@ -93,7 +93,7 @@ Both flags are read from `.env`. Values are normalized at read time (`true`, `Tr
 
 `DEMO_MODE` intercepts the trigger entirely and serves static mock telemetry from `core/mock/telemetry.json`. It does not run any connectors or write to the database. `DEV_MODE` and `DEMO_MODE` are independent flags; `DEMO_MODE` takes priority in the trigger path when both are set.
 
-Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `local` routes to local Ollama then raw, `cloud` routes Gemini → eligible local model → raw) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, or `kokoro`). Local briefing input is privacy-bounded to weather, basic calendar, reminders, this-week F1, and connector failures; email, news, football, tools, and assistant history are excluded.
+Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `local` routes to local Ollama then raw, `cloud` routes Gemini → eligible local model → raw) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, or `kokoro`). Every non-demo synthesis strategy receives the same sanitized, size-bounded `SynthesisInput`: selected weather, email, news, calendar, reminder, F1, football, and connector-health facts. Raw display telemetry, assistant tools, and assistant history are excluded.
 
 ---
 
@@ -143,7 +143,7 @@ Tracked `config.json` remains the committed baseline for all configuration, incl
 }
 ```
 
-When a connector is off, no API call or auth attempt is made for it, and the module is excluded from the Gemini briefing context. `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
+When a connector is off, no API call or auth attempt is made for it, and the module is excluded from briefing synthesis input and Sync Health scoring. `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
 
 `synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the local strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and local is the fallback. Both omit the key to accept the defaults.
 
@@ -155,6 +155,10 @@ When a connector is off, no API call or auth attempt is made for it, and the mod
 
 ## Setup
 
+**Prerequisites**
+
+The validated development baseline is Windows with Python 3.14.x, [uv](https://docs.astral.sh/uv/), Node.js 24, and npm. `pyproject.toml` requires exactly the Python 3.14 series, and Windows CI verifies the locked Python environment plus the frontend test, lint, and build workflow.
+
 **1. Clone**
 ```bash
 git clone https://github.com/edumarcano/apex.git
@@ -163,7 +167,7 @@ cd apex
 
 **2. Install Python dependencies**
 
-APEX uses [uv](https://docs.astral.sh/uv/) with a locked dependency set. From the repository root:
+APEX uses uv with `pyproject.toml` as the canonical dependency manifest and `uv.lock` as the exact resolved dependency set. From the repository root:
 
 ```bash
 uv sync --locked
@@ -192,7 +196,9 @@ cp .env.example .env          # macOS / Linux
 copy .env.example .env        # Windows
 ```
 
-`.env.example` documents every key with inline comments. Required keys: `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `GNEWS_API_KEY`, `HOME_SSID`. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default. `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` (comma-separated ticker symbols) are optional; when either is unset, `GET /api/v1/market` serves a simulated ticker feed instead of an error.
+`.env.example` documents every key with inline comments. Credentials are required only for the live features that use them: `GEMINI_API_KEY` enables cloud synthesis and cloud assistant profiles; connector keys enable their corresponding modules; and `HOME_SSID` is required only when the production startup gate is enabled. Local/raw synthesis and demo mode do not require Gemini credentials. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default. `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` (comma-separated ticker symbols) are optional; when either is unset, `GET /api/v1/market` serves a simulated ticker feed instead of an error.
+
+**Cloud privacy note:** A normal production run currently uses Gemini for primary briefing synthesis. If the API key uses Gemini's unpaid/free quota, Google may use prompts and responses to improve its products and may subject them to human review. APEX limits the data sent through a bounded synthesis payload, but that data is still disclosed to the provider. Moving the project to paid Gemini usage provides stronger no-product-improvement terms; the remaining v1.17 work is intended to make local and raw synthesis viable production alternatives. See [docs/privacy.md](docs/privacy.md).
 
 **5. Set up Google OAuth credentials (Gmail + Calendar)**
 
@@ -244,7 +250,7 @@ Set `DEV_MODE=true` in `.env` for local development. The scanner gate, run loggi
 ```bash
 uv run python launcher.py
 ```
-Starts both servers, polls the health check, opens the HUD in a kiosk window. Closing the window shuts down uvicorn automatically. `Ctrl+C` also works.
+Starts both servers, probes `GET /api/v1/health/ready` and frontend HTTP availability, and opens the HUD only after both are ready. A timeout, bind conflict, or child-process exit suppresses the browser, cleans up both servers, and exits nonzero. Closing a tracked Chrome/Edge kiosk process shuts down both servers; the default-browser fallback has no process handle, so use `Ctrl+C` to stop that path.
 
 **Manual — two terminals:**
 ```bash
@@ -267,6 +273,8 @@ Then open `http://127.0.0.1:5500`. Run both commands from the project root.
 
 **Desktop shortcut (Windows):** right-click `launch_apex.bat` → Create shortcut → open shortcut Properties → set **Start in** to the full project path (e.g., `C:\Users\you\Documents\APEX`). Without this field, `launcher.py` cannot resolve its relative paths and the run fails immediately.
 
+The launcher binds both services to `127.0.0.1`. The API has no authentication, so remote access is intentionally unsupported. Changing the bind address would first require authentication, authorization, and transport-security work. CORS configuration is a browser policy, not an access-control boundary. See [docs/privacy.md](docs/privacy.md).
+
 ---
 
 ## Project Planning
@@ -286,4 +294,5 @@ Full version history is available in [CHANGELOG.md](CHANGELOG.md).
 | [docs/architecture.md](docs/architecture.md) | Pipeline internals, component inventory, data contracts, F1 cache, theming systems, project structure |
 | [docs/api.md](docs/api.md) | All API endpoints, request/response schemas, Pydantic models, environment variables |
 | [docs/decisions.md](docs/decisions.md) | Engineering rationale, TTS selection history, AI workflow, design trade-offs |
+| [docs/privacy.md](docs/privacy.md) | Local trust boundary, model-bound data, persistence, logging, and secrets |
 | [docs/roadmap.md](docs/roadmap.md) | Milestone history, current phase, planned platform evolution |

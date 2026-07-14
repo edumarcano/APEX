@@ -21,13 +21,15 @@ The header synthesis pill reports the engine used for the current briefing. A sh
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev       # starts Vite dev server (hot reload)
 npm run build     # compiles to dist/ for production serving
 npm run lint      # runs ESLint
 ```
 
-The dev server is for local development only. The production path served by `launcher.py` uses the compiled `dist/` directory via `python -m http.server 5500`.
+`npm ci` installs the exact dependency graph recorded in `package-lock.json`. Use `npm install` only when intentionally changing dependencies and updating the lockfile.
+
+The dev server is for local development only. The production path served by `launcher.py` uses the compiled `dist/` directory through the active uv-managed Python environment.
 
 ---
 
