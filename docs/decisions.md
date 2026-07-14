@@ -48,6 +48,14 @@ The inferred approach had a window where the speaking border and voice-state ani
 
 `launcher.py` gives each child process a different environment. Uvicorn gets the full environment including all `.env` keys. The static file server and browser process each get a stripped copy with only `PATH`, `SYSTEMROOT`, `TEMP`, `TMP`, and `PYTHONPATH`. API keys never reach the browser process.
 
+### Separate liveness and readiness probes
+
+`GET /api/v1/health/live` proves only that the API process can answer a request. `GET /api/v1/health/ready` additionally loads the runtime settings snapshot and executes a lightweight SQLite query, but deliberately excludes optional external providers. The launcher uses readiness, not the compatibility `GET /` route, so a broken local configuration or database prevents the HUD from opening while a connector outage does not make the whole local service unavailable.
+
+### UTC writes with legacy timestamp reads
+
+New run and briefing timestamps are written as timezone-aware UTC ISO-8601 values. Existing timezone-naive run timestamps are interpreted as local wall-clock time when read, preserving cooldown behavior without a destructive migration. The trade-off is a permanent compatibility branch in timestamp parsing; it is preferable to rewriting user data solely to normalize a TEXT field.
+
 ### `launch_apex.bat` as a hardware trigger proxy
 
 The long-term intention is a physical button that cold-starts the full system without touching a keyboard. The `.bat` file is the software stand-in: a single-action desktop trigger that maps to the same `launcher.py` execution path a hardware input would eventually call.
@@ -56,9 +64,11 @@ The long-term intention is a physical button that cold-starts the full system wi
 
 ## AI and Speech
 
-### Why Gemini over a template
+### Why model synthesis over a template
 
-Templated output gets repetitive fast and requires manual updates whenever a data source changes its format or a new connector is added. Passing raw connector strings to the model and letting it handle sentence construction is simpler and more resilient to upstream format changes. The `system_prompt` field in `config.json` fully controls the voice and style without touching any Python.
+Templated output gets repetitive and requires manual prose changes whenever the briefing evolves. Model synthesis keeps the voice flexible, but raw connector strings are not an acceptable model contract: they mix presentation with health state, make prompt-injection boundaries unclear, and expose more source content than synthesis needs.
+
+Collection therefore normalizes each enabled module into a typed `ConnectorResult`, and synthesis serializes a sanitized, size-bounded `SynthesisInput`. Gemini and Ollama receive the same payload inside `<untrusted_connector_data>` markers; neither receives concatenated display telemetry, assistant tools, or assistant history. The schema requires maintenance when a new fact becomes synthesis-relevant, but that explicit work is the accepted trade-off for predictable privacy and validation. Provider or output-validation failures use deterministic synthesis from the same typed input.
 
 ### TTS strategy and fallback design
 

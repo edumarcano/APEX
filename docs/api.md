@@ -1,8 +1,8 @@
 # APEX API Reference
 
-The APEX API runs on FastAPI at `http://127.0.0.1:8000`. All endpoints are local-only by default. CORS origins are controlled by the `APEX_ALLOWED_ORIGINS` environment variable (see [Environment Variables](#environment-variables-affecting-api-behavior)).
+The APEX API runs on FastAPI at `http://127.0.0.1:8000`. `launcher.py` and the module entrypoint bind it to loopback. CORS origins are controlled by the `APEX_ALLOWED_ORIGINS` environment variable (see [Environment Variables](#environment-variables-affecting-api-behavior)).
 
-There is no authentication. The API is designed for single-machine local use.
+There is no authentication. The API is designed only for APEX running on its local machine; LAN and public access are intentionally unsupported. Supporting remote access would require authentication, authorization, and transport-security work. CORS restricts browser origins; it does not authenticate clients or protect a remotely bound API.
 
 ---
 
@@ -499,7 +499,7 @@ Returns an empty list `[]` when no briefings have been stored. Malformed rows st
 
 ### `POST /api/v1/agent/query`
 
-Executes one turn of the APEX conversational assistant, including any tool calls the model requests. Runs synchronously; uvicorn offloads the blocking Gemini call to a worker thread. Internally, Cortex drives the reasoning/tool-calling loop.
+Executes one turn of the APEX conversational assistant, including any tool calls the model requests. The route is synchronous so FastAPI runs blocking Gemini or Ollama provider I/O on its worker-thread boundary. Internally, Cortex drives the reasoning/tool-calling loop.
 
 The endpoint is stateless on the server. The full conversation history is supplied by the client on every call and echoed back into the next request — there is no server-side session store.
 
@@ -516,7 +516,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | Field | Type | Description |
 |---|---|---|
 | `prompt` | string | The user's query for this turn. |
-| `profile` | string | Cloud role tier: `"comet"`, `"nova"`, or `"pulsar"`. Defaults to `"comet"`. |
+| `profile` | string | Cloud (`"comet"`, `"nova"`, `"pulsar"`) or local (`"lynx"`, `"acinonyx"`, `"neofelis"`) profile. Defaults to `"comet"`. |
 | `session_id` | string \| null | Optional client-generated grouping identifier; passed through unchanged. |
 | `history` | `AgentMessage[]` | Prior turns for this session, including `tool_calls`/`tool_results`. Empty on the first turn. |
 
@@ -541,7 +541,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `answer` | string | Final synthesized text response. |
 | `profile_used` | object | Full cloud or local model profile dump for the profile that served this request. |
 | `tool_trace` | object[] | One entry per tool executed this turn: `name`, `status` (`"ok"` or `"error"`), `duration_ms`. |
-| `tool_outputs` | object[] | One entry per tool executed this turn with its full structured output: `name`, `status`, `duration_ms`, `output`. Only tools in the output whitelist (see below) return their real `output`; all others return `{"error": "Tool output is not whitelisted for client display."}`. A failed call returns `{"error": "<exception message>"}` regardless of whitelist status. |
+| `tool_outputs` | object[] | One entry per tool executed this turn with its full structured output: `name`, `status`, `duration_ms`, `output`. Only tools in the output whitelist (see below) return their real `output`; all others return `{"error": "Tool output is not whitelisted for client display."}`. A dispatcher exception returns the stable public payload `{"error": "Tool execution failed."}` rather than the exception text. |
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
 
@@ -695,8 +695,8 @@ Returns success when no local model is currently active or the unload completes 
 class BriefingResponse(BaseModel):
     status: str                   # Run outcome label ("success")
     briefing: str                 # Synthesized briefing text
-    telemetry: TelemetryPayload   # Per-module raw telemetry
-    digest: DigestPayload         # Structured summaries and confidence scoring
+    telemetry: TelemetryPayload   # Per-module display telemetry
+    digest: DigestPayload         # Structured summaries and Sync Health
     metadata: RuntimeMetadata     # Runtime routing metadata
 ```
 
@@ -712,7 +712,7 @@ class TelemetryPayload(BaseModel):
     reminders: str
 ```
 
-Each field contains the raw string produced by the corresponding connector, or an empty string when the connector is disabled.
+Each field contains the display string produced for the HUD, or an empty string when the connector is disabled. These strings remain part of the response compatibility contract but are not forwarded to briefing models; synthesis uses the separate typed, sanitized `SynthesisInput` boundary.
 
 ### `RuntimeMetadata`
 
@@ -805,10 +805,14 @@ class DigestPayload(BaseModel):
 ```python
 class BriefingHistoryRecord(BaseModel):
     id: int              # SQLite row ID
-    timestamp: str       # ISO-8601 local timestamp of the run
+    timestamp: str       # New rows use timezone-aware UTC ISO-8601
     briefing: str        # Synthesized briefing text delivered to TTS
     digest: DigestPayload
+    metadata: RuntimeMetadata | None = None
+    digest_status: Literal["valid", "legacy", "malformed", "zero_health"]
 ```
+
+Legacy rows can contain timezone-naive local timestamps and no metadata. They remain readable without a schema rewrite. `digest_status` distinguishes a current valid digest, a compatible legacy shape, malformed stored JSON, and a genuine zero-health run.
 
 ### `ToolCall`
 
@@ -958,3 +962,5 @@ http://localhost:5173
 The `5173` pair covers the Vite dev server (`npm run dev`).
 
 A custom value replaces these defaults rather than extending them. If you serve the HUD from a different port, set `APEX_ALLOWED_ORIGINS` to include all required origins.
+
+Changing CORS origins does not change the server bind address and does not add authentication. The supported launcher path remains loopback-only.

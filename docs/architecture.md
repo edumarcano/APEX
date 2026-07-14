@@ -175,7 +175,8 @@ apex/
 │   ├── brain.py         # Compatibility façade over core/synthesis/; routes synthesize() calls to SynthesisRouter
 │   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
-│   ├── database.py      # SQLite session logging and reminder CRUD
+│   ├── database.py      # SQLite runs, reminders, briefing history, transactions, readiness probe
+│   ├── runtime_logging.py # Logging bootstrap and per-briefing run-ID context
 │   ├── config.py        # Import-time loader for non-editable config and env flags; legacy Final constants retained
 │   ├── settings/        # Runtime editable settings: models, normalize/overlay, transactional store
 │   │   ├── models.py        # RuntimeSettingsSnapshot, SettingsPatch, SettingsResponse
@@ -204,7 +205,8 @@ apex/
 │   │   ├── scoring.py       # Equal-weight sync health scoring
 │   │   └── collect.py       # Email, calendar, and reminders collectors
 │   ├── mock/
-│   │   └── telemetry.json   # Static telemetry payload for DEMO_MODE runs
+│   │   ├── telemetry.json   # Static telemetry payload for DEMO_MODE runs
+│   │   └── assistant.json   # Deterministic DEMO_MODE assistant responses
 │   └── __init__.py
 ├── clients/
 │   ├── weather_client.py    # OpenWeatherMap connector
@@ -251,17 +253,28 @@ apex/
 │   └── tsconfig.json
 ├── dist/                    # Compiled Vite output — served by http.server
 ├── scripts/
-│   └── smoke_local_synthesis.py # Manual end-to-end smoke test for the local Ollama synthesis path
+│   ├── smoke_local_synthesis.py # Manual end-to-end smoke test for the local Ollama synthesis path
+│   └── smoke_comet_thinking.py  # Manual Gemini Comet thinking/tool-call smoke test
 ├── tests/
 │   ├── __init__.py
 │   ├── test_api_characterization.py  # Health, status, trigger lock, parsers, mode payload shapes
+│   ├── test_api_router_compatibility.py # Router/package split compatibility coverage
 │   ├── test_database_history.py      # Briefing ledger persistence, malformed rows, prune, reminders
 │   ├── test_launcher.py              # Launcher env sanitization, browser resolution, startup helpers
+│   ├── test_runtime_hardening.py      # Run-ID, public-error, readiness, and worker-thread regressions
 │   ├── test_runtime_modes.py         # DEV_MODE/DEMO_MODE/gate parsing and synthesis fallback shape
 │   ├── test_synthesis.py             # Unit tests for formatting, routing, warmup timeout, and DB migration
 │   ├── test_settings_store.py        # Runtime settings store load/patch/concurrency tests
 │   ├── test_settings_api.py          # GET/PATCH /api/v1/settings and boot config tests
-│   └── test_settings_runtime.py      # Briefing/assistant/voice snapshot integration and import audit
+│   ├── test_settings_runtime.py      # Briefing/assistant/voice snapshot integration and import audit
+│   └── test_trusted_telemetry.py     # Typed status, Sync Health, and adversarial synthesis coverage
+├── docs/
+│   ├── api.md                   # Local API routes and public contracts
+│   ├── architecture.md          # Runtime design, ownership, and data flows
+│   ├── decisions.md             # Accepted engineering decisions and trade-offs
+│   ├── privacy.md               # Local trust boundary, model data, persistence, and logging
+│   ├── roadmap.md               # Completed and planned milestone objectives
+│   └── agent-guidance/          # Scoped backend, frontend, infrastructure, and writing rules
 ├── .github/
 │   └── workflows/
 │       └── ci.yml               # Windows CI: uv sync --locked, unittest, npm ci/test/lint/build, smoke
@@ -842,21 +855,16 @@ Both return safe fallbacks (`null` or `'No Atmospheric Data'`) when input does n
 
 The `webbrowser` fallback path (used when no supported browser binary is found) does not provide a `Popen` handle, so browser-window lifecycle detection is not available. The orchestrator falls back to a `Ctrl+C` loop in that case.
 
+Both uvicorn and `http.server` bind explicitly to `127.0.0.1`. That loopback binding is part of APEX's local trust boundary because the API has no authentication. `APEX_ALLOWED_ORIGINS` controls browser CORS behavior but does not authorize clients or make a non-loopback bind safe.
+
 ---
 
 ## Logging Conventions
 
-Operational diagnostics use the standard library `logging` module (`logging.getLogger(__name__)`), bootstrapped from the API lifespan and launcher. Briefing runs bind a `run_id` into log context. Malformed history logging includes record IDs and error categories only; source connector content and credentials must not enter error logs.
+Operational diagnostics use the standard library `logging` module (`logging.getLogger(__name__)`), bootstrapped from the API lifespan and launcher. Logger names follow their Python modules, such as `core.api.briefing`, `core.database`, and `launcher`.
 
-| Logger name | Module |
-|---|---|
-| `core.brain` | `core/brain.py` |
-| `core.scanner` | `core/scanner.py` |
-| `core.speaker` | `core/speaker.py` |
-| `clients.weather_client` | `clients/weather_client.py` |
-| `clients.sports_client` | `clients/sports_client.py` |
-| `clients.news_client` | `clients/news_client.py` |
-| `clients.gmail_client` | `clients/gmail_client.py` |
-| `clients.calendar_client` | `clients/calendar_client.py` |
-| `core.api.briefing` | `core/api/briefing.py` |
-| `launcher` | `launcher.py` |
+Every briefing receives a UUID `run_id`. The ID is exposed through trigger metadata and `/api/v1/status`, persisted with briefing metadata, included in formatted log records, and explicitly rebound in speech worker threads. Logs describe failure category, component, and exception type without including connector source content, stored briefing text, or credentials. Malformed history logging includes only record IDs and parse-error categories.
+
+Standalone `if __name__ == "__main__"` connector diagnostics can still print human-readable test output when those files are executed directly. Those paths are not used by the API or launcher runtime.
+
+See [privacy.md](privacy.md) for the complete local data and trust boundary.
