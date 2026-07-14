@@ -1,12 +1,14 @@
-"""System, configuration, settings, status, and diagnostics routes."""
+"""System, configuration, settings, status, diagnostics, and health routes."""
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-from core import config, scanner
+from core import config, database, scanner
 from core.api.models import PipelineStatusSnapshot
 from core.api.state import global_pipeline_state
 from core.config import DEMO_MODE, DEV_AI_SYNTHESIS, is_dev_mode
@@ -19,6 +21,7 @@ from core.settings import (
 )
 
 router = APIRouter(tags=["system"])
+_LOGGER = logging.getLogger(__name__)
 
 
 @router.get("/")
@@ -27,6 +30,40 @@ def health_check() -> dict[str, Any]:
     Return a minimal health payload for monitoring and readiness probes.
     """
     return {"status": "online", "system": "APEX"}
+
+
+@router.get("/api/v1/health/live")
+def liveness() -> dict[str, str]:
+    """Return process liveness without checking dependencies."""
+    return {"status": "live"}
+
+
+@router.get("/api/v1/health/ready")
+def readiness() -> dict[str, str]:
+    """
+    Verify configuration loading and a lightweight database query.
+
+    Does not require optional external providers (connectors, OAuth, Ollama).
+    """
+    try:
+        get_settings_store().get_snapshot()
+    except Exception:
+        _LOGGER.exception("Readiness failed: configuration unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Configuration unavailable.",
+        ) from None
+
+    try:
+        database.probe_db()
+    except sqlite3.Error:
+        _LOGGER.exception("Readiness failed: database unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable.",
+        ) from None
+
+    return {"status": "ready", "config": "ok", "database": "ok"}
 
 
 @router.get("/api/v1/config")
@@ -85,14 +122,15 @@ def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
         return _build_settings_response()
     try:
         store.apply_patch(payload)
-    except SettingsPersistenceError as exc:
+    except SettingsPersistenceError:
+        _LOGGER.exception("Settings persistence failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "Failed to persist settings to config.local.json. "
-                f"Active settings were not changed. ({exc})"
+                "Active settings were not changed."
             ),
-        ) from exc
+        ) from None
     return _build_settings_response()
 
 

@@ -1,4 +1,5 @@
 import base64
+import logging
 import random
 import time
 from typing import Any
@@ -12,6 +13,8 @@ from core.agent.providers.ollama_models import OllamaModelProfile
 
 AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 from core.agent.types import AgentMessage, ToolCall, ToolResult
+
+_LOGGER = logging.getLogger(__name__)
 
 _SECURITY_BOUNDARY_DIRECTIVE = (
     "\n\nSECURITY BOUNDARY DIRECTIVE:\n"
@@ -162,17 +165,17 @@ class GeminiProvider:
                     if attempt == max_attempts - 1:
                         raise
                     wait_time = (1.0 * (2**attempt)) + random.uniform(0, 0.5)
-                    print(
-                        f"[AGENT][GEMINI] Rate limited (429). "
-                        f"Retrying in {wait_time:.2f} seconds..."
+                    _LOGGER.warning(
+                        "Rate limited (429). Retrying in %.2f seconds...",
+                        wait_time,
                     )
                     time.sleep(wait_time)
                 elif e.code in (500, 502, 503, 504):
                     if attempt == max_attempts - 1:
                         raise
-                    print(
-                        f"[AGENT][GEMINI] Server error ({e.code}). "
-                        "Retrying in 2.0 seconds..."
+                    _LOGGER.warning(
+                        "Server error (%s). Retrying in 2.0 seconds...",
+                        e.code,
                     )
                     time.sleep(2.0)
                 else:

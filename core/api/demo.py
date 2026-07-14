@@ -114,11 +114,11 @@ def load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
     try:
         with open(_MOCK_TELEMETRY_PATH, encoding="utf-8") as mock_file:
             payload = json.load(mock_file)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, json.JSONDecodeError):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Demo telemetry payload unavailable: {exc}",
-        ) from exc
+            detail="Demo telemetry payload unavailable.",
+        ) from None
 
     if not isinstance(payload, dict):
         raise HTTPException(
@@ -130,11 +130,11 @@ def load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
 
     try:
         telemetry = TelemetryPayload(**payload)
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Demo telemetry payload failed schema validation: {exc}",
-        ) from exc
+            detail="Demo telemetry payload failed schema validation.",
+        ) from None
 
     return telemetry, digest
 
@@ -144,11 +144,11 @@ def load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     try:
         with open(_MOCK_ASSISTANT_PATH, encoding="utf-8") as mock_file:
             payload = json.load(mock_file)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, json.JSONDecodeError):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Demo assistant payload unavailable: {exc}",
-        ) from exc
+            detail="Demo assistant payload unavailable.",
+        ) from None
 
     if not isinstance(payload, dict):
         raise HTTPException(

@@ -92,9 +92,14 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertEqual(len(created), 2)
         uvicorn_cmd = created[0]["cmd"]
         static_cmd = created[1]["cmd"]
-        self.assertEqual(uvicorn_cmd[-2:], ["uvicorn", "core.api:app"])
+        self.assertEqual(
+            uvicorn_cmd[-6:],
+            ["uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", "8000"],
+        )
         self.assertIn("http.server", static_cmd)
         self.assertIn("5500", static_cmd)
+        self.assertIn("--bind", static_cmd)
+        self.assertIn("127.0.0.1", static_cmd)
         self.assertIn("dist", static_cmd)
 
         uvicorn_env = created[0]["kwargs"]["env"]
@@ -107,20 +112,55 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertIsNotNone(uvicorn_proc)
         self.assertIsNotNone(static_proc)
 
-    def test_main_opens_browser_even_when_api_times_out(self) -> None:
+    def test_launch_background_servers_cleans_up_after_second_spawn_failure(self) -> None:
+        uvicorn_proc = mock.Mock(spec=subprocess.Popen)
+        uvicorn_proc.poll.return_value = None
+
+        with mock.patch.object(
+            launcher.subprocess,
+            "Popen",
+            side_effect=[uvicorn_proc, OSError("static spawn failed")],
+        ), mock.patch.object(launcher, "_terminate_process") as terminate:
+            with self.assertRaises(OSError):
+                launcher.launch_background_servers()
+
+        terminate.assert_called_once_with(uvicorn_proc)
+
+    def test_main_suppresses_browser_when_api_times_out(self) -> None:
+        uvicorn_proc = mock.Mock(spec=subprocess.Popen)
+        static_proc = mock.Mock(spec=subprocess.Popen)
+        uvicorn_proc.poll.return_value = None
+        static_proc.poll.return_value = None
+
+        with mock.patch.object(
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+        ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
+            launcher, "_http_ok", return_value=False
+        ), mock.patch.object(
+            launcher, "launch_kiosk_browser"
+        ) as launch_browser, mock.patch.object(
+            launcher.time, "sleep"
+        ), mock.patch.object(
+            launcher, "_terminate_process"
+        ) as terminate:
+            exit_code = launcher.main()
+
+        self.assertEqual(exit_code, 1)
+        launch_browser.assert_not_called()
+        self.assertGreaterEqual(terminate.call_count, 2)
+
+    def test_main_opens_browser_when_both_services_ready(self) -> None:
         uvicorn_proc = mock.Mock(spec=subprocess.Popen)
         static_proc = mock.Mock(spec=subprocess.Popen)
         uvicorn_proc.poll.return_value = None
         static_proc.poll.return_value = None
         browser_proc = mock.Mock(spec=subprocess.Popen)
-        browser_proc.wait.return_value = 0
+        browser_proc.poll.side_effect = [None, 0]
 
         with mock.patch.object(
             launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
         ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
-            launcher.urllib.request,
-            "urlopen",
-            side_effect=launcher.urllib.error.URLError("down"),
+            launcher, "_http_ok", return_value=True
         ), mock.patch.object(
             launcher, "launch_kiosk_browser", return_value=browser_proc
         ) as launch_browser, mock.patch.object(
@@ -128,10 +168,54 @@ class LauncherHelperTests(unittest.TestCase):
         ), mock.patch.object(
             launcher, "_terminate_process"
         ) as terminate:
-            launcher.main()
+            exit_code = launcher.main()
 
+        self.assertEqual(exit_code, 0)
         launch_browser.assert_called_once_with(launcher.FRONTEND_URL)
         self.assertGreaterEqual(terminate.call_count, 2)
+
+    def test_main_fails_on_early_child_exit(self) -> None:
+        uvicorn_proc = mock.Mock(spec=subprocess.Popen)
+        static_proc = mock.Mock(spec=subprocess.Popen)
+        uvicorn_proc.poll.return_value = 1
+        static_proc.poll.return_value = None
+
+        with mock.patch.object(
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+        ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
+            launcher, "launch_kiosk_browser"
+        ) as launch_browser, mock.patch.object(
+            launcher, "_terminate_process"
+        ) as terminate:
+            exit_code = launcher.main()
+
+        self.assertEqual(exit_code, 1)
+        launch_browser.assert_not_called()
+        self.assertGreaterEqual(terminate.call_count, 2)
+
+    def test_main_closes_browser_and_fails_when_server_exits_after_startup(self) -> None:
+        uvicorn_proc = mock.Mock(spec=subprocess.Popen)
+        static_proc = mock.Mock(spec=subprocess.Popen)
+        browser_proc = mock.Mock(spec=subprocess.Popen)
+        browser_proc.poll.return_value = None
+        uvicorn_proc.poll.return_value = 1
+        static_proc.poll.return_value = None
+
+        with mock.patch.object(
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+        ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
+            launcher, "wait_for_services", return_value=None
+        ), mock.patch.object(
+            launcher, "launch_kiosk_browser", return_value=browser_proc
+        ), mock.patch.object(
+            launcher, "_terminate_process"
+        ) as terminate:
+            exit_code = launcher.main()
+
+        self.assertEqual(exit_code, 1)
+        terminate.assert_any_call(browser_proc)
+        terminate.assert_any_call(uvicorn_proc)
+        terminate.assert_any_call(static_proc)
 
 
 if __name__ == "__main__":

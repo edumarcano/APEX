@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -29,6 +31,7 @@ class DatabaseHistoryTests(unittest.TestCase):
             "insights": ["Stay hydrated"],
         }
         metadata = {
+            "run_id": "run-abc",
             "dev_mode_active": False,
             "demo_mode_active": False,
             "synthesis_strategy": "cloud",
@@ -42,8 +45,11 @@ class DatabaseHistoryTests(unittest.TestCase):
         self.assertEqual(rows[0]["briefing"], "Morning briefing.")
         self.assertEqual(rows[0]["digest"]["confidence_score"], 90.0)
         self.assertEqual(rows[0]["metadata"]["synthesis_strategy"], "cloud")
+        self.assertEqual(rows[0]["metadata"]["run_id"], "run-abc")
         self.assertIsInstance(rows[0]["id"], int)
         self.assertTrue(rows[0]["timestamp"])
+        parsed_ts = datetime.fromisoformat(rows[0]["timestamp"])
+        self.assertIsNotNone(parsed_ts.tzinfo)
 
     def test_malformed_digest_and_metadata_json_are_tolerated(self) -> None:
         conn = sqlite3.connect(str(self.db_path), timeout=30.0)
@@ -67,14 +73,21 @@ class DatabaseHistoryTests(unittest.TestCase):
         finally:
             conn.close()
 
-        rows = database.fetch_briefing_history(limit=10)
+        with self.assertLogs("core.database", level=logging.WARNING) as captured:
+            rows = database.fetch_briefing_history(limit=10)
         by_briefing = {row["briefing"]: row for row in rows}
         self.assertEqual(by_briefing["Legacy row"]["digest"], {})
         self.assertIsNone(by_briefing["Legacy row"]["metadata"])
+        self.assertEqual(by_briefing["Legacy row"]["digest_parse_error"], "digest_json_error")
         self.assertEqual(
             by_briefing["Valid digest only"]["digest"]["confidence_score"], 50.0
         )
         self.assertIsNone(by_briefing["Valid digest only"]["metadata"])
+        joined = " ".join(captured.output)
+        self.assertIn("record_id=", joined)
+        self.assertIn("digest_json_error", joined)
+        self.assertNotIn("Legacy row", joined)
+        self.assertNotIn("{not-json", joined)
 
     def test_prune_keeps_fifty_most_recent(self) -> None:
         for index in range(55):
@@ -89,6 +102,57 @@ class DatabaseHistoryTests(unittest.TestCase):
         scores = [row["digest"]["confidence_score"] for row in rows]
         self.assertEqual(max(scores), 54.0)
         self.assertEqual(min(scores), 5.0)
+
+    def test_prune_rolls_back_on_failure(self) -> None:
+        for index in range(55):
+            database.save_briefing(
+                f"Briefing {index}",
+                {"confidence_score": float(index)},
+                None,
+            )
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        try:
+            with conn:
+                conn.execute(
+                    "CREATE TRIGGER fail_delete BEFORE DELETE ON briefings "
+                    "BEGIN SELECT RAISE(ABORT, 'simulated failure'); END"
+                )
+        finally:
+            conn.close()
+
+        with self.assertRaises(sqlite3.DatabaseError):
+            database.prune_historical_ledger()
+        rows = database.fetch_briefing_history(limit=100)
+        self.assertEqual(len(rows), 55)
+
+    def test_utc_writes_and_naive_legacy_reads(self) -> None:
+        database.log_run()
+        last = database.get_last_run()
+        self.assertIsNotNone(last)
+        assert last is not None
+        self.assertIsNotNone(last.tzinfo)
+
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        try:
+            with conn:
+                conn.execute("DELETE FROM runs")
+                conn.execute(
+                    "INSERT INTO runs (timestamp) VALUES (?)",
+                    ((datetime.now() - timedelta(minutes=10)).isoformat(),),
+                )
+        finally:
+            conn.close()
+
+        legacy = database.get_last_run()
+        self.assertIsNotNone(legacy)
+        assert legacy is not None
+        self.assertIsNotNone(legacy.tzinfo)
+        elapsed = datetime.now(timezone.utc) - legacy.astimezone(timezone.utc)
+        self.assertLess(elapsed, timedelta(hours=1))
+        self.assertGreater(elapsed, timedelta(minutes=1))
+
+    def test_probe_db_succeeds(self) -> None:
+        database.probe_db()
 
     def test_reminder_lifecycle(self) -> None:
         first = database.save_reminder("Charge laptop")

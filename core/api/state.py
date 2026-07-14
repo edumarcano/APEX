@@ -20,6 +20,7 @@ class PipelineState:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._is_active = False
+        self._run_id: str | None = None
         self._step = 0
         self._label = "IDLE"
         self._timestamp = datetime.now(timezone.utc).isoformat()
@@ -32,6 +33,15 @@ class PipelineState:
             "loading": False,
             "fallback_reason": None,
         }
+
+    def begin_run(self, run_id: str) -> None:
+        """Mark a briefing run active and bind its correlation ID."""
+        with self._lock:
+            self._is_active = True
+            self._run_id = run_id
+            self._step = 0
+            self._label = "START"
+            self._timestamp = datetime.now(timezone.utc).isoformat()
 
     def update(
         self,
@@ -81,6 +91,7 @@ class PipelineState:
         """Restore the tracker to idle or pre-run defaults."""
         with self._lock:
             self._is_active = False
+            self._run_id = None
             self._step = 0
             self._label = "IDLE"
             self._timestamp = datetime.now(timezone.utc).isoformat()
@@ -105,6 +116,7 @@ class PipelineState:
             if not self._is_active:
                 return None
             return {
+                "run_id": self._run_id,
                 "step": self._step,
                 "label": self._label,
                 "timestamp": self._timestamp,

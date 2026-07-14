@@ -166,7 +166,12 @@ def run_agent_loop(
                     output = tools_dispatcher(call.name, call.arguments)
                 except Exception as exc:
                     status = "error"
-                    output = str(exc)
+                    _LOGGER.warning(
+                        "Agent tool execution failed: tool=%s error_type=%s",
+                        call.name,
+                        type(exc).__name__,
+                    )
+                    output = {"error": "Tool execution failed."}
 
                 duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
                 total_tool_executions += 1
@@ -187,7 +192,7 @@ def run_agent_loop(
                             "error": "Tool output is not whitelisted for client display."
                         }
                 else:
-                    whitelisted_output = {"error": str(output)}
+                    whitelisted_output = output
 
                 tool_outputs.append(
                     {
@@ -227,14 +232,14 @@ def run_agent_loop(
                 "Ollama is running, the model is installed, and system resources "
                 "are sufficient, then try again."
             )
-            error_detail = f"Local provider error ({type(exc).__name__}): {exc}"
+            error_detail = f"Local provider error ({type(exc).__name__})."
         else:
             answer = (
                 "The APEX assistant encountered an issue reaching the cloud provider "
                 "or running the requested operations. Please check your "
                 "credentials, network status, or quota allocations, and try again."
             )
-            error_detail = f"Cloud provider error ({type(exc).__name__}): {exc}"
+            error_detail = f"Cloud provider error ({type(exc).__name__})."
 
         return AgentQueryResponse(
             answer=answer,

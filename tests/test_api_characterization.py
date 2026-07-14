@@ -86,6 +86,19 @@ class HealthAndStatusTests(ApiCharacterizationBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "online", "system": "APEX"})
 
+    def test_liveness_endpoint(self) -> None:
+        response = self.client.get("/api/v1/health/live")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "live"})
+
+    def test_readiness_endpoint(self) -> None:
+        response = self.client.get("/api/v1/health/ready")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["config"], "ok")
+        self.assertEqual(payload["database"], "ok")
+
     def test_status_offline_when_idle(self) -> None:
         response = self.client.get("/api/v1/status")
         self.assertEqual(response.status_code, 404)
@@ -97,11 +110,13 @@ class HealthAndStatusTests(ApiCharacterizationBase):
     def test_status_snapshot_when_active(self) -> None:
         from core.api import global_pipeline_state
 
+        global_pipeline_state.begin_run("run-test-id")
         global_pipeline_state.update(2, "COLLECTION")
         self.addCleanup(global_pipeline_state.reset)
         response = self.client.get("/api/v1/status")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertEqual(payload["run_id"], "run-test-id")
         self.assertEqual(payload["step"], 2)
         self.assertEqual(payload["label"], "COLLECTION")
         self.assertIn("timestamp", payload)
@@ -117,6 +132,56 @@ class HealthAndStatusTests(ApiCharacterizationBase):
         payload = response.json()
         self.assertTrue(payload["dev_mode_active"])
         self.assertFalse(payload["demo_mode_active"])
+
+    def test_history_classifies_malformed_and_zero_health(self) -> None:
+        from core import database
+
+        database.save_briefing(
+            "Zero health",
+            {
+                "sync_health_score": 0.0,
+                "confidence_score": 0.0,
+                "connector_health": [
+                    {
+                        "name": "weather",
+                        "status": "unavailable",
+                        "freshness": "none",
+                        "reason_code": "provider_error",
+                    }
+                ],
+                "failed_connectors": ["weather"],
+                "insights": [],
+            },
+            {
+                "run_id": "hist-run",
+                "dev_mode_active": False,
+                "demo_mode_active": False,
+                "synthesis_strategy": "cloud",
+                "tts_strategy": "google",
+                "active_tts_engine": "google",
+                "system_load_throttled": False,
+            },
+        )
+        import sqlite3
+
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT INTO briefings (timestamp, briefing, digest_json, metadata_json) "
+                    "VALUES (?, ?, ?, ?)",
+                    ("2026-01-01T00:00:00+00:00", "Broken", "{bad", None),
+                )
+        finally:
+            conn.close()
+
+        response = self.client.get("/api/v1/briefings/history")
+        self.assertEqual(response.status_code, 200)
+        rows = {row["briefing"]: row for row in response.json()}
+        self.assertEqual(rows["Broken"]["digest_status"], "malformed")
+        self.assertEqual(rows["Broken"]["digest"]["confidence_score"], 0.0)
+        self.assertEqual(rows["Zero health"]["digest_status"], "zero_health")
+        self.assertEqual(rows["Zero health"]["metadata"]["run_id"], "hist-run")
 
 
 class ParserAndSanitizerTests(unittest.TestCase):
@@ -167,7 +232,7 @@ class ParserAndSanitizerTests(unittest.TestCase):
         self.assertEqual(parsed.confidence_score, 75.0)
 
     def test_parse_digest_payload_malformed_falls_back(self) -> None:
-        from core.api.models import parse_digest_payload
+        from core.api.models import classify_digest_payload, parse_digest_payload
 
         parsed = parse_digest_payload("not-a-dict")
         self.assertEqual(parsed.confidence_score, 0.0)
@@ -176,6 +241,29 @@ class ParserAndSanitizerTests(unittest.TestCase):
 
         parsed_partial = parse_digest_payload({"confidence_score": "bad"})
         self.assertEqual(parsed_partial.confidence_score, 0.0)
+
+        _digest, malformed_status = classify_digest_payload("not-a-dict")
+        self.assertEqual(malformed_status, "malformed")
+
+        zero_digest, zero_status = classify_digest_payload(
+            {
+                "sync_health_score": 0.0,
+                "confidence_score": 0.0,
+                "connector_health": [
+                    {
+                        "name": "weather",
+                        "status": "unavailable",
+                        "freshness": "none",
+                        "reason_code": "provider_error",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(zero_digest.sync_health_score, 0.0)
+        self.assertEqual(zero_status, "zero_health")
+
+        _legacy, legacy_status = classify_digest_payload({"confidence_score": 40.0})
+        self.assertEqual(legacy_status, "legacy")
 
     def test_parse_runtime_metadata_legacy_and_malformed(self) -> None:
         from core.api.models import parse_runtime_metadata

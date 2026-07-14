@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from typing import Any
 
 from clients import calendar_client, gmail_client, google_auth
 from core import database
 from core.connectors.models import ConnectorResult, utc_now_iso
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def collect_email() -> ConnectorResult:
@@ -53,7 +57,7 @@ def collect_email() -> ConnectorResult:
             data={"count": count, "emails": recent},
         )
     except Exception:
-        print("[SYSTEM]: Email fetch failed: connection_error")
+        _LOGGER.warning("Email fetch failed: connection_error")
         return ConnectorResult(
             name="email",
             status="unavailable",
@@ -103,7 +107,7 @@ def collect_calendar() -> ConnectorResult:
             data={"events": events, "count": len(events)},
         )
     except Exception:
-        print("[SYSTEM]: Calendar fetch failed: connection_error")
+        _LOGGER.warning("Calendar fetch failed: connection_error")
         return ConnectorResult(
             name="calendar",
             status="unavailable",
@@ -138,8 +142,8 @@ def collect_reminders() -> ConnectorResult:
                 "records": [{"id": row_id, "note": note} for row_id, note in unread_records],
             },
         )
-    except Exception:
-        print("[SYSTEM]: Reminders fetch failed: database_error")
+    except sqlite3.Error:
+        _LOGGER.warning("Reminders fetch failed: database_error")
         return ConnectorResult(
             name="reminders",
             status="unavailable",

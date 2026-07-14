@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
@@ -13,6 +14,7 @@ from core.connectors.models import ConnectorResult, utc_now_iso
 
 load_dotenv()
 api_key = os.getenv("GNEWS_API_KEY")
+_LOGGER = logging.getLogger(__name__)
 
 
 def collect_news() -> ConnectorResult:
@@ -62,11 +64,11 @@ def collect_news() -> ConnectorResult:
                 formatted_headlines.append(f"[{topic}] No major headlines found.")
                 successes += 1
         except requests.exceptions.RequestException:
-            print("[NEWS] Error: Failed to fetch headline telemetry for a topic.")
+            _LOGGER.warning("Failed to fetch headline telemetry for a topic.")
             formatted_headlines.append(f"[{topic}]: Telemetry unavailable.")
             failures += 1
         except (TypeError, ValueError):
-            print("[NEWS] Error: Invalid headline telemetry payload for a topic.")
+            _LOGGER.warning("Invalid headline telemetry payload for a topic.")
             formatted_headlines.append(f"[{topic}]: Telemetry unavailable.")
             failures += 1
             invalid_payloads += 1

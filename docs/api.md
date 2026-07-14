@@ -10,11 +10,42 @@ There is no authentication. The API is designed for single-machine local use.
 
 ### `GET /`
 
-Health check. Returns a minimal payload for launcher readiness polling.
+Compatibility health check. Returns a minimal payload. Prefer `/api/v1/health/live` and `/api/v1/health/ready` for new probes.
 
 **Response `200`**
 ```json
 { "status": "online", "system": "APEX" }
+```
+
+---
+
+### `GET /api/v1/health/live`
+
+Process liveness probe. Does not check configuration or database dependencies.
+
+**Response `200`**
+```json
+{ "status": "live" }
+```
+
+---
+
+### `GET /api/v1/health/ready`
+
+Readiness probe. Verifies that the runtime settings store can be loaded and that SQLite answers a lightweight `SELECT 1`. Does not call optional external providers (connectors, OAuth, or Ollama).
+
+**Response `200`**
+```json
+{ "status": "ready", "config": "ok", "database": "ok" }
+```
+
+**Response `503`**
+```json
+{ "detail": "Configuration unavailable." }
+```
+or
+```json
+{ "detail": "Database unavailable." }
 ```
 
 ---
@@ -242,6 +273,7 @@ Diagnostic snapshot of the active pipeline run. Readable only while a trigger is
 **Response `200`** — `PipelineStatusSnapshot`
 ```json
 {
+  "run_id": "9f3c2a1e-4b5d-6789-abcd-ef0123456789",
   "step": 2,
   "label": "COLLECTION",
   "timestamp": "2026-06-06T12:34:56.789012+00:00",
@@ -260,6 +292,7 @@ Diagnostic snapshot of the active pipeline run. Readable only while a trigger is
 
 | Field | Type | Description |
 |---|---|---|
+| `run_id` | string \| null | Correlation ID for the active briefing pipeline run |
 | `step` | integer | Pipeline step 1–4: Gate, Collection, Synthesis, Delivery |
 | `label` | string | Short stage label: `GATE`, `COLLECTION`, `SYNTHESIS`, `DELIVERY` |
 | `timestamp` | string | UTC ISO-8601 timestamp of the last stage update |
@@ -427,7 +460,7 @@ Returns up to 50 recent briefing ledger entries ordered by timestamp descending.
 [
   {
     "id": 3,
-    "timestamp": "2026-06-08T08:15:00",
+    "timestamp": "2026-06-08T08:15:00+00:00",
     "briefing": "Greetings Chief...",
     "digest": {
       "weather_archetype": "clear_day",
@@ -435,15 +468,30 @@ Returns up to 50 recent briefing ledger entries ordered by timestamp descending.
       "upcoming_events_count": 1,
       "f1_sprint_active": false,
       "reminders_pending_count": 2,
+      "sync_health_score": 100.0,
       "confidence_score": 100.0,
       "failed_connectors": [],
       "insights": []
-    }
+    },
+    "metadata": {
+      "run_id": "9f3c2a1e-4b5d-6789-abcd-ef0123456789",
+      "dev_mode_active": false,
+      "demo_mode_active": false,
+      "synthesis_strategy": "cloud",
+      "tts_strategy": "google",
+      "active_tts_engine": "google",
+      "system_load_throttled": false
+    },
+    "digest_status": "valid"
   }
 ]
 ```
 
-Returns an empty list `[]` when no briefings have been stored.
+| Field | Type | Description |
+|---|---|---|
+| `digest_status` | string | History quality: `valid`, `legacy`, `malformed`, or `zero_health` |
+
+Returns an empty list `[]` when no briefings have been stored. Malformed rows still return a safe digest fallback for HUD compatibility, but `digest_status` distinguishes them from genuine zero-health scores. History fetch failures return `503` with `"Briefing history unavailable."`
 
 **Demo path:** When `DEMO_MODE=true`, returns a static set of three mock `BriefingHistoryRecord` entries without querying the database.
 
@@ -670,6 +718,7 @@ Each field contains the raw string produced by the corresponding connector, or a
 
 ```python
 class RuntimeMetadata(BaseModel):
+    run_id: str | None
     dev_mode_active: bool
     demo_mode_active: bool
     synthesis_strategy: str   # "raw" | "local" | "cloud" | "demo"
@@ -687,6 +736,7 @@ class RuntimeMetadata(BaseModel):
 
 ```python
 class PipelineStatusSnapshot(BaseModel):
+    run_id: str | None
     step: int
     label: str
     timestamp: str    # UTC ISO-8601
