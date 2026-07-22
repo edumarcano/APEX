@@ -7,6 +7,7 @@ import { StandbyActions } from './StandbyActions'
 import { PreflightDialog } from './PreflightDialog'
 import { BriefingDigest } from './BriefingDigest'
 import { TelemetryCard } from './TelemetryCard'
+import { ApexLogo } from './ApexLogo'
 
 describe('StandbyActions', () => {
   it('exposes both activation actions', async () => {
@@ -145,7 +146,7 @@ describe('TelemetryCard refresh and module state', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
-  it('renders independent refresh controls for a grouped card', async () => {
+  it.each([false, true])('selects grouped refresh actions from one menu (compact: %s)', async (isCompact) => {
     const refreshCalendar = vi.fn()
     const refreshF1 = vi.fn()
     const refreshFootball = vi.fn()
@@ -154,6 +155,8 @@ describe('TelemetryCard refresh and module state', () => {
       <TelemetryCard
         title="Events"
         icon={CloudSun}
+        isCompact={isCompact}
+        compactValue={isCompact ? '3 events' : undefined}
         refreshActions={[
           { label: 'Calendar', onRefresh: refreshCalendar },
           { label: 'F1', onRefresh: refreshF1 },
@@ -162,12 +165,63 @@ describe('TelemetryCard refresh and module state', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Refresh Calendar' }))
-    await user.click(screen.getByRole('button', { name: 'Refresh F1' }))
-    await user.click(screen.getByRole('button', { name: 'Refresh Football' }))
+    const trigger = screen.getByRole('button', { name: 'Choose Events module to refresh' })
+    expect(screen.queryByRole('button', { name: 'Refresh Calendar' })).toBeNull()
+
+    await user.click(trigger)
+    await user.click(screen.getByRole('menuitem', { name: 'Calendar' }))
     expect(refreshCalendar).toHaveBeenCalledTimes(1)
-    expect(refreshF1).toHaveBeenCalledTimes(1)
-    expect(refreshFootball).toHaveBeenCalledTimes(1)
+    expect(refreshF1).not.toHaveBeenCalled()
+    expect(refreshFootball).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('supports keyboard navigation and dismisses the grouped refresh menu', async () => {
+    const user = userEvent.setup()
+    render(
+      <div>
+        <TelemetryCard
+          title="Events"
+          icon={CloudSun}
+          refreshActions={[
+            { label: 'Calendar', onRefresh: vi.fn() },
+            { label: 'F1', onRefresh: vi.fn(), disabled: true },
+            { label: 'Football', onRefresh: vi.fn() },
+          ]}
+        />
+        <button type="button">Outside</button>
+      </div>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Choose Events module to refresh' })
+    await user.click(trigger)
+    expect(screen.getByRole('menuitem', { name: 'Calendar' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Football' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    await user.click(screen.getByRole('button', { name: 'Outside' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+})
+
+describe('ApexLogo telemetry collection state', () => {
+  it('surges the core and sequences all blue segments while collecting', () => {
+    const { container, rerender } = render(
+      <ApexLogo step={null} status="success" isTelemetryCollecting />,
+    )
+
+    expect(container.querySelector('.apex-core-metal--green-surge')).toBeTruthy()
+    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(7)
+
+    rerender(<ApexLogo step={null} status="success" />)
+    expect(container.querySelector('.apex-core-metal--green-surge')).toBeNull()
+    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(0)
+    expect(container.querySelectorAll('.apex-blue-metal--active')).toHaveLength(7)
   })
 })
 

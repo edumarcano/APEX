@@ -427,6 +427,7 @@ export default function App(): ReactElement {
   }, [activated, handleStartApex, preflight.dialogOpen, preflight.isChecking])
 
   const isRefreshingAll = telemetry.isRefreshingAll
+  const isTelemetryCollecting = isRefreshingAll || telemetry.refreshingConnectors.size > 0
   const hasSnapshot = telemetry.snapshot !== null
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
@@ -982,6 +983,7 @@ export default function App(): ReactElement {
                       isAssistantQuerying={isAssistantQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       isLocalModelLoaded={isLocalModelLoaded}
+                      isTelemetryCollecting={isTelemetryCollecting}
                       className={logoSizeClass}
                     />
                   </div>

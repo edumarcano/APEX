@@ -9,6 +9,7 @@ export interface ApexLogoProps {
   isAssistantQuerying?: boolean
   isLocalModelLoading?: boolean
   isLocalModelLoaded?: boolean
+  isTelemetryCollecting?: boolean
   className?: string
 }
 
@@ -20,6 +21,7 @@ export function ApexLogo({
   isAssistantQuerying = false,
   isLocalModelLoading = false,
   isLocalModelLoaded = false,
+  isTelemetryCollecting = false,
   className = '',
 }: ApexLogoProps): ReactElement {
   const [pulseActive, setPulseActive] = useState(false)
@@ -35,7 +37,7 @@ export function ApexLogo({
   }, [reminderPulseCount])
 
   const isError = status === 'error'
-  const isDormant = status === 'idle' && !isAssistantQuerying
+  const isDormant = status === 'idle' && !isAssistantQuerying && !isTelemetryCollecting
   const activeStep = step ?? 0
   const hasDelivered = status === 'success' || activeStep >= 4
 
@@ -60,6 +62,10 @@ export function ApexLogo({
       return rustSurge
     }
 
+    if (isTelemetryCollecting) {
+      return 'apex-blue-metal apex-blue-metal--collection-surge'
+    }
+
     if (isLocalModelLoaded) {
       return `transition-all duration-700 ease-in-out ${rustActive}`
     }
@@ -73,7 +79,7 @@ export function ApexLogo({
   const getBlueStageDelay = (
     segmentStep: number,
   ): { animationDelay: string } | undefined => {
-    if (!isLocalModelLoading) {
+    if (!isLocalModelLoading && !isTelemetryCollecting) {
       return undefined
     }
     return { animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms` }
@@ -102,6 +108,10 @@ export function ApexLogo({
 
     if (pulseActive) {
       return `transition-all duration-300 ease-out ${reminderSurgeCore}`
+    }
+
+    if (isTelemetryCollecting) {
+      return greenSurgeCore
     }
 
     if (isError) {
@@ -273,6 +283,34 @@ export function ApexLogo({
 
             .apex-blue-metal--surge {
               filter: drop-shadow(0 0 24px rgba(79, 143, 255, 1));
+            }
+
+            @keyframes apexCollectionSegmentSurge {
+              0%, 12% {
+                opacity: 0.3;
+                filter: drop-shadow(0 0 8px rgba(79, 143, 255, 0.25));
+              }
+              25%, 72% {
+                opacity: 1;
+                filter: drop-shadow(0 0 20px rgba(79, 143, 255, 0.95));
+              }
+              88%, 100% {
+                opacity: 0.3;
+                filter: drop-shadow(0 0 8px rgba(79, 143, 255, 0.25));
+              }
+            }
+
+            .apex-blue-metal--collection-surge {
+              animation: apexCollectionSegmentSurge 2.5s ease-in-out infinite;
+              will-change: opacity, filter;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              .apex-blue-metal--collection-surge {
+                animation: none;
+                opacity: 1;
+                filter: drop-shadow(0 0 12px rgba(79, 143, 255, 0.75));
+              }
             }
 
             .apex-blue-metal--reminder-surge {
