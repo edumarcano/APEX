@@ -8,9 +8,12 @@ export const API_ENDPOINTS = {
   config: `${API_BASE}/api/v1/config`,
   diagnostics: `${API_BASE}/api/v1/diagnostics`,
   market: `${API_BASE}/api/v1/market`,
+  preflight: `${API_BASE}/api/v1/preflight`,
   reminders: `${API_BASE}/api/v1/reminders`,
   remindersRead: `${API_BASE}/api/v1/reminders/read`,
   settings: `${API_BASE}/api/v1/settings`,
   status: `${API_BASE}/api/v1/status`,
+  telemetryLatest: `${API_BASE}/api/v1/telemetry/latest`,
+  telemetryRefresh: `${API_BASE}/api/v1/telemetry/refresh`,
   trigger: `${API_BASE}/api/v1/trigger`,
 } as const

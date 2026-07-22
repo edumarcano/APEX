@@ -41,7 +41,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 ## Features
 
-- **Context-aware gate** — checks home Wi-Fi (SSID), AC power, and a 1-hour cooldown before any API call is made (`scanner.py`)
+- **Advisory operational preflight** — reports configured-network, battery, rapid-refresh, cloud-disclosure, credential, and local-model risks without treating Wi-Fi or power as proof of authorization
 - **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window), Alpha Vantage (EOD market ticker)
 - **AI briefing synthesis** — connector output routed through a provider-neutral `SynthesisRouter`; uses Gemini 3.1 Flash Lite (cloud strategy), a resident or warmed Ollama model (local strategy), or deterministic compact output (raw fallback) depending on the configured strategy and provider availability
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
@@ -84,12 +84,11 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 
 Both flags are read from `.env`. Values are normalized at read time (`true`, `True`, `1` all resolve the same). Unset flags default to the values shown.
 
-| Configuration | Wi-Fi + Power | Cooldown | Gemini | Gmail + Calendar | Logs Run |
-|---|---|---|---|---|---|
-| Production (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=true`) | ✅ enforced | ✅ 1-hour | ✅ live | ✅ per config | ✅ yes |
-| Gate off (`DEV_MODE=false`, `ENABLE_STARTUP_GATE=false`) | ⬜ bypassed | ⬜ bypassed | ✅ live | ✅ per config | ✅ yes |
-| `DEV_MODE=true` | ⬜ bypassed | ⬜ bypassed | ⬜ depends on `DEV_AI_SYNTHESIS` | ⬜ fetched; content masked | ⬜ no |
-| `DEMO_MODE=true` | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ bypassed | ⬜ no |
+| Configuration | Operational preflight | Gemini | Gmail + Calendar | Logs Run |
+|---|---|---|---|---|
+| Production (`DEV_MODE=false`) | Advisory network, battery, refresh, cloud, credential, and local-model checks | ✅ live | ✅ per config | ✅ yes |
+| `DEV_MODE=true` | Network policy warning bypassed; local cold-load checks retained | ⬜ depends on `DEV_AI_SYNTHESIS` | ⬜ fetched; content masked | ⬜ no |
+| `DEMO_MODE=true` | No warnings or live checks | ⬜ bypassed | ⬜ bypassed | ⬜ no |
 
 `DEMO_MODE` intercepts the trigger entirely and serves static mock telemetry from `core/mock/telemetry.json`. It does not run any connectors or write to the database. `DEV_MODE` and `DEMO_MODE` are independent flags; `DEMO_MODE` takes priority in the trigger path when both are set.
 
@@ -196,7 +195,7 @@ cp .env.example .env          # macOS / Linux
 copy .env.example .env        # Windows
 ```
 
-`.env.example` documents every key with inline comments. Credentials are required only for the live features that use them: `GEMINI_API_KEY` enables cloud synthesis and cloud assistant profiles; connector keys enable their corresponding modules; and `HOME_SSID` is required only when the production startup gate is enabled. Local/raw synthesis and demo mode do not require Gemini credentials. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default. `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` (comma-separated ticker symbols) are optional; when either is unset, `GET /api/v1/market` serves a simulated ticker feed instead of an error.
+`.env.example` documents every key with inline comments. Credentials are required only for the live features that use them: `GEMINI_API_KEY` enables cloud synthesis and cloud assistant profiles, while connector keys enable their corresponding modules. `HOME_SSID` is optional configured-network policy for advisory preflight; it is not an authentication boundary. Local/raw synthesis and demo mode do not require Gemini credentials. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default. `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` (comma-separated ticker symbols) are optional; when either is unset, `GET /api/v1/market` serves a simulated ticker feed instead of an error.
 
 **Cloud privacy note:** A normal production run currently uses Gemini for primary briefing synthesis. If the API key uses Gemini's unpaid/free quota, Google may use prompts and responses to improve its products and may subject them to human review. APEX limits the data sent through a bounded synthesis payload, but that data is still disclosed to the provider. Moving the project to paid Gemini usage provides stronger no-product-improvement terms; the remaining v1.17 work is intended to make local and raw synthesis viable production alternatives. See [docs/privacy.md](docs/privacy.md).
 
@@ -240,7 +239,7 @@ Edit `config.json` to change the briefing voice, toggle connectors, or switch TT
 
 **10. (Optional) Dev and demo overrides**
 
-Set `DEV_MODE=true` in `.env` for local development. The scanner gate, run logging, and (by default) Gemini synthesis are bypassed. Gmail and Calendar connectors still make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Set `DEMO_MODE=true` for a fully offline simulation using static mock telemetry. See [Environment Modes](#environment-modes) above.
+Set `DEV_MODE=true` in `.env` for local development. Configured-network preflight warnings, run logging, and (by default) Gemini synthesis are bypassed. Gmail and Calendar connectors still make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Set `DEMO_MODE=true` for a fully offline simulation using static mock telemetry. See [Environment Modes](#environment-modes) above.
 
 ---
 

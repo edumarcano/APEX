@@ -11,6 +11,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from core.connectors.models import ConnectorResult
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
 
 
@@ -59,6 +60,9 @@ class ApiCharacterizationBase(unittest.TestCase):
             ),
             mock.patch("core.api.briefing.get_settings_store", return_value=self.store),
             mock.patch(
+                "core.telemetry.service.get_settings_store", return_value=self.store
+            ),
+            mock.patch(
                 "core.api.assistant.get_settings_store", return_value=self.store
             ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
@@ -73,9 +77,16 @@ class ApiCharacterizationBase(unittest.TestCase):
 
         from core import database
         from core.api import app, global_pipeline_state
+        from core.telemetry.service import reset_telemetry_service_for_tests
 
+        reset_telemetry_service_for_tests()
+        self.addCleanup(reset_telemetry_service_for_tests)
         database.initialize_db()
         global_pipeline_state.reset()
+        from core.api.state import _TRIGGER_LOCK
+
+        if _TRIGGER_LOCK.locked():
+            _TRIGGER_LOCK.release()
         self.app = app
         self.client = TestClient(app, raise_server_exceptions=True)
 
@@ -353,16 +364,80 @@ class TriggerLockAndCleanupTests(ApiCharacterizationBase):
 
 
 class TriggerModeCharacterizationTests(ApiCharacterizationBase):
-    def test_production_gate_failure_returns_403_and_releases_lock(self) -> None:
+    def test_former_scanner_gate_no_longer_returns_403(self) -> None:
+        """Wi-Fi/power/cooldown gating is advisory via /preflight, not a trigger 403."""
         from core.api.state import _TRIGGER_LOCK
+        from core.synthesis.models import SynthesisResult
+
+        def _immediate_thread(*_a: object, target=None, kwargs=None, **_k: object):
+            thread = mock.Mock()
+
+            def start() -> None:
+                if target is not None:
+                    target(**(kwargs or {}))
+
+            thread.start = start
+            thread.join = mock.Mock()
+            return thread
+
+        synthesis = SynthesisResult(
+            briefing="Proceeded without gate.",
+            insights=["Insight"],
+            provider="raw",
+            fallback_reason="configured_raw",
+        )
 
         with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
-            "core.api.briefing.scanner.should_run", return_value=False
+            "core.api.briefing.is_dev_mode", return_value=True
+        ), mock.patch("core.api.briefing.DEV_AI_SYNTHESIS", "raw"), mock.patch(
+            "core.api.briefing.DEV_TTS_PLAYBACK", "pyttsx3"
+        ), mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather",
+            return_value=ConnectorResult(
+                name="weather",
+                status="healthy",
+                freshness="live",
+                reason_code="ok",
+                display_text="Current temperature is 70 degrees.",
+            ),
+        ), mock.patch(
+            "core.telemetry.collector.sports_client.collect_f1",
+            return_value=ConnectorResult(
+                name="f1",
+                status="healthy",
+                freshness="fresh_cache",
+                reason_code="ok",
+                display_text="F1 telemetry clear.",
+            ),
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=ConnectorResult(
+                name="reminders",
+                status="healthy",
+                freshness="live",
+                reason_code="ok",
+                display_text="",
+            ),
+        ), mock.patch(
+            "core.api.briefing.database.log_run"
+        ), mock.patch(
+            "core.api.briefing.database.save_briefing"
+        ), mock.patch(
+            "core.api.briefing.brain.process_telemetry",
+            return_value=synthesis.model_dump(),
+        ), mock.patch("core.api.briefing.speaker.speak"), mock.patch(
+            "core.api.state.speaker.speak"
+        ), mock.patch(
+            "core.api.briefing.threading.Thread", side_effect=_immediate_thread
+        ), mock.patch(
+            "core.api.briefing.SynthesisRouter.prepare", return_value=None
+        ), mock.patch(
+            "core.api.tts.scanner.is_system_throttled", return_value=False
         ):
             response = self.client.post("/api/v1/trigger")
 
-        self.assertEqual(response.status_code, 403)
-        self.assertIn("System gate failed", response.json()["detail"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["briefing"], "Proceeded without gate.")
         self.assertFalse(_TRIGGER_LOCK.locked())
 
     def test_demo_mode_returns_success_payload_shape(self) -> None:
@@ -427,21 +502,36 @@ class TriggerModeCharacterizationTests(ApiCharacterizationBase):
         ), mock.patch("core.api.briefing.DEV_AI_SYNTHESIS", "raw"), mock.patch(
             "core.api.briefing.DEV_TTS_PLAYBACK", "pyttsx3"
         ), mock.patch(
-            "core.api.briefing.scanner.should_run", return_value=True
-        ), mock.patch(
             "core.api.briefing.database.log_run"
         ) as log_run, mock.patch(
             "core.api.briefing.database.save_briefing"
         ) as save_briefing, mock.patch(
-            "core.api.briefing.weather_client.fetch_weather_data",
-            return_value="Current temperature is 70 degrees.",
+            "core.telemetry.collector.weather_client.collect_weather",
+            return_value=ConnectorResult(
+                name="weather",
+                status="healthy",
+                freshness="live",
+                reason_code="ok",
+                display_text="Current temperature is 70 degrees.",
+            ),
         ), mock.patch(
-            "core.api.briefing.sports_client.fetch_sports_snapshot",
-            return_value=("F1 telemetry clear.", True, None),
+            "core.telemetry.collector.sports_client.collect_f1",
+            return_value=ConnectorResult(
+                name="f1",
+                status="healthy",
+                freshness="fresh_cache",
+                reason_code="ok",
+                display_text="F1 telemetry clear.",
+            ),
         ), mock.patch(
-            "core.api.briefing.news_client.fetch_news_data", return_value=""
-        ), mock.patch(
-            "core.api.briefing.database.fetch_unread_reminders", return_value=[]
+            "core.telemetry.collector.collect_reminders",
+            return_value=ConnectorResult(
+                name="reminders",
+                status="healthy",
+                freshness="live",
+                reason_code="ok",
+                display_text="",
+            ),
         ), mock.patch(
             "core.api.briefing.brain.process_telemetry",
             return_value=synthesis.model_dump(),
@@ -477,17 +567,30 @@ class ConcurrentTriggerLockTests(ApiCharacterizationBase):
         first_entered = threading.Event()
         results: list[int] = []
 
-        def _blocking_should_run() -> bool:
+        def _blocking_refresh(*_a: object, **_k: object) -> object:
+            from fastapi import HTTPException
+
             first_entered.set()
             gate.wait(timeout=5)
-            return False
+            raise HTTPException(status_code=503, detail="stopped after lock held")
 
         def _first_call() -> None:
             with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
-                "core.api.briefing.scanner.should_run", side_effect=_blocking_should_run
-            ):
+                "core.api.briefing.is_dev_mode", return_value=True
+            ), mock.patch(
+                "core.api.briefing.SynthesisRouter.prepare", return_value=None
+            ), mock.patch("core.api.briefing.speaker.speak"), mock.patch(
+                "core.api.briefing.get_telemetry_service"
+            ) as get_service:
+                service = mock.Mock()
+                service.collect_for_briefing.side_effect = _blocking_refresh
+                get_service.return_value = service
                 response = self.client.post("/api/v1/trigger")
             results.append(response.status_code)
+
+        # Ensure a clean lock before the concurrent scenario.
+        if _TRIGGER_LOCK.locked():
+            _TRIGGER_LOCK.release()
 
         worker = threading.Thread(target=_first_call)
         worker.start()
@@ -499,7 +602,8 @@ class ConcurrentTriggerLockTests(ApiCharacterizationBase):
         worker.join(timeout=5)
 
         self.assertIn(409, results)
-        self.assertIn(403, results)
+        if _TRIGGER_LOCK.locked():
+            _TRIGGER_LOCK.release()
         self.assertFalse(_TRIGGER_LOCK.locked())
 
 

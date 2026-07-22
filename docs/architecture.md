@@ -6,14 +6,14 @@
 
 `launcher.py` is the entry point for a full local session. It starts uvicorn (`127.0.0.1:8000`) and `http.server` (`127.0.0.1:5500`) as parallel child processes, then polls `GET /api/v1/health/ready` and frontend HTTP availability up to 30 times at 500 ms intervals while monitoring both children for early exit. The browser kiosk window opens only after both services are ready. On timeout, bind conflict, or early child exit, the launcher terminates both children, suppresses the browser, and exits nonzero. When the browser window closes, `launcher.py` detects the exit and terminates both server children. `atexit` hooks and signal handlers are registered for `Ctrl+C` and `SIGTERM`.
 
-With both servers up, `core.api` listens on `127.0.0.1:8000`. A `POST /api/v1/trigger` runs a four-stage pipeline:
+With both servers up, `core.api` listens on `127.0.0.1:8000`. Before interactive activation, `POST /api/v1/preflight` provides advisory network, power, refresh-frequency, cloud-disclosure, and local-model warnings. Calling an operation endpoint directly skips advisory acknowledgement. A `POST /api/v1/trigger` runs a four-stage compatibility pipeline:
 
-1. **Gate** — `scanner.py` checks home Wi-Fi by SSID, AC power, and a 1-hour cooldown. If any check fails the request is rejected with `403` and nothing runs.
+1. **Preparation** — the pipeline acquires its non-blocking execution lock, captures runtime settings, records a production run, and prepares synthesis. The status label remains `GATE` for compatibility, but Wi-Fi, power, and cooldown checks do not reject the request.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
 3. **Synthesis** — `core/api/briefing.py` constructs a privacy-bounded `SynthesisInput` from typed connector facts (weather, email, news, calendar, reminders, F1, football, and connector health). Gemini and Ollama both receive the same sanitized payload wrapped in `<untrusted_connector_data>` markers. Concatenated raw telemetry is never sent to a model. The router selects a strategy: `cloud` calls Gemini 3.1 Flash Lite; `local` attempts a resident or warmed Ollama model; `raw` produces a deterministic compact briefing. Model paths are tool-free, capped at 512 output tokens, and reject malformed `===SPEECH===` / `===INSIGHTS===` output before falling back to `_raw()`.
 4. **Delivery** — typed connector statuses produce a `DigestPayload` with `sync_health_score`, `connector_health`, legacy `confidence_score` / `failed_connectors`, and insights. The trigger endpoint returns the briefing text, telemetry display strings, digest, and metadata (including a per-run `run_id`) as JSON. On production runs, `trigger_briefing` persists the briefing, digest, and runtime metadata to the SQLite `briefings` ledger and prunes to 50 rows before starting TTS playback. `global_pipeline_state.reset()` is called inside `_speak_and_cleanup` after playback finishes, keeping `/api/v1/status` active with `is_speaking: true` for the full duration audio plays.
 
-With `DEV_MODE=true`, the scanner bypasses hardware and cooldown gates and run logging. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
+With `DEV_MODE=true`, configured-network preflight warnings and production run logging are bypassed. Cold local-model power/resource checks remain authoritative. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
 **API lifespan worker:** `core/api/app.py` registers a FastAPI lifespan handler that starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`. It runs independently of the trigger/briefing pipeline described above.
 
@@ -173,7 +173,7 @@ apex/
 │   │   ├── assistant.py     # Agent profile status, unload, and query orchestration
 │   │   └── routers/         # system, briefings, reminders, assistant, market route modules
 │   ├── brain.py         # Compatibility façade over core/synthesis/; routes synthesize() calls to SynthesisRouter
-│   ├── scanner.py       # Environment gate (Wi-Fi, power, cooldown) + sample_system_vitals()
+│   ├── scanner.py       # Advisory Wi-Fi/power probes, legacy gate helper, and system vitals
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite runs, reminders, briefing history, transactions, readiness probe
 │   ├── runtime_logging.py # Logging bootstrap and per-briefing run-ID context
@@ -299,15 +299,24 @@ apex/
 
 ### `core/scanner.py`
 
-`should_run()` is the gate function called at the start of every trigger. It branches in order:
+`should_run()` remains available for compatibility and local tooling, but it is **no longer** a hard blocker on `POST /api/v1/trigger`. Interactive risk evaluation uses `POST /api/v1/preflight` instead.
 
-1. If `DEV_MODE=true` → return `True` immediately (no checks run).
-2. If `ENABLE_STARTUP_GATE=false` → return `True` immediately (hardware/cooldown bypassed, live APIs remain active).
-3. Otherwise → call `_enforce_production_gate()`, which checks SSID against `HOME_SSID`, calls `psutil.sensors_battery()` to verify AC power, and queries the database for the last run timestamp.
+`get_power_state()` classifies power as `plugged`, `battery`, or `unknown` (no battery sensor). The legacy `check_power()` helper returns `False` only when on battery and treats desktops without a battery sensor as plugged in.
 
-`check_power()` returns `psutil.sensors_battery().power_plugged` when a battery sensor is present, and `False` when `psutil.sensors_battery()` returns `None`. On desktop machines with no battery, the gate fails unless `ENABLE_STARTUP_GATE=false` or `DEV_MODE=true`.
+`get_current_ssid()` still reads the active Wi-Fi SSID via `netsh`. Preflight compares it to `HOME_SSID` as configured-network policy (not a security proof): mismatch → `outside_configured_network`; missing/unreadable SSID → `network_trust_unknown`.
 
 `sample_system_vitals()` queries CPU percent, CPU frequency, virtual memory, and root-disk usage via psutil. Each query is isolated in a `try/except`; a single failure returns `0.0` for that field without crashing the response.
+
+### `core/telemetry/`
+
+Process-local telemetry snapshot runtime extracted from briefing orchestration:
+
+- `collector.py` — synchronous connector collection with explicit `disabled` module results for toggled-off connectors.
+- `store.py` — in-memory current snapshot; partial refresh merge; retain prior healthy/degraded modules as `stale` when a refresh fails.
+- `service.py` — non-blocking refresh lock (`409` on contention), five-minute freshness window, forced-refresh tracking, DEMO static snapshots. Raw snapshots are not written to SQLite.
+- `preflight.py` — advisory warning codes and hard blockers for planned operations.
+
+Public routes: `GET /api/v1/telemetry/latest`, `POST /api/v1/telemetry/refresh`, `POST /api/v1/preflight`. `POST /api/v1/trigger` reuses the telemetry service for collection while preserving legacy display-string telemetry on the briefing response.
 
 ### `core/brain.py`
 
@@ -457,7 +466,7 @@ SQLite database file: `apex_memory.db`. Three tables, all created by `initialize
 
 Connections are context-managed with WAL enabled. Writes use explicit SQLite transactions that roll back on failure. `probe_db()` runs a lightweight `SELECT 1` for readiness checks. Malformed history JSON is logged with record ID and error category only — never stored briefing or personal content.
 
-`initialize_db()` is called during API lifespan startup and again at the start of `should_run()`, ensuring schema upgrades exist before history reads or trigger writes.
+`initialize_db()` is called during API lifespan startup and again from advisory preflight / readiness paths, ensuring schema upgrades exist before history reads or trigger writes.
 
 **Briefing ledger functions:**
 

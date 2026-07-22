@@ -11,8 +11,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
-from clients import news_client, sports_client, weather_client
-from core import brain, database, scanner, speaker
+from core import brain, database, speaker
 from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.api.models import (
     BriefingResponse,
@@ -29,11 +28,10 @@ from core.config import (
     DEV_TTS_PLAYBACK,
     is_dev_mode,
 )
-from core.connectors.collect import collect_calendar, collect_email, collect_reminders
 from core.connectors.models import ConnectorResult
 from core.connectors.scoring import compute_sync_health
 from core.runtime_logging import bind_run_id_context, run_id_scope
-from core.settings import FeaturesSettings, ModulesSettings, get_settings_store
+from core.settings import get_settings_store
 from core.synthesis import (
     CalendarFact,
     ConnectorHealthFact,
@@ -43,6 +41,7 @@ from core.synthesis import (
     SynthesisInput,
     SynthesisRouter,
 )
+from core.telemetry.service import RefreshInProgressError, get_telemetry_service
 
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 _LOGGER = logging.getLogger(__name__)
@@ -138,7 +137,7 @@ def _build_synthesis_input(
             reason_code=result.reason_code,
         )
         for result in results.values()
-        if result is not None
+        if result is not None and result.status != "disabled"
     ]
 
     weather_summary = None
@@ -177,57 +176,6 @@ def _build_synthesis_input(
         failed_connectors=failed_connectors,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
-
-
-def _collect_connector_results(
-    *,
-    features: FeaturesSettings,
-    modules: ModulesSettings,
-) -> dict[str, ConnectorResult | None]:
-    results: dict[str, ConnectorResult | None] = {
-        "weather": None,
-        "news": None,
-        "email": None,
-        "calendar": None,
-        "f1": None,
-        "football": None,
-        "reminders": None,
-    }
-
-    if features.weather:
-        results["weather"] = weather_client.collect_weather()
-    else:
-        _LOGGER.info("Weather module bypassed via user preference")
-
-    if features.sports and modules.f1:
-        results["f1"] = sports_client.collect_f1()
-    elif features.sports and not modules.f1:
-        _LOGGER.info("F1 module bypassed via user preference")
-    elif not features.sports:
-        _LOGGER.info("Sports module bypassed via user preference")
-
-    if features.sports and modules.football:
-        results["football"] = sports_client.collect_football()
-    elif features.sports and not modules.football:
-        _LOGGER.info("Football module bypassed via user preference")
-
-    if features.news:
-        results["news"] = news_client.collect_news()
-    else:
-        _LOGGER.info("News module bypassed via user preference")
-
-    if features.email:
-        results["email"] = collect_email()
-    else:
-        _LOGGER.info("Email module bypassed via user preference")
-
-    if features.calendar:
-        results["calendar"] = collect_calendar()
-    else:
-        _LOGGER.info("Calendar module bypassed via user preference")
-
-    results["reminders"] = collect_reminders()
-    return results
 
 
 def _display_text(result: ConnectorResult | None) -> str:
@@ -282,6 +230,8 @@ def _run_demo_briefing(*, run_id: str) -> BriefingResponse:
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
         telemetry, digest = load_mock_telemetry()
+        # Seed the in-memory snapshot store for telemetry API consumers.
+        get_telemetry_service().seed_demo_snapshot()
 
         global_pipeline_state.update(3, "SYNTHESIS")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
@@ -341,6 +291,9 @@ def trigger_briefing() -> BriefingResponse:
 
     Mirrors main.start_apex execution order. When ``DEMO_MODE`` is active,
     serves static mock telemetry through a staged simulation loop.
+
+    Startup Wi-Fi/power/cooldown gating is no longer a hard blocker; callers
+    should use ``POST /api/v1/preflight`` for advisory warnings.
     """
     if _TRIGGER_LOCK.locked():
         raise HTTPException(
@@ -367,17 +320,8 @@ def trigger_briefing() -> BriefingResponse:
             global_pipeline_state.begin_run(run_id)
             global_pipeline_state.update(1, "GATE")
 
-            if not scanner.should_run():
-                global_pipeline_state.reset()
-                raise HTTPException(
-                    status_code=403,
-                    detail="System gate failed: scanner.should_run() is False.",
-                )
-
             try:
-                briefing_settings = get_settings_store().get_snapshot()
-                features = briefing_settings.features
-                modules = briefing_settings.modules
+                get_settings_store().get_snapshot()
 
                 dev_mode = is_dev_mode()
                 synthesis_strategy = DEV_AI_SYNTHESIS if dev_mode else "cloud"
@@ -391,7 +335,14 @@ def trigger_briefing() -> BriefingResponse:
 
                 global_pipeline_state.update(2, "COLLECTION")
                 _LOGGER.info("Fetching connector data")
-                results = _collect_connector_results(features=features, modules=modules)
+                try:
+                    snapshot = get_telemetry_service().collect_for_briefing()
+                except RefreshInProgressError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=str(exc),
+                    ) from None
+                results = snapshot.results_map()
                 health = compute_sync_health(results)
                 synthesis_input = _build_synthesis_input(
                     results=results,

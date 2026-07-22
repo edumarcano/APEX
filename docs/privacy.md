@@ -51,5 +51,5 @@ Public assistant tool failures use stable messages instead of raw exception stri
 ## Runtime Modes
 
 - `DEMO_MODE=true` uses static mock briefing and assistant data, skips live connectors, and does not write briefing history.
-- `DEV_MODE=true` bypasses the startup gate and production run logging. Gmail and Calendar may still make live OAuth-authenticated requests, but returned content is masked before briefing use.
+- `DEV_MODE=true` suppresses configured-network preflight warnings and production run logging. Gmail and Calendar may still make live OAuth-authenticated requests, but returned content is masked before briefing use.
 - Production mode calls only enabled connectors. Disabling a connector skips its network or authentication attempt and excludes it from synthesis and Sync Health scoring.

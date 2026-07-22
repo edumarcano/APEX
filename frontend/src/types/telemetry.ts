@@ -124,7 +124,7 @@ export interface DigestPayload {
   connector_health?: ConnectorHealthEntry[]
 }
 
-export type ConnectorHealthStatus = 'healthy' | 'degraded' | 'unavailable'
+export type ConnectorHealthStatus = 'healthy' | 'degraded' | 'unavailable' | 'disabled'
 export type ConnectorFreshness = 'live' | 'fresh_cache' | 'stale' | 'none'
 
 export interface ConnectorHealthEntry {
@@ -133,6 +133,83 @@ export interface ConnectorHealthEntry {
   freshness?: ConnectorFreshness
   reason_code?: string
   observed_at?: string | null
+}
+
+export interface TelemetryModuleEntry {
+  name: string
+  status: ConnectorHealthStatus
+  freshness: ConnectorFreshness
+  reason_code: string
+  observed_at: string | null
+  display_text: string
+  data: Record<string, unknown>
+}
+
+export interface TelemetrySnapshot {
+  snapshot_id: string
+  collected_at: string
+  modules: Record<string, TelemetryModuleEntry>
+  sync_health_score: number
+  connector_health: ConnectorHealthEntry[]
+  failed_connectors: string[]
+}
+
+export interface TelemetryRefreshRequest {
+  connectors?: string[] | null
+  force?: boolean
+}
+
+export type PreflightOperation =
+  | 'activate'
+  | 'activate_with_briefing'
+  | 'refresh_telemetry'
+  | 'generate_briefing'
+  | 'assistant_query'
+
+export type PreflightWarningCode =
+  | 'outside_configured_network'
+  | 'network_trust_unknown'
+  | 'running_on_battery'
+  | 'rapid_connector_refresh'
+  | 'cloud_data_disclosure'
+  | 'high_resource_local_profile'
+
+export type PreflightBlockerCode =
+  | 'missing_credentials'
+  | 'model_unreachable'
+  | 'model_not_installed'
+  | 'concurrent_local_execution'
+  | 'insufficient_ram'
+  | 'cpu_overloaded'
+  | 'database_failure'
+  | 'configuration_failure'
+  | 'invalid_input'
+  | 'model_load_failure'
+
+export interface PreflightWarning {
+  code: PreflightWarningCode
+  message: string
+}
+
+export interface PreflightBlocker {
+  code: PreflightBlockerCode
+  message: string
+}
+
+export interface PreflightRequest {
+  operation: PreflightOperation
+  connectors?: string[] | null
+  synthesis_profile?: string | null
+  force?: boolean
+  involves_cloud?: boolean
+  acknowledged_warnings?: string[]
+  cloud_disclosure_acknowledged?: boolean
+}
+
+export interface PreflightResponse {
+  warnings: PreflightWarning[]
+  blockers: PreflightBlocker[]
+  can_proceed: boolean
 }
 
 export interface TelemetryPayload {
