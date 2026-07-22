@@ -6,7 +6,7 @@
 
 `launcher.py` is the entry point for a full local session. It starts uvicorn (`127.0.0.1:8000`) and `http.server` (`127.0.0.1:5500`) as parallel child processes, then polls `GET /api/v1/health/ready` and frontend HTTP availability up to 30 times at 500 ms intervals while monitoring both children for early exit. The browser kiosk window opens only after both services are ready. On timeout, bind conflict, or early child exit, the launcher terminates both children, suppresses the browser, and exits nonzero. When the browser window closes, `launcher.py` detects the exit and terminates both server children. `atexit` hooks and signal handlers are registered for `Ctrl+C` and `SIGTERM`.
 
-With both servers up, `core.api` listens on `127.0.0.1:8000`. Interactive clients may call `POST /api/v1/preflight` before starting work to obtain advisory network, power, refresh-frequency, cloud-disclosure, and local-model warnings. Direct API calls remain functional without acknowledgement. A `POST /api/v1/trigger` runs a four-stage compatibility pipeline:
+With both servers up, `core.api` listens on `127.0.0.1:8000`. Before interactive activation, `POST /api/v1/preflight` provides advisory network, power, refresh-frequency, cloud-disclosure, and local-model warnings. Calling an operation endpoint directly skips advisory acknowledgement. A `POST /api/v1/trigger` runs a four-stage compatibility pipeline:
 
 1. **Preparation** — the pipeline acquires its non-blocking execution lock, captures runtime settings, records a production run, and prepares synthesis. The status label remains `GATE` for compatibility, but Wi-Fi, power, and cooldown checks do not reject the request.
 2. **Collection** — each enabled connector fetches its feed in sequence. Disabled connectors are skipped with no API call made.
@@ -301,7 +301,7 @@ apex/
 
 `should_run()` remains available for compatibility and local tooling, but it is **no longer** a hard blocker on `POST /api/v1/trigger`. Interactive risk evaluation uses `POST /api/v1/preflight` instead.
 
-`get_power_state()` classifies power as `plugged`, `battery`, or `unknown` (no battery sensor). `check_power()` returns `False` only when on battery; desktops without a battery sensor are treated as plugged for legacy callers.
+`get_power_state()` classifies power as `plugged`, `battery`, or `unknown` (no battery sensor). The legacy `check_power()` helper returns `False` only when on battery and treats desktops without a battery sensor as plugged in.
 
 `get_current_ssid()` still reads the active Wi-Fi SSID via `netsh`. Preflight compares it to `HOME_SSID` as configured-network policy (not a security proof): mismatch → `outside_configured_network`; missing/unreadable SSID → `network_trust_unknown`.
 

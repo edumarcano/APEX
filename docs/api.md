@@ -171,7 +171,7 @@ Empty patches (`{}`) return the current envelope without writing.
 
 Runs the full pipeline: preflight stage label → collection → synthesis → delivery. Blocking — returns after all four stages complete and TTS audio has started on a background thread. Collection reuses the process-local telemetry snapshot service (`core/telemetry`) and still returns legacy per-module display strings on the response.
 
-Startup Wi-Fi, battery, and cooldown checks are **not** hard blockers on this endpoint. Call `POST /api/v1/preflight` for advisory warnings before interactive activation. Direct API callers remain functional without acknowledgement; existing hard blockers (locks, credentials, resource gates) still apply at their call sites.
+Startup Wi-Fi, battery, and cooldown checks are **not** hard blockers on this endpoint. Call `POST /api/v1/preflight` for advisory warnings before interactive activation. Calling this endpoint directly skips advisory acknowledgement; existing hard blockers (locks, credentials, resource gates) still apply where they are enforced.
 
 When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged simulation using static mock telemetry from `core/mock/telemetry.json`. Stage delays of 1.5 seconds are inserted between each step so the frontend polling loop can observe them.
 
@@ -1049,7 +1049,7 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 |---|---|---|
 | `DEV_MODE` | `false` | Suppresses configured-network preflight warnings and production run logging; Gmail/Calendar connectors still make live requests with content masked to `[HIDDEN]`; Gemini bypass depends on `DEV_AI_SYNTHESIS` |
 | `DEMO_MODE` | `false` | Intercepts trigger; serves static mock telemetry |
-| `ENABLE_STARTUP_GATE` | `true` | Compatibility setting for direct callers of `scanner.should_run()`; it does not gate API trigger or telemetry routes |
+| `ENABLE_STARTUP_GATE` | `true` | Legacy compatibility setting for `scanner.should_run()`; it does not gate API trigger or telemetry routes |
 | `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `local` (local → raw), `cloud` (Gemini → local → raw) |
 | `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google`, `kokoro` |
