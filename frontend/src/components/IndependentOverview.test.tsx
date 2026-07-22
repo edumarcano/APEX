@@ -228,6 +228,7 @@ describe('ApexLogo telemetry collection state', () => {
 describe('BriefingDigest empty generate action', () => {
   it('shows Generate Briefing when activated with empty insights', async () => {
     const onGenerate = vi.fn()
+    const onModeChange = vi.fn()
     const user = userEvent.setup()
     render(
       <BriefingDigest
@@ -236,11 +237,32 @@ describe('BriefingDigest empty generate action', () => {
         status="idle"
         isLoading={false}
         activated
+        briefingMode="comet"
+        onBriefingModeChange={onModeChange}
         onGenerateBriefing={onGenerate}
       />,
     )
 
+    expect(screen.getByLabelText(/briefing mode/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /generate briefing/i }))
     expect(onGenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables generate when generateDisabled is set', () => {
+    render(
+      <BriefingDigest
+        insights={[]}
+        briefingText=""
+        status="idle"
+        isLoading={false}
+        activated
+        briefingMode="acinonyx"
+        onBriefingModeChange={() => undefined}
+        onGenerateBriefing={() => undefined}
+        generateDisabled
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /generate briefing/i })).toBeDisabled()
   })
 })

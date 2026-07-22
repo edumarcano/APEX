@@ -1,4 +1,4 @@
-"""Briefing trigger and history routes."""
+"""Briefing trigger, generate, and history routes."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 
 from core import database
-from core.api.briefing import trigger_briefing
+from core.api.briefing import generate_briefing, trigger_briefing
 from core.api.demo import mock_briefing_history
 from core.api.models import (
+    BriefingGenerateRequest,
     BriefingHistoryRecord,
     BriefingResponse,
     classify_digest_payload,
@@ -33,10 +34,27 @@ def trigger_briefing_endpoint() -> BriefingResponse:
     """
     HTTP entry point for a full APEX run.
 
-    Mirrors main.start_apex execution order. When ``DEMO_MODE`` is active,
-    serves static mock telemetry through a staged simulation loop.
+    Force-refreshes telemetry, then synthesizes with the configured default
+    briefing mode. When ``DEMO_MODE`` is active, serves static mock telemetry
+    through a staged simulation loop.
     """
     return trigger_briefing()
+
+
+@router.post(
+    "/api/v1/briefings/generate",
+    response_model=BriefingResponse,
+    summary="Generate Briefing",
+)
+def generate_briefing_endpoint(body: BriefingGenerateRequest) -> BriefingResponse:
+    """
+    Synthesize a briefing from an existing telemetry snapshot.
+
+    Requires a process-current ``snapshot_id`` and selected briefing mode.
+    Performs no connector calls. Returns ``409`` when the snapshot is missing
+    or no longer current.
+    """
+    return generate_briefing(snapshot_id=body.snapshot_id, mode=body.mode)
 
 
 def _history_record_from_row(row: dict[str, Any]) -> dict[str, Any]:

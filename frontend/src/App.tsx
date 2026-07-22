@@ -42,7 +42,7 @@ import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import type { AssistantProfile } from './types/telemetry'
-import type { SettingsResponse } from './types/settings'
+import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
 interface ParsedEmail {
   subject: string
@@ -158,9 +158,40 @@ function isAssistantProfile(value: string): value is AssistantProfile {
   return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
 }
 
+const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
+  'comet',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+  'structured_digest',
+]
+
+function isBriefingMode(value: string): value is BriefingMode {
+  return (VALID_BRIEFING_MODES as readonly string[]).includes(value)
+}
+
+const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
+
+function isVoiceMode(value: string): value is VoiceMode {
+  return (VALID_VOICE_MODES as readonly string[]).includes(value)
+}
+
+function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
+  return mode === 'comet'
+}
+
+function synthesisProfileForMode(mode: BriefingMode): string | null {
+  if (mode === 'structured_digest') {
+    return null
+  }
+  return mode
+}
+
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('comet')
+  const [briefingMode, setBriefingMode] = useState<BriefingMode>('comet')
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -175,8 +206,6 @@ export default function App(): ReactElement {
     askApexEnabled,
     marketEnabled,
     defaultProfile,
-    synthesisStrategy: configuredSynthesisStrategy,
-    synthesisProfile: configuredSynthesisProfile,
     refreshReminders,
     markReminderAsRead,
     applyBootSettings,
@@ -215,6 +244,36 @@ export default function App(): ReactElement {
     }
   }, [defaultProfile, isAssistantQuerying])
 
+  useEffect(() => {
+    let cancelled = false
+    void fetch(API_ENDPOINTS.config)
+      .then(async (response) => {
+        if (!response.ok) {
+          return null
+        }
+        return (await response.json()) as Record<string, unknown>
+      })
+      .then((body) => {
+        if (cancelled || !body) {
+          return
+        }
+        const mode = body.briefing_default_mode
+        if (typeof mode === 'string' && isBriefingMode(mode)) {
+          setBriefingMode(mode)
+        }
+        const voice = body.voice_mode
+        if (typeof voice === 'string' && isVoiceMode(voice)) {
+          setVoiceMode(voice)
+        }
+      })
+      .catch(() => {
+        // Boot hydration for briefing/voice mode is best-effort.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const handleSettingsApplied = useCallback(
     (response: SettingsResponse) => {
       applyBootSettings({
@@ -222,6 +281,8 @@ export default function App(): ReactElement {
         defaultProfile: response.settings.assistant.default_profile,
         marketEnabled: response.settings.features.market,
       })
+      setBriefingMode(response.settings.briefing.default_mode)
+      setVoiceMode(response.settings.voice.mode)
     },
     [applyBootSettings],
   )
@@ -369,19 +430,21 @@ export default function App(): ReactElement {
 
     activate()
     void telemetry.refreshAll({ force: false })
-    void fetch(API_ENDPOINTS.voiceSpeak, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: 'APEX online. Ready for operations.' }),
-    }).catch(() => {
-      // Activation voice cue is best-effort; ignore delivery failures.
-    })
-  }, [preflight, activate, telemetry])
+    if (voiceMode === 'automatic') {
+      void fetch(API_ENDPOINTS.voiceSpeak, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'APEX online. Ready for operations.' }),
+      }).catch(() => {
+        // Activation voice cue is best-effort; ignore delivery failures.
+      })
+    }
+  }, [preflight, activate, telemetry, voiceMode])
 
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('activate_with_briefing', {
-      synthesis_profile: configuredSynthesisProfile,
-      involves_cloud: configuredSynthesisStrategy === 'cloud',
+      synthesis_profile: synthesisProfileForMode(briefingMode),
+      involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
       return
@@ -390,7 +453,7 @@ export default function App(): ReactElement {
     activate()
     await briefing.triggerSynthesis()
     void telemetry.loadLatest()
-  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, activate, briefing, telemetry])
+  }, [preflight, briefingMode, activate, briefing, telemetry])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -552,16 +615,50 @@ export default function App(): ReactElement {
   }
 
   const handleGenerateBriefing = useCallback(async (): Promise<void> => {
+    const snapshotId = telemetry.snapshot?.snapshot_id
+    if (!snapshotId) {
+      return
+    }
     const resolution = await preflight.requestOperation('generate_briefing', {
-      synthesis_profile: configuredSynthesisProfile,
-      involves_cloud: configuredSynthesisStrategy === 'cloud',
+      synthesis_profile: synthesisProfileForMode(briefingMode),
+      involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
       return
     }
-    await briefing.triggerSynthesis()
-    void telemetry.loadLatest()
-  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, briefing, telemetry])
+    await briefing.generateFromSnapshot(snapshotId, briefingMode)
+  }, [preflight, briefingMode, briefing, telemetry.snapshot?.snapshot_id])
+
+  const handleRefreshAllAndGenerate = useCallback(async (): Promise<void> => {
+    const resolution = await preflight.requestOperation('generate_briefing', {
+      synthesis_profile: synthesisProfileForMode(briefingMode),
+      involves_cloud: briefingModeInvolvesCloud(briefingMode),
+      force: true,
+    })
+    if (resolution !== 'proceed') {
+      return
+    }
+    const snapshot = await telemetry.refreshAll({ force: true })
+    const snapshotId = snapshot?.snapshot_id ?? telemetry.snapshot?.snapshot_id
+    if (!snapshotId) {
+      return
+    }
+    await briefing.generateFromSnapshot(snapshotId, briefingMode)
+  }, [preflight, briefingMode, briefing, telemetry])
+
+  const handleSpeakBriefing = useCallback((): void => {
+    const text = briefing.briefing.trim()
+    if (!text || voiceMode === 'off') {
+      return
+    }
+    void fetch(API_ENDPOINTS.voiceSpeak, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).catch(() => {
+      // Manual speak is best-effort.
+    })
+  }, [briefing.briefing, voiceMode])
 
   const logoStatus =
     !activated
@@ -962,8 +1059,26 @@ export default function App(): ReactElement {
                   status={briefing.status}
                   activated={activated}
                   isLoading={briefing.status === 'loading'}
-                  onGenerateBriefing={handleGenerateBriefing}
-                  generateDisabled={isBriefingRunning}
+                  briefingMode={briefingMode}
+                  onBriefingModeChange={setBriefingMode}
+                  onGenerateBriefing={() => {
+                    void handleGenerateBriefing()
+                  }}
+                  onRefreshAllAndGenerate={() => {
+                    void handleRefreshAllAndGenerate()
+                  }}
+                  onSpeakBriefing={handleSpeakBriefing}
+                  generateDisabled={isBriefingRunning || !hasSnapshot}
+                  speakDisabled={isSpeaking}
+                  showSpeakAction={voiceMode !== 'off'}
+                  synthesisLabel={
+                    briefing.synthesisProvider
+                      ? [briefing.synthesisProvider, briefing.synthesisProfile]
+                          .filter(Boolean)
+                          .join(' / ')
+                      : null
+                  }
+                  fallbackReason={briefing.synthesisFallbackReason}
                   attentionTier={attentionTiers.insights}
                   attentionStaggerMs={attentionStagger.insights}
                   className="w-full h-full min-h-0"

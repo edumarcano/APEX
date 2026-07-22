@@ -17,9 +17,13 @@ export const BASE_SETTINGS: RuntimeSettings = {
     enabled: true,
     default_profile: 'comet',
   },
+  briefing: {
+    default_mode: 'comet',
+  },
   voice: {
     engine: 'google',
     gender: 'female',
+    mode: 'automatic',
   },
 }
 
@@ -27,7 +31,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 2,
+    schema_version: 3,
     settings,
     local_file_present: false,
     local_override_active: false,

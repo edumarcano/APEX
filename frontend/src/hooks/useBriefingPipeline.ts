@@ -44,6 +44,7 @@ export type BriefingPipelineState = {
 
 export type UseBriefingPipelineReturn = BriefingPipelineState & {
   triggerSynthesis: () => Promise<void>
+  generateFromSnapshot: (snapshotId: string, mode: string) => Promise<void>
   resetBriefing: () => void
 }
 
@@ -185,153 +186,181 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
     setState(INITIAL_STATE)
   }, [])
 
-  const triggerSynthesis = useCallback(async (): Promise<void> => {
-    const { status, isPipelinePolling } = stateRef.current
-    if (isSynthesisGuarded(status, isPipelinePolling)) {
-      return
-    }
+  const applySuccessfulBriefingPayload = useCallback((body: {
+    briefing?: unknown
+    telemetry?: unknown
+    metadata?: unknown
+    digest?: unknown
+  }): boolean => {
+    const digest = body.digest
+    const d = digest && typeof digest === 'object' ? (digest as Record<string, unknown>) : {}
+    const insights = Array.isArray(d.insights) ? d.insights.map(String) : []
+    const confidenceScore = resolveSyncHealthScore(d)
+    const connectorHealth = parseConnectorHealth(d.connector_health)
+    const rawFailedConnectors = Array.isArray(d.failed_connectors) ? d.failed_connectors : []
+    const failedConnectors =
+      rawFailedConnectors.length > 0
+        ? rawFailedConnectors.map(String)
+        : connectorHealth
+            .filter((entry) => entry.status === 'unavailable')
+            .map((entry) => (entry.name === 'f1' || entry.name === 'football' ? 'sports' : entry.name))
+            .filter((name, index, all) => all.indexOf(name) === index)
 
-    synthesisAbortRef.current?.abort()
-    const controller = new AbortController()
-    synthesisAbortRef.current = controller
-    const { signal } = controller
+    const telemetry = body.telemetry
+    const metadata =
+      body.metadata && typeof body.metadata === 'object'
+        ? (body.metadata as Record<string, unknown>)
+        : null
+    const demoModeActive = metadata?.demo_mode_active === true
+    const devModeActive = metadata?.dev_mode_active === true
+    const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
+    const system_load_throttled = metadata?.system_load_throttled === true
+    const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
+    const synthesisProfile = parseEnum(metadata?.synthesis_profile, VALID_SYNTHESIS_PROFILES)
+    const synthesisFallbackReason =
+      typeof metadata?.synthesis_fallback_reason === 'string' ? metadata.synthesis_fallback_reason : null
 
-    setState((prev) => ({
-      ...prev,
-      status: 'loading',
-      error: null,
-      pipelineState: null,
-      isSpeaking: false,
-    }))
-
-    try {
-      const response = await fetch(API_ENDPOINTS.trigger, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-        signal,
-      })
-
-      let body: unknown = null
-      try {
-        body = await response.json()
-      } catch {
-        body = null
-      }
-
-      if (signal.aborted) return
-
-      if (!response.ok) {
-        const fromBody = errorMessageFromBody(body)
-        setState((prev) => ({
-          ...prev,
-          status: 'error',
-          error: fromBody ?? (response.statusText || `Request failed with status ${response.status}`),
-          isPipelinePolling: false,
-          isSpeaking: false,
-        }))
-        return
-      }
-
-      if (!body || typeof body !== 'object') {
-        setState((prev) => ({
-          ...prev,
-          status: 'error',
-          error: 'Invalid response: missing payload body',
-          isPipelinePolling: false,
-          isSpeaking: false,
-        }))
-        return
-      }
-
-      const payload = body as {
-        briefing?: unknown
-        telemetry?: unknown
-        metadata?: unknown
-        digest?: unknown
-      }
-      const digest = payload.digest
-      const d = digest && typeof digest === 'object' ? (digest as Record<string, unknown>) : {}
-      const insights = Array.isArray(d.insights) ? d.insights.map(String) : []
-      const confidenceScore = resolveSyncHealthScore(d)
-      const connectorHealth = parseConnectorHealth(d.connector_health)
-      const rawFailedConnectors = Array.isArray(d.failed_connectors) ? d.failed_connectors : []
-      const failedConnectors =
-        rawFailedConnectors.length > 0
-          ? rawFailedConnectors.map(String)
-          : connectorHealth
-              .filter((entry) => entry.status === 'unavailable')
-              .map((entry) => (entry.name === 'f1' || entry.name === 'football' ? 'sports' : entry.name))
-              .filter((name, index, all) => all.indexOf(name) === index)
-
-      const telemetry = payload.telemetry
-      const metadata =
-        payload.metadata && typeof payload.metadata === 'object'
-          ? (payload.metadata as Record<string, unknown>)
-          : null
-      const demoModeActive = metadata?.demo_mode_active === true
-      const devModeActive = metadata?.dev_mode_active === true
-      const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
-      const system_load_throttled = metadata?.system_load_throttled === true
-      const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
-      const synthesisProfile = parseEnum(metadata?.synthesis_profile, VALID_SYNTHESIS_PROFILES)
-      const synthesisFallbackReason =
-        typeof metadata?.synthesis_fallback_reason === 'string' ? metadata.synthesis_fallback_reason : null
-
-      if (!telemetry || typeof telemetry !== 'object') {
-        setState((prev) => ({
-          ...prev,
-          status: 'error',
-          error: 'Invalid response: missing telemetry',
-          isPipelinePolling: false,
-          isSpeaking: false,
-        }))
-        return
-      }
-
-      const telemetryRecord = telemetry as Record<string, unknown>
-      const weatherReport = getStringField(telemetryRecord, 'weather')
-      const weatherDetail = resolveWeatherDetail(weatherReport)
-
-      setState((prev) => ({
-        ...prev,
-        status: 'success',
-        error: null,
-        briefing: typeof payload.briefing === 'string' ? payload.briefing : '',
-        weather: weatherReport,
-        temperatureF: resolvePipelineTemperatureF(weatherReport),
-        weatherDetail,
-        weatherCondition: resolveWeatherCondition(weatherDetail),
-        sports: getStringField(telemetryRecord, 'sports'),
-        news: getStringField(telemetryRecord, 'news'),
-        email: getStringField(telemetryRecord, 'email'),
-        calendar: getStringField(telemetryRecord, 'calendar'),
-        insights,
-        confidenceScore,
-        failedConnectors,
-        connectorHealth,
-        demoModeActive,
-        devModeActive,
-        active_tts_engine,
-        system_load_throttled,
-        synthesisProvider,
-        synthesisProfile,
-        synthesisFallbackReason,
-      }))
-    } catch (err) {
-      if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
-        return
-      }
-
+    if (!telemetry || typeof telemetry !== 'object') {
       setState((prev) => ({
         ...prev,
         status: 'error',
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: 'Invalid response: missing telemetry',
         isPipelinePolling: false,
         isSpeaking: false,
       }))
+      return false
     }
+
+    const telemetryRecord = telemetry as Record<string, unknown>
+    const weatherReport = getStringField(telemetryRecord, 'weather')
+    const weatherDetail = resolveWeatherDetail(weatherReport)
+
+    setState((prev) => ({
+      ...prev,
+      status: 'success',
+      error: null,
+      briefing: typeof body.briefing === 'string' ? body.briefing : '',
+      weather: weatherReport,
+      temperatureF: resolvePipelineTemperatureF(weatherReport),
+      weatherDetail,
+      weatherCondition: resolveWeatherCondition(weatherDetail),
+      sports: getStringField(telemetryRecord, 'sports'),
+      news: getStringField(telemetryRecord, 'news'),
+      email: getStringField(telemetryRecord, 'email'),
+      calendar: getStringField(telemetryRecord, 'calendar'),
+      insights,
+      confidenceScore,
+      failedConnectors,
+      connectorHealth,
+      demoModeActive,
+      devModeActive,
+      active_tts_engine,
+      system_load_throttled,
+      synthesisProvider,
+      synthesisProfile,
+      synthesisFallbackReason,
+    }))
+    return true
   }, [])
+
+  const runBriefingRequest = useCallback(
+    async (url: string, init: RequestInit): Promise<void> => {
+      const { status, isPipelinePolling } = stateRef.current
+      if (isSynthesisGuarded(status, isPipelinePolling)) {
+        return
+      }
+
+      synthesisAbortRef.current?.abort()
+      const controller = new AbortController()
+      synthesisAbortRef.current = controller
+      const { signal } = controller
+
+      setState((prev) => ({
+        ...prev,
+        status: 'loading',
+        error: null,
+        pipelineState: null,
+        isSpeaking: false,
+      }))
+
+      try {
+        const response = await fetch(url, { ...init, signal })
+
+        let body: unknown = null
+        try {
+          body = await response.json()
+        } catch {
+          body = null
+        }
+
+        if (signal.aborted) return
+
+        if (!response.ok) {
+          const fromBody = errorMessageFromBody(body)
+          setState((prev) => ({
+            ...prev,
+            status: 'error',
+            error: fromBody ?? (response.statusText || `Request failed with status ${response.status}`),
+            isPipelinePolling: false,
+            isSpeaking: false,
+          }))
+          return
+        }
+
+        if (!body || typeof body !== 'object') {
+          setState((prev) => ({
+            ...prev,
+            status: 'error',
+            error: 'Invalid response: missing payload body',
+            isPipelinePolling: false,
+            isSpeaking: false,
+          }))
+          return
+        }
+
+        applySuccessfulBriefingPayload(
+          body as {
+            briefing?: unknown
+            telemetry?: unknown
+            metadata?: unknown
+            digest?: unknown
+          },
+        )
+      } catch (err) {
+        if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+          return
+        }
+
+        setState((prev) => ({
+          ...prev,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Unknown error',
+          isPipelinePolling: false,
+          isSpeaking: false,
+        }))
+      }
+    },
+    [applySuccessfulBriefingPayload],
+  )
+
+  const triggerSynthesis = useCallback(async (): Promise<void> => {
+    await runBriefingRequest(API_ENDPOINTS.trigger, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  }, [runBriefingRequest])
+
+  const generateFromSnapshot = useCallback(
+    async (snapshotId: string, mode: string): Promise<void> => {
+      await runBriefingRequest(API_ENDPOINTS.briefingsGenerate, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshot_id: snapshotId, mode }),
+      })
+    },
+    [runBriefingRequest],
+  )
 
   useEffect(() => {
     return () => {
@@ -419,5 +448,5 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- The polling transition is keyed to public lifecycle state only.
   }, [state.status, state.pipelineState?.step])
 
-  return { ...state, triggerSynthesis, resetBriefing }
+  return { ...state, triggerSynthesis, generateFromSnapshot, resetBriefing }
 }

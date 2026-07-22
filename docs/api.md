@@ -88,7 +88,7 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 **Response `200`** — `SettingsResponse`
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "settings": {
     "features": {
       "weather": true,
@@ -106,9 +106,13 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
       "enabled": true,
       "default_profile": "comet"
     },
+    "briefing": {
+      "default_mode": "comet"
+    },
     "voice": {
       "engine": "google",
-      "gender": "female"
+      "gender": "female",
+      "mode": "automatic"
     }
   },
   "local_file_present": false,
@@ -121,8 +125,8 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | integer | Settings contract version (currently `2`) |
-| `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `voice`) |
+| `schema_version` | integer | Settings contract version (currently `3`) |
+| `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `briefing`, `voice`) |
 | `local_file_present` | boolean | Whether `config.local.json` exists on disk |
 | `local_override_active` | boolean | Whether a valid local overlay is active |
 | `load_warning` | string \| null | Diagnostic from the last load when local overlay was discarded |
@@ -148,7 +152,8 @@ Merges dirty nested fields into the runtime settings store, validates, persists 
 | `features` | `weather`, `sports`, `news`, `email`, `calendar`, `market` (booleans) |
 | `modules` | `football`, `f1` (booleans) |
 | `assistant` | `enabled` (boolean), `default_profile` (one of the six profile identities) |
-| `voice` | `engine` (`google` \| `pyttsx3` \| `kokoro`), `gender` (`male` \| `female`) |
+| `briefing` | `default_mode` (`comet` \| `lynx` \| `acinonyx` \| `neofelis` \| `structured_digest`) |
+| `voice` | `engine` (`google` \| `pyttsx3` \| `kokoro`), `gender` (`male` \| `female`), `mode` (`off` \| `manual` \| `automatic`) |
 
 **Response `200`** — same `SettingsResponse` envelope as GET after the patch applies.
 
@@ -163,13 +168,13 @@ Empty patches (`{}`) return the current envelope without writing.
 
 `DEV_MODE` and `DEMO_MODE` are not patchable through this endpoint.
 
-**Effective timing:** briefing connector and module flags are captured at briefing start; `features.market` immediately starts or stops HUD polling; assistant enablement is checked when a query begins (in-flight queries finish); voice engine/gender are bound when delivery/`speak` begins.
+**Effective timing:** briefing connector and module flags are captured at briefing start; `briefing.default_mode` applies to the next trigger/generate; `features.market` immediately starts or stops HUD polling; assistant enablement is checked when a query begins (in-flight queries finish); voice engine/gender/mode are bound when delivery/`speak` begins.
 
 ---
 
 ### `POST /api/v1/trigger`
 
-Runs the full pipeline: preflight stage label → collection → synthesis → delivery. Blocking — returns after all four stages complete and TTS audio has started on a background thread. Collection reuses the process-local telemetry snapshot service (`core/telemetry`) and still returns legacy per-module display strings on the response.
+Runs the compatibility pipeline: force-refresh telemetry → synthesize with the configured default briefing mode → persist (production) → speak when `voice.mode` is `automatic`. Blocking — returns after synthesis completes; automatic TTS starts on a background thread when enabled. Collection reuses the process-local telemetry snapshot service (`core/telemetry`) and still returns legacy per-module display strings on the response.
 
 Startup Wi-Fi, battery, and cooldown checks are **not** hard blockers on this endpoint. Call `POST /api/v1/preflight` for advisory warnings before interactive activation. Calling this endpoint directly skips advisory acknowledgement; existing hard blockers (locks, credentials, resource gates) still apply where they are enforced.
 
@@ -214,6 +219,7 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
     "dev_mode_active": false,
     "demo_mode_active": false,
     "synthesis_strategy": "cloud",
+    "briefing_mode": "comet",
     "synthesis_provider": "gemini",
     "synthesis_profile": "comet",
     "synthesis_fallback_reason": null,
@@ -221,7 +227,9 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
     "synthesis_generation_ms": 1240,
     "tts_strategy": "google",
     "active_tts_engine": "google",
-    "system_load_throttled": false
+    "system_load_throttled": false,
+    "snapshot_id": "…",
+    "spoken": true
   }
 }
 ```
@@ -232,15 +240,18 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 |---|---|---|
 | `dev_mode_active` | boolean | `true` when `DEV_MODE=true` was active for the run |
 | `demo_mode_active` | boolean | `true` when `DEMO_MODE=true` was active for the run |
-| `synthesis_strategy` | string | Configured route: `"cloud"` in production; `"raw"`, `"local"`, or `"cloud"` in dev mode; `"demo"` in demo mode |
+| `synthesis_strategy` | string | Compatibility route label: `"cloud"`, `"local"`, `"raw"`, or `"demo"` |
+| `briefing_mode` | string \| null | Explicit mode: `comet`, `lynx`, `acinonyx`, `neofelis`, or `structured_digest` |
 | `synthesis_provider` | string \| null | Resolved briefing provider: `gemini`, `ollama`, `raw`, or `demo` |
 | `synthesis_profile` | string \| null | Resolved profile: `comet`, `lynx`, `acinonyx`, or `neofelis` |
 | `synthesis_fallback_reason` | string \| null | Machine-readable reason when routing changed or raw fallback was used |
 | `synthesis_warmup_ms` | integer \| null | Local warmup duration when applicable |
-| `synthesis_generation_ms` | integer \| null | Resolved provider generation duration when applicable |
+| `synthesis_generation_ms` | integer \| null | Model generation duration when applicable |
 | `tts_strategy` | string | Configured TTS strategy: `"google"`, `"kokoro"`, or `"pyttsx3"` in production; reflects `DEV_TTS_PLAYBACK` or `DEMO_TTS` otherwise |
-| `active_tts_engine` | string | Resolved active TTS engine used for playback (e.g., `"google"`, `"kokoro"`, or `"pyttsx3"`); may differ from `tts_strategy` if system resource throttling triggers local fallback |
+| `active_tts_engine` | string | Resolved active TTS engine used for playback; may differ from `tts_strategy` if throttling triggers local fallback |
 | `system_load_throttled` | boolean | `true` when hardware resource utilization exceeds throttle limits and triggers local fallback |
+| `snapshot_id` | string \| null | Telemetry snapshot identity used for synthesis |
+| `spoken` | boolean | `true` when automatic voice delivery was started |
 
 **`digest` field descriptions:**
 
@@ -559,6 +570,32 @@ Marks one or more reminders as read by row ID. The HUD calls this on explicit us
 
 ---
 
+### `POST /api/v1/briefings/generate`
+
+Synthesize a briefing from an existing process-local telemetry snapshot. Performs **no** connector calls.
+
+**Request body** — `BriefingGenerateRequest`
+```json
+{
+  "snapshot_id": "…",
+  "mode": "comet"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `snapshot_id` | string | Must match the current in-memory snapshot identity |
+| `mode` | string | `comet`, `lynx`, `acinonyx`, `neofelis`, or `structured_digest` |
+
+**Response `200`** — same `BriefingResponse` shape as `POST /api/v1/trigger`. Successful production runs persist even when unspoken. Automatic voice delivery runs only when `voice.mode` is `automatic`.
+
+**Response `409`** — snapshot missing or no longer current, or pipeline lock held
+```json
+{ "detail": "Telemetry snapshot is missing or no longer current." }
+```
+
+---
+
 ### `GET /api/v1/briefings/history`
 
 Returns up to 50 recent briefing ledger entries ordered by timestamp descending.
@@ -768,7 +805,15 @@ Ollama reachability, installed model tags, and host vitals are read from a share
 
 ### `POST /api/v1/voice/speak`
 
-Speaks sanitized text using the configured TTS engine and the universal speech lock. Runs synchronously on FastAPI's worker-thread boundary. Voice mode settings (`off` / `manual` / `automatic`) are a later milestone; this endpoint always attempts delivery when called.
+Speaks sanitized text using the configured TTS engine and the universal speech lock. Runs synchronously on FastAPI's worker-thread boundary.
+
+Voice mode (`settings.voice.mode`):
+
+| Mode | Behavior |
+|---|---|
+| `off` | Returns `403`; no activation cues, automatic speech, or manual Speak |
+| `manual` | Allows explicit Speak/Replay calls |
+| `automatic` | Allows Speak/Replay plus Start APEX cue and auto-delivery of generated briefings |
 
 **Request body** — `VoiceSpeakRequest`
 ```json
@@ -789,6 +834,11 @@ Speaks sanitized text using the configured TTS engine and the universal speech l
 **Response `400`** — empty after sanitization
 ```json
 { "detail": "Speech text is empty after sanitization." }
+```
+
+**Response `403`** — voice mode is off
+```json
+{ "detail": "Voice delivery is disabled (voice.mode=off)." }
 ```
 
 **Response `409`** — speech lock already held

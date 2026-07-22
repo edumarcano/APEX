@@ -24,8 +24,10 @@ describe('settings response parsing', () => {
     ['module boolean', ['settings', 'modules', 'f1'], 1],
     ['assistant boolean', ['settings', 'assistant', 'enabled'], null],
     ['assistant profile', ['settings', 'assistant', 'default_profile'], 'invalid'],
+    ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
+    ['voice mode', ['settings', 'voice', 'mode'], 'invalid'],
     ['schema version', ['schema_version'], '1'],
     ['local file flag', ['local_file_present'], 'false'],
     ['local override flag', ['local_override_active'], 0],
@@ -66,6 +68,7 @@ describe('settings editing utilities', () => {
     expect(clone.features).not.toBe(BASE_SETTINGS.features)
     expect(clone.modules).not.toBe(BASE_SETTINGS.modules)
     expect(clone.assistant).not.toBe(BASE_SETTINGS.assistant)
+    expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
   })
 
@@ -74,12 +77,15 @@ describe('settings editing utilities', () => {
     draft.features.weather = false
     draft.features.market = false
     draft.assistant.default_profile = 'lynx'
+    draft.briefing.default_mode = 'acinonyx'
     draft.voice.gender = 'male'
+    draft.voice.mode = 'manual'
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       features: { weather: false, market: false },
       assistant: { default_profile: 'lynx' },
-      voice: { gender: 'male' },
+      briefing: { default_mode: 'acinonyx' },
+      voice: { gender: 'male', mode: 'manual' },
     })
   })
 

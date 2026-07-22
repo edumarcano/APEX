@@ -19,8 +19,7 @@ def voice_speak(payload: VoiceSpeakRequest) -> VoiceSpeakResponse:
     """
     Speak sanitized text using the configured TTS engine.
 
-    Uses the universal speech lock so audio never overlaps. Competing requests
-    return ``409``. Voice mode gating lands in a later milestone; this endpoint
-    always attempts delivery when called.
+    Uses the universal speech lock so audio never overlaps. Voice mode ``off``
+    returns ``403``. Competing requests return ``409``.
     """
     return speak_text(payload)

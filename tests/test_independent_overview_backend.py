@@ -44,7 +44,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
         _write_json(
             self.config_path,
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "features": {
                     "weather": True,
                     "sports": True,
@@ -233,7 +233,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         _write_json(
             config_path,
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "features": {
                     "weather": True,
                     "sports": True,
