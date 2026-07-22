@@ -299,15 +299,24 @@ apex/
 
 ### `core/scanner.py`
 
-`should_run()` is the gate function called at the start of every trigger. It branches in order:
+`should_run()` remains available for compatibility and local tooling, but it is **no longer** a hard blocker on `POST /api/v1/trigger`. Interactive risk evaluation uses `POST /api/v1/preflight` instead.
 
-1. If `DEV_MODE=true` → return `True` immediately (no checks run).
-2. If `ENABLE_STARTUP_GATE=false` → return `True` immediately (hardware/cooldown bypassed, live APIs remain active).
-3. Otherwise → call `_enforce_production_gate()`, which checks SSID against `HOME_SSID`, calls `psutil.sensors_battery()` to verify AC power, and queries the database for the last run timestamp.
+`get_power_state()` classifies power as `plugged`, `battery`, or `unknown` (no battery sensor). `check_power()` returns `False` only when on battery; desktops without a battery sensor are treated as plugged for legacy callers.
 
-`check_power()` returns `psutil.sensors_battery().power_plugged` when a battery sensor is present, and `False` when `psutil.sensors_battery()` returns `None`. On desktop machines with no battery, the gate fails unless `ENABLE_STARTUP_GATE=false` or `DEV_MODE=true`.
+`get_current_ssid()` still reads the active Wi-Fi SSID via `netsh`. Preflight compares it to `HOME_SSID` as configured-network policy (not a security proof): mismatch → `outside_configured_network`; missing/unreadable SSID → `network_trust_unknown`.
 
 `sample_system_vitals()` queries CPU percent, CPU frequency, virtual memory, and root-disk usage via psutil. Each query is isolated in a `try/except`; a single failure returns `0.0` for that field without crashing the response.
+
+### `core/telemetry/`
+
+Process-local telemetry snapshot runtime extracted from briefing orchestration:
+
+- `collector.py` — synchronous connector collection with explicit `disabled` module results for toggled-off connectors.
+- `store.py` — in-memory current snapshot; partial refresh merge; retain prior healthy/degraded modules as `stale` when a refresh fails.
+- `service.py` — non-blocking refresh lock (`409` on contention), five-minute freshness window, forced-refresh tracking, DEMO static snapshots. Raw snapshots are not written to SQLite.
+- `preflight.py` — advisory warning codes and hard blockers for planned operations.
+
+Public routes: `GET /api/v1/telemetry/latest`, `POST /api/v1/telemetry/refresh`, `POST /api/v1/preflight`. `POST /api/v1/trigger` reuses the telemetry service for collection while preserving legacy display-string telemetry on the briefing response.
 
 ### `core/brain.py`
 
@@ -457,7 +466,7 @@ SQLite database file: `apex_memory.db`. Three tables, all created by `initialize
 
 Connections are context-managed with WAL enabled. Writes use explicit SQLite transactions that roll back on failure. `probe_db()` runs a lightweight `SELECT 1` for readiness checks. Malformed history JSON is logged with record ID and error category only — never stored briefing or personal content.
 
-`initialize_db()` is called during API lifespan startup and again at the start of `should_run()`, ensuring schema upgrades exist before history reads or trigger writes.
+`initialize_db()` is called during API lifespan startup and again from advisory preflight / readiness paths, ensuring schema upgrades exist before history reads or trigger writes.
 
 **Briefing ledger functions:**
 

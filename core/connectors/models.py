@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-ConnectorStatus = Literal["healthy", "degraded", "unavailable"]
+ConnectorStatus = Literal["healthy", "degraded", "unavailable", "disabled"]
 ConnectorFreshness = Literal["live", "fresh_cache", "stale", "none"]
 
 CONNECTOR_NAMES = (
@@ -43,6 +43,7 @@ class ConnectorResult(BaseModel):
             return 1.0
         if self.status == "degraded":
             return 0.5
+        # unavailable and disabled contribute nothing; disabled is excluded from scoring.
         return 0.0
 
 

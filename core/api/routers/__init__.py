@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.api.routers import assistant, briefings, market, reminders, system
+from core.api.routers import assistant, briefings, market, reminders, system, telemetry
 
 __all__ = [
     "assistant",
@@ -10,4 +10,5 @@ __all__ = [
     "market",
     "reminders",
     "system",
+    "telemetry",
 ]

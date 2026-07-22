@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import psutil
 from dotenv import load_dotenv
@@ -33,14 +34,32 @@ def get_current_ssid() -> str | None:
     return None
 
 
+PowerState = Literal["plugged", "battery", "unknown"]
+
+
+def get_power_state() -> PowerState:
+    """
+    Classify AC/battery presence for advisory preflight.
+
+    Returns:
+        ``plugged`` when on AC, ``battery`` when on battery, ``unknown`` when
+        no battery sensor is available (typical desktops).
+    """
+    battery = psutil.sensors_battery()
+    if battery is None:
+        return "unknown"
+    return "plugged" if battery.power_plugged else "battery"
+
+
 def check_power() -> bool:
     """
     Checks if the computer is plugged in.
+
     Returns:
-        bool: True if the computer is plugged in, False otherwise.
+        bool: True if plugged in. False when on battery. Desktops with no
+        battery sensor return True (unknown is not treated as unplugged).
     """
-    battery = psutil.sensors_battery()
-    return battery.power_plugged if battery else False
+    return get_power_state() != "battery"
 
 
 def _bytes_to_gb(value: int | float) -> float:

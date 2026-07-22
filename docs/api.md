@@ -169,7 +169,9 @@ Empty patches (`{}`) return the current envelope without writing.
 
 ### `POST /api/v1/trigger`
 
-Runs the full pipeline: gate → collection → synthesis → delivery. Blocking — returns after all four stages complete and TTS audio has started on a background thread.
+Runs the full pipeline: preflight stage label → collection → synthesis → delivery. Blocking — returns after all four stages complete and TTS audio has started on a background thread. Collection reuses the process-local telemetry snapshot service (`core/telemetry`) and still returns legacy per-module display strings on the response.
+
+Startup Wi-Fi, battery, and cooldown checks are **not** hard blockers on this endpoint. Call `POST /api/v1/preflight` for advisory warnings before interactive activation. Direct API callers remain functional without acknowledgement; existing hard blockers (locks, credentials, resource gates) still apply at their call sites.
 
 When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged simulation using static mock telemetry from `core/mock/telemetry.json`. Stage delays of 1.5 seconds are inserted between each step so the frontend polling loop can observe them.
 
@@ -259,9 +261,115 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 
 **Note:** the trigger response is returned while TTS audio is still playing on a background thread. Use `GET /api/v1/status` to track `is_speaking` state after the trigger resolves.
 
-**Response `403`** — scanner gate failed (wrong network, no AC power, or inside the 1-hour cooldown)
+**Response `409`** — another pipeline run already holds the trigger lock
 ```json
-{ "detail": "System gate failed: scanner.should_run() is False." }
+{ "detail": "Pipeline run already active." }
+```
+
+---
+
+### `GET /api/v1/telemetry/latest`
+
+Returns the current in-memory telemetry snapshot for this API process. Raw snapshots are not persisted to SQLite.
+
+**Response `200`** — `TelemetrySnapshot`
+```json
+{
+  "snapshot_id": "9f3c2a1e-4b5d-6789-abcd-ef0123456789",
+  "collected_at": "2026-07-21T16:00:00+00:00",
+  "modules": {
+    "weather": {
+      "name": "weather",
+      "status": "healthy",
+      "freshness": "live",
+      "reason_code": "ok",
+      "observed_at": "2026-07-21T16:00:00+00:00",
+      "display_text": "Current temperature is 72 degrees with clear sky.",
+      "data": { "temp_f": 72, "condition": "clear sky" }
+    }
+  },
+  "sync_health_score": 100.0,
+  "connector_health": [],
+  "failed_connectors": []
+}
+```
+
+Module `status` values: `healthy`, `degraded`, `unavailable`, `disabled`. Disabled connectors are excluded from the Sync Health denominator.
+
+**Response `404`** — no snapshot has been collected yet
+```json
+{ "detail": "No telemetry snapshot is available." }
+```
+
+---
+
+### `POST /api/v1/telemetry/refresh`
+
+Refresh one or more connectors and return the resulting complete snapshot.
+
+**Request body**
+```json
+{
+  "connectors": ["weather", "news"],
+  "force": false
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `connectors` | string[] \| null | Optional connector names. Omitted or empty refreshes all enabled connectors. |
+| `force` | boolean | When `false`, returns a snapshot younger than five minutes without new connector calls. When `true`, always collects and records a forced-refresh timestamp for rapid-refresh preflight warnings. |
+
+Partial refresh merges into the prior snapshot. When a refreshed module returns `unavailable`, the previous healthy/degraded module content is retained as `stale`. Competing refreshes are not queued.
+
+**Response `200`** — `TelemetrySnapshot` (same shape as latest)
+
+**Response `409`** — refresh lock held
+```json
+{ "detail": "Telemetry refresh already in progress." }
+```
+
+**Response `400`** — unknown connector names
+
+Market data remains on `GET /api/v1/market` and is independent of this refresh path.
+
+---
+
+### `POST /api/v1/preflight`
+
+Advisory operational risk evaluation for a planned HUD or API operation. Returns stable warning codes plus non-overridable blockers. Session acknowledgements are request-scoped and not persisted.
+
+**Request body**
+```json
+{
+  "operation": "activate",
+  "connectors": null,
+  "synthesis_profile": "comet",
+  "force": false,
+  "involves_cloud": true,
+  "acknowledged_warnings": [],
+  "cloud_disclosure_acknowledged": false
+}
+```
+
+**Advisory warning codes:** `outside_configured_network`, `network_trust_unknown`, `running_on_battery`, `rapid_connector_refresh`, `cloud_data_disclosure`, `high_resource_local_profile`.
+
+SSID comparison is configured-network policy, not proof of network security. Missing/unreadable SSID yields `network_trust_unknown`. Battery warnings apply only when a battery sensor reports on-battery (desktops with no sensor do not warn). `DEMO_MODE` returns an empty advisory result.
+
+**Hard blocker codes (cannot be overridden by acknowledgement):** `missing_credentials`, `model_unreachable`, `model_not_installed`, `concurrent_local_execution`, `insufficient_ram`, `cpu_overloaded`, `database_failure`, `configuration_failure`, `invalid_input`, `model_load_failure`.
+
+**Response `200`** — `PreflightResponse`
+```json
+{
+  "warnings": [
+    {
+      "code": "cloud_data_disclosure",
+      "message": "This operation may send sanitized operational context to a cloud provider."
+    }
+  ],
+  "blockers": [],
+  "can_proceed": true
+}
 ```
 
 ---
