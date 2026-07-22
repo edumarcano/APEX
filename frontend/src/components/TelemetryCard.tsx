@@ -252,6 +252,15 @@ export type TelemetryCardProps = {
   onRefresh?: () => void
   /** Disables the refresh control (e.g. while a global refresh is in flight). */
   refreshDisabled?: boolean
+  /** Optional connector-specific controls for cards representing multiple modules. */
+  refreshActions?: Array<{
+    label: string
+    onRefresh: () => void
+    disabled?: boolean
+    loading?: boolean
+  }>
+  /** Explicit typed module state or failure reason shown with the card content. */
+  statusMessage?: string | null
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
   isCompact?: boolean
   /** Right-aligned summary content shown only in the compact row. */
@@ -272,6 +281,8 @@ export function TelemetryCard({
   ledState = 'none',
   onRefresh,
   refreshDisabled = false,
+  refreshActions,
+  statusMessage,
   isCompact = false,
   compactValue,
   attentionTier = 'dormant',
@@ -288,6 +299,11 @@ export function TelemetryCard({
       : null
   const isWeatherCard = title.trim() === 'Weather'
   const curtainRevealed = attentionCurtainRevealed(attentionTier)
+  const resolvedRefreshActions = refreshActions ?? (
+    onRefresh
+      ? [{ label: title, onRefresh, disabled: refreshDisabled, loading: ledState === 'loading' }]
+      : []
+  )
   const curtainStyle: CSSProperties | undefined =
     attentionStaggerMs > 0
       ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
@@ -374,6 +390,23 @@ export function TelemetryCard({
               {compactValue}
             </span>
           ) : null}
+          {statusMessage ? (
+            <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wide text-[#FBBF24]">
+              {statusMessage}
+            </span>
+          ) : null}
+          {resolvedRefreshActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.onRefresh}
+              disabled={action.disabled || action.loading}
+              aria-label={`Refresh ${action.label}`}
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RefreshCw className={`size-3.5 ${action.loading ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
+            </button>
+          ))}
           {ledState !== 'none' ? (
             <span
               className={LED_STATE_CLASS[ledState]}
@@ -401,21 +434,22 @@ export function TelemetryCard({
             >
               {title}
             </h2>
-            {onRefresh ? (
+            {resolvedRefreshActions.map((action) => (
               <button
+                key={action.label}
                 type="button"
-                onClick={onRefresh}
-                disabled={refreshDisabled || ledState === 'loading'}
-                aria-label={`Refresh ${title}`}
+                onClick={action.onRefresh}
+                disabled={action.disabled || action.loading}
+                aria-label={`Refresh ${action.label}`}
                 className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <RefreshCw
-                  className={`size-3.5 ${ledState === 'loading' ? 'animate-spin' : ''}`}
+                  className={`size-3.5 ${action.loading ? 'animate-spin' : ''}`}
                   strokeWidth={2}
                   aria-hidden
                 />
               </button>
-            ) : null}
+            ))}
             {ledState !== 'none' ? (
               <span
                 className={LED_STATE_CLASS[ledState]}
@@ -437,6 +471,11 @@ export function TelemetryCard({
           .join(' ')}
         style={curtainStyle}
       >
+        {statusMessage ? (
+          <p className="mb-2 shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-[#FBBF24]" role="status">
+            {statusMessage}
+          </p>
+        ) : null}
         {primaryTemperatureF != null ? (
           <div className="mb-3 flex shrink-0 items-center gap-4">
             <p

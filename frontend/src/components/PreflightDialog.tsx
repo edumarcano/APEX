@@ -3,18 +3,19 @@ import { forwardRef, useEffect, useRef, type MouseEvent, type ReactElement, type
 import { createPortal } from 'react-dom'
 
 import type { PreflightDialogProps } from '../hooks/usePreflight'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 export type { PreflightDialogChoice, PreflightDialogProps } from '../hooks/usePreflight'
 
 export function PreflightDialog(props: PreflightDialogProps): ReactElement | null {
   const { open, warnings, blockers, isChecking, error, onChoice } = props
-  const firstButtonRef = useRef<HTMLButtonElement | null>(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
   const hasBlockers = blockers.length > 0
+
+  useFocusTrap(open, dialogRef)
 
   useEffect(() => {
     if (!open) return undefined
-
-    firstButtonRef.current?.focus()
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -45,10 +46,12 @@ export function PreflightDialog(props: PreflightDialogProps): ReactElement | nul
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="relative rounded-2xl border border-white/10 hud-glass max-w-lg w-full max-h-[80vh] flex flex-col p-6 shadow-2xl transition-all duration-300"
         role="dialog"
         aria-modal="true"
         aria-labelledby="preflight-dialog-title"
+        tabIndex={-1}
       >
         <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
@@ -118,7 +121,7 @@ export function PreflightDialog(props: PreflightDialogProps): ReactElement | nul
 
         <div className="mt-5 flex shrink-0 flex-wrap justify-end gap-2">
           {hasBlockers ? (
-            <DialogButton ref={firstButtonRef} onClick={() => onChoice('cancel')} variant="primary">
+            <DialogButton onClick={() => onChoice('cancel')} variant="primary">
               Close
             </DialogButton>
           ) : (
@@ -130,7 +133,6 @@ export function PreflightDialog(props: PreflightDialogProps): ReactElement | nul
                 Continue once
               </DialogButton>
               <DialogButton
-                ref={firstButtonRef}
                 onClick={() => onChoice('continue_session')}
                 variant="primary"
                 disabled={isChecking}

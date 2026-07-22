@@ -1,11 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
 
-import type { PreflightBlocker, PreflightOperation, PreflightResponse, PreflightWarning } from '../types/telemetry'
+import type { PreflightBlocker, PreflightOperation, PreflightRequest, PreflightResponse, PreflightWarning } from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
 
 const PREFLIGHT_ENDPOINT = API_ENDPOINTS.preflight
-
-export type PreflightActivationOperation = 'activate' | 'activate_with_briefing'
 
 export type PreflightResolution = 'proceed' | 'blocked' | 'cancelled'
 
@@ -13,7 +11,7 @@ export type PreflightDialogChoice = 'continue_once' | 'continue_session' | 'canc
 
 export interface PreflightDialogProps {
   open: boolean
-  operation: PreflightActivationOperation | null
+  operation: PreflightOperation | null
   warnings: PreflightWarning[]
   blockers: PreflightBlocker[]
   isChecking: boolean
@@ -23,12 +21,15 @@ export interface PreflightDialogProps {
 
 export type UsePreflightReturn = {
   dialogOpen: boolean
-  pendingOperation: PreflightActivationOperation | null
+  pendingOperation: PreflightOperation | null
   warnings: PreflightWarning[]
   blockers: PreflightBlocker[]
   isChecking: boolean
   error: string | null
-  requestOperation: (operation: PreflightActivationOperation) => Promise<PreflightResolution>
+  requestOperation: (
+    operation: PreflightOperation,
+    options?: Pick<PreflightRequest, 'connectors' | 'synthesis_profile' | 'force' | 'involves_cloud'>,
+  ) => Promise<PreflightResolution>
   resolveDialog: (choice: PreflightDialogChoice) => void
 }
 
@@ -68,7 +69,7 @@ function parsePreflightResponse(body: unknown): PreflightResponse | null {
 
 export function usePreflight(): UsePreflightReturn {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [pendingOperation, setPendingOperation] = useState<PreflightActivationOperation | null>(null)
+  const [pendingOperation, setPendingOperation] = useState<PreflightOperation | null>(null)
   const [warnings, setWarnings] = useState<PreflightWarning[]>([])
   const [blockers, setBlockers] = useState<PreflightBlocker[]>([])
   const [isChecking, setIsChecking] = useState(false)
@@ -77,6 +78,7 @@ export function usePreflight(): UsePreflightReturn {
   const acknowledgedWarningsRef = useRef<Set<string>>(new Set())
   const cloudDisclosureAcknowledgedRef = useRef(false)
   const resolverRef = useRef<((resolution: PreflightResolution) => void) | null>(null)
+  const inFlightRef = useRef(false)
 
   const resolveDialog = useCallback((choice: PreflightDialogChoice): void => {
     const resolver = resolverRef.current
@@ -106,7 +108,15 @@ export function usePreflight(): UsePreflightReturn {
   }, [warnings])
 
   const requestOperation = useCallback(
-    async (operation: PreflightActivationOperation): Promise<PreflightResolution> => {
+    async (
+      operation: PreflightOperation,
+      options: Pick<PreflightRequest, 'connectors' | 'synthesis_profile' | 'force' | 'involves_cloud'> = {},
+    ): Promise<PreflightResolution> => {
+      if (inFlightRef.current) {
+        return 'blocked'
+      }
+
+      inFlightRef.current = true
       setIsChecking(true)
       setError(null)
 
@@ -116,9 +126,10 @@ export function usePreflight(): UsePreflightReturn {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             operation,
+            ...options,
             acknowledged_warnings: Array.from(acknowledgedWarningsRef.current),
             cloud_disclosure_acknowledged: cloudDisclosureAcknowledgedRef.current,
-          } satisfies { operation: PreflightOperation; acknowledged_warnings: string[]; cloud_disclosure_acknowledged: boolean }),
+          } satisfies PreflightRequest),
         })
 
         let body: unknown = null
@@ -134,14 +145,12 @@ export function usePreflight(): UsePreflightReturn {
               ? (body as { detail: string }).detail
               : `Preflight check failed with status ${response.status}`
           setError(message)
-          setIsChecking(false)
           return 'blocked'
         }
 
         const parsed = parsePreflightResponse(body)
         if (!parsed) {
           setError('Invalid preflight response')
-          setIsChecking(false)
           return 'blocked'
         }
 
@@ -152,7 +161,7 @@ export function usePreflight(): UsePreflightReturn {
         if (parsed.blockers.length > 0 || !parsed.can_proceed) {
           setPendingOperation(operation)
           setDialogOpen(true)
-          return new Promise<PreflightResolution>((resolve) => {
+          return await new Promise<PreflightResolution>((resolve) => {
             resolverRef.current = (resolution) => {
               resolve(resolution === 'proceed' ? 'blocked' : resolution)
             }
@@ -165,13 +174,15 @@ export function usePreflight(): UsePreflightReturn {
 
         setPendingOperation(operation)
         setDialogOpen(true)
-        return new Promise<PreflightResolution>((resolve) => {
+        return await new Promise<PreflightResolution>((resolve) => {
           resolverRef.current = resolve
         })
       } catch (err) {
-        setIsChecking(false)
         setError(err instanceof Error ? err.message : 'Unknown preflight error')
         return 'blocked'
+      } finally {
+        inFlightRef.current = false
+        setIsChecking(false)
       }
     },
     [],

@@ -23,8 +23,18 @@ export function resolveModuleLedState(
 export function moduleReasonLabel(module: TelemetryModuleEntry | null | undefined): string | null {
   if (!module) return null
   if (module.status === 'disabled') return 'Disabled'
-  if (module.reason_code && module.reason_code !== 'ok') {
-    return module.reason_code.replaceAll('_', ' ')
+  const reason =
+    module.reason_code && module.reason_code !== 'ok'
+      ? module.reason_code.replaceAll('_', ' ')
+      : null
+  if (module.status === 'unavailable') {
+    return reason ? `Unavailable — ${reason}` : 'Unavailable'
+  }
+  if (module.freshness === 'stale') {
+    return reason ? `Stale — ${reason}` : 'Stale data retained'
+  }
+  if (module.status === 'degraded') {
+    return reason ? `Degraded — ${reason}` : 'Degraded'
   }
   return null
 }

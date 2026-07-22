@@ -39,7 +39,7 @@ import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
 import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
-import { resolveModuleLedState } from './lib/moduleTelemetry'
+import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import type { AssistantProfile } from './types/telemetry'
 import type { SettingsResponse } from './types/settings'
@@ -175,6 +175,8 @@ export default function App(): ReactElement {
     askApexEnabled,
     marketEnabled,
     defaultProfile,
+    synthesisStrategy: configuredSynthesisStrategy,
+    synthesisProfile: configuredSynthesisProfile,
     refreshReminders,
     markReminderAsRead,
     applyBootSettings,
@@ -377,7 +379,10 @@ export default function App(): ReactElement {
   }, [preflight, activate, telemetry])
 
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
-    const resolution = await preflight.requestOperation('activate_with_briefing')
+    const resolution = await preflight.requestOperation('activate_with_briefing', {
+      synthesis_profile: configuredSynthesisProfile,
+      involves_cloud: configuredSynthesisStrategy === 'cloud',
+    })
     if (resolution !== 'proceed') {
       return
     }
@@ -385,11 +390,11 @@ export default function App(): ReactElement {
     activate()
     await briefing.triggerSynthesis()
     void telemetry.loadLatest()
-  }, [preflight, activate, briefing, telemetry])
+  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, activate, briefing, telemetry])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
-      if (activated) {
+      if (activated || preflight.dialogOpen || preflight.isChecking) {
         return
       }
 
@@ -404,6 +409,7 @@ export default function App(): ReactElement {
 
       const tagName = target.tagName
       if (
+        target.closest('button, a, select, [role="button"], [role="dialog"]') !== null ||
         tagName === 'INPUT' ||
         tagName === 'TEXTAREA' ||
         target.isContentEditable
@@ -418,7 +424,7 @@ export default function App(): ReactElement {
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [activated, handleStartApex])
+  }, [activated, handleStartApex, preflight.dialogOpen, preflight.isChecking])
 
   const isRefreshingAll = telemetry.isRefreshingAll
   const hasSnapshot = telemetry.snapshot !== null
@@ -441,6 +447,8 @@ export default function App(): ReactElement {
   const emailModule = telemetry.snapshot?.modules.email
   const calendarModule = telemetry.snapshot?.modules.calendar
   const f1Module = telemetry.snapshot?.modules.f1
+  const footballModule = telemetry.snapshot?.modules.football
+  const remindersModule = telemetry.snapshot?.modules.reminders
 
   const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
   const weatherPanelLayoutClass = useRightRailConsole
@@ -494,11 +502,29 @@ export default function App(): ReactElement {
   const newsRefreshing = isConnectorRefreshing('news')
   const emailRefreshing = isConnectorRefreshing('email')
   const calendarRefreshing = isConnectorRefreshing('calendar')
+  const f1Refreshing = isConnectorRefreshing('f1')
+  const footballRefreshing = isConnectorRefreshing('football')
+  const remindersRefreshing = isConnectorRefreshing('reminders')
 
   const weatherLedState = resolveModuleLedState(weatherModule, weatherRefreshing)
   const newsLedState = resolveModuleLedState(newsModule, newsRefreshing)
   const emailLedState = resolveModuleLedState(emailModule, emailRefreshing)
   const calendarLedState = resolveModuleLedState(calendarModule, calendarRefreshing)
+  const weatherStatusMessage = moduleReasonLabel(weatherModule)
+  const newsStatusMessage = moduleReasonLabel(newsModule)
+  const emailStatusMessage = moduleReasonLabel(emailModule)
+  const remindersStatusMessage = moduleReasonLabel(remindersModule)
+  const eventsStatusMessage = [
+    ['Calendar', calendarModule] as const,
+    ['F1', f1Module] as const,
+    ['Football', footballModule] as const,
+  ]
+    .map(([label, module]) => {
+      const reason = moduleReasonLabel(module)
+      return reason ? `${label}: ${reason}` : null
+    })
+    .filter((value): value is string => value !== null)
+    .join(' · ') || null
 
   const weatherInfo = weatherModule
     ? resolveWeatherFromModule(weatherModule)
@@ -524,11 +550,17 @@ export default function App(): ReactElement {
     setReminderPulseCount((prev) => prev + 1)
   }
 
-  const handleGenerateBriefing = useCallback((): void => {
-    void briefing.triggerSynthesis().then(() => {
-      void telemetry.loadLatest()
+  const handleGenerateBriefing = useCallback(async (): Promise<void> => {
+    const resolution = await preflight.requestOperation('generate_briefing', {
+      synthesis_profile: configuredSynthesisProfile,
+      involves_cloud: configuredSynthesisStrategy === 'cloud',
     })
-  }, [briefing, telemetry])
+    if (resolution !== 'proceed') {
+      return
+    }
+    await briefing.triggerSynthesis()
+    void telemetry.loadLatest()
+  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, briefing, telemetry])
 
   const logoStatus =
     !activated
@@ -564,11 +596,19 @@ export default function App(): ReactElement {
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
   const queryAssistantWithContext = useCallback(
-    (prompt: string, profile: AssistantProfile): Promise<void> =>
-      queryAssistant(prompt, profile, {
+    async (prompt: string, profile: AssistantProfile): Promise<void> => {
+      const resolution = await preflight.requestOperation('assistant_query', {
+        synthesis_profile: profile,
+        involves_cloud: profile === 'comet' || profile === 'nova' || profile === 'pulsar',
+      })
+      if (resolution !== 'proceed') {
+        return
+      }
+      await queryAssistant(prompt, profile, {
         snapshotId: telemetry.snapshot?.snapshot_id ?? null,
-      }),
-    [queryAssistant, telemetry.snapshot?.snapshot_id],
+      })
+    },
+    [preflight, queryAssistant, telemetry.snapshot?.snapshot_id],
   )
 
   const consoleTrayProps = {
@@ -664,6 +704,7 @@ export default function App(): ReactElement {
                       ledState={weatherLedState}
                       onRefresh={() => handleRefreshConnector('weather')}
                       refreshDisabled={isRefreshingAll}
+                      statusMessage={weatherStatusMessage}
                       isCompact
                       compactValue={weatherConditionCompactValue}
                       attentionTier={attentionTiers.weather}
@@ -680,8 +721,12 @@ export default function App(): ReactElement {
                       icon={Calendar}
                       f1TelemetryText={f1ScheduleTelemetryText}
                       ledState={calendarLedState}
-                      onRefresh={() => handleRefreshConnector('calendar')}
-                      refreshDisabled={isRefreshingAll}
+                      refreshActions={[
+                        { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
+                        { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
+                        { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
+                      ]}
+                      statusMessage={eventsStatusMessage}
                       compactValue={eventsCompactValue}
                       attentionTier={attentionTiers.events}
                       attentionStaggerMs={attentionStagger.events}
@@ -738,6 +783,7 @@ export default function App(): ReactElement {
                       ledState={emailLedState}
                       onRefresh={() => handleRefreshConnector('email')}
                       refreshDisabled={isRefreshingAll}
+                      statusMessage={emailStatusMessage}
                       compactValue={inboxCompactValue}
                       attentionTier={attentionTiers.inbox}
                       attentionStaggerMs={attentionStagger.inbox}
@@ -779,6 +825,7 @@ export default function App(): ReactElement {
                       ledState={newsLedState}
                       onRefresh={() => handleRefreshConnector('news')}
                       refreshDisabled={isRefreshingAll}
+                      statusMessage={newsStatusMessage}
                       isCompact
                       compactValue={newsCompactValue}
                       attentionTier={attentionTiers.news}
@@ -810,6 +857,7 @@ export default function App(): ReactElement {
                   ledState={weatherLedState}
                   onRefresh={() => handleRefreshConnector('weather')}
                   refreshDisabled={isRefreshingAll}
+                  statusMessage={weatherStatusMessage}
                   isCompact={isConsoleCompact}
                   compactValue={weatherBody}
                   attentionTier={attentionTiers.weather}
@@ -826,8 +874,12 @@ export default function App(): ReactElement {
                   icon={Calendar}
                   f1TelemetryText={f1ScheduleTelemetryText}
                   ledState={calendarLedState}
-                  onRefresh={() => handleRefreshConnector('calendar')}
-                  refreshDisabled={isRefreshingAll}
+                  refreshActions={[
+                    { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
+                    { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
+                    { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
+                  ]}
+                  statusMessage={eventsStatusMessage}
                   isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
                   attentionTier={attentionTiers.events}
@@ -999,6 +1051,7 @@ export default function App(): ReactElement {
                 ledState={emailLedState}
                 onRefresh={() => handleRefreshConnector('email')}
                 refreshDisabled={isRefreshingAll}
+                statusMessage={emailStatusMessage}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
                 attentionTier={attentionTiers.inbox}
@@ -1054,6 +1107,7 @@ export default function App(): ReactElement {
                 ledState={newsLedState}
                 onRefresh={() => handleRefreshConnector('news')}
                 refreshDisabled={isRefreshingAll}
+                statusMessage={newsStatusMessage}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
                 attentionTier={attentionTiers.news}
@@ -1100,11 +1154,12 @@ export default function App(): ReactElement {
                 title="Reminders"
                 icon={CheckSquare}
                 ledState={resolveModuleLedState(
-                  telemetry.snapshot?.modules.reminders,
-                  isConnectorRefreshing('reminders'),
+                  remindersModule,
+                  remindersRefreshing,
                 )}
                 onRefresh={() => handleRefreshConnector('reminders')}
                 refreshDisabled={isRefreshingAll}
+                statusMessage={remindersStatusMessage}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
                 attentionTier={attentionTiers.reminders}

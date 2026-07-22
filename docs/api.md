@@ -666,7 +666,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 **Missing API key:** When `GEMINI_API_KEY` is not set, the endpoint returns `200` with a static unavailability message in `answer` and `error` set to `"GEMINI_API_KEY is missing from environment variables."` rather than raising an HTTP error.
 
-**HUD context injection:** The handler does **not** implicitly inject the latest persisted briefing. Optional `briefing_id` and/or `snapshot_id` on the request select explicit HUD context. Absent identifiers mean no HUD briefing/telemetry context is appended to the system instruction.
+**HUD context injection:** The handler does **not** implicitly inject the latest persisted briefing. Optional `briefing_id` and/or `snapshot_id` on the request select explicit HUD context. Absent identifiers mean no HUD briefing/telemetry context is appended to the system instruction. Selected context is sanitized, bounded to 2,000 characters, wrapped in `<untrusted_hud_context>` markers, and accompanied by an instruction to treat it as data rather than commands.
 
 **Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
 

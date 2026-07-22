@@ -78,6 +78,7 @@ describe('usePreflight', () => {
       await Promise.resolve()
     })
     expect(result.current.dialogOpen).toBe(true)
+    expect(result.current.isChecking).toBe(false)
 
     await act(async () => {
       result.current.resolveDialog('continue_once')
@@ -156,6 +157,58 @@ describe('usePreflight', () => {
       resolution = await pending
     })
     expect(resolution).toBe('cancelled')
+  })
+
+  it('passes profile and cloud metadata for assistant preflight', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ warnings: [], blockers: [], can_proceed: true }),
+    )
+    const { result } = renderHook(() => usePreflight())
+
+    await act(async () => {
+      await result.current.requestOperation('assistant_query', {
+        synthesis_profile: 'comet',
+        involves_cloud: true,
+      })
+    })
+
+    const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body))
+    expect(body).toMatchObject({
+      operation: 'assistant_query',
+      synthesis_profile: 'comet',
+      involves_cloud: true,
+    })
+  })
+
+  it('blocks a second request while a warning dialog is pending', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({
+        warnings: [{ code: 'running_on_battery', message: 'On battery' }],
+        blockers: [],
+        can_proceed: true,
+      }),
+    )
+    const { result } = renderHook(() => usePreflight())
+    let first!: Promise<string>
+
+    act(() => {
+      first = result.current.requestOperation('activate')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    let second = ''
+    await act(async () => {
+      second = await result.current.requestOperation('activate_with_briefing')
+    })
+    expect(second).toBe('blocked')
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      result.current.resolveDialog('cancel')
+      await first
+    })
   })
 })
 
