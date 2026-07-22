@@ -437,6 +437,9 @@ class TelemetryApiTests(unittest.TestCase):
             "os.environ", {"HOME_SSID": "HomeNet"}, clear=False
         ), mock.patch(
             "core.scanner.get_power_state", return_value="battery"
+        ), mock.patch(
+            "core.telemetry.preflight._evaluate_local_profile_blockers",
+            return_value=([], True),
         ):
             response = self.client.post(
                 "/api/v1/preflight",
