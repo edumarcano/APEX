@@ -307,6 +307,8 @@ Give APEX runtime control surfaces for configuration, model/provider behavior, s
 **Objective:**
 Complete APEX's reproducibility, API, telemetry, persistence, startup, and documentation foundations, then separate HUD activation, telemetry collection, assistant availability, briefing synthesis, and voice delivery into independent runtime flows.
 
+**Current implementation:** Independent activation and telemetry, advisory preflight, optional five-mode briefing generation, and Off/Manual/Automatic voice delivery are implemented. Final validation and milestone reconciliation remain before completion.
+
 ---
 
 ## v1.18.0 - Cortex: Tooling Framework & Connector Registry

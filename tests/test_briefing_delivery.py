@@ -162,6 +162,26 @@ class BriefingDeliveryTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 409)
 
+    def test_demo_generate_requires_current_snapshot_and_preserves_mode(self) -> None:
+        snap = self._seed_snapshot("demo-current")
+        with mock.patch("core.api.briefing.DEMO_MODE", True), mock.patch(
+            "core.telemetry.service.TelemetryService.refresh",
+            side_effect=AssertionError("demo generation must not collect"),
+        ):
+            stale = self.client.post(
+                "/api/v1/briefings/generate",
+                json={"snapshot_id": "stale", "mode": "neofelis"},
+            )
+            response = self.client.post(
+                "/api/v1/briefings/generate",
+                json={"snapshot_id": snap.snapshot_id, "mode": "neofelis"},
+            )
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(response.status_code, 200)
+        metadata = response.json()["metadata"]
+        self.assertEqual(metadata["snapshot_id"], "demo-current")
+        self.assertEqual(metadata["briefing_mode"], "neofelis")
+
     def test_voice_off_returns_403(self) -> None:
         self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="off")))
         response = self.client.post(
@@ -178,6 +198,19 @@ class BriefingDeliveryTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "spoken")
+
+    def test_voice_delivery_failure_returns_stable_503(self) -> None:
+        self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="manual")))
+        with mock.patch(
+            "core.api.voice.speaker.try_speak",
+            side_effect=RuntimeError("speech_delivery_failed"),
+        ):
+            response = self.client.post(
+                "/api/v1/voice/speak",
+                json={"text": "Manual replay."},
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"], "Speech delivery failed.")
 
     def test_settings_schema_v3_exposes_briefing_and_voice_mode(self) -> None:
         response = self.client.get("/api/v1/settings")
@@ -218,6 +251,25 @@ class BriefingDeliveryTests(unittest.TestCase):
         process.assert_called_once()
         self.assertEqual(process.call_args.kwargs.get("mode"), "comet")
         speak.assert_not_called()
+
+    def test_automatic_delivery_is_recorded_in_persisted_metadata(self) -> None:
+        snap = self._seed_snapshot("spoken-snap")
+        with mock.patch(
+            "core.brain.process_telemetry",
+            return_value=SynthesisResult(
+                briefing="Automatic briefing.",
+                insights=[],
+                provider="raw",
+                fallback_reason="configured_raw",
+            ).model_dump(),
+        ), mock.patch("core.api.briefing.database.save_briefing") as save:
+            response = self.client.post(
+                "/api/v1/briefings/generate",
+                json={"snapshot_id": snap.snapshot_id, "mode": "structured_digest"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["metadata"]["spoken"])
+        self.assertTrue(save.call_args.args[2]["spoken"])
 
 
 class SettingsV3NormalizeTests(unittest.TestCase):

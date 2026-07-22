@@ -82,6 +82,14 @@ APEX uses a recurring mission-control vocabulary:
 
 Reuse these established primitives instead of creating competing panel chrome.
 
+### Briefing and voice controls
+
+- Keep the Briefing Mode selector and Generate actions within the Insights card so synthesis remains an optional Overview operation.
+- Disable generation when there is no current telemetry snapshot or another briefing is running.
+- Treat Refresh All & Generate as one ordered action: a failed refresh must stop generation and leave its error visible.
+- Show Speak / Replay only when voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
+- Provider, profile, fallback, and delivery feedback should stay adjacent to the briefing controls rather than becoming a separate global status system.
+
 ## Attention and Disclosure
 
 Telemetry surfaces participate in a four-tier attention sequence:

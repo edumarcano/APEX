@@ -846,6 +846,11 @@ Voice mode (`settings.voice.mode`):
 { "detail": "Speech delivery is already in progress." }
 ```
 
+**Response `503`** — the selected engine and its fallback route could not deliver speech
+```json
+{ "detail": "Speech delivery failed." }
+```
+
 ---
 
 ### `POST /api/v1/local-model/unload`

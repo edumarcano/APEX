@@ -286,7 +286,12 @@ def _acquire_pipeline_lock() -> None:
         )
 
 
-def _run_demo_briefing(*, run_id: str) -> BriefingResponse:
+def _run_demo_briefing(
+    *,
+    run_id: str,
+    snapshot: TelemetrySnapshot | None = None,
+    mode: BriefingMode | None = None,
+) -> BriefingResponse:
     """Execute the staged simulation path when ``DEMO_MODE`` is active."""
     voice_thread_started = False
 
@@ -299,8 +304,9 @@ def _run_demo_briefing(*, run_id: str) -> BriefingResponse:
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
 
         telemetry, digest = load_mock_telemetry()
-        # Seed the in-memory snapshot store for telemetry API consumers.
-        get_telemetry_service().seed_demo_snapshot()
+        # The compatibility trigger seeds demo telemetry. Direct generation
+        # reuses the already validated process-current snapshot.
+        active_snapshot = snapshot or get_telemetry_service().seed_demo_snapshot()
 
         global_pipeline_state.update(3, "SYNTHESIS")
         time.sleep(_DEMO_STAGE_DELAY_SECONDS)
@@ -348,11 +354,12 @@ def _run_demo_briefing(*, run_id: str) -> BriefingResponse:
                 dev_mode_active=True,
                 demo_mode_active=True,
                 synthesis_strategy="demo",
-                briefing_mode=None,
+                briefing_mode=mode,
                 synthesis_provider="demo",
                 tts_strategy=DEMO_TTS,
                 active_tts_engine=active_tts_engine,
                 system_load_throttled=system_load_throttled,
+                snapshot_id=active_snapshot.snapshot_id,
                 spoken=spoken,
             ),
         )
@@ -433,7 +440,7 @@ def _synthesize_from_snapshot(
             system_load_throttled=system_load_throttled,
         )
         digest_payload = _build_digest(results=results, insights=briefing_insights)
-        spoken = False
+        spoken = _voice_is_automatic()
         runtime_metadata = RuntimeMetadata(
             run_id=run_id,
             dev_mode_active=dev_mode,
@@ -449,7 +456,7 @@ def _synthesize_from_snapshot(
             active_tts_engine=active_tts_engine,
             system_load_throttled=system_load_throttled,
             snapshot_id=snapshot.snapshot_id,
-            spoken=False,
+            spoken=spoken,
         )
         if not dev_mode:
             try:
@@ -465,7 +472,7 @@ def _synthesize_from_snapshot(
                     "Briefing ledger persistence failed: persistence_error"
                 )
 
-        if _voice_is_automatic():
+        if spoken:
             voice_thread = threading.Thread(
                 target=bind_run_id_context(_speak_and_cleanup),
                 kwargs={
@@ -478,13 +485,11 @@ def _synthesize_from_snapshot(
             )
             voice_thread.start()
             voice_thread_started = True
-            spoken = True
         else:
             global_pipeline_state.reset()
             if _TRIGGER_LOCK.locked():
                 _TRIGGER_LOCK.release()
 
-        runtime_metadata = runtime_metadata.model_copy(update={"spoken": spoken})
         return BriefingResponse(
             status="success",
             briefing=final_briefing,
@@ -506,16 +511,12 @@ def generate_briefing(*, snapshot_id: str, mode: BriefingMode) -> BriefingRespon
     Performs no connector calls. Returns ``409`` when the snapshot is missing
     or no longer current in this process.
     """
-    if DEMO_MODE:
-        _acquire_pipeline_lock()
-        run_id = str(uuid.uuid4())
-        with run_id_scope(run_id):
-            return _run_demo_briefing(run_id=run_id)
-
     snapshot = _require_current_snapshot(snapshot_id)
     _acquire_pipeline_lock()
     run_id = str(uuid.uuid4())
     with run_id_scope(run_id):
+        if DEMO_MODE:
+            return _run_demo_briefing(run_id=run_id, snapshot=snapshot, mode=mode)
         try:
             global_pipeline_state.begin_run(run_id)
             global_pipeline_state.update(1, "GATE")

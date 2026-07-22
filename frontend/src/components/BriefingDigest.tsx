@@ -53,6 +53,7 @@ export interface BriefingDigestProps {
   showSpeakAction?: boolean
   synthesisLabel?: string | null
   fallbackReason?: string | null
+  speechError?: string | null
 }
 
 export function BriefingDigest({
@@ -76,6 +77,7 @@ export function BriefingDigest({
   showSpeakAction = false,
   synthesisLabel = null,
   fallbackReason = null,
+  speechError = null,
 }: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -144,9 +146,9 @@ export function BriefingDigest({
     ) : null
 
   const statusMeta =
-    synthesisLabel || fallbackReason ? (
-      <p className="text-[11px] leading-relaxed text-zinc-400" role="status">
-        {[synthesisLabel, fallbackReason ? `Fallback: ${fallbackReason}` : null]
+    synthesisLabel || fallbackReason || speechError ? (
+      <p className={`text-[11px] leading-relaxed ${speechError ? 'text-red-300' : 'text-zinc-400'}`} role="status">
+        {[synthesisLabel, fallbackReason ? `Fallback: ${fallbackReason}` : null, speechError]
           .filter(Boolean)
           .join(' · ')}
       </p>

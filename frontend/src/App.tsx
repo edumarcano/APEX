@@ -37,6 +37,7 @@ import { useMarketData } from './hooks/useMarketData'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
+import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
@@ -216,6 +217,7 @@ export default function App(): ReactElement {
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const briefing = useBriefingPipeline()
+  const voiceDelivery = useVoiceDelivery()
 
   const showAskApexBar = activated && Boolean(askApexEnabled)
 
@@ -287,7 +289,13 @@ export default function App(): ReactElement {
     [applyBootSettings],
   )
 
-  const { pipelineState, isSpeaking, active_tts_engine, system_load_throttled } = briefing
+  const {
+    pipelineState,
+    isSpeaking: isPipelineSpeaking,
+    active_tts_engine,
+    system_load_throttled,
+  } = briefing
+  const isSpeaking = isPipelineSpeaking || voiceDelivery.isSpeaking
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
@@ -639,11 +647,10 @@ export default function App(): ReactElement {
       return
     }
     const snapshot = await telemetry.refreshAll({ force: true })
-    const snapshotId = snapshot?.snapshot_id ?? telemetry.snapshot?.snapshot_id
-    if (!snapshotId) {
+    if (!snapshot) {
       return
     }
-    await briefing.generateFromSnapshot(snapshotId, briefingMode)
+    await briefing.generateFromSnapshot(snapshot.snapshot_id, briefingMode)
   }, [preflight, briefingMode, briefing, telemetry])
 
   const handleSpeakBriefing = useCallback((): void => {
@@ -651,14 +658,8 @@ export default function App(): ReactElement {
     if (!text || voiceMode === 'off') {
       return
     }
-    void fetch(API_ENDPOINTS.voiceSpeak, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    }).catch(() => {
-      // Manual speak is best-effort.
-    })
-  }, [briefing.briefing, voiceMode])
+    void voiceDelivery.speak(text)
+  }, [briefing.briefing, voiceMode, voiceDelivery])
 
   const logoStatus =
     !activated
@@ -1071,6 +1072,7 @@ export default function App(): ReactElement {
                   generateDisabled={isBriefingRunning || !hasSnapshot}
                   speakDisabled={isSpeaking}
                   showSpeakAction={voiceMode !== 'off'}
+                  speechError={voiceDelivery.error}
                   synthesisLabel={
                     briefing.synthesisProvider
                       ? [briefing.synthesisProvider, briefing.synthesisProfile]

@@ -265,4 +265,26 @@ describe('BriefingDigest empty generate action', () => {
 
     expect(screen.getByRole('button', { name: /generate briefing/i })).toBeDisabled()
   })
+
+  it('disables replay and exposes voice delivery failures', () => {
+    render(
+      <BriefingDigest
+        insights={['Ready']}
+        briefingText="Current briefing."
+        status="success"
+        isLoading={false}
+        activated
+        briefingMode="comet"
+        onBriefingModeChange={() => undefined}
+        onGenerateBriefing={() => undefined}
+        onSpeakBriefing={() => undefined}
+        showSpeakAction
+        speakDisabled
+        speechError="Speech delivery failed."
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /speak \/ replay/i })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
+  })
 })

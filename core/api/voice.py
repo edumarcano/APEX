@@ -31,9 +31,17 @@ def speak_text(payload: VoiceSpeakRequest) -> VoiceSpeakResponse:
             detail="Speech text is empty after sanitization.",
         )
 
-    if not speaker.try_speak(cleaned):
+    try:
+        if not speaker.try_speak(cleaned):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Speech delivery is already in progress.",
+            )
+    except HTTPException:
+        raise
+    except RuntimeError:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Speech delivery is already in progress.",
-        )
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Speech delivery failed.",
+        ) from None
     return VoiceSpeakResponse()
