@@ -84,6 +84,45 @@ export function resolveAttentionTier(
   return 'pending'
 }
 
+/**
+ * Attention for Start APEX / telemetry-only collection (no briefing pipeline).
+ * Activated overview reveals cards during refresh without briefing stages.
+ */
+export function resolveTelemetryAttentionTier(
+  surface: AttentionSurfaceId,
+  options: {
+    activated: boolean
+    isRefreshing: boolean
+    hasSnapshot: boolean
+    briefingStatus: SystemState | null
+    briefingStep: number | null
+  },
+): AttentionTier {
+  const { activated, isRefreshing, hasSnapshot, briefingStatus, briefingStep } = options
+
+  if (!activated) {
+    return 'dormant'
+  }
+
+  // While a briefing run is active, keep the existing pipeline-tied schedule.
+  if (briefingStatus === 'loading') {
+    return resolveAttentionTier(surface, briefingStep, briefingStatus)
+  }
+
+  if (surface === 'insights') {
+    if (briefingStatus === 'success' || briefingStatus === 'error') {
+      return 'complete'
+    }
+    return hasSnapshot ? 'complete' : isRefreshing ? 'pending' : 'active'
+  }
+
+  if (isRefreshing && !hasSnapshot) {
+    return surface === 'reminders' ? 'complete' : 'active'
+  }
+
+  return 'complete'
+}
+
 /** Curtain stagger delay for surfaces that share a pipeline step. */
 export function resolveAttentionStaggerMs(surface: AttentionSurfaceId): number {
   return SURFACE_SCHEDULE[surface].staggerMs

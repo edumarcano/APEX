@@ -26,12 +26,17 @@ export interface BriefingDigestProps {
   isLoading: boolean
   className?: string
   defaultTab?: 'insights' | 'briefing'
-  /** When true, renders a single condensed summary line instead of the full insight list (e.g. while the console tray is open). */
+  /** When true, renders a single condensed summary row instead of the full insight list (e.g. while the console tray is open). */
   isCompact?: boolean
   /** Pipeline attention tier — glass power + body curtain. */
   attentionTier?: AttentionTier
   /** Curtain unlock delay in ms. */
   attentionStaggerMs?: number
+  /** Overview is activated — show empty-state Generate Briefing. */
+  activated?: boolean
+  /** Compatibility trigger for Generate Briefing (interim: POST /trigger). */
+  onGenerateBriefing?: () => void
+  generateDisabled?: boolean
 }
 
 export function BriefingDigest({
@@ -44,6 +49,9 @@ export function BriefingDigest({
   isCompact = false,
   attentionTier = 'dormant',
   attentionStaggerMs = 0,
+  activated = false,
+  onGenerateBriefing,
+  generateDisabled = false,
 }: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -129,7 +137,7 @@ export function BriefingDigest({
               Briefing
             </button>
           </div>
-          {status === 'success' && (
+          {status === 'success' || (activated && (insights.length > 0 || trimmedBriefing.length > 0)) ? (
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
@@ -138,7 +146,7 @@ export function BriefingDigest({
               <Clock className="size-3 text-[color:var(--hud-accent)]" strokeWidth={2.25} />
               <span>History</span>
             </button>
-          )}
+          ) : null}
         </div>
         </div>
         <div className="hud-header-divider mt-3" aria-hidden />
@@ -155,9 +163,23 @@ export function BriefingDigest({
       >
         {activeTab === 'briefing' ? (
           trimmedBriefing.length === 0 ? (
-            <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-              Initiate system synthesis to compile briefing transcript.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+                {activated
+                  ? 'No briefing transcript yet.'
+                  : 'Initiate system synthesis to compile briefing transcript.'}
+              </p>
+              {activated && onGenerateBriefing ? (
+                <button
+                  type="button"
+                  onClick={onGenerateBriefing}
+                  disabled={generateDisabled || isLoading}
+                  className="inline-flex rounded-md border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#FBBF24] transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Generate Briefing
+                </button>
+              ) : null}
+            </div>
           ) : (
             <div className="list-fade-mask min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
@@ -167,14 +189,28 @@ export function BriefingDigest({
           )
         ) : (
           <>
-            {isLoading || status === 'idle' ? (
+            {isLoading || (!activated && status === 'idle') ? (
               <div className="space-y-2">
                 <div className="h-3 bg-white/5 rounded animate-pulse w-full" />
                 <div className="h-3 bg-white/5 rounded animate-pulse w-5/6" />
                 <div className="h-3 bg-white/5 rounded animate-pulse w-4/5" />
               </div>
             ) : insights.length === 0 ? (
-              <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">No current highlights.</p>
+              <div className="space-y-3">
+                <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
+                  No current highlights.
+                </p>
+                {activated && onGenerateBriefing ? (
+                  <button
+                    type="button"
+                    onClick={onGenerateBriefing}
+                    disabled={generateDisabled || isLoading}
+                    className="inline-flex rounded-md border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#FBBF24] transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Generate Briefing
+                  </button>
+                ) : null}
+              </div>
             ) : (
               <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
                 {insights.map((insight, index) => (

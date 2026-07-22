@@ -61,6 +61,7 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
 
 const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
   'available',
+  'busy',
   'unknown',
   'disabled',
   'ollama_unreachable',
@@ -279,7 +280,11 @@ export interface UseApexAssistantResult {
   assistantError: string | null
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
-  queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
+  queryAssistant: (
+    prompt: string,
+    profile: AssistantProfile,
+    context?: { snapshotId?: string | null; briefingId?: number | null },
+  ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
   clearAssistantChat: () => void
   resetAssistantSession: () => void
@@ -397,7 +402,11 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
   }, [fetchProfilesStatus])
 
   const queryAssistant = useCallback(
-    async (prompt: string, profile: AssistantProfile): Promise<void> => {
+    async (
+      prompt: string,
+      profile: AssistantProfile,
+      context?: { snapshotId?: string | null; briefingId?: number | null },
+    ): Promise<void> => {
       const trimmedPrompt = prompt.trim()
       if (!trimmedPrompt) {
         return
@@ -418,6 +427,8 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
             prompt: trimmedPrompt,
             profile,
             history: assistantHistory,
+            ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
+            ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
           }),
         })
 

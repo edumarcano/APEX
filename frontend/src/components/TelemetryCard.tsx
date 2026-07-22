@@ -1,4 +1,4 @@
-import { type LucideIcon } from 'lucide-react'
+import { RefreshCw, type LucideIcon } from 'lucide-react'
 import type * as React from 'react'
 
 import {
@@ -248,6 +248,10 @@ export type TelemetryCardProps = {
   weatherCondition?: WeatherConditionArchetype | null
   /** Module status LED communicating this card's data freshness, mirroring the unified pipeline state. */
   ledState?: TelemetryLedState
+  /** Optional accessible per-connector refresh control. */
+  onRefresh?: () => void
+  /** Disables the refresh control (e.g. while a global refresh is in flight). */
+  refreshDisabled?: boolean
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
   isCompact?: boolean
   /** Right-aligned summary content shown only in the compact row. */
@@ -266,6 +270,8 @@ export function TelemetryCard({
   f1TelemetryText,
   weatherCondition,
   ledState = 'none',
+  onRefresh,
+  refreshDisabled = false,
   isCompact = false,
   compactValue,
   attentionTier = 'dormant',
@@ -395,6 +401,21 @@ export function TelemetryCard({
             >
               {title}
             </h2>
+            {onRefresh ? (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshDisabled || ledState === 'loading'}
+                aria-label={`Refresh ${title}`}
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <RefreshCw
+                  className={`size-3.5 ${ledState === 'loading' ? 'animate-spin' : ''}`}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              </button>
+            ) : null}
             {ledState !== 'none' ? (
               <span
                 className={LED_STATE_CLASS[ledState]}

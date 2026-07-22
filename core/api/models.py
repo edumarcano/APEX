@@ -246,6 +246,7 @@ class MarkReadResponse(BaseModel):
 
 ProfileAvailabilityStatus = Literal[
     "available",
+    "busy",
     "disabled",
     "ollama_unreachable",
     "model_not_installed",
@@ -418,4 +419,20 @@ class MarketResponse(BaseModel):
     tickers: list[MarketTickerItem] = Field(
         default_factory=list,
         description="Ordered market ticker snapshots for configured symbols.",
+    )
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=4000,
+        description="Non-empty plain text to speak after TTS sanitization.",
+    )
+
+
+class VoiceSpeakResponse(BaseModel):
+    status: str = Field(
+        default="spoken",
+        description="Outcome label when speech delivery completed.",
     )

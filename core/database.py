@@ -243,6 +243,59 @@ def fetch_briefing_history(limit: int = 50) -> list[dict[str, Any]]:
     return records
 
 
+def fetch_briefing_by_id(briefing_id: int) -> dict[str, Any] | None:
+    """
+    Retrieve a single briefing ledger row by primary key.
+
+    Returns:
+        The briefing record with parsed digest/metadata, or None when missing.
+    """
+    with _connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, timestamp, briefing, digest_json, metadata_json "
+            "FROM briefings WHERE id = ?",
+            (briefing_id,),
+        )
+        row = cursor.fetchone()
+
+    if row is None:
+        return None
+
+    record_id = int(row[0])
+    digest_error: str | None = None
+    metadata_error: str | None = None
+    try:
+        parsed_digest = json.loads(row[3])
+        if not isinstance(parsed_digest, dict):
+            digest_error = "digest_type_error"
+            parsed_digest = {}
+    except (json.JSONDecodeError, TypeError):
+        digest_error = "digest_json_error"
+        parsed_digest = {}
+    try:
+        if row[4]:
+            parsed_metadata = json.loads(row[4])
+            if parsed_metadata is not None and not isinstance(parsed_metadata, dict):
+                metadata_error = "metadata_type_error"
+                parsed_metadata = None
+        else:
+            parsed_metadata = None
+    except (json.JSONDecodeError, TypeError):
+        metadata_error = "metadata_json_error"
+        parsed_metadata = None
+
+    return {
+        "id": record_id,
+        "timestamp": row[1],
+        "briefing": row[2],
+        "digest": parsed_digest,
+        "metadata": parsed_metadata,
+        "digest_parse_error": digest_error,
+        "metadata_parse_error": metadata_error,
+    }
+
+
 def prune_historical_ledger() -> None:
     """Retain only the 50 most recent briefing rows ordered by timestamp."""
     with _connection() as conn:

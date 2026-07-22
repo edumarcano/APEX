@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.api.routers import assistant, briefings, market, reminders, system, telemetry
+from core.api.routers import assistant, briefings, market, reminders, system, telemetry, voice
 from core.config import ENV_PATH, OLLAMA_ENABLED
 from core.agent.providers.ollama_lifecycle import check_idle_models_loop
 from core import database
@@ -84,6 +84,7 @@ app.include_router(reminders.router)
 app.include_router(assistant.router)
 app.include_router(market.router)
 app.include_router(telemetry.router)
+app.include_router(voice.router)
 
 
 def main() -> None:

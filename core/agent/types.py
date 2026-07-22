@@ -53,6 +53,23 @@ class AgentQueryRequest(BaseModel):
         default_factory=list,
         description="Recent conversation history for the session.",
     )
+    snapshot_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional telemetry snapshot ID. When present and matching the "
+            "current in-memory snapshot, module display text is injected as "
+            "HUD context. Absent or mismatched IDs inject no snapshot context."
+        ),
+    )
+    briefing_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Optional briefing history row ID. When present, that briefing's "
+            "prose and insights are injected as HUD context. Absent IDs inject "
+            "no briefing context."
+        ),
+    )
 
 
 class AgentQueryResponse(BaseModel):
