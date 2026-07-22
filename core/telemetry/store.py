@@ -46,8 +46,7 @@ def build_snapshot_from_results(
         if _is_retaining_failure(result, prior_entry) and prior_entry is not None:
             retained = prior_entry.model_copy(deep=True)
             retained.freshness = "stale"
-            if retained.reason_code == "ok":
-                retained.reason_code = result.reason_code or "refresh_failed"
+            retained.reason_code = result.reason_code or "refresh_failed"
             modules[name] = retained
             continue
         modules[name] = TelemetryModuleEntry.from_connector_result(result)
@@ -130,3 +129,38 @@ class TelemetrySnapshotStore:
                 return None
             collected = _parse_collected_at(self._snapshot.collected_at)
             return (datetime.now(timezone.utc) - collected).total_seconds()
+
+    def connectors_are_fresh(
+        self,
+        names: list[str],
+        *,
+        enabled_names: set[str],
+        max_age_seconds: float,
+    ) -> bool:
+        """Return whether requested modules match settings and are within the TTL."""
+        with self._lock:
+            if self._snapshot is None:
+                return False
+
+            now = datetime.now(timezone.utc)
+            for name in names:
+                entry = self._snapshot.modules.get(name)
+                if entry is None:
+                    return False
+
+                expected_enabled = name in enabled_names
+                if not expected_enabled:
+                    if entry.status != "disabled":
+                        return False
+                    continue
+
+                if entry.status == "disabled" or entry.observed_at is None:
+                    return False
+                try:
+                    observed = _parse_collected_at(entry.observed_at)
+                except (TypeError, ValueError):
+                    return False
+                if (now - observed).total_seconds() >= max_age_seconds:
+                    return False
+
+            return True

@@ -12,6 +12,43 @@ from core.settings import FeaturesSettings, ModulesSettings
 _LOGGER = logging.getLogger(__name__)
 
 
+def is_connector_enabled(
+    name: str,
+    *,
+    features: FeaturesSettings,
+    modules: ModulesSettings,
+) -> bool:
+    """Return whether a connector is enabled in the current runtime settings."""
+    if name == "weather":
+        return features.weather
+    if name == "news":
+        return features.news
+    if name == "email":
+        return features.email
+    if name == "calendar":
+        return features.calendar
+    if name == "f1":
+        return features.sports and modules.f1
+    if name == "football":
+        return features.sports and modules.football
+    if name == "reminders":
+        return True
+    raise ValueError(f"Unknown connector name: {name!r}")
+
+
+def enabled_connector_names(
+    *,
+    features: FeaturesSettings,
+    modules: ModulesSettings,
+) -> set[str]:
+    """Return enabled connector names for a runtime settings snapshot."""
+    return {
+        name
+        for name in CONNECTOR_NAMES
+        if is_connector_enabled(name, features=features, modules=modules)
+    }
+
+
 def disabled_result(name: str) -> ConnectorResult:
     """Return an explicit disabled module result."""
     return ConnectorResult(
@@ -55,14 +92,14 @@ def collect_connector_results(
         return name in target
 
     if _wanted("weather"):
-        if features.weather:
+        if is_connector_enabled("weather", features=features, modules=modules):
             results["weather"] = weather_client.collect_weather()
         else:
             _LOGGER.info("Weather module bypassed via user preference")
             results["weather"] = disabled_result("weather")
 
     if _wanted("f1"):
-        if features.sports and modules.f1:
+        if is_connector_enabled("f1", features=features, modules=modules):
             results["f1"] = sports_client.collect_f1()
         else:
             if features.sports and not modules.f1:
@@ -72,7 +109,7 @@ def collect_connector_results(
             results["f1"] = disabled_result("f1")
 
     if _wanted("football"):
-        if features.sports and modules.football:
+        if is_connector_enabled("football", features=features, modules=modules):
             results["football"] = sports_client.collect_football()
         else:
             if features.sports and not modules.football:
@@ -80,21 +117,21 @@ def collect_connector_results(
             results["football"] = disabled_result("football")
 
     if _wanted("news"):
-        if features.news:
+        if is_connector_enabled("news", features=features, modules=modules):
             results["news"] = news_client.collect_news()
         else:
             _LOGGER.info("News module bypassed via user preference")
             results["news"] = disabled_result("news")
 
     if _wanted("email"):
-        if features.email:
+        if is_connector_enabled("email", features=features, modules=modules):
             results["email"] = collect_email()
         else:
             _LOGGER.info("Email module bypassed via user preference")
             results["email"] = disabled_result("email")
 
     if _wanted("calendar"):
-        if features.calendar:
+        if is_connector_enabled("calendar", features=features, modules=modules):
             results["calendar"] = collect_calendar()
         else:
             _LOGGER.info("Calendar module bypassed via user preference")

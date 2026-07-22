@@ -7,10 +7,19 @@ import threading
 from datetime import datetime, timezone
 
 from core import config
-from core.connectors.models import CONNECTOR_NAMES, ConnectorResult, utc_now_iso
+from core.connectors.models import (
+    CONNECTOR_NAMES,
+    EXTERNAL_CONNECTOR_NAMES,
+    ConnectorResult,
+    utc_now_iso,
+)
 from core.connectors.scoring import compute_sync_health
 from core.settings import get_settings_store
-from core.telemetry.collector import collect_connector_results, disabled_result
+from core.telemetry.collector import (
+    collect_connector_results,
+    disabled_result,
+    enabled_connector_names,
+)
 from core.telemetry.models import (
     FRESHNESS_WINDOW_SECONDS,
     TelemetryModuleEntry,
@@ -135,31 +144,39 @@ class TelemetryService:
         connectors: list[str] | None,
         force: bool,
     ) -> TelemetrySnapshot:
+        names = list(connectors) if connectors else None
+        if names is not None:
+            unknown = sorted(set(names) - set(CONNECTOR_NAMES))
+            if unknown:
+                raise ValueError(f"Unknown connector names: {unknown}")
+        if names is not None and len(names) == 0:
+            names = None
+
         if config.DEMO_MODE:
             snapshot = _demo_snapshot()
             self._store.set(snapshot)
-            if force:
-                self._store.mark_forced_refresh()
             return snapshot
 
         current = self._store.get()
-        age = self._store.age_seconds()
+        settings = get_settings_store().get_snapshot()
+        enabled_names = enabled_connector_names(
+            features=settings.features,
+            modules=settings.modules,
+        )
+        target_names = names or list(CONNECTOR_NAMES)
         if (
             not force
             and current is not None
-            and age is not None
-            and age < FRESHNESS_WINDOW_SECONDS
+            and self._store.connectors_are_fresh(
+                target_names,
+                enabled_names=enabled_names,
+                max_age_seconds=FRESHNESS_WINDOW_SECONDS,
+            )
         ):
             _LOGGER.info(
-                "Returning fresh telemetry snapshot (age=%.1fs) without connector calls",
-                age,
+                "Returning fresh telemetry snapshot without connector calls",
             )
             return current
-
-        settings = get_settings_store().get_snapshot()
-        names = list(connectors) if connectors else None
-        if names is not None and len(names) == 0:
-            names = None
 
         collected = collect_connector_results(
             features=settings.features,
@@ -179,7 +196,11 @@ class TelemetryService:
             snapshot = build_snapshot_from_results(collected, prior=prior)
 
         self._store.set(snapshot)
-        if force:
+        forced_external_refresh = force and any(
+            name in enabled_names and name in EXTERNAL_CONNECTOR_NAMES
+            for name in target_names
+        )
+        if forced_external_refresh:
             self._store.mark_forced_refresh()
         return snapshot
 

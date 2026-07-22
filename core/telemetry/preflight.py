@@ -17,8 +17,9 @@ from core.agent.providers.ollama_lifecycle import (
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.config import ENV_PATH, OLLAMA_ENABLED, is_dev_mode
-from core.connectors.models import CONNECTOR_NAMES
-from core.settings import get_settings_store
+from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
+from core.settings import RuntimeSettingsSnapshot, get_settings_store
+from core.telemetry.collector import enabled_connector_names
 from core.telemetry.models import (
     PreflightBlocker,
     PreflightBlockerCode,
@@ -71,6 +72,10 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
 
 _LOCAL_PROFILES = frozenset({"lynx", "acinonyx", "neofelis"})
 _CLOUD_PROFILES = frozenset({"comet", "nova", "pulsar"})
+_VALID_PROFILES = _LOCAL_PROFILES | _CLOUD_PROFILES
+_CONNECTOR_OPERATIONS = frozenset(
+    {"activate", "activate_with_briefing", "refresh_telemetry"}
+)
 
 
 def _warning(code: PreflightWarningCode) -> PreflightWarning:
@@ -100,24 +105,36 @@ def _network_warnings() -> list[PreflightWarning]:
     return []
 
 
-def _power_warnings(*, local_profile: bool) -> list[PreflightWarning]:
-    if not local_profile:
+def _power_warnings(*, cold_local_load: bool) -> list[PreflightWarning]:
+    if not cold_local_load:
         return []
     if scanner.get_power_state() == "battery":
         return [_warning("running_on_battery")]
     return []
 
 
-def _evaluate_local_profile_blockers(profile_key: str) -> list[PreflightBlocker]:
+def _loaded_model_matches(loaded_model: object, model_name: str) -> bool:
+    if not isinstance(loaded_model, dict):
+        return False
+    return (
+        loaded_model.get("name") == model_name
+        or loaded_model.get("model") == model_name
+    )
+
+
+def _evaluate_local_profile_blockers(
+    profile_key: str,
+) -> tuple[list[PreflightBlocker], bool]:
+    """Return local blockers and whether execution would require a cold load."""
     blockers: list[PreflightBlocker] = []
     profile = OLLAMA_MODEL_PROFILES.get(profile_key)
     if profile is None:
         blockers.append(_blocker("invalid_input", f"Unknown local profile: {profile_key!r}"))
-        return blockers
+        return blockers, False
 
     if not OLLAMA_ENABLED:
         blockers.append(_blocker("model_unreachable", "Local Ollama runtime is disabled."))
-        return blockers
+        return blockers, False
 
     if is_local_execution_active():
         blockers.append(_blocker("concurrent_local_execution"))
@@ -125,7 +142,7 @@ def _evaluate_local_profile_blockers(profile_key: str) -> list[PreflightBlocker]
     snapshot = get_status_snapshot()
     if not snapshot["reachable"]:
         blockers.append(_blocker("model_unreachable"))
-        return blockers
+        return blockers, False
     if profile.api_model not in snapshot["installed_tags"]:
         blockers.append(
             _blocker(
@@ -133,15 +150,25 @@ def _evaluate_local_profile_blockers(profile_key: str) -> list[PreflightBlocker]
                 f"Local model {profile.api_model!r} is not installed.",
             )
         )
-        return blockers
+        return blockers, False
 
-    allowed, gate_reason = check_resource_gate(profile.ram_limit, profile.cpu_limit)
-    if not allowed and gate_reason == "insufficient_ram":
-        blockers.append(_blocker("insufficient_ram"))
-    elif not allowed and gate_reason == "cpu_overloaded":
-        blockers.append(_blocker("cpu_overloaded"))
+    cold_load_required = not any(
+        _loaded_model_matches(loaded_model, profile.api_model)
+        for loaded_model in snapshot["loaded_models"]
+    )
 
-    return blockers
+    if cold_load_required:
+        allowed, gate_reason = check_resource_gate(
+            profile.ram_limit,
+            profile.cpu_limit,
+            vitals=snapshot["vitals"],
+        )
+        if not allowed and gate_reason == "insufficient_ram":
+            blockers.append(_blocker("insufficient_ram"))
+        elif not allowed and gate_reason == "cpu_overloaded":
+            blockers.append(_blocker("cpu_overloaded"))
+
+    return blockers, cold_load_required
 
 
 def _cloud_credential_blockers(*, involves_cloud: bool) -> list[PreflightBlocker]:
@@ -153,6 +180,51 @@ def _cloud_credential_blockers(*, involves_cloud: bool) -> list[PreflightBlocker
         _blocker(
             "missing_credentials",
             "Gemini API key is not configured for cloud operations.",
+        )
+    ]
+
+
+def _effective_connector_names(
+    request: PreflightRequest,
+    settings: RuntimeSettingsSnapshot | None,
+) -> set[str]:
+    """Resolve enabled connectors that the planned operation would collect."""
+    if settings is None or request.operation not in _CONNECTOR_OPERATIONS:
+        return set()
+
+    enabled = enabled_connector_names(
+        features=settings.features,
+        modules=settings.modules,
+    )
+    requested = set(request.connectors or CONNECTOR_NAMES)
+    return requested & enabled
+
+
+def _connector_credential_blockers(names: set[str]) -> list[PreflightBlocker]:
+    """Return one blocker describing missing configuration for requested connectors."""
+    missing: list[str] = []
+    if "weather" in names and (
+        not os.getenv("OPENWEATHER_API_KEY") or not os.getenv("TARGET_LOCATION")
+    ):
+        missing.append("weather")
+    if "news" in names and not os.getenv("GNEWS_API_KEY"):
+        missing.append("news")
+    if "football" in names and not os.getenv("FOOTBALL_API_KEY"):
+        missing.append("football")
+    if names & {"email", "calendar"}:
+        oauth_files = (
+            config.PROJECT_ROOT / "token.json",
+            config.PROJECT_ROOT / "credentials.json",
+        )
+        if not any(path.is_file() for path in oauth_files):
+            missing.extend(sorted(names & {"email", "calendar"}))
+
+    if not missing:
+        return []
+    return [
+        _blocker(
+            "missing_credentials",
+            f"Required connector configuration is missing for: {', '.join(missing)}.",
         )
     ]
 
@@ -171,8 +243,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     warnings: list[PreflightWarning] = []
     blockers: list[PreflightBlocker] = []
 
+    settings: RuntimeSettingsSnapshot | None = None
     try:
-        get_settings_store().get_snapshot()
+        settings = get_settings_store().get_snapshot()
     except Exception:
         _LOGGER.exception("Preflight configuration failure")
         blockers.append(_blocker("configuration_failure"))
@@ -185,21 +258,44 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         blockers.append(_blocker("database_failure"))
 
     profile = (request.synthesis_profile or "").strip() or None
+    if (
+        profile is None
+        and request.operation == "assistant_query"
+        and settings is not None
+    ):
+        profile = settings.assistant.default_profile
+    if profile is None and request.operation in {
+        "activate_with_briefing",
+        "generate_briefing",
+    }:
+        profile = "comet"
+
+    if profile is not None and profile not in _VALID_PROFILES:
+        blockers.append(
+            _blocker("invalid_input", f"Unknown synthesis profile: {profile!r}")
+        )
+
     local_profile = profile in _LOCAL_PROFILES
     cloud_profile = profile in _CLOUD_PROFILES if profile else False
     involves_cloud = bool(request.involves_cloud or cloud_profile)
-    if (
-        request.operation in {"activate_with_briefing", "generate_briefing"}
-        and profile is None
-    ):
-        involves_cloud = True
-
     if not is_dev_mode():
         warnings.extend(_network_warnings())
 
-    warnings.extend(_power_warnings(local_profile=local_profile))
+    cold_local_load = False
+    if local_profile and profile is not None:
+        local_blockers, cold_local_load = _evaluate_local_profile_blockers(profile)
+        blockers.extend(local_blockers)
 
-    if request.force and get_telemetry_service().had_forced_refresh_within_window():
+    warnings.extend(_power_warnings(cold_local_load=cold_local_load))
+
+    effective_connectors = _effective_connector_names(request, settings)
+    forced_external_refresh = bool(
+        request.force and effective_connectors & set(EXTERNAL_CONNECTOR_NAMES)
+    )
+    if (
+        forced_external_refresh
+        and get_telemetry_service().had_forced_refresh_within_window()
+    ):
         warnings.append(_warning("rapid_connector_refresh"))
 
     if involves_cloud and not request.cloud_disclosure_acknowledged:
@@ -209,9 +305,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         warnings.append(_warning("high_resource_local_profile"))
 
     blockers.extend(_cloud_credential_blockers(involves_cloud=involves_cloud))
-
-    if local_profile and profile is not None:
-        blockers.extend(_evaluate_local_profile_blockers(profile))
+    blockers.extend(_connector_credential_blockers(effective_connectors))
 
     if request.connectors:
         unknown = sorted(set(request.connectors) - set(CONNECTOR_NAMES))

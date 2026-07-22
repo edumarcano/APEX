@@ -318,7 +318,7 @@ Refresh one or more connectors and return the resulting complete snapshot.
 | Field | Type | Description |
 |---|---|---|
 | `connectors` | string[] \| null | Optional connector names. Omitted or empty refreshes all enabled connectors. |
-| `force` | boolean | When `false`, returns a snapshot younger than five minutes without new connector calls. When `true`, always collects and records a forced-refresh timestamp for rapid-refresh preflight warnings. |
+| `force` | boolean | When `false`, returns the current snapshot only when every requested enabled connector was observed within five minutes and disabled states still match runtime settings. When `true`, always collects; a forced external connector call records a timestamp for rapid-refresh preflight warnings. |
 
 Partial refresh merges into the prior snapshot. When a refreshed module returns `unavailable`, the previous healthy/degraded module content is retained as `stale`. Competing refreshes are not queued.
 
@@ -354,9 +354,9 @@ Advisory operational risk evaluation for a planned HUD or API operation. Returns
 
 **Advisory warning codes:** `outside_configured_network`, `network_trust_unknown`, `running_on_battery`, `rapid_connector_refresh`, `cloud_data_disclosure`, `high_resource_local_profile`.
 
-SSID comparison is configured-network policy, not proof of network security. Missing/unreadable SSID yields `network_trust_unknown`. Battery warnings apply only when a battery sensor reports on-battery (desktops with no sensor do not warn). `DEMO_MODE` returns an empty advisory result.
+SSID comparison is configured-network policy, not proof of network security. Missing/unreadable SSID yields `network_trust_unknown`. Battery warnings and RAM/CPU gates apply only before a cold local-model load; a matching resident model skips them. Rapid-refresh warnings apply only to forced enabled external connectors, not reminders-only reads. `DEMO_MODE` returns an empty advisory result.
 
-**Hard blocker codes (cannot be overridden by acknowledgement):** `missing_credentials`, `model_unreachable`, `model_not_installed`, `concurrent_local_execution`, `insufficient_ram`, `cpu_overloaded`, `database_failure`, `configuration_failure`, `invalid_input`, `model_load_failure`.
+**Hard blocker codes (cannot be overridden by acknowledgement):** `missing_credentials`, `model_unreachable`, `model_not_installed`, `concurrent_local_execution`, `insufficient_ram`, `cpu_overloaded`, `database_failure`, `configuration_failure`, `invalid_input`, `model_load_failure`. Credential evaluation covers Gemini plus enabled requested weather, news, football, Gmail, and Calendar connectors.
 
 **Response `200`** — `PreflightResponse`
 ```json
@@ -1047,9 +1047,9 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 
 | Variable | Default | Description |
 |---|---|---|
-| `DEV_MODE` | `false` | Bypasses scanner gate and run logging; Gmail/Calendar connectors still make live requests with content masked to `[HIDDEN]`; Gemini bypass depends on `DEV_AI_SYNTHESIS` |
+| `DEV_MODE` | `false` | Suppresses configured-network preflight warnings and production run logging; Gmail/Calendar connectors still make live requests with content masked to `[HIDDEN]`; Gemini bypass depends on `DEV_AI_SYNTHESIS` |
 | `DEMO_MODE` | `false` | Intercepts trigger; serves static mock telemetry |
-| `ENABLE_STARTUP_GATE` | `true` | When `false`, skips Wi-Fi/power/cooldown while keeping live APIs |
+| `ENABLE_STARTUP_GATE` | `true` | Compatibility setting for direct callers of `scanner.should_run()`; it does not gate API trigger or telemetry routes |
 | `DEV_AI_SYNTHESIS` | `raw` | Synthesis path when `DEV_MODE=true`: `raw`, `local` (local → raw), `cloud` (Gemini → local → raw) |
 | `DEV_TTS_PLAYBACK` | `pyttsx3` | TTS engine when `DEV_MODE=true`: `pyttsx3`, `google`, `kokoro` |
 | `DEMO_TTS` | `pyttsx3` | TTS engine when `DEMO_MODE=true`: `pyttsx3`, `google`, `kokoro` |

@@ -20,6 +20,10 @@ CONNECTOR_NAMES = (
     "reminders",
 )
 
+EXTERNAL_CONNECTOR_NAMES = tuple(
+    name for name in CONNECTOR_NAMES if name != "reminders"
+)
+
 
 def utc_now_iso() -> str:
     """Return a timezone-aware UTC ISO-8601 timestamp."""

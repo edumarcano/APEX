@@ -13,6 +13,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from core.connectors.models import ConnectorResult, utc_now_iso
+from core.settings.models import SettingsPatch
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
 from core.telemetry.models import FRESHNESS_WINDOW_SECONDS, PreflightRequest
 from core.telemetry.service import reset_telemetry_service_for_tests
@@ -30,13 +31,14 @@ def _result(
     reason_code: str = "ok",
     freshness: str = "live",
     display_text: str | None = None,
+    observed_at: str | None = None,
 ) -> ConnectorResult:
     return ConnectorResult(
         name=name,
         status=status,  # type: ignore[arg-type]
         freshness=freshness,  # type: ignore[arg-type]
         reason_code=reason_code,
-        observed_at=utc_now_iso(),
+        observed_at=observed_at or utc_now_iso(),
         display_text=display_text or f"{name}:{status}",
         data={"marker": name},
     )
@@ -67,6 +69,35 @@ class SnapshotStoreUnitTests(unittest.TestCase):
         self.assertEqual(weather.display_text, "72 clear")
         self.assertEqual(weather.reason_code, "network_error")
         self.assertEqual(merged.modules["news"].status, "healthy")
+
+    def test_partial_failure_replaces_prior_degraded_reason(self) -> None:
+        prior = build_snapshot_from_results(
+            {
+                "news": _result(
+                    "news",
+                    "degraded",
+                    reason_code="partial_payload",
+                    display_text="keep-me",
+                )
+            }
+        )
+        merged = build_snapshot_from_results(
+            {
+                "news": _result(
+                    "news",
+                    "unavailable",
+                    reason_code="network_error",
+                    display_text="",
+                )
+            },
+            prior=prior,
+        )
+
+        news = merged.modules["news"]
+        self.assertEqual(news.status, "degraded")
+        self.assertEqual(news.freshness, "stale")
+        self.assertEqual(news.display_text, "keep-me")
+        self.assertEqual(news.reason_code, "network_error")
 
     def test_disabled_excluded_from_sync_health_denominator(self) -> None:
         from core.connectors.scoring import compute_sync_health
@@ -228,6 +259,62 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertNotEqual(first.json()["snapshot_id"], second.json()["snapshot_id"])
         self.assertEqual(collect_weather.call_count, 2)
 
+    def test_partial_refresh_does_not_make_old_modules_fresh(self) -> None:
+        old_observation = (
+            datetime.now(timezone.utc)
+            - timedelta(seconds=FRESHNESS_WINDOW_SECONDS + 1)
+        ).isoformat()
+        weather = _result("weather", "healthy")
+        old_news = _result("news", "healthy", observed_at=old_observation)
+        reminders = _result("reminders", "healthy")
+        collect_weather = mock.Mock(return_value=weather)
+        collect_news = mock.Mock(return_value=old_news)
+
+        with mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather",
+            collect_weather,
+        ), mock.patch(
+            "core.telemetry.collector.news_client.collect_news",
+            collect_news,
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=reminders,
+        ):
+            seed = self.client.post("/api/v1/telemetry/refresh", json={"force": True})
+            partial = self.client.post(
+                "/api/v1/telemetry/refresh",
+                json={"connectors": ["weather"], "force": True},
+            )
+            refreshed = self.client.post("/api/v1/telemetry/refresh", json={})
+
+        self.assertEqual(seed.status_code, 200)
+        self.assertEqual(partial.status_code, 200)
+        self.assertEqual(refreshed.status_code, 200)
+        self.assertEqual(collect_news.call_count, 2)
+
+    def test_setting_change_replaces_cached_connector_with_disabled_state(self) -> None:
+        collect_weather = mock.Mock(return_value=_result("weather", "healthy"))
+        with mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather",
+            collect_weather,
+        ), mock.patch(
+            "core.telemetry.collector.news_client.collect_news",
+            return_value=_result("news", "healthy"),
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=_result("reminders", "healthy"),
+        ):
+            seeded = self.client.post("/api/v1/telemetry/refresh", json={"force": True})
+            self.store.apply_patch(
+                SettingsPatch.model_validate({"features": {"weather": False}})
+            )
+            refreshed = self.client.post("/api/v1/telemetry/refresh", json={})
+
+        self.assertEqual(seeded.status_code, 200)
+        self.assertEqual(refreshed.status_code, 200)
+        self.assertEqual(refreshed.json()["modules"]["weather"]["status"], "disabled")
+        self.assertEqual(collect_weather.call_count, 1)
+
     def test_partial_refresh_merge_and_retain_on_failure(self) -> None:
         weather = _result("weather", "healthy", display_text="keep-me")
         news = _result("news", "healthy")
@@ -301,6 +388,34 @@ class TelemetryApiTests(unittest.TestCase):
 
         self.assertIn(409, results)
         self.assertIn(200, results)
+
+    def test_invalid_connector_rejected_before_freshness_shortcut(self) -> None:
+        with mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather",
+            return_value=_result("weather", "healthy"),
+        ), mock.patch(
+            "core.telemetry.collector.news_client.collect_news",
+            return_value=_result("news", "healthy"),
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=_result("reminders", "healthy"),
+        ):
+            seed = self.client.post("/api/v1/telemetry/refresh", json={"force": True})
+        self.assertEqual(seed.status_code, 200)
+
+        response = self.client.post(
+            "/api/v1/telemetry/refresh",
+            json={"connectors": ["not_a_connector"]},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_connector_rejected_in_demo_mode(self) -> None:
+        with mock.patch("core.telemetry.service.config.DEMO_MODE", True):
+            response = self.client.post(
+                "/api/v1/telemetry/refresh",
+                json={"connectors": ["not_a_connector"]},
+            )
+        self.assertEqual(response.status_code, 400)
 
     def test_demo_mode_static_snapshot_no_connectors(self) -> None:
         collect_weather = mock.Mock()
@@ -402,6 +517,110 @@ class TelemetryApiTests(unittest.TestCase):
             )
         codes = {item["code"] for item in response.json()["warnings"]}
         self.assertNotIn("rapid_connector_refresh", codes)
+
+    def test_preflight_does_not_warn_for_forced_local_or_non_refresh_work(self) -> None:
+        from core.telemetry.service import get_telemetry_service
+
+        get_telemetry_service().store.mark_forced_refresh(datetime.now(timezone.utc))
+        with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
+            "core.telemetry.preflight.config.DEMO_MODE", False
+        ):
+            reminders = self.client.post(
+                "/api/v1/preflight",
+                json={
+                    "operation": "refresh_telemetry",
+                    "connectors": ["reminders"],
+                    "force": True,
+                },
+            )
+            briefing = self.client.post(
+                "/api/v1/preflight",
+                json={"operation": "generate_briefing", "force": True},
+            )
+
+        reminder_codes = {item["code"] for item in reminders.json()["warnings"]}
+        briefing_codes = {item["code"] for item in briefing.json()["warnings"]}
+        self.assertNotIn("rapid_connector_refresh", reminder_codes)
+        self.assertNotIn("rapid_connector_refresh", briefing_codes)
+
+    def test_forced_reminders_refresh_does_not_start_rapid_refresh_window(self) -> None:
+        from core.telemetry.service import get_telemetry_service
+
+        with mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=_result("reminders", "healthy"),
+        ):
+            response = self.client.post(
+                "/api/v1/telemetry/refresh",
+                json={"connectors": ["reminders"], "force": True},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(get_telemetry_service().had_forced_refresh_within_window())
+
+    def test_preflight_loaded_local_model_skips_cold_load_checks(self) -> None:
+        local_snapshot = {
+            "reachable": True,
+            "installed_tags": ["qwen3:1.7b"],
+            "loaded_models": [{"name": "qwen3:1.7b", "model": "qwen3:1.7b"}],
+            "vitals": {"ram": 99.0, "cpu": 99.0},
+            "sampled_at": 0.0,
+        }
+        with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
+            "core.telemetry.preflight.config.DEMO_MODE", False
+        ), mock.patch(
+            "core.telemetry.preflight.OLLAMA_ENABLED", True
+        ), mock.patch(
+            "core.telemetry.preflight.is_local_execution_active", return_value=False
+        ), mock.patch(
+            "core.telemetry.preflight.get_status_snapshot", return_value=local_snapshot
+        ), mock.patch(
+            "core.telemetry.preflight.check_resource_gate"
+        ) as resource_gate, mock.patch(
+            "core.scanner.get_power_state", return_value="battery"
+        ):
+            response = self.client.post(
+                "/api/v1/preflight",
+                json={"operation": "assistant_query", "synthesis_profile": "lynx"},
+            )
+
+        payload = response.json()
+        self.assertTrue(payload["can_proceed"])
+        self.assertNotIn("running_on_battery", {item["code"] for item in payload["warnings"]})
+        resource_gate.assert_not_called()
+
+    def test_preflight_blocks_missing_connector_credentials(self) -> None:
+        with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
+            "core.telemetry.preflight.config.DEMO_MODE", False
+        ), mock.patch.dict(
+            "os.environ",
+            {"OPENWEATHER_API_KEY": "", "TARGET_LOCATION": ""},
+            clear=False,
+        ):
+            response = self.client.post(
+                "/api/v1/preflight",
+                json={
+                    "operation": "refresh_telemetry",
+                    "connectors": ["weather"],
+                },
+            )
+
+        payload = response.json()
+        self.assertFalse(payload["can_proceed"])
+        self.assertIn("missing_credentials", {item["code"] for item in payload["blockers"]})
+
+    def test_preflight_rejects_unknown_synthesis_profile(self) -> None:
+        with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
+            "core.telemetry.preflight.config.DEMO_MODE", False
+        ):
+            response = self.client.post(
+                "/api/v1/preflight",
+                json={"operation": "assistant_query", "synthesis_profile": "unknown"},
+            )
+
+        payload = response.json()
+        self.assertFalse(payload["can_proceed"])
+        self.assertIn("invalid_input", {item["code"] for item in payload["blockers"]})
 
     def test_preflight_hard_blocker_not_overridable(self) -> None:
         def _getenv(key: str, default: object = None) -> object:
