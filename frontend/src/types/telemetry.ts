@@ -81,6 +81,7 @@ export type AssistantProfile =
 
 export type ProfileAvailabilityStatus =
   | 'available'
+  | 'busy'
   | 'unknown'
   | 'disabled'
   | 'ollama_unreachable'

@@ -20,22 +20,27 @@ import { ApexLogo } from './components/ApexLogo'
 import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
 import { ConsoleTray } from './components/ConsoleTray'
-import { CommandTrigger } from './components/CommandTrigger'
 import { BriefingDigest } from './components/BriefingDigest'
 import { MarketTickerCard } from './components/MarketTickerCard'
+import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import SettingsPanel from './components/SettingsPanel'
+import { StandbyActions } from './components/StandbyActions'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
-import { TelemetryCard, type TelemetryLedState } from './components/TelemetryCard'
+import { TelemetryCard } from './components/TelemetryCard'
 import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
 import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
+import { useAppActivation } from './hooks/useAppActivation'
+import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useMarketData } from './hooks/useMarketData'
+import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
-import {
-  resolveAttentionStaggerMs,
-  resolveAttentionTier,
-} from './lib/attentionTier'
+import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
+import { API_ENDPOINTS } from './lib/api'
+import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
+import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
+import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import type { AssistantProfile } from './types/telemetry'
 import type { SettingsResponse } from './types/settings'
 
@@ -140,20 +145,6 @@ function parseCalendarTelemetry(
   return { count: items.length, items }
 }
 
-function isBusy(status: 'idle' | 'loading' | 'success' | 'error'): boolean {
-  return status === 'idle' || status === 'loading'
-}
-
-/** Mirrors the unified pipeline status into a compact per-card status LED. */
-function resolveTelemetryLedState(
-  status: 'idle' | 'loading' | 'success' | 'error',
-): TelemetryLedState {
-  if (status === 'error') return 'error'
-  if (isBusy(status)) return 'loading'
-  if (status === 'success') return 'live'
-  return 'stale'
-}
-
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
   'comet',
   'nova',
@@ -178,33 +169,26 @@ export default function App(): ReactElement {
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
   const {
-    data,
-    status,
-    error,
-    pipelineState,
-    isSpeaking,
     activeReminders,
     demoModeActive,
     devModeActive,
-    confidenceScore,
-    failedConnectors,
-    connectorHealth,
-    active_tts_engine,
-    system_load_throttled,
     askApexEnabled,
     marketEnabled,
-    synthesisProvider,
-    synthesisProfile,
-    synthesisFallbackReason,
     defaultProfile,
+    synthesisStrategy: configuredSynthesisStrategy,
+    synthesisProfile: configuredSynthesisProfile,
     refreshReminders,
     markReminderAsRead,
-    triggerSynthesis,
     applyBootSettings,
   } = apexData
   const { data: marketData, isLoading: isMarketLoading } = useMarketData(marketEnabled)
 
-  const showAskApexBar = status === 'success' && askApexEnabled
+  const { activated, activate } = useAppActivation()
+  const preflight = usePreflight()
+  const telemetry = useTelemetrySnapshot()
+  const briefing = useBriefingPipeline()
+
+  const showAskApexBar = activated && Boolean(askApexEnabled)
 
   const {
     assistantHistory,
@@ -217,7 +201,6 @@ export default function App(): ReactElement {
     queryAssistant,
     unloadLocalModel,
     clearAssistantChat,
-    resetAssistantSession,
     setAssistantOpen,
   } = useApexAssistant(true)
 
@@ -243,18 +226,17 @@ export default function App(): ReactElement {
     [applyBootSettings],
   )
 
+  const { pipelineState, isSpeaking, active_tts_engine, system_load_throttled } = briefing
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
-  const resolvedSynthesisProvider = liveSynthesis?.provider ?? synthesisProvider
-  const resolvedSynthesisProfile = liveSynthesis?.profile ?? synthesisProfile
-  const resolvedSynthesisReason = liveSynthesis?.fallback_reason ?? synthesisFallbackReason
+  const resolvedSynthesisProvider = liveSynthesis?.provider ?? briefing.synthesisProvider
+  const resolvedSynthesisProfile = liveSynthesis?.profile ?? briefing.synthesisProfile
+  const resolvedSynthesisReason = liveSynthesis?.fallback_reason ?? briefing.synthesisFallbackReason
 
   const activeStep = pipelineState?.step ?? null
-  const isProcessing =
-    status === 'loading' ||
-    (activeStep !== null && activeStep >= 1 && activeStep <= 3)
+  const isBriefingRunning = briefing.status === 'loading'
 
   const loadingLocalProfile = useMemo(
     () => profilesStatus.find((profile) => profile.loading) ?? null,
@@ -276,7 +258,7 @@ export default function App(): ReactElement {
     (liveSynthesis?.profile ? `Apex ${liveSynthesis.profile}` : null)
 
   const glowColor = useMemo((): string => {
-    if (status === 'error') {
+    if (briefing.status === 'error') {
       return '220, 38, 38' // Red
     }
     if (isLocalModelLoading) {
@@ -288,34 +270,35 @@ export default function App(): ReactElement {
     if (activeStep === 4) {
       return '251, 191, 36' // Gold
     }
-    if (status === 'success' && !isSpeaking) {
+    if (briefing.status === 'success' && !isSpeaking) {
       return isLocalModelLoaded ? '249, 115, 22' : '15, 77, 184'
     }
     if (activeStep === 3) {
       return '168, 85, 247' // Purple/magenta (logo accent)
     }
-    if (status === 'loading' || activeStep === 1 || activeStep === 2) {
+    if (isBriefingRunning || activeStep === 1 || activeStep === 2) {
       return '57, 255, 136' // Green
     }
     if (isLocalModelLoaded) {
       return '249, 115, 22' // Rust orange (local model loaded)
     }
+    if (activated) {
+      return '15, 77, 184' // Calm blue — activated overview, no briefing/error state
+    }
     return '15, 23, 42' // Deep Slate Blue
   }, [
-    status,
+    briefing.status,
     activeStep,
     isSpeaking,
     isLocalModelLoading,
     isAssistantQuerying,
     isLocalModelLoaded,
+    isBriefingRunning,
+    activated,
   ])
 
-  const hasSuccessfulData = status === 'success' && Boolean(data)
-  const isTriggerLoading = status === 'loading'
-  const showCommandTrigger = status === 'idle'
-  const isTriggerDisabled = isProcessing
   const pendingReminderCount = activeReminders.length
-  const isDormant = status === 'idle'
+  const isDormant = !activated
   // Expanded assistant sessions become a right rail on desktop. Smaller
   // and height-constrained viewports keep the existing bottom tray behavior.
   const useRightRailConsole = isShowcaseDesktop
@@ -378,9 +361,40 @@ export default function App(): ReactElement {
     }
   }, [])
 
+  const handleStartApex = useCallback(async (): Promise<void> => {
+    const resolution = await preflight.requestOperation('activate')
+    if (resolution !== 'proceed') {
+      return
+    }
+
+    activate()
+    void telemetry.refreshAll({ force: false })
+    void fetch(API_ENDPOINTS.voiceSpeak, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'APEX online. Ready for operations.' }),
+    }).catch(() => {
+      // Activation voice cue is best-effort; ignore delivery failures.
+    })
+  }, [preflight, activate, telemetry])
+
+  const handleStartWithBriefing = useCallback(async (): Promise<void> => {
+    const resolution = await preflight.requestOperation('activate_with_briefing', {
+      synthesis_profile: configuredSynthesisProfile,
+      involves_cloud: configuredSynthesisStrategy === 'cloud',
+    })
+    if (resolution !== 'proceed') {
+      return
+    }
+
+    activate()
+    await briefing.triggerSynthesis()
+    void telemetry.loadLatest()
+  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, activate, briefing, telemetry])
+
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
-      if (status !== 'idle') {
+      if (activated || preflight.dialogOpen || preflight.isChecking) {
         return
       }
 
@@ -395,6 +409,7 @@ export default function App(): ReactElement {
 
       const tagName = target.tagName
       if (
+        target.closest('button, a, select, [role="button"], [role="dialog"]') !== null ||
         tagName === 'INPUT' ||
         tagName === 'TEXTAREA' ||
         target.isContentEditable
@@ -402,17 +417,40 @@ export default function App(): ReactElement {
         return
       }
 
-      resetAssistantSession()
-      void triggerSynthesis()
+      void handleStartApex()
     }
 
     window.addEventListener('keydown', handleGlobalEnter)
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [status, triggerSynthesis, resetAssistantSession])
+  }, [activated, handleStartApex, preflight.dialogOpen, preflight.isChecking])
 
-  const cardLedState = resolveTelemetryLedState(status)
+  const isRefreshingAll = telemetry.isRefreshingAll
+  const isTelemetryCollecting = isRefreshingAll || telemetry.refreshingConnectors.size > 0
+  const hasSnapshot = telemetry.snapshot !== null
+  const isConnectorRefreshing = useCallback(
+    (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
+    [isRefreshingAll, telemetry.refreshingConnectors],
+  )
+  const handleRefreshConnector = useCallback(
+    (name: string): void => {
+      void telemetry.refreshConnector(name)
+    },
+    [telemetry],
+  )
+  const handleRefreshAll = useCallback((): void => {
+    void telemetry.refreshAll({ force: false })
+  }, [telemetry])
+
+  const weatherModule = telemetry.snapshot?.modules.weather
+  const newsModule = telemetry.snapshot?.modules.news
+  const emailModule = telemetry.snapshot?.modules.email
+  const calendarModule = telemetry.snapshot?.modules.calendar
+  const f1Module = telemetry.snapshot?.modules.f1
+  const footballModule = telemetry.snapshot?.modules.football
+  const remindersModule = telemetry.snapshot?.modules.reminders
+
   const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
   const weatherPanelLayoutClass = useRightRailConsole
     ? 'xl:flex-[0.5_1_0] xl:min-h-0'
@@ -429,18 +467,24 @@ export default function App(): ReactElement {
       ? 'flex-none xl:flex-1 xl:min-h-0'
       : 'hud-panel-natural min-h-[10rem]'
 
-  const attentionTiers = useMemo(
-    () => ({
-      reminders: resolveAttentionTier('reminders', activeStep, status),
-      weather: resolveAttentionTier('weather', activeStep, status),
-      news: resolveAttentionTier('news', activeStep, status),
-      events: resolveAttentionTier('events', activeStep, status),
-      market: resolveAttentionTier('market', activeStep, status),
-      inbox: resolveAttentionTier('inbox', activeStep, status),
-      insights: resolveAttentionTier('insights', activeStep, status),
-    }),
-    [activeStep, status],
-  )
+  const attentionTiers = useMemo(() => {
+    const options = {
+      activated,
+      isRefreshing: isRefreshingAll,
+      hasSnapshot,
+      briefingStatus: briefing.status,
+      briefingStep: briefing.pipelineState?.step ?? null,
+    }
+    return {
+      reminders: resolveTelemetryAttentionTier('reminders', options),
+      weather: resolveTelemetryAttentionTier('weather', options),
+      news: resolveTelemetryAttentionTier('news', options),
+      events: resolveTelemetryAttentionTier('events', options),
+      market: resolveTelemetryAttentionTier('market', options),
+      inbox: resolveTelemetryAttentionTier('inbox', options),
+      insights: resolveTelemetryAttentionTier('insights', options),
+    }
+  }, [activated, isRefreshingAll, hasSnapshot, briefing.status, briefing.pipelineState?.step])
 
   const attentionStagger = useMemo(
     () => ({
@@ -455,19 +499,49 @@ export default function App(): ReactElement {
     [],
   )
 
+  const weatherRefreshing = isConnectorRefreshing('weather')
+  const newsRefreshing = isConnectorRefreshing('news')
+  const emailRefreshing = isConnectorRefreshing('email')
+  const calendarRefreshing = isConnectorRefreshing('calendar')
+  const f1Refreshing = isConnectorRefreshing('f1')
+  const footballRefreshing = isConnectorRefreshing('football')
+  const remindersRefreshing = isConnectorRefreshing('reminders')
+
+  const weatherLedState = resolveModuleLedState(weatherModule, weatherRefreshing)
+  const newsLedState = resolveModuleLedState(newsModule, newsRefreshing)
+  const emailLedState = resolveModuleLedState(emailModule, emailRefreshing)
+  const calendarLedState = resolveModuleLedState(calendarModule, calendarRefreshing)
+  const weatherStatusMessage = moduleReasonLabel(weatherModule)
+  const newsStatusMessage = moduleReasonLabel(newsModule)
+  const emailStatusMessage = moduleReasonLabel(emailModule)
+  const remindersStatusMessage = moduleReasonLabel(remindersModule)
+  const eventsStatusMessage = [
+    ['Calendar', calendarModule] as const,
+    ['F1', f1Module] as const,
+    ['Football', footballModule] as const,
+  ]
+    .map(([label, module]) => {
+      const reason = moduleReasonLabel(module)
+      return reason ? `${label}: ${reason}` : null
+    })
+    .filter((value): value is string => value !== null)
+    .join(' · ') || null
+
+  const weatherInfo = weatherModule
+    ? resolveWeatherFromModule(weatherModule)
+    : { temperatureF: null, detail: '', condition: null }
   const weatherBody = (() => {
-    if (hasSuccessfulData) {
-      const detail = data?.weatherDetail?.trim() ?? ''
-      return detail.length > 0 ? detail : 'No weather data.'
+    const detail = weatherInfo.detail.trim()
+    if (detail.length > 0) {
+      return detail
     }
-    if (isBusy(status)) {
+    if (weatherRefreshing) {
       return 'Loading weather…'
     }
-    return error ?? 'Weather unavailable.'
+    return 'Weather unavailable.'
   })()
 
-  const primaryTemperatureF =
-    hasSuccessfulData && data?.temperatureF != null ? data.temperatureF : null
+  const primaryTemperatureF = weatherInfo.temperatureF
 
   const handleMarkReminderRead = (id: number): void => {
     void markReminderAsRead(id)
@@ -477,20 +551,36 @@ export default function App(): ReactElement {
     setReminderPulseCount((prev) => prev + 1)
   }
 
-  const handleTriggerSynthesis = useCallback((): void => {
-    resetAssistantSession()
-    void triggerSynthesis()
-  }, [resetAssistantSession, triggerSynthesis])
+  const handleGenerateBriefing = useCallback(async (): Promise<void> => {
+    const resolution = await preflight.requestOperation('generate_briefing', {
+      synthesis_profile: configuredSynthesisProfile,
+      involves_cloud: configuredSynthesisStrategy === 'cloud',
+    })
+    if (resolution !== 'proceed') {
+      return
+    }
+    await briefing.triggerSynthesis()
+    void telemetry.loadLatest()
+  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, briefing, telemetry])
 
-  const f1ScheduleTelemetryText = data?.sports?.trim() ?? ''
-  const emailInfo = parseEmailTelemetry(data?.email ?? '')
-  const newsItems = parseNewsTelemetry(data?.news ?? '')
-  const calendarInfo = parseCalendarTelemetry(data?.calendar ?? '')
+  const logoStatus =
+    !activated
+      ? 'idle'
+      : briefing.status === 'loading' || briefing.status === 'error' || briefing.status === 'success'
+        ? briefing.status
+        : isRefreshingAll
+          ? 'loading'
+          : 'success'
+
+  const f1ScheduleTelemetryText = f1Module?.display_text?.trim() ?? ''
+  const emailInfo = parseEmailTelemetry(emailModule?.display_text ?? '')
+  const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
+  const calendarInfo = parseCalendarTelemetry(calendarModule?.display_text ?? '')
 
   // Shared insight list for the BriefingDigest panel.
   const combinedInsights = [
-    ...(data?.activeReminders ?? []).map((r) => `Reminder: ${r.note}`),
-    ...(data?.digest?.insights ?? []),
+    ...activeReminders.map((r) => `Reminder: ${r.note}`),
+    ...briefing.insights,
   ]
 
   const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
@@ -498,15 +588,30 @@ export default function App(): ReactElement {
     primaryTemperatureF != null && weatherBody.trim().length > 0
       ? `${primaryTemperatureF}°, ${weatherBody}`
       : weatherCompactValue
-  const eventsCompactValue =
-    status === 'success'
-      ? calendarInfo.count > 0
-        ? `${calendarInfo.count} events`
-        : 'No events'
-      : null
-  const inboxCompactValue = status === 'success' ? `${emailInfo.count} unread` : null
-  const newsCompactValue = status === 'success' ? `${newsItems.length} headlines` : null
+  const eventsCompactValue = hasSnapshot
+    ? calendarInfo.count > 0
+      ? `${calendarInfo.count} events`
+      : 'No events'
+    : null
+  const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
+  const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
+  const queryAssistantWithContext = useCallback(
+    async (prompt: string, profile: AssistantProfile): Promise<void> => {
+      const resolution = await preflight.requestOperation('assistant_query', {
+        synthesis_profile: profile,
+        involves_cloud: profile === 'comet' || profile === 'nova' || profile === 'pulsar',
+      })
+      if (resolution !== 'proceed') {
+        return
+      }
+      await queryAssistant(prompt, profile, {
+        snapshotId: telemetry.snapshot?.snapshot_id ?? null,
+      })
+    },
+    [preflight, queryAssistant, telemetry.snapshot?.snapshot_id],
+  )
+
   const consoleTrayProps = {
     isExpanded: isAssistantOpen,
     setExpanded: setAssistantOpen,
@@ -518,7 +623,7 @@ export default function App(): ReactElement {
     assistantError,
     profilesStatus,
     profilesStatusHydrated,
-    queryAssistant,
+    queryAssistant: queryAssistantWithContext,
     clearAssistantChat,
     activeProfile: agentProfile,
     setActiveProfile: setAgentProfile,
@@ -555,10 +660,10 @@ export default function App(): ReactElement {
           <SystemDiagnostics
             diagnostics={diagnostics}
             diagnosticsStatus={diagnosticsStatus}
-            status={status}
-            confidenceScore={confidenceScore}
-            failedConnectors={failedConnectors}
-            connectorHealth={connectorHealth}
+            status={briefing.status === 'idle' && activated ? (hasSnapshot ? 'success' : isRefreshingAll ? 'loading' : 'idle') : briefing.status}
+            confidenceScore={telemetry.snapshot?.sync_health_score ?? briefing.confidenceScore}
+            failedConnectors={telemetry.snapshot?.failed_connectors ?? briefing.failedConnectors}
+            connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
             synthesisProvider={resolvedSynthesisProvider}
@@ -573,14 +678,14 @@ export default function App(): ReactElement {
           open={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           restoreFocusRef={settingsButtonRef}
-          status={status}
+          status={briefing.status}
           pipelineStep={activeStep}
           isSpeaking={isSpeaking}
           isAssistantQuerying={isAssistantQuerying}
           profilesStatus={profilesStatus}
           profilesStatusHydrated={profilesStatusHydrated}
-          failedConnectors={failedConnectors}
-          hasBriefingEvidence={status === 'success' || status === 'error'}
+          failedConnectors={briefing.failedConnectors}
+          hasBriefingEvidence={briefing.status === 'success' || briefing.status === 'error'}
           onApplied={handleSettingsApplied}
         />
 
@@ -596,8 +701,11 @@ export default function App(): ReactElement {
                       title="Weather"
                       icon={CloudSun}
                       primaryTemperatureF={primaryTemperatureF}
-                      weatherCondition={data?.weatherCondition}
-                      ledState={cardLedState}
+                      weatherCondition={weatherInfo.condition}
+                      ledState={weatherLedState}
+                      onRefresh={() => handleRefreshConnector('weather')}
+                      refreshDisabled={isRefreshingAll}
+                      statusMessage={weatherStatusMessage}
                       isCompact
                       compactValue={weatherConditionCompactValue}
                       attentionTier={attentionTiers.weather}
@@ -613,19 +721,25 @@ export default function App(): ReactElement {
                       title="Events"
                       icon={Calendar}
                       f1TelemetryText={f1ScheduleTelemetryText}
-                      ledState={cardLedState}
+                      ledState={calendarLedState}
+                      refreshActions={[
+                        { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
+                        { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
+                        { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
+                      ]}
+                      statusMessage={eventsStatusMessage}
                       compactValue={eventsCompactValue}
                       attentionTier={attentionTiers.events}
                       attentionStaggerMs={attentionStagger.events}
                       className="hidden min-h-0 xl:flex xl:flex-[2.05_1_0]"
                     >
-                      {isBusy(status) ? (
+                      {calendarRefreshing && !hasSnapshot ? (
                         <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                           Loading schedule…
                         </p>
                       ) : (
                         <>
-                          {status === 'success' && calendarInfo.count > 0 && (
+                          {calendarInfo.count > 0 && (
                             <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
                               {calendarInfo.count} Upcoming
                             </p>
@@ -651,13 +765,13 @@ export default function App(): ReactElement {
                                 </li>
                               ))}
                             </ul>
-                          ) : status === 'success' ? (
+                          ) : hasSnapshot ? (
                             <p className="text-sm text-[color:var(--hud-muted-text)]">
                               No upcoming events.
                             </p>
                           ) : (
                             <p className="text-sm text-[color:var(--hud-muted-text)]">
-                              {error ?? 'Schedule unavailable.'}
+                              Schedule unavailable.
                             </p>
                           )}
                         </>
@@ -667,13 +781,16 @@ export default function App(): ReactElement {
                     <TelemetryCard
                       title="Inbox"
                       icon={Mail}
-                      ledState={cardLedState}
+                      ledState={emailLedState}
+                      onRefresh={() => handleRefreshConnector('email')}
+                      refreshDisabled={isRefreshingAll}
+                      statusMessage={emailStatusMessage}
                       compactValue={inboxCompactValue}
                       attentionTier={attentionTiers.inbox}
                       attentionStaggerMs={attentionStagger.inbox}
                       className="hidden min-h-0 xl:flex xl:flex-[1.2_1_0]"
                     >
-                      {isBusy(status) ? (
+                      {emailRefreshing && !hasSnapshot ? (
                         <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                           Loading inbox...
                         </p>
@@ -698,7 +815,7 @@ export default function App(): ReactElement {
                         </ul>
                       ) : (
                         <p className="text-sm text-[color:var(--hud-muted-text)]">
-                          {status === 'success' ? 'No unread emails.' : error ?? 'Inbox unavailable.'}
+                          {hasSnapshot ? 'No unread emails.' : 'Inbox unavailable.'}
                         </p>
                       )}
                     </TelemetryCard>
@@ -706,7 +823,10 @@ export default function App(): ReactElement {
                     <TelemetryCard
                       title="News Wire"
                       icon={Newspaper}
-                      ledState={cardLedState}
+                      ledState={newsLedState}
+                      onRefresh={() => handleRefreshConnector('news')}
+                      refreshDisabled={isRefreshingAll}
+                      statusMessage={newsStatusMessage}
                       isCompact
                       compactValue={newsCompactValue}
                       attentionTier={attentionTiers.news}
@@ -714,7 +834,7 @@ export default function App(): ReactElement {
                       className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
                     >
                       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {newsItems[0]?.headline ?? (status === 'success' ? 'No news headlines available.' : error ?? 'News unavailable.')}
+                        {newsItems[0]?.headline ?? (hasSnapshot ? 'No news headlines available.' : 'News unavailable.')}
                       </p>
                     </TelemetryCard>
 
@@ -734,8 +854,11 @@ export default function App(): ReactElement {
                   title="Weather"
                   icon={CloudSun}
                   primaryTemperatureF={primaryTemperatureF}
-                  weatherCondition={data?.weatherCondition}
-                  ledState={cardLedState}
+                  weatherCondition={weatherInfo.condition}
+                  ledState={weatherLedState}
+                  onRefresh={() => handleRefreshConnector('weather')}
+                  refreshDisabled={isRefreshingAll}
+                  statusMessage={weatherStatusMessage}
                   isCompact={isConsoleCompact}
                   compactValue={weatherBody}
                   attentionTier={attentionTiers.weather}
@@ -751,20 +874,26 @@ export default function App(): ReactElement {
                   title="Events"
                   icon={Calendar}
                   f1TelemetryText={f1ScheduleTelemetryText}
-                  ledState={cardLedState}
+                  ledState={calendarLedState}
+                  refreshActions={[
+                    { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
+                    { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
+                    { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
+                  ]}
+                  statusMessage={eventsStatusMessage}
                   isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
                   attentionTier={attentionTiers.events}
                   attentionStaggerMs={attentionStagger.events}
                   className={`min-h-0 ${eventsPanelLayoutClass}`}
                 >
-                  {isBusy(status) ? (
+                  {calendarRefreshing && !hasSnapshot ? (
                     <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                       Loading schedule…
                     </p>
                   ) : (
                     <>
-                      {status === 'success' && calendarInfo.count > 0 && (
+                      {calendarInfo.count > 0 && (
                         <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
                           {calendarInfo.count} Upcoming
                         </p>
@@ -790,13 +919,13 @@ export default function App(): ReactElement {
                             </li>
                           ))}
                         </ul>
-                      ) : status === 'success' ? (
+                      ) : hasSnapshot ? (
                         <p className="text-sm text-[color:var(--hud-muted-text)]">
                           No upcoming events.
                         </p>
                       ) : (
                         <p className="text-sm text-[color:var(--hud-muted-text)]">
-                          {error ?? 'Schedule unavailable.'}
+                          Schedule unavailable.
                         </p>
                       )}
                     </>
@@ -829,9 +958,12 @@ export default function App(): ReactElement {
               <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
                   insights={combinedInsights}
-                  briefingText={data?.briefing ?? ''}
-                  status={status}
-                  isLoading={isTriggerLoading}
+                  briefingText={briefing.briefing}
+                  status={briefing.status}
+                  activated={activated}
+                  isLoading={briefing.status === 'loading'}
+                  onGenerateBriefing={handleGenerateBriefing}
+                  generateDisabled={isBriefingRunning}
                   attentionTier={attentionTiers.insights}
                   attentionStaggerMs={attentionStagger.insights}
                   className="w-full h-full min-h-0"
@@ -845,12 +977,13 @@ export default function App(): ReactElement {
                   >
                     <ApexLogo
                       step={activeStep}
-                      status={status}
+                      status={logoStatus}
                       isSpeaking={isSpeaking}
                       reminderPulseCount={reminderPulseCount}
                       isAssistantQuerying={isAssistantQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       isLocalModelLoaded={isLocalModelLoaded}
+                      isTelemetryCollecting={isTelemetryCollecting}
                       className={logoSizeClass}
                     />
                   </div>
@@ -861,7 +994,7 @@ export default function App(): ReactElement {
                   >
                     <VoiceSignalGlyph
                       step={activeStep}
-                      status={status}
+                      status={logoStatus}
                       isSpeaking={isSpeaking}
                       activeTtsEngine={resolvedTtsEngine}
                       systemLoadThrottled={resolvedSystemThrottled}
@@ -877,15 +1010,33 @@ export default function App(): ReactElement {
                     />
                     <div
                       className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        showCommandTrigger
+                        isDormant
                           ? 'pointer-events-auto translate-y-0 opacity-100'
                           : 'pointer-events-none -translate-y-1 opacity-0'
                       }`}
                     >
-                      <CommandTrigger
-                        onClick={handleTriggerSynthesis}
-                        disabled={isTriggerDisabled}
+                      <StandbyActions
+                        onStartApex={() => void handleStartApex()}
+                        onStartWithBriefing={() => void handleStartWithBriefing()}
+                        disabled={preflight.isChecking}
                       />
+                    </div>
+                    <div
+                      className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                        activated
+                          ? 'pointer-events-auto translate-y-0 opacity-100'
+                          : 'pointer-events-none -translate-y-1 opacity-0'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={handleRefreshAll}
+                        disabled={isRefreshingAll}
+                        data-slot="refresh-all-trigger"
+                        className="hud-command-surface inline-flex rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isRefreshingAll ? '[ REFRESHING… ]' : '[ REFRESH ALL ]'}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -899,20 +1050,23 @@ export default function App(): ReactElement {
               <TelemetryCard
                 title="Inbox"
                 icon={Mail}
-                ledState={cardLedState}
+                ledState={emailLedState}
+                onRefresh={() => handleRefreshConnector('email')}
+                refreshDisabled={isRefreshingAll}
+                statusMessage={emailStatusMessage}
                 isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
                 attentionTier={attentionTiers.inbox}
                 attentionStaggerMs={attentionStagger.inbox}
                 className={rightTelemetryPanelClass}
               >
-                {isBusy(status) ? (
+                {emailRefreshing && !hasSnapshot ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading inbox…
                   </p>
                 ) : (
                   <>
-                    {status === 'success' && emailInfo.count > 0 && (
+                    {emailInfo.count > 0 && (
                       <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
                         {emailInfo.count} Primary Messages
                       </p>
@@ -936,13 +1090,13 @@ export default function App(): ReactElement {
                           </li>
                         ))}
                       </ul>
-                    ) : status === 'success' ? (
+                    ) : hasSnapshot ? (
                       <p className="text-sm text-[color:var(--hud-muted-text)]">
                         No unread emails.
                       </p>
                     ) : (
                       <p className="text-sm text-[color:var(--hud-muted-text)]">
-                        {error ?? 'Inbox unavailable.'}
+                        Inbox unavailable.
                       </p>
                     )}
                   </>
@@ -952,14 +1106,17 @@ export default function App(): ReactElement {
               <TelemetryCard
                 title="News Wire"
                 icon={Newspaper}
-                ledState={cardLedState}
+                ledState={newsLedState}
+                onRefresh={() => handleRefreshConnector('news')}
+                refreshDisabled={isRefreshingAll}
+                statusMessage={newsStatusMessage}
                 isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
                 attentionTier={attentionTiers.news}
                 attentionStaggerMs={attentionStagger.news}
                 className={rightTelemetryPanelClass}
               >
-                {isBusy(status) ? (
+                {newsRefreshing && !hasSnapshot ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
                     Loading news…
                   </p>
@@ -984,13 +1141,13 @@ export default function App(): ReactElement {
                       </li>
                     ))}
                   </ul>
-                ) : status === 'success' ? (
+                ) : hasSnapshot ? (
                   <p className="text-sm text-[color:var(--hud-muted-text)]">
                     No news headlines available.
                   </p>
                 ) : (
                   <p className="text-sm text-[color:var(--hud-muted-text)]">
-                    {error ?? 'News unavailable.'}
+                    News unavailable.
                   </p>
                 )}
               </TelemetryCard>
@@ -998,7 +1155,13 @@ export default function App(): ReactElement {
               <TelemetryCard
                 title="Reminders"
                 icon={CheckSquare}
-                ledState={cardLedState}
+                ledState={resolveModuleLedState(
+                  remindersModule,
+                  remindersRefreshing,
+                )}
+                onRefresh={() => handleRefreshConnector('reminders')}
+                refreshDisabled={isRefreshingAll}
+                statusMessage={remindersStatusMessage}
                 isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
                 attentionTier={attentionTiers.reminders}
@@ -1047,6 +1210,16 @@ export default function App(): ReactElement {
           />
         </div>
       ) : null}
+
+      <PreflightDialog
+        open={preflight.dialogOpen}
+        operation={preflight.pendingOperation}
+        warnings={preflight.warnings}
+        blockers={preflight.blockers}
+        isChecking={preflight.isChecking}
+        error={preflight.error}
+        onChoice={preflight.resolveDialog}
+      />
     </main>
   )
 }

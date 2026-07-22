@@ -1,5 +1,6 @@
-import { type LucideIcon } from 'lucide-react'
+import { ChevronDown, RefreshCw, type LucideIcon } from 'lucide-react'
 import type * as React from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   attentionCurtainRevealed,
@@ -9,7 +10,10 @@ import {
 import type { WeatherConditionArchetype } from '../types/telemetry'
 import {
   useId,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
   type ComponentPropsWithoutRef,
   type CSSProperties,
   type ReactElement,
@@ -29,6 +33,161 @@ const VTE_TEMP_MAX_F = 90
 /** Variable Typography Engine — closed interval for primary readout font weight. */
 const VTE_WEIGHT_MIN = 300
 const VTE_WEIGHT_MAX = 800
+
+type RefreshAction = {
+  label: string
+  onRefresh: () => void
+  disabled?: boolean
+  loading?: boolean
+}
+
+function RefreshControls({ actions }: { actions: RefreshAction[] }): ReactElement | null {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 })
+
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const firstEnabledItem = itemRefs.current.find((item) => item && !item.disabled)
+    firstEnabledItem?.focus()
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target as Node
+      if (
+        !containerRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        setMenuOpen(false)
+      }
+    }
+    const updateMenuPosition = (): void => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setMenuPosition({
+        left: Math.max(8, rect.right - 128),
+        top: rect.bottom + 4,
+      })
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('resize', updateMenuPosition)
+    window.addEventListener('scroll', updateMenuPosition, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('resize', updateMenuPosition)
+      window.removeEventListener('scroll', updateMenuPosition, true)
+    }
+  }, [menuOpen])
+
+  if (actions.length === 0) return null
+
+  if (actions.length === 1) {
+    const action = actions[0]
+    return (
+      <button
+        type="button"
+        onClick={action.onRefresh}
+        disabled={action.disabled || action.loading}
+        aria-label={`Refresh ${action.label}`}
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <RefreshCw className={`size-3.5 ${action.loading ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
+      </button>
+    )
+  }
+
+  const anyLoading = actions.some((action) => action.loading)
+  const allDisabled = actions.every((action) => action.disabled || action.loading)
+  const closeAndRestoreFocus = (): void => {
+    triggerRef.current?.focus()
+    setMenuOpen(false)
+  }
+  const focusItem = (index: number): void => {
+    const enabledItems = itemRefs.current.filter((item) => item && !item.disabled)
+    if (enabledItems.length === 0) return
+    enabledItems[(index + enabledItems.length) % enabledItems.length]?.focus()
+  }
+
+  return (
+    <div ref={containerRef} className="relative shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={allDisabled}
+        aria-label="Choose Events module to refresh"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => {
+          const nextOpen = !menuOpen
+          if (nextOpen) {
+            const rect = triggerRef.current?.getBoundingClientRect()
+            if (rect) {
+              setMenuPosition({
+                left: Math.max(8, rect.right - 128),
+                top: rect.bottom + 4,
+              })
+            }
+          }
+          setMenuOpen(nextOpen)
+        }}
+        className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md border border-white/10 bg-white/5 px-1.5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <RefreshCw className={`size-3.5 ${anyLoading ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
+        <ChevronDown className="size-3" strokeWidth={2} aria-hidden />
+      </button>
+      {menuOpen ? createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Refresh Events module"
+          style={{ left: menuPosition.left, top: menuPosition.top }}
+          className="fixed z-[var(--z-overlay)] min-w-32 rounded-lg border border-white/15 bg-zinc-950/95 p-1 shadow-xl backdrop-blur-md"
+          onKeyDown={(event) => {
+            const currentIndex = itemRefs.current.findIndex((item) => item === document.activeElement)
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              closeAndRestoreFocus()
+            } else if (event.key === 'ArrowDown') {
+              event.preventDefault()
+              focusItem(currentIndex + 1)
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault()
+              focusItem(currentIndex - 1)
+            } else if (event.key === 'Home') {
+              event.preventDefault()
+              focusItem(0)
+            } else if (event.key === 'End') {
+              event.preventDefault()
+              focusItem(-1)
+            }
+          }}
+        >
+          {actions.map((action, index) => (
+            <button
+              key={action.label}
+              ref={(element) => { itemRefs.current[index] = element }}
+              type="button"
+              role="menuitem"
+              disabled={action.disabled || action.loading}
+              onClick={() => {
+                action.onRefresh()
+                closeAndRestoreFocus()
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left font-orbitron text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-200 transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RefreshCw className={`size-3.5 ${action.loading ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
+              {action.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  )
+}
 
 type VariableTypographyInput = {
   temperatureFahrenheit: number
@@ -248,6 +407,14 @@ export type TelemetryCardProps = {
   weatherCondition?: WeatherConditionArchetype | null
   /** Module status LED communicating this card's data freshness, mirroring the unified pipeline state. */
   ledState?: TelemetryLedState
+  /** Optional accessible per-connector refresh control. */
+  onRefresh?: () => void
+  /** Disables the refresh control (e.g. while a global refresh is in flight). */
+  refreshDisabled?: boolean
+  /** Optional connector-specific controls for cards representing multiple modules. */
+  refreshActions?: RefreshAction[]
+  /** Explicit typed module state or failure reason shown with the card content. */
+  statusMessage?: string | null
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
   isCompact?: boolean
   /** Right-aligned summary content shown only in the compact row. */
@@ -266,6 +433,10 @@ export function TelemetryCard({
   f1TelemetryText,
   weatherCondition,
   ledState = 'none',
+  onRefresh,
+  refreshDisabled = false,
+  refreshActions,
+  statusMessage,
   isCompact = false,
   compactValue,
   attentionTier = 'dormant',
@@ -282,6 +453,11 @@ export function TelemetryCard({
       : null
   const isWeatherCard = title.trim() === 'Weather'
   const curtainRevealed = attentionCurtainRevealed(attentionTier)
+  const resolvedRefreshActions = refreshActions ?? (
+    onRefresh
+      ? [{ label: title, onRefresh, disabled: refreshDisabled, loading: ledState === 'loading' }]
+      : []
+  )
   const curtainStyle: CSSProperties | undefined =
     attentionStaggerMs > 0
       ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
@@ -368,6 +544,12 @@ export function TelemetryCard({
               {compactValue}
             </span>
           ) : null}
+          {statusMessage ? (
+            <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wide text-[#FBBF24]">
+              {statusMessage}
+            </span>
+          ) : null}
+          <RefreshControls actions={resolvedRefreshActions} />
           {ledState !== 'none' ? (
             <span
               className={LED_STATE_CLASS[ledState]}
@@ -395,6 +577,7 @@ export function TelemetryCard({
             >
               {title}
             </h2>
+            <RefreshControls actions={resolvedRefreshActions} />
             {ledState !== 'none' ? (
               <span
                 className={LED_STATE_CLASS[ledState]}
@@ -416,6 +599,11 @@ export function TelemetryCard({
           .join(' ')}
         style={curtainStyle}
       >
+        {statusMessage ? (
+          <p className="mb-2 shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-[#FBBF24]" role="status">
+            {statusMessage}
+          </p>
+        ) : null}
         {primaryTemperatureF != null ? (
           <div className="mb-3 flex shrink-0 items-center gap-4">
             <p

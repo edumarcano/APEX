@@ -52,6 +52,7 @@ const PROFILE_LABELS: Record<AssistantProfile, string> = {
 
 const STATUS_FALLBACK_REASONS: Record<ProfileAvailabilityStatus, string> = {
   available: '',
+  busy: 'Briefing synthesis is using local inference.',
   unknown: 'Checking profile availability…',
   disabled: 'Profile disabled in system settings',
   ollama_unreachable: 'Ollama daemon is unreachable',
@@ -114,7 +115,8 @@ function resolveTooltipText(
 
 function resolveStatusLedClass(status: ProfileAvailabilityStatus): string {
   if (status === 'available') return 'hud-led--live'
-  if (status === 'unknown') return 'hud-led--loading'
+  if (status === 'busy') return 'hud-led--loading'
+  if (status === 'unknown') return 'hud-led--stale'
   return 'hud-led--error'
 }
 

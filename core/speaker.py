@@ -345,6 +345,39 @@ def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> None:
     _route_tts_playback(text, "pyttsx3", gender=gender)
 
 
+def _deliver_speech(
+    text: str,
+    *,
+    tts_override: str | None = None,
+    voice_gender: str | None = None,
+) -> None:
+    """Route speech while the caller holds ``_SPEAK_LOCK``."""
+    _LOGGER.info("Speak request received (chars=%s).", len(text))
+
+    snapshot = get_settings_store().get_snapshot()
+    bound_gender = _normalize_voice_gender(
+        voice_gender if voice_gender is not None else snapshot.voice.gender
+    )
+
+    if tts_override is not None:
+        _LOGGER.info("TTS override active; routing vector is %r.", tts_override)
+        _route_tts_playback(text, tts_override, gender=bound_gender)
+        return
+
+    if config.is_dev_mode():
+        dev_tts = config.DEV_TTS_PLAYBACK
+        _LOGGER.info(
+            "DEV_MODE active; DEV_TTS_PLAYBACK routing vector is %r.",
+            dev_tts,
+        )
+        _route_tts_playback(text, dev_tts, gender=bound_gender)
+        return
+
+    primary = snapshot.voice.engine
+    _LOGGER.info("Configured PRIMARY_TTS routing vector is %r.", primary)
+    _route_tts_playback(text, primary, gender=bound_gender)
+
+
 def speak(
     text: str,
     *,
@@ -363,30 +396,28 @@ def speak(
             runtime settings snapshot captured at speak entry.
     """
     with _SPEAK_LOCK:
-        _LOGGER.info("Speak request received (chars=%s).", len(text))
+        _deliver_speech(text, tts_override=tts_override, voice_gender=voice_gender)
 
-        snapshot = get_settings_store().get_snapshot()
-        bound_gender = _normalize_voice_gender(
-            voice_gender if voice_gender is not None else snapshot.voice.gender
-        )
 
-        if tts_override is not None:
-            _LOGGER.info("TTS override active; routing vector is %r.", tts_override)
-            _route_tts_playback(text, tts_override, gender=bound_gender)
-            return
+def try_speak(
+    text: str,
+    *,
+    tts_override: str | None = None,
+    voice_gender: str | None = None,
+) -> bool:
+    """
+    Attempt speech without blocking when another delivery holds the lock.
 
-        if config.is_dev_mode():
-            dev_tts = config.DEV_TTS_PLAYBACK
-            _LOGGER.info(
-                "DEV_MODE active; DEV_TTS_PLAYBACK routing vector is %r.",
-                dev_tts,
-            )
-            _route_tts_playback(text, dev_tts, gender=bound_gender)
-            return
-
-        primary = snapshot.voice.engine
-        _LOGGER.info("Configured PRIMARY_TTS routing vector is %r.", primary)
-        _route_tts_playback(text, primary, gender=bound_gender)
+    Returns:
+        True when playback was started under the speech lock; False when busy.
+    """
+    if not _SPEAK_LOCK.acquire(blocking=False):
+        return False
+    try:
+        _deliver_speech(text, tts_override=tts_override, voice_gender=voice_gender)
+        return True
+    finally:
+        _SPEAK_LOCK.release()
 
 
 _warm_system_subsystems()

@@ -627,6 +627,8 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `profile` | string | Cloud (`"comet"`, `"nova"`, `"pulsar"`) or local (`"lynx"`, `"acinonyx"`, `"neofelis"`) profile. Defaults to `"comet"`. |
 | `session_id` | string \| null | Optional client-generated grouping identifier; passed through unchanged. |
 | `history` | `AgentMessage[]` | Prior turns for this session, including `tool_calls`/`tool_results`. Empty on the first turn. |
+| `snapshot_id` | string \| null | Optional telemetry snapshot ID. When present and matching the current in-memory snapshot, module display text is injected as HUD context. Absent or mismatched IDs inject no snapshot context. |
+| `briefing_id` | integer \| null | Optional briefing history row ID. When present, that briefing's prose and insights are injected as HUD context. Absent or unknown IDs inject no briefing context. |
 
 `profile` accepts three cloud values (`"comet"`, `"nova"`, `"pulsar"`, routed to Gemini) and three local values (`"lynx"`, `"acinonyx"`, `"neofelis"`, routed to Ollama). See [Local Agent Profiles](architecture.md#local-agent-profiles) for the local profile table.
 
@@ -664,7 +666,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 **Missing API key:** When `GEMINI_API_KEY` is not set, the endpoint returns `200` with a static unavailability message in `answer` and `error` set to `"GEMINI_API_KEY is missing from environment variables."` rather than raising an HTTP error.
 
-**HUD context injection:** Before dispatching to the model, the handler fetches the single most recent row from `GET /api/v1/briefings/history` (production only) and appends its briefing text and insight bullets to the system instruction, so the agent can resolve relative follow-ups like "explain that first insight" against what is currently on screen.
+**HUD context injection:** The handler does **not** implicitly inject the latest persisted briefing. Optional `briefing_id` and/or `snapshot_id` on the request select explicit HUD context. Absent identifiers mean no HUD briefing/telemetry context is appended to the system instruction. Selected context is sanitized, bounded to 2,000 characters, wrapped in `<untrusted_hud_context>` markers, and accompanied by an instruction to treat it as data rather than commands.
 
 **Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
 
@@ -755,11 +757,44 @@ Ollama reachability, installed model tags, and host vitals are read from a share
 | Value | Meaning |
 |---|---|
 | `available` | Profile can be selected and queried now |
+| `busy` | Local execution slot is held (briefing synthesis or another local generation); local profiles only. Reason: `"Briefing synthesis is using local inference."` Cloud profiles remain independently evaluated. |
 | `disabled` | Profile disabled in system settings (`ollama.enabled: false`, or missing `GEMINI_API_KEY` for cloud profiles) |
 | `ollama_unreachable` | Ollama daemon did not respond to the status probe |
 | `model_not_installed` | The profile's model tag is not present in Ollama's installed tags |
 | `insufficient_ram` | Host RAM utilization meets or exceeds the profile's `ram_limit` |
 | `cpu_overloaded` | Host CPU utilization meets or exceeds the profile's `cpu_limit` |
+
+---
+
+### `POST /api/v1/voice/speak`
+
+Speaks sanitized text using the configured TTS engine and the universal speech lock. Runs synchronously on FastAPI's worker-thread boundary. Voice mode settings (`off` / `manual` / `automatic`) are a later milestone; this endpoint always attempts delivery when called.
+
+**Request body** — `VoiceSpeakRequest`
+```json
+{
+  "text": "APEX online. Ready for operations."
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `text` | string | Non-empty text (1–4000 chars). Sanitized through the existing TTS cleaner before playback. |
+
+**Response `200`** — `VoiceSpeakResponse`
+```json
+{ "status": "spoken" }
+```
+
+**Response `400`** — empty after sanitization
+```json
+{ "detail": "Speech text is empty after sanitization." }
+```
+
+**Response `409`** — speech lock already held
+```json
+{ "detail": "Speech delivery is already in progress." }
+```
 
 ---
 
