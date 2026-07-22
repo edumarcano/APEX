@@ -353,8 +353,9 @@ Advisory operational risk evaluation for a planned HUD or API operation. Returns
 **Request body**
 ```json
 {
-  "operation": "activate",
+  "operation": "generate_briefing",
   "connectors": null,
+  "briefing_mode": "comet",
   "synthesis_profile": "comet",
   "force": false,
   "involves_cloud": true,
@@ -362,6 +363,8 @@ Advisory operational risk evaluation for a planned HUD or API operation. Returns
   "cloud_disclosure_acknowledged": false
 }
 ```
+
+`briefing_mode` explicitly classifies briefing operations as Comet, a local model mode, or model-free Structured Digest. When present for `activate_with_briefing` or `generate_briefing`, it is authoritative for cloud-disclosure, Gemini-credential, and local-resource checks. `synthesis_profile` and `involves_cloud` remain available for assistant operations and older briefing requests.
 
 **Advisory warning codes:** `outside_configured_network`, `network_trust_unknown`, `running_on_battery`, `rapid_connector_refresh`, `cloud_data_disclosure`, `high_resource_local_profile`.
 

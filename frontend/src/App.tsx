@@ -300,9 +300,6 @@ export default function App(): ReactElement {
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
-  const resolvedSynthesisProvider = liveSynthesis?.provider ?? briefing.synthesisProvider
-  const resolvedSynthesisProfile = liveSynthesis?.profile ?? briefing.synthesisProfile
-  const resolvedSynthesisReason = liveSynthesis?.fallback_reason ?? briefing.synthesisFallbackReason
 
   const activeStep = pipelineState?.step ?? null
   const isBriefingRunning = briefing.status === 'loading'
@@ -451,6 +448,7 @@ export default function App(): ReactElement {
 
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('activate_with_briefing', {
+      briefing_mode: briefingMode,
       synthesis_profile: synthesisProfileForMode(briefingMode),
       involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
@@ -628,6 +626,7 @@ export default function App(): ReactElement {
       return
     }
     const resolution = await preflight.requestOperation('generate_briefing', {
+      briefing_mode: briefingMode,
       synthesis_profile: synthesisProfileForMode(briefingMode),
       involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
@@ -639,6 +638,7 @@ export default function App(): ReactElement {
 
   const handleRefreshAllAndGenerate = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('generate_briefing', {
+      briefing_mode: briefingMode,
       synthesis_profile: synthesisProfileForMode(briefingMode),
       involves_cloud: briefingModeInvolvesCloud(briefingMode),
       force: true,
@@ -764,9 +764,21 @@ export default function App(): ReactElement {
             connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
-            synthesisProvider={resolvedSynthesisProvider}
-            synthesisProfile={resolvedSynthesisProfile}
-            synthesisFallbackReason={resolvedSynthesisReason}
+            briefingMode={briefingMode}
+            onBriefingModeChange={setBriefingMode}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            activated={activated}
+            hasSnapshot={hasSnapshot}
+            briefingControlsBusy={
+              preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
+            }
+            onGenerateBriefing={() => {
+              void handleGenerateBriefing()
+            }}
+            onRefreshAllAndGenerate={() => {
+              void handleRefreshAllAndGenerate()
+            }}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
           />
@@ -1060,16 +1072,7 @@ export default function App(): ReactElement {
                   status={briefing.status}
                   activated={activated}
                   isLoading={briefing.status === 'loading'}
-                  briefingMode={briefingMode}
-                  onBriefingModeChange={setBriefingMode}
-                  onGenerateBriefing={() => {
-                    void handleGenerateBriefing()
-                  }}
-                  onRefreshAllAndGenerate={() => {
-                    void handleRefreshAllAndGenerate()
-                  }}
                   onSpeakBriefing={handleSpeakBriefing}
-                  generateDisabled={isBriefingRunning || !hasSnapshot}
                   speakDisabled={isSpeaking}
                   showSpeakAction={voiceMode !== 'off'}
                   speechError={voiceDelivery.error}

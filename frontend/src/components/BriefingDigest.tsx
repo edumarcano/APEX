@@ -15,18 +15,9 @@ import {
   type AttentionTier,
 } from '../lib/attentionTier'
 import { API_ENDPOINTS } from '../lib/api'
-import type { BriefingMode } from '../types/settings'
 import type { DigestPayload, SystemState } from '../types/telemetry'
 
 const BRIEFING_HISTORY_ENDPOINT = API_ENDPOINTS.briefingHistory
-
-const BRIEFING_MODE_OPTIONS: readonly { value: BriefingMode; label: string }[] = [
-  { value: 'comet', label: 'Comet — Cloud' },
-  { value: 'lynx', label: 'Lynx — Quick Local' },
-  { value: 'acinonyx', label: 'Acinonyx — Balanced Local' },
-  { value: 'neofelis', label: 'Neofelis — Capable Local' },
-  { value: 'structured_digest', label: 'Structured Digest — No Model' },
-]
 
 export interface BriefingDigestProps {
   insights: string[]
@@ -41,14 +32,9 @@ export interface BriefingDigestProps {
   attentionTier?: AttentionTier
   /** Curtain unlock delay in ms. */
   attentionStaggerMs?: number
-  /** Overview is activated — show empty-state Generate Briefing. */
+  /** Whether the Overview has left standby. */
   activated?: boolean
-  briefingMode: BriefingMode
-  onBriefingModeChange: (mode: BriefingMode) => void
-  onGenerateBriefing?: () => void
-  onRefreshAllAndGenerate?: () => void
   onSpeakBriefing?: () => void
-  generateDisabled?: boolean
   speakDisabled?: boolean
   showSpeakAction?: boolean
   synthesisLabel?: string | null
@@ -67,12 +53,7 @@ export function BriefingDigest({
   attentionTier = 'dormant',
   attentionStaggerMs = 0,
   activated = false,
-  briefingMode,
-  onBriefingModeChange,
-  onGenerateBriefing,
-  onRefreshAllAndGenerate,
   onSpeakBriefing,
-  generateDisabled = false,
   speakDisabled = false,
   showSpeakAction = false,
   synthesisLabel = null,
@@ -89,61 +70,6 @@ export function BriefingDigest({
       ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
       : undefined
   const shellClass = attentionShellClass(attentionTier)
-
-  const actionButtons =
-    activated && onGenerateBriefing ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="sr-only" htmlFor="briefing-mode-select">
-          Briefing Mode
-        </label>
-        <select
-          id="briefing-mode-select"
-          value={briefingMode}
-          onChange={(event) => onBriefingModeChange(event.target.value as BriefingMode)}
-          disabled={isLoading}
-          className="rounded-md border border-white/10 bg-zinc-950/50 px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-          data-slot="briefing-mode-select"
-        >
-          {BRIEFING_MODE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={onGenerateBriefing}
-          disabled={generateDisabled || isLoading}
-          className="inline-flex rounded-md border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#FBBF24] transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-          data-slot="generate-briefing-trigger"
-        >
-          Generate Briefing
-        </button>
-        {onRefreshAllAndGenerate ? (
-          <button
-            type="button"
-            onClick={onRefreshAllAndGenerate}
-            disabled={generateDisabled || isLoading}
-            className="inline-flex rounded-md border border-white/15 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-            data-slot="refresh-all-and-generate-trigger"
-          >
-            Refresh All &amp; Generate
-          </button>
-        ) : null}
-        {showSpeakAction && onSpeakBriefing && trimmedBriefing.length > 0 ? (
-          <button
-            type="button"
-            onClick={onSpeakBriefing}
-            disabled={speakDisabled || isLoading}
-            className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-            data-slot="speak-briefing-trigger"
-          >
-            <Volume2 className="size-3" strokeWidth={2} aria-hidden />
-            Speak / Replay
-          </button>
-        ) : null}
-      </div>
-    ) : null
 
   const statusMeta =
     synthesisLabel || fallbackReason || speechError ? (
@@ -227,6 +153,19 @@ export function BriefingDigest({
               Briefing
             </button>
           </div>
+          {activeTab === 'briefing' && showSpeakAction && onSpeakBriefing && trimmedBriefing.length > 0 ? (
+            <button
+              type="button"
+              onClick={onSpeakBriefing}
+              disabled={speakDisabled || isLoading}
+              className="inline-flex size-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-200 transition-colors hover:border-cyan-300/30 hover:bg-cyan-300/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Speak briefing"
+              title="Speak briefing"
+              data-slot="speak-briefing-trigger"
+            >
+              <Volume2 className="size-3.5" strokeWidth={2} aria-hidden />
+            </button>
+          ) : null}
           {status === 'success' || (activated && (insights.length > 0 || trimmedBriefing.length > 0)) ? (
             <button
               type="button"
@@ -255,16 +194,12 @@ export function BriefingDigest({
           trimmedBriefing.length === 0 ? (
             <div className="space-y-3">
               <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                {activated
-                  ? 'No briefing transcript yet.'
-                  : 'Initiate system synthesis to compile briefing transcript.'}
+                No briefing transcript yet. Use the synthesis controls in the system header.
               </p>
-              {actionButtons}
               {statusMeta}
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
-              {actionButtons}
               {statusMeta}
               <div className="list-fade-mask min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
@@ -286,13 +221,9 @@ export function BriefingDigest({
                 <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
                   No current highlights.
                 </p>
-                {actionButtons}
-                {statusMeta}
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col gap-3">
-                {actionButtons}
-                {statusMeta}
                 <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
                   {insights.map((insight, index) => (
                     <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">

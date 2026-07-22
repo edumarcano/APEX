@@ -225,48 +225,24 @@ describe('ApexLogo telemetry collection state', () => {
   })
 })
 
-describe('BriefingDigest empty generate action', () => {
-  it('shows Generate Briefing when activated with empty insights', async () => {
-    const onGenerate = vi.fn()
-    const onModeChange = vi.fn()
+describe('BriefingDigest briefing actions', () => {
+  it('keeps generation controls out of the content area', () => {
+    render(
+      <BriefingDigest
+        insights={[]}
+        briefingText=""
+        status="idle"
+        isLoading={false}
+        activated
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /generate briefing/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/briefing mode/i)).not.toBeInTheDocument()
+  })
+
+  it('shows replay only on the Briefing tab and exposes voice failures there', async () => {
     const user = userEvent.setup()
-    render(
-      <BriefingDigest
-        insights={[]}
-        briefingText=""
-        status="idle"
-        isLoading={false}
-        activated
-        briefingMode="comet"
-        onBriefingModeChange={onModeChange}
-        onGenerateBriefing={onGenerate}
-      />,
-    )
-
-    expect(screen.getByLabelText(/briefing mode/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /generate briefing/i }))
-    expect(onGenerate).toHaveBeenCalledTimes(1)
-  })
-
-  it('disables generate when generateDisabled is set', () => {
-    render(
-      <BriefingDigest
-        insights={[]}
-        briefingText=""
-        status="idle"
-        isLoading={false}
-        activated
-        briefingMode="acinonyx"
-        onBriefingModeChange={() => undefined}
-        onGenerateBriefing={() => undefined}
-        generateDisabled
-      />,
-    )
-
-    expect(screen.getByRole('button', { name: /generate briefing/i })).toBeDisabled()
-  })
-
-  it('disables replay and exposes voice delivery failures', () => {
     render(
       <BriefingDigest
         insights={['Ready']}
@@ -274,9 +250,6 @@ describe('BriefingDigest empty generate action', () => {
         status="success"
         isLoading={false}
         activated
-        briefingMode="comet"
-        onBriefingModeChange={() => undefined}
-        onGenerateBriefing={() => undefined}
         onSpeakBriefing={() => undefined}
         showSpeakAction
         speakDisabled
@@ -284,7 +257,12 @@ describe('BriefingDigest empty generate action', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /speak \/ replay/i })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /speak briefing/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Briefing' }))
+
+    expect(screen.getByRole('button', { name: /speak briefing/i })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
   })
 })

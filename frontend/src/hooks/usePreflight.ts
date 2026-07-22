@@ -28,7 +28,7 @@ export type UsePreflightReturn = {
   error: string | null
   requestOperation: (
     operation: PreflightOperation,
-    options?: Pick<PreflightRequest, 'connectors' | 'synthesis_profile' | 'force' | 'involves_cloud'>,
+    options?: Pick<PreflightRequest, 'connectors' | 'briefing_mode' | 'synthesis_profile' | 'force' | 'involves_cloud'>,
   ) => Promise<PreflightResolution>
   resolveDialog: (choice: PreflightDialogChoice) => void
 }
@@ -110,7 +110,7 @@ export function usePreflight(): UsePreflightReturn {
   const requestOperation = useCallback(
     async (
       operation: PreflightOperation,
-      options: Pick<PreflightRequest, 'connectors' | 'synthesis_profile' | 'force' | 'involves_cloud'> = {},
+      options: Pick<PreflightRequest, 'connectors' | 'briefing_mode' | 'synthesis_profile' | 'force' | 'involves_cloud'> = {},
     ): Promise<PreflightResolution> => {
       if (inFlightRef.current) {
         return 'blocked'

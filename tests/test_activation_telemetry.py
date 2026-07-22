@@ -476,6 +476,59 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertIn("network_trust_unknown", codes)
         self.assertIn("cloud_data_disclosure", codes)
 
+    def test_structured_digest_preflight_never_classifies_as_cloud(self) -> None:
+        with mock.patch(
+            "core.telemetry.preflight.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.telemetry.preflight.config.DEMO_MODE", False
+        ), mock.patch.dict(
+            "os.environ", {"GEMINI_API_KEY": ""}, clear=False
+        ):
+            response = self.client.post(
+                "/api/v1/preflight",
+                json={
+                    "operation": "generate_briefing",
+                    "briefing_mode": "structured_digest",
+                    "involves_cloud": True,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        warning_codes = {item["code"] for item in payload["warnings"]}
+        blocker_codes = {item["code"] for item in payload["blockers"]}
+        self.assertNotIn("cloud_data_disclosure", warning_codes)
+        self.assertNotIn("missing_credentials", blocker_codes)
+        self.assertTrue(payload["can_proceed"])
+
+    def test_comet_briefing_mode_drives_cloud_preflight(self) -> None:
+        with mock.patch(
+            "core.telemetry.preflight.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.telemetry.preflight.config.DEMO_MODE", False
+        ), mock.patch.dict(
+            "os.environ", {"GEMINI_API_KEY": ""}, clear=False
+        ):
+            response = self.client.post(
+                "/api/v1/preflight",
+                json={
+                    "operation": "generate_briefing",
+                    "briefing_mode": "comet",
+                    "involves_cloud": False,
+                },
+            )
+
+        payload = response.json()
+        self.assertIn(
+            "cloud_data_disclosure",
+            {item["code"] for item in payload["warnings"]},
+        )
+        self.assertIn(
+            "missing_credentials",
+            {item["code"] for item in payload["blockers"]},
+        )
+        self.assertFalse(payload["can_proceed"])
+
     def test_preflight_acknowledgement_suppresses_warning(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False

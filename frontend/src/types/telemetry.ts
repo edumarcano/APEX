@@ -200,6 +200,13 @@ export interface PreflightBlocker {
 export interface PreflightRequest {
   operation: PreflightOperation
   connectors?: string[] | null
+  briefing_mode?:
+    | 'comet'
+    | 'lynx'
+    | 'acinonyx'
+    | 'neofelis'
+    | 'structured_digest'
+    | null
   synthesis_profile?: string | null
   force?: boolean
   involves_cloud?: boolean

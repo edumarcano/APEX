@@ -73,6 +73,9 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
 _LOCAL_PROFILES = frozenset({"lynx", "acinonyx", "neofelis"})
 _CLOUD_PROFILES = frozenset({"comet", "nova", "pulsar"})
 _VALID_PROFILES = _LOCAL_PROFILES | _CLOUD_PROFILES
+_BRIEFING_MODES = frozenset(
+    {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
+)
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
 )
@@ -257,18 +260,33 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         _LOGGER.exception("Preflight database failure")
         blockers.append(_blocker("database_failure"))
 
-    profile = (request.synthesis_profile or "").strip() or None
-    if (
-        profile is None
-        and request.operation == "assistant_query"
-        and settings is not None
-    ):
-        profile = settings.assistant.default_profile
-    if profile is None and request.operation in {
+    briefing_mode = (request.briefing_mode or "").strip() or None
+    if briefing_mode is not None and briefing_mode not in _BRIEFING_MODES:
+        blockers.append(
+            _blocker("invalid_input", f"Unknown briefing mode: {briefing_mode!r}")
+        )
+
+    if briefing_mode is not None and request.operation in {
         "activate_with_briefing",
         "generate_briefing",
     }:
-        profile = "comet"
+        profile = None if briefing_mode == "structured_digest" else briefing_mode
+        involves_cloud = briefing_mode == "comet"
+    else:
+        profile = (request.synthesis_profile or "").strip() or None
+        if (
+            profile is None
+            and request.operation == "assistant_query"
+            and settings is not None
+        ):
+            profile = settings.assistant.default_profile
+        if profile is None and request.operation in {
+            "activate_with_briefing",
+            "generate_briefing",
+        }:
+            profile = "comet"
+        cloud_profile = profile in _CLOUD_PROFILES if profile else False
+        involves_cloud = bool(request.involves_cloud or cloud_profile)
 
     if profile is not None and profile not in _VALID_PROFILES:
         blockers.append(
@@ -276,8 +294,6 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         )
 
     local_profile = profile in _LOCAL_PROFILES
-    cloud_profile = profile in _CLOUD_PROFILES if profile else False
-    involves_cloud = bool(request.involves_cloud or cloud_profile)
     if not is_dev_mode():
         warnings.extend(_network_warnings())
 
