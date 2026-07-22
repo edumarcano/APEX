@@ -452,6 +452,13 @@ class VoiceSpeakResponse(BaseModel):
     )
 
 
+class BriefingTriggerRequest(BaseModel):
+    mode: Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] | None = Field(
+        default=None,
+        description="Optional briefing mode override; omitted requests use the saved default.",
+    )
+
+
 class BriefingGenerateRequest(BaseModel):
     snapshot_id: str = Field(
         ...,

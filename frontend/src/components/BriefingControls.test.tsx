@@ -57,6 +57,8 @@ describe('BriefingControls', () => {
     await user.click(screen.getByRole('button', { name: /briefing mode: comet/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
+    expect(screen.getByText('Briefing Synthesis')).toBeVisible()
+    expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
     expect(within(listbox).getByText('Full briefing · fast cloud synthesis')).toBeVisible()
@@ -99,14 +101,15 @@ describe('BriefingControls', () => {
     expect(onRefreshAndGenerate).toHaveBeenCalledTimes(1)
   })
 
-  it('disables all controls before activation and while busy', () => {
+  it('keeps the selector available but hides Generate before activation', () => {
     const { rerender, props } = renderControls({ activated: false })
-    expect(screen.getByRole('button', { name: /briefing mode/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /more briefing generation options/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /briefing mode/i })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /generate briefing from current telemetry/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /more briefing generation options/i })).not.toBeInTheDocument()
 
     rerender(<BriefingControls {...props} activated busy />)
     expect(screen.getByRole('button', { name: /briefing mode/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toBeDisabled()
   })
 
   it('closes on Escape and restores focus to the selector', async () => {

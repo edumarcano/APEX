@@ -457,7 +457,7 @@ export default function App(): ReactElement {
     }
 
     activate()
-    await briefing.triggerSynthesis()
+    await briefing.triggerSynthesis(briefingMode)
     void telemetry.loadLatest()
   }, [preflight, briefingMode, activate, briefing, telemetry])
 
@@ -1153,9 +1153,16 @@ export default function App(): ReactElement {
                         onClick={handleRefreshAll}
                         disabled={isRefreshingAll}
                         data-slot="refresh-all-trigger"
-                        className="hud-command-surface inline-flex rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                        className="group hud-command-surface inline-flex rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        {isRefreshingAll ? '[ REFRESHING… ]' : '[ REFRESH ALL ]'}
+                        {isRefreshingAll ? (
+                          '[ REFRESHING… ]'
+                        ) : (
+                          <>
+                            <span className="group-hover:hidden group-focus-visible:hidden">[ REFRESH ALL ]</span>
+                            <span className="hidden group-hover:inline group-focus-visible:inline">&gt; REFRESH ALL</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

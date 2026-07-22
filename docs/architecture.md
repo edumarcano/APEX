@@ -33,7 +33,7 @@ sequenceDiagram
     participant Status as Backend: /api/v1/status
     participant Speaker as Backend: _speak_and_cleanup (worker thread)
 
-    App->>Trigger: POST /api/v1/trigger (operator-initiated)
+    App->>Trigger: POST /api/v1/trigger { mode } (operator-initiated)
     Trigger->>Store: update(1, GATE)
 
     loop Every 500ms while loading or speaking
@@ -637,7 +637,7 @@ The single data hook for the entire HUD. On mount it:
 The trigger is not fired on mount. When `triggerSynthesis()` is called (via the header button or `Enter` key), the hook:
 
 1. Sets `status` to `loading`.
-2. Fires `POST /api/v1/trigger` with an `AbortController` signal.
+2. Fires `POST /api/v1/trigger` with the selected session briefing mode and an `AbortController` signal. An omitted mode remains compatible and uses the saved default.
 3. Starts a `setInterval` at 500 ms to poll `GET /api/v1/status`.
 4. On trigger resolution, parses weather string fields via `resolvePipelineTemperatureF` and `resolveWeatherDetail`.
 5. Derives `weatherCondition` via `resolveWeatherCondition`.

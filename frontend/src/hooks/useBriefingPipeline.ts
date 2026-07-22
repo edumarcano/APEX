@@ -10,6 +10,7 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
+import type { BriefingMode } from '../types/settings'
 import { resolvePipelineTemperatureF, resolveWeatherCondition, resolveWeatherDetail } from '../lib/weatherTelemetry'
 
 const STATUS_ENDPOINT = API_ENDPOINTS.status
@@ -43,7 +44,7 @@ export type BriefingPipelineState = {
 }
 
 export type UseBriefingPipelineReturn = BriefingPipelineState & {
-  triggerSynthesis: () => Promise<void>
+  triggerSynthesis: (mode?: BriefingMode) => Promise<void>
   generateFromSnapshot: (snapshotId: string, mode: string) => Promise<void>
   resetBriefing: () => void
 }
@@ -343,11 +344,11 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
     [applySuccessfulBriefingPayload],
   )
 
-  const triggerSynthesis = useCallback(async (): Promise<void> => {
+  const triggerSynthesis = useCallback(async (mode?: BriefingMode): Promise<void> => {
     await runBriefingRequest(API_ENDPOINTS.trigger, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify(mode ? { mode } : {}),
     })
   }, [runBriefingRequest])
 

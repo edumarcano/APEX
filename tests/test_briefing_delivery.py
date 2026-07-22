@@ -252,6 +252,38 @@ class BriefingDeliveryTests(unittest.TestCase):
         self.assertEqual(process.call_args.kwargs.get("mode"), "comet")
         speak.assert_not_called()
 
+    def test_trigger_accepts_an_explicit_session_mode(self) -> None:
+        from core.telemetry.service import get_telemetry_service
+
+        self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="manual")))
+        snap = _snapshot("trigger-override-snap")
+
+        def fake_collect() -> TelemetrySnapshot:
+            get_telemetry_service().store.set(snap)
+            return snap
+
+        with mock.patch(
+            "core.telemetry.service.TelemetryService.collect_for_briefing",
+            side_effect=fake_collect,
+        ), mock.patch(
+            "core.brain.process_telemetry",
+            return_value=SynthesisResult(
+                briefing="Structured trigger briefing.",
+                insights=["Insight"],
+                provider="raw",
+            ).model_dump(),
+        ) as process, mock.patch("core.api.briefing.speaker.speak") as speak:
+            response = self.client.post(
+                "/api/v1/trigger",
+                json={"mode": "structured_digest"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["metadata"]["briefing_mode"], "structured_digest")
+        self.assertEqual(process.call_args.kwargs.get("mode"), "structured_digest")
+        speak.assert_not_called()
+
     def test_automatic_delivery_is_recorded_in_persisted_metadata(self) -> None:
         snap = self._seed_snapshot("spoken-snap")
         with mock.patch(

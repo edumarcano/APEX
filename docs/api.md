@@ -174,13 +174,13 @@ Empty patches (`{}`) return the current envelope without writing.
 
 ### `POST /api/v1/trigger`
 
-Runs the compatibility pipeline: force-refresh telemetry → synthesize with the configured default briefing mode → persist (production) → speak when `voice.mode` is `automatic`. Blocking — returns after synthesis completes; automatic TTS starts on a background thread when enabled. Collection reuses the process-local telemetry snapshot service (`core/telemetry`) and still returns legacy per-module display strings on the response.
+Runs the compatibility pipeline: force-refresh telemetry → synthesize with an optional requested mode or the configured default → persist (production) → speak when `voice.mode` is `automatic`. Blocking — returns after synthesis completes; automatic TTS starts on a background thread when enabled. Collection reuses the process-local telemetry snapshot service (`core/telemetry`) and still returns legacy per-module display strings on the response.
 
 Startup Wi-Fi, battery, and cooldown checks are **not** hard blockers on this endpoint. Call `POST /api/v1/preflight` for advisory warnings before interactive activation. Calling this endpoint directly skips advisory acknowledgement; existing hard blockers (locks, credentials, resource gates) still apply where they are enforced.
 
 When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged simulation using static mock telemetry from `core/mock/telemetry.json`. Stage delays of 1.5 seconds are inserted between each step so the frontend polling loop can observe them.
 
-**Request body:** empty JSON object `{}` or no body.
+**Request body:** optional `{"mode":"comet"}` override. Empty JSON or no body uses `briefing.default_mode`.
 
 **Response `200`** — `BriefingResponse`
 ```json

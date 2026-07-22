@@ -79,11 +79,17 @@ const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
 ]
 
 const BRIEFING_MODE_OPTIONS: readonly { value: BriefingMode; label: string }[] = [
-  { value: 'comet', label: 'Comet — Cloud' },
-  { value: 'lynx', label: 'Lynx — Quick Local' },
-  { value: 'acinonyx', label: 'Acinonyx — Balanced Local (recommended)' },
-  { value: 'neofelis', label: 'Neofelis — Capable Local' },
-  { value: 'structured_digest', label: 'Structured Digest — No Model' },
+  { value: 'comet', label: 'Comet — Full briefing · fast cloud synthesis' },
+  { value: 'lynx', label: 'Lynx — Quick briefing · limited telemetry' },
+  {
+    value: 'acinonyx',
+    label: 'Acinonyx — Full briefing · balanced synthesis (Recommended)',
+  },
+  { value: 'neofelis', label: 'Neofelis — Full briefing · higher capacity, slower' },
+  {
+    value: 'structured_digest',
+    label: 'Structured Digest — Structured facts · no model or synthesis',
+  },
 ]
 
 interface SettingsPanelProps {

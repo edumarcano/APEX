@@ -240,7 +240,7 @@ function BriefingModeSelector({
         }}
         className="hud-interactive-shell hud-glass flex h-11 items-center gap-2 rounded-full px-3 font-mono text-[10px] uppercase tracking-wider text-zinc-200 transition-colors hover-blue-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <Sparkles className="size-3.5 text-purple-300" strokeWidth={2} aria-hidden />
+        <Sparkles className="size-3.5 text-[#A855F7]" strokeWidth={2} aria-hidden />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
         <span className="whitespace-nowrap">{MODE_LABELS[value]}</span>
         <ChevronDown className={`size-3.5 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
@@ -254,6 +254,14 @@ function BriefingModeSelector({
         >
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
+          <div className="border-b border-white/10 px-2 pb-2 pt-1">
+            <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">
+              Briefing Synthesis
+            </p>
+            <p className="mt-1 text-[10px] text-zinc-500">
+              Select a mode for the next briefing.
+            </p>
+          </div>
           <ul role="listbox" aria-label="Select briefing mode">
             {SECTIONS.map((section, sectionIndex) => (
               <li key={section.title} role="presentation">
@@ -377,19 +385,19 @@ function GenerateControl({
   }, [open, updatePosition])
 
   return (
-    <div className="flex h-11 shrink-0 rounded-full border border-purple-400/30 bg-purple-500/10 shadow-[0_0_14px_rgba(168,85,247,0.12)]">
+    <div className="hud-interactive-shell hud-glass flex h-11 shrink-0 rounded-full text-zinc-300">
       <button
         type="button"
         disabled={mainDisabled}
         onClick={onGenerate}
-        className="inline-flex items-center gap-2 rounded-l-full px-3 font-orbitron text-[9px] font-semibold uppercase tracking-[0.14em] text-purple-200 transition-colors hover:bg-purple-400/10 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex items-center gap-2 rounded-l-full px-3 font-orbitron text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:bg-white/5 hover:text-zinc-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
         aria-label="Generate briefing from current telemetry"
       >
         <FileText className="size-3.5" strokeWidth={2} aria-hidden />
         <span>{busy ? 'Working…' : 'Generate'}</span>
         <span className="hidden 2xl:inline">Briefing</span>
       </button>
-      <span className="my-2 w-px bg-purple-300/20" aria-hidden />
+      <span className="my-2 w-px bg-white/10" aria-hidden />
       <button
         ref={triggerRef}
         type="button"
@@ -404,7 +412,7 @@ function GenerateControl({
             close()
           }
         }}
-        className="inline-flex w-9 items-center justify-center rounded-r-full text-purple-200 transition-colors hover:bg-purple-400/10 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex w-9 items-center justify-center rounded-r-full text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
@@ -475,15 +483,17 @@ export function BriefingControls({
         onChange={onModeChange}
         profiles={profiles}
         hydrated={profilesHydrated}
-        disabled={!activated || busy}
+        disabled={busy}
       />
-      <GenerateControl
-        mainDisabled={baseDisabled || !hasSnapshot}
-        refreshDisabled={baseDisabled}
-        busy={busy}
-        onGenerate={onGenerate}
-        onRefreshAndGenerate={onRefreshAndGenerate}
-      />
+      {activated ? (
+        <GenerateControl
+          mainDisabled={baseDisabled || !hasSnapshot}
+          refreshDisabled={baseDisabled}
+          busy={busy}
+          onGenerate={onGenerate}
+          onRefreshAndGenerate={onRefreshAndGenerate}
+        />
+      ) : null}
     </div>
   )
 }

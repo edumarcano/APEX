@@ -15,6 +15,7 @@ from core.api.models import (
     BriefingGenerateRequest,
     BriefingHistoryRecord,
     BriefingResponse,
+    BriefingTriggerRequest,
     classify_digest_payload,
     parse_runtime_metadata,
 )
@@ -30,15 +31,17 @@ _LOGGER = logging.getLogger(__name__)
     operation_id="trigger_briefing_api_v1_trigger_post",
     summary="Trigger Briefing",
 )
-def trigger_briefing_endpoint() -> BriefingResponse:
+def trigger_briefing_endpoint(
+    body: BriefingTriggerRequest | None = None,
+) -> BriefingResponse:
     """
     HTTP entry point for a full APEX run.
 
-    Force-refreshes telemetry, then synthesizes with the configured default
-    briefing mode. When ``DEMO_MODE`` is active, serves static mock telemetry
-    through a staged simulation loop.
+    Force-refreshes telemetry, then synthesizes with an optional requested mode
+    or the configured default. When ``DEMO_MODE`` is active, serves static mock
+    telemetry through a staged simulation loop.
     """
-    return trigger_briefing()
+    return trigger_briefing(mode=body.mode if body is not None else None)
 
 
 @router.post(

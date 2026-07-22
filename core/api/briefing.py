@@ -536,13 +536,13 @@ def generate_briefing(*, snapshot_id: str, mode: BriefingMode) -> BriefingRespon
             raise
 
 
-def trigger_briefing() -> BriefingResponse:
+def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
     """
     Run a full APEX briefing pipeline.
 
-    Force-refreshes telemetry, then synthesizes with the configured default
-    briefing mode. When ``DEMO_MODE`` is active, serves static mock telemetry
-    through a staged simulation loop.
+    Force-refreshes telemetry, then synthesizes with an optional requested mode
+    or the configured default. When ``DEMO_MODE`` is active, serves static mock
+    telemetry through a staged simulation loop.
 
     Startup Wi-Fi/power/cooldown gating is no longer a hard blocker; callers
     should use ``POST /api/v1/preflight`` for advisory warnings.
@@ -553,14 +553,14 @@ def trigger_briefing() -> BriefingResponse:
     with run_id_scope(run_id):
         try:
             if DEMO_MODE:
-                return _run_demo_briefing(run_id=run_id)
+                return _run_demo_briefing(run_id=run_id, mode=mode)
 
             global_pipeline_state.begin_run(run_id)
             global_pipeline_state.update(1, "GATE")
 
             get_settings_store().get_snapshot()
             dev_mode = is_dev_mode()
-            mode = _resolve_default_mode(dev_mode=dev_mode)
+            resolved_mode = mode or _resolve_default_mode(dev_mode=dev_mode)
 
             if not dev_mode:
                 database.log_run()
@@ -579,7 +579,7 @@ def trigger_briefing() -> BriefingResponse:
 
             return _synthesize_from_snapshot(
                 snapshot=snapshot,
-                mode=mode,
+                mode=resolved_mode,
                 run_id=run_id,
                 speak_fillers=True,
             )
