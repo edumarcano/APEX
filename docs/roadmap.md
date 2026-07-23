@@ -302,7 +302,7 @@ Give APEX runtime control surfaces for configuration, model/provider behavior, s
 
 ## v1.17.0 - Runtime Hardening & Decoupling
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
 Complete APEX's reproducibility, API, telemetry, persistence, startup, and documentation foundations, then separate HUD activation, telemetry collection, assistant availability, briefing synthesis, and voice delivery into independent runtime flows.

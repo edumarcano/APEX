@@ -34,6 +34,40 @@ The reminder feature needs read/write with persistent state (marking items as re
 
 Making the trigger a long-polling synchronous call simplifies the client significantly. There is no need to manage a job ID, poll a separate results endpoint, or handle partial streaming. The trade-off is that the HTTP connection stays open for the full duration of the pipeline (typically 3-10 seconds). This is acceptable for a single-user local tool with no concurrency requirements. The `/api/v1/status` polling loop provides real-time progress feedback without requiring the trigger to stream or chunked-transfer its response.
 
+### Independent runtime paths without removing the full pipeline
+
+APEX activation, telemetry collection, briefing synthesis, assistant access, and voice delivery are separate runtime paths. This lets the HUD come online and remain useful without requiring a briefing, while still allowing each part of the system to be used when it makes sense.
+
+`POST /api/v1/trigger` remains a supported full-pipeline operation, not just a compatibility route. It is still the simplest way to refresh telemetry, synthesize and persist a briefing, and optionally speak it in one request. Keeping it also preserves earlier integrations, but there is no reason to remove a useful direct workflow simply because the same capabilities can now run independently.
+
+The trade-off is that APEX supports both composed and independent paths, so shared behavior must stay in reusable services rather than drifting into separate implementations.
+
+### Telemetry snapshots stay process-local
+
+The current telemetry snapshot lives in memory and represents the HUD's present operational state. It can be refreshed as a whole or updated connector by connector, and a failed refresh keeps the previous healthy result as stale instead of erasing useful information. Briefings, rather than raw snapshots, remain the durable historical record.
+
+This keeps transient connector data out of the database and avoids treating an old machine state as if it were current after APEX restarts. The cost is that snapshot IDs expire with the backend process and cannot provide cross-session context.
+
+That may change as APEX grows into a broader personal AI orchestrator, but persisting the current snapshot object directly would blur live state, history, and memory. Cross-session context should come with explicit rules for retention, privacy, freshness, provenance, and cleanup. A future design may keep the live snapshot temporary while separately storing activity history or selected facts that are genuinely useful as memory.
+
+### Operational preflight warns before it blocks
+
+Environment gating has been part of APEX since its first version. The original scanner required three checks before the briefing pipeline could run: the machine had to be connected to the configured home Wi-Fi, plugged into AC power, and outside the briefing cooldown.
+
+These checks were intended to approximate the context in which APEX was meant to operate:
+
+- The configured Wi-Fi suggested that the device was on the expected home network.
+- AC power acted as a rough location signal. It usually meant the device was at its primary workstation rather than being used remotely elsewhere, even within the same house.
+- The cooldown prevented repeated briefings and unnecessary API calls.
+
+None of these checks proved that the environment was secure or that the device was physically in a particular location. They were practical signals for a personal tool, not an authentication or security boundary.
+
+That design worked when APEX had one main purpose and every activation launched a complete briefing. It became too restrictive once telemetry collection, assistant access, briefing synthesis, voice delivery, and local-model operations could run independently. A network mismatch or battery state should not prevent the entire HUD from becoming useful.
+
+The same signals now feed advisory preflight warnings. APEX can warn about a configured-network mismatch, unknown network state, battery use, rapid connector refreshes, cloud disclosure, or elevated local-model resource use before an operation begins. These warnings provide context and allow the user to continue when appropriate.
+
+Hard blockers are reserved for conditions that prevent the requested operation from running correctly, such as missing credentials, an unavailable model, local-inference contention, failed CPU or RAM gates, invalid input, or broken configuration and database state. This keeps the original safety and operational intent visible without making a personal local tool unusable whenever its environment differs from the expected setup.
+
 ### Speaker state sourced from the backend, not inferred on the frontend
 
 Prior to v1.6.0, `isSpeaking` on the frontend was derived as `isPipelinePolling && activeStep === 4`. This was replaced with a direct `is_speaking` field on the `/api/v1/status` response, backed by `speaker.is_speaking()` which checks `_SPEAK_LOCK` and `pygame.mixer.music.get_busy()`.
@@ -86,25 +120,27 @@ The active engine is controlled by `primary_tts` in `config.json`. Regardless of
 
 ### Why local briefing synthesis shares the assistant lifecycle
 
-`DEV_AI_SYNTHESIS=local` now routes briefing synthesis through the same Ollama provider, execution lock, model profiles, resource gates, and idle lifecycle used by the assistant. A recognized resident APEX model is reused; otherwise Lynx warms concurrently with collection. The route never queues behind local assistant work and falls back to a compact deterministic briefing when the model is unavailable or misses its grace deadline.
+Local briefing synthesis uses the same Ollama provider, execution lock, model profiles, resource gates, and idle lifecycle as the assistant. There is no benefit in maintaining a second model manager for briefing work when both features compete for the same CPU, RAM, and single loaded-model slot.
 
-Synthesis remains isolated from assistant behavior: it receives no tools or history, disables thinking, uses a 512-token ceiling, and accepts only sanitized typed connector facts marked as untrusted evidence.
+The selected local briefing mode is still honored. Lynx, Acinonyx, and Neofelis warm or reuse their corresponding profile instead of silently substituting another resident model. The legacy `local` strategy maps to Acinonyx, which is the balanced local default. Local work does not queue behind another inference request; when the selected model cannot run, briefing synthesis falls back to Structured Digest with a recorded reason.
 
-The `local` value exists in the config surface now so that the routing contract is established and the `metadata.synthesis_strategy` field in API responses accurately reflects the intended enum (`raw | local | cloud`) without requiring a contract change later.
+Shared lifecycle does not mean shared context. Briefing synthesis receives no assistant tools or conversation history, disables thinking, uses a bounded output contract, and sees only sanitized connector facts marked as untrusted evidence. The trade-off is contention between assistant and briefing work, which APEX exposes immediately instead of hiding behind a queue.
 
-### Multi-tier synthesis fallback strategy
+### Explicit briefing modes with a deterministic final fallback
 
-APEX routes briefing synthesis through three strategies, selected by `DEV_AI_SYNTHESIS` in dev mode or locked to `cloud` in production:
+APEX exposes five briefing modes so the choice between cloud speed, local resource use, and model-free output is deliberate:
 
-- **`cloud`** — calls Gemini 3.1 Flash Lite. On any failure, checks for a resident APEX Ollama model and uses it if available. If no model is loaded, starts a Lynx warmup bounded by `synthesis.local_fallback_grace_seconds` and attempts the local path. If that also fails or times out, falls through to raw.
-- **`local`** — skips Gemini entirely. Checks for a resident model first; if none is loaded, starts a Lynx warmup bounded by `synthesis.local_primary_grace_seconds`. Falls through to raw on warmup failure or timeout.
-- **`raw`** — produces a deterministic compact briefing from `SynthesisInput` immediately, with no model call.
+- **Comet** uses Gemini 3.5 Flash Lite for the default fast cloud briefing.
+- **Lynx** uses the smallest local profile and keeps its shorter, limited-telemetry prompt.
+- **Acinonyx** is the balanced local default and uses the full Comet briefing contract.
+- **Neofelis** uses the same full contract with a higher-capacity, slower local model.
+- **Structured Digest** produces a model-free briefing directly from typed facts.
 
-Raw fallback is built from the same privacy-bounded `SynthesisInput` field set used by Gemini and Ollama. Concatenated raw connector telemetry never reaches a model on any synthesis path.
+An explicitly selected local profile is not silently replaced with a different resident model. Comet may reuse a recognized resident local profile or briefly try Lynx when Gemini fails, but every unsuccessful path ends at Structured Digest. That gives APEX a useful result even when credentials, providers, models, or generated output fail.
 
-Gemini 3.1 Flash Lite is the sole cloud synthesis model. Multiple Gemini model tiers are not planned: the Flash Lite free tier is sufficient for single-user periodic briefing synthesis, and local models already provide a capable offline path when the cloud is unavailable.
+All modes start from the same privacy-bounded `SynthesisInput`. Concatenated display telemetry never reaches Gemini or Ollama, and Structured Digest uses the same typed facts without making a model call. The legacy `cloud`, `local`, and `raw` strategy values remain compatibility aliases for Comet, Acinonyx, and Structured Digest respectively.
 
-**Implemented:** Gemini synthesis (Gemini 3.1 Flash Lite), local Ollama briefing synthesis (local path via `SynthesisRouter`), offline deterministic raw fallback.
+The extra mode surface requires more profile and fallback coverage, but it keeps the operational and privacy trade-offs visible instead of hiding them behind a single automatic router.
 
 ### TTS engine priority restructure: mobile CPU oversubscription and hardware-conditional Kokoro standby
 
