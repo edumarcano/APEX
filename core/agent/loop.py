@@ -1,7 +1,7 @@
 import inspect
 import logging
 import time
-from typing import Any, Callable, Dict, Protocol, get_type_hints, runtime_checkable
+from typing import Any, Callable, Dict, Generic, Protocol, TypeVar, get_type_hints, runtime_checkable
 
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
@@ -14,6 +14,7 @@ from core.agent.types import (
 )
 
 AgentModelProfile = GeminiModelProfile | OllamaModelProfile
+P = TypeVar("P", bound=AgentModelProfile, contravariant=True)
 
 ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
 
@@ -30,12 +31,12 @@ _LOGGER = logging.getLogger(__name__)
 
 
 @runtime_checkable
-class AgentProvider(Protocol):
+class AgentProvider(Protocol[P]):
     def generate_turn(
         self,
         messages: list[AgentMessage],
         tools: list[Any],
-        profile: Any,
+        profile: P,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
         ...
@@ -96,8 +97,8 @@ def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
 
 def run_agent_loop(
     request: AgentQueryRequest,
-    provider: AgentProvider,
-    profile: AgentModelProfile,
+    provider: AgentProvider[P],
+    profile: P,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
 ) -> AgentQueryResponse:
