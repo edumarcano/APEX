@@ -6,7 +6,29 @@ from pydantic import BaseModel, Field
 
 SynthesisProvider = Literal["gemini", "ollama", "raw", "demo"]
 SynthesisProfile = Literal["comet", "lynx", "acinonyx", "neofelis"]
+BriefingMode = Literal[
+    "comet", "lynx", "acinonyx", "neofelis", "structured_digest"
+]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
+
+VALID_BRIEFING_MODES: frozenset[str] = frozenset(
+    {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
+)
+LOCAL_BRIEFING_PROFILES: frozenset[str] = frozenset({"lynx", "acinonyx", "neofelis"})
+
+
+def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
+    """Map legacy synthesis strategies onto explicit briefing modes."""
+    normalized = (strategy or "").strip().lower()
+    if normalized == "raw":
+        return "structured_digest"
+    if normalized == "local":
+        return "acinonyx"
+    if normalized == "cloud":
+        return "comet"
+    if normalized in VALID_BRIEFING_MODES:
+        return normalized  # type: ignore[return-value]
+    return "comet"
 
 
 class CalendarFact(BaseModel):

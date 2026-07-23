@@ -10,6 +10,7 @@ export interface ApexLogoProps {
   isLocalModelLoading?: boolean
   isLocalModelLoaded?: boolean
   isTelemetryCollecting?: boolean
+  isOuterSegmentSurging?: boolean
   className?: string
 }
 
@@ -22,6 +23,7 @@ export function ApexLogo({
   isLocalModelLoading = false,
   isLocalModelLoaded = false,
   isTelemetryCollecting = false,
+  isOuterSegmentSurging = false,
   className = '',
 }: ApexLogoProps): ReactElement {
   const [pulseActive, setPulseActive] = useState(false)
@@ -62,7 +64,7 @@ export function ApexLogo({
       return rustSurge
     }
 
-    if (isTelemetryCollecting) {
+    if (isTelemetryCollecting || isOuterSegmentSurging) {
       return 'apex-blue-metal apex-blue-metal--collection-surge'
     }
 
@@ -79,7 +81,7 @@ export function ApexLogo({
   const getBlueStageDelay = (
     segmentStep: number,
   ): { animationDelay: string } | undefined => {
-    if (!isLocalModelLoading && !isTelemetryCollecting) {
+    if (!isLocalModelLoading && !isTelemetryCollecting && !isOuterSegmentSurging) {
       return undefined
     }
     return { animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms` }
@@ -318,7 +320,7 @@ export function ApexLogo({
             }
 
             .apex-blue-metal--rust-active {
-              fill: url(#apexRustMetal);
+              fill: url(#apexBlueMetal);
               opacity: 1;
               filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.75));
               transition: all 1000ms ease-in-out;

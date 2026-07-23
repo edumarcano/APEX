@@ -16,19 +16,19 @@ Gemini and Ollama receive the same sanitized payload. Concatenated connector dis
 
 The untrusted-data markers and output validation reduce prompt-injection risk; they do not make model output a security boundary. Connector text should still be treated as untrusted evidence, and model output must not authorize actions.
 
-### Current cloud-processing limitation
+### Cloud-processing choice
 
-A normal production run currently routes briefing synthesis through Gemini. This is a known personal-data trade-off until the remaining v1.17 work makes local and raw production paths independently usable. The typed payload is smaller and safer than raw connector telemetry, but it can still contain personal facts such as calendar events, reminders, email subjects, or briefing context.
+Comet remains the default briefing mode and routes synthesis through Gemini. The briefing selector in the global header can instead select Lynx, Acinonyx, or Neofelis for local Ollama synthesis, or Structured Digest for deterministic no-model output. The typed payload is smaller and safer than raw connector telemetry, but cloud mode can still disclose personal facts such as calendar events, reminders, email subjects, or briefing context.
 
 On the Gemini API unpaid/free tier, Google states that submitted content and generated responses may be used to provide, improve, and develop Google products and machine-learning technologies, and that human reviewers may process API inputs and outputs. Sanitization limits what APEX sends; it does not make free-tier cloud processing confidential. The current free-tier path is therefore not appropriate for sensitive or confidential personal data. See Google's [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [pricing data-use table](https://ai.google.dev/gemini-api/docs/pricing).
 
-Google states that paid Gemini API services do not use prompts or responses to improve products, although limited abuse-monitoring retention can still apply. Moving this project to paid Gemini usage would provide that stronger provider boundary while cloud synthesis remains mandatory. Local and raw production synthesis are planned as part of the remaining v1.17 work.
+Google states that paid Gemini API services do not use prompts or responses to improve products, although limited abuse-monitoring retention can still apply. Moving this project to paid Gemini usage provides a stronger provider boundary when Comet is selected. Choosing a local mode or Structured Digest avoids sending briefing synthesis data to Gemini.
 
 ## Assistant Data
 
-The assistant is a separate path from briefing synthesis. A cloud profile sends the current prompt, the browser-provided conversation history, selected latest-briefing context, and any requested tool results to Gemini. A local profile sends the same categories to the configured Ollama host, which defaults to `http://localhost:11434` and can be changed in APEX configuration. Tool results are wrapped in `<untrusted_tool_output>` markers before another model turn.
+The assistant is a separate path from briefing synthesis. A cloud profile sends the current prompt, browser-provided conversation history, explicitly selected HUD context, and any requested tool results to Gemini. A local profile sends the same categories to the configured Ollama host, which defaults to `http://localhost:11434` and can be changed in APEX configuration. Tool results are wrapped in `<untrusted_tool_output>` markers before another model turn.
 
-Conversation history is held by the browser tab and is lost on reload. There is no server-side chat-session store. The latest persisted briefing can be added to assistant context so relative questions about the visible HUD can be answered.
+Conversation history is held by the browser tab and is lost on reload. There is no server-side chat-session store. A current telemetry snapshot or briefing is included only when its identifier is explicitly supplied; APEX does not implicitly inject the latest persisted briefing.
 
 ## Local Persistence
 

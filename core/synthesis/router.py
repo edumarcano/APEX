@@ -34,7 +34,13 @@ from core.synthesis.formatting import (
     parse_model_output,
     wrap_untrusted_payload,
 )
-from core.synthesis.models import SynthesisInput, SynthesisResult
+from core.synthesis.models import (
+    LOCAL_BRIEFING_PROFILES,
+    BriefingMode,
+    SynthesisInput,
+    SynthesisResult,
+    strategy_to_briefing_mode,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +50,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
 @dataclass
 class WarmupHandle:
-    profile_key: str = "lynx"
+    profile_key: str = "acinonyx"
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
     reason: str | None = None
@@ -86,6 +92,13 @@ def _has_unrecognized_resident_model() -> bool:
     return bool(snapshot["loaded_models"]) and resident_profile_key() is None
 
 
+def _system_prompt_for_profile(profile_key: str) -> str:
+    """Lynx keeps its local prompt; Acinonyx/Neofelis use the Comet contract."""
+    if profile_key == "lynx":
+        return OLLAMA_SYNTHESIS_PROMPT
+    return GEMINI_SYNTHESIS_PROMPT
+
+
 class SynthesisRouter:
     def __init__(self, state_callback: StateCallback | None = None) -> None:
         self._state_callback = state_callback or (lambda *_args: None)
@@ -99,8 +112,13 @@ class SynthesisRouter:
     ) -> None:
         self._state_callback(phase, provider, profile, reason)
 
-    def start_lynx_warmup(self) -> WarmupHandle:
-        handle = WarmupHandle()
+    def start_profile_warmup(self, profile_key: str) -> WarmupHandle:
+        handle = WarmupHandle(profile_key=profile_key)
+        if profile_key not in LOCAL_BRIEFING_PROFILES:
+            handle.reason = "local_profile_invalid"
+            handle.finished_at = time.monotonic()
+            handle.event.set()
+            return handle
         if not OLLAMA_ENABLED:
             handle.reason = "local_disabled"
             handle.finished_at = time.monotonic()
@@ -117,11 +135,11 @@ class SynthesisRouter:
             handle.event.set()
             return handle
 
-        self._state("loading", "ollama", "lynx", None)
+        self._state("loading", "ollama", profile_key, None)
 
         def worker() -> None:
             try:
-                profile = OLLAMA_MODEL_PROFILES["lynx"]
+                profile = OLLAMA_MODEL_PROFILES[profile_key]
                 snapshot = get_status_snapshot()
                 if not snapshot["reachable"]:
                     handle.reason = "local_unreachable"
@@ -130,7 +148,9 @@ class SynthesisRouter:
                     handle.reason = "local_model_missing"
                     return
                 if not is_local_model_loaded(profile.api_model):
-                    allowed, gate_reason = check_resource_gate(profile.ram_limit, profile.cpu_limit)
+                    allowed, gate_reason = check_resource_gate(
+                        profile.ram_limit, profile.cpu_limit
+                    )
                     if not allowed:
                         handle.reason = f"local_{gate_reason or 'resource_gated'}"
                         return
@@ -147,16 +167,29 @@ class SynthesisRouter:
         threading.Thread(target=worker, daemon=True, name="apex-synthesis-warmup").start()
         return handle
 
+    def start_lynx_warmup(self) -> WarmupHandle:
+        """Warm Lynx for cloud-fallback paths."""
+        return self.start_profile_warmup("lynx")
+
     def prepare(self, strategy: str) -> WarmupHandle | None:
-        if strategy != "local":
+        mode = strategy_to_briefing_mode(strategy)
+        return self.prepare_mode(mode)
+
+    def prepare_mode(self, mode: BriefingMode) -> WarmupHandle | None:
+        if mode == "structured_digest" or mode == "comet":
+            return None
+        if mode not in LOCAL_BRIEFING_PROFILES:
             return None
         resident = resident_profile_key()
-        if resident:
+        if resident == mode:
             self._state("ready", "ollama", resident, None)
             return None
-        return self.start_lynx_warmup()
+        # Explicit local selection (or legacy local→acinonyx) warms the selected profile.
+        return self.start_profile_warmup(mode)
 
-    def _raw(self, source: SynthesisInput, reason: str | None, warmup_ms: int | None = None) -> SynthesisResult:
+    def _raw(
+        self, source: SynthesisInput, reason: str | None, warmup_ms: int | None = None
+    ) -> SynthesisResult:
         self._state("fallback", "raw", None, reason)
         briefing, insights = deterministic_fallback(source)
         return SynthesisResult(
@@ -192,7 +225,9 @@ class SynthesisRouter:
             generation_ms=int((time.monotonic() - started) * 1000),
         )
 
-    def _ollama(self, source: SynthesisInput, profile_key: str, warmup_ms: int | None) -> SynthesisResult:
+    def _ollama(
+        self, source: SynthesisInput, profile_key: str, warmup_ms: int | None
+    ) -> SynthesisResult:
         if not try_begin_local_execution():
             raise RuntimeError("local_busy")
         started = time.monotonic()
@@ -201,7 +236,7 @@ class SynthesisRouter:
                 update={
                     "final_answer_max_tokens": 512,
                     "think": False,
-                    "system_instruction": OLLAMA_SYNTHESIS_PROMPT,
+                    "system_instruction": _system_prompt_for_profile(profile_key),
                 }
             )
             self._state("generating", "ollama", profile_key, None)
@@ -222,6 +257,114 @@ class SynthesisRouter:
         finally:
             end_local_execution()
 
+    def _synthesize_explicit_local(
+        self,
+        source: SynthesisInput,
+        profile_key: str,
+        warmup: WarmupHandle | None,
+    ) -> SynthesisResult:
+        """Honor an explicitly selected local profile; never silently substitute another."""
+        resident = resident_profile_key()
+        if resident == profile_key:
+            try:
+                result = self._ollama(source, profile_key, None)
+                self._state("complete", result.provider, result.profile, None)
+                return result
+            except Exception as exc:
+                reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
+                return self._raw(source, reason)
+
+        if warmup is None:
+            warmup = self.start_profile_warmup(profile_key)
+        elif warmup.profile_key != profile_key:
+            # Caller prepared a different profile; switch to the selected one.
+            warmup = self.start_profile_warmup(profile_key)
+
+        if not warmup.event.wait(LOCAL_PRIMARY_GRACE_SECONDS):
+            return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
+        if not warmup.success:
+            return self._raw(
+                source, warmup.reason or "local_warmup_failed", warmup.elapsed_ms
+            )
+        self._state("ready", "ollama", profile_key, None)
+        try:
+            result = self._ollama(source, profile_key, warmup.elapsed_ms)
+            self._state("complete", result.provider, result.profile, None)
+            return result
+        except Exception as exc:
+            reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
+            return self._raw(source, reason, warmup.elapsed_ms)
+
+    def _synthesize_comet(
+        self, source: SynthesisInput, warmup: WarmupHandle | None
+    ) -> SynthesisResult:
+        gemini_reason: str | None = None
+        try:
+            result = self._gemini(source)
+            self._state("complete", result.provider, result.profile, None)
+            return result
+        except Exception as exc:
+            _LOGGER.error(
+                "Gemini briefing synthesis failed; falling back to local/raw. "
+                "error_type=%s",
+                type(exc).__name__,
+            )
+            gemini_reason = str(exc) if str(exc).startswith("gemini_") else "gemini_error"
+
+        resident = resident_profile_key()
+        if resident:
+            try:
+                result = self._ollama(source, resident, None)
+                result.fallback_reason = gemini_reason
+                self._state(
+                    "complete", result.provider, result.profile, result.fallback_reason
+                )
+                return result
+            except Exception as exc:
+                reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
+                return self._raw(source, reason)
+
+        if warmup is None:
+            warmup = self.start_lynx_warmup()
+        if not warmup.event.wait(LOCAL_FALLBACK_GRACE_SECONDS):
+            return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
+        if not warmup.success:
+            return self._raw(
+                source,
+                warmup.reason or gemini_reason or "local_warmup_failed",
+                warmup.elapsed_ms,
+            )
+        self._state("ready", "ollama", warmup.profile_key, gemini_reason)
+        try:
+            result = self._ollama(source, warmup.profile_key, warmup.elapsed_ms)
+            result.fallback_reason = gemini_reason
+            self._state(
+                "complete", result.provider, result.profile, result.fallback_reason
+            )
+            return result
+        except Exception as exc:
+            reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
+            return self._raw(source, reason, warmup.elapsed_ms)
+
+    def synthesize_mode(
+        self,
+        source: SynthesisInput,
+        mode: BriefingMode,
+        warmup: WarmupHandle | None = None,
+    ) -> SynthesisResult:
+        if mode == "structured_digest":
+            result = self._raw(source, "configured_raw")
+            self._state("complete", result.provider, result.profile, result.fallback_reason)
+            return result
+
+        if mode == "comet":
+            return self._synthesize_comet(source, warmup)
+
+        if mode in LOCAL_BRIEFING_PROFILES:
+            return self._synthesize_explicit_local(source, mode, warmup)
+
+        return self._raw(source, "invalid_briefing_mode")
+
     def synthesize(
         self,
         source: SynthesisInput,
@@ -232,49 +375,5 @@ class SynthesisRouter:
     ) -> SynthesisResult:
         # full_telemetry is retained only as an unused compatibility keyword.
         _ = full_telemetry
-        if strategy == "raw":
-            result = self._raw(source, "configured_raw")
-            self._state("complete", result.provider, result.profile, result.fallback_reason)
-            return result
-
-        gemini_reason: str | None = None
-        if strategy == "cloud":
-            try:
-                result = self._gemini(source)
-                self._state("complete", result.provider, result.profile, None)
-                return result
-            except Exception as exc:
-                _LOGGER.error(
-                    "Gemini briefing synthesis failed; falling back to local/raw. "
-                    "error_type=%s",
-                    type(exc).__name__,
-                )
-                gemini_reason = str(exc) if str(exc).startswith("gemini_") else "gemini_error"
-
-        resident = resident_profile_key()
-        if resident:
-            try:
-                result = self._ollama(source, resident, None)
-                result.fallback_reason = gemini_reason
-                self._state("complete", result.provider, result.profile, result.fallback_reason)
-                return result
-            except Exception as exc:
-                reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-                return self._raw(source, reason)
-
-        if warmup is None:
-            warmup = self.start_lynx_warmup()
-        grace = LOCAL_PRIMARY_GRACE_SECONDS if strategy == "local" else LOCAL_FALLBACK_GRACE_SECONDS
-        if not warmup.event.wait(grace):
-            return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
-        if not warmup.success:
-            return self._raw(source, warmup.reason or gemini_reason or "local_warmup_failed", warmup.elapsed_ms)
-        self._state("ready", "ollama", warmup.profile_key, gemini_reason)
-        try:
-            result = self._ollama(source, warmup.profile_key, warmup.elapsed_ms)
-            result.fallback_reason = gemini_reason
-            self._state("complete", result.provider, result.profile, result.fallback_reason)
-            return result
-        except Exception as exc:
-            reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-            return self._raw(source, reason, warmup.elapsed_ms)
+        mode = strategy_to_briefing_mode(strategy)
+        return self.synthesize_mode(source, mode, warmup)

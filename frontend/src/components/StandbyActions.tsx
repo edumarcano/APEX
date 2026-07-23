@@ -54,7 +54,7 @@ export function StandbyActions({
         className={`hud-command-surface inline-flex rounded-md border px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] sm:text-[11px] ${
           disabled
             ? 'cursor-not-allowed border-white/5 bg-transparent text-zinc-600 opacity-40'
-            : 'border-white/10 bg-white/5 text-[color:var(--hud-text)] hover:border-white/20 hover:bg-white/10'
+            : 'border-white/10 bg-white/5 text-[#C084FC] hover:border-white/20 hover:bg-white/10 hover:text-[#D8B4FE]'
         }`}
       >
         {secondaryLabel}

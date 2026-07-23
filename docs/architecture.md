@@ -33,7 +33,7 @@ sequenceDiagram
     participant Status as Backend: /api/v1/status
     participant Speaker as Backend: _speak_and_cleanup (worker thread)
 
-    App->>Trigger: POST /api/v1/trigger (operator-initiated)
+    App->>Trigger: POST /api/v1/trigger { mode } (operator-initiated)
     Trigger->>Store: update(1, GATE)
 
     loop Every 500ms while loading or speaking
@@ -196,7 +196,7 @@ apex/
 │   │   └── __init__.py
 │   ├── synthesis/
 │   │   ├── __init__.py      # Package init; re-exports SynthesisRouter, SynthesisInput, SynthesisResult
-│   │   ├── router.py        # SynthesisRouter: cloud/local/raw strategy dispatch, WarmupHandle warmup threading
+│   │   ├── router.py        # SynthesisRouter: briefing modes (comet/lynx/acinonyx/neofelis/structured_digest), WarmupHandle warmup threading
 │   │   ├── formatting.py    # compact_payload, wrap_untrusted_payload, parse_model_output, deterministic_fallback
 │   │   └── models.py        # SynthesisInput, SynthesisResult, SynthesisProvider/Profile/Phase literals
 │   ├── connectors/
@@ -339,24 +339,24 @@ On any provider, validation, or output-format failure, the router records a stab
 
 ### `core/synthesis/`
 
-The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synthesize()` on every trigger.
+The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synthesize_mode()` (legacy `synthesize(strategy)` remains as a thin wrapper).
 
 **`core/synthesis/models.py`** — Pydantic types used across the subsystem:
 
 - `SynthesisInput` — privacy-bounded context object passed to cloud, local, and raw paths: weather summary/temp/condition, bounded email subjects and unread count, news headlines, calendar facts, reminders, this-week F1, next football fixture, connector health, legacy `failed_connectors`, `generated_at`, and `timezone`. Fields are sanitized, truncated, and capped before serialization.
 - `SynthesisResult` — router output: `briefing`, `insights`, `provider`, `profile`, `fallback_reason`, `warmup_ms`, `generation_ms`.
-- Literal type aliases: `SynthesisProvider` (`gemini | ollama | raw | demo`), `SynthesisProfile` (`comet | lynx | acinonyx | neofelis`), `SynthesisPhase` (`idle | loading | ready | generating | fallback | complete`).
+- Literal type aliases: `BriefingMode` (`comet | lynx | acinonyx | neofelis | structured_digest`), `SynthesisProvider` (`gemini | ollama | raw | demo`), `SynthesisProfile` (`comet | lynx | acinonyx | neofelis`), `SynthesisPhase` (`idle | loading | ready | generating | fallback | complete`).
 
 **`core/synthesis/formatting.py`** — three pure functions:
 
 - `compact_payload(source)` — serializes a `SynthesisInput` into a short human-readable text string under a 2,000-byte cap, sanitized for local model input.
 - `parse_model_output(text)` — splits on `===SPEECH===` / `===INSIGHTS===` markers, strips bullet prefixes, and returns `(briefing, insights)`. Falls back to the full text as the briefing with an empty insights list when markers are absent.
-- `deterministic_fallback(source)` — builds a briefing and insight list from `SynthesisInput` without any model call; used by the `raw` strategy and as the terminal fallback on all exceptions.
+- `deterministic_fallback(source)` — builds a briefing and insight list from `SynthesisInput` without any model call; used by Structured Digest and as the terminal fallback on all exceptions.
 
-**`core/synthesis/router.py`** — `SynthesisRouter` drives strategy resolution:
+**`core/synthesis/router.py`** — `SynthesisRouter` drives briefing-mode resolution:
 
-- `prepare(strategy)` — called during the Collection stage. When `strategy == "local"`, checks for a resident APEX model; if none is found, spawns a background `WarmupHandle` thread that calls `switch_local_model(lynx)` concurrently with data collection.
-- `synthesize(source, strategy, warmup)` — resolves the briefing from typed `SynthesisInput` only: `raw` calls `_raw()` immediately; `cloud` calls `_gemini()` and falls through to local/raw on failure; `local` awaits the warmup handle (bounded by `synthesis.local_primary_grace_seconds`) and calls `_ollama()`. All paths fall through to `_raw()` on unrecoverable failure. A `state_callback` is called at each phase transition so briefing orchestration can propagate live synthesis state to `/api/v1/status`.
+- `prepare_mode(mode)` — when mode is an explicit local profile, warms that profile (legacy `local` strategy maps to **Acinonyx**). Comet/Structured Digest skip warmup.
+- `synthesize_mode(source, mode, warmup)` — `comet` uses Gemini then resident local / Lynx fallback; explicit `lynx` / `acinonyx` / `neofelis` honor the selected profile (switching resident models when needed); `structured_digest` is deterministic raw. Acinonyx/Neofelis use the Comet prompt; Lynx keeps its local prompt. Selected-mode failure falls through to Structured Digest with a stable reason.
 - `WarmupHandle` — a `threading.Event`-backed dataclass tracking warmup success, reason, and timing. `elapsed_ms` is computed from a monotonic start timestamp.
 
 ### `core/agent/` — Cortex reasoning engine for the APEX assistant
@@ -561,7 +561,7 @@ Permanent all-in-one SVG status indicator mounted under the large `ApexLogo`. It
 
 ### `BriefingDigest.tsx`
 
-Displays insight bullet strings from `DigestPayload.insights` in the center column above the `ApexLogo`. Each bullet is prefixed with a gold `>` glyph. When `status === 'success'`, a "History" button appears in the card header; clicking it opens `HistoryLedgerModal` as a portal-mounted dialog. The modal fetches `GET /api/v1/briefings/history` on mount and renders each `BriefingHistoryRecord` with a formatted timestamp, briefing prose, and insight bullets. The modal closes on backdrop click or `Escape`.
+Displays only synthesis-produced insight strings from `DigestPayload.insights` in the center column above the `ApexLogo`; reminders remain in their dedicated panel. The briefing mode selector lives in the global header and uses the assistant profile availability matrix for model-backed modes. Beneath the logo, a split Synthesize command either uses the current `snapshot_id` or refreshes all telemetry before synthesizing from the returned snapshot. The Insights card reserves its body for synthesis insights and transcript text; optional Speak / Replay appears as an icon only on the Briefing tab. Independent voice delivery is tracked by `useVoiceDelivery`, which disables replay during playback and surfaces stable API failures with the transcript. When `status === 'success'`, a "History" button appears in the card header; clicking it opens `HistoryLedgerModal` as a portal-mounted dialog. The modal fetches `GET /api/v1/briefings/history` on mount and renders each `BriefingHistoryRecord` with a formatted timestamp, briefing prose, and insight bullets. The modal closes on backdrop click or `Escape`.
 
 ### `CommandTrigger.tsx`
 
@@ -599,7 +599,7 @@ Shared card frame. Accepts `title`, `icon`, `primaryTemperatureF`, `f1TelemetryT
 5. **Hardware Resources** — CPU, RAM, and DISK percentage labels each backed by a horizontal micro-bar. Color thresholds: blue (< 80%), amber (≥ 80%), red (≥ 90%). Hover tooltips show CPU frequency in GHz and RAM/disk as used/total GB.
 6. **System Time** — live clock updated every 1,000 ms via `setInterval`.
 
-A `SynthesisPill` is rendered between the Hardware Resources column and the System Time column. It displays the resolved synthesis provider and profile as a color-coded pill (blue for Gemini, orange for Ollama, red for raw), with a hover tooltip that shows the `fallback_reason` when applicable. Props: `synthesisProvider`, `synthesisProfile`, `synthesisFallbackReason` (all forwarded from `App.tsx`).
+The briefing controls replace the former synthesis-status pill beside the hardware metrics. The header selector groups cloud, local, and model-free briefing modes while reusing the assistant profile status feed for credentials, Ollama availability, installed models, resource thresholds, and inference contention. The split Synthesize command beneath the logo uses current telemetry or refreshes all connectors first. The selection is a session override; Settings remains the persisted default.
 
 Receives `diagnosticsStatus`, `isSpeaking`, `isPipelinePolling`, `status`, `confidenceScore`, `pipelineStep`, `failedConnectors`, `synthesisProvider`, `synthesisProfile`, and `synthesisFallbackReason` as props from `App.tsx`. Pulls hardware metric values internally via a second `useSystemDiagnostics()` call.
 
@@ -637,7 +637,7 @@ The single data hook for the entire HUD. On mount it:
 The trigger is not fired on mount. When `triggerSynthesis()` is called (via the header button or `Enter` key), the hook:
 
 1. Sets `status` to `loading`.
-2. Fires `POST /api/v1/trigger` with an `AbortController` signal.
+2. Fires `POST /api/v1/trigger` with the selected session briefing mode and an `AbortController` signal. An omitted mode remains compatible and uses the saved default.
 3. Starts a `setInterval` at 500 ms to poll `GET /api/v1/status`.
 4. On trigger resolution, parses weather string fields via `resolvePipelineTemperatureF` and `resolveWeatherDetail`.
 5. Derives `weatherCondition` via `resolveWeatherCondition`.

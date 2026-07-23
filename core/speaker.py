@@ -231,7 +231,7 @@ def _speak_kokoro_local(text: str, *, gender: str) -> None:
     _LOGGER.info("Local Kokoro ONNX playback completed.")
 
 
-def _speak_pyttsx3_local(text: str, *, gender: str) -> None:
+def _speak_pyttsx3_local(text: str, *, gender: str) -> bool:
     """Speak text with a thread-local pyttsx3 engine."""
     if os.name == "nt":
         try:
@@ -268,8 +268,10 @@ def _speak_pyttsx3_local(text: str, *, gender: str) -> None:
         engine.say(text)
         engine.runAndWait()
         _LOGGER.info("Local pyttsx3 playback completed.")
+        return True
     except Exception as exc:
         _LOGGER.warning("Local pyttsx3 playback failed (%s).", type(exc).__name__)
+        return False
 
 
 def _try_google_tts(content: str, *, gender: str) -> bool:
@@ -301,7 +303,7 @@ def is_speaking() -> bool:
     return False
 
 
-def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> None:
+def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> bool:
     """Route speech through a safe, low-latency fallback chain keyed by ``tts_strategy``."""
     normalized = tts_strategy.strip().lower()
 
@@ -315,34 +317,32 @@ def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> None:
     if normalized == "google":
         _LOGGER.info("Routing to Google Cloud TTS client API.")
         if _try_google_tts(text, gender=gender):
-            return
+            return True
         _LOGGER.info("Google TTS failed; falling back to pyttsx3.")
-        _speak_pyttsx3_local(text, gender=gender)
-        return
+        return _speak_pyttsx3_local(text, gender=gender)
 
     if normalized == "kokoro":
         _LOGGER.info("Routing to local Kokoro ONNX engine.")
         try:
             _speak_kokoro_local(text, gender=gender)
+            return True
         except Exception as exc:  # noqa: BLE001
             _LOGGER.warning(
                 "Local Kokoro ONNX playback failed (%s); "
                 "falling back to Google Cloud TTS.",
                 type(exc).__name__,
             )
-            _route_tts_playback(text, "google", gender=gender)
-        return
+            return _route_tts_playback(text, "google", gender=gender)
 
     if normalized == "pyttsx3":
         _LOGGER.info("Routing directly to local pyttsx3 execution.")
-        _speak_pyttsx3_local(text, gender=gender)
-        return
+        return _speak_pyttsx3_local(text, gender=gender)
 
     _LOGGER.warning(
         "Unrecognized TTS strategy %r; defaulting to local pyttsx3.",
         tts_strategy,
     )
-    _route_tts_playback(text, "pyttsx3", gender=gender)
+    return _route_tts_playback(text, "pyttsx3", gender=gender)
 
 
 def _deliver_speech(
@@ -350,7 +350,7 @@ def _deliver_speech(
     *,
     tts_override: str | None = None,
     voice_gender: str | None = None,
-) -> None:
+) -> bool:
     """Route speech while the caller holds ``_SPEAK_LOCK``."""
     _LOGGER.info("Speak request received (chars=%s).", len(text))
 
@@ -361,8 +361,7 @@ def _deliver_speech(
 
     if tts_override is not None:
         _LOGGER.info("TTS override active; routing vector is %r.", tts_override)
-        _route_tts_playback(text, tts_override, gender=bound_gender)
-        return
+        return _route_tts_playback(text, tts_override, gender=bound_gender)
 
     if config.is_dev_mode():
         dev_tts = config.DEV_TTS_PLAYBACK
@@ -370,12 +369,11 @@ def _deliver_speech(
             "DEV_MODE active; DEV_TTS_PLAYBACK routing vector is %r.",
             dev_tts,
         )
-        _route_tts_playback(text, dev_tts, gender=bound_gender)
-        return
+        return _route_tts_playback(text, dev_tts, gender=bound_gender)
 
     primary = snapshot.voice.engine
     _LOGGER.info("Configured PRIMARY_TTS routing vector is %r.", primary)
-    _route_tts_playback(text, primary, gender=bound_gender)
+    return _route_tts_playback(text, primary, gender=bound_gender)
 
 
 def speak(
@@ -414,7 +412,11 @@ def try_speak(
     if not _SPEAK_LOCK.acquire(blocking=False):
         return False
     try:
-        _deliver_speech(text, tts_override=tts_override, voice_gender=voice_gender)
+        delivered = _deliver_speech(
+            text, tts_override=tts_override, voice_gender=voice_gender
+        )
+        if not delivered:
+            raise RuntimeError("speech_delivery_failed")
         return True
     finally:
         _SPEAK_LOCK.release()

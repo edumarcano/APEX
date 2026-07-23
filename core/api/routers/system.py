@@ -82,8 +82,10 @@ def get_global_config() -> dict[str, Any]:
         ),
         "synthesis_profile": (
             None if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw") else
-            "lynx" if is_dev_mode() and DEV_AI_SYNTHESIS == "local" else "comet"
+            "acinonyx" if is_dev_mode() and DEV_AI_SYNTHESIS == "local" else "comet"
         ),
+        "briefing_default_mode": snapshot.briefing.default_mode,
+        "voice_mode": snapshot.voice.mode,
     }
 
 

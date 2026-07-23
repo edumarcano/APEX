@@ -24,10 +24,12 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
+  BriefingMode,
   RuntimeSettings,
   SettingsEffectiveTiming,
   SettingsResponse,
   VoiceGender,
+  VoiceMode,
 } from '../types/settings'
 
 const FEATURE_CONTROLS: readonly {
@@ -68,6 +70,26 @@ const ENGINE_OPTIONS: readonly { value: TtsEngine; label: string }[] = [
 const GENDER_OPTIONS: readonly { value: VoiceGender; label: string }[] = [
   { value: 'female', label: 'Female' },
   { value: 'male', label: 'Male' },
+]
+
+const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
+  { value: 'automatic', label: 'Automatic' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'off', label: 'Off' },
+]
+
+const BRIEFING_MODE_OPTIONS: readonly { value: BriefingMode; label: string }[] = [
+  { value: 'comet', label: 'Comet — Full briefing · fast cloud synthesis' },
+  { value: 'lynx', label: 'Lynx — Quick briefing · limited telemetry' },
+  {
+    value: 'acinonyx',
+    label: 'Acinonyx — Full briefing · balanced synthesis (Recommended)',
+  },
+  { value: 'neofelis', label: 'Neofelis — Full briefing · higher capacity, slower' },
+  {
+    value: 'structured_digest',
+    label: 'Structured Digest — Structured facts · no model or synthesis',
+  },
 ]
 
 interface SettingsPanelProps {
@@ -314,6 +336,7 @@ export default function SettingsPanel({
   const marketTiming = resolveEffectiveTiming('market', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
   const assistantTiming = resolveEffectiveTiming('assistant', timingRuntime)
+  const briefingTiming = resolveEffectiveTiming('briefing', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
 
   const requestClose = useCallback(() => {
@@ -537,9 +560,41 @@ export default function SettingsPanel({
                 </div>
               </section>
 
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-briefing`}>
+                <SectionHeading id={`${titleId}-briefing`} title="Briefing" />
+                <div className="space-y-2">
+                  <SettingsSelect
+                    id="settings-briefing-default-mode"
+                    label="Default mode"
+                    value={draft.briefing.default_mode}
+                    options={BRIEFING_MODE_OPTIONS}
+                    timing={briefingTiming}
+                    onChange={(next) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        briefing: { ...prev.briefing, default_mode: next },
+                      }))
+                    }
+                  />
+                </div>
+              </section>
+
               <section className="space-y-2.5" aria-labelledby={`${titleId}-voice`}>
                 <SectionHeading id={`${titleId}-voice`} title="Voice" />
                 <div className="space-y-2">
+                  <SettingsSelect
+                    id="settings-voice-mode"
+                    label="Mode"
+                    value={draft.voice.mode}
+                    options={VOICE_MODE_OPTIONS}
+                    timing={voiceTiming}
+                    onChange={(next) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        voice: { ...prev.voice, mode: next },
+                      }))
+                    }
+                  />
                   <SettingsSelect
                     id="settings-voice-engine"
                     label="Engine"

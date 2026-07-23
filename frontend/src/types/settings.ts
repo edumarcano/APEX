@@ -1,6 +1,13 @@
 import type { AssistantProfile, TtsEngine } from './telemetry'
 
 export type VoiceGender = 'male' | 'female'
+export type VoiceMode = 'off' | 'manual' | 'automatic'
+export type BriefingMode =
+  | 'comet'
+  | 'lynx'
+  | 'acinonyx'
+  | 'neofelis'
+  | 'structured_digest'
 
 export interface FeaturesSettings {
   weather: boolean
@@ -21,15 +28,21 @@ export interface AssistantSettings {
   default_profile: AssistantProfile
 }
 
+export interface BriefingSettings {
+  default_mode: BriefingMode
+}
+
 export interface VoiceSettings {
   engine: TtsEngine
   gender: VoiceGender
+  mode: VoiceMode
 }
 
 export interface RuntimeSettings {
   features: FeaturesSettings
   modules: ModulesSettings
   assistant: AssistantSettings
+  briefing: BriefingSettings
   voice: VoiceSettings
 }
 
@@ -52,15 +65,21 @@ export interface AssistantPatch {
   default_profile?: AssistantProfile
 }
 
+export interface BriefingPatch {
+  default_mode?: BriefingMode
+}
+
 export interface VoicePatch {
   engine?: TtsEngine
   gender?: VoiceGender
+  mode?: VoiceMode
 }
 
 export interface SettingsPatch {
   features?: FeaturesPatch
   modules?: ModulesPatch
   assistant?: AssistantPatch
+  briefing?: BriefingPatch
   voice?: VoicePatch
 }
 
@@ -81,7 +100,13 @@ export type SettingsEffectiveTiming =
   | 'Applies next response'
   | 'Applies next delivery'
 
-export type SettingsTimingFieldGroup = 'features' | 'market' | 'modules' | 'assistant' | 'voice'
+export type SettingsTimingFieldGroup =
+  | 'features'
+  | 'market'
+  | 'modules'
+  | 'assistant'
+  | 'briefing'
+  | 'voice'
 
 export interface SettingsTimingRuntime {
   briefingActive: boolean

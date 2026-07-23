@@ -1,5 +1,6 @@
 import type { AssistantProfile, SystemState, TtsEngine } from '../types/telemetry'
 import type {
+  BriefingMode,
   FeaturesSettings,
   ModulesSettings,
   RuntimeSettings,
@@ -9,6 +10,7 @@ import type {
   SettingsTimingFieldGroup,
   SettingsTimingRuntime,
   VoiceGender,
+  VoiceMode,
 } from '../types/settings'
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -20,8 +22,17 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
   'neofelis',
 ]
 
+const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
+  'comet',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+  'structured_digest',
+]
+
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_VOICE_GENDERS: readonly VoiceGender[] = ['male', 'female']
+const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -34,6 +45,13 @@ function isAssistantProfile(value: unknown): value is AssistantProfile {
   )
 }
 
+function isBriefingMode(value: unknown): value is BriefingMode {
+  return (
+    typeof value === 'string' &&
+    (VALID_BRIEFING_MODES as readonly string[]).includes(value)
+  )
+}
+
 function isTtsEngine(value: unknown): value is TtsEngine {
   return typeof value === 'string' && (VALID_TTS_ENGINES as readonly string[]).includes(value)
 }
@@ -41,6 +59,12 @@ function isTtsEngine(value: unknown): value is TtsEngine {
 function isVoiceGender(value: unknown): value is VoiceGender {
   return (
     typeof value === 'string' && (VALID_VOICE_GENDERS as readonly string[]).includes(value)
+  )
+}
+
+function isVoiceMode(value: unknown): value is VoiceMode {
+  return (
+    typeof value === 'string' && (VALID_VOICE_MODES as readonly string[]).includes(value)
   )
 }
 
@@ -88,7 +112,13 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
 
   const features = parseFeatures(value.features)
   const modules = parseModules(value.modules)
-  if (!features || !modules || !isRecord(value.assistant) || !isRecord(value.voice)) {
+  if (
+    !features ||
+    !modules ||
+    !isRecord(value.assistant) ||
+    !isRecord(value.briefing) ||
+    !isRecord(value.voice)
+  ) {
     return null
   }
 
@@ -98,7 +128,14 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!isAssistantProfile(value.assistant.default_profile)) {
     return null
   }
-  if (!isTtsEngine(value.voice.engine) || !isVoiceGender(value.voice.gender)) {
+  if (!isBriefingMode(value.briefing.default_mode)) {
+    return null
+  }
+  if (
+    !isTtsEngine(value.voice.engine) ||
+    !isVoiceGender(value.voice.gender) ||
+    !isVoiceMode(value.voice.mode)
+  ) {
     return null
   }
 
@@ -109,9 +146,13 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       enabled: value.assistant.enabled,
       default_profile: value.assistant.default_profile,
     },
+    briefing: {
+      default_mode: value.briefing.default_mode,
+    },
     voice: {
       engine: value.voice.engine,
       gender: value.voice.gender,
+      mode: value.voice.mode,
     },
   }
 }
@@ -121,6 +162,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     features: { ...settings.features },
     modules: { ...settings.modules },
     assistant: { ...settings.assistant },
+    briefing: { ...settings.briefing },
     voice: { ...settings.voice },
   }
 }
@@ -203,6 +245,11 @@ export function diffSettingsPatch(
     patch.assistant = assistant
   }
 
+  const briefing = diffSection(baseline.briefing, draft.briefing)
+  if (briefing) {
+    patch.briefing = briefing
+  }
+
   const voice = diffSection(baseline.voice, draft.voice)
   if (voice) {
     patch.voice = voice
@@ -216,6 +263,7 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.features === undefined &&
     patch.modules === undefined &&
     patch.assistant === undefined &&
+    patch.briefing === undefined &&
     patch.voice === undefined
   )
 }
@@ -256,6 +304,10 @@ export function resolveEffectiveTiming(
 
   if (group === 'assistant') {
     return runtime.isAssistantQuerying ? 'Applies next response' : 'Active'
+  }
+
+  if (group === 'briefing') {
+    return runtime.briefingActive ? 'Applies next briefing' : 'Active'
   }
 
   // voice

@@ -1,4 +1,4 @@
-import { ChevronRight, Clock, FileText, X } from 'lucide-react'
+import { ChevronRight, Clock, FileText, Volume2, X } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -32,11 +32,14 @@ export interface BriefingDigestProps {
   attentionTier?: AttentionTier
   /** Curtain unlock delay in ms. */
   attentionStaggerMs?: number
-  /** Overview is activated — show empty-state Generate Briefing. */
+  /** Whether the Overview has left standby. */
   activated?: boolean
-  /** Compatibility trigger for Generate Briefing (interim: POST /trigger). */
-  onGenerateBriefing?: () => void
-  generateDisabled?: boolean
+  onSpeakBriefing?: () => void
+  speakDisabled?: boolean
+  showSpeakAction?: boolean
+  synthesisLabel?: string | null
+  fallbackReason?: string | null
+  speechError?: string | null
 }
 
 export function BriefingDigest({
@@ -50,8 +53,12 @@ export function BriefingDigest({
   attentionTier = 'dormant',
   attentionStaggerMs = 0,
   activated = false,
-  onGenerateBriefing,
-  generateDisabled = false,
+  onSpeakBriefing,
+  speakDisabled = false,
+  showSpeakAction = false,
+  synthesisLabel = null,
+  fallbackReason = null,
+  speechError = null,
 }: BriefingDigestProps): ReactElement {
   const labelId = 'briefing-digest-title'
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -63,6 +70,15 @@ export function BriefingDigest({
       ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
       : undefined
   const shellClass = attentionShellClass(attentionTier)
+
+  const statusMeta =
+    synthesisLabel || fallbackReason || speechError ? (
+      <p className={`text-[11px] leading-relaxed ${speechError ? 'text-red-300' : 'text-zinc-400'}`} role="status">
+        {[synthesisLabel, fallbackReason ? `Fallback: ${fallbackReason}` : null, speechError]
+          .filter(Boolean)
+          .join(' · ')}
+      </p>
+    ) : null
 
   if (isCompact) {
     const compactMessage =
@@ -137,6 +153,19 @@ export function BriefingDigest({
               Briefing
             </button>
           </div>
+          {activeTab === 'briefing' && showSpeakAction && onSpeakBriefing && trimmedBriefing.length > 0 ? (
+            <button
+              type="button"
+              onClick={onSpeakBriefing}
+              disabled={speakDisabled || isLoading}
+              className="inline-flex size-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cyan-200 transition-colors hover:border-cyan-300/30 hover:bg-cyan-300/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Speak briefing"
+              title="Speak briefing"
+              data-slot="speak-briefing-trigger"
+            >
+              <Volume2 className="size-3.5" strokeWidth={2} aria-hidden />
+            </button>
+          ) : null}
           {status === 'success' || (activated && (insights.length > 0 || trimmedBriefing.length > 0)) ? (
             <button
               type="button"
@@ -165,26 +194,18 @@ export function BriefingDigest({
           trimmedBriefing.length === 0 ? (
             <div className="space-y-3">
               <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                {activated
-                  ? 'No briefing transcript yet.'
-                  : 'Initiate system synthesis to compile briefing transcript.'}
+                No briefing transcript yet. Use the synthesis controls in the system header.
               </p>
-              {activated && onGenerateBriefing ? (
-                <button
-                  type="button"
-                  onClick={onGenerateBriefing}
-                  disabled={generateDisabled || isLoading}
-                  className="inline-flex rounded-md border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#FBBF24] transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Generate Briefing
-                </button>
-              ) : null}
+              {statusMeta}
             </div>
           ) : (
-            <div className="list-fade-mask min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
-                {trimmedBriefing}
-              </p>
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              {statusMeta}
+              <div className="list-fade-mask min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
+                  {trimmedBriefing}
+                </p>
+              </div>
             </div>
           )
         ) : (
@@ -200,26 +221,18 @@ export function BriefingDigest({
                 <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
                   No current highlights.
                 </p>
-                {activated && onGenerateBriefing ? (
-                  <button
-                    type="button"
-                    onClick={onGenerateBriefing}
-                    disabled={generateDisabled || isLoading}
-                    className="inline-flex rounded-md border border-[#0F4DB8]/40 bg-[#0F4DB8]/10 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#FBBF24] transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Generate Briefing
-                  </button>
-                ) : null}
               </div>
             ) : (
-              <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
-                {insights.map((insight, index) => (
-                  <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">
-                    <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                    <span className="text-zinc-200">{insight}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
+                <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+                  {insights.map((insight, index) => (
+                    <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">
+                      <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
+                      <span className="text-zinc-200">{insight}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         )}

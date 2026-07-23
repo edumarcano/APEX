@@ -9,16 +9,24 @@ from pydantic import BaseModel, ConfigDict, Field
 AssistantProfile = Literal[
     "comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"
 ]
+BriefingMode = Literal[
+    "comet", "lynx", "acinonyx", "neofelis", "structured_digest"
+]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
+VoiceMode = Literal["off", "manual", "automatic"]
 
 VALID_ASSISTANT_PROFILES: frozenset[str] = frozenset(
     {"comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"}
 )
+VALID_BRIEFING_MODES: frozenset[str] = frozenset(
+    {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
+)
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
+VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 2
+SETTINGS_SCHEMA_VERSION: int = 3
 
 
 class FeaturesSettings(BaseModel):
@@ -52,13 +60,22 @@ class AssistantSettings(BaseModel):
     default_profile: AssistantProfile = "comet"
 
 
+class BriefingSettings(BaseModel):
+    """Default briefing synthesis mode for generate and trigger."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    default_mode: BriefingMode = "comet"
+
+
 class VoiceSettings(BaseModel):
-    """TTS engine and voice gender."""
+    """TTS engine, voice gender, and delivery mode."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     engine: VoiceEngine = "pyttsx3"
     gender: VoiceGender = "female"
+    mode: VoiceMode = "automatic"
 
 
 class RuntimeSettingsSnapshot(BaseModel):
@@ -69,6 +86,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     assistant: AssistantSettings = Field(default_factory=AssistantSettings)
+    briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
 
 
@@ -103,6 +121,14 @@ class AssistantPatch(BaseModel):
     default_profile: AssistantProfile | None = None
 
 
+class BriefingPatch(BaseModel):
+    """Partial briefing patch; unknown fields are rejected."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_mode: BriefingMode | None = None
+
+
 class VoicePatch(BaseModel):
     """Partial voice patch; unknown fields are rejected."""
 
@@ -110,6 +136,7 @@ class VoicePatch(BaseModel):
 
     engine: VoiceEngine | None = None
     gender: VoiceGender | None = None
+    mode: VoiceMode | None = None
 
 
 class SettingsPatch(BaseModel):
@@ -120,6 +147,7 @@ class SettingsPatch(BaseModel):
     features: FeaturesPatch | None = None
     modules: ModulesPatch | None = None
     assistant: AssistantPatch | None = None
+    briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
 
 

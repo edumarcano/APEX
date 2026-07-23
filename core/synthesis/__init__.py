@@ -6,12 +6,15 @@ from core.synthesis.models import (
     F1Fact,
     FootballFact,
     NewsFact,
+    BriefingMode,
     SynthesisInput,
     SynthesisResult,
+    strategy_to_briefing_mode,
 )
 from core.synthesis.router import SynthesisRouter, WarmupHandle
 
 __all__ = [
+    "BriefingMode",
     "CalendarFact",
     "ConnectorHealthFact",
     "F1Fact",
@@ -21,4 +24,5 @@ __all__ = [
     "SynthesisResult",
     "SynthesisRouter",
     "WarmupHandle",
+    "strategy_to_briefing_mode",
 ]

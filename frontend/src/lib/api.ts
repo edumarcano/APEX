@@ -5,6 +5,7 @@ export const API_ENDPOINTS = {
   agentProfiles: `${API_BASE}/api/v1/agent/profiles`,
   agentQuery: `${API_BASE}/api/v1/agent/query`,
   briefingHistory: `${API_BASE}/api/v1/briefings/history`,
+  briefingsGenerate: `${API_BASE}/api/v1/briefings/generate`,
   config: `${API_BASE}/api/v1/config`,
   diagnostics: `${API_BASE}/api/v1/diagnostics`,
   market: `${API_BASE}/api/v1/market`,

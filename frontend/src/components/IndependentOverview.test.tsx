@@ -225,10 +225,8 @@ describe('ApexLogo telemetry collection state', () => {
   })
 })
 
-describe('BriefingDigest empty generate action', () => {
-  it('shows Generate Briefing when activated with empty insights', async () => {
-    const onGenerate = vi.fn()
-    const user = userEvent.setup()
+describe('BriefingDigest briefing actions', () => {
+  it('keeps generation controls out of the content area', () => {
     render(
       <BriefingDigest
         insights={[]}
@@ -236,11 +234,55 @@ describe('BriefingDigest empty generate action', () => {
         status="idle"
         isLoading={false}
         activated
-        onGenerateBriefing={onGenerate}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /generate briefing/i }))
-    expect(onGenerate).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: /synthesize briefing/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/briefing mode/i)).not.toBeInTheDocument()
+  })
+
+  it('shows replay only on the Briefing tab and exposes voice failures there', async () => {
+    const user = userEvent.setup()
+    render(
+      <BriefingDigest
+        insights={['Ready']}
+        briefingText="Current briefing."
+        status="success"
+        isLoading={false}
+        activated
+        onSpeakBriefing={() => undefined}
+        showSpeakAction
+        speakDisabled
+        speechError="Speech delivery failed."
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /speak briefing/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Briefing' }))
+
+    expect(screen.getByRole('button', { name: /speak briefing/i })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
+  })
+
+  it('surges blue segments during compatibility synthesis while retaining the purple core', () => {
+    const { container } = render(
+      <ApexLogo step={3} status="loading" isOuterSegmentSurging />,
+    )
+
+    expect(container.querySelector('.apex-core-metal--purple-surge')).toBeTruthy()
+    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(7)
+  })
+
+  it('keeps blue segment fills while local-model activity uses rust glow states', () => {
+    const { container, rerender } = render(
+      <ApexLogo step={3} status="loading" isLocalModelLoading />,
+    )
+
+    expect(container.querySelectorAll('.apex-blue-metal--rust-surge')).toHaveLength(7)
+
+    rerender(<ApexLogo step={null} status="success" isLocalModelLoaded />)
+    expect(container.querySelectorAll('.apex-blue-metal--rust-active')).toHaveLength(7)
   })
 })

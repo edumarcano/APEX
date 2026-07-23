@@ -199,4 +199,21 @@ describe('SettingsPanel', () => {
       }
     }
   })
+
+  it('describes briefing modes and recommends only Acinonyx', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    renderPanel()
+
+    const select = await screen.findByRole('combobox', { name: 'Default mode' })
+    const labels = within(select).getAllByRole('option').map((option) => option.textContent)
+
+    expect(labels).toEqual([
+      'Comet — Full briefing · fast cloud synthesis',
+      'Lynx — Quick briefing · limited telemetry',
+      'Acinonyx — Full briefing · balanced synthesis (Recommended)',
+      'Neofelis — Full briefing · higher capacity, slower',
+      'Structured Digest — Structured facts · no model or synthesis',
+    ])
+    expect(labels.filter((label) => label?.includes('Recommended'))).toHaveLength(1)
+  })
 })

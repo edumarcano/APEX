@@ -8,9 +8,12 @@ from typing import Any
 
 from core.settings.models import (
     VALID_ASSISTANT_PROFILES,
+    VALID_BRIEFING_MODES,
     VALID_VOICE_ENGINES,
     VALID_VOICE_GENDERS,
+    VALID_VOICE_MODES,
     AssistantSettings,
+    BriefingSettings,
     FeaturesSettings,
     ModulesSettings,
     RuntimeSettingsSnapshot,
@@ -25,7 +28,7 @@ _FEATURE_KEYS: frozenset[str] = frozenset(
 )
 _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 _EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
-    {"features", "modules", "ask_apex", "tts_settings"}
+    {"features", "modules", "ask_apex", "briefing", "tts_settings"}
 )
 
 
@@ -92,6 +95,10 @@ def normalize_layer(
             ask_apex = _normalize_ask_apex(value, layer_name, validation_errors)
             if ask_apex:
                 normalized["ask_apex"] = ask_apex
+        elif key == "briefing":
+            briefing = _normalize_briefing(value, layer_name, validation_errors)
+            if briefing:
+                normalized["briefing"] = briefing
         elif key == "tts_settings":
             tts = _normalize_tts_settings(value, layer_name, validation_errors)
             if tts:
@@ -278,11 +285,86 @@ def _normalize_tts_settings(
             gender = _coerce_gender(raw, layer_name=layer_name, errors=errors)
             if gender is not None:
                 result["voice_gender"] = gender
+        elif key == "voice_mode":
+            mode = _coerce_voice_mode(raw, layer_name=layer_name, errors=errors)
+            if mode is not None:
+                result["voice_mode"] = mode
         else:
             _LOGGER.warning(
                 "Ignoring unknown tts_settings key %r in %s.", key, layer_name
             )
     return result
+
+
+def _normalize_briefing(
+    value: Any, layer_name: str, errors: list[str] | None
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if not isinstance(value, dict):
+        if value is not None:
+            _record_error(errors, "briefing must be a JSON object")
+            _LOGGER.warning(
+                'Config key "briefing" in %s must be a JSON object.',
+                layer_name,
+            )
+        return result
+
+    for key, raw in value.items():
+        if key == "default_mode":
+            mode = _coerce_briefing_mode(raw, layer_name=layer_name, errors=errors)
+            if mode is not None:
+                result["default_mode"] = mode
+        else:
+            _LOGGER.warning(
+                "Ignoring unknown briefing key %r in %s.", key, layer_name
+            )
+    return result
+
+
+def _coerce_briefing_mode(
+    raw: Any, *, layer_name: str, errors: list[str] | None
+) -> str | None:
+    if not isinstance(raw, str):
+        if raw is not None:
+            _record_error(errors, "briefing.default_mode must be a string")
+            _LOGGER.warning(
+                "briefing.default_mode in %s must be a string; ignoring.",
+                layer_name,
+            )
+        return None
+    normalized = raw.strip().lower()
+    if normalized in VALID_BRIEFING_MODES:
+        return normalized
+    _record_error(errors, "briefing.default_mode is not a valid mode")
+    _LOGGER.warning(
+        "briefing.default_mode=%r in %s is not a valid mode; ignoring.",
+        raw,
+        layer_name,
+    )
+    return None
+
+
+def _coerce_voice_mode(
+    raw: Any, *, layer_name: str, errors: list[str] | None
+) -> str | None:
+    if not isinstance(raw, str):
+        if raw is not None:
+            _record_error(errors, "tts_settings.voice_mode must be a string")
+            _LOGGER.warning(
+                "tts_settings.voice_mode in %s must be a string; ignoring.",
+                layer_name,
+            )
+        return None
+    normalized = raw.strip().lower()
+    if normalized in VALID_VOICE_MODES:
+        return normalized
+    _record_error(errors, "tts_settings.voice_mode is not a valid mode")
+    _LOGGER.warning(
+        "tts_settings.voice_mode=%r in %s is not a valid mode; ignoring.",
+        raw,
+        layer_name,
+    )
+    return None
 
 
 def _coerce_engine(
@@ -371,14 +453,28 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     gender = tts.get("voice_gender", "female")
     if gender not in VALID_VOICE_GENDERS:
         gender = "female"
+    voice_mode = tts.get("voice_mode", "automatic")
+    if voice_mode not in VALID_VOICE_MODES:
+        voice_mode = "automatic"
     voice = VoiceSettings(
         engine=engine,  # type: ignore[arg-type]
         gender=gender,  # type: ignore[arg-type]
+        mode=voice_mode,  # type: ignore[arg-type]
+    )
+    briefing_raw = (
+        merged.get("briefing") if isinstance(merged.get("briefing"), dict) else {}
+    )
+    default_mode = briefing_raw.get("default_mode", "comet")
+    if default_mode not in VALID_BRIEFING_MODES:
+        default_mode = "comet"
+    briefing = BriefingSettings(
+        default_mode=default_mode,  # type: ignore[arg-type]
     )
     return RuntimeSettingsSnapshot(
         features=features,
         modules=modules,
         assistant=assistant,
+        briefing=briefing,
         voice=voice,
     )
 
@@ -392,9 +488,13 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "enabled": snapshot.assistant.enabled,
             "default_profile": snapshot.assistant.default_profile,
         },
+        "briefing": {
+            "default_mode": snapshot.briefing.default_mode,
+        },
         "tts_settings": {
             "primary_tts": snapshot.voice.engine,
             "voice_gender": snapshot.voice.gender,
+            "voice_mode": snapshot.voice.mode,
         },
     }
 
@@ -440,12 +540,20 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
             ask_apex["default_profile"] = patch.assistant.default_profile
         if ask_apex:
             ondisk["ask_apex"] = ask_apex
+    if patch.briefing is not None:
+        briefing: dict[str, Any] = {}
+        if patch.briefing.default_mode is not None:
+            briefing["default_mode"] = patch.briefing.default_mode
+        if briefing:
+            ondisk["briefing"] = briefing
     if patch.voice is not None:
         tts: dict[str, Any] = {}
         if patch.voice.engine is not None:
             tts["primary_tts"] = patch.voice.engine
         if patch.voice.gender is not None:
             tts["voice_gender"] = patch.voice.gender
+        if patch.voice.mode is not None:
+            tts["voice_mode"] = patch.voice.mode
         if tts:
             ondisk["tts_settings"] = tts
     return ondisk

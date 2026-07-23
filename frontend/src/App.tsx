@@ -21,6 +21,7 @@ import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
 import { ConsoleTray } from './components/ConsoleTray'
 import { BriefingDigest } from './components/BriefingDigest'
+import { BriefingGenerateControl } from './components/BriefingControls'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -37,12 +38,13 @@ import { useMarketData } from './hooks/useMarketData'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
+import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import type { AssistantProfile } from './types/telemetry'
-import type { SettingsResponse } from './types/settings'
+import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
 interface ParsedEmail {
   subject: string
@@ -158,9 +160,40 @@ function isAssistantProfile(value: string): value is AssistantProfile {
   return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
 }
 
+const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
+  'comet',
+  'lynx',
+  'acinonyx',
+  'neofelis',
+  'structured_digest',
+]
+
+function isBriefingMode(value: string): value is BriefingMode {
+  return (VALID_BRIEFING_MODES as readonly string[]).includes(value)
+}
+
+const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
+
+function isVoiceMode(value: string): value is VoiceMode {
+  return (VALID_VOICE_MODES as readonly string[]).includes(value)
+}
+
+function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
+  return mode === 'comet'
+}
+
+function synthesisProfileForMode(mode: BriefingMode): string | null {
+  if (mode === 'structured_digest') {
+    return null
+  }
+  return mode
+}
+
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('comet')
+  const [briefingMode, setBriefingMode] = useState<BriefingMode>('comet')
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -175,8 +208,6 @@ export default function App(): ReactElement {
     askApexEnabled,
     marketEnabled,
     defaultProfile,
-    synthesisStrategy: configuredSynthesisStrategy,
-    synthesisProfile: configuredSynthesisProfile,
     refreshReminders,
     markReminderAsRead,
     applyBootSettings,
@@ -187,6 +218,7 @@ export default function App(): ReactElement {
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const briefing = useBriefingPipeline()
+  const voiceDelivery = useVoiceDelivery()
 
   const showAskApexBar = activated && Boolean(askApexEnabled)
 
@@ -215,6 +247,36 @@ export default function App(): ReactElement {
     }
   }, [defaultProfile, isAssistantQuerying])
 
+  useEffect(() => {
+    let cancelled = false
+    void fetch(API_ENDPOINTS.config)
+      .then(async (response) => {
+        if (!response.ok) {
+          return null
+        }
+        return (await response.json()) as Record<string, unknown>
+      })
+      .then((body) => {
+        if (cancelled || !body) {
+          return
+        }
+        const mode = body.briefing_default_mode
+        if (typeof mode === 'string' && isBriefingMode(mode)) {
+          setBriefingMode(mode)
+        }
+        const voice = body.voice_mode
+        if (typeof voice === 'string' && isVoiceMode(voice)) {
+          setVoiceMode(voice)
+        }
+      })
+      .catch(() => {
+        // Boot hydration for briefing/voice mode is best-effort.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const handleSettingsApplied = useCallback(
     (response: SettingsResponse) => {
       applyBootSettings({
@@ -222,21 +284,28 @@ export default function App(): ReactElement {
         defaultProfile: response.settings.assistant.default_profile,
         marketEnabled: response.settings.features.market,
       })
+      setBriefingMode(response.settings.briefing.default_mode)
+      setVoiceMode(response.settings.voice.mode)
     },
     [applyBootSettings],
   )
 
-  const { pipelineState, isSpeaking, active_tts_engine, system_load_throttled } = briefing
+  const {
+    pipelineState,
+    isSpeaking: isPipelineSpeaking,
+    active_tts_engine,
+    system_load_throttled,
+  } = briefing
+  const isSpeaking = isPipelineSpeaking || voiceDelivery.isSpeaking
   const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
-  const resolvedSynthesisProvider = liveSynthesis?.provider ?? briefing.synthesisProvider
-  const resolvedSynthesisProfile = liveSynthesis?.profile ?? briefing.synthesisProfile
-  const resolvedSynthesisReason = liveSynthesis?.fallback_reason ?? briefing.synthesisFallbackReason
 
   const activeStep = pipelineState?.step ?? null
   const isBriefingRunning = briefing.status === 'loading'
+  const isCompatibilitySegmentSurging =
+    isBriefingRunning && activeStep !== null && activeStep >= 1 && activeStep <= 3
 
   const loadingLocalProfile = useMemo(
     () => profilesStatus.find((profile) => profile.loading) ?? null,
@@ -369,28 +438,31 @@ export default function App(): ReactElement {
 
     activate()
     void telemetry.refreshAll({ force: false })
-    void fetch(API_ENDPOINTS.voiceSpeak, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: 'APEX online. Ready for operations.' }),
-    }).catch(() => {
-      // Activation voice cue is best-effort; ignore delivery failures.
-    })
-  }, [preflight, activate, telemetry])
+    if (voiceMode === 'automatic') {
+      void fetch(API_ENDPOINTS.voiceSpeak, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'APEX online. Ready for operations.' }),
+      }).catch(() => {
+        // Activation voice cue is best-effort; ignore delivery failures.
+      })
+    }
+  }, [preflight, activate, telemetry, voiceMode])
 
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('activate_with_briefing', {
-      synthesis_profile: configuredSynthesisProfile,
-      involves_cloud: configuredSynthesisStrategy === 'cloud',
+      briefing_mode: briefingMode,
+      synthesis_profile: synthesisProfileForMode(briefingMode),
+      involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
       return
     }
 
     activate()
-    await briefing.triggerSynthesis()
+    await briefing.triggerSynthesis(briefingMode)
     void telemetry.loadLatest()
-  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, activate, briefing, telemetry])
+  }, [preflight, briefingMode, activate, briefing, telemetry])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -429,6 +501,15 @@ export default function App(): ReactElement {
   const isRefreshingAll = telemetry.isRefreshingAll
   const isTelemetryCollecting = isRefreshingAll || telemetry.refreshingConnectors.size > 0
   const hasSnapshot = telemetry.snapshot !== null
+  const briefingControlsBusy =
+    preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
+  const selectedBriefingProfile = synthesisProfileForMode(briefingMode)
+  const briefingModeAvailable =
+    selectedBriefingProfile === null ||
+    (profilesStatusHydrated &&
+      profilesStatus.some(
+        (profile) => profile.key === selectedBriefingProfile && profile.status === 'available',
+      ))
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
     [isRefreshingAll, telemetry.refreshingConnectors],
@@ -552,16 +633,45 @@ export default function App(): ReactElement {
   }
 
   const handleGenerateBriefing = useCallback(async (): Promise<void> => {
+    const snapshotId = telemetry.snapshot?.snapshot_id
+    if (!snapshotId) {
+      return
+    }
     const resolution = await preflight.requestOperation('generate_briefing', {
-      synthesis_profile: configuredSynthesisProfile,
-      involves_cloud: configuredSynthesisStrategy === 'cloud',
+      briefing_mode: briefingMode,
+      synthesis_profile: synthesisProfileForMode(briefingMode),
+      involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
       return
     }
-    await briefing.triggerSynthesis()
-    void telemetry.loadLatest()
-  }, [preflight, configuredSynthesisProfile, configuredSynthesisStrategy, briefing, telemetry])
+    await briefing.generateFromSnapshot(snapshotId, briefingMode)
+  }, [preflight, briefingMode, briefing, telemetry.snapshot?.snapshot_id])
+
+  const handleRefreshAllAndGenerate = useCallback(async (): Promise<void> => {
+    const resolution = await preflight.requestOperation('generate_briefing', {
+      briefing_mode: briefingMode,
+      synthesis_profile: synthesisProfileForMode(briefingMode),
+      involves_cloud: briefingModeInvolvesCloud(briefingMode),
+      force: true,
+    })
+    if (resolution !== 'proceed') {
+      return
+    }
+    const snapshot = await telemetry.refreshAll({ force: true })
+    if (!snapshot) {
+      return
+    }
+    await briefing.generateFromSnapshot(snapshot.snapshot_id, briefingMode)
+  }, [preflight, briefingMode, briefing, telemetry])
+
+  const handleSpeakBriefing = useCallback((): void => {
+    const text = briefing.briefing.trim()
+    if (!text || voiceMode === 'off') {
+      return
+    }
+    void voiceDelivery.speak(text)
+  }, [briefing.briefing, voiceMode, voiceDelivery])
 
   const logoStatus =
     !activated
@@ -577,11 +687,7 @@ export default function App(): ReactElement {
   const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
   const calendarInfo = parseCalendarTelemetry(calendarModule?.display_text ?? '')
 
-  // Shared insight list for the BriefingDigest panel.
-  const combinedInsights = [
-    ...activeReminders.map((r) => `Reminder: ${r.note}`),
-    ...briefing.insights,
-  ]
+  const synthesisInsights = briefing.insights
 
   const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
   const weatherConditionCompactValue =
@@ -666,9 +772,11 @@ export default function App(): ReactElement {
             connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
-            synthesisProvider={resolvedSynthesisProvider}
-            synthesisProfile={resolvedSynthesisProfile}
-            synthesisFallbackReason={resolvedSynthesisReason}
+            briefingMode={briefingMode}
+            onBriefingModeChange={setBriefingMode}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            briefingControlsBusy={briefingControlsBusy}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
           />
@@ -957,13 +1065,23 @@ export default function App(): ReactElement {
               />
               <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
-                  insights={combinedInsights}
+                  insights={synthesisInsights}
                   briefingText={briefing.briefing}
                   status={briefing.status}
                   activated={activated}
                   isLoading={briefing.status === 'loading'}
-                  onGenerateBriefing={handleGenerateBriefing}
-                  generateDisabled={isBriefingRunning}
+                  onSpeakBriefing={handleSpeakBriefing}
+                  speakDisabled={isSpeaking}
+                  showSpeakAction={voiceMode !== 'off'}
+                  speechError={voiceDelivery.error}
+                  synthesisLabel={
+                    briefing.synthesisProvider
+                      ? [briefing.synthesisProvider, briefing.synthesisProfile]
+                          .filter(Boolean)
+                          .join(' / ')
+                      : null
+                  }
+                  fallbackReason={briefing.synthesisFallbackReason}
                   attentionTier={attentionTiers.insights}
                   attentionStaggerMs={attentionStagger.insights}
                   className="w-full h-full min-h-0"
@@ -984,6 +1102,7 @@ export default function App(): ReactElement {
                       isLocalModelLoading={isLocalModelLoading}
                       isLocalModelLoaded={isLocalModelLoaded}
                       isTelemetryCollecting={isTelemetryCollecting}
+                      isOuterSegmentSurging={isCompatibilitySegmentSurging}
                       className={logoSizeClass}
                     />
                   </div>
@@ -1021,23 +1140,35 @@ export default function App(): ReactElement {
                         disabled={preflight.isChecking}
                       />
                     </div>
-                    <div
-                      className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        activated
-                          ? 'pointer-events-auto translate-y-0 opacity-100'
-                          : 'pointer-events-none -translate-y-1 opacity-0'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={handleRefreshAll}
-                        disabled={isRefreshingAll}
-                        data-slot="refresh-all-trigger"
-                        className="hud-command-surface inline-flex rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {isRefreshingAll ? '[ REFRESHING… ]' : '[ REFRESH ALL ]'}
-                      </button>
-                    </div>
+                    {activated ? (
+                      <div className="mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                        <div className="flex w-max flex-nowrap items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleRefreshAll}
+                            disabled={isRefreshingAll}
+                            data-slot="refresh-all-trigger"
+                            className="group hud-command-surface inline-flex items-center rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
+                          >
+                            {isRefreshingAll ? (
+                              '[ REFRESHING… ]'
+                            ) : (
+                              <>
+                                <span className="group-hover:hidden group-focus-visible:hidden">[ REFRESH ALL ]</span>
+                                <span className="hidden group-hover:inline group-focus-visible:inline">&gt; REFRESH ALL</span>
+                              </>
+                            )}
+                          </button>
+                          <BriefingGenerateControl
+                            mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
+                            refreshDisabled={briefingControlsBusy || !briefingModeAvailable}
+                            busy={briefingControlsBusy}
+                            onGenerate={() => void handleGenerateBriefing()}
+                            onRefreshAndGenerate={() => void handleRefreshAllAndGenerate()}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

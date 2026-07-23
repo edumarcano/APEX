@@ -32,6 +32,12 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
+    briefing_mode: (
+        Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] | None
+    ) = Field(
+        default=None,
+        description="Explicit briefing mode used for this run.",
+    )
     synthesis_provider: Literal["gemini", "ollama", "raw", "demo"] | None = None
     synthesis_profile: Literal["comet", "lynx", "acinonyx", "neofelis"] | None = None
     synthesis_fallback_reason: str | None = None
@@ -45,6 +51,14 @@ class RuntimeMetadata(BaseModel):
     )
     system_load_throttled: bool = Field(
         description="True when CPU or RAM utilization triggered a local-engine fallback.",
+    )
+    snapshot_id: str | None = Field(
+        default=None,
+        description="Telemetry snapshot identity used for this briefing generation.",
+    )
+    spoken: bool = Field(
+        default=False,
+        description="Whether automatic voice delivery was started for this run.",
     )
 
 
@@ -435,4 +449,23 @@ class VoiceSpeakResponse(BaseModel):
     status: str = Field(
         default="spoken",
         description="Outcome label when speech delivery completed.",
+    )
+
+
+class BriefingTriggerRequest(BaseModel):
+    mode: Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] | None = Field(
+        default=None,
+        description="Optional briefing mode override; omitted requests use the saved default.",
+    )
+
+
+class BriefingGenerateRequest(BaseModel):
+    snapshot_id: str = Field(
+        ...,
+        min_length=1,
+        description="Process-current telemetry snapshot identity to synthesize from.",
+    )
+    mode: Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] = Field(
+        ...,
+        description="Explicit briefing synthesis mode.",
     )

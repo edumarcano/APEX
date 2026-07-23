@@ -113,7 +113,7 @@ class BrainFallbackShapeTests(unittest.TestCase):
             fallback_reason="configured_raw",
         )
         router = mock.Mock()
-        router.synthesize.return_value = expected
+        router.synthesize_mode.return_value = expected
 
         with mock.patch.object(brain, "is_dev_mode", return_value=True), mock.patch.object(
             brain, "DEV_AI_SYNTHESIS", "raw"
@@ -125,21 +125,21 @@ class BrainFallbackShapeTests(unittest.TestCase):
         self.assertEqual(result["fallback_reason"], "configured_raw")
         self.assertIn("insights", result)
         self.assertIsInstance(result["insights"], list)
-        router.synthesize.assert_called_once()
-        self.assertEqual(router.synthesize.call_args.args[1], "raw")
+        router.synthesize_mode.assert_called_once()
+        self.assertEqual(router.synthesize_mode.call_args.args[1], "structured_digest")
 
     def test_process_telemetry_defaults_to_cloud_outside_dev_mode(self) -> None:
         from core import brain
 
         expected = SynthesisResult(briefing="Cloud.", provider="gemini", profile="comet")
         router = mock.Mock()
-        router.synthesize.return_value = expected
+        router.synthesize_mode.return_value = expected
 
         with mock.patch.object(brain, "is_dev_mode", return_value=False):
             result = brain.process_telemetry("weather clear", router=router)
 
         self.assertEqual(result["provider"], "gemini")
-        self.assertEqual(router.synthesize.call_args.args[1], "cloud")
+        self.assertEqual(router.synthesize_mode.call_args.args[1], "comet")
 
 
 class DemoHistoryEndpointTests(unittest.TestCase):

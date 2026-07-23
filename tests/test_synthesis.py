@@ -133,14 +133,78 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.end_local_execution"
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
-        ) as generate:
+        ) as generate, patch(
+            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "COMET_PROMPT"
+        ), patch(
+            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "LYNX_PROMPT"
+        ):
             result = router._ollama(sample_input(), "neofelis", None)
         messages, tools, profile = generate.call_args.args
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
         self.assertFalse(profile.think)
         self.assertEqual(profile.final_answer_max_tokens, 512)
+        self.assertEqual(profile.system_instruction, "COMET_PROMPT")
         self.assertEqual(result.profile, "neofelis")
+
+    def test_lynx_uses_local_prompt_acinonyx_uses_comet_prompt(self) -> None:
+        router = SynthesisRouter()
+        response = AgentMessage(
+            role="model",
+            content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+        )
+        with patch("core.synthesis.router.try_begin_local_execution", return_value=True), patch(
+            "core.synthesis.router.end_local_execution"
+        ), patch(
+            "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
+        ) as generate, patch(
+            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "COMET_PROMPT"
+        ), patch(
+            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "LYNX_PROMPT"
+        ):
+            router._ollama(sample_input(), "lynx", None)
+            self.assertEqual(generate.call_args.args[2].system_instruction, "LYNX_PROMPT")
+            router._ollama(sample_input(), "acinonyx", None)
+            self.assertEqual(generate.call_args.args[2].system_instruction, "COMET_PROMPT")
+
+    def test_legacy_local_strategy_resolves_to_acinonyx(self) -> None:
+        from core.synthesis.models import strategy_to_briefing_mode
+
+        self.assertEqual(strategy_to_briefing_mode("local"), "acinonyx")
+        self.assertEqual(strategy_to_briefing_mode("cloud"), "comet")
+        self.assertEqual(strategy_to_briefing_mode("raw"), "structured_digest")
+
+    def test_explicit_neofelis_mode_does_not_reuse_resident_lynx(self) -> None:
+        router = SynthesisRouter()
+        handle = WarmupHandle(profile_key="neofelis", success=True)
+        handle.event.set()
+        expected = SynthesisResult(briefing="Capable.", provider="ollama", profile="neofelis")
+        with patch("core.synthesis.router.resident_profile_key", return_value="lynx"), patch.object(
+            router, "_ollama", return_value=expected
+        ) as ollama:
+            result = router.synthesize_mode(sample_input(), "neofelis", handle)
+        self.assertEqual(result.profile, "neofelis")
+        ollama.assert_called_once_with(unittest.mock.ANY, "neofelis", handle.elapsed_ms)
+
+    def test_structured_digest_mode(self) -> None:
+        router = SynthesisRouter()
+        with patch.object(router, "_gemini") as gemini, patch.object(router, "_ollama") as ollama:
+            result = router.synthesize_mode(sample_input(), "structured_digest")
+        self.assertEqual(result.provider, "raw")
+        gemini.assert_not_called()
+        ollama.assert_not_called()
+
+    def test_prepare_local_warms_acinonyx(self) -> None:
+        router = SynthesisRouter()
+        with patch("core.synthesis.router.resident_profile_key", return_value=None), patch(
+            "core.synthesis.router.OLLAMA_ENABLED", False
+        ):
+            handle = router.prepare("local")
+        self.assertIsNotNone(handle)
+        assert handle is not None
+        self.assertEqual(handle.profile_key, "acinonyx")
+        self.assertEqual(handle.reason, "local_disabled")
+        self.assertTrue(handle.event.is_set())
 
 
 class ProfileAndPersistenceTests(unittest.TestCase):
