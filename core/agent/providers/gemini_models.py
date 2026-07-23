@@ -31,9 +31,6 @@ class GeminiModelProfile(BaseModel):
         default=4,
         description="Maximum individual tool executions allowed per session.",
     )
-    description: str = Field(
-        description="Contextual helper text describing the model tier's operational role."
-    )
     system_instruction: str = Field(
         default=DEFAULT_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the cloud agent.",
@@ -50,7 +47,6 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         thinking_level="minimal",
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
-        description="Fast cloud mode for quick lookups and lightweight summaries inside APEX.",
     ),
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
@@ -61,7 +57,6 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         thinking_level="low",
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
-        description="Balanced cloud agent for normal APEX usage.",
     ),
     "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
@@ -72,6 +67,5 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         thinking_level="medium",
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
-        description="Advanced cloud reasoning for complex multi-source questions inside APEX.",
     ),
 }

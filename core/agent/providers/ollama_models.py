@@ -61,9 +61,6 @@ class OllamaModelProfile(BaseModel):
     cpu_limit: float = Field(
         description="Maximum host CPU utilization percentage before load is gated."
     )
-    description: str = Field(
-        description="Contextual helper text describing the model tier's operational role."
-    )
     system_instruction: str = Field(
         default=DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the local agent.",
@@ -88,7 +85,6 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=LYNX_RAM_LIMIT,
         cpu_limit=LYNX_CPU_LIMIT,
-        description="Lightweight local mode for quick lookups and minimal resource usage.",
     ),
     "acinonyx": OllamaModelProfile(
         display_name="Apex Acinonyx",
@@ -107,7 +103,6 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=ACINONYX_RAM_LIMIT,
         cpu_limit=ACINONYX_CPU_LIMIT,
-        description="Balanced local agent for normal APEX usage with moderate resource cost.",
     ),
     "neofelis": OllamaModelProfile(
         display_name="Apex Neofelis",
@@ -126,6 +121,5 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=NEOFELIS_RAM_LIMIT,
         cpu_limit=NEOFELIS_CPU_LIMIT,
-        description="Capable local reasoning for complex multi-source questions inside APEX.",
     ),
 }

@@ -13,19 +13,27 @@ from core.agent.types import AgentMessage
 
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
-    def test_gemini_model_profile_omits_default_temperature(self) -> None:
-        """Verify GeminiModelProfile schema has no default_temperature field."""
+    def test_gemini_model_profile_omits_default_temperature_and_description(self) -> None:
+        """Verify GeminiModelProfile schema has no default_temperature or description field."""
         profile = GEMINI_MODEL_PROFILES["comet"]
         self.assertFalse(hasattr(profile, "default_temperature"))
+        self.assertFalse(hasattr(profile, "description"))
         self.assertNotIn("default_temperature", profile.model_dump())
+        self.assertNotIn("description", profile.model_dump())
         self.assertNotIn("default_temperature", GeminiModelProfile.model_fields)
+        self.assertNotIn("description", GeminiModelProfile.model_fields)
 
-    def test_ollama_model_profile_retains_default_temperature(self) -> None:
-        """Verify OllamaModelProfile schema retains default_temperature field."""
+    def test_ollama_model_profile_retains_default_temperature_and_omits_description(
+        self,
+    ) -> None:
+        """Verify OllamaModelProfile schema retains default_temperature and omits description."""
         profile = OLLAMA_MODEL_PROFILES["lynx"]
         self.assertTrue(hasattr(profile, "default_temperature"))
+        self.assertFalse(hasattr(profile, "description"))
         self.assertIn("default_temperature", profile.model_dump())
+        self.assertNotIn("description", profile.model_dump())
         self.assertIn("default_temperature", OllamaModelProfile.model_fields)
+        self.assertNotIn("description", OllamaModelProfile.model_fields)
         self.assertEqual(profile.default_temperature, 0.2)
 
     @patch("core.agent.providers.gemini.genai.Client")
