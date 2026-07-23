@@ -309,39 +309,39 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 
 ---
 
-## v1.18.0 - Cortex: Tooling Framework & Connector Registry
+## v1.18.0 - Cortex: FastMCP Protocol Layer & Bidirectional MCP Hub
 
 **Status:** Planned
 
 **Objective:**
-Standardize APEX tool calling so new connectors and capabilities can be added safely, consistently, and visibly.
+Establish APEX's provider-neutral capability layer, enabling approved external MCP integrations, an authenticated local APEX MCP server, expanded read-only assistant tools, and a seven-day calendar horizon with a focused 48-hour HUD view.
 
 ---
 
-## v1.19.0 - Cortex: Personal Action Tools
+## v1.19.0 - Cortex: Hermes Agent & Personal Action Execution
 
 **Status:** Planned
 
 **Objective:**
-Expand APEX from read-only assistance into approval-gated personal action execution.
+Integrate the Hermes Agent platform for production-grade background workflows, approval-gated actions, and migration of local reminders to Microsoft To Do.
 
 ---
 
-## v1.20.0 - Cortex: Personal Context & Memory Layer
+## v1.20.0 - Workspace Meta-Briefing & Context Ingestion
 
 **Status:** Planned
 
 **Objective:**
-Give APEX durable local understanding of personal preferences, routines, projects, and workflow context while keeping private data outside the public repository.
+Create a structured ingestion layer for workspace digests and external context, allowing APEX to combine that information with local telemetry and produce a unified briefing experience.
 
 ---
 
-## v1.21.0 - Cortex: Workflow Orchestration & Assistant Reliability
+## v1.21.0 - Cortex: Proactive Life OS & Event-Driven Orchestration
 
 **Status:** Planned
 
 **Objective:**
-Enable APEX to perform safe multi-step workflows and harden the assistant layer before Phase V introduces physical-world integration.
+Evolve APEX into a proactive assistant by monitoring events, thresholds, calendars, and connected services to deliver timely notifications and coordinate autonomous, multi-step workflows.
 
 ---
 
