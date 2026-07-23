@@ -2,6 +2,7 @@
 
 ---
 
+
 ## v1.17.0 — Runtime Hardening & Decoupling
 
 **Released:** July 22, 2026
@@ -9,8 +10,6 @@
 This release rebuilds APEX's foundations and separates its runtime paths. Python dependency management moves to a locked `uv`/`pyproject.toml` setup, `core/api.py` is split into a structured `core/api/` package, and prose-based health inference is replaced with typed connector scoring (`sync_health_score`). Activation, telemetry collection, assistant availability, briefing synthesis, and voice delivery now run independently instead of behind a single four-stage pipeline: the HUD opens into an Overview that can refresh telemetry, ask the assistant, and generate a briefing in any order. Briefing synthesis gains five explicit modes (Comet, Lynx, Acinonyx, Neofelis, Structured Digest) and Off/Manual/Automatic voice delivery, the operational gate becomes advisory preflight instead of a hard Wi-Fi/power blocker, and persistence, health, and launcher reliability are hardened with transactional SQLite writes, UTC timestamps, and dedicated liveness/readiness probes.
 
 ---
-
-
 
 ### What's New
 
@@ -24,8 +23,6 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 - Updated Gemini model profiles to the 3.x generation (Comet/Nova/Pulsar → `gemini-3.5-flash-lite`/`gemini-3.5-flash`/`gemini-3.6-flash`, all marked stable) and removed `default_temperature`/`description` from the Gemini profile schema, since the provider now omits temperature and relies on native defaults.
 - Added locked Python dependency management with `uv` and `pyproject.toml`, pinning to Python `3.14.*` and removing the legacy `requirements.txt`.
 
-
-
 ### Architecture Changes
 
 - Split the monolithic `core/api.py` into a structured `core/api/` service package (models, app initialization, state, and routers), preserving legacy imports through `core/api/__init__.py` and OpenAPI operation IDs for client compatibility.
@@ -37,8 +34,6 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 - Hardened launcher readiness probing, startup rollback, and post-start failure cleanup; added a GitHub Actions Windows CI workflow and API characterization tests guarding public contracts.
 - Generified the `AgentProvider` protocol with a `TypeVar`, added Ollama status `busy` for local profiles held by briefing synthesis, and repaired duplicate lines from a prior merge in `loop.py`.
 
-
-
 ### API Changes
 
 - Added `GET /api/v1/health/live` and `GET /api/v1/health/ready`, `POST /api/v1/telemetry` (per-connector refresh) and `GET /api/v1/telemetry`, `POST /api/v1/preflight`, `POST /api/v1/briefings/generate`, and `POST /api/v1/voice/speak`.
@@ -47,16 +42,12 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 - Extended `RuntimeMetadata` with `run_id`, `briefing_mode`, `snapshot_id`, and `spoken`; extended `DigestPayload` with `sync_health_score` and `connector_health`; extended `BriefingHistoryRecord` with `metadata` and `digest_status`.
 - Removed the assistant's implicit HUD-context injection from the most recent persisted briefing; `POST /api/v1/assistant/query` now requires explicit `briefing_id`/`snapshot_id` to attach sanitized, bounded HUD context.
 
-
-
 ### Frontend Changes
 
 - Split activation, preflight, telemetry refresh, and briefing pipeline logic into focused hooks (`useAppActivation`, `usePreflight`, `useTelemetrySnapshot`, `useBriefingPipeline`, `useVoiceDelivery`).
 - Added `BriefingControls.tsx` (mode selector, Synthesize/Refresh All, Speak/Replay), `PreflightDialog.tsx`, and `StandbyActions.tsx` (Start APEX / Start with Briefing).
 - Added `attentionTier.ts`, `moduleTelemetry.ts`, and `weatherTelemetry.ts` typed telemetry helpers, and extended `useApexData.ts`/`useApexAssistant.ts` for the independent activation/telemetry/briefing model.
 - Added regression coverage for the independent overview backend paths, briefing controls, voice delivery, and telemetry hooks.
-
-
 
 ### Documentation Updates
 
@@ -67,8 +58,6 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 
 ---
 
-
-
 ## v1.16.0 — Command Console & Runtime Control Deck
 
 **Released:** July 12, 2026
@@ -76,8 +65,6 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 This release adds a runtime settings layer that lets operators edit assistant, briefing, market, and sports configuration from a HUD panel without restarting the process. Patches persist to `config.local.json` as a transactional overlay on `config.json`, are validated against strict typed models, and take effect on the next read of the affected snapshot. It also separates the assistant's own local-model loading indicator from the briefing pipeline's loading state and establishes the frontend's first unit-test suite.
 
 ---
-
-
 
 ### What's New
 
@@ -90,8 +77,6 @@ This release adds a runtime settings layer that lets operators edit assistant, b
 - Added a Vitest/jsdom frontend unit-test foundation with coverage for settings utilities, the settings editor hook, and key components (`SettingsPanel`, `ConsoleTray`, `MarketTickerCard`).
 - Renamed `ask_apex.default_cloud_profile` to `ask_apex.default_profile` in `config.json` (with legacy-key normalization) and added `market` to the README configuration feature block.
 
-
-
 ### Architecture Changes
 
 - Added `core/settings/` (`models.py`, `normalize.py`, `store.py`, `__init__.py`): typed `*Settings` snapshots, strict `*Patch` models that reject unknown fields, per-layer normalization with legacy-key compatibility, recursive overlay construction, and atomic persistence (temp file + `os.replace()` with retry/backoff on Windows `PermissionError`, rollback on permanent failure).
@@ -99,23 +84,17 @@ This release adds a runtime settings layer that lets operators edit assistant, b
 - Added `useSettingsEditor` and `useFocusTrap` frontend hooks and a `settings.ts` client library for fetching, diffing, and patching runtime settings.
 - Added `frontend/src/lib/consoleActivity.ts` to centralize assistant-vs-briefing loading-state derivation previously inlined in `ConsoleTray`.
 
-
-
 ### API Changes
 
 - Added `GET /api/v1/settings`, returning the current resolved settings snapshot across assistant, briefing, market, and sports domains.
 - Added `PATCH /api/v1/settings`, accepting partial patches per domain, validating against strict typed models, and persisting only dirty fields to `config.local.json`.
 - Bumped the settings contract to schema version 2.
 
-
-
 ### Frontend Changes
 
 - Added `SettingsPanel.tsx` as a fixed portal dialog with focus trapping, effective-timing labels, and preservation of inactive Sports submodules across edits.
 - Added `useSettingsEditor.ts` and `useFocusTrap.ts` hooks; extended `useApexData.ts` and `useMarketData.ts` to expose live settings and polling control.
 - Added a Vitest configuration (`frontend/vite.config.ts`, `frontend/src/test/setup.ts`) and `npm test` script; added test fixtures under `frontend/src/test/settingsFixtures.ts`.
-
-
 
 ### Documentation Updates
 
@@ -125,8 +104,6 @@ This release adds a runtime settings layer that lets operators edit assistant, b
 
 ---
 
-
-
 ## v1.15.1 — Gemini Client GC Fix & Console Diagnostics
 
 **Released:** July 11, 2026
@@ -135,21 +112,15 @@ This release fixes a critical runtime exception in the Gemini briefing synthesis
 
 ---
 
-
-
 ### What's New
 
 - Added standard Python logging to the synthesis module to expose exceptions to the operator terminal when the cloud pipeline fails.
-
-
 
 ### Bug Fixes
 
 - Resolved a `RuntimeError: Cannot send a request, as the client has been closed` issue in `_gemini` by keeping a local reference to `genai.Client` and preventing premature garbage collection under Python 3.14.
 
 ---
-
-
 
 ## v1.15.0 — Synthesis Routing and Profile Tuning
 
@@ -158,8 +129,6 @@ This release fixes a critical runtime exception in the Gemini briefing synthesis
 This release extracts briefing synthesis into a provider-neutral router with cloud Gemini, local Ollama, and deterministic raw fallback paths; exposes live and resolved synthesis state in the HUD; adds profile-bound Gemini thinking levels; and renames the synthesis strategy contract from `llm`/`slm` to `cloud`/`local`. Local-model unload controls move under the APEX logo, Neofelis is promoted to stable, and the agent instruction stack is rebuilt around `AGENTS.md`, scoped guidance, and on-demand skills.
 
 ---
-
-
 
 ### What's New
 
@@ -172,8 +141,6 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 - Promoted Neofelis (`qwen3:8b`) from `preview` to `stable` and renamed its tier from `heavy` to `capable`.
 - Replaced the nine-persona agent rule set with `AGENTS.md`, shared scoped guidance under `docs/agent-guidance/`, on-demand skills under `.agents/skills/`, and `docs/design-system.md`.
 
-
-
 ### Architecture Changes
 
 - Moved synthesis out of the monolithic `core/brain.py` path into `SynthesisRouter.synthesize`, with `compact_payload`, `parse_model_output`, and `deterministic_fallback` in a dedicated formatting module (2 000-byte local input cap; email, news, and speech-prefix content stripped from the local path).
@@ -183,8 +150,6 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 - Raised the `google-genai` floor to `>=1.56.0` for thinking-level support.
 - Collapsed dual editor persona rules into thin glob pointers; Cursor loads `AGENTS.md` as always-on repository instructions.
 
-
-
 ### API Changes
 
 - Extended config and briefing `metadata` with `synthesis_strategy`, `synthesis_provider`, `synthesis_profile`, `synthesis_fallback_reason`, `synthesis_warmup_ms`, and `synthesis_generation_ms`.
@@ -193,15 +158,11 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 - Added `POST /api/v1/local-model/unload` as the provider-neutral manual unload route; `POST /api/v1/agent/local/unload` remains as a compatibility alias.
 - `DEV_AI_SYNTHESIS` accepted values are now `raw`, `local`, and `cloud` (legacy `llm`/`slm` still accepted with a deprecation warning).
 
-
-
 ### Frontend Changes
 
 - Added `LocalModelControl.tsx` and `SynthesisPill` (in `SystemDiagnostics.tsx`); removed the console-tray `ActiveLocalModelPanel`.
 - Extended telemetry types and `useApexData` to parse synthesis strategy, provider, profile, fallback reason, and live pipeline synthesis phase.
 - Updated `SynthesisStrategy` from `'llm' | 'slm' | ...` to `'cloud' | 'local' | ...` and renamed the stage-4 attention label to "AI synthesis".
-
-
 
 ### Documentation Updates
 
@@ -212,8 +173,6 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 
 ---
 
-
-
 ## v1.14.0 — Central Command Atmosphere
 
 **Released:** July 9, 2026
@@ -221,8 +180,6 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 This release replaces the separate `AssistantDrawer` and `BriefingPanel` surfaces with a single `ConsoleTray` panel, overhauls the HUD glass design system, introduces a live EOD market ticker backed by Alpha Vantage, and adds structured tool output cards to assistant responses. Layout containment, typography, and responsive breakpoints were reworked across the entire HUD. Local Ollama profiles Lynx and Acinonyx were promoted from preview to stable.
 
 ---
-
-
 
 ### What's New
 
@@ -243,8 +200,6 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 - Added local model warmup state tracking in the backend (`loading` field on agent profile status); added a rust-orange loading treatment to the logo, voice glyph, and console tray distinct from the assistant-querying state.
 - Changed the default agent profile from `nova` to `comet`.
 
-
-
 ### Architecture Changes
 
 - Locked the dashboard layout to viewport height with scroll containment at the card level; all scrolling is now internal to each panel or card.
@@ -256,8 +211,6 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 - Removed unused `fetchError` state from `useMarketData`; deduplicated `ConsoleTray` prop wiring in `App.tsx` into a single shared props object.
 - Removed the SQLite ledger write from the demo briefing flow.
 
-
-
 ### API Changes
 
 - Added `GET /api/v1/market`, returning per-symbol price, change, percent change, volume, and sparkline data; supports demo-mode simulation.
@@ -265,8 +218,6 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 - `GET /api/v1/agent/profiles` extended with a `loading` boolean field on each profile entry to surface active model warmup state.
 - Removed `get_current_weather` from the agent tool registry.
 - Added `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` to `.env.example`.
-
-
 
 ### Frontend Changes
 
@@ -278,8 +229,6 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 - Added `prefers-reduced-motion` block suppressing nebula, shimmer, and lift animations.
 - Added `hud-glass-solid` variant and revised existing `hud-glass` blur, opacity, and hover shadow values.
 
-
-
 ### Documentation Updates
 
 - Expanded `docs/api.md` with `GET /api/v1/market`, agent profile polling, local model unload, and `tool_outputs` field documentation.
@@ -289,8 +238,6 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 
 ---
 
-
-
 ## v1.13.0 — Cortex: Local Ollama Provider
 
 **Released:** July 5, 2026
@@ -298,8 +245,6 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 This release adds a local Ollama inference path to the APEX assistant, alongside the existing cloud Gemini profiles. Local Ollama profiles are introduced as experimental/preview functionality in this release: they are fully wired into the assistant, but runtime quality and latency are hardware-dependent, and model defaults may change as the local inference path is tuned. Three local model tiers (Lynx, Acinonyx, Neofelis) run fully on-device with automatic load/unload, a single-loaded-model policy, idle auto-unload, and per-profile RAM/CPU resource gating. The assistant profile selector and drawer now surface live availability across all six profiles, and the internal "Cortex" naming was formalized as the umbrella term for the assistant initiative.
 
 ---
-
-
 
 ### What's New
 
@@ -315,8 +260,6 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 - Replaced the hardcoded demo assistant keyword-matching logic with responses loaded from `core/mock/assistant.json`, so demo behavior can be edited without a code change.
 - Renamed the FastAPI app title and health check payload from "APEX Nexus" to "APEX API"/"APEX", completing the internal Cortex/Nexus naming cleanup.
 
-
-
 ### Architecture Changes
 
 - Extended `AgentProvider`, `run_agent_loop`, and the API layer's profile resolution to operate over a union of `GeminiModelProfile` and `OllamaModelProfile`, selecting provider, system prompt, and error messaging based on profile type.
@@ -327,8 +270,6 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 - Added session history trimming (`_trim_agent_history`) that bounds prompt evaluation cost per session and discards orphaned leading non-user messages after the cut.
 - Withheld tool schemas on the final permitted local turn so a bounded local session is forced into a text answer instead of wasting the last turn on an unusable tool call.
 
-
-
 ### API Changes
 
 - `POST /api/v1/agent/query` — `profile` now accepts three additional local values (`"lynx"`, `"acinonyx"`, `"neofelis"`) alongside the existing cloud values. Local profile requests pass through an admission sequence (execution slot, resource gate, model switch) and can return `429` (busy) or `503` (resource-gated, load failure, or Ollama disabled) in addition to the existing response shapes.
@@ -336,16 +277,12 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 - Added `POST /api/v1/agent/local/unload`, returning `LocalUnloadResponse`; can return `403` (disabled), `409` (generation in progress), or `503` (unload failure).
 - Added `AgentProfileStatus`, `LocalLoadedModelStatus`, and `LocalUnloadResponse` Pydantic models, and a `ProfileAvailabilityStatus` literal union (`available`, `disabled`, `ollama_unreachable`, `model_not_installed`, `insufficient_ram`, `cpu_overloaded`).
 
-
-
 ### Frontend Changes
 
 - Extended `telemetry.ts` with `AssistantProfile`, `ProfileAvailabilityStatus`, `ProfileStability`, `AgentProfileStatus`, and `LoadedOllamaModelStatus` types, replacing the cloud-only `AgentCloudProfile` usage across the assistant surface.
 - `CloudProfileSelector.tsx` now renders a two-section (cloud/local) dropdown with live gating, tooltips, and preview badges driven by the polled profile status list.
 - `useApexAssistant.ts` gained a self-scheduling poll of `GET /api/v1/agent/profiles` (paused while a query is in flight or the tab is hidden) and an `unloadLocalModel()` action.
 - `AssistantDrawer.tsx` gained an `ActiveLocalModelPanel` showing the loaded model, idle-unload countdown, and manual unload control.
-
-
 
 ### Documentation Updates
 
@@ -355,8 +292,6 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 
 ---
 
-
-
 ## v1.12.0 — Cloud Gemini Agentic Tool Calling
 
 **Released:** July 2, 2026
@@ -364,8 +299,6 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 This release adds a Gemini-backed conversational assistant to APEX. A bounded multi-turn agent loop dispatches read-only tools for weather, F1, calendar, reminders, and briefing history, and the HUD gained an input bar and drawer for querying it directly.
 
 ---
-
-
 
 ### What's New
 
@@ -380,8 +313,6 @@ This release adds a Gemini-backed conversational assistant to APEX. A bounded mu
 - Added centralized config parsing for assistant feature flags, default profile, and turn/tool-call limits.
 - Fixed briefing ledger persistence to run before voice playback instead of inside the playback thread.
 
-
-
 ### Architecture Changes
 
 - Decoupled the agent loop from the concrete Gemini provider via an `AgentProvider` protocol, replacing the earlier `CortexProvider` protocol.
@@ -390,23 +321,17 @@ This release adds a Gemini-backed conversational assistant to APEX. A bounded mu
 - Added local Vite dev server origins to the CORS allowlist.
 - Renamed all internal "Cortex" naming to "APEX assistant" across the agent loop, model profiles, and API responses.
 
-
-
 ### API Changes
 
 - Added `POST /api/v1/agent/query`, routing user questions through the Gemini-backed agent loop and returning structured error responses on invalid API key or profile.
 - Added `GET /api/v1/config`, exposing the default assistant profile and Ask APEX visibility flag; the frontend syncs both on boot.
 - Added typed agent message, request, and response models, and an `agent_system_prompt` config key sourced through `core/config.py`.
 
-
-
 ### Frontend Changes
 
 - Added `AskApexBar.tsx`, `CloudProfileSelector.tsx`, and `AssistantDrawer.tsx` components.
 - Added `useApexAssistant.ts` to manage assistant query state, history, and session reset.
 - Adjusted HUD layout to fit the new input bar alongside the briefing digest and command trigger.
-
-
 
 ### Documentation Updates
 
@@ -416,8 +341,6 @@ This release adds a Gemini-backed conversational assistant to APEX. A bounded mu
 
 ---
 
-
-
 ## v1.11.1 — Speech Engine Stabilization & Library Pruning
 
 **Released:** June 29, 2026
@@ -426,8 +349,6 @@ This patch removes Piper CLI from the active TTS stack, restores Google Cloud TT
 
 ---
 
-
-
 ### What's New
 
 - Removed Piper CLI as an active TTS engine; all runtime subprocess calls, binary resolution, and voice model selection logic were deleted from `core/speaker.py`.
@@ -435,28 +356,20 @@ This patch removes Piper CLI from the active TTS stack, restores Google Cloud TT
 - Restored Google Cloud TTS as the default primary engine in `config.json`.
 - Placed Kokoro ONNX on hardware-conditional cold standby; the warmup thread and lazy imports are skipped at boot when `primary_tts` is not `"kokoro"`, consuming 0 MB RAM and 0 threads.
 
-
-
 ### Architecture Changes
 
 - Updated `_resolve_tts_diagnostics` in `core/api.py` so Google Cloud TTS bypasses hardware throttle checks; Kokoro retains its existing fallback to `pyttsx3` under load.
 - Narrowed `TtsEngine` literal union and the `active_tts_engine` field in `RuntimeMetadata` and `PipelineStatusSnapshot` to `"google" | "kokoro" | "pyttsx3"`, removing `"piper"` from all schema definitions.
 - Updated `core/config.py` to enforce the `piper → pyttsx3` redirect at config parse time.
 
-
-
 ### API Changes
 
 - `TtsEngine` type is now `Literal["google", "kokoro", "pyttsx3"]` across the backend schema and frontend TypeScript types; `"piper"` is no longer a valid or emitted value.
-
-
 
 ### Frontend Changes
 
 - Unified `VocalOrb.tsx` to a single gold color scheme by removing the `isLocalEngine` conditional branch and the cyan color path it produced.
 - Updated `useApexData.ts` and `telemetry.ts` to reflect the narrowed `TtsEngine` union.
-
-
 
 ### Documentation Updates
 
@@ -465,8 +378,6 @@ This patch removes Piper CLI from the active TTS stack, restores Google Cloud TT
 
 ---
 
-
-
 ## v1.11.0 — Dormant Core & Ambient State Engine
 
 **Released:** June 28, 2026
@@ -474,8 +385,6 @@ This patch removes Piper CLI from the active TTS stack, restores Google Cloud TT
 This release transforms APEX into a standby intelligence appliance. The HUD now enters a dormant visual state when no synthesis is active, with layout animations, logo breathing effects, and mouse-driven parallax depth responding to system state transitions. A dedicated `CommandTrigger` component replaces the inline button header, and the synthesis model was migrated to Gemini 3.1 Flash Lite.
 
 ---
-
-
 
 ### What's New
 
@@ -491,8 +400,6 @@ This release transforms APEX into a standby intelligence appliance. The HUD now 
 - Migrated synthesis model from Gemini 2.5 Flash to Gemini 3.1 Flash Lite in `core/brain.py`.
 - Fixed launcher crash when the backend connection times out by adding `TimeoutError` to the readiness check catch block and increasing the connection timeout.
 
-
-
 ### Architecture Changes
 
 - Replaced three-column CSS grid with a flex row layout in `App.tsx` to enable per-column `max-width` and `flex` animations during state transitions.
@@ -501,8 +408,6 @@ This release transforms APEX into a standby intelligence appliance. The HUD now 
 - `CommandTrigger` extracted as a standalone component; inline trigger button removed from the header.
 - Three `translate3d` parallax utility classes added to `index.css` for depth-tiered star displacement.
 - Added `scale-115` to Tailwind config theme extensions.
-
-
 
 ### Documentation Updates
 
@@ -514,8 +419,6 @@ This release transforms APEX into a standby intelligence appliance. The HUD now 
 
 ---
 
-
-
 ## v1.10.0 — Local Neural Voice Matrix
 
 **Released:** June 13, 2026
@@ -523,8 +426,6 @@ This release transforms APEX into a standby intelligence appliance. The HUD now 
 This release transitions APEX speech synthesis from cloud-first delivery toward a local-first neural voice architecture powered by Kokoro ONNX and Piper, while preserving optional cloud fallback capabilities. It implements dynamic hardware load monitoring to gracefully downgrade to low-overhead speech engines under system resource starvation, introduces a unified voice gender configuration toggle, and adds GPU-accelerated HUD background elements.
 
 ---
-
-
 
 ### What's New
 
@@ -537,8 +438,6 @@ This release transitions APEX speech synthesis from cloud-first delivery toward 
 - Dynamic gender matching implemented across all active speech engines (Kokoro, Piper, Google Cloud TTS, and pyttsx3).
 - Added telemetry indicators for the resolved speech engine (`active_tts_engine`) and system load throttling status (`system_load_throttled`).
 
-
-
 ### Architecture Changes
 
 - Rebuilt the speech synthesis routing flow into a cascading fallback chain: Kokoro ONNX $\rightarrow$ Google Cloud TTS $\rightarrow$ Piper CLI $\rightarrow$ pyttsx3.
@@ -547,23 +446,17 @@ This release transitions APEX speech synthesis from cloud-first delivery toward 
 - Updated core pipeline tracking in `api.py` to trace the active speech engine and system load throttling flag.
 - Refactored background layout rendering to use GPU-accelerated counter-rotating radial gradient nebula fields.
 
-
-
 ### API Changes
 
 - Extended `RuntimeMetadata` and `PipelineStatusSnapshot` schemas to expose `active_tts_engine` and `system_load_throttled` fields.
 - Added `TtsEngine` literal union type and updated state hook interfaces in the frontend TypeScript files.
 - Documented `DEV_TTS_PLAYBACK` and `DEMO_TTS` configuration options for local offline engines in API schemas.
 
-
-
 ### Frontend Changes
 
 - Replaced legacy CSS nebula animation loops with hardware-accelerated counter-rotating CSS transforms.
 - Updated `VocalOrb.tsx` to display a cyan color scheme and wider stasis coordinates when local offline speech engines are operating.
 - Configured data attribute flags on the HUD root layout to expose the active TTS engine and throttle states.
-
-
 
 ### Documentation Updates
 
@@ -574,8 +467,6 @@ This release transitions APEX speech synthesis from cloud-first delivery toward 
 
 ---
 
-
-
 ## v1.9.1 — Stabilization & Maintenance
 
 **Released:** June 11, 2026
@@ -583,8 +474,6 @@ This release transitions APEX speech synthesis from cloud-first delivery toward 
 This release focuses on backend concurrency hardening, external API payload optimization, database lock mitigation, and pruning dead or deprecated frontend components and context providers to improve overall layout and operational stability.
 
 ---
-
-
 
 ### What's New
 
@@ -596,8 +485,6 @@ This release focuses on backend concurrency hardening, external API payload opti
 - Pruned the unused `AtmosphericThemeContext`, `ConfidenceBadge`, and `RingGauge` components from the codebase.
 - Refactored frontend system diagnostics to prevent duplicate diagnostic hook execution.
 
-
-
 ### Architecture Changes
 
 - Integrated a global thread lock (`_TRIGGER_LOCK`) to serialize `/api/v1/trigger` calls and enforce safe state resets on exceptions.
@@ -607,15 +494,11 @@ This release focuses on backend concurrency hardening, external API payload opti
 - Discarded React Context for atmospheric theme state in favor of localized CSS variable updates and type-safe mappings.
 - Replaced the file-modification time tracking of `clients/.f1_cache.json` with a dedicated caching boolean flag passed directly by the sports client.
 
-
-
 ### API Changes
 
 - Extended the sports client `fetch_sports_data` return signature to include an explicit cache-status boolean indicator.
 - Refactored response payload parsing in the frontend `useApexData` hook to parse and typecast digest insights, scores, and failed connector arrays from a unified response dictionary.
 - Simplified `SystemState` types in `telemetry.ts` to a static literal union, and removed the deprecated atmospheric context and insights array interfaces.
-
-
 
 ### Frontend Changes
 
@@ -627,8 +510,6 @@ This release focuses on backend concurrency hardening, external API payload opti
 - Deleted the deprecated `RingGauge.tsx` component.
 - Deleted the deprecated `AtmosphericThemeContext.tsx` context file.
 
-
-
 ### Documentation Updates
 
 - Updated `docs/api.md` to document the cache-status indicator flag and updated confidence rating formulas.
@@ -636,8 +517,6 @@ This release focuses on backend concurrency hardening, external API payload opti
 - Removed obsolete implementation notes regarding filesystem metadata polling in architectural documents.
 
 ---
-
-
 
 ## v1.9.0 — Standby Core & Unified Status Deck
 
@@ -647,11 +526,7 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Operator-Initiated Synthesis and Standby State
 
@@ -663,8 +538,6 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 - Added `synthesisAbortRef` to abort any previous in-flight synthesis before starting a new one, and a cleanup effect to abort the controller on component unmount.
 - `useApexData` now fetches `GET /api/v1/reminders` on mount to populate `activeReminders` during standby, surfacing pending reminder count below the `ApexLogo` before the first briefing.
 - Added `createStandbyTelemetryPayload` to produce a zero-content payload that initializes `ApexDataState` during the dormant phase.
-
-
 
 #### Unified Status Footer
 
@@ -679,8 +552,6 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 
 ---
 
-
-
 ### Architecture Changes
 
 - `useApexData` trigger lifecycle changed from mount-time auto-fire to explicit operator invocation. The hook now initializes into `idle` state rather than immediately entering `loading`.
@@ -690,8 +561,6 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 - `prevStatus` tracking for the `loading → success` transition isolated into a self-contained effect.
 
 ---
-
-
 
 ### Frontend Changes
 
@@ -703,23 +572,17 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 
 ---
 
-
-
 ### Documentation Updates
 
-
-| File                   | Changes                                                                                                                                                                                                                                                                |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File | Changes |
+|---|---|
 | `docs/architecture.md` | Updated `SystemDiagnostics` description to the six-column footer bar; documented `ConfidenceBadge` as unused; updated `RingGauge` as unused; updated `useApexData` to reflect idle initialization, standby reminder fetching, and operator-initiated trigger execution |
-| `docs/roadmap.md`      | Adjusted v1.9.0 roadmap header                                                                                                                                                                                                                                         |
-| `README.md`            | Minor copy corrections                                                                                                                                                                                                                                                 |
-| `frontend/README.md`   | Minor corrections                                                                                                                                                                                                                                                      |
-| `docs/decisions.md`    | Removed duplicate heading                                                                                                                                                                                                                                              |
-
+| `docs/roadmap.md` | Adjusted v1.9.0 roadmap header |
+| `README.md` | Minor copy corrections |
+| `frontend/README.md` | Minor corrections |
+| `docs/decisions.md` | Removed duplicate heading |
 
 ---
-
-
 
 ## v1.8.0 — Briefing Digest & Transcript Layer
 
@@ -729,11 +592,7 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Briefing Digest and History Ledger
 
@@ -744,8 +603,6 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 - `GET /api/v1/briefings/history` added — returns up to 50 `BriefingHistoryRecord` objects (id, timestamp, briefing, DigestPayload) ordered by timestamp descending. Returns three static mock records when `DEMO_MODE=true`.
 - `HistoryLedgerModal` in `BriefingDigest.tsx` fetches the history endpoint on open and renders each record with timestamp, briefing prose, and insight bullets. Mounted via `createPortal`; dismissed by backdrop click or `Escape`.
 
-
-
 #### Connector Trust Scoring
 
 - `_compute_confidence_and_failures()` added to `core/api.py`. Evaluates each enabled connector's output string against per-connector failure regex constants after Collection. Score: `(earned_weight / total_weight) × 100`, clamped `[0.0, 100.0]`.
@@ -753,15 +610,11 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 - F1 cache staleness penalty: if `clients/.f1_cache.json` existed before the sports connector ran and its mtime was unchanged after, `confidence_score *= 0.90`.
 - Demo mode pinned to `confidence_score: 100.0` and `failed_connectors: []`.
 
-
-
 #### Structured Gemini Output (`===SPEECH===` / `===INSIGHTS===`)
 
 - `brain.process_telemetry()` return type changed from `str` to `dict[str, Any]` with keys `briefing` and `insights`. All callers and bypass paths in `core/api.py` updated.
 - `_parse_model_output(text)` splits on the two section markers and strips bullet prefixes from the insights lines. Missing markers fall through to `_fallback_output()`, which returns the raw data string with a single placeholder insight.
 - `config.json` system prompt updated to mandate the two-section output format.
-
-
 
 #### New and Modified HUD Components
 
@@ -772,26 +625,20 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 - `TelemetryCard.tsx` — refactored into a single-element flex shell with conditional header rendering and flex-based children containers for internal per-card scrolling.
 - `App.tsx` — added `Inbox` and `News Wire` telemetry cards to the right column, surfacing email and news connector output in the HUD for the first time. `ConfidenceBadge` mounted in the header.
 
-
-
 #### Antigravity Workspace Rules
 
 - `.agents/rules/` created alongside `.cursor/rules/`. Nine rule files added: `analyst`, `auditor`, `backend`, `builder`, `communicator`, `devops`, `frontend`, `global`, `mechanic`. Glob patterns adjusted for Antigravity activation semantics.
 
 ---
 
-
-
 ### Architecture Changes
 
-- `brain.process_telemetry()` **return shape** — changed from `str` to `dict[str, Any]`. The `briefing` and `insights` keys are guaranteed present on every code path including the exception handler and all `DEV_MODE` bypass branches.
+- **`brain.process_telemetry()` return shape** — changed from `str` to `dict[str, Any]`. The `briefing` and `insights` keys are guaranteed present on every code path including the exception handler and all `DEV_MODE` bypass branches.
 - **Gemini output protocol** — system prompt enforces `===SPEECH===` / `===INSIGHTS===` markers. Model responses without markers fall through to `_fallback_output()`.
 - **Viewport-height lock** — root layout converted to `h-dvh overflow-hidden` with `flex min-h-0` propagation. All scrolling is now at the card level; future cards must fit within this constraint.
 - **Demo-mode guards on reminder endpoints** — all three reminder endpoints received explicit `DEMO_MODE` branches returning static mock data without database access.
 
 ---
-
-
 
 ### API Changes
 
@@ -803,22 +650,16 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 
 ---
 
-
-
 ### Database Changes
 
-
-| Change       | Detail                                                                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| New table    | `briefings (id, timestamp, briefing, digest_json)` with `timestamp DESC` index                                   |
-| New function | `save_briefing(briefing, digest_dict)` — persists briefing text and JSON-encoded digest                          |
-| New function | `fetch_briefing_history(limit=50)` — ordered query with JSON parse on return                                     |
+| Change | Detail |
+|---|---|
+| New table | `briefings (id, timestamp, briefing, digest_json)` with `timestamp DESC` index |
+| New function | `save_briefing(briefing, digest_dict)` — persists briefing text and JSON-encoded digest |
+| New function | `fetch_briefing_history(limit=50)` — ordered query with JSON parse on return |
 | New function | `prune_historical_ledger()` — deletes rows outside the 50 most recent; explicit `BEGIN` / `ROLLBACK` transaction |
 
-
 ---
-
-
 
 ### Agent Workflow Changes
 
@@ -827,24 +668,18 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 
 ---
 
-
-
 ### Documentation Updates
 
-
-| File                   | Changes                                                                                                                                                                                                                                   |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/api.md`          | Added `digest` field table to `POST /api/v1/trigger`; added `GET /api/v1/briefings/history`; added `DigestPayload` and `BriefingHistoryRecord` model listings; added demo-path notes to all three reminder endpoints                      |
+| File | Changes |
+|---|---|
+| `docs/api.md` | Added `digest` field table to `POST /api/v1/trigger`; added `GET /api/v1/briefings/history`; added `DigestPayload` and `BriefingHistoryRecord` model listings; added demo-path notes to all three reminder endpoints |
 | `docs/architecture.md` | Added `briefings` table and ledger functions to `database.py` section; added `BriefingDigest` and `ConfidenceBadge` component descriptions; added Confidence Scoring section; updated `useApexData` and `telemetry.ts` type documentation |
-| `docs/decisions.md`    | Updated AI agent rules table                                                                                                                                                                                                              |
-| `README.md`            | Corrected pipeline diagram; added confidence scoring and briefing history to feature bullets                                                                                                                                              |
-| `frontend/README.md`   | Replaced default Vite scaffold content with project-specific documentation                                                                                                                                                                |
-| `docs/roadmap.md`      | Created. Outlines planned milestones and future capabilities                                                                                                                                                                              |
-
+| `docs/decisions.md` | Updated AI agent rules table |
+| `README.md` | Corrected pipeline diagram; added confidence scoring and briefing history to feature bullets |
+| `frontend/README.md` | Replaced default Vite scaffold content with project-specific documentation |
+| `docs/roadmap.md` | Created. Outlines planned milestones and future capabilities |
 
 ---
-
-
 
 ## v1.7.0 — HUD-Renaissance: Productization
 
@@ -854,11 +689,7 @@ This release moves APEX from a feature-complete prototype into a shareable, docu
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Celestial Background and HUD Z-Index Layer System
 
@@ -874,8 +705,6 @@ The HUD now renders on top of a static star field with a formalized layer stack.
 - `ApexLogo` received a hover scale and `drop-shadow` transition. Active metal states gained an explicit `transition` property.
 - `repomix-output.xml` was added to `.gitignore`.
 
-
-
 #### Demo Mode
 
 A self-contained demo mode was added that runs the full pipeline against static fixture data without touching any live API or credentials.
@@ -887,8 +716,6 @@ A self-contained demo mode was added that runs the full pipeline against static 
 - `_route_tts_playback()` was extracted in `core/speaker.py` to eliminate duplicated TTS branch logic that previously existed across the dev-mode and production code paths. A `tts_override` keyword argument was added to `speaker.speak()` for per-call engine selection without touching global routing.
 - `demoModeActive` was added to `ApexDataState` in `telemetry.ts` and extracted from the briefing response metadata in `useApexData.ts`.
 - A pulsing amber `DEMO MODE ACTIVE` badge renders in the HUD header when `demoModeActive` is `true`.
-
-
 
 #### Documentation Split
 
@@ -902,29 +729,23 @@ The monolithic `README.md` was broken apart into three dedicated reference docum
 
 ---
 
-
-
 ### Files Changed
 
-
-| Area                | Files                                                                                     |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| Frontend Components | `CelestialBackground.tsx` (new), `TelemetryCard.tsx`, `ApexLogo.tsx`, `App.tsx`           |
-| Frontend Styles     | `index.css`                                                                               |
-| Frontend Hooks      | `useApexData.ts`                                                                          |
-| Frontend Types      | `telemetry.ts`                                                                            |
-| Backend API         | `core/api.py`                                                                             |
-| Backend Config      | `core/config.py`                                                                          |
-| Backend Speaker     | `core/speaker.py`                                                                         |
-| Mock Fixtures       | `core/mock/telemetry.json` (new)                                                          |
-| Config & Env        | `config.json`, `.env.example`                                                             |
-| Docs                | `docs/architecture.md` (new), `docs/api.md` (new), `docs/decisions.md` (new), `README.md` |
-| Repo Config         | `.gitignore`                                                                              |
-
+| Area | Files |
+|---|---|
+| Frontend Components | `CelestialBackground.tsx` (new), `TelemetryCard.tsx`, `ApexLogo.tsx`, `App.tsx` |
+| Frontend Styles | `index.css` |
+| Frontend Hooks | `useApexData.ts` |
+| Frontend Types | `telemetry.ts` |
+| Backend API | `core/api.py` |
+| Backend Config | `core/config.py` |
+| Backend Speaker | `core/speaker.py` |
+| Mock Fixtures | `core/mock/telemetry.json` (new) |
+| Config & Env | `config.json`, `.env.example` |
+| Docs | `docs/architecture.md` (new), `docs/api.md` (new), `docs/decisions.md` (new), `README.md` |
+| Repo Config | `.gitignore` |
 
 ---
-
-
 
 ### Summary Stats
 
@@ -940,8 +761,6 @@ The monolithic `README.md` was broken apart into three dedicated reference docum
 
 ---
 
-
-
 ## v1.6.0 — HUD-Renaissance: Atmospheric Resonance
 
 **Released:** June 5, 2026
@@ -950,11 +769,7 @@ This release transforms the APEX HUD from a functional dashboard into a fully an
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Animated HUD Header and Status Ticker
 
@@ -964,8 +779,6 @@ A persistent header bar was added to the top of the dashboard with integrated pi
 - A CSS shimmer animation was added to the APEX title in `index.css`. The gradient sweep fires while pipeline polling is active and stops on completion.
 - `DiagnosticProgress.tsx` was deleted. The pipeline step label it previously rendered is now surfaced through the header ticker, reducing the component count without losing visibility.
 
-
-
 #### Pipeline-Driven Nebula Background
 
 The HUD background layer now reacts to pipeline execution state with animated radial-gradient blobs.
@@ -973,8 +786,6 @@ The HUD background layer now reacts to pipeline execution state with animated ra
 - Three animated nebula blobs were added to `App.tsx` as CSS radial-gradient layers that appear when a pipeline run is active.
 - Blob color shifts by stage: emerald for stages 1–3 (gate, collection, synthesis) and amber for stage 4 (delivery). On `status === 'success'`, the nebula color persists at gold.
 - `--hud-bg` was updated to `#000000` to increase contrast against the nebula layer.
-
-
 
 #### VocalOrb — Live Speaker State Component
 
@@ -988,8 +799,6 @@ A new SVG component was added to the header that reflects real-time audio playba
 - The frontend-side derived calculation `isSpeaking = isPipelinePolling && activeStep === 4` was removed. Speaker state is now sourced directly from the backend.
 - `VocalOrb` is mounted in the header center column. The header layout was converted to a three-column CSS grid to keep the orb visually centered between the title and the ticker.
 
-
-
 #### APEX Vector Logo with Pipeline Segment Activation
 
 A multi-layer SVG logo was added to the HUD center column with pipeline-reactive rendering.
@@ -998,8 +807,6 @@ A multi-layer SVG logo was added to the HUD center column with pipeline-reactive
 - A `--glow-color`-driven drop-shadow filter reflects the active pipeline stage through the logo.
 - An `isSpeaking` prop was added to `ApexLogo`. The gold core persists after `status === 'success'` and pulses during audio delivery at stage 4.
 - `reminderPulseCount` state was added in `App.tsx` with an 800 ms pulse flash triggered by successful reminder submission, routed through an `onReminderSaved` callback on `ReminderTerminal`.
-
-
 
 #### Weather Condition Archetype System
 
@@ -1011,8 +818,6 @@ Weather card rendering is now driven by a typed condition classification system 
 - Five CSS keyframe animations and `animate-weather-*` utility classes were added to `index.css` to back the per-condition visual treatments.
 - The Weather `TelemetryCard` in `App.tsx` was updated from inline string logic to a `weatherBorderByCondition` record keyed on `WeatherConditionArchetype`.
 - The "Schedule" card label was renamed to "Events" and the "F1 Schedule" card label was renamed to "Next F1 Race".
-
-
 
 #### Glass Panel Surface Treatment and Animated Diagnostics
 
@@ -1026,8 +831,6 @@ All telemetry cards received a visual finish pass and the system diagnostics com
 - Corresponding fields were added to `telemetry.ts` and consumed by `useSystemDiagnostics.ts`.
 - `tzdata` was added to `requirements.txt` for reliable timezone resolution.
 
-
-
 #### Collapsible Reminder Terminal
 
 The reminder input component was refactored from a fixed full-page overlay into an inline collapsible dock inside the Reminders card.
@@ -1040,35 +843,23 @@ The reminder input component was refactored from a fixed full-page overlay into 
 
 ---
 
-
-
 ### Fixes
-
-
 
 #### Pipeline Polling Through Stage 4
 
 - The early `PIPELINE_COMPLETE_STEP` exit guard was removed from `useApexData.ts`. The polling loop now remains active through stage 4, ensuring speaker state and nebula glow receive their final update before the run is marked complete.
 
-
-
 #### Speaker Cleanup Ordering
 
 - `_speak_and_cleanup()` was extracted in `core/api.py` to defer `global_pipeline_state.reset()` until after audio playback completes. Previously, the pipeline state could reset before the frontend had polled the speaking stage, causing the speaking border and orb animation to be skipped.
-
-
 
 #### Duplicate Theme Writes
 
 - Redundant `document.documentElement.style.setProperty` calls were removed from `AtmosphericThemeContext.tsx`. CSS variable writes now originate from a single location.
 
-
-
 #### ReminderListRow Dismiss Race Condition
 
 - `ReminderListRow` was updated to fire `POST /api/v1/reminders/read` before the dismiss animation starts rather than after. The previous order allowed the animation to complete and the component to unmount before the API call returned, causing intermittent state drift.
-
-
 
 #### Weather Detail Capitalization
 
@@ -1076,11 +867,7 @@ The reminder input component was refactored from a fixed full-page overlay into 
 
 ---
 
-
-
 ### Refactors
-
-
 
 #### HUD Grid Structure
 
@@ -1088,15 +875,11 @@ The reminder input component was refactored from a fixed full-page overlay into 
 - `SystemDiagnostics` was expanded to full three-column width at `xl` breakpoint.
 - `ApexLogo` was scaled to `h-64 xl:h-72`.
 
-
-
 #### BriefingPanel Simplification
 
 - The word-by-word interval reveal was removed from `BriefingPanel`. Section class construction was consolidated into a `sectionShellClassName` helper.
 - The `isSpeaking` prop and glow-pulse side effect were removed from `BriefingPanel`; speaking state is now derived from `useApexData` directly.
 - A `clip-path` curtain reveal animation was added that fires once on briefing delivery.
-
-
 
 #### Typed Pipeline Status Model
 
@@ -1105,32 +888,26 @@ The reminder input component was refactored from a fixed full-page overlay into 
 
 ---
 
-
-
 ### Files Changed
 
-
-| Area                | Files                                                                                                                                                                         |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend API         | `core/api.py`                                                                                                                                                                 |
-| Backend Speaker     | `core/speaker.py`                                                                                                                                                             |
-| Backend Scanner     | `core/scanner.py`                                                                                                                                                             |
+| Area | Files |
+|---|---|
+| Backend API | `core/api.py` |
+| Backend Speaker | `core/speaker.py` |
+| Backend Scanner | `core/scanner.py` |
 | Frontend Components | `ApexLogo.tsx` (new), `VocalOrb.tsx` (new), `BriefingPanel.tsx`, `TelemetryCard.tsx`, `SystemDiagnostics.tsx`, `RingGauge.tsx`, `ReminderTerminal.tsx`, `ReminderListRow.tsx` |
-| Frontend Hooks      | `useApexData.ts`, `useSystemDiagnostics.ts`                                                                                                                                   |
-| Frontend Context    | `AtmosphericThemeContext.tsx`                                                                                                                                                 |
-| Frontend Types      | `telemetry.ts`                                                                                                                                                                |
-| Frontend Styles     | `index.css`                                                                                                                                                                   |
-| App Shell           | `App.tsx`                                                                                                                                                                     |
-| Frontend Entry      | `index.html`                                                                                                                                                                  |
-| Deleted             | `DiagnosticProgress.tsx`                                                                                                                                                      |
-| Dependencies        | `requirements.txt`                                                                                                                                                            |
-| Repo Config         | `.cursor/rules/frontend.mdc`, `.cursor/rules/auditor.mdc`                                                                                                                     |
-| Docs                | `README.md`                                                                                                                                                                   |
-
+| Frontend Hooks | `useApexData.ts`, `useSystemDiagnostics.ts` |
+| Frontend Context | `AtmosphericThemeContext.tsx` |
+| Frontend Types | `telemetry.ts` |
+| Frontend Styles | `index.css` |
+| App Shell | `App.tsx` |
+| Frontend Entry | `index.html` |
+| Deleted | `DiagnosticProgress.tsx` |
+| Dependencies | `requirements.txt` |
+| Repo Config | `.cursor/rules/frontend.mdc`, `.cursor/rules/auditor.mdc` |
+| Docs | `README.md` |
 
 ---
-
-
 
 ### Summary Stats
 
@@ -1146,8 +923,6 @@ The reminder input component was refactored from a fixed full-page overlay into 
 
 ---
 
-
-
 ## v1.5.0 — HUD-Renaissance: The Control Deck
 
 **Released:** May 31, 2026
@@ -1156,11 +931,7 @@ This release adds a full reminder management system to the HUD, covering API per
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Reminder Management System
 
@@ -1173,8 +944,6 @@ Active reminders are now a first-class data surface in the HUD, with full lifecy
 - `database.save_reminder()` was updated to return the inserted row ID instead of `None`.
 - `activeReminders` was added to `ApexDataState` and `TelemetryPayload` as a structured list, making reminder state available to all HUD consumers through the unified `useApexData()` hook.
 
-
-
 #### Reminder Terminal Input Component
 
 A persistent, fixed-position input field was added to the HUD bottom edge for submitting new reminders without leaving the dashboard.
@@ -1183,8 +952,6 @@ A persistent, fixed-position input field was added to the HUD bottom edge for su
 - A global keyboard shortcut registers a `/` keydown listener. Pressing `/` from anywhere on the dashboard focuses the input unless the user is already inside an editable field.
 - Submitting while a previous request is in flight is blocked by an `isSubmitting` guard.
 - The component is mounted in `App.tsx` as a floating overlay with `z-50` stacking, centered horizontally at the bottom of the viewport.
-
-
 
 #### Reminder List Row Component
 
@@ -1197,11 +964,7 @@ Individual reminder entries are now interactive, with per-item dismissal directl
 
 ---
 
-
-
 ### Fixes
-
-
 
 #### Launcher Backend Readiness Gate
 
@@ -1214,11 +977,7 @@ The `launcher.py` orchestrator previously used a hardcoded three-second delay be
 
 ---
 
-
-
 ### Refactors
-
-
 
 #### Browser Window Lifecycle Binding
 
@@ -1230,27 +989,21 @@ The orchestrator now treats the browser window as the authoritative signal for A
 
 ---
 
-
-
 ### Files Changed
 
-
-| Area                  | Files                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| Backend API           | `core/api.py`                                                                                 |
-| Backend Database      | `core/database.py`                                                                            |
-| Launcher Orchestrator | `launcher.py`                                                                                 |
-| Frontend Components   | `frontend/src/components/ReminderTerminal.tsx`, `frontend/src/components/ReminderListRow.tsx` |
-| Frontend Data Hook    | `frontend/src/hooks/useApexData.ts`                                                           |
-| Frontend Types        | `frontend/src/types/telemetry.ts`                                                             |
-| Frontend Layout       | `frontend/src/App.tsx`                                                                        |
-| Repo Config           | `.gitignore`                                                                                  |
-| Docs                  | `README.md`                                                                                   |
-
+| Area | Files |
+|---|---|
+| Backend API | `core/api.py` |
+| Backend Database | `core/database.py` |
+| Launcher Orchestrator | `launcher.py` |
+| Frontend Components | `frontend/src/components/ReminderTerminal.tsx`, `frontend/src/components/ReminderListRow.tsx` |
+| Frontend Data Hook | `frontend/src/hooks/useApexData.ts` |
+| Frontend Types | `frontend/src/types/telemetry.ts` |
+| Frontend Layout | `frontend/src/App.tsx` |
+| Repo Config | `.gitignore` |
+| Docs | `README.md` |
 
 ---
-
-
 
 ### Summary Stats
 
@@ -1263,8 +1016,6 @@ The orchestrator now treats the browser window as the authoritative signal for A
 
 ---
 
-
-
 ## v1.4.0 — Developer Experience & Local Sandbox Recalibration
 
 **Released:** May 28, 2026
@@ -1273,11 +1024,7 @@ This release consolidates the developer-mode control surface, hardens the speech
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Unified Developer Mode (`DEV_MODE`)
 
@@ -1289,8 +1036,6 @@ The previous `TEST_MODE` and `SHOWCASE_MODE` environment flags were removed and 
 - `database.mark_reminders_read()` in `api.py` is guarded behind `not dev_mode`; a diagnostic log line is emitted when the write is skipped.
 - `.env.example` and `README.md` were updated to document `DEV_MODE` and `ENABLE_STARTUP_GATE`, including a revised environment modes table with a new `Marks Reminders Read` column.
 
-
-
 #### Dev-Mode Routing Flags (`DEV_AI_SYNTHESIS`, `DEV_TTS_PLAYBACK`)
 
 Two new environment flags give fine-grained control over the AI synthesis and TTS paths when `DEV_MODE` is active.
@@ -1299,16 +1044,12 @@ Two new environment flags give fine-grained control over the AI synthesis and TT
 - `DEV_TTS_PLAYBACK` controls which TTS path runs in dev mode. The Inworld AI branch in `core/speaker.py` was replaced with a `DEV_TTS_PLAYBACK`-keyed routing block.
 - Both flags are validated against typed allowsets in `config.py` with normalization and logged fallbacks.
 
-
-
 #### PII Masking in Data Clients
 
 Gmail and Calendar dev-mode bypasses were moved out of `core/api.py` and into their respective client modules.
 
 - `clients/gmail_client.py` and `clients/calendar_client.py` now mask personally identifiable information with `[HIDDEN]` sentinels on success when `DEV_MODE` is active.
 - Both clients return an offline sentinel string on exception in dev mode, preventing live credential use during local testing.
-
-
 
 #### Typed API Response Models
 
@@ -1319,11 +1060,7 @@ The `/api/v1/trigger` response is now backed by Pydantic models.
 
 ---
 
-
-
 ### Refactors
-
-
 
 #### Speaker Subsystem: Pre-Warmed Singletons and Thread Safety
 
@@ -1339,23 +1076,17 @@ The `core/speaker.py` module was restructured to eliminate per-call initializati
 
 ---
 
-
-
 ### Files Changed
 
-
-| Area           | Files                                                                |
-| -------------- | -------------------------------------------------------------------- |
-| Backend Config | `core/config.py`                                                     |
-| Backend Logic  | `core/api.py`, `core/brain.py`, `core/scanner.py`, `core/speaker.py` |
-| Data Clients   | `clients/gmail_client.py`, `clients/calendar_client.py`              |
-| Config & Env   | `config.json`, `.env.example`                                        |
-| Docs           | `README.md`                                                          |
-
+| Area | Files |
+|---|---|
+| Backend Config | `core/config.py` |
+| Backend Logic | `core/api.py`, `core/brain.py`, `core/scanner.py`, `core/speaker.py` |
+| Data Clients | `clients/gmail_client.py`, `clients/calendar_client.py` |
+| Config & Env | `config.json`, `.env.example` |
+| Docs | `README.md` |
 
 ---
-
-
 
 ### Summary Stats
 
@@ -1368,8 +1099,6 @@ The `core/speaker.py` module was restructured to eliminate per-call initializati
 
 ---
 
-
-
 ## v1.3.0 — HUD-Renaissance: DATA AS GEOMETRY
 
 **Released:** May 27, 2026
@@ -1378,11 +1107,7 @@ This release completes the visual and data layer of the APEX HUD. Three parallel
 
 ---
 
-
-
 ### What's New
-
-
 
 #### Formula 1 Race Schedule Pipeline
 
@@ -1396,8 +1121,6 @@ The APEX HUD now tracks the upcoming F1 race weekend in real time.
 - Sprint race detection is included: when `sprintScheduled` is true, a labeled badge renders alongside the main race entry.
 - `MODULE_F1` and `MODULE_FOOTBALL` feature flags were added to `config.json` and loaded via `core/config.py`.
 
-
-
 #### Real-Time System Diagnostics
 
 CPU, RAM, and disk usage are now visible in the HUD at a one-second polling interval.
@@ -1408,8 +1131,6 @@ CPU, RAM, and disk usage are now visible in the HUD at a one-second polling inte
 - A `RingGauge` SVG component renders a clamped arc for each metric. At 0% the arc is suppressed; above 100% it is clamped. An N/A fallback state renders when data is unavailable.
 - A `SystemDiagnostics` component assembles the three-gauge grid (CPU / RAM / Disk) and is mounted in `App.tsx` inside a full-width `TelemetryCard` slot.
 - `SystemDiagnostics` and `DEFAULT_SYSTEM_DIAGNOSTICS` types were added to `frontend/src/types/telemetry.ts`.
-
-
 
 #### Responsive Weather Themes and Variable Typography Engine (VTE)
 
@@ -1422,11 +1143,7 @@ The HUD now responds visually to live weather conditions.
 
 ---
 
-
-
 ### Architecture Changes
-
-
 
 #### HUD Layout Restructure
 
@@ -1435,35 +1152,27 @@ The HUD now responds visually to live weather conditions.
 - Pipeline polling state (`pipelineState`, `isPipelinePolling`) was lifted from `DiagnosticProgress` into `useApexData`, making it available to the full application.
 - `DiagnosticProgress` was slimmed down and now receives its state as props from `App.tsx`.
 
-
-
 #### Backend Stability
 
 - A `CoInitialize` COM guard was added to `core/speaker.py` to prevent `pyttsx3` crashes on Windows when the speech engine is initialized outside the main thread.
 
 ---
 
-
-
 ### Files Changed
 
-
-| Area                | Files                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Backend             | `core/api.py`, `core/scanner.py`, `core/speaker.py`, `core/config.py`, `config.json`                                     |
-| Data Clients        | `clients/sports_client.py`                                                                                               |
+| Area | Files |
+|---|---|
+| Backend | `core/api.py`, `core/scanner.py`, `core/speaker.py`, `core/config.py`, `config.json` |
+| Data Clients | `clients/sports_client.py` |
 | Frontend Components | `TelemetryCard.tsx`, `BriefingPanel.tsx`, `DiagnosticProgress.tsx`, `RingGauge.tsx` (new), `SystemDiagnostics.tsx` (new) |
-| Frontend Hooks      | `useApexData.ts`, `useSystemDiagnostics.ts` (new)                                                                        |
-| Frontend Context    | `AtmosphericThemeContext.tsx`                                                                                            |
-| Frontend Types      | `telemetry.ts`                                                                                                           |
-| App Shell           | `App.tsx`, `main.tsx`                                                                                                    |
-| Config              | `frontend/tsconfig.app.json`, `frontend/vite.config.ts`                                                                  |
-| Repo                | `.gitignore`, `README.md`                                                                                                |
-
+| Frontend Hooks | `useApexData.ts`, `useSystemDiagnostics.ts` (new) |
+| Frontend Context | `AtmosphericThemeContext.tsx` |
+| Frontend Types | `telemetry.ts` |
+| App Shell | `App.tsx`, `main.tsx` |
+| Config | `frontend/tsconfig.app.json`, `frontend/vite.config.ts` |
+| Repo | `.gitignore`, `README.md` |
 
 ---
-
-
 
 ### Summary Stats
 
@@ -1476,8 +1185,6 @@ The HUD now responds visually to live weather conditions.
 
 ---
 
-
-
 ## v1.2.0 — HUD-Renaissance: Pipeline State Visibility
 
 **Released:** May 18, 2026
@@ -1486,36 +1193,29 @@ This release upgrades the APEX dashboard by transforming static loading screens 
 
 ### New Features
 
-- **Live Progress Tracking:** Introduced a new `DiagnosticProgress` HUD component that polls the backend every 500ms during an active fetch.
-  - Visualizes the 4 core pipeline phases (Gate → Collection → Synthesis → Delivery) via a dynamically lit horizontal step indicator.
-- **Staggered Reactive Layouts:** * The dashboard layout now reacts to the live pipeline steps. Secondary modules (like Weather and Schedule) dim to 25% opacity when data is stale, and smoothly transition back to 100% visibility the exact moment their specific backend processing finishes.
-- **Thread-Safe Telemetry Backend:** * Added a dedicated `PipelineState` class utilizing a `threading.Lock()` to ensure high-frequency frontend status polls do not interfere with the long-running worker loops.
-  - Exposed a new `GET /api/v1/status` endpoint to serve secure, microsecond-latency state snapshots.
-
-
+* **Live Progress Tracking:** Introduced a new `DiagnosticProgress` HUD component that polls the backend every 500ms during an active fetch.
+  * Visualizes the 4 core pipeline phases (Gate → Collection → Synthesis → Delivery) via a dynamically lit horizontal step indicator.
+* **Staggered Reactive Layouts:** * The dashboard layout now reacts to the live pipeline steps. Secondary modules (like Weather and Schedule) dim to 25% opacity when data is stale, and smoothly transition back to 100% visibility the exact moment their specific backend processing finishes.
+* **Thread-Safe Telemetry Backend:** * Added a dedicated `PipelineState` class utilizing a `threading.Lock()` to ensure high-frequency frontend status polls do not interfere with the long-running worker loops.
+  * Exposed a new `GET /api/v1/status` endpoint to serve secure, microsecond-latency state snapshots.
 
 ### Documentation
 
-- Updated the project `README.md` to reflect the v1.2.0 architecture.
-- Integrated a comprehensive Mermaid sequence diagram mapping the asynchronous polling flow, thread-locking, and automated 404 teardown sequences.
+* Updated the project `README.md` to reflect the v1.2.0 architecture.
+* Integrated a comprehensive Mermaid sequence diagram mapping the asynchronous polling flow, thread-locking, and automated 404 teardown sequences.
 
 ---
-
-
 
 ## v1.1.1 — AI Workforce Calibration Patch
 
 **Released:** May 17, 2026
 
 ## What's Changed
-
 - **Rule Configurations Updated:** Revised the operational profiles for the `analyst`, `auditor`, `builder`, `communicator`, and `mechanic` rules.
 - **New Scopes Added:** Created directory-bound rules for the `frontend`, `backend`, and `devops` scopes.
 - **Documentation Updated:** Modified `README.md` to map and display the new rules along with their targeted directory scopes.
 
 ---
-
-
 
 ## v1.1.0 — The Foundation (React/TypeScript Migration)
 
@@ -1525,22 +1225,17 @@ This release replaces the original web interface with a modern dashboard built u
 
 ### Key Enhancements
 
-- **Responsive Layout:** Built a grid interface that automatically adjusts to look great on different screen sizes.
-- **Centralized Data Fetching:** Added a single data hook (`useApexData`) to handle all backend requests and manage the loading state in one place instead of using multiple loading places.
-- **Text Streaming Panel:** Created a component that displays incoming text updates from the server with a smooth character-by-character text animation.
-- **Project Cleanup:** Removed all old web files and renamed the development folder to keep the repository structure organized.
-- **Configuration Sync:** Updated paths across configuration files, development rules, and `.gitignore` to match the new directory layout.
-
-
+* **Responsive Layout:** Built a grid interface that automatically adjusts to look great on different screen sizes.
+* **Centralized Data Fetching:** Added a single data hook (`useApexData`) to handle all backend requests and manage the loading state in one place instead of using multiple loading places.
+* **Text Streaming Panel:** Created a component that displays incoming text updates from the server with a smooth character-by-character text animation.
+* **Project Cleanup:** Removed all old web files and renamed the development folder to keep the repository structure organized.
+* **Configuration Sync:** Updated paths across configuration files, development rules, and `.gitignore` to match the new directory layout.
 
 ### Tech Stack Summary
-
-- **Tools:** React, TypeScript, Vite, Tailwind CSS
-- **Structure:** Source code is located in `/frontend` and builds production output to `/dist`
+* **Tools:** React, TypeScript, Vite, Tailwind CSS
+* **Structure:** Source code is located in `/frontend` and builds production output to `/dist`
 
 ---
-
-
 
 ## v1.0.0 — The Core Foundation
 
@@ -1591,19 +1286,14 @@ is missing or malformed.
 
 ### Environment Modes
 
-
-| Mode            | Wi-Fi + Power | Cooldown | Gemini | Gmail + Calendar |
-| --------------- | ------------- | -------- | ------ | ---------------- |
-| Production      | ✅             | ✅        | ✅      | ✅                |
-| `TEST_MODE`     | ✅             | ⬜        | ⬜      | ⬜                |
-| `SHOWCASE_MODE` | ⬜             | ⬜        | ✅      | ⬜                |
-
+| Mode | Wi-Fi + Power | Cooldown | Gemini | Gmail + Calendar |
+|------|--------------|----------|--------|-----------------|
+| Production | ✅ | ✅ | ✅ | ✅ |
+| `TEST_MODE` | ✅ | ⬜ | ⬜ | ⬜ |
+| `SHOWCASE_MODE` | ⬜ | ⬜ | ✅ | ⬜ |
 
 ---
-
-
 
 ## Pre-v1.0.0
 
 - Check commit history between April 27 and May 15, 2026 for more detailed alpha development information.
-
