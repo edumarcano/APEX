@@ -24,10 +24,6 @@ class GeminiModelProfile(BaseModel):
             "Tied to the profile; not independently selectable in the HUD."
         ),
     )
-    default_temperature: float = Field(
-        default=0.2,
-        description="Lower temperature values minimize tool-calling hallucinations.",
-    )
     max_tool_turns: int = Field(
         default=3, description="Turn boundary ceiling to prevent infinite loops."
     )
@@ -52,7 +48,6 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="fast",
         stability="stable",
         thinking_level="minimal",
-        default_temperature=0.2,
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
         description="Fast cloud mode for quick lookups and lightweight summaries inside APEX.",
@@ -64,7 +59,6 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="balanced",
         stability="stable",
         thinking_level="low",
-        default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
         description="Balanced cloud agent for normal APEX usage.",
@@ -76,7 +70,6 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="advanced",
         stability="stable",
         thinking_level="medium",
-        default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
         description="Advanced cloud reasoning for complex multi-source questions inside APEX.",

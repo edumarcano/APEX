@@ -35,7 +35,7 @@ class AgentProvider(Protocol):
         self,
         messages: list[AgentMessage],
         tools: list[Any],
-        profile: AgentModelProfile,
+        profile: Any,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
         ...
