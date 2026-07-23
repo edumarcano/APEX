@@ -3,7 +3,6 @@ import {
   ChevronDown,
   Cloud,
   Cpu,
-  FileText,
   RefreshCw,
   Sparkles,
   type LucideIcon,
@@ -125,7 +124,7 @@ function dropdownPosition(trigger: HTMLButtonElement): CSSProperties {
   }
 }
 
-interface BriefingModeSelectorProps {
+export interface BriefingModeSelectorProps {
   value: BriefingMode
   onChange: (mode: BriefingMode) => void
   profiles: AgentProfileStatus[]
@@ -133,7 +132,7 @@ interface BriefingModeSelectorProps {
   disabled: boolean
 }
 
-function BriefingModeSelector({
+export function BriefingModeSelector({
   value,
   onChange,
   profiles,
@@ -328,7 +327,7 @@ function BriefingModeSelector({
   )
 }
 
-interface GenerateControlProps {
+export interface BriefingGenerateControlProps {
   mainDisabled: boolean
   refreshDisabled: boolean
   busy: boolean
@@ -336,13 +335,13 @@ interface GenerateControlProps {
   onRefreshAndGenerate: () => void
 }
 
-function GenerateControl({
+export function BriefingGenerateControl({
   mainDisabled,
   refreshDisabled,
   busy,
   onGenerate,
   onRefreshAndGenerate,
-}: GenerateControlProps): ReactElement {
+}: BriefingGenerateControlProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<CSSProperties | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -385,26 +384,30 @@ function GenerateControl({
   }, [open, updatePosition])
 
   return (
-    <div className="hud-interactive-shell hud-glass flex h-11 shrink-0 rounded-full text-zinc-300">
+    <div className="hud-command-surface inline-flex shrink-0 rounded-md border border-white/10 bg-white/5 text-[#C084FC] transition-colors duration-300 hover:border-white/20 hover:bg-white/10">
       <button
         type="button"
         disabled={mainDisabled}
         onClick={onGenerate}
-        className="inline-flex items-center gap-2 rounded-l-full px-3 font-orbitron text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:bg-white/5 hover:text-zinc-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-        aria-label="Generate briefing from current telemetry"
+        className="group inline-flex items-center rounded-l-md px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#C084FC] transition-colors hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
+        aria-label="Synthesize briefing from current telemetry"
       >
-        <FileText className="size-3.5" strokeWidth={2} aria-hidden />
-        <span>{busy ? 'Working…' : 'Generate'}</span>
-        <span className="hidden 2xl:inline">Briefing</span>
+        {busy ? (
+          '[ WORKING… ]'
+        ) : (
+          <>
+            <span className="group-hover:hidden group-focus-visible:hidden">[ SYNTHESIZE ]</span>
+            <span className="hidden group-hover:inline group-focus-visible:inline">&gt; SYNTHESIZE</span>
+          </>
+        )}
       </button>
-      <span className="my-2 w-px bg-white/10" aria-hidden />
       <button
         ref={triggerRef}
         type="button"
         disabled={refreshDisabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="More briefing generation options"
+        aria-label="More briefing synthesis options"
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
@@ -412,13 +415,13 @@ function GenerateControl({
             close()
           }
         }}
-        className="inline-flex w-9 items-center justify-center rounded-r-full text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex w-9 items-center justify-center rounded-r-md border-l border-white/10 text-[#C084FC] transition-colors hover:bg-white/5 hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:w-10"
       >
         <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
       {open && position ? createPortal(
-        <div ref={menuRef} style={position} role="menu" aria-label="Briefing generation options" className="hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] rounded-xl border border-white/10 p-2 shadow-2xl">
+        <div ref={menuRef} style={position} role="menu" aria-label="Briefing synthesis options" className="hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] rounded-xl border border-white/10 p-2 shadow-2xl">
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
           <button
@@ -438,61 +441,12 @@ function GenerateControl({
           >
             <RefreshCw className="mt-0.5 size-4 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
             <span>
-              <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-100">Refresh All &amp; Generate</span>
+              <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-100">Refresh All &amp; Synthesize</span>
               <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Recollect every enabled connector before synthesis.</span>
             </span>
           </button>
         </div>,
         document.body,
-      ) : null}
-    </div>
-  )
-}
-
-export interface BriefingControlsProps {
-  mode: BriefingMode
-  onModeChange: (mode: BriefingMode) => void
-  profiles: AgentProfileStatus[]
-  profilesHydrated: boolean
-  activated: boolean
-  hasSnapshot: boolean
-  busy: boolean
-  onGenerate: () => void
-  onRefreshAndGenerate: () => void
-}
-
-export function BriefingControls({
-  mode,
-  onModeChange,
-  profiles,
-  profilesHydrated,
-  activated,
-  hasSnapshot,
-  busy,
-  onGenerate,
-  onRefreshAndGenerate,
-}: BriefingControlsProps): ReactElement {
-  const availability = resolveBriefingModeAvailability(mode, profiles, profilesHydrated)
-  const modeUnavailable = availability.status !== 'available'
-  const baseDisabled = !activated || busy || modeUnavailable
-
-  return (
-    <div className="flex shrink-0 items-center gap-2" data-slot="briefing-controls">
-      <BriefingModeSelector
-        value={mode}
-        onChange={onModeChange}
-        profiles={profiles}
-        hydrated={profilesHydrated}
-        disabled={busy}
-      />
-      {activated ? (
-        <GenerateControl
-          mainDisabled={baseDisabled || !hasSnapshot}
-          refreshDisabled={baseDisabled}
-          busy={busy}
-          onGenerate={onGenerate}
-          onRefreshAndGenerate={onRefreshAndGenerate}
-        />
       ) : null}
     </div>
   )

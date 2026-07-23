@@ -21,6 +21,7 @@ import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
 import { ConsoleTray } from './components/ConsoleTray'
 import { BriefingDigest } from './components/BriefingDigest'
+import { BriefingGenerateControl } from './components/BriefingControls'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -303,6 +304,8 @@ export default function App(): ReactElement {
 
   const activeStep = pipelineState?.step ?? null
   const isBriefingRunning = briefing.status === 'loading'
+  const isCompatibilitySegmentSurging =
+    isBriefingRunning && activeStep !== null && activeStep >= 1 && activeStep <= 3
 
   const loadingLocalProfile = useMemo(
     () => profilesStatus.find((profile) => profile.loading) ?? null,
@@ -498,6 +501,15 @@ export default function App(): ReactElement {
   const isRefreshingAll = telemetry.isRefreshingAll
   const isTelemetryCollecting = isRefreshingAll || telemetry.refreshingConnectors.size > 0
   const hasSnapshot = telemetry.snapshot !== null
+  const briefingControlsBusy =
+    preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
+  const selectedBriefingProfile = synthesisProfileForMode(briefingMode)
+  const briefingModeAvailable =
+    selectedBriefingProfile === null ||
+    (profilesStatusHydrated &&
+      profilesStatus.some(
+        (profile) => profile.key === selectedBriefingProfile && profile.status === 'available',
+      ))
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
     [isRefreshingAll, telemetry.refreshingConnectors],
@@ -675,11 +687,7 @@ export default function App(): ReactElement {
   const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
   const calendarInfo = parseCalendarTelemetry(calendarModule?.display_text ?? '')
 
-  // Shared insight list for the BriefingDigest panel.
-  const combinedInsights = [
-    ...activeReminders.map((r) => `Reminder: ${r.note}`),
-    ...briefing.insights,
-  ]
+  const synthesisInsights = briefing.insights
 
   const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
   const weatherConditionCompactValue =
@@ -768,17 +776,7 @@ export default function App(): ReactElement {
             onBriefingModeChange={setBriefingMode}
             profilesStatus={profilesStatus}
             profilesStatusHydrated={profilesStatusHydrated}
-            activated={activated}
-            hasSnapshot={hasSnapshot}
-            briefingControlsBusy={
-              preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
-            }
-            onGenerateBriefing={() => {
-              void handleGenerateBriefing()
-            }}
-            onRefreshAllAndGenerate={() => {
-              void handleRefreshAllAndGenerate()
-            }}
+            briefingControlsBusy={briefingControlsBusy}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
           />
@@ -1067,7 +1065,7 @@ export default function App(): ReactElement {
               />
               <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
                 <BriefingDigest
-                  insights={combinedInsights}
+                  insights={synthesisInsights}
                   briefingText={briefing.briefing}
                   status={briefing.status}
                   activated={activated}
@@ -1104,6 +1102,7 @@ export default function App(): ReactElement {
                       isLocalModelLoading={isLocalModelLoading}
                       isLocalModelLoaded={isLocalModelLoaded}
                       isTelemetryCollecting={isTelemetryCollecting}
+                      isOuterSegmentSurging={isCompatibilitySegmentSurging}
                       className={logoSizeClass}
                     />
                   </div>
@@ -1141,30 +1140,35 @@ export default function App(): ReactElement {
                         disabled={preflight.isChecking}
                       />
                     </div>
-                    <div
-                      className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        activated
-                          ? 'pointer-events-auto translate-y-0 opacity-100'
-                          : 'pointer-events-none -translate-y-1 opacity-0'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={handleRefreshAll}
-                        disabled={isRefreshingAll}
-                        data-slot="refresh-all-trigger"
-                        className="group hud-command-surface inline-flex rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {isRefreshingAll ? (
-                          '[ REFRESHING… ]'
-                        ) : (
-                          <>
-                            <span className="group-hover:hidden group-focus-visible:hidden">[ REFRESH ALL ]</span>
-                            <span className="hidden group-hover:inline group-focus-visible:inline">&gt; REFRESH ALL</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                    {activated ? (
+                      <div className="mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                        <div className="flex w-max flex-nowrap items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleRefreshAll}
+                            disabled={isRefreshingAll}
+                            data-slot="refresh-all-trigger"
+                            className="group hud-command-surface inline-flex items-center rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
+                          >
+                            {isRefreshingAll ? (
+                              '[ REFRESHING… ]'
+                            ) : (
+                              <>
+                                <span className="group-hover:hidden group-focus-visible:hidden">[ REFRESH ALL ]</span>
+                                <span className="hidden group-hover:inline group-focus-visible:inline">&gt; REFRESH ALL</span>
+                              </>
+                            )}
+                          </button>
+                          <BriefingGenerateControl
+                            mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
+                            refreshDisabled={briefingControlsBusy || !briefingModeAvailable}
+                            busy={briefingControlsBusy}
+                            onGenerate={() => void handleGenerateBriefing()}
+                            onRefreshAndGenerate={() => void handleRefreshAllAndGenerate()}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

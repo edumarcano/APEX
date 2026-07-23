@@ -237,7 +237,7 @@ describe('BriefingDigest briefing actions', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /generate briefing/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /synthesize briefing/i })).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/briefing mode/i)).not.toBeInTheDocument()
   })
 
@@ -264,5 +264,25 @@ describe('BriefingDigest briefing actions', () => {
 
     expect(screen.getByRole('button', { name: /speak briefing/i })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
+  })
+
+  it('surges blue segments during compatibility synthesis while retaining the purple core', () => {
+    const { container } = render(
+      <ApexLogo step={3} status="loading" isOuterSegmentSurging />,
+    )
+
+    expect(container.querySelector('.apex-core-metal--purple-surge')).toBeTruthy()
+    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(7)
+  })
+
+  it('keeps blue segment fills while local-model activity uses rust glow states', () => {
+    const { container, rerender } = render(
+      <ApexLogo step={3} status="loading" isLocalModelLoading />,
+    )
+
+    expect(container.querySelectorAll('.apex-blue-metal--rust-surge')).toHaveLength(7)
+
+    rerender(<ApexLogo step={null} status="success" isLocalModelLoaded />)
+    expect(container.querySelectorAll('.apex-blue-metal--rust-active')).toHaveLength(7)
   })
 })

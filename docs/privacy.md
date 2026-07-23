@@ -18,7 +18,7 @@ The untrusted-data markers and output validation reduce prompt-injection risk; t
 
 ### Cloud-processing choice
 
-Comet remains the default briefing mode and routes synthesis through Gemini. The Insights card can instead select Lynx, Acinonyx, or Neofelis for local Ollama synthesis, or Structured Digest for deterministic no-model output. The typed payload is smaller and safer than raw connector telemetry, but cloud mode can still disclose personal facts such as calendar events, reminders, email subjects, or briefing context.
+Comet remains the default briefing mode and routes synthesis through Gemini. The briefing selector in the global header can instead select Lynx, Acinonyx, or Neofelis for local Ollama synthesis, or Structured Digest for deterministic no-model output. The typed payload is smaller and safer than raw connector telemetry, but cloud mode can still disclose personal facts such as calendar events, reminders, email subjects, or briefing context.
 
 On the Gemini API unpaid/free tier, Google states that submitted content and generated responses may be used to provide, improve, and develop Google products and machine-learning technologies, and that human reviewers may process API inputs and outputs. Sanitization limits what APEX sends; it does not make free-tier cloud processing confidential. The current free-tier path is therefore not appropriate for sensitive or confidential personal data. See Google's [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [pricing data-use table](https://ai.google.dev/gemini-api/docs/pricing).
 

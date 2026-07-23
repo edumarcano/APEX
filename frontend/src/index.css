@@ -782,19 +782,19 @@
   0%,
   30%,
   100% {
-    opacity: 0.35;
+    opacity: 1;
     fill: url(#apexBlueMetal);
-    filter: drop-shadow(0 0 8px rgba(120, 53, 15, 0.2));
+    filter: drop-shadow(0 0 10px rgba(249, 115, 22, 0.3));
   }
   15% {
-    opacity: 0.95;
-    fill: url(#apexRustMetal);
+    opacity: 1;
+    fill: url(#apexBlueMetal);
     filter: drop-shadow(0 0 16px rgba(249, 115, 22, 0.9));
   }
 }
 
 .apex-blue-metal--rust-active {
-  fill: url(#apexRustMetal);
+  fill: url(#apexBlueMetal);
   opacity: 1;
   filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.75));
   transition: all 1000ms ease-in-out;
@@ -802,7 +802,16 @@
 
 .apex-blue-metal--rust-surge {
   animation: rustSurge 2.5s ease-in-out infinite;
-  will-change: opacity, filter, fill;
+  will-change: filter;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apex-blue-metal--rust-surge {
+    animation: none;
+    fill: url(#apexBlueMetal);
+    opacity: 1;
+    filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.75));
+  }
 }
 
 @layer utilities {

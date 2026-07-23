@@ -84,10 +84,10 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ### Briefing and voice controls
 
-- Treat briefing synthesis as a global header operation. Group the mode selector and split Generate control beside system diagnostics while keeping the selected mode distinct from the engine that produced the last transcript.
+- Treat briefing synthesis as a global operation. Keep the mode selector beside system diagnostics, and place the split Synthesize command with Refresh All beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
 - Organize briefing modes into Cloud and Local sections. Use the shared profile availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
-- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Generate until activation, disable current-snapshot generation when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
-- Treat Refresh All & Generate as one ordered action: a failed refresh must stop generation and leave its error visible.
+- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
+- Treat Refresh All & Synthesize as one ordered action: a failed refresh must stop synthesis and leave its error visible.
 - Show Speak / Replay as an icon action only on the Briefing tab when a transcript exists and voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
 - Keep provider, fallback, and delivery feedback with the transcript so the header selector continues to represent the next requested mode.
 

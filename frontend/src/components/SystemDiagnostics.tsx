@@ -17,7 +17,7 @@ import {
   type SystemDiagnostics as SystemDiagnosticsPayload,
 } from '../types/telemetry'
 import type { BriefingMode } from '../types/settings'
-import { BriefingControls } from './BriefingControls'
+import { BriefingModeSelector } from './BriefingControls'
 
 function clampPercentage(value: number): number {
   return Math.min(100, Math.max(0, value))
@@ -119,11 +119,7 @@ interface SystemDiagnosticsProps {
   onBriefingModeChange: (mode: BriefingMode) => void
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
-  activated: boolean
-  hasSnapshot: boolean
   briefingControlsBusy: boolean
-  onGenerateBriefing: () => void
-  onRefreshAllAndGenerate: () => void
   onOpenSettings?: () => void
   settingsButtonRef?: RefObject<HTMLButtonElement | null>
 }
@@ -236,11 +232,7 @@ export function SystemDiagnostics({
   onBriefingModeChange,
   profilesStatus,
   profilesStatusHydrated,
-  activated,
-  hasSnapshot,
   briefingControlsBusy,
-  onGenerateBriefing,
-  onRefreshAllAndGenerate,
   onOpenSettings,
   settingsButtonRef,
 }: SystemDiagnosticsProps): ReactElement {
@@ -406,18 +398,13 @@ export function SystemDiagnostics({
           percentage={ramPctClamped}
           unavailable={ramUnavailable}
           icon={Database}
-          className="hidden min-[1800px]:flex"
         />
-        <BriefingControls
-          mode={briefingMode}
-          onModeChange={onBriefingModeChange}
+        <BriefingModeSelector
+          value={briefingMode}
+          onChange={onBriefingModeChange}
           profiles={profilesStatus}
-          profilesHydrated={profilesStatusHydrated}
-          activated={activated}
-          hasSnapshot={hasSnapshot}
-          busy={briefingControlsBusy}
-          onGenerate={onGenerateBriefing}
-          onRefreshAndGenerate={onRefreshAllAndGenerate}
+          hydrated={profilesStatusHydrated}
+          disabled={briefingControlsBusy}
         />
       </div>
 
