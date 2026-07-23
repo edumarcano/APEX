@@ -676,7 +676,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 ```json
 {
   "answer": "Current conditions are 78°F with clear skies.",
-  "profile_used": { "display_name": "Apex Nova", "api_model": "gemini-3-flash-preview", "...": "..." },
+  "profile_used": { "display_name": "Apex Nova", "api_model": "gemini-3.5-flash", "...": "..." },
   "tool_trace": [
     { "name": "get_weather_forecast", "status": "ok", "duration_ms": 412.3 }
   ],

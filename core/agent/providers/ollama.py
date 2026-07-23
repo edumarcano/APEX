@@ -7,7 +7,6 @@ from typing import Any, Callable, get_args, get_origin, get_type_hints
 import requests
 from requests.exceptions import RequestException
 
-from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_lifecycle import (
     get_http_session,
     get_keep_alive_duration,
@@ -16,8 +15,6 @@ from core.agent.providers.ollama_lifecycle import (
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.types import AgentMessage, ToolCall, ToolResult
 from core.config import OLLAMA_HOST
-
-AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -369,7 +366,7 @@ class OllamaProvider:
         self,
         messages: list[AgentMessage],
         tools: list[Any],
-        profile: AgentModelProfile,
+        profile: OllamaModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
         ollama_messages = _messages_to_ollama(messages)
@@ -384,32 +381,26 @@ class OllamaProvider:
                 },
             )
 
+        resolved_num_predict = (
+            profile.tool_select_max_tokens
+            if tools
+            else profile.final_answer_max_tokens
+        )
         options: dict[str, Any] = {
             "temperature": profile.default_temperature,
+            "num_predict": resolved_num_predict,
+            "num_thread": profile.num_thread,
+            "num_ctx": profile.context_window,
         }
-
-        is_local_profile = isinstance(profile, OllamaModelProfile)
-
-        if is_local_profile:
-            resolved_num_predict = (
-                profile.tool_select_max_tokens
-                if tools
-                else profile.final_answer_max_tokens
-            )
-            options["num_predict"] = resolved_num_predict
-            options["num_thread"] = profile.num_thread
-            options["num_ctx"] = profile.context_window
 
         payload: dict[str, Any] = {
             "model": profile.api_model,
             "messages": ollama_messages,
             "stream": False,
             "options": options,
+            "think": profile.think,
             "keep_alive": get_keep_alive_duration(),
         }
-
-        if is_local_profile:
-            payload["think"] = profile.think
 
         if tools:
             payload["tools"] = [_function_to_openai_schema(tool) for tool in tools]
@@ -423,8 +414,7 @@ class OllamaProvider:
 
         data = _post_chat(payload, profile)
 
-        if is_local_profile:
-            register_activity(profile.api_model)
+        register_activity(profile.api_model)
 
         message = _extract_message(data)
 
@@ -432,8 +422,7 @@ class OllamaProvider:
         # a tool call produced a truncated prose answer. Regenerate once
         # without tools under the final-answer token budget.
         if (
-            is_local_profile
-            and tools
+            tools
             and data.get("done_reason") == "length"
             and not message.get("tool_calls")
         ):

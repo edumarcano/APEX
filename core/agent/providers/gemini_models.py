@@ -24,19 +24,12 @@ class GeminiModelProfile(BaseModel):
             "Tied to the profile; not independently selectable in the HUD."
         ),
     )
-    default_temperature: float = Field(
-        default=0.2,
-        description="Lower temperature values minimize tool-calling hallucinations.",
-    )
     max_tool_turns: int = Field(
         default=3, description="Turn boundary ceiling to prevent infinite loops."
     )
     max_tool_calls: int = Field(
         default=4,
         description="Maximum individual tool executions allowed per session.",
-    )
-    description: str = Field(
-        description="Contextual helper text describing the model tier's operational role."
     )
     system_instruction: str = Field(
         default=DEFAULT_AGENT_SYSTEM_PROMPT,
@@ -47,38 +40,32 @@ class GeminiModelProfile(BaseModel):
 GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
     "comet": GeminiModelProfile(
         display_name="Apex Comet",
-        profile_version="1.0",
-        api_model="gemini-3.1-flash-lite",
+        profile_version="1.1",
+        api_model="gemini-3.5-flash-lite",
         tier="fast",
         stability="stable",
         thinking_level="minimal",
-        default_temperature=0.2,
         max_tool_turns=min(2, AGENT_MAX_TURNS),
         max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
-        description="Fast cloud mode for quick lookups and lightweight summaries inside APEX.",
     ),
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
-        profile_version="1.0",
-        api_model="gemini-3-flash-preview",
+        profile_version="1.1",
+        api_model="gemini-3.5-flash",
         tier="balanced",
-        stability="preview",
+        stability="stable",
         thinking_level="low",
-        default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
-        description="Balanced cloud agent for normal APEX usage.",
     ),
     "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
-        profile_version="1.0",
-        api_model="gemini-3.5-flash",
+        profile_version="1.1",
+        api_model="gemini-3.6-flash",
         tier="advanced",
         stability="stable",
         thinking_level="medium",
-        default_temperature=0.1,
         max_tool_turns=AGENT_MAX_TURNS,
         max_tool_calls=AGENT_MAX_TOOL_CALLS,
-        description="Advanced cloud reasoning for complex multi-source questions inside APEX.",
     ),
 }

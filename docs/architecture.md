@@ -369,13 +369,13 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 
 <a id="cloud-agent-profiles"></a>
 
-| Profile | Display Name | Model | Tier | Stability | Thinking | Max Turns | Max Tool Calls | Temperature |
-|---|---|---|---|---|---|---|---|---|
-| `comet` | Apex Comet | `gemini-3.1-flash-lite` | fast | stable | minimal | `min(2, AGENT_MAX_TURNS)` | `min(3, AGENT_MAX_TOOL_CALLS)` | 0.2 |
-| `nova` | Apex Nova | `gemini-3-flash-preview` | balanced | preview | low | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.2 |
-| `pulsar` | Apex Pulsar | `gemini-3.5-flash` | advanced | stable | medium | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` | 0.1 |
+| Profile | Display Name | Model | Tier | Stability | Thinking | Max Turns | Max Tool Calls |
+|---|---|---|---|---|---|---|---|
+| `comet` | Apex Comet | `gemini-3.5-flash-lite` | fast | stable | minimal | `min(2, AGENT_MAX_TURNS)` | `min(3, AGENT_MAX_TOOL_CALLS)` |
+| `nova` | Apex Nova | `gemini-3.5-flash` | balanced | stable | low | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` |
+| `pulsar` | Apex Pulsar | `gemini-3.6-flash` | advanced | stable | medium | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` |
 
-`AGENT_MAX_TURNS` (1–5, default 3) and `AGENT_MAX_TOOL_CALLS` (1–10, default 4) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`; Comet always applies a lower fixed ceiling regardless of configured values.
+Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` are omitted from Gemini profile definitions and `GenerateContentConfig` requests so models run with native model defaults. `AGENT_MAX_TURNS` (1–5, default 3) and `AGENT_MAX_TOOL_CALLS` (1–10, default 4) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`; Comet always applies a lower fixed ceiling regardless of configured values.
 
 <a id="local-agent-profiles"></a>
 

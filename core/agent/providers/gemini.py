@@ -9,9 +9,6 @@ from google.genai import types
 from google.genai.errors import APIError
 
 from core.agent.providers.gemini_models import GeminiModelProfile
-from core.agent.providers.ollama_models import OllamaModelProfile
-
-AgentModelProfile = GeminiModelProfile | OllamaModelProfile
 from core.agent.types import AgentMessage, ToolCall, ToolResult
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,22 +123,20 @@ class GeminiProvider:
         self,
         messages: list[AgentMessage],
         tools: list[Any],
-        profile: AgentModelProfile,
+        profile: GeminiModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
         contents = _messages_to_contents(messages)
 
         config_kwargs: dict[str, Any] = {
-            "temperature": profile.default_temperature,
             "system_instruction": (
                 system_instruction_override or profile.system_instruction
             )
             + _SECURITY_BOUNDARY_DIRECTIVE,
-        }
-        if isinstance(profile, GeminiModelProfile):
-            config_kwargs["thinking_config"] = types.ThinkingConfig(
+            "thinking_config": types.ThinkingConfig(
                 thinking_level=profile.thinking_level,
-            )
+            ),
+        }
         if tools:
             config_kwargs["tools"] = tools
             config_kwargs["automatic_function_calling"] = (
