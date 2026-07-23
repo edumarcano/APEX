@@ -208,7 +208,7 @@ class SynthesisRouter:
         started = time.monotonic()
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model="gemini-3.1-flash-lite",
+            model="gemini-3.5-flash-lite",
             contents=[wrap_untrusted_payload(source)],
             config=types.GenerateContentConfig(
                 system_instruction=GEMINI_SYNTHESIS_PROMPT,

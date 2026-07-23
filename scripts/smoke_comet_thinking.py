@@ -1,7 +1,7 @@
 """
 Live Comet thinking-level smoke check.
 
-Verifies gemini-3.1-flash-lite accepts ThinkingConfig(thinking_level="minimal")
+Verifies gemini-3.5-flash-lite accepts ThinkingConfig(thinking_level="minimal")
 before release. Requires GEMINI_API_KEY in the environment or .env.
 """
 

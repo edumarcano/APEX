@@ -214,6 +214,16 @@ class ProfileAndPersistenceTests(unittest.TestCase):
             {"comet": "minimal", "nova": "low", "pulsar": "medium"},
         )
 
+    def test_gemini_profile_models(self) -> None:
+        self.assertEqual(
+            {key: (profile.api_model, profile.stability) for key, profile in GEMINI_MODEL_PROFILES.items()},
+            {
+                "comet": ("gemini-3.5-flash-lite", "stable"),
+                "nova": ("gemini-3.5-flash", "stable"),
+                "pulsar": ("gemini-3.6-flash", "stable"),
+            },
+        )
+
     def test_neofelis_promotion_preserves_runtime(self) -> None:
         profile = OLLAMA_MODEL_PROFILES["neofelis"]
         self.assertEqual((profile.tier, profile.stability), ("capable", "stable"))

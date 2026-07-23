@@ -47,8 +47,8 @@ class GeminiModelProfile(BaseModel):
 GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
     "comet": GeminiModelProfile(
         display_name="Apex Comet",
-        profile_version="1.0",
-        api_model="gemini-3.1-flash-lite",
+        profile_version="1.1",
+        api_model="gemini-3.5-flash-lite",
         tier="fast",
         stability="stable",
         thinking_level="minimal",
@@ -59,10 +59,10 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
     ),
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
-        profile_version="1.0",
-        api_model="gemini-3-flash-preview",
+        profile_version="1.1",
+        api_model="gemini-3.5-flash",
         tier="balanced",
-        stability="preview",
+        stability="stable",
         thinking_level="low",
         default_temperature=0.2,
         max_tool_turns=AGENT_MAX_TURNS,
@@ -71,8 +71,8 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
     ),
     "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
-        profile_version="1.0",
-        api_model="gemini-3.5-flash",
+        profile_version="1.1",
+        api_model="gemini-3.6-flash",
         tier="advanced",
         stability="stable",
         thinking_level="medium",
