@@ -75,6 +75,7 @@ def normalize_layer(
                 "local_agent_system_prompt",
                 "gemini",
                 "ollama",
+                "mcp",
             ):
                 _LOGGER.warning(
                     "Ignoring unknown config key %r in %s.",

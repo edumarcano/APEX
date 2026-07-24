@@ -32,7 +32,7 @@ Process liveness probe. Does not check configuration or database dependencies.
 
 ### `GET /api/v1/health/ready`
 
-Readiness probe. Verifies that the runtime settings store can be loaded and that SQLite answers a lightweight `SELECT 1`. Does not call optional external providers (connectors, OAuth, or Ollama).
+Readiness probe. Verifies that the runtime settings store can be loaded and that SQLite answers a lightweight `SELECT 1`. Does not call optional external providers (connectors, OAuth, Ollama, or MCP).
 
 **Response `200`**
 ```json
@@ -738,6 +738,48 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 ---
 
+### `GET /api/v1/mcp/status`
+
+Returns sanitized MCP client connection status for the runtime and each configured server. Used for diagnostics; there is no MCP settings UI in this release.
+
+When `mcp.enabled` is false or the manager was not started, the response reports `status: "disabled"` with an empty `servers` list. Credentials, authorization headers, environment values, and raw upstream exception text are never included.
+
+**Response `200`**
+```json
+{
+  "enabled": true,
+  "status": "connected",
+  "reason": "MCP server connected with 1 registered tool(s).",
+  "servers": [
+    {
+      "id": "demo",
+      "enabled": true,
+      "transport": "http",
+      "status": "connected",
+      "reason": "MCP server connected with 1 registered tool(s).",
+      "registered_tools": ["demo_echo"]
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `enabled` | boolean | Whether the MCP client runtime is enabled in config |
+| `status` | string | Aggregate status: `configured`, `connected`, `degraded`, `disabled`, or `authentication-required` |
+| `reason` | string | Stable human-readable summary without secrets |
+| `servers` | object[] | Per-server status rows |
+| `servers[].id` | string | Configured server id (capability namespace prefix) |
+| `servers[].enabled` | boolean | Whether that server entry is enabled |
+| `servers[].transport` | string | `http` or `stdio` |
+| `servers[].status` | string | Same enum as aggregate `status` |
+| `servers[].reason` | string | Stable per-server reason |
+| `servers[].registered_tools` | string[] | Namespaced capability names registered from the allowlist |
+
+Non-secret MCP configuration lives under `mcp` in `config.json` (overlaid by `config.local.json`): `enabled`, per-server `transport` / `url` or `command`+`args`, `tool_allowlist`, timeouts, and env-var **name** references (`auth_env`, `header_env`). Tokens stay in `.env`.
+
+---
+
 ### `GET /api/v1/agent/profiles`
 
 Returns availability status for all six assistant profiles (three cloud, three local) so the HUD can gate profile selection before a query is sent.
@@ -1149,6 +1191,7 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `APEX_ALLOWED_ORIGINS` | _(see below)_ | Comma-separated CORS origins; replaces defaults entirely when set |
 | `ALPHA_VANTAGE_API_KEY` | _(unset)_ | Alpha Vantage API key for `GET /api/v1/market`; when unset, the endpoint serves a simulated ticker feed instead of live data |
 | `MARKET_SYMBOLS` | _(unset)_ | Comma-separated ticker symbols for `GET /api/v1/market`; when unset, the endpoint returns `status: "not_configured"` with an empty ticker list |
+| _(MCP `auth_env` / `header_env` names)_ | _(unset)_ | Credential values referenced by name from `mcp.servers.*.auth_env` or `mcp.servers.*.header_env` in config; missing values mark that server `authentication-required` without blocking API startup |
 
 **Default CORS origins** (when `APEX_ALLOWED_ORIGINS` is unset):
 ```

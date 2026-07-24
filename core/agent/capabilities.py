@@ -353,6 +353,21 @@ class CapabilityRegistry:
             validator=Draft202012Validator(descriptor.input_schema),
         )
 
+    def unregister(self, name: str) -> bool:
+        """Remove a capability by name. Returns True when an entry was removed."""
+        return self._entries.pop(name, None) is not None
+
+    def unregister_by_origin(self, origin: CapabilityOrigin) -> list[str]:
+        """Remove all capabilities with the given origin. Returns removed names."""
+        to_remove = [
+            name
+            for name, entry in self._entries.items()
+            if entry.descriptor.origin == origin
+        ]
+        for name in to_remove:
+            del self._entries[name]
+        return to_remove
+
     def get(self, name: str) -> _CapabilityEntry | None:
         return self._entries.get(name)
 
@@ -430,6 +445,16 @@ def register_capability(
             f"Invalid input schema for capability '{descriptor.name}'."
         ) from exc
     _REGISTRY.register(descriptor, handler)
+
+
+def unregister_capability(name: str) -> bool:
+    """Remove a registered capability by name. Returns True when removed."""
+    return _REGISTRY.unregister(name)
+
+
+def unregister_capabilities_by_origin(origin: CapabilityOrigin) -> list[str]:
+    """Remove all registered capabilities with the given origin."""
+    return _REGISTRY.unregister_by_origin(origin)
 
 
 def get_capability_descriptor(name: str) -> CapabilityDescriptor | None:

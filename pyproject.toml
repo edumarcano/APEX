@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = "==3.14.*"
 dependencies = [
     "fastapi",
+    "fastmcp>=3.4.4,<4",
     "google-api-python-client",
     "google-auth",
     "google-auth-oauthlib",
