@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+import time
 from unittest import mock
 
 from core.agent.capabilities import (
@@ -146,6 +147,93 @@ class CapabilityRegistryTests(unittest.TestCase):
             CapabilityErrorCategory.UNAVAILABLE,
         )
 
+    def test_nested_json_schema_constraints_are_enforced(self) -> None:
+        clear_capability_registry_for_tests()
+        register_capability(
+            CapabilityDescriptor(
+                name="structured",
+                title="Structured",
+                description="Validates nested arguments.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["safe"]},
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "minItems": 1,
+                        },
+                    },
+                    "required": ["mode", "items"],
+                    "additionalProperties": False,
+                },
+                origin="native",
+                risk="read",
+                expose_to_assistant=True,
+                expose_to_mcp_server=False,
+                expose_to_client_display=False,
+            ),
+            lambda **kwargs: kwargs,
+        )
+
+        with self.assertRaises(CapabilityError) as raised:
+            invoke_capability("structured", {"mode": "unsafe", "items": "nope"})
+        self.assertEqual(
+            raised.exception.category,
+            CapabilityErrorCategory.INVALID_INPUT,
+        )
+        self.assertEqual(
+            invoke_capability("structured", {"mode": "safe", "items": [1, 2]}),
+            {"mode": "safe", "items": [1, 2]},
+        )
+
+    def test_invalid_schema_is_rejected_at_registration(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid input schema"):
+            register_capability(
+                CapabilityDescriptor(
+                    name="invalid_schema",
+                    title="Invalid",
+                    description="Invalid schema.",
+                    input_schema={"type": "string"},
+                    origin="native",
+                    risk="read",
+                    expose_to_assistant=True,
+                    expose_to_mcp_server=False,
+                    expose_to_client_display=False,
+                ),
+                lambda: None,
+            )
+
+    def test_sync_timeout_returns_without_waiting_for_handler(self) -> None:
+        clear_capability_registry_for_tests()
+        register_capability(
+            CapabilityDescriptor(
+                name="slow",
+                title="Slow",
+                description="Times out.",
+                input_schema={
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+                origin="native",
+                risk="read",
+                expose_to_assistant=True,
+                expose_to_mcp_server=False,
+                expose_to_client_display=False,
+                timeout_seconds=0.05,
+            ),
+            lambda: time.sleep(0.25),
+        )
+
+        started = time.perf_counter()
+        with self.assertRaises(CapabilityError) as raised:
+            invoke_capability("slow", {})
+        elapsed = time.perf_counter() - started
+
+        self.assertEqual(raised.exception.category, CapabilityErrorCategory.TIMEOUT)
+        self.assertLess(elapsed, 0.15)
+
     def test_invoke_handler_exception_is_upstream_failure(self) -> None:
         clear_capability_registry_for_tests()
         register_capability(
@@ -233,6 +321,40 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.assertEqual(
             response.tool_outputs[0]["output"],
             {"error": "Tool output is not whitelisted for client display."},
+        )
+
+    def test_ollama_schema_reflects_current_descriptor_without_name_cache(self) -> None:
+        first = CapabilityDescriptor(
+            name="same_name",
+            title="First",
+            description="First schema.",
+            input_schema={"type": "object", "properties": {"value": {"type": "string"}}},
+            origin="mcp",
+            risk="read",
+            expose_to_assistant=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=False,
+        )
+        second = first.model_copy(
+            update={
+                "description": "Second schema.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"value": {"type": "integer"}},
+                },
+            }
+        )
+
+        first_schema = _descriptor_to_openai_schema(first)
+        second_schema = _descriptor_to_openai_schema(second)
+
+        self.assertEqual(
+            first_schema["function"]["parameters"]["properties"]["value"]["type"],
+            "string",
+        )
+        self.assertEqual(
+            second_schema["function"]["parameters"]["properties"]["value"]["type"],
+            "integer",
         )
 
     def test_failed_capability_call_does_not_terminate_loop(self) -> None:

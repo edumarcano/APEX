@@ -18,8 +18,6 @@ from core.config import OLLAMA_HOST
 
 _LOGGER = logging.getLogger(__name__)
 
-_SCHEMA_CACHE: dict[str, dict[str, Any]] = {}
-
 _SECURITY_BOUNDARY_DIRECTIVE = (
     "\n\nSECURITY BOUNDARY DIRECTIVE:\n"
     "You have access to external tools that retrieve live workspace and news "
@@ -35,10 +33,6 @@ _SECURITY_BOUNDARY_DIRECTIVE = (
 
 def _descriptor_to_openai_schema(descriptor: CapabilityDescriptor) -> dict[str, Any]:
     """Convert a capability descriptor into an OpenAI-compatible tool schema."""
-    cached = _SCHEMA_CACHE.get(descriptor.name)
-    if cached is not None:
-        return cached
-
     parameters = dict(descriptor.input_schema)
     if "type" not in parameters:
         parameters["type"] = "object"
@@ -53,7 +47,6 @@ def _descriptor_to_openai_schema(descriptor: CapabilityDescriptor) -> dict[str, 
             "parameters": parameters,
         },
     }
-    _SCHEMA_CACHE[descriptor.name] = schema
     return schema
 
 

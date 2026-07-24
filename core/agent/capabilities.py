@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from enum import Enum
 from typing import Any, Literal
 
+from jsonschema import Draft202012Validator, SchemaError, ValidationError
 from pydantic import BaseModel, Field
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ CapabilityHandler = Callable[..., Any] | Callable[..., Awaitable[Any]]
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 _DEFAULT_MAX_OUTPUT_CHARS = 50_000
+_SYNC_HANDLER_MAX_WORKERS = 4
 _PROVIDER_NAMESPACE_PATTERN = re.compile(r"^[a-z][a-z0-9]*$")
 _LOCAL_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -87,6 +89,13 @@ class _CapabilityEntry(BaseModel):
 
     descriptor: CapabilityDescriptor
     handler: CapabilityHandler
+    validator: Draft202012Validator
+
+
+_SYNC_HANDLER_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=_SYNC_HANDLER_MAX_WORKERS,
+    thread_name_prefix="apex-capability",
+)
 
 
 def namespaced_capability_name(provider: str, local_name: str) -> str:
@@ -162,6 +171,11 @@ def _validate_and_coerce_arguments(
         validated[param_name] = _coerce_property_value(
             name, param_name, prop_schema, arguments[param_name]
         )
+
+    if additional is not False:
+        for key, value in arguments.items():
+            if key not in validated:
+                validated[key] = value
 
     for param_name in required:
         if param_name not in validated:
@@ -300,22 +314,22 @@ def _run_handler(
                     "Tool execution failed.",
                 ) from exc
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(handler, **arguments)
-        try:
-            return future.result(timeout=timeout_seconds)
-        except concurrent.futures.TimeoutError as exc:
-            raise CapabilityError(
-                CapabilityErrorCategory.TIMEOUT,
-                "Capability invocation timed out.",
-            ) from exc
-        except CapabilityError:
-            raise
-        except Exception as exc:
-            raise CapabilityError(
-                CapabilityErrorCategory.UPSTREAM_FAILURE,
-                "Tool execution failed.",
-            ) from exc
+    future = _SYNC_HANDLER_EXECUTOR.submit(handler, **arguments)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError as exc:
+        future.cancel()
+        raise CapabilityError(
+            CapabilityErrorCategory.TIMEOUT,
+            "Capability invocation timed out.",
+        ) from exc
+    except CapabilityError:
+        raise
+    except Exception as exc:
+        raise CapabilityError(
+            CapabilityErrorCategory.UPSTREAM_FAILURE,
+            "Tool execution failed.",
+        ) from exc
 
 
 class CapabilityRegistry:
@@ -336,6 +350,7 @@ class CapabilityRegistry:
         self._entries[descriptor.name] = _CapabilityEntry(
             descriptor=descriptor,
             handler=handler,
+            validator=Draft202012Validator(descriptor.input_schema),
         )
 
     def get(self, name: str) -> _CapabilityEntry | None:
@@ -372,6 +387,15 @@ class CapabilityRegistry:
             entry.descriptor.input_schema,
             raw_arguments,
         )
+        try:
+            entry.validator.validate(validated)
+        except ValidationError as exc:
+            path = ".".join(str(part) for part in exc.absolute_path)
+            location = f" at '{path}'" if path else ""
+            raise CapabilityError(
+                CapabilityErrorCategory.INVALID_INPUT,
+                f"Invalid arguments for capability '{name}'{location}.",
+            ) from exc
         result = _run_handler(
             entry.handler,
             validated,
@@ -397,6 +421,14 @@ def register_capability(
     descriptor: CapabilityDescriptor,
     handler: CapabilityHandler,
 ) -> None:
+    try:
+        if descriptor.input_schema.get("type") != "object":
+            raise SchemaError("Capability input schema must have an object root.")
+        Draft202012Validator.check_schema(descriptor.input_schema)
+    except SchemaError as exc:
+        raise ValueError(
+            f"Invalid input schema for capability '{descriptor.name}'."
+        ) from exc
     _REGISTRY.register(descriptor, handler)
 
 
