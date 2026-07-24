@@ -15,7 +15,12 @@ With both servers up, `core.api` listens on `127.0.0.1:8000`. Before interactive
 
 With `DEV_MODE=true`, configured-network preflight warnings and production run logging are bypassed. Cold local-model power/resource checks remain authoritative. Gemini synthesis is bypassed unless `DEV_AI_SYNTHESIS=cloud`. Gmail and Calendar connectors still execute and make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Reminder dismissal is always an explicit user action through `/api/v1/reminders/read` and is not affected by `DEV_MODE`. Servers, weather/sports/news connectors, and the database remain active.
 
-**API lifespan worker:** `core/api/app.py` registers a FastAPI lifespan handler that starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`. It runs independently of the trigger/briefing pipeline described above.
+**API lifespan workers:** `core/api/app.py` registers a FastAPI lifespan handler that:
+
+- Starts `check_idle_models_loop()` as a background `asyncio` task when `config.OLLAMA_ENABLED` is true, and cancels it on shutdown. This task polls every 30 seconds and unloads the active local Ollama model once it has been idle past `ollama.idle_unload_timeout_minutes`.
+- Starts `MCPClientManager` when `config.json` / `config.local.json` has `mcp.enabled=true`. Discovery runs as non-blocking per-server tasks so offline MCP servers never delay readiness. On shutdown the manager closes HTTP sessions and stdio subprocesses and unregisters imported MCP capabilities.
+
+Both workers run independently of the trigger/briefing pipeline described above. `/api/v1/health/ready` does not depend on MCP or Ollama.
 
 ---
 
@@ -171,13 +176,18 @@ apex/
 │   │   ├── briefing.py      # Connector trust scoring and trigger orchestration
 │   │   ├── demo.py          # DEMO_MODE mock telemetry/assistant/history payloads
 │   │   ├── assistant.py     # Agent profile status, unload, and query orchestration
-│   │   └── routers/         # system, briefings, reminders, assistant, market route modules
+│   │   └── routers/         # system, briefings, reminders, assistant, market, mcp, telemetry, voice route modules
 │   ├── brain.py         # Compatibility façade over core/synthesis/; routes synthesize() calls to SynthesisRouter
 │   ├── scanner.py       # Advisory Wi-Fi/power probes, legacy gate helper, and system vitals
 │   ├── speaker.py       # TTS routing: Google Cloud TTS → pyttsx3 (default); Kokoro (optional) → Google → pyttsx3; pre-warmed singletons, _SPEAK_LOCK
 │   ├── database.py      # SQLite runs, reminders, briefing history, transactions, readiness probe
 │   ├── runtime_logging.py # Logging bootstrap and per-briefing run-ID context
 │   ├── config.py        # Import-time loader for non-editable config and env flags; legacy Final constants retained
+│   ├── mcp/             # External MCP client runtime (FastMCP)
+│   │   ├── __init__.py      # Process-wide manager accessors
+│   │   ├── config.py        # Load mcp section from config.json overlaid by config.local.json
+│   │   ├── manager.py       # MCPClientManager: discover, register, sync bridge, shutdown
+│   │   └── models.py        # Config and sanitized status models
 │   ├── settings/        # Runtime editable settings: models, normalize/overlay, transactional store
 │   │   ├── models.py        # RuntimeSettingsSnapshot, SettingsPatch, SettingsResponse
 │   │   ├── normalize.py     # Legacy-key normalize, recursive overlay, on-disk mapping
@@ -399,7 +409,9 @@ Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` ar
 - **Idle auto-unload** (`check_idle_models_loop()` / `_maybe_unload_idle_model()`) — a 30-second polling loop (started as an API lifespan task) that unloads the active model after `ollama.idle_unload_timeout_minutes` of inactivity, tracked via monotonic time so wall-clock changes cannot trigger a premature unload.
 - **Manual unload** (`unload_active_local_model()`) — used by canonical `POST /api/v1/local-model/unload` and the legacy agent-route alias; falls back to an `/api/ps` probe after API restart.
 
-**`core/agent/capabilities.py`** — provider-neutral capability registry. Each capability is a `CapabilityDescriptor` with a stable name, title, description, JSON input schema, native or MCP origin, read/write/destructive risk class, assistant / MCP-server / client-display exposure flags, timeout, and output-size limit. `invoke_capability()` validates arguments against the JSON schema (including integer clamping from `minimum`/`maximum`), runs sync or async handlers behind one invocation interface, enforces timeout and output bounds, and raises `CapabilityError` with a normalized category: `unavailable`, `authentication`, `timeout`, `invalid-input`, or `upstream-failure`. Imported capabilities can use collision-safe names via `namespaced_capability_name()` (for example `github_*`, `brave_*`, `alphavantage_*`). Write and destructive risk classes are modeled but not granted to any registered capability today.
+**`core/agent/capabilities.py`** — provider-neutral, concurrency-safe capability registry. Each capability is a `CapabilityDescriptor` with a stable name, title, description, JSON input schema, native or MCP origin, read/write/destructive risk class, assistant / MCP-server / client-display exposure flags, timeout, and output-size limit. `invoke_capability()` validates arguments against the JSON schema (including integer clamping from `minimum`/`maximum`), runs sync or async handlers behind one invocation interface, enforces timeout and output bounds, and raises `CapabilityError` with a normalized category: `unavailable`, `authentication`, `timeout`, `invalid-input`, or `upstream-failure`. Imported capabilities can use collision-safe names via `namespaced_capability_name()` (for example `github_*`, `brave_*`, `alphavantage_*`). `unregister_capability()` / `unregister_capabilities_by_origin()` support MCP lifecycle cleanup. Native capabilities are read-only; imported MCP capabilities require an explicit local risk classification.
+
+**`core/mcp/`** — FastMCP-backed external MCP client runtime. `load_mcp_config()` reads the non-secret `mcp` section from `config.json` overlaid by `config.local.json`. Credentials are referenced only by environment-variable names (`auth_env`, `header_env`) and resolved at connect time. When `mcp.enabled` is true, `MCPClientManager` (owned by the FastAPI lifespan) connects each enabled server over HTTP (`StreamableHttpTransport`) or stdio (`StdioTransport`), discovers tools, and registers only names present in that server's `tool_allowlist` with an explicit local `tool_risks` classification (`read`, `write`, or `destructive`). Imported capabilities use `origin="mcp"`, `expose_to_assistant=True`, `expose_to_mcp_server=False`, and `expose_to_client_display=False`. Empty allowlists and allowlisted tools without a local risk classification register nothing even if the remote advertises tools. Sync agent invokes bridge onto the application event loop through `asyncio.run_coroutine_threadsafe` with bounded timeouts. Offline or misconfigured servers mark `degraded` / `authentication-required` status without blocking API startup; shutdown closes transports and unregisters imported capabilities. `GET /api/v1/mcp/status` returns sanitized diagnostics only.
 
 **`core/agent/tools.py`** — native read-only handlers registered into the capability registry. Each handler keeps a Google-style docstring for maintainers; models receive the explicit JSON schema from the capability descriptor rather than Python function signatures:
 

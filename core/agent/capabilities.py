@@ -8,6 +8,7 @@ import inspect
 import json
 import logging
 import re
+import threading
 from collections.abc import Awaitable, Callable, Mapping
 from enum import Enum
 from typing import Any, Literal
@@ -337,44 +338,68 @@ class CapabilityRegistry:
 
     def __init__(self) -> None:
         self._entries: dict[str, _CapabilityEntry] = {}
+        self._lock = threading.RLock()
 
     def register(
         self,
         descriptor: CapabilityDescriptor,
         handler: CapabilityHandler,
     ) -> None:
-        if descriptor.name in self._entries:
-            raise ValueError(
-                f"Capability '{descriptor.name}' is already registered."
+        with self._lock:
+            if descriptor.name in self._entries:
+                raise ValueError(
+                    f"Capability '{descriptor.name}' is already registered."
+                )
+            self._entries[descriptor.name] = _CapabilityEntry(
+                descriptor=descriptor,
+                handler=handler,
+                validator=Draft202012Validator(descriptor.input_schema),
             )
-        self._entries[descriptor.name] = _CapabilityEntry(
-            descriptor=descriptor,
-            handler=handler,
-            validator=Draft202012Validator(descriptor.input_schema),
-        )
+
+    def unregister(self, name: str) -> bool:
+        """Remove a capability by name. Returns True when an entry was removed."""
+        with self._lock:
+            return self._entries.pop(name, None) is not None
+
+    def unregister_by_origin(self, origin: CapabilityOrigin) -> list[str]:
+        """Remove all capabilities with the given origin. Returns removed names."""
+        with self._lock:
+            to_remove = [
+                name
+                for name, entry in self._entries.items()
+                if entry.descriptor.origin == origin
+            ]
+            for name in to_remove:
+                del self._entries[name]
+            return to_remove
 
     def get(self, name: str) -> _CapabilityEntry | None:
-        return self._entries.get(name)
+        with self._lock:
+            return self._entries.get(name)
 
     def get_descriptor(self, name: str) -> CapabilityDescriptor | None:
-        entry = self._entries.get(name)
-        return entry.descriptor if entry is not None else None
+        with self._lock:
+            entry = self._entries.get(name)
+            return entry.descriptor if entry is not None else None
 
     def list_assistant_capabilities(self) -> list[CapabilityDescriptor]:
-        return [
-            entry.descriptor
-            for entry in self._entries.values()
-            if entry.descriptor.expose_to_assistant
-        ]
+        with self._lock:
+            return [
+                entry.descriptor
+                for entry in self._entries.values()
+                if entry.descriptor.expose_to_assistant
+            ]
 
     def is_client_display_enabled(self, name: str) -> bool:
-        entry = self._entries.get(name)
-        if entry is None:
-            return False
-        return entry.descriptor.expose_to_client_display
+        with self._lock:
+            entry = self._entries.get(name)
+            if entry is None:
+                return False
+            return entry.descriptor.expose_to_client_display
 
     def invoke(self, name: str, arguments: Mapping[str, Any] | None = None) -> Any:
-        entry = self._entries.get(name)
+        with self._lock:
+            entry = self._entries.get(name)
         if entry is None:
             raise CapabilityError(
                 CapabilityErrorCategory.UNAVAILABLE,
@@ -403,18 +428,28 @@ class CapabilityRegistry:
         )
         return _bound_output(result, entry.descriptor.max_output_chars)
 
+    def contains(self, name: str) -> bool:
+        with self._lock:
+            return name in self._entries
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
 
 _REGISTRY = CapabilityRegistry()
+_NATIVE_LOAD_LOCK = threading.RLock()
 
 
 def _ensure_native_capabilities_loaded() -> None:
     """Import and register native tools when the registry is empty."""
-    if "get_weather_forecast" in _REGISTRY._entries:
-        return
-    # Local import avoids an import cycle with core.agent.tools.
-    from core.agent.tools import register_native_capabilities
+    with _NATIVE_LOAD_LOCK:
+        if _REGISTRY.contains("get_weather_forecast"):
+            return
+        # Local import avoids an import cycle with core.agent.tools.
+        from core.agent.tools import register_native_capabilities
 
-    register_native_capabilities()
+        register_native_capabilities()
 
 
 def register_capability(
@@ -430,6 +465,16 @@ def register_capability(
             f"Invalid input schema for capability '{descriptor.name}'."
         ) from exc
     _REGISTRY.register(descriptor, handler)
+
+
+def unregister_capability(name: str) -> bool:
+    """Remove a registered capability by name. Returns True when removed."""
+    return _REGISTRY.unregister(name)
+
+
+def unregister_capabilities_by_origin(origin: CapabilityOrigin) -> list[str]:
+    """Remove all registered capabilities with the given origin."""
+    return _REGISTRY.unregister_by_origin(origin)
 
 
 def get_capability_descriptor(name: str) -> CapabilityDescriptor | None:
@@ -454,4 +499,4 @@ def invoke_capability(name: str, arguments: Mapping[str, Any] | None = None) -> 
 
 def clear_capability_registry_for_tests() -> None:
     """Remove all registered capabilities. Test helper only."""
-    _REGISTRY._entries.clear()
+    _REGISTRY.clear()

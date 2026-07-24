@@ -44,5 +44,9 @@
       "acinonyx": { "ram_limit": 78.0, "cpu_limit": 90.0 },
       "neofelis": { "ram_limit": 68.0, "cpu_limit": 85.0 }
     }
+  },
+  "mcp": {
+    "enabled": false,
+    "servers": {}
   }
 }
