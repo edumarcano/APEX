@@ -47,6 +47,93 @@
   },
   "mcp": {
     "enabled": false,
-    "servers": {}
+    "servers": {
+      "github": {
+        "enabled": false,
+        "transport": "http",
+        "url": "https://api.githubcopilot.com/mcp/x/repos,issues,pull_requests/readonly",
+        "auth_env": "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "tool_allowlist": [
+          "search_repositories",
+          "get_file_contents",
+          "search_code",
+          "list_issues",
+          "issue_read",
+          "list_pull_requests",
+          "pull_request_read"
+        ],
+        "tool_risks": {
+          "search_repositories": "read",
+          "get_file_contents": "read",
+          "search_code": "read",
+          "list_issues": "read",
+          "issue_read": "read",
+          "list_pull_requests": "read",
+          "pull_request_read": "read"
+        },
+        "tool_argument_maximums": {
+          "search_repositories": { "perPage": 10 },
+          "search_code": { "perPage": 10 },
+          "list_issues": { "perPage": 20 },
+          "list_pull_requests": { "perPage": 20 }
+        },
+        "expose_to_client_display": true,
+        "timeout_seconds": 30,
+        "connect_timeout_seconds": 30,
+        "max_output_chars": 20000
+      },
+      "brave": {
+        "enabled": false,
+        "transport": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@brave/brave-search-mcp-server",
+          "--transport",
+          "stdio"
+        ],
+        "auth_env": "BRAVE_API_KEY",
+        "tool_allowlist": [
+          "brave_web_search",
+          "brave_news_search"
+        ],
+        "tool_risks": {
+          "brave_web_search": "read",
+          "brave_news_search": "read"
+        },
+        "tool_argument_maximums": {
+          "brave_web_search": { "count": 10 },
+          "brave_news_search": { "count": 10 }
+        },
+        "expose_to_client_display": true,
+        "timeout_seconds": 30,
+        "connect_timeout_seconds": 60,
+        "max_output_chars": 20000
+      },
+      "alphavantage": {
+        "enabled": false,
+        "transport": "http",
+        "url": "https://mcp.alphavantage.co/mcp",
+        "oauth": true,
+        "tool_allowlist": [
+          "SYMBOL_SEARCH",
+          "GLOBAL_QUOTE",
+          "TIME_SERIES_DAILY",
+          "COMPANY_OVERVIEW",
+          "NEWS_SENTIMENT"
+        ],
+        "tool_risks": {
+          "SYMBOL_SEARCH": "read",
+          "GLOBAL_QUOTE": "read",
+          "TIME_SERIES_DAILY": "read",
+          "COMPANY_OVERVIEW": "read",
+          "NEWS_SENTIMENT": "read"
+        },
+        "expose_to_client_display": true,
+        "timeout_seconds": 30,
+        "connect_timeout_seconds": 300,
+        "max_output_chars": 20000
+      }
+    }
   }
 }

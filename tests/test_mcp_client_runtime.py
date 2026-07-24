@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from fastmcp import Client, FastMCP
+from fastmcp.client.auth import OAuth
+from key_value.aio.stores.keyring import KeyringStore
 
 from core.agent.capabilities import (
     clear_capability_registry_for_tests,
@@ -24,9 +26,10 @@ from core.agent.capabilities import (
     unregister_capabilities_by_origin,
 )
 from core.agent.tools import register_native_capabilities
+from core.config import CONFIG_PATH
 from core.mcp import empty_mcp_status, set_mcp_manager
 from core.mcp.config import load_mcp_config
-from core.mcp.manager import MCPClientManager
+from core.mcp.manager import MCPClientManager, _build_client
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
 
 
@@ -42,6 +45,11 @@ def _build_demo_server() -> FastMCP:
     def secret_tool() -> str:
         """Should remain filtered by allowlist."""
         return "secret"
+
+    @server.tool
+    def bounded_search(count: int = 10) -> dict[str, int]:
+        """Return the admitted result count."""
+        return {"count": count}
 
     return server
 
@@ -203,6 +211,69 @@ class McpConfigLoaderTests(unittest.TestCase):
             self.assertFalse(config.servers["demo"].enabled)
 
 
+class McpProviderPresetTests(unittest.TestCase):
+    def test_tracked_provider_presets_are_disabled_and_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_mcp_config(
+                config_path=CONFIG_PATH,
+                local_path=Path(tmp) / "missing.local.json",
+            )
+
+        self.assertFalse(config.enabled)
+        self.assertEqual(
+            set(config.servers),
+            {"github", "brave", "alphavantage"},
+        )
+        for server in config.servers.values():
+            self.assertFalse(server.enabled)
+            self.assertTrue(server.tool_allowlist)
+            self.assertEqual(
+                set(server.tool_allowlist),
+                set(server.tool_risks),
+            )
+            self.assertEqual(set(server.tool_risks.values()), {"read"})
+            self.assertTrue(server.expose_to_client_display)
+
+        github = config.servers["github"]
+        self.assertIn("/readonly", github.url or "")
+        self.assertEqual(
+            github.auth_env,
+            "GITHUB_PERSONAL_ACCESS_TOKEN",
+        )
+        self.assertFalse(
+            any(
+                token in tool.lower()
+                for tool in github.tool_allowlist
+                for token in ("create", "update", "delete", "merge", "push")
+            )
+        )
+
+        brave = config.servers["brave"]
+        self.assertEqual(brave.command, "npx")
+        self.assertEqual(
+            brave.tool_allowlist,
+            ["brave_web_search", "brave_news_search"],
+        )
+        self.assertEqual(brave.auth_env, "BRAVE_API_KEY")
+
+        alphavantage = config.servers["alphavantage"]
+        self.assertTrue(alphavantage.oauth)
+        self.assertIsNone(alphavantage.auth_env)
+
+    def test_oauth_http_client_uses_operating_system_keyring(self) -> None:
+        config = McpServerConfig(
+            enabled=True,
+            transport="http",
+            url="https://example.invalid/mcp",
+            oauth=True,
+        )
+        client = _build_client(config, auth_token=None, headers={})
+        auth = client.transport.auth
+        self.assertIsInstance(auth, OAuth)
+        assert isinstance(auth, OAuth)
+        self.assertIsInstance(auth._token_storage, KeyringStore)
+
+
 class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         clear_capability_registry_for_tests()
@@ -278,6 +349,37 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(descriptor.expose_to_mcp_server)
         self.assertFalse(descriptor.expose_to_client_display)
 
+    async def test_provider_limits_narrow_schema_and_expose_approved_output(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "brave": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["bounded_search"],
+                    tool_risks={"bounded_search": "read"},
+                    tool_argument_maximums={"bounded_search": {"count": 5}},
+                    expose_to_client_display=True,
+                    max_output_chars=1_000,
+                )
+            },
+        )
+        await self._start_manager(config)
+        descriptor = get_capability_descriptor("brave_bounded_search")
+        assert descriptor is not None
+        self.assertEqual(
+            descriptor.input_schema["properties"]["count"]["maximum"],
+            5,
+        )
+        self.assertTrue(descriptor.expose_to_client_display)
+        result = await asyncio.to_thread(
+            invoke_capability,
+            "brave_bounded_search",
+            {"count": 99},
+        )
+        self.assertEqual(result, {"count": 5})
+
     async def test_allowlisted_tool_without_explicit_risk_is_not_registered(self) -> None:
         config = McpRuntimeConfig(
             enabled=True,
@@ -351,6 +453,41 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshot.servers[0].status, "authentication-required")
         self.assertNotIn("APEX_TEST_MCP_TOKEN_MISSING=", snapshot.servers[0].reason)
         self.assertIsNone(get_capability_descriptor("demo_echo"))
+
+    async def test_missing_provider_credential_does_not_degrade_other_server(
+        self,
+    ) -> None:
+        missing_env = "APEX_TEST_GITHUB_TOKEN_MISSING"
+        os.environ.pop(missing_env, None)
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "github": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/github",
+                    auth_env=missing_env,
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                ),
+                "brave": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/brave",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                ),
+            },
+        )
+        manager = await self._start_manager(config)
+        statuses = {
+            status.id: status.status
+            for status in manager.status_snapshot().servers
+        }
+        self.assertEqual(statuses["github"], "authentication-required")
+        self.assertEqual(statuses["brave"], "connected")
+        self.assertIsNone(get_capability_descriptor("github_echo"))
+        self.assertIsNotNone(get_capability_descriptor("brave_echo"))
 
     async def test_offline_http_server_degrades_without_raising(self) -> None:
         config = McpRuntimeConfig(

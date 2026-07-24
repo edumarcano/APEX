@@ -30,6 +30,8 @@ The assistant is a separate path from briefing synthesis. A cloud profile sends 
 
 Conversation history is held by the browser tab and is lost on reload. There is no server-side chat-session store. A current telemetry snapshot or briefing is included only when its identifier is explicitly supplied; APEX does not implicitly inject the latest persisted briefing.
 
+Enabled MCP providers receive the arguments selected by the assistant for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives interactive web or news searches; Alpha Vantage receives market-research parameters. Returned content is untrusted, bounded before model and HUD delivery, and never forwarded into scheduled briefing telemetry by these integrations. The presets are disabled by default and imported tools are not re-exported.
+
 ## Local Persistence
 
 `apex_memory.db` stores production run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata such as `run_id`. New run and briefing timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
@@ -40,7 +42,7 @@ The SQLite database is local but not encrypted by APEX. Operating-system account
 
 Secrets and machine-specific credential paths belong in `.env`; non-secret runtime preferences belong in `config.json` or the gitignored `config.local.json`. The uvicorn child receives the backend environment because it owns connector and provider access. The static server and browser receive a restricted environment containing only process essentials, so API keys are not copied into those child environments.
 
-OAuth credentials and service-account keys remain local files. They must not be committed. `.env.example` contains placeholders only.
+OAuth credentials and service-account keys remain local files. They must not be committed. Alpha Vantage MCP authorization is stored by the operating-system credential manager rather than in the repository. `.env.example` contains placeholders only.
 
 ## Logging
 
