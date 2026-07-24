@@ -776,7 +776,7 @@ When `mcp.enabled` is false or the manager was not started, the response reports
 | `servers[].reason` | string | Stable per-server reason |
 | `servers[].registered_tools` | string[] | Namespaced capability names registered from the allowlist |
 
-Non-secret MCP configuration lives under `mcp` in `config.json` (overlaid by `config.local.json`): `enabled`, per-server `transport` / `url` or `command`+`args`, `tool_allowlist`, timeouts, and env-var **name** references (`auth_env`, `header_env`). Tokens stay in `.env`.
+Non-secret MCP configuration lives under `mcp` in `config.json` (overlaid by `config.local.json`): `enabled`, per-server `transport` / `url` or `command`+`args`, `tool_allowlist`, `tool_risks`, timeouts, and env-var **name** references (`auth_env`, `header_env`). Tokens stay in `.env`. Each allowlisted tool must also have an explicit `tool_risks` entry of `read`, `write`, or `destructive`; tools without one are not registered.
 
 ---
 

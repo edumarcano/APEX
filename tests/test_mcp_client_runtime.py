@@ -6,6 +6,8 @@ import asyncio
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -96,6 +98,27 @@ class CapabilityUnregisterTests(unittest.TestCase):
         self.assertIsNone(get_capability_descriptor("demo_echo"))
         self.assertIsNotNone(get_capability_descriptor("get_weather_forecast"))
 
+    def test_registry_reads_wait_for_concurrent_mutation_lock(self) -> None:
+        from core.agent import capabilities
+
+        started = threading.Event()
+        finished = threading.Event()
+
+        def _list_capabilities() -> None:
+            started.set()
+            list_assistant_capabilities()
+            finished.set()
+
+        with capabilities._REGISTRY._lock:
+            worker = threading.Thread(target=_list_capabilities)
+            worker.start()
+            self.assertTrue(started.wait(timeout=1.0))
+            time.sleep(0.02)
+            self.assertFalse(finished.is_set())
+
+        worker.join(timeout=1.0)
+        self.assertTrue(finished.is_set())
+
 
 class McpConfigLoaderTests(unittest.TestCase):
     def test_missing_mcp_section_defaults_disabled(self) -> None:
@@ -122,6 +145,7 @@ class McpConfigLoaderTests(unittest.TestCase):
                                     "transport": "http",
                                     "url": "https://example.com/mcp",
                                     "tool_allowlist": ["echo"],
+                                    "tool_risks": {"echo": "read"},
                                 }
                             },
                         }
@@ -151,6 +175,32 @@ class McpConfigLoaderTests(unittest.TestCase):
             self.assertTrue(config.servers["demo"].enabled)
             self.assertEqual(config.servers["demo"].auth_env, "DEMO_MCP_TOKEN")
             self.assertEqual(config.servers["demo"].tool_allowlist, ["echo"])
+            self.assertEqual(config.servers["demo"].tool_risks, {"echo": "read"})
+
+    def test_non_boolean_enabled_values_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "config.json"
+            local = Path(tmp) / "config.local.json"
+            base.write_text(
+                json.dumps(
+                    {
+                        "mcp": {
+                            "enabled": "false",
+                            "servers": {
+                                "demo": {
+                                    "enabled": "false",
+                                    "transport": "stdio",
+                                    "command": "should-not-run",
+                                }
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = load_mcp_config(config_path=base, local_path=local)
+            self.assertFalse(config.enabled)
+            self.assertFalse(config.servers["demo"].enabled)
 
 
 class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -213,6 +263,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     transport="http",
                     url="https://example.invalid/mcp",
                     tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
                 )
             },
         )
@@ -226,6 +277,40 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(descriptor.expose_to_assistant)
         self.assertFalse(descriptor.expose_to_mcp_server)
         self.assertFalse(descriptor.expose_to_client_display)
+
+    async def test_allowlisted_tool_without_explicit_risk_is_not_registered(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                )
+            },
+        )
+        manager = await self._start_manager(config)
+        self.assertIsNone(get_capability_descriptor("demo_echo"))
+        self.assertEqual(manager.status_snapshot().servers[0].registered_tools, [])
+
+    async def test_explicit_write_risk_is_preserved(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "write"},
+                )
+            },
+        )
+        await self._start_manager(config)
+        descriptor = get_capability_descriptor("demo_echo")
+        assert descriptor is not None
+        self.assertEqual(descriptor.risk, "write")
 
     async def test_empty_allowlist_registers_nothing(self) -> None:
         config = McpRuntimeConfig(
@@ -254,6 +339,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     transport="http",
                     url="https://example.invalid/mcp",
                     tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
                     auth_env="APEX_TEST_MCP_TOKEN_MISSING",
                 )
             },
@@ -275,6 +361,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     transport="http",
                     url="http://127.0.0.1:1/mcp",
                     tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
                     timeout_seconds=2.0,
                 )
             },
@@ -297,6 +384,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     transport="http",
                     url="https://example.invalid/mcp",
                     tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
                 )
             },
         )
@@ -318,6 +406,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     transport="http",
                     url="https://example.invalid/mcp",
                     tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
                 )
             },
         )
@@ -337,6 +426,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     transport="http",
                     url="https://example.invalid/mcp",
                     tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
                     auth_env="APEX_TEST_MCP_SECRET",
                     header_env={"Authorization": "APEX_TEST_MCP_HEADER"},
                 )

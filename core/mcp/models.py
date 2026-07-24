@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 McpTransport = Literal["http", "stdio"]
+McpToolRisk = Literal["read", "write", "destructive"]
 McpServerStatusValue = Literal[
     "configured",
     "connected",
@@ -14,6 +16,8 @@ McpServerStatusValue = Literal[
     "disabled",
     "authentication-required",
 ]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class McpServerConfig(BaseModel):
@@ -26,6 +30,7 @@ class McpServerConfig(BaseModel):
     args: list[str] = Field(default_factory=list)
     cwd: str | None = None
     tool_allowlist: list[str] = Field(default_factory=list)
+    tool_risks: dict[str, McpToolRisk] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=30.0, gt=0)
     max_output_chars: int = Field(default=50_000, gt=0)
     auth_env: str | None = None
@@ -81,6 +86,18 @@ def parse_server_config(raw: dict[str, Any]) -> McpServerConfig:
     if isinstance(allowlist_raw, list):
         allowlist = [str(item).strip() for item in allowlist_raw if str(item).strip()]
 
+    tool_risks_raw = raw.get("tool_risks", {})
+    tool_risks: dict[str, McpToolRisk] = {}
+    if isinstance(tool_risks_raw, dict):
+        for key, value in tool_risks_raw.items():
+            if (
+                isinstance(key, str)
+                and key.strip()
+                and isinstance(value, str)
+                and value.strip().lower() in ("read", "write", "destructive")
+            ):
+                tool_risks[key.strip()] = value.strip().lower()  # type: ignore[assignment]
+
     args_raw = raw.get("args", [])
     args: list[str] = []
     if isinstance(args_raw, list):
@@ -127,14 +144,22 @@ def parse_server_config(raw: dict[str, Any]) -> McpServerConfig:
     cwd = raw.get("cwd")
     cwd_value = cwd.strip() if isinstance(cwd, str) and cwd.strip() else None
 
+    enabled_raw = raw.get("enabled", False)
+    enabled = enabled_raw if isinstance(enabled_raw, bool) else False
+    if not isinstance(enabled_raw, bool):
+        _LOGGER.warning(
+            'MCP server key "enabled" must be a boolean; defaulting to false.'
+        )
+
     return McpServerConfig(
-        enabled=bool(raw.get("enabled", False)),
+        enabled=enabled,
         transport=transport,
         url=url_value,
         command=command_value,
         args=args,
         cwd=cwd_value,
         tool_allowlist=allowlist,
+        tool_risks=tool_risks,
         timeout_seconds=timeout_seconds,
         max_output_chars=max_output_chars,
         auth_env=auth_env_name,

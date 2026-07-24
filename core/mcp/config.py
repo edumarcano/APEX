@@ -54,7 +54,10 @@ def load_mcp_config(
         _LOGGER.warning('Config key "mcp" must be a JSON object; using defaults.')
         return McpRuntimeConfig()
 
-    enabled = bool(raw_mcp.get("enabled", False))
+    enabled_raw = raw_mcp.get("enabled", False)
+    enabled = enabled_raw if isinstance(enabled_raw, bool) else False
+    if not isinstance(enabled_raw, bool):
+        _LOGGER.warning('Config key "mcp.enabled" must be a boolean; using false.')
     servers_raw = raw_mcp.get("servers", {})
     servers: dict[str, McpServerConfig] = {}
     if not isinstance(servers_raw, dict):

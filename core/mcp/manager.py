@@ -326,6 +326,15 @@ class MCPClientManager:
                 continue
             if remote_name not in allowlist:
                 continue
+            risk = config.tool_risks.get(remote_name)
+            if risk is None:
+                _LOGGER.warning(
+                    "Skipping allowlisted MCP tool %r on server %s; "
+                    "an explicit tool_risks classification is required.",
+                    remote_name,
+                    server_id,
+                )
+                continue
 
             local_name = _normalize_local_tool_name(remote_name)
             try:
@@ -360,7 +369,7 @@ class MCPClientManager:
                 description=description.strip(),
                 input_schema=input_schema,
                 origin="mcp",
-                risk="read",
+                risk=risk,
                 expose_to_assistant=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
@@ -393,7 +402,8 @@ class MCPClientManager:
                 )
             elif not registered:
                 runtime.reason = (
-                    "MCP server connected; no allowlisted tools were advertised."
+                    "MCP server connected; no allowlisted tools with explicit risk "
+                    "classifications were registered."
                 )
             else:
                 runtime.reason = (
