@@ -184,13 +184,14 @@ apex/
 │   │   ├── store.py         # Process-wide RuntimeSettingsStore + config.local.json persistence
 │   │   └── __init__.py
 │   ├── agent/
-│   │   ├── loop.py              # Bounded tool-calling loop: turn/call ceilings, tool dispatch and validation
-│   │   ├── tools.py              # Registered read-only agent tools + AGENT_TOOLS_REGISTRY
+│   │   ├── capabilities.py      # Provider-neutral capability registry, invoke path, error categories
+│   │   ├── loop.py              # Bounded tool-calling loop: turn/call ceilings, capability dispatch
+│   │   ├── tools.py              # Native read-only handlers + capability registration
 │   │   ├── types.py              # AgentMessage, ToolCall, ToolResult, AgentQueryRequest/Response models
 │   │   ├── providers/
-│   │   │   ├── gemini.py          # GeminiProvider: message↔Content conversion, retry/backoff, security boundary
+│   │   │   ├── gemini.py          # GeminiProvider: message↔Content conversion, schema tools, retry/backoff
 │   │   │   ├── gemini_models.py   # GeminiModelProfile + Comet/Nova/Pulsar profile definitions
-│   │   │   ├── ollama.py          # OllamaProvider: /api/chat REST calls, tool schema conversion, thinking-tag stripping
+│   │   │   ├── ollama.py          # OllamaProvider: /api/chat REST calls, descriptor schema conversion
 │   │   │   ├── ollama_models.py   # OllamaModelProfile + Lynx/Acinonyx/Neofelis profile definitions
 │   │   │   └── ollama_lifecycle.py # Model load/unload/switch, idle auto-unload loop, resource gate, status snapshot cache
 │   │   └── __init__.py
@@ -238,7 +239,7 @@ apex/
 │   │   │   ├── ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 │   │   │   ├── AskApexBar.tsx           # Inline assistant query input, prompt chips, profile selector
 │   │   │   ├── ConsoleTray.tsx          # Bottom/rail console with assistant and reminders tabs
-│   │   │   ├── AssistantToolCards.tsx   # Structured per-tool result cards for whitelisted tool_outputs
+│   │   │   ├── AssistantToolCards.tsx   # Structured per-tool result cards for client-display tool_outputs
 │   │   │   ├── CloudProfileSelector.tsx # Cloud/local profile dropdown shared by console inputs
 │   │   │   └── weather/                # Per-condition animated SVG icons (ClearDay, ClearNight, Clouds, Rain, Thunderstorm)
 │   │   ├── lib/
@@ -398,9 +399,11 @@ Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` ar
 - **Idle auto-unload** (`check_idle_models_loop()` / `_maybe_unload_idle_model()`) — a 30-second polling loop (started as an API lifespan task) that unloads the active model after `ollama.idle_unload_timeout_minutes` of inactivity, tracked via monotonic time so wall-clock changes cannot trigger a premature unload.
 - **Manual unload** (`unload_active_local_model()`) — used by canonical `POST /api/v1/local-model/unload` and the legacy agent-route alias; falls back to an `/api/ps` probe after API restart.
 
-**`core/agent/tools.py`** — `AGENT_TOOLS_REGISTRY` maps tool names to Python callables, each documented with a Google-style docstring the model uses as its function-calling schema:
+**`core/agent/capabilities.py`** — provider-neutral capability registry. Each capability is a `CapabilityDescriptor` with a stable name, title, description, JSON input schema, native or MCP origin, read/write/destructive risk class, assistant / MCP-server / client-display exposure flags, timeout, and output-size limit. `invoke_capability()` validates arguments against the JSON schema (including integer clamping from `minimum`/`maximum`), runs sync or async handlers behind one invocation interface, enforces timeout and output bounds, and raises `CapabilityError` with a normalized category: `unavailable`, `authentication`, `timeout`, `invalid-input`, or `upstream-failure`. Imported capabilities can use collision-safe names via `namespaced_capability_name()` (for example `github_*`, `brave_*`, `alphavantage_*`). Write and destructive risk classes are modeled but not granted to any registered capability today.
 
-| Tool | Source |
+**`core/agent/tools.py`** — native read-only handlers registered into the capability registry. Each handler keeps a Google-style docstring for maintainers; models receive the explicit JSON schema from the capability descriptor rather than Python function signatures:
+
+| Capability | Source |
 |---|---|
 | `get_weather_forecast(days)` | `weather_client.fetch_weather_forecast()`, clamped to 1–5 days |
 | `get_f1_driver_standings` | `sports_client.fetch_f1_driver_standings()` |
@@ -409,19 +412,19 @@ Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` ar
 | `get_active_reminders` | `database.fetch_unread_reminders()` |
 | `get_briefing_history(limit)` | `database.fetch_briefing_history()`, clamped to 1–5 records |
 
-All tools are read-only; none can mutate reminders, settings, or telemetry state.
+All current capabilities are `risk=read` with `expose_to_assistant` and `expose_to_client_display` enabled; none can mutate reminders, settings, or telemetry state.
 
-**`core/agent/loop.py`** — `run_agent_loop()` drives a bounded turn loop: each turn calls `provider.generate_turn()`, appends the model's message to history, and if the model requested tool calls, dispatches them via `default_tools_dispatcher()` before looping again. `default_tools_dispatcher` validates and coerces arguments against each tool's type hints (int arguments are clamped per-tool, e.g. `get_weather_forecast` days to 1–5) and raises on missing required arguments. The loop terminates when the model returns a message with no tool calls (success), when `profile.max_tool_calls` total executions are reached, or when `profile.max_tool_turns` turns elapse without a final answer. The latter two return the best available partial answer with `error` populated rather than looping indefinitely. Any unhandled exception in the loop is caught and converted into a generic unavailability message plus a `traceback.format_exc()` in `error`.
+**`core/agent/loop.py`** — `run_agent_loop()` drives a bounded turn loop: each turn calls `provider.generate_turn()` with assistant-exposed capability descriptors, appends the model's message to history, and if the model requested tool calls, dispatches them via `invoke_capability()` (wrapped by `default_tools_dispatcher` for injectable tests). Argument validation and clamping come from each capability's JSON schema. The loop terminates when the model returns a message with no tool calls (success), when `profile.max_tool_calls` total executions are reached, or when `profile.max_tool_turns` turns elapse without a final answer. The latter two return the best available partial answer with `error` populated rather than looping indefinitely. `CapabilityError` and other invocation failures become `status="error"` tool outputs with stable messages and do not terminate the loop. Any unhandled exception in the outer loop is caught and converted into a generic unavailability message plus `Local/Cloud provider error (ExcName).` in `error`.
 
-**Tool output whitelist:** alongside `tool_trace` (name/status/duration only), the loop builds `tool_outputs`, a parallel list carrying the full structured result for tools in `ALLOWED_TOOL_OUTPUT_REGISTRY`. A non-whitelisted or failed call contributes an `{"error": "..."}` placeholder in place of its real output. The frontend's `AssistantToolCards.tsx` (see Frontend Components below) renders one result card per `tool_outputs` entry.
+**Client-display exposure:** alongside `tool_trace` (name/status/duration only), the loop builds `tool_outputs`, a parallel list carrying the full structured result for capabilities with `expose_to_client_display=True`. A non-exposed or failed call contributes an `{"error": "..."}` placeholder in place of its real output. The frontend's `AssistantToolCards.tsx` (see Frontend Components below) renders one result card per `tool_outputs` entry.
 
-**`core/agent/providers/gemini.py`** — `GeminiProvider` implements the `AgentProvider` protocol. `_messages_to_contents()` converts the internal `AgentMessage` history into Gemini `types.Content` objects; `_content_to_agent_message()` converts the reply back, including any `function_call` parts into `ToolCall`s. Tool call arguments are sent with `automatic_function_calling` disabled — APEX's own loop drives execution, not the SDK's built-in auto-calling.
+**`core/agent/providers/gemini.py`** — `GeminiProvider` implements the `AgentProvider` protocol. `_messages_to_contents()` converts the internal `AgentMessage` history into Gemini `types.Content` objects; `_content_to_agent_message()` converts the reply back, including any `function_call` parts into `ToolCall`s. Capability descriptors are converted to `FunctionDeclaration` objects via `parameters_json_schema`. Tool call arguments are sent with `automatic_function_calling` disabled — APEX's own loop drives execution, not the SDK's built-in auto-calling.
 
 Every tool result is wrapped in an `<untrusted_tool_output name='...'>...</untrusted_tool_output>` XML block before being sent back to the model. Explicit briefing or telemetry context is sanitized, bounded to 2,000 characters, and wrapped in `<untrusted_hud_context>` markers. Security directives appended to the system instruction tell both providers to treat either block as data only, never as instructions — a defense against prompt injection carried in live connector output (e.g. a news headline or calendar event title engineered to look like a system command).
 
 Gemini API calls retry up to 3 attempts on `429` (exponential backoff starting at 1.0s, plus jitter) and on `500`/`502`/`503`/`504` (fixed 2.0s backoff); any other `APIError` status is raised immediately without retry.
 
-**`core/agent/providers/ollama.py`** — `OllamaProvider` implements the same `AgentProvider` protocol against Ollama's `/api/chat` REST endpoint instead of the Gemini SDK. `_messages_to_ollama()` converts the internal `AgentMessage` history into Ollama's `role`/`content`/`tool_calls` message shape; tool results are wrapped in the same `<untrusted_tool_output>` boundary used by Gemini. Tool schemas are converted from the same Python callables in `AGENT_TOOLS_REGISTRY` into OpenAI-compatible function-tool JSON via `_function_to_openai_schema()`, cached per-function after first build. Connection failures, timeouts, and non-2xx responses from the daemon are raised as `RuntimeError` with a message identifying the failed call and the configured `OLLAMA_HOST`.
+**`core/agent/providers/ollama.py`** — `OllamaProvider` implements the same `AgentProvider` protocol against Ollama's `/api/chat` REST endpoint instead of the Gemini SDK. `_messages_to_ollama()` converts the internal `AgentMessage` history into Ollama's `role`/`content`/`tool_calls` message shape; tool results are wrapped in the same `<untrusted_tool_output>` boundary used by Gemini. Tool schemas are built from capability descriptors into OpenAI-compatible function-tool JSON via `_descriptor_to_openai_schema()`, cached per capability name after first build. Connection failures, timeouts, and non-2xx responses from the daemon are raised as `RuntimeError` with a message identifying the failed call and the configured `OLLAMA_HOST`.
 
 **Session model:** the agent endpoint holds no server-side session state. `AgentQueryRequest.history` is supplied by the client on every call; the frontend's `useApexAssistant` hook accumulates it in React state and resends the full list each turn. `session_id` is an opaque passthrough value with no server-side lookup.
 
@@ -617,7 +620,7 @@ Provider-neutral local model lifecycle control mounted beneath `ApexLogo` in `Ap
 
 ### `AssistantToolCards.tsx`
 
-Renders one structured result card per whitelisted tool executed during an assistant turn, reading from `AgentMessage.tool_outputs` (see [tool output whitelist](api.md#post-apiv1agentquery) in the API reference). Dedicated card layouts exist for `get_weather_forecast` (per-day high/low/condition rows), `get_f1_driver_standings` and `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, and `get_briefing_history`. A tool call outside the whitelist, or one that failed, renders no card since its `output` is replaced server-side with an opaque error placeholder. Mounted inside `ConsoleTray.tsx` beneath each model turn's text answer.
+Renders one structured result card per client-display-exposed capability executed during an assistant turn, reading from `AgentMessage.tool_outputs` (see [client-display exposure](api.md#post-apiv1agentquery) in the API reference). Dedicated card layouts exist for `get_weather_forecast` (per-day high/low/condition rows), `get_f1_driver_standings` and `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, and `get_briefing_history`. A tool call without client-display exposure, or one that failed, renders no card since its `output` is replaced server-side with an opaque error placeholder. Mounted inside `ConsoleTray.tsx` beneath each model turn's text answer.
 
 ### `ReminderListRow.tsx`
 

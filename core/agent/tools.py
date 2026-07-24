@@ -1,10 +1,14 @@
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from clients.sports_client import fetch_f1_driver_standings, fetch_f1_season_calendar
 from clients.weather_client import fetch_weather_forecast
+from core.agent.capabilities import CapabilityDescriptor, register_capability
 
 _LOGGER = logging.getLogger(__name__)
+
+_NATIVE_TIMEOUT_SECONDS = 30.0
+_NATIVE_MAX_OUTPUT_CHARS = 50_000
 
 
 def _stable_tool_result(
@@ -210,11 +214,159 @@ def get_briefing_history(limit: int = 5) -> dict[str, Any]:
         return {"error": "Briefing history unavailable."}
 
 
-AGENT_TOOLS_REGISTRY: dict[str, Callable[..., Any]] = {
-    "get_weather_forecast": get_weather_forecast,
-    "get_f1_driver_standings": get_f1_driver_standings,
-    "get_f1_season_calendar": get_f1_season_calendar,
-    "get_upcoming_calendar_events": get_upcoming_calendar_events,
-    "get_active_reminders": get_active_reminders,
-    "get_briefing_history": get_briefing_history,
-}
+def register_native_capabilities() -> None:
+    """Register the built-in read-only assistant capabilities when absent."""
+    from core.agent import capabilities as capabilities_module
+
+    # Direct registry probe avoids re-entering ensure while registering.
+    if "get_weather_forecast" in capabilities_module._REGISTRY._entries:
+        return
+
+    native_common = {
+        "origin": "native",
+        "risk": "read",
+        "expose_to_assistant": True,
+        "expose_to_mcp_server": False,
+        "expose_to_client_display": True,
+        "timeout_seconds": _NATIVE_TIMEOUT_SECONDS,
+        "max_output_chars": _NATIVE_MAX_OUTPUT_CHARS,
+    }
+
+    register_capability(
+        CapabilityDescriptor(
+            name="get_weather_forecast",
+            title="Weather Forecast",
+            description=(
+                "Retrieve a multi-day weather forecast for the configured "
+                "target location."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": (
+                            "Number of forecast days to return. Values below 1 "
+                            "are raised to 1; values above 5 are lowered to 5."
+                        ),
+                        "minimum": 1,
+                        "maximum": 5,
+                        "default": 5,
+                    }
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_weather_forecast,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="get_f1_driver_standings",
+            title="F1 Driver Standings",
+            description=(
+                "Retrieve current Formula 1 driver championship standings."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_f1_driver_standings,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="get_f1_season_calendar",
+            title="F1 Season Calendar",
+            description=(
+                "Retrieve the full Formula 1 race calendar for the current season."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_f1_season_calendar,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="get_upcoming_calendar_events",
+            title="Upcoming Calendar Events",
+            description=(
+                "Retrieve upcoming Google Calendar events beyond the HUD viewport."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": (
+                            "Number of days into the future to query. Must be "
+                            "between 1 and 14 inclusive. Values outside this "
+                            "range are clamped. Defaults to 14."
+                        ),
+                        "minimum": 1,
+                        "maximum": 14,
+                        "default": 14,
+                    }
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_upcoming_calendar_events,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="get_active_reminders",
+            title="Active Reminders",
+            description=(
+                "Retrieve all pending (unread) reminders from the APEX task ledger."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_active_reminders,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="get_briefing_history",
+            title="Briefing History",
+            description=(
+                "Retrieve recent APEX briefing digests for episodic memory queries."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": (
+                            "Maximum number of historical briefing records to "
+                            "retrieve. Must be between 1 and 5 inclusive. Values "
+                            "outside this range are clamped. Defaults to 5."
+                        ),
+                        "minimum": 1,
+                        "maximum": 5,
+                        "default": 5,
+                    }
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_briefing_history,
+    )
+
+
+register_native_capabilities()
