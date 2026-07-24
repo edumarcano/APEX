@@ -235,7 +235,10 @@ class McpProviderPresetTests(unittest.TestCase):
             self.assertTrue(server.expose_to_client_display)
 
         github = config.servers["github"]
-        self.assertIn("/readonly", github.url or "")
+        self.assertEqual(
+            github.url,
+            "https://api.githubcopilot.com/mcp/readonly",
+        )
         self.assertEqual(
             github.auth_env,
             "GITHUB_PERSONAL_ACCESS_TOKEN",
@@ -250,6 +253,15 @@ class McpProviderPresetTests(unittest.TestCase):
 
         brave = config.servers["brave"]
         self.assertEqual(brave.command, "npx")
+        self.assertEqual(
+            brave.args,
+            [
+                "-y",
+                "@brave/brave-search-mcp-server@2.0.82",
+                "--transport",
+                "stdio",
+            ],
+        )
         self.assertEqual(
             brave.tool_allowlist,
             ["brave_web_search", "brave_news_search"],

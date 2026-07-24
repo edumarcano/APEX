@@ -51,7 +51,7 @@
       "github": {
         "enabled": false,
         "transport": "http",
-        "url": "https://api.githubcopilot.com/mcp/x/repos,issues,pull_requests/readonly",
+        "url": "https://api.githubcopilot.com/mcp/readonly",
         "auth_env": "GITHUB_PERSONAL_ACCESS_TOKEN",
         "tool_allowlist": [
           "search_repositories",
@@ -88,7 +88,7 @@
         "command": "npx",
         "args": [
           "-y",
-          "@brave/brave-search-mcp-server",
+          "@brave/brave-search-mcp-server@2.0.82",
           "--transport",
           "stdio"
         ],
