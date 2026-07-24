@@ -164,7 +164,10 @@ class StableAgentErrorTests(unittest.TestCase):
             tools_dispatcher=failing_dispatcher,
         )
 
-        expected_error = {"error": "Tool execution failed."}
+        expected_error = {
+            "error": "Tool execution failed.",
+            "error_category": "upstream-failure",
+        }
         self.assertEqual(provider.tool_result, expected_error)
         self.assertEqual(response.tool_outputs[0]["output"], expected_error)
         self.assertNotIn("private-dispatcher-detail", str(response.model_dump()))

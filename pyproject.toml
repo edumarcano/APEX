@@ -11,6 +11,7 @@ dependencies = [
     "google-auth-oauthlib",
     "google-cloud-texttospeech",
     "google-genai>=1.56.0",
+    "jsonschema>=4.26.0,<5",
     "kokoro-onnx",
     "numpy",
     "onnxruntime",

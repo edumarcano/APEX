@@ -1,12 +1,12 @@
-import inspect
 import json
 import logging
 import re
-from typing import Any, Callable, get_args, get_origin, get_type_hints
+from typing import Any
 
 import requests
 from requests.exceptions import RequestException
 
+from core.agent.capabilities import CapabilityDescriptor
 from core.agent.providers.ollama_lifecycle import (
     get_http_session,
     get_keep_alive_duration,
@@ -17,8 +17,6 @@ from core.agent.types import AgentMessage, ToolCall, ToolResult
 from core.config import OLLAMA_HOST
 
 _LOGGER = logging.getLogger(__name__)
-
-_SCHEMA_CACHE: dict[Any, dict[str, Any]] = {}
 
 _SECURITY_BOUNDARY_DIRECTIVE = (
     "\n\nSECURITY BOUNDARY DIRECTIVE:\n"
@@ -33,119 +31,22 @@ _SECURITY_BOUNDARY_DIRECTIVE = (
 )
 
 
-def _python_type_to_json_schema(type_hint: Any) -> dict[str, str]:
-    """Map a Python type hint to a minimal JSON Schema type declaration."""
-    origin = get_origin(type_hint)
-    if origin is not None:
-        if origin is dict:
-            return {"type": "object"}
-        if origin is list:
-            return {"type": "array"}
-
-    if type_hint is int:
-        return {"type": "integer"}
-    if type_hint is float:
-        return {"type": "number"}
-    if type_hint is str:
-        return {"type": "string"}
-    if type_hint is dict:
-        return {"type": "object"}
-    if type_hint is list:
-        return {"type": "array"}
-
-    args = get_args(type_hint)
-    if args:
-        non_none = [arg for arg in args if arg is not type(None)]
-        if non_none:
-            return _python_type_to_json_schema(non_none[0])
-
-    return {"type": "string"}
-
-
-def _extract_function_description(docstring: str | None) -> str:
-    """Return the first non-empty line of a function docstring."""
-    if not docstring:
-        return ""
-    for line in docstring.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return ""
-
-
-def _extract_param_descriptions(docstring: str | None) -> dict[str, str]:
-    """Parse Google-style ``Args:`` blocks from a function docstring."""
-    if not docstring:
-        return {}
-
-    descriptions: dict[str, str] = {}
-    in_args = False
-    current_param: str | None = None
-
-    for line in docstring.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped == "Args:":
-            in_args = True
-            current_param = None
-            continue
-        if not in_args:
-            continue
-        if stripped.startswith(
-            ("Returns:", "Return:", "Raises:", "Yields:", "Note:", "Examples:")
-        ):
-            break
-
-        match = re.match(r"^(\w+):\s*(.*)$", stripped)
-        if match:
-            current_param = match.group(1)
-            descriptions[current_param] = match.group(2).strip()
-        elif current_param is not None:
-            descriptions[current_param] += " " + stripped
-
-    return descriptions
-
-
-def _function_to_openai_schema(func: Callable[..., Any]) -> dict[str, Any]:
-    """Convert a Python callable into an OpenAI-compatible function tool schema."""
-    cached = _SCHEMA_CACHE.get(func)
-    if cached is not None:
-        return cached
-
-    sig = inspect.signature(func)
-    type_hints = get_type_hints(func)
-    docstring = func.__doc__
-    param_descriptions = _extract_param_descriptions(docstring)
-
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-
-    for param_name, param in sig.parameters.items():
-        type_hint = type_hints.get(param_name, str)
-        prop_schema: dict[str, Any] = _python_type_to_json_schema(type_hint)
-        prop_schema["description"] = param_descriptions.get(
-            param_name,
-            f"The parameter maps to argument: {param_name}",
-        )
-        properties[param_name] = prop_schema
-
-        if param.default is inspect.Parameter.empty:
-            required.append(param_name)
+def _descriptor_to_openai_schema(descriptor: CapabilityDescriptor) -> dict[str, Any]:
+    """Convert a capability descriptor into an OpenAI-compatible tool schema."""
+    parameters = dict(descriptor.input_schema)
+    if "type" not in parameters:
+        parameters["type"] = "object"
+    if "properties" not in parameters:
+        parameters["properties"] = {}
 
     schema = {
         "type": "function",
         "function": {
-            "name": func.__name__,
-            "description": _extract_function_description(docstring),
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            },
+            "name": descriptor.name,
+            "description": descriptor.description,
+            "parameters": parameters,
         },
     }
-    _SCHEMA_CACHE[func] = schema
     return schema
 
 
@@ -266,7 +167,7 @@ def _ollama_message_to_agent_message(message: dict[str, Any]) -> AgentMessage:
     )
 
 
-def _post_chat(payload: dict[str, Any], profile: AgentModelProfile) -> dict[str, Any]:
+def _post_chat(payload: dict[str, Any], profile: OllamaModelProfile) -> dict[str, Any]:
     """POST a chat payload to Ollama, log telemetry, and return the parsed body."""
     url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
 
@@ -365,7 +266,7 @@ class OllamaProvider:
     def generate_turn(
         self,
         messages: list[AgentMessage],
-        tools: list[Any],
+        tools: list[CapabilityDescriptor],
         profile: OllamaModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
@@ -403,7 +304,9 @@ class OllamaProvider:
         }
 
         if tools:
-            payload["tools"] = [_function_to_openai_schema(tool) for tool in tools]
+            payload["tools"] = [
+                _descriptor_to_openai_schema(tool) for tool in tools
+            ]
 
         _LOGGER.info(
             "[AGENT][OLLAMA] generate_turn — model=%s messages=%d tools=%d",

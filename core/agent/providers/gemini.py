@@ -8,6 +8,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
+from core.agent.capabilities import CapabilityDescriptor
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.types import AgentMessage, ToolCall, ToolResult
 
@@ -115,6 +116,21 @@ def _content_to_agent_message(content: types.Content) -> AgentMessage:
     )
 
 
+def _descriptors_to_gemini_tools(
+    descriptors: list[CapabilityDescriptor],
+) -> list[types.Tool]:
+    """Convert capability descriptors into Gemini function declarations."""
+    declarations = [
+        types.FunctionDeclaration(
+            name=descriptor.name,
+            description=descriptor.description,
+            parameters_json_schema=descriptor.input_schema,
+        )
+        for descriptor in descriptors
+    ]
+    return [types.Tool(function_declarations=declarations)]
+
+
 class GeminiProvider:
     def __init__(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -122,7 +138,7 @@ class GeminiProvider:
     def generate_turn(
         self,
         messages: list[AgentMessage],
-        tools: list[Any],
+        tools: list[CapabilityDescriptor],
         profile: GeminiModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
@@ -138,7 +154,7 @@ class GeminiProvider:
             ),
         }
         if tools:
-            config_kwargs["tools"] = tools
+            config_kwargs["tools"] = _descriptors_to_gemini_tools(tools)
             config_kwargs["automatic_function_calling"] = (
                 types.AutomaticFunctionCallingConfig(disable=True)
             )

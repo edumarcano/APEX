@@ -691,11 +691,11 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `answer` | string | Final synthesized text response. |
 | `profile_used` | object | Full cloud or local model profile dump for the profile that served this request. |
 | `tool_trace` | object[] | One entry per tool executed this turn: `name`, `status` (`"ok"` or `"error"`), `duration_ms`. |
-| `tool_outputs` | object[] | One entry per tool executed this turn with its full structured output: `name`, `status`, `duration_ms`, `output`. Only tools in the output whitelist (see below) return their real `output`; all others return `{"error": "Tool output is not whitelisted for client display."}`. A dispatcher exception returns the stable public payload `{"error": "Tool execution failed."}` rather than the exception text. |
+| `tool_outputs` | object[] | One entry per tool executed this turn with its full structured output: `name`, `status`, `duration_ms`, `output`. Only capabilities with `expose_to_client_display=True` return their real `output`; all others return `{"error": "Tool output is not whitelisted for client display."}`. A dispatcher or capability failure returns a stable public payload such as `{"error": "Tool execution failed.", "error_category": "upstream-failure"}` rather than exception text. |
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
 
-**Tool output whitelist:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Only tools in `ALLOWED_TOOL_OUTPUT_REGISTRY` (`core/agent/loop.py`) return their real output in this field: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`.
+**Client-display exposure:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Exposure is controlled by each capability's `expose_to_client_display` flag in `core/agent/capabilities.py`. The six native capabilities currently exposed are: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`.
 
 **Response `403`** — Assistant interface disabled via runtime settings (`assistant.enabled` / `ask_apex.enabled`)
 ```json
@@ -1068,7 +1068,7 @@ class AgentQueryResponse(BaseModel):
     error: str | None = None
 ```
 
-`tool_outputs` carries the full structured result for whitelisted tools (see [POST /api/v1/agent/query](#post-apiv1agentquery) above for the whitelist).
+`tool_outputs` carries the full structured result for client-display-exposed capabilities (see [POST /api/v1/agent/query](#post-apiv1agentquery) above for exposure rules).
 
 ### `AgentProfileStatus`
 

@@ -62,7 +62,7 @@ frontend/
 |   |   |-- ReminderListRow.tsx      # Per-item reminder display with optimistic dismissal
 |   |   |-- AskApexBar.tsx           # Inline assistant query input and profile selector
 |   |   |-- ConsoleTray.tsx          # Bottom/rail console with assistant and reminders tabs
-|   |   |-- AssistantToolCards.tsx   # Structured per-tool result cards for whitelisted tool_outputs
+|   |   |-- AssistantToolCards.tsx   # Structured per-tool result cards for client-display tool_outputs
 |   |   |-- CloudProfileSelector.tsx # Cloud/local assistant profile dropdown with live availability gating
 |   |   `-- weather/                 # Per-condition animated SVG icons (ClearDay, ClearNight, Clouds, Rain, Thunderstorm)
 |   |-- App.tsx                      # Root layout: three-column HUD, nebula glow, console placement
