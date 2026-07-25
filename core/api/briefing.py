@@ -192,7 +192,9 @@ def _build_synthesis_input(
         email_unread_count=int(email_data.get("count", 0) or 0) if isinstance(email_data, dict) else 0,
         email_recent_subjects=email_subjects,
         news_headlines=news_headlines,
-        calendar_event_count=int(calendar_data.get("count", 0) or 0)
+        calendar_event_count=int(
+            calendar_data.get("total_count", calendar_data.get("count", 0)) or 0
+        )
         if isinstance(calendar_data, dict)
         else 0,
         next_calendar_event=next_event,
@@ -252,7 +254,17 @@ def _build_digest(
     return DigestPayload(
         weather_archetype=weather_archetype,
         unread_emails_count=int((email.data.get("count", 0) if email else 0) or 0),
-        upcoming_events_count=int((calendar.data.get("count", 0) if calendar else 0) or 0),
+        upcoming_events_count=int(
+            (
+                calendar.data.get(
+                    "total_count",
+                    calendar.data.get("count", 0),
+                )
+                if calendar
+                else 0
+            )
+            or 0
+        ),
         f1_sprint_active=f1_sprint_active,
         reminders_pending_count=int((reminders.data.get("count", 0) if reminders else 0) or 0),
         sync_health_score=report.sync_health_score,

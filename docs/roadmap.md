@@ -311,10 +311,10 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 
 ## v1.18.0 - Cortex: FastMCP Protocol Layer & Bidirectional MCP Hub
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
-Establish APEX's provider-neutral capability layer, enabling approved external MCP integrations, an authenticated local APEX MCP server, expanded read-only assistant tools, and a seven-day calendar horizon with a focused 48-hour HUD view.
+Establish APEX's provider-neutral capability layer, enabling approved external MCP integrations, an authenticated local APEX MCP server, expanded read-only assistant tools, and a full seven-day calendar HUD.
 
 ---
 

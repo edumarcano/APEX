@@ -22,6 +22,7 @@ import { CelestialBackground } from './components/CelestialBackground'
 import { ConsoleTray } from './components/ConsoleTray'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingGenerateControl } from './components/BriefingControls'
+import { CalendarEventList } from './components/CalendarEventList'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -41,6 +42,7 @@ import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
 import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
+import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import type { AssistantProfile } from './types/telemetry'
@@ -118,33 +120,6 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
     }
     return { topic: 'Global', headline: part }
   })
-}
-
-interface ParsedCalendarEvent {
-  summary: string
-  start: string
-}
-
-function parseCalendarTelemetry(
-  calendarText: string,
-): { count: number; items: ParsedCalendarEvent[] } {
-  if (!calendarText || calendarText.includes('No upcoming events')) {
-    return { count: 0, items: [] }
-  }
-
-  const stripped = calendarText
-    .replace(/^Calendar Telemetry\s*\(48h\)\s*:\s*/i, '')
-    .trim()
-  if (!stripped || /no upcoming events/i.test(stripped)) {
-    return { count: 0, items: [] }
-  }
-
-  const matches = [...stripped.matchAll(/'([^']+)'\s+at\s+([^|]+)/g)]
-  const items = matches.map((m) => ({
-    summary: m[1],
-    start: m[2].trim(),
-  }))
-  return { count: items.length, items }
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -685,7 +660,7 @@ export default function App(): ReactElement {
   const f1ScheduleTelemetryText = f1Module?.display_text?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(emailModule?.display_text ?? '')
   const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
-  const calendarInfo = parseCalendarTelemetry(calendarModule?.display_text ?? '')
+  const calendarInfo = resolveCalendarTelemetry(calendarModule)
 
   const synthesisInsights = briefing.insights
 
@@ -695,8 +670,8 @@ export default function App(): ReactElement {
       ? `${primaryTemperatureF}°, ${weatherBody}`
       : weatherCompactValue
   const eventsCompactValue = hasSnapshot
-    ? calendarInfo.count > 0
-      ? `${calendarInfo.count} events`
+    ? calendarInfo.totalCount > 0
+      ? `${calendarInfo.totalCount} events`
       : 'No events'
     : null
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
@@ -846,43 +821,11 @@ export default function App(): ReactElement {
                           Loading schedule…
                         </p>
                       ) : (
-                        <>
-                          {calendarInfo.count > 0 && (
-                            <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
-                              {calendarInfo.count} Upcoming
-                            </p>
-                          )}
-                          {calendarInfo.items.length > 0 ? (
-                            <ul className="list-fade-mask min-h-0 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
-                              {calendarInfo.items.slice(0, 3).map((item, index) => (
-                                <li
-                                  key={`${item.summary}-${item.start}-${index}`}
-                                  className="flex items-start justify-between gap-3"
-                                >
-                                  <span className="flex min-w-0 items-start gap-2">
-                                    <span className="hud-log-index">
-                                      {String(index).padStart(2, '0')}
-                                    </span>
-                                    <span className="break-words text-sm text-zinc-200">
-                                      {item.summary}
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 font-mono text-xs text-zinc-500">
-                                    {item.start}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : hasSnapshot ? (
-                            <p className="text-sm text-[color:var(--hud-muted-text)]">
-                              No upcoming events.
-                            </p>
-                          ) : (
-                            <p className="text-sm text-[color:var(--hud-muted-text)]">
-                              Schedule unavailable.
-                            </p>
-                          )}
-                        </>
+                        <CalendarEventList
+                          compact
+                          telemetry={calendarInfo}
+                          hasSnapshot={hasSnapshot}
+                        />
                       )}
                     </TelemetryCard>
 
@@ -1000,43 +943,10 @@ export default function App(): ReactElement {
                       Loading schedule…
                     </p>
                   ) : (
-                    <>
-                      {calendarInfo.count > 0 && (
-                        <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
-                          {calendarInfo.count} Upcoming
-                        </p>
-                      )}
-                      {calendarInfo.items.length > 0 ? (
-                        <ul className="list-fade-mask min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-                          {calendarInfo.items.map((item, index) => (
-                            <li
-                              key={`${item.summary}-${item.start}-${index}`}
-                              className="flex items-start justify-between gap-3"
-                            >
-                              <span className="flex min-w-0 items-start gap-2">
-                                <span className="hud-log-index">
-                                  {String(index).padStart(2, '0')}
-                                </span>
-                                <span className="break-words text-sm text-zinc-200">
-                                  {item.summary}
-                                </span>
-                              </span>
-                              <span className="shrink-0 font-mono text-xs text-zinc-500">
-                                {item.start}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : hasSnapshot ? (
-                        <p className="text-sm text-[color:var(--hud-muted-text)]">
-                          No upcoming events.
-                        </p>
-                      ) : (
-                        <p className="text-sm text-[color:var(--hud-muted-text)]">
-                          Schedule unavailable.
-                        </p>
-                      )}
-                    </>
+                    <CalendarEventList
+                      telemetry={calendarInfo}
+                      hasSnapshot={hasSnapshot}
+                    />
                   )}
                 </TelemetryCard>
 

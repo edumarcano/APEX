@@ -85,17 +85,15 @@ def get_f1_season_calendar() -> dict[str, Any]:
 
 
 def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
-    """Retrieve upcoming Google Calendar events beyond the HUD viewport.
+    """Retrieve upcoming Google Calendar events for assistant queries.
 
     Queries the operator's primary Google Calendar for scheduled events within
-    a configurable forward-looking window. Extends the default 48-hour HUD cap
-    up to 14 days, enabling multi-week scheduling awareness and semantic
-    event search by the agent.
+    a configurable forward-looking window independent of the HUD's seven-day
+    telemetry horizon.
 
     Args:
         days: Number of days into the future to query. Must be between 1 and
-            14 inclusive. Values outside this range are clamped. Defaults to
-            14.
+            14 inclusive. Values outside this range are clamped. Defaults to 14.
 
     Returns:
         dict: On success, a payload with ``days_queried`` (int) and ``events``
@@ -298,7 +296,7 @@ def register_native_capabilities() -> None:
             name="get_upcoming_calendar_events",
             title="Upcoming Calendar Events",
             description=(
-                "Retrieve upcoming Google Calendar events beyond the HUD viewport."
+                "Retrieve upcoming Google Calendar events for assistant queries."
             ),
             input_schema={
                 "type": "object",

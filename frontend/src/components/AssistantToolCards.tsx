@@ -58,6 +58,8 @@ interface F1CalendarPayload {
 interface CalendarEventEntry {
   summary: string
   start: string
+  end?: string | null
+  all_day?: boolean
 }
 
 interface CalendarEventsPayload {
@@ -131,7 +133,10 @@ function formatDisplayDate(isoDate: string): string {
   })
 }
 
-function formatEventStart(start: string): string {
+function formatEventStart(start: string, allDay = false): string {
+  if (allDay) {
+    return `${formatDisplayDate(start)} · All day`
+  }
   const parsed = new Date(start)
   if (Number.isNaN(parsed.getTime())) {
     return start
@@ -336,7 +341,12 @@ function parseCalendarEventsPayload(output: unknown): CalendarEventsPayload | nu
             return null
           }
 
-          return { summary, start }
+          return {
+            summary,
+            start,
+            end: typeof entry.end === 'string' ? entry.end : null,
+            all_day: entry.all_day === true,
+          }
         })
         .filter((entry): entry is CalendarEventEntry => entry !== null)
     : []
@@ -722,7 +732,7 @@ function CalendarEventsCard({
             >
               <p className="min-w-0 flex-1 text-sm text-zinc-200">{event.summary}</p>
               <span className="shrink-0 font-mono text-[10px] text-[#FBBF24]">
-                {formatEventStart(event.start)}
+                {formatEventStart(event.start, event.all_day)}
               </span>
             </li>
           ))
