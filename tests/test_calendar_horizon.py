@@ -148,6 +148,30 @@ class CalendarTelemetryTests(unittest.TestCase):
             ["At start", "Inside"],
         )
 
+    def test_excludes_events_already_in_progress_from_future_counts(self) -> None:
+        now = datetime(2026, 7, 24, 12, tzinfo=timezone.utc)
+        ongoing_timed = _event(
+            "Ongoing meeting",
+            (now - timedelta(hours=1)).isoformat(),
+            end=(now + timedelta(hours=1)).isoformat(),
+        )
+        ongoing_all_day = _event(
+            "Today off-site",
+            "2026-07-24",
+            end="2026-07-25",
+            all_day=True,
+        )
+
+        data = collect._calendar_data(
+            [ongoing_timed, ongoing_all_day],
+            now=now,
+        )
+
+        self.assertEqual(data["events"], [])
+        self.assertEqual(data["total_count"], 0)
+        self.assertEqual(data["display_count"], 0)
+        self.assertEqual(data["overflow_count"], 0)
+
     def test_counts_all_day_and_recurring_instances_once(self) -> None:
         now = datetime(2026, 7, 24, tzinfo=timezone.utc)
         all_day = _event("All day", "2026-07-24", end="2026-07-25", all_day=True)

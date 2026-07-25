@@ -110,9 +110,17 @@ def _calendar_data(
     if now.tzinfo is None:
         raise ValueError("Calendar window boundary must be timezone-aware.")
 
+    window_end = now + timedelta(days=_CALENDAR_WINDOW_DAYS)
     events: list[dict[str, Any]] = []
     for event in calendar_data:
-        if not isinstance(event, dict) or _calendar_event_start(event) is None:
+        if not isinstance(event, dict):
+            continue
+        event_start = _calendar_event_start(event)
+        if (
+            event_start is None
+            or event_start < now
+            or event_start >= window_end
+        ):
             continue
         events.append(
             {
