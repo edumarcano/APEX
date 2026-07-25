@@ -422,7 +422,7 @@ The tracked provider pilots are disabled by default. GitHub uses the official re
 | `get_weather_forecast(days)` | `weather_client.fetch_weather_forecast()`, clamped to 1–5 days |
 | `get_f1_driver_standings` | `sports_client.fetch_f1_driver_standings()` |
 | `get_f1_season_calendar` | `sports_client.fetch_f1_season_calendar()` |
-| `get_upcoming_calendar_events(days)` | `calendar_client.get_upcoming_calendar_events()`, clamped to 1–14 days; independent of the HUD's 48-hour window |
+| `get_upcoming_calendar_events(days)` | `calendar_client.get_upcoming_calendar_events()`, clamped to 1–14 days; independent of the HUD's seven-day telemetry window |
 | `get_active_reminders` | `database.fetch_unread_reminders()` |
 | `get_briefing_history(limit)` | `database.fetch_briefing_history()`, clamped to 1–5 records |
 

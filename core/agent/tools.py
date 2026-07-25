@@ -84,16 +84,16 @@ def get_f1_season_calendar() -> dict[str, Any]:
     )
 
 
-def get_upcoming_calendar_events(days: int = 7) -> dict[str, Any]:
-    """Retrieve upcoming Google Calendar events beyond the HUD viewport.
+def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
+    """Retrieve upcoming Google Calendar events for assistant queries.
 
     Queries the operator's primary Google Calendar for scheduled events within
-    the seven-day calendar horizon, enabling awareness of events hidden behind
-    the HUD's focused 48-hour viewport.
+    a configurable forward-looking window independent of the HUD's seven-day
+    telemetry horizon.
 
     Args:
         days: Number of days into the future to query. Must be between 1 and
-            7 inclusive. Values outside this range are clamped. Defaults to 7.
+            14 inclusive. Values outside this range are clamped. Defaults to 14.
 
     Returns:
         dict: On success, a payload with ``days_queried`` (int) and ``events``
@@ -102,7 +102,7 @@ def get_upcoming_calendar_events(days: int = 7) -> dict[str, Any]:
             or Google Workspace service is offline."}``. On other failures,
             ``{"error": "Calendar data unavailable."}``.
     """
-    days = max(1, min(7, days))
+    days = max(1, min(14, days))
     try:
         from clients.google_auth import get_service
 
@@ -296,7 +296,7 @@ def register_native_capabilities() -> None:
             name="get_upcoming_calendar_events",
             title="Upcoming Calendar Events",
             description=(
-                "Retrieve upcoming Google Calendar events beyond the HUD viewport."
+                "Retrieve upcoming Google Calendar events for assistant queries."
             ),
             input_schema={
                 "type": "object",
@@ -305,12 +305,12 @@ def register_native_capabilities() -> None:
                         "type": "integer",
                         "description": (
                             "Number of days into the future to query. Must be "
-                            "between 1 and 7 inclusive. Values outside this "
-                            "range are clamped. Defaults to 7."
+                            "between 1 and 14 inclusive. Values outside this "
+                            "range are clamped. Defaults to 14."
                         ),
                         "minimum": 1,
-                        "maximum": 7,
-                        "default": 7,
+                        "maximum": 14,
+                        "default": 14,
                     }
                 },
                 "required": [],

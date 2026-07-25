@@ -55,6 +55,18 @@ class CapabilityRegistryTests(unittest.TestCase):
             self.assertTrue(capability.expose_to_client_display)
             self.assertFalse(capability.expose_to_mcp_server)
 
+    def test_calendar_capability_defaults_to_fourteen_days(self) -> None:
+        calendar = next(
+            capability
+            for capability in list_assistant_capabilities()
+            if capability.name == "get_upcoming_calendar_events"
+        )
+        days_schema = calendar.input_schema["properties"]["days"]
+
+        self.assertEqual(days_schema["minimum"], 1)
+        self.assertEqual(days_schema["maximum"], 14)
+        self.assertEqual(days_schema["default"], 14)
+
     def test_duplicate_registration_is_rejected(self) -> None:
         descriptor = CapabilityDescriptor(
             name="get_weather_forecast",

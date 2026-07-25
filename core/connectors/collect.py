@@ -72,7 +72,6 @@ def collect_email() -> ConnectorResult:
 
 
 _CALENDAR_WINDOW_DAYS = 7
-_CALENDAR_DISPLAY_WINDOW_HOURS = 48
 
 
 def _calendar_event_start(event: dict[str, Any]) -> datetime | None:
@@ -140,22 +139,10 @@ def _calendar_data(
             }
         )
 
-    display_end = now + timedelta(hours=_CALENDAR_DISPLAY_WINDOW_HOURS)
-    display_events = [
-        event
-        for event in events
-        if (start := _calendar_event_start(event)) is not None
-        and start >= now
-        and start < display_end
-    ]
     return {
         "window_days": _CALENDAR_WINDOW_DAYS,
-        "display_window_hours": _CALENDAR_DISPLAY_WINDOW_HOURS,
         "events": events,
-        "display_events": display_events,
         "total_count": len(events),
-        "display_count": len(display_events),
-        "overflow_count": len(events) - len(display_events),
     }
 
 
@@ -175,16 +162,16 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
             calendar_data,
             now=now or datetime.now(timezone.utc),
         )
-        display_events = data["display_events"]
+        events = data["events"]
 
-        if display_events:
+        if events:
             calendar_entries = [
                 f"'{event['summary']}' at {event['start']}"
-                for event in display_events
+                for event in events
             ]
-            display = "Calendar Telemetry (48h): " + " | ".join(calendar_entries)
+            display = "Calendar Telemetry (7d): " + " | ".join(calendar_entries)
         else:
-            display = "Calendar Telemetry (48h): No upcoming events"
+            display = "Calendar Telemetry (7d): No upcoming events"
 
         return ConnectorResult(
             name="calendar",
@@ -206,12 +193,8 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
             display_text="ERROR: Check connection",
             data={
                 "window_days": _CALENDAR_WINDOW_DAYS,
-                "display_window_hours": _CALENDAR_DISPLAY_WINDOW_HOURS,
                 "events": [],
-                "display_events": [],
                 "total_count": 0,
-                "display_count": 0,
-                "overflow_count": 0,
             },
         )
 

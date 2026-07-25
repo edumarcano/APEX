@@ -9,11 +9,8 @@ export interface CalendarDisplayEvent {
 
 export interface CalendarTelemetry {
   windowDays: number
-  displayWindowHours: number
   items: CalendarDisplayEvent[]
   totalCount: number
-  displayCount: number
-  overflowCount: number
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,19 +63,16 @@ function parseStructuredEvent(value: unknown): CalendarDisplayEvent | null {
 
 function parseLegacyCalendar(calendarText: string): CalendarTelemetry {
   const empty: CalendarTelemetry = {
-    windowDays: 2,
-    displayWindowHours: 48,
+    windowDays: 7,
     items: [],
     totalCount: 0,
-    displayCount: 0,
-    overflowCount: 0,
   }
   if (!calendarText || calendarText.includes('No upcoming events')) {
     return empty
   }
 
   const stripped = calendarText
-    .replace(/^Calendar Telemetry\s*\(48h\)\s*:\s*/i, '')
+    .replace(/^Calendar Telemetry\s*\((?:48h|7d)\)\s*:\s*/i, '')
     .trim()
   if (!stripped || /no upcoming events/i.test(stripped)) {
     return empty
@@ -96,7 +90,6 @@ function parseLegacyCalendar(calendarText: string): CalendarTelemetry {
     ...empty,
     items,
     totalCount: items.length,
-    displayCount: items.length,
   }
 }
 
@@ -107,21 +100,27 @@ export function resolveCalendarTelemetry(
   const data = module?.data
   if (
     isRecord(data) &&
-    Array.isArray(data.display_events) &&
-    nonNegativeInteger(data.total_count) !== null &&
-    nonNegativeInteger(data.display_count) !== null &&
-    nonNegativeInteger(data.overflow_count) !== null
+    Array.isArray(data.events) &&
+    nonNegativeInteger(data.total_count) !== null
   ) {
+    const items = data.events
+      .map(parseStructuredEvent)
+      .filter((event): event is CalendarDisplayEvent => event !== null)
+    return {
+      windowDays: nonNegativeInteger(data.window_days) ?? 7,
+      items,
+      totalCount: nonNegativeInteger(data.total_count) ?? items.length,
+    }
+  }
+
+  if (isRecord(data) && Array.isArray(data.display_events)) {
     const items = data.display_events
       .map(parseStructuredEvent)
       .filter((event): event is CalendarDisplayEvent => event !== null)
     return {
       windowDays: nonNegativeInteger(data.window_days) ?? 7,
-      displayWindowHours: nonNegativeInteger(data.display_window_hours) ?? 48,
       items,
-      totalCount: nonNegativeInteger(data.total_count) ?? items.length,
-      displayCount: nonNegativeInteger(data.display_count) ?? items.length,
-      overflowCount: nonNegativeInteger(data.overflow_count) ?? 0,
+      totalCount: nonNegativeInteger(data.display_count) ?? items.length,
     }
   }
 

@@ -259,7 +259,7 @@ When `DEMO_MODE=true`, this endpoint bypasses all connectors and serves a staged
 |---|---|---|
 | `weather_archetype` | string \| null | Normalized weather condition label: `"clear_day"`, `"clear_night"`, `"clouds"`, `"rain"`, `"thunderstorm"`, or `null` |
 | `unread_emails_count` | integer | Count of unread primary inbox messages collected during the run |
-| `upcoming_events_count` | integer | Count of calendar events within the 48-hour briefing window |
+| `upcoming_events_count` | integer | Count of upcoming calendar events within the seven-day telemetry window |
 | `f1_sprint_active` | boolean | `true` when an F1 sprint session is scheduled this week |
 | `reminders_pending_count` | integer | Count of unread reminders included in the briefing |
 | `sync_health_score` | float | Equal-weight typed connector sync health (0–100) |

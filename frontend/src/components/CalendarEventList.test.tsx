@@ -9,17 +9,14 @@ function telemetry(
 ): CalendarTelemetry {
   return {
     windowDays: 7,
-    displayWindowHours: 48,
     items: [],
     totalCount: 0,
-    displayCount: 0,
-    overflowCount: 0,
     ...overrides,
   }
 }
 
 describe('CalendarEventList', () => {
-  it('renders the standard layout without an overflow line when none exists', () => {
+  it('renders the standard seven-day collection without an overflow line', () => {
     render(
       <CalendarEventList
         hasSnapshot
@@ -33,7 +30,6 @@ describe('CalendarEventList', () => {
             },
           ],
           totalCount: 1,
-          displayCount: 1,
         })}
       />,
     )
@@ -43,7 +39,7 @@ describe('CalendarEventList', () => {
     expect(screen.queryByText(/more events?/i)).not.toBeInTheDocument()
   })
 
-  it('renders a singular overflow line in the compact layout', () => {
+  it('renders every seven-day event in the compact layout', () => {
     render(
       <CalendarEventList
         compact
@@ -51,40 +47,53 @@ describe('CalendarEventList', () => {
         telemetry={telemetry({
           items: [
             {
-              summary: 'Planning',
+              summary: 'Day one',
               start: 'Fri, 9:00 AM',
               end: null,
               allDay: false,
             },
+            {
+              summary: 'Day three',
+              start: 'Sun, 2:00 PM',
+              end: null,
+              allDay: false,
+            },
+            {
+              summary: 'Day five',
+              start: 'Tue, 11:00 AM',
+              end: null,
+              allDay: false,
+            },
+            {
+              summary: 'Day seven',
+              start: 'Thu, 4:00 PM',
+              end: null,
+              allDay: false,
+            },
           ],
-          totalCount: 2,
-          displayCount: 1,
-          overflowCount: 1,
+          totalCount: 4,
         })}
       />,
     )
 
-    expect(
-      screen.getByText('+ 1 more event in the next 7 days'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('4 Upcoming')).toBeInTheDocument()
+    expect(screen.getByText('Day one')).toBeInTheDocument()
+    expect(screen.getByText('Day three')).toBeInTheDocument()
+    expect(screen.getByText('Day five')).toBeInTheDocument()
+    expect(screen.getByText('Day seven')).toBeInTheDocument()
+    expect(screen.queryByText(/more events?/i)).not.toBeInTheDocument()
   })
 
-  it('shows the empty 48-hour state before multiple later events', () => {
+  it('shows the empty seven-day state', () => {
     render(
       <CalendarEventList
         hasSnapshot
-        telemetry={telemetry({
-          totalCount: 3,
-          overflowCount: 3,
-        })}
+        telemetry={telemetry()}
       />,
     )
 
     expect(
-      screen.getByText('No events in the next 48 hours.'),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('+ 3 more events in the next 7 days'),
+      screen.getByText('No events in the next 7 days.'),
     ).toBeInTheDocument()
   })
 })

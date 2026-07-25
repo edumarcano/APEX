@@ -13,22 +13,20 @@ export function CalendarEventList({
   hasSnapshot,
   compact = false,
 }: CalendarEventListProps): ReactElement {
-  const visibleItems = compact ? telemetry.items.slice(0, 3) : telemetry.items
-
   return (
     <>
-      {telemetry.displayCount > 0 && (
+      {telemetry.totalCount > 0 && (
         <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
-          {telemetry.displayCount} Upcoming
+          {telemetry.totalCount} Upcoming
         </p>
       )}
-      {visibleItems.length > 0 ? (
+      {telemetry.items.length > 0 ? (
         <ul
           className={`list-fade-mask min-h-0 overflow-y-auto pr-1 scrollbar-thin ${
             compact ? 'space-y-1.5' : 'space-y-2'
           }`}
         >
-          {visibleItems.map((item, index) => (
+          {telemetry.items.map((item, index) => (
             <li
               key={`${item.summary}-${item.start}-${index}`}
               className="flex items-start justify-between gap-3"
@@ -50,14 +48,8 @@ export function CalendarEventList({
       ) : (
         <p className="text-sm text-[color:var(--hud-muted-text)]">
           {hasSnapshot
-            ? 'No events in the next 48 hours.'
+            ? 'No events in the next 7 days.'
             : 'Schedule unavailable.'}
-        </p>
-      )}
-      {telemetry.overflowCount > 0 && (
-        <p className="mt-2 font-mono text-xs text-[color:var(--hud-muted-text)]">
-          + {telemetry.overflowCount} more event
-          {telemetry.overflowCount === 1 ? '' : 's'} in the next 7 days
         </p>
       )}
     </>

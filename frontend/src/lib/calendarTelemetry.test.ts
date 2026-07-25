@@ -19,49 +19,69 @@ function calendarModule(
 }
 
 describe('resolveCalendarTelemetry', () => {
-  it('uses structured display events and overflow counts', () => {
+  it('uses the complete structured seven-day event collection', () => {
     const result = resolveCalendarTelemetry(
       calendarModule({
         window_days: 7,
-        display_window_hours: 48,
-        events: [],
-        display_events: [
+        events: [
           {
             summary: 'Within 48 hours',
             start: '2026-07-25T15:00:00-04:00',
             end: '2026-07-25T15:30:00-04:00',
             all_day: false,
           },
+          {
+            summary: 'Day six',
+            start: '2026-07-30',
+            end: '2026-07-31',
+            all_day: true,
+          },
         ],
-        total_count: 3,
-        display_count: 1,
-        overflow_count: 2,
+        total_count: 2,
       }),
     )
 
-    expect(result.items).toHaveLength(1)
+    expect(result.items).toHaveLength(2)
     expect(result.items[0].summary).toBe('Within 48 hours')
-    expect(result.displayCount).toBe(1)
-    expect(result.totalCount).toBe(3)
-    expect(result.overflowCount).toBe(2)
+    expect(result.items[1].summary).toBe('Day six')
+    expect(result.totalCount).toBe(2)
   })
 
-  it('keeps overflow when the 48-hour window is empty', () => {
+  it('reads every event from previous split snapshots', () => {
     const result = resolveCalendarTelemetry(
       calendarModule({
         window_days: 7,
         display_window_hours: 48,
-        events: [],
-        display_events: [],
-        total_count: 4,
-        display_count: 0,
-        overflow_count: 4,
+        events: [
+          {
+            summary: 'Soon',
+            start: '2026-07-25T15:00:00-04:00',
+            end: null,
+            all_day: false,
+          },
+          {
+            summary: 'Later',
+            start: '2026-07-29T15:00:00-04:00',
+            end: null,
+            all_day: false,
+          },
+        ],
+        display_events: [
+          {
+            summary: 'Soon',
+            start: '2026-07-25T15:00:00-04:00',
+            end: null,
+            all_day: false,
+          },
+        ],
+        total_count: 2,
+        display_count: 1,
+        overflow_count: 1,
       }),
     )
 
-    expect(result.items).toEqual([])
-    expect(result.displayCount).toBe(0)
-    expect(result.overflowCount).toBe(4)
+    expect(result.items.map((event) => event.summary)).toEqual(['Soon', 'Later'])
+    expect(result.totalCount).toBe(2)
   })
 
   it('falls back to legacy display text for older snapshots', () => {
@@ -76,7 +96,6 @@ describe('resolveCalendarTelemetry', () => {
       'Planning',
       'Review',
     ])
-    expect(result.displayCount).toBe(2)
-    expect(result.overflowCount).toBe(0)
+    expect(result.totalCount).toBe(2)
   })
 })

@@ -670,8 +670,8 @@ export default function App(): ReactElement {
       ? `${primaryTemperatureF}°, ${weatherBody}`
       : weatherCompactValue
   const eventsCompactValue = hasSnapshot
-    ? calendarInfo.displayCount > 0
-      ? `${calendarInfo.displayCount} events`
+    ? calendarInfo.totalCount > 0
+      ? `${calendarInfo.totalCount} events`
       : 'No events'
     : null
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null

@@ -126,26 +126,27 @@ class CalendarClientTests(unittest.TestCase):
 
 
 class CalendarTelemetryTests(unittest.TestCase):
-    def test_uses_half_open_48_hour_boundary(self) -> None:
+    def test_uses_half_open_seven_day_boundary(self) -> None:
         now = datetime(2026, 7, 24, 12, tzinfo=timezone.utc)
         data = collect._calendar_data(
             [
                 _event("At start", now.isoformat()),
-                _event("Inside", (now + timedelta(hours=47, minutes=59)).isoformat()),
-                _event("At boundary", (now + timedelta(hours=48)).isoformat()),
-                _event("Later", (now + timedelta(days=6)).isoformat()),
+                _event("Inside", (now + timedelta(days=6, hours=23)).isoformat()),
+                _event("At boundary", (now + timedelta(days=7)).isoformat()),
+                _event("After boundary", (now + timedelta(days=8)).isoformat()),
             ],
             now=now,
         )
 
         self.assertEqual(data["window_days"], 7)
-        self.assertEqual(data["display_window_hours"], 48)
-        self.assertEqual(data["total_count"], 4)
-        self.assertEqual(data["display_count"], 2)
-        self.assertEqual(data["overflow_count"], 2)
+        self.assertEqual(data["total_count"], 2)
         self.assertEqual(
-            [event["summary"] for event in data["display_events"]],
+            [event["summary"] for event in data["events"]],
             ["At start", "Inside"],
+        )
+        self.assertEqual(
+            set(data),
+            {"window_days", "events", "total_count"},
         )
 
     def test_excludes_events_already_in_progress_from_future_counts(self) -> None:
@@ -169,8 +170,6 @@ class CalendarTelemetryTests(unittest.TestCase):
 
         self.assertEqual(data["events"], [])
         self.assertEqual(data["total_count"], 0)
-        self.assertEqual(data["display_count"], 0)
-        self.assertEqual(data["overflow_count"], 0)
 
     def test_counts_all_day_and_recurring_instances_once(self) -> None:
         now = datetime(2026, 7, 24, tzinfo=timezone.utc)
@@ -187,8 +186,10 @@ class CalendarTelemetryTests(unittest.TestCase):
         )
 
         self.assertEqual(data["total_count"], 2)
-        self.assertEqual(data["display_count"], 1)
-        self.assertEqual(data["overflow_count"], 1)
+        self.assertEqual(
+            [event["summary"] for event in data["events"]],
+            ["All day", "Weekly review"],
+        )
 
     def test_collector_fetches_once_and_returns_complete_contract(self) -> None:
         now = datetime(2026, 7, 24, 12, tzinfo=timezone.utc)
@@ -212,27 +213,35 @@ class CalendarTelemetryTests(unittest.TestCase):
         self.assertEqual(fetch.call_args.kwargs, {"days": 7})
         self.assertEqual(result.status, "healthy")
         self.assertEqual(result.data["total_count"], 2)
-        self.assertEqual(result.data["display_count"], 1)
-        self.assertEqual(result.data["overflow_count"], 1)
         self.assertEqual(len(result.data["events"]), 2)
-        self.assertEqual(len(result.data["display_events"]), 1)
-
-    def test_empty_display_window_can_still_have_overflow(self) -> None:
-        now = datetime(2026, 7, 24, 12, tzinfo=timezone.utc)
-        data = collect._calendar_data(
-            [_event("Later", (now + timedelta(days=4)).isoformat())],
-            now=now,
+        self.assertEqual(
+            result.display_text,
+            (
+                "Calendar Telemetry (7d): "
+                "'Soon' at 2026-07-24T13:00:00+00:00 | "
+                "'Later' at 2026-07-28T12:00:00+00:00"
+            ),
         )
 
-        self.assertEqual(data["display_events"], [])
-        self.assertEqual(data["display_count"], 0)
-        self.assertEqual(data["overflow_count"], 1)
+    def test_unavailable_result_uses_simplified_contract(self) -> None:
+        with mock.patch.object(
+            collect.google_auth,
+            "get_service",
+            side_effect=RuntimeError("offline"),
+        ):
+            result = collect.collect_calendar()
+
+        self.assertEqual(result.status, "unavailable")
+        self.assertEqual(
+            result.data,
+            {"window_days": 7, "events": [], "total_count": 0},
+        )
 
 
 class CalendarAssistantToolTests(unittest.TestCase):
-    def test_default_query_returns_the_complete_seven_day_result(self) -> None:
+    def test_default_query_returns_the_complete_fourteen_day_result(self) -> None:
         events = [
-            _event("Day six", "2026-07-30T12:00:00+00:00"),
+            _event("Day thirteen", "2026-08-06T12:00:00+00:00"),
         ]
         with mock.patch(
             "clients.google_auth.get_service",
@@ -243,8 +252,21 @@ class CalendarAssistantToolTests(unittest.TestCase):
         ) as fetch:
             result = agent_tools.get_upcoming_calendar_events()
 
-        fetch.assert_called_once_with(mock.ANY, days=7)
-        self.assertEqual(result, {"days_queried": 7, "events": events})
+        fetch.assert_called_once_with(mock.ANY, days=14)
+        self.assertEqual(result, {"days_queried": 14, "events": events})
+
+    def test_query_clamps_days_to_fourteen(self) -> None:
+        with mock.patch(
+            "clients.google_auth.get_service",
+            return_value=object(),
+        ), mock.patch(
+            "clients.calendar_client.get_upcoming_calendar_events",
+            return_value=[],
+        ) as fetch:
+            result = agent_tools.get_upcoming_calendar_events(days=30)
+
+        fetch.assert_called_once_with(mock.ANY, days=14)
+        self.assertEqual(result, {"days_queried": 14, "events": []})
 
 
 if __name__ == "__main__":
