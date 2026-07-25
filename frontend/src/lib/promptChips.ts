@@ -10,7 +10,7 @@ export const OPERATION_PROMPT_CHIPS: ReadonlyArray<OperationPromptChip> = [
   },
   {
     label: 'Schedule',
-    query: 'Show my calendar events for the next two weeks.',
+    query: 'Show my calendar events for the next seven days.',
   },
   {
     label: 'F1 Standings',

@@ -84,18 +84,16 @@ def get_f1_season_calendar() -> dict[str, Any]:
     )
 
 
-def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
+def get_upcoming_calendar_events(days: int = 7) -> dict[str, Any]:
     """Retrieve upcoming Google Calendar events beyond the HUD viewport.
 
     Queries the operator's primary Google Calendar for scheduled events within
-    a configurable forward-looking window. Extends the default 48-hour HUD cap
-    up to 14 days, enabling multi-week scheduling awareness and semantic
-    event search by the agent.
+    the seven-day calendar horizon, enabling awareness of events hidden behind
+    the HUD's focused 48-hour viewport.
 
     Args:
         days: Number of days into the future to query. Must be between 1 and
-            14 inclusive. Values outside this range are clamped. Defaults to
-            14.
+            7 inclusive. Values outside this range are clamped. Defaults to 7.
 
     Returns:
         dict: On success, a payload with ``days_queried`` (int) and ``events``
@@ -104,7 +102,7 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
             or Google Workspace service is offline."}``. On other failures,
             ``{"error": "Calendar data unavailable."}``.
     """
-    days = max(1, min(14, days))
+    days = max(1, min(7, days))
     try:
         from clients.google_auth import get_service
 
@@ -307,12 +305,12 @@ def register_native_capabilities() -> None:
                         "type": "integer",
                         "description": (
                             "Number of days into the future to query. Must be "
-                            "between 1 and 14 inclusive. Values outside this "
-                            "range are clamped. Defaults to 14."
+                            "between 1 and 7 inclusive. Values outside this "
+                            "range are clamped. Defaults to 7."
                         ),
                         "minimum": 1,
-                        "maximum": 14,
-                        "default": 14,
+                        "maximum": 7,
+                        "default": 7,
                     }
                 },
                 "required": [],
