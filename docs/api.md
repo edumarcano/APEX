@@ -695,7 +695,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
 
-**Client-display exposure:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries) without re-deriving them from `answer` text. Exposure is controlled by each capability's `expose_to_client_display` flag in `core/agent/capabilities.py`. The six native capabilities currently exposed are: `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`.
+**Client-display exposure:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries, and approved MCP results) without re-deriving them from `answer` text. Exposure is controlled by each capability's `expose_to_client_display` flag. The six native capabilities currently exposed are `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, and `get_briefing_history`. The tracked GitHub, Brave Search, and Alpha Vantage presets also enable generic client presentation for their explicitly allowlisted tools; arbitrary MCP server entries remain hidden by default.
 
 **Response `403`** — Assistant interface disabled via runtime settings (`assistant.enabled` / `ask_apex.enabled`)
 ```json
@@ -776,7 +776,37 @@ When `mcp.enabled` is false or the manager was not started, the response reports
 | `servers[].reason` | string | Stable per-server reason |
 | `servers[].registered_tools` | string[] | Namespaced capability names registered from the allowlist |
 
-Non-secret MCP configuration lives under `mcp` in `config.json` (overlaid by `config.local.json`): `enabled`, per-server `transport` / `url` or `command`+`args`, `tool_allowlist`, `tool_risks`, timeouts, and env-var **name** references (`auth_env`, `header_env`). Tokens stay in `.env`. Each allowlisted tool must also have an explicit `tool_risks` entry of `read`, `write`, or `destructive`; tools without one are not registered.
+Non-secret MCP configuration lives under `mcp` in `config.json` (overlaid by `config.local.json`). The tracked configuration includes disabled presets for GitHub, Brave Search, and Alpha Vantage; integrations remain inert until both the top-level runtime and an individual server are enabled locally.
+
+| Server setting | Purpose |
+|---|---|
+| `transport`, `url`, `command`, `args`, `cwd` | HTTP or local stdio connection |
+| `tool_allowlist` | Exact remote tool names eligible for registration |
+| `tool_risks` | Required local `read`, `write`, or `destructive` classification |
+| `tool_argument_maximums` | Optional stricter numeric argument limits applied to discovered schemas |
+| `expose_to_client_display` | Allows approved results to appear in the generic MCP HUD card |
+| `timeout_seconds` | Per-tool invocation timeout |
+| `connect_timeout_seconds` | Separate connection or interactive OAuth timeout |
+| `max_output_chars` | Maximum serialized result size before model and HUD delivery |
+| `auth_env`, `header_env` | Environment-variable **names** containing bearer or header credentials |
+| `oauth` | Enables FastMCP browser OAuth for an HTTP server |
+
+Each allowlisted tool must have an explicit `tool_risks` entry or it is not registered. Tokens stay outside tracked configuration. Alpha Vantage OAuth state is stored in the operating-system credential manager under the `APEX MCP OAuth` service rather than in the repository.
+
+To enable one preset, copy only the enable flags into `config.local.json`; the recursive overlay retains the tracked endpoint, allowlist, and limits:
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "servers": {
+      "github": { "enabled": true }
+    }
+  }
+}
+```
+
+GitHub requires `GITHUB_PERSONAL_ACCESS_TOKEN` and uses the official remote server's read-only endpoint. Brave requires `BRAVE_API_KEY`, Node.js 22 or later, and `npx`; it does not replace scheduled news telemetry. Enabling Alpha Vantage starts browser authorization and keeps the native cached market ticker active independently.
 
 ---
 

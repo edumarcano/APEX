@@ -1,4 +1,12 @@
-import { AlertCircle, Calendar, CloudRain, Flag, History, ListTodo } from 'lucide-react'
+import {
+  AlertCircle,
+  Calendar,
+  CloudRain,
+  Flag,
+  History,
+  ListTodo,
+  Network,
+} from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 
 import type { ActiveReminder, ToolOutputItem } from '../types/telemetry'
@@ -79,6 +87,11 @@ const CARD_HEADER =
 const CARD_BODY = 'px-3 py-2.5'
 const LIST_SCROLL =
   'max-h-48 min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin sm:max-h-56'
+const MCP_PROVIDER_LABELS: Record<string, string> = {
+  github: 'GitHub',
+  brave: 'Brave Search',
+  alphavantage: 'Alpha Vantage',
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -86,6 +99,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatToolLabel(name: string): string {
   return name.replace(/^get_/, '').replace(/_/g, ' ')
+}
+
+function parseMcpToolName(
+  name: string,
+): { provider: string; operation: string } | null {
+  for (const [prefix, provider] of Object.entries(MCP_PROVIDER_LABELS)) {
+    const marker = `${prefix}_`
+    if (name.startsWith(marker) && name.length > marker.length) {
+      const remoteName = name.slice(marker.length)
+      const operationName = remoteName.startsWith(marker)
+        ? remoteName.slice(marker.length)
+        : remoteName
+      return {
+        provider,
+        operation: operationName.replace(/_/g, ' '),
+      }
+    }
+  }
+  return null
 }
 
 function formatDisplayDate(isoDate: string): string {
@@ -823,6 +855,52 @@ function resolveErrorMessage(output: unknown): string {
   return 'Tool execution failed.'
 }
 
+function formatMcpResult(output: unknown): string {
+  if (typeof output === 'string') {
+    return truncateText(output, 2400)
+  }
+  try {
+    return truncateText(JSON.stringify(output, null, 2), 2400)
+  } catch {
+    return 'Structured result could not be displayed.'
+  }
+}
+
+function McpResultCard({
+  item,
+  provider,
+  operation,
+}: {
+  item: ToolOutputItem
+  provider: string
+  operation: string
+}): ReactElement {
+  return (
+    <ToolCardFrame
+      title={operation}
+      icon={<Network className="size-3.5" aria-hidden />}
+      durationMs={item.duration_ms}
+      accentClass="text-[#C084FC]"
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-wider">
+        <span className="rounded-full border border-[#7E22CE]/35 bg-[#7E22CE]/10 px-2 py-0.5 text-[#D8B4FE]">
+          {provider}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[#6EE7B7]">
+          <span
+            className="size-1.5 rounded-full bg-[#10B981]"
+            aria-hidden
+          />
+          Success
+        </span>
+      </div>
+      <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-black/20 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-zinc-300 scrollbar-thin">
+        {formatMcpResult(item.output)}
+      </pre>
+    </ToolCardFrame>
+  )
+}
+
 function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
   if (item.status.toLowerCase() === 'error') {
     return (
@@ -830,6 +908,17 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
         toolName={item.name}
         durationMs={item.duration_ms}
         message={resolveErrorMessage(item.output)}
+      />
+    )
+  }
+
+  const mcpTool = parseMcpToolName(item.name)
+  if (mcpTool) {
+    return (
+      <McpResultCard
+        item={item}
+        provider={mcpTool.provider}
+        operation={mcpTool.operation}
       />
     )
   }

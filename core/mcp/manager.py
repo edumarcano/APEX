@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import copy
 import logging
 import os
 import re
@@ -12,7 +13,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastmcp import Client
+from fastmcp.client.auth import OAuth
 from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+from key_value.aio.stores.keyring import KeyringStore
 
 from core.agent.capabilities import (
     CapabilityDescriptor,
@@ -34,6 +37,7 @@ from core.mcp.models import (
 _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_NAME_SANITIZE = re.compile(r"[^a-z0-9_]+")
+_OAUTH_KEYRING_SERVICE = "APEX MCP OAuth"
 _STATUS_PRIORITY: tuple[McpServerStatusValue, ...] = (
     "authentication-required",
     "degraded",
@@ -246,7 +250,7 @@ class MCPClientManager:
         try:
             await asyncio.wait_for(
                 client.__aenter__(),
-                timeout=config.timeout_seconds,
+                timeout=config.connect_timeout_seconds,
             )
         except asyncio.TimeoutError:
             _LOGGER.warning("Timed out connecting to MCP server %s.", server_id)
@@ -347,7 +351,7 @@ class MCPClientManager:
                 )
                 continue
 
-            input_schema = getattr(tool, "inputSchema", None)
+            input_schema = copy.deepcopy(getattr(tool, "inputSchema", None))
             if not isinstance(input_schema, dict):
                 input_schema = {"type": "object", "properties": {}}
             elif input_schema.get("type") != "object":
@@ -355,6 +359,10 @@ class MCPClientManager:
                     "type": "object",
                     "properties": input_schema.get("properties") or {},
                 }
+            input_schema = _apply_argument_maximums(
+                input_schema,
+                config.tool_argument_maximums.get(remote_name, {}),
+            )
 
             description = getattr(tool, "description", None)
             if not isinstance(description, str) or not description.strip():
@@ -372,7 +380,7 @@ class MCPClientManager:
                 risk=risk,
                 expose_to_assistant=True,
                 expose_to_mcp_server=False,
-                expose_to_client_display=False,
+                expose_to_client_display=config.expose_to_client_display,
                 timeout_seconds=config.timeout_seconds,
                 max_output_chars=config.max_output_chars,
             )
@@ -505,13 +513,25 @@ def _build_client(
     if config.transport == "http":
         if not config.url:
             raise ValueError("HTTP MCP servers require a url.")
+        if config.oauth and auth_token is not None:
+            raise ValueError("OAuth and bearer authentication cannot both be enabled.")
+        auth: OAuth | str | None = auth_token
+        if config.oauth:
+            auth = OAuth(
+                mcp_url=config.url,
+                client_name="APEX",
+                token_storage=KeyringStore(service_name=_OAUTH_KEYRING_SERVICE),
+                callback_timeout=config.connect_timeout_seconds,
+            )
         transport = StreamableHttpTransport(
             url=config.url,
             headers=headers or None,
-            auth=auth_token,
+            auth=auth,
         )
         return Client(transport, timeout=config.timeout_seconds)
 
+    if config.oauth:
+        raise ValueError("OAuth is supported only for HTTP MCP servers.")
     if not config.command:
         raise ValueError("stdio MCP servers require a command.")
     env: dict[str, str] | None = None
@@ -524,6 +544,32 @@ def _build_client(
         cwd=config.cwd,
     )
     return Client(transport, timeout=config.timeout_seconds)
+
+
+def _apply_argument_maximums(
+    input_schema: dict[str, Any],
+    maximums: dict[str, int],
+) -> dict[str, Any]:
+    """Narrow numeric MCP arguments without widening the remote schema."""
+    properties = input_schema.get("properties")
+    if not isinstance(properties, dict):
+        return input_schema
+
+    for argument_name, configured_maximum in maximums.items():
+        property_schema = properties.get(argument_name)
+        if not isinstance(property_schema, dict):
+            continue
+        if property_schema.get("type") not in ("integer", "number"):
+            continue
+        remote_maximum = property_schema.get("maximum")
+        if isinstance(remote_maximum, (int, float)) and not isinstance(
+            remote_maximum, bool
+        ):
+            property_schema["maximum"] = min(remote_maximum, configured_maximum)
+        else:
+            property_schema["maximum"] = configured_maximum
+
+    return input_schema
 
 
 def _resolve_auth(

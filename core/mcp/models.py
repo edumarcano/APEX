@@ -31,8 +31,12 @@ class McpServerConfig(BaseModel):
     cwd: str | None = None
     tool_allowlist: list[str] = Field(default_factory=list)
     tool_risks: dict[str, McpToolRisk] = Field(default_factory=dict)
+    tool_argument_maximums: dict[str, dict[str, int]] = Field(default_factory=dict)
+    expose_to_client_display: bool = False
     timeout_seconds: float = Field(default=30.0, gt=0)
+    connect_timeout_seconds: float = Field(default=30.0, gt=0)
     max_output_chars: int = Field(default=50_000, gt=0)
+    oauth: bool = False
     auth_env: str | None = None
     header_env: dict[str, str] = Field(default_factory=dict)
 
@@ -98,6 +102,29 @@ def parse_server_config(raw: dict[str, Any]) -> McpServerConfig:
             ):
                 tool_risks[key.strip()] = value.strip().lower()  # type: ignore[assignment]
 
+    maximums_raw = raw.get("tool_argument_maximums", {})
+    tool_argument_maximums: dict[str, dict[str, int]] = {}
+    if isinstance(maximums_raw, dict):
+        for tool_name, arguments_raw in maximums_raw.items():
+            if not isinstance(tool_name, str) or not tool_name.strip():
+                continue
+            if not isinstance(arguments_raw, dict):
+                continue
+            argument_maximums: dict[str, int] = {}
+            for argument_name, maximum_raw in arguments_raw.items():
+                if not isinstance(argument_name, str) or not argument_name.strip():
+                    continue
+                if isinstance(maximum_raw, bool):
+                    continue
+                try:
+                    maximum = int(maximum_raw)
+                except (TypeError, ValueError):
+                    continue
+                if maximum > 0:
+                    argument_maximums[argument_name.strip()] = maximum
+            if argument_maximums:
+                tool_argument_maximums[tool_name.strip()] = argument_maximums
+
     args_raw = raw.get("args", [])
     args: list[str] = []
     if isinstance(args_raw, list):
@@ -117,6 +144,14 @@ def parse_server_config(raw: dict[str, Any]) -> McpServerConfig:
             timeout_seconds = 30.0
     except (TypeError, ValueError):
         timeout_seconds = 30.0
+
+    connect_timeout = raw.get("connect_timeout_seconds", 30.0)
+    try:
+        connect_timeout_seconds = float(connect_timeout)
+        if connect_timeout_seconds <= 0:
+            connect_timeout_seconds = 30.0
+    except (TypeError, ValueError):
+        connect_timeout_seconds = 30.0
 
     max_chars = raw.get("max_output_chars", 50_000)
     try:
@@ -151,6 +186,21 @@ def parse_server_config(raw: dict[str, Any]) -> McpServerConfig:
             'MCP server key "enabled" must be a boolean; defaulting to false.'
         )
 
+    expose_raw = raw.get("expose_to_client_display", False)
+    expose_to_client_display = expose_raw if isinstance(expose_raw, bool) else False
+    if not isinstance(expose_raw, bool):
+        _LOGGER.warning(
+            'MCP server key "expose_to_client_display" must be a boolean; '
+            "defaulting to false."
+        )
+
+    oauth_raw = raw.get("oauth", False)
+    oauth = oauth_raw if isinstance(oauth_raw, bool) else False
+    if not isinstance(oauth_raw, bool):
+        _LOGGER.warning(
+            'MCP server key "oauth" must be a boolean; defaulting to false.'
+        )
+
     return McpServerConfig(
         enabled=enabled,
         transport=transport,
@@ -160,8 +210,12 @@ def parse_server_config(raw: dict[str, Any]) -> McpServerConfig:
         cwd=cwd_value,
         tool_allowlist=allowlist,
         tool_risks=tool_risks,
+        tool_argument_maximums=tool_argument_maximums,
+        expose_to_client_display=expose_to_client_display,
         timeout_seconds=timeout_seconds,
+        connect_timeout_seconds=connect_timeout_seconds,
         max_output_chars=max_output_chars,
+        oauth=oauth,
         auth_env=auth_env_name,
         header_env=header_env,
     )
