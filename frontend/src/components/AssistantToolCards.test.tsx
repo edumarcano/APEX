@@ -56,7 +56,7 @@ describe('AssistantToolCards calendar presentation', () => {
             status: 'ok',
             duration_ms: 12,
             output: {
-              days_queried: 7,
+              days_queried: 14,
               events: [
                 {
                   summary: 'Conference',
@@ -71,7 +71,7 @@ describe('AssistantToolCards calendar presentation', () => {
       />,
     )
 
-    expect(screen.getByText('Next 7 days')).toBeInTheDocument()
+    expect(screen.getByText('Next 14 days')).toBeInTheDocument()
     expect(screen.getByText('Conference')).toBeInTheDocument()
     expect(screen.getByText(/Jul 26 · All day/)).toBeInTheDocument()
   })

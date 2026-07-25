@@ -24,23 +24,26 @@ function nonNegativeInteger(value: unknown): number | null {
 }
 
 function formatStart(start: string, allDay: boolean): string {
-  const parsed = new Date(allDay ? `${start}T00:00:00` : start)
+  const parsed = new Date(allDay ? `${start}T12:00:00` : start)
   if (Number.isNaN(parsed.getTime())) {
     return start
   }
+
+  const day = parsed.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  })
   if (allDay) {
-    const day = parsed.toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    })
     return `${day} · All day`
   }
-  return parsed.toLocaleString(undefined, {
-    weekday: 'short',
-    hour: 'numeric',
+
+  const time = parsed.toLocaleTimeString(undefined, {
+    hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
+  return `${day} at ${time}`
 }
 
 function parseStructuredEvent(value: unknown): CalendarDisplayEvent | null {

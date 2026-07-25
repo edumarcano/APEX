@@ -43,7 +43,13 @@ describe('resolveCalendarTelemetry', () => {
 
     expect(result.items).toHaveLength(2)
     expect(result.items[0].summary).toBe('Within 48 hours')
+    expect(result.items[0].start).toMatch(
+      /^[A-Za-z]+, [A-Za-z]+ \d{1,2} at \d{2}:\d{2}$/,
+    )
     expect(result.items[1].summary).toBe('Day six')
+    expect(result.items[1].start).toMatch(
+      /^[A-Za-z]+, [A-Za-z]+ \d{1,2} · All day$/,
+    )
     expect(result.totalCount).toBe(2)
   })
 
