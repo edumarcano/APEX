@@ -1,5 +1,6 @@
 import logging
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NoReturn
 
 from clients.sports_client import fetch_f1_driver_standings, fetch_f1_season_calendar
 from clients.weather_client import fetch_weather_forecast
@@ -173,30 +174,42 @@ def _gmail_service() -> Any:
     return service
 
 
-def _raise_gmail_capability_error(exc: Exception) -> None:
+def _raise_gmail_capability_error(exc: Exception) -> NoReturn:
     from clients.gmail_client import (
         GmailAuthenticationRequiredError,
         GmailInsufficientScopeError,
     )
 
+    error_category = CapabilityErrorCategory.AUTHENTICATION
     if isinstance(exc, GmailAuthenticationRequiredError):
-        raise CapabilityError(
-            CapabilityErrorCategory.AUTHENTICATION,
-            "Gmail authentication is required.",
-        ) from exc
-    if isinstance(exc, GmailInsufficientScopeError):
-        raise CapabilityError(
-            CapabilityErrorCategory.AUTHENTICATION,
-            "Gmail read permission is required.",
-        ) from exc
-    _LOGGER.warning(
-        "Agent tool unavailable: tool=gmail error_type=%s",
-        type(exc).__name__,
-    )
+        message = "Gmail authentication is required."
+    elif isinstance(exc, GmailInsufficientScopeError):
+        message = "Gmail read permission is required."
+    else:
+        error_category = CapabilityErrorCategory.UPSTREAM_FAILURE
+        message = "Gmail data is unavailable."
+        _LOGGER.warning(
+            "Agent tool unavailable: tool=gmail error_type=%s",
+            type(exc).__name__,
+        )
     raise CapabilityError(
-        CapabilityErrorCategory.UPSTREAM_FAILURE,
-        "Gmail data is unavailable.",
+        error_category,
+        message,
     ) from exc
+
+
+def _invoke_gmail(
+    operation: Callable[..., dict[str, Any]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    try:
+        return operation(_gmail_service(), *args, **kwargs)
+    except CapabilityError:
+        raise
+    except Exception as exc:
+        _raise_gmail_capability_error(exc)
 
 
 def search_gmail(query: str, max_results: int = 10) -> dict[str, Any]:
@@ -218,17 +231,11 @@ def search_gmail(query: str, max_results: int = 10) -> dict[str, Any]:
             CapabilityErrorCategory.INVALID_INPUT,
             "Gmail search query cannot be empty.",
         )
-    try:
-        return fetch_messages(
-            _gmail_service(),
-            query,
-            max_results=max(1, min(_GMAIL_SEARCH_MAX_RESULTS, max_results)),
-        )
-    except CapabilityError:
-        raise
-    except Exception as exc:
-        _raise_gmail_capability_error(exc)
-        raise
+    return _invoke_gmail(
+        fetch_messages,
+        query,
+        max_results=max(1, min(_GMAIL_SEARCH_MAX_RESULTS, max_results)),
+    )
 
 
 def get_gmail_message(message_id: str) -> dict[str, Any]:
@@ -245,13 +252,7 @@ def get_gmail_message(message_id: str) -> dict[str, Any]:
             CapabilityErrorCategory.INVALID_INPUT,
             "Gmail message identifier cannot be empty.",
         )
-    try:
-        return fetch_message(_gmail_service(), message_id)
-    except CapabilityError:
-        raise
-    except Exception as exc:
-        _raise_gmail_capability_error(exc)
-        raise
+    return _invoke_gmail(fetch_message, message_id)
 
 
 def get_active_reminders() -> list[dict[str, Any]]:

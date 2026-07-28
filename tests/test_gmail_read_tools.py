@@ -33,22 +33,50 @@ def _service(
     return service
 
 
+def _message(
+    message_id: str,
+    *,
+    body: str = "",
+    mime_type: str = "text/plain",
+    parts: list[dict] | None = None,
+    sender: str = "",
+    subject: str = "",
+    snippet: str = "",
+    labels: list[str] | None = None,
+) -> dict:
+    headers = [
+        {"name": name, "value": value}
+        for name, value in (
+            ("From", sender),
+            ("Subject", subject),
+            ("Date", "Mon, 27 Jul 2026 09:30:00 -0400"),
+        )
+        if value
+    ]
+    payload: dict = {"mimeType": mime_type, "headers": headers}
+    if parts is not None:
+        payload["parts"] = parts
+    elif body:
+        payload["body"] = {"data": _encoded(body)}
+    return {
+        "id": message_id,
+        "threadId": message_id.replace("message-", "thread-", 1),
+        "labelIds": labels or [],
+        "snippet": snippet,
+        "payload": payload,
+    }
+
+
 class GmailClientTests(unittest.TestCase):
     def test_search_returns_bounded_metadata_and_snippets(self) -> None:
         messages = [
-            {
-                "id": f"message-{index}",
-                "threadId": f"thread-{index}",
-                "labelIds": ["INBOX", "UNREAD"],
-                "snippet": f"Snippet {index}",
-                "payload": {
-                    "headers": [
-                        {"name": "From", "value": f"Sender {index} <sender@test>"},
-                        {"name": "Subject", "value": f"Subject {index}"},
-                        {"name": "Date", "value": "Mon, 27 Jul 2026 09:30:00 -0400"},
-                    ]
-                },
-            }
+            _message(
+                f"message-{index}",
+                sender=f"Sender {index} <sender@test>",
+                subject=f"Subject {index}",
+                snippet=f"Snippet {index}",
+                labels=["INBOX", "UNREAD"],
+            )
             for index in range(3)
         ]
         service = _service(
@@ -88,53 +116,42 @@ class GmailClientTests(unittest.TestCase):
         self.assertEqual(list_call["maxResults"], 2)
 
     def test_message_prefers_plain_text_and_excludes_attachments_and_html(self) -> None:
-        message = {
-            "id": "message-1",
-            "threadId": "thread-1",
-            "labelIds": ["INBOX"],
-            "snippet": "Short preview",
-            "payload": {
-                "mimeType": "multipart/mixed",
-                "headers": [
-                    {"name": "From", "value": "Sender <sender@test>"},
-                    {"name": "Subject", "value": "Quarterly report"},
-                    {"name": "Date", "value": "Mon, 27 Jul 2026 09:30:00 -0400"},
-                ],
-                "parts": [
-                    {
-                        "mimeType": "text/plain",
-                        "body": {"data": _encoded("Plain body\nSecond line")},
+        message = _message(
+            "message-1",
+            mime_type="multipart/mixed",
+            sender="Sender <sender@test>",
+            subject="Quarterly report",
+            snippet="Short preview",
+            labels=["INBOX"],
+            parts=[
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": _encoded("Plain body\nSecond line")},
+                },
+                {
+                    "mimeType": "text/html",
+                    "body": {
+                        "data": _encoded("<p>HTML body</p><script>attack()</script>")
                     },
-                    {
-                        "mimeType": "text/html",
-                        "body": {
-                            "data": _encoded(
-                                "<p>HTML body</p><script>attack()</script>"
-                            )
-                        },
-                    },
-                    {
-                        "mimeType": "text/plain",
-                        "filename": "secret.txt",
-                        "body": {"data": _encoded("Attachment contents")},
-                    },
-                    {
-                        "mimeType": "text/plain",
-                        "headers": [
-                            {
-                                "name": "Content-Disposition",
-                                "value": "attachment",
-                            }
-                        ],
-                        "body": {"data": _encoded("Hidden attachment")},
-                    },
-                    {
-                        "mimeType": "image/png",
-                        "body": {"attachmentId": "embedded-image"},
-                    },
-                ],
-            },
-        }
+                },
+                {
+                    "mimeType": "text/plain",
+                    "filename": "secret.txt",
+                    "body": {"data": _encoded("Attachment contents")},
+                },
+                {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "Content-Disposition", "value": "attachment"}
+                    ],
+                    "body": {"data": _encoded("Hidden attachment")},
+                },
+                {
+                    "mimeType": "image/png",
+                    "body": {"attachmentId": "embedded-image"},
+                },
+            ],
+        )
         service = _service(get_responses=[message])
 
         result = gmail_client.get_gmail_message(service, "message-1")
@@ -150,19 +167,14 @@ class GmailClientTests(unittest.TestCase):
         self.assertEqual(get_call["format"], "full")
 
     def test_html_only_message_becomes_inert_bounded_plain_text(self) -> None:
-        message = {
-            "id": "message-2",
-            "payload": {
-                "mimeType": "text/html",
-                "headers": [],
-                "body": {
-                    "data": _encoded(
-                        "<p>Hello <strong>operator</strong></p>"
-                        "<script>ignore me</script><style>.bad{}</style>"
-                    )
-                },
-            },
-        }
+        message = _message(
+            "message-2",
+            mime_type="text/html",
+            body=(
+                "<p>Hello <strong>operator</strong></p>"
+                "<script>ignore me</script><style>.bad{}</style>"
+            ),
+        )
         service = _service(get_responses=[message])
 
         result = gmail_client.get_gmail_message(service, "message-2")
@@ -172,14 +184,7 @@ class GmailClientTests(unittest.TestCase):
         self.assertNotIn("ignore me", result["body"])
 
     def test_message_body_is_truncated_to_strict_limit(self) -> None:
-        message = {
-            "id": "message-3",
-            "payload": {
-                "mimeType": "text/plain",
-                "headers": [],
-                "body": {"data": _encoded("x" * 13_000)},
-            },
-        }
+        message = _message("message-3", body="x" * 13_000)
         service = _service(get_responses=[message])
 
         result = gmail_client.get_gmail_message(service, "message-3")
@@ -188,19 +193,13 @@ class GmailClientTests(unittest.TestCase):
         self.assertTrue(result["truncated"])
 
     def test_dev_mode_masks_search_and_message_content(self) -> None:
-        metadata = {
-            "id": "message-4",
-            "threadId": "thread-4",
-            "snippet": "Private preview",
-            "payload": {
-                "mimeType": "text/plain",
-                "headers": [
-                    {"name": "From", "value": "Private sender"},
-                    {"name": "Subject", "value": "Private subject"},
-                ],
-                "body": {"data": _encoded("Private body")},
-            },
-        }
+        metadata = _message(
+            "message-4",
+            sender="Private sender",
+            subject="Private subject",
+            snippet="Private preview",
+            body="Private body",
+        )
         search_service = _service(
             list_response={"messages": [{"id": "message-4"}]},
             get_responses=[metadata],

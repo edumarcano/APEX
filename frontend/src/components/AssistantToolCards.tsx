@@ -84,7 +84,7 @@ interface BriefingHistoryPayload {
   error?: string
 }
 
-interface GmailSearchEntry {
+interface GmailMetadata {
   id: string
   thread_id: string
   sender: string
@@ -94,25 +94,23 @@ interface GmailSearchEntry {
   snippet: string
 }
 
-interface GmailSearchPayload {
+interface GmailSearchResult {
   query?: string
   result_count?: number
-  messages?: GmailSearchEntry[]
-  error?: string
+  messages: GmailMetadata[]
 }
 
-interface GmailMessagePayload {
-  id: string
-  thread_id: string
-  sender: string
-  subject: string
-  date: string
-  labels: string[]
-  snippet: string
+interface GmailMessage extends GmailMetadata {
   body: string
   truncated: boolean
-  error?: string
 }
+
+interface ToolErrorPayload {
+  error: string
+}
+
+type GmailSearchPayload = GmailSearchResult | ToolErrorPayload
+type GmailMessagePayload = GmailMessage | ToolErrorPayload
 
 const CARD_SHELL =
   'w-full max-w-full rounded-xl border border-white/10 bg-white/[0.02] backdrop-blur-sm'
@@ -415,30 +413,8 @@ function parseGmailSearchPayload(output: unknown): GmailSearchPayload | null {
 
   const messages = Array.isArray(output.messages)
     ? output.messages
-        .map((entry): GmailSearchEntry | null => {
-          if (!isRecord(entry)) {
-            return null
-          }
-          const id = typeof entry.id === 'string' ? entry.id : null
-          if (!id) {
-            return null
-          }
-          return {
-            id,
-            thread_id:
-              typeof entry.thread_id === 'string' ? entry.thread_id : '',
-            sender: typeof entry.sender === 'string' ? entry.sender : '',
-            subject: typeof entry.subject === 'string' ? entry.subject : '',
-            date: typeof entry.date === 'string' ? entry.date : '',
-            labels: Array.isArray(entry.labels)
-              ? entry.labels.filter(
-                  (label): label is string => typeof label === 'string',
-                )
-              : [],
-            snippet: typeof entry.snippet === 'string' ? entry.snippet : '',
-          }
-        })
-        .filter((entry): entry is GmailSearchEntry => entry !== null)
+        .map(parseGmailMetadata)
+        .filter((entry): entry is GmailMetadata => entry !== null)
     : []
 
   return {
@@ -457,20 +433,21 @@ function parseGmailMessagePayload(output: unknown): GmailMessagePayload | null {
     return null
   }
   if (typeof output.error === 'string') {
-    return {
-      id: '',
-      thread_id: '',
-      sender: '',
-      subject: '',
-      date: '',
-      labels: [],
-      snippet: '',
-      body: '',
-      truncated: false,
-      error: output.error,
-    }
+    return { error: output.error }
   }
-  if (typeof output.id !== 'string' || !output.id) {
+  const metadata = parseGmailMetadata(output)
+  if (!metadata) {
+    return null
+  }
+  return {
+    ...metadata,
+    body: typeof output.body === 'string' ? output.body : '',
+    truncated: output.truncated === true,
+  }
+}
+
+function parseGmailMetadata(output: unknown): GmailMetadata | null {
+  if (!isRecord(output) || typeof output.id !== 'string' || !output.id) {
     return null
   }
   return {
@@ -486,8 +463,6 @@ function parseGmailMessagePayload(output: unknown): GmailMessagePayload | null {
         )
       : [],
     snippet: typeof output.snippet === 'string' ? output.snippet : '',
-    body: typeof output.body === 'string' ? output.body : '',
-    truncated: output.truncated === true,
   }
 }
 
@@ -873,6 +848,24 @@ function CalendarEventsCard({
   )
 }
 
+function GmailLabels({ message }: { message: GmailMetadata }): ReactElement | null {
+  if (message.labels.length === 0) {
+    return null
+  }
+  return (
+    <div className="flex flex-wrap gap-1 pt-0.5">
+      {message.labels.slice(0, 4).map((label) => (
+        <span
+          key={`${message.id}-${label}`}
+          className="rounded-full border border-white/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-500"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function GmailSearchCard({
   durationMs,
   output,
@@ -882,7 +875,7 @@ function GmailSearchCard({
 }): ReactElement {
   const payload = parseGmailSearchPayload(output)
 
-  if (!payload || payload.error) {
+  if (!payload || 'error' in payload) {
     return (
       <ErrorFallbackCard
         toolName="search_gmail"
@@ -892,7 +885,7 @@ function GmailSearchCard({
     )
   }
 
-  const messages = payload.messages ?? []
+  const messages = payload.messages
 
   return (
     <ToolCardFrame
@@ -937,18 +930,7 @@ function GmailSearchCard({
                   {message.snippet}
                 </p>
               ) : null}
-              {message.labels.length > 0 ? (
-                <div className="flex flex-wrap gap-1 pt-0.5">
-                  {message.labels.slice(0, 4).map((label) => (
-                    <span
-                      key={`${message.id}-${label}`}
-                      className="rounded-full border border-white/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-500"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              <GmailLabels message={message} />
             </li>
           ))
         )}
@@ -966,7 +948,7 @@ function GmailMessageCard({
 }): ReactElement {
   const payload = parseGmailMessagePayload(output)
 
-  if (!payload || payload.error) {
+  if (!payload || 'error' in payload) {
     return (
       <ErrorFallbackCard
         toolName="get_gmail_message"
@@ -997,18 +979,7 @@ function GmailMessageCard({
             </span>
           ) : null}
         </div>
-        {payload.labels.length > 0 ? (
-          <div className="flex flex-wrap gap-1 pt-0.5">
-            {payload.labels.slice(0, 4).map((label) => (
-              <span
-                key={`${payload.id}-${label}`}
-                className="rounded-full border border-white/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-500"
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        <GmailLabels message={payload} />
       </div>
       <div className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-sm leading-relaxed text-zinc-300 scrollbar-thin">
         {payload.body || payload.snippet || 'This message has no readable text body.'}

@@ -97,6 +97,10 @@ def _sanitize_plain_text(value: str, *, limit: int) -> tuple[str, bool]:
     return cleaned[:limit].rstrip(), True
 
 
+def _bounded_text(value: Any, *, limit: int) -> str:
+    return _sanitize_plain_text(str(value or ""), limit=limit)[0]
+
+
 def _decode_body_data(data: Any) -> str:
     if not isinstance(data, str) or not data:
         return ""
@@ -172,8 +176,7 @@ def _headers(payload: Any) -> dict[str, str]:
         name = header.get("name")
         value = header.get("value")
         if isinstance(name, str) and isinstance(value, str):
-            cleaned, _ = _sanitize_plain_text(value, limit=_MAX_HEADER_CHARS)
-            result[name.lower()] = cleaned
+            result[name.lower()] = _bounded_text(value, limit=_MAX_HEADER_CHARS)
     return result
 
 
@@ -182,10 +185,49 @@ def _labels(message: dict[str, Any]) -> list[str]:
     for label in (message.get("labelIds") or [])[:_MAX_LABELS]:
         if not isinstance(label, str):
             continue
-        cleaned, _ = _sanitize_plain_text(label, limit=50)
+        cleaned = _bounded_text(label, limit=50)
         if cleaned:
             labels.append(cleaned)
     return labels
+
+
+def _message_metadata(
+    message: dict[str, Any],
+    *,
+    fallback_id: str,
+    fallback_thread_id: str = "",
+) -> dict[str, Any]:
+    headers = _headers(message.get("payload"))
+    return {
+        "id": _bounded_text(
+            message.get("id") or fallback_id, limit=_MAX_IDENTIFIER_CHARS
+        ),
+        "thread_id": _bounded_text(
+            message.get("threadId") or fallback_thread_id,
+            limit=_MAX_IDENTIFIER_CHARS,
+        ),
+        "sender": headers.get("from", ""),
+        "subject": headers.get("subject", ""),
+        "date": headers.get("date", ""),
+        "labels": _labels(message),
+        "snippet": _bounded_text(
+            message.get("snippet"), limit=_MAX_SNIPPET_CHARS
+        ),
+    }
+
+
+def _mask_private_message_fields(message: dict[str, Any]) -> None:
+    if not is_dev_mode():
+        return
+    message.update(
+        {
+            "sender": _DEV_MASKED_VALUE,
+            "subject": _DEV_MASKED_SUBJECT,
+            "snippet": _DEV_MASKED_VALUE,
+        }
+    )
+    if "body" in message:
+        message.update({"body": _DEV_MASKED_VALUE, "truncated": False})
 
 
 def _raise_typed_gmail_error(exc: HttpError) -> None:
@@ -230,9 +272,8 @@ def search_gmail(
         for item in messages[:bounded_count]:
             if not isinstance(item, dict) or not item.get("id"):
                 continue
-            requested_id, _ = _sanitize_plain_text(
-                str(item["id"]),
-                limit=_MAX_IDENTIFIER_CHARS,
+            requested_id = _bounded_text(
+                item["id"], limit=_MAX_IDENTIFIER_CHARS
             )
             if not requested_id:
                 continue
@@ -247,37 +288,15 @@ def search_gmail(
                 )
                 .execute()
             )
-            headers = _headers(message.get("payload"))
-            snippet, _ = _sanitize_plain_text(
-                str(message.get("snippet") or ""),
-                limit=_MAX_SNIPPET_CHARS,
+            result = _message_metadata(
+                message,
+                fallback_id=requested_id,
+                fallback_thread_id=str(item.get("threadId") or ""),
             )
-            result = {
-                "id": _sanitize_plain_text(
-                    str(message.get("id") or requested_id),
-                    limit=_MAX_IDENTIFIER_CHARS,
-                )[0],
-                "thread_id": _sanitize_plain_text(
-                    str(message.get("threadId") or item.get("threadId") or ""),
-                    limit=_MAX_IDENTIFIER_CHARS,
-                )[0],
-                "sender": headers.get("from", ""),
-                "subject": headers.get("subject", ""),
-                "date": headers.get("date", ""),
-                "labels": _labels(message),
-                "snippet": snippet,
-            }
-            if is_dev_mode():
-                result.update(
-                    {
-                        "sender": _DEV_MASKED_VALUE,
-                        "subject": _DEV_MASKED_SUBJECT,
-                        "snippet": _DEV_MASKED_VALUE,
-                    }
-                )
+            _mask_private_message_fields(result)
             results.append(result)
         return {
-            "query": _sanitize_plain_text(query, limit=500)[0],
+            "query": _bounded_text(query, limit=500),
             "result_count": len(results),
             "messages": results,
         }
@@ -295,39 +314,13 @@ def get_gmail_message(service: Any, message_id: str) -> dict[str, Any]:
             .get(userId="me", id=message_id, format="full")
             .execute()
         )
-        headers = _headers(message.get("payload"))
         body, truncated = _payload_text(message.get("payload"))
-        snippet, _ = _sanitize_plain_text(
-            str(message.get("snippet") or ""),
-            limit=_MAX_SNIPPET_CHARS,
+        result = _message_metadata(
+            message,
+            fallback_id=message_id,
         )
-        result: dict[str, Any] = {
-            "id": _sanitize_plain_text(
-                str(message.get("id") or message_id),
-                limit=_MAX_IDENTIFIER_CHARS,
-            )[0],
-            "thread_id": _sanitize_plain_text(
-                str(message.get("threadId") or ""),
-                limit=_MAX_IDENTIFIER_CHARS,
-            )[0],
-            "sender": headers.get("from", ""),
-            "subject": headers.get("subject", ""),
-            "date": headers.get("date", ""),
-            "labels": _labels(message),
-            "snippet": snippet,
-            "body": body,
-            "truncated": truncated,
-        }
-        if is_dev_mode():
-            result.update(
-                {
-                    "sender": _DEV_MASKED_VALUE,
-                    "subject": _DEV_MASKED_SUBJECT,
-                    "snippet": _DEV_MASKED_VALUE,
-                    "body": _DEV_MASKED_VALUE,
-                    "truncated": False,
-                }
-            )
+        result.update({"body": body, "truncated": truncated})
+        _mask_private_message_fields(result)
         return result
     except HttpError as exc:
         _raise_typed_gmail_error(exc)
