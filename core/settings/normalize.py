@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 from core.settings.models import (
@@ -18,6 +19,7 @@ from core.settings.models import (
     McpServerEnablementSettings,
     McpServersSettings,
     McpSettings,
+    MCP_PROVIDER_IDS,
     ModulesSettings,
     RuntimeSettingsSnapshot,
     SettingsPatch,
@@ -33,9 +35,14 @@ _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 _EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
     {"features", "modules", "ask_apex", "briefing", "tts_settings", "mcp"}
 )
-_MCP_PROVIDER_KEYS: frozenset[str] = frozenset(
-    {"github", "brave", "alphavantage"}
-)
+
+
+@dataclass
+class NormalizationIssues:
+    """Structured validation diagnostics collected while normalizing a layer."""
+
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def recursive_overlay(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
@@ -57,7 +64,7 @@ def normalize_layer(
     raw: dict[str, Any],
     *,
     layer_name: str,
-    validation_errors: list[str] | None = None,
+    issues: NormalizationIssues | None = None,
 ) -> dict[str, Any]:
     """
     Normalize a single config layer for editable settings.
@@ -91,26 +98,26 @@ def normalize_layer(
 
         if key == "features":
             normalized["features"] = _normalize_features(
-                value, layer_name, validation_errors
+                value, layer_name, issues
             )
         elif key == "modules":
             normalized["modules"] = _normalize_modules(
-                value, layer_name, validation_errors
+                value, layer_name, issues
             )
         elif key == "ask_apex":
-            ask_apex = _normalize_ask_apex(value, layer_name, validation_errors)
+            ask_apex = _normalize_ask_apex(value, layer_name, issues)
             if ask_apex:
                 normalized["ask_apex"] = ask_apex
         elif key == "briefing":
-            briefing = _normalize_briefing(value, layer_name, validation_errors)
+            briefing = _normalize_briefing(value, layer_name, issues)
             if briefing:
                 normalized["briefing"] = briefing
         elif key == "tts_settings":
-            tts = _normalize_tts_settings(value, layer_name, validation_errors)
+            tts = _normalize_tts_settings(value, layer_name, issues)
             if tts:
                 normalized["tts_settings"] = tts
         elif key == "mcp":
-            mcp = _normalize_mcp_settings(value, layer_name, validation_errors)
+            mcp = _normalize_mcp_settings(value, layer_name, issues)
             if mcp:
                 normalized["mcp"] = mcp
 
@@ -118,13 +125,13 @@ def normalize_layer(
 
 
 def _normalize_mcp_settings(
-    value: Any, layer_name: str, errors: list[str] | None
+    value: Any, layer_name: str, issues: NormalizationIssues | None
 ) -> dict[str, Any]:
     """Extract editable MCP booleans while leaving advanced config file-only."""
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
         if value is not None:
-            _record_warning(errors, "mcp must be a JSON object; disabling MCP")
+            _record_warning(issues, "mcp must be a JSON object; disabling MCP")
             _LOGGER.warning('Config key "mcp" in %s must be a JSON object.', layer_name)
         return result
 
@@ -132,7 +139,7 @@ def _normalize_mcp_settings(
     if isinstance(enabled, bool):
         result["enabled"] = enabled
     elif enabled is not None:
-        _record_warning(errors, "mcp.enabled must be a boolean; disabling MCP")
+        _record_warning(issues, "mcp.enabled must be a boolean; disabling MCP")
         _LOGGER.warning("mcp.enabled in %s must be a boolean; disabling.", layer_name)
 
     servers_raw = value.get("servers")
@@ -140,19 +147,19 @@ def _normalize_mcp_settings(
         return result
     if not isinstance(servers_raw, dict):
         _record_warning(
-            errors, "mcp.servers must be a JSON object; disabling providers"
+            issues, "mcp.servers must be a JSON object; disabling providers"
         )
         _LOGGER.warning("mcp.servers in %s must be a JSON object.", layer_name)
         return result
 
     servers: dict[str, dict[str, bool]] = {}
-    for provider in _MCP_PROVIDER_KEYS:
+    for provider in MCP_PROVIDER_IDS:
         provider_raw = servers_raw.get(provider)
         if provider_raw is None:
             continue
         if not isinstance(provider_raw, dict):
             _record_warning(
-                errors, f"mcp.servers.{provider} must be a JSON object; disabling"
+                issues, f"mcp.servers.{provider} must be a JSON object; disabling"
             )
             _LOGGER.warning(
                 "mcp.servers.%s in %s must be a JSON object; disabling.",
@@ -165,7 +172,7 @@ def _normalize_mcp_settings(
             servers[provider] = {"enabled": provider_enabled}
         elif provider_enabled is not None:
             _record_warning(
-                errors,
+                issues,
                 f"mcp.servers.{provider}.enabled must be a boolean; disabling",
             )
             _LOGGER.warning(
@@ -178,18 +185,18 @@ def _normalize_mcp_settings(
     return result
 
 
-def _record_error(errors: list[str] | None, message: str) -> None:
-    if errors is not None:
-        errors.append(message)
+def _record_error(issues: NormalizationIssues | None, message: str) -> None:
+    if issues is not None:
+        issues.errors.append(message)
 
 
-def _record_warning(errors: list[str] | None, message: str) -> None:
-    if errors is not None:
-        errors.append(f"warning: {message}")
+def _record_warning(issues: NormalizationIssues | None, message: str) -> None:
+    if issues is not None:
+        issues.warnings.append(message)
 
 
 def _normalize_features(
-    value: Any, layer_name: str, errors: list[str] | None
+    value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, bool]:
     result: dict[str, bool] = {}
     if not isinstance(value, dict):
@@ -219,7 +226,7 @@ def _normalize_features(
 
 
 def _normalize_modules(
-    value: Any, layer_name: str, errors: list[str] | None
+    value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, bool]:
     result: dict[str, bool] = {}
     if not isinstance(value, dict):
@@ -249,7 +256,7 @@ def _normalize_modules(
 
 
 def _normalize_ask_apex(
-    value: Any, layer_name: str, errors: list[str] | None
+    value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
@@ -315,7 +322,7 @@ def _normalize_ask_apex(
 
 
 def _coerce_profile(
-    raw: Any, *, key: str, layer_name: str, errors: list[str] | None
+    raw: Any, *, key: str, layer_name: str, errors: NormalizationIssues | None
 ) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
@@ -340,7 +347,7 @@ def _coerce_profile(
 
 
 def _normalize_tts_settings(
-    value: Any, layer_name: str, errors: list[str] | None
+    value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
@@ -373,7 +380,7 @@ def _normalize_tts_settings(
 
 
 def _normalize_briefing(
-    value: Any, layer_name: str, errors: list[str] | None
+    value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
@@ -398,7 +405,7 @@ def _normalize_briefing(
 
 
 def _coerce_briefing_mode(
-    raw: Any, *, layer_name: str, errors: list[str] | None
+    raw: Any, *, layer_name: str, errors: NormalizationIssues | None
 ) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
@@ -421,7 +428,7 @@ def _coerce_briefing_mode(
 
 
 def _coerce_voice_mode(
-    raw: Any, *, layer_name: str, errors: list[str] | None
+    raw: Any, *, layer_name: str, errors: NormalizationIssues | None
 ) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
@@ -444,7 +451,7 @@ def _coerce_voice_mode(
 
 
 def _coerce_engine(
-    raw: Any, *, layer_name: str, errors: list[str] | None
+    raw: Any, *, layer_name: str, errors: NormalizationIssues | None
 ) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
@@ -473,7 +480,7 @@ def _coerce_engine(
 
 
 def _coerce_gender(
-    raw: Any, *, layer_name: str, errors: list[str] | None
+    raw: Any, *, layer_name: str, errors: NormalizationIssues | None
 ) -> str | None:
     if not isinstance(raw, str):
         if raw is not None:
@@ -559,7 +566,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
                         mcp_servers_raw.get(provider, {}).get("enabled", False)
                     )
                 )
-                for provider in _MCP_PROVIDER_KEYS
+                for provider in MCP_PROVIDER_IDS
                 if isinstance(mcp_servers_raw.get(provider, {}), dict)
             }
         ),

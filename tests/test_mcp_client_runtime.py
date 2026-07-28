@@ -328,8 +328,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         set_mcp_manager(manager)
         with self._patch_inmemory_client():
             await manager.start()
-            if manager._discovery_tasks:
-                await asyncio.gather(*manager._discovery_tasks)
+            await manager._wait_for_discovery()
         return manager
 
     async def test_no_mcp_config_leaves_natives_only(self) -> None:
@@ -367,7 +366,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         with self._patch_inmemory_client():
             await manager.reconfigure(enabled)
-            await asyncio.gather(*manager._discovery_tasks)
+            await manager._wait_for_discovery()
         self.assertIsNotNone(get_capability_descriptor("demo_echo"))
         self.assertEqual(manager.status_snapshot().servers[0].status, "connected")
 
@@ -656,8 +655,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         manager = MCPClientManager(config)
         self._manager = manager
         await manager.start()
-        if manager._discovery_tasks:
-            await asyncio.gather(*manager._discovery_tasks)
+        await manager._wait_for_discovery()
         snapshot = manager.status_snapshot()
         self.assertEqual(snapshot.servers[0].status, "degraded")
         self.assertIsNone(get_capability_descriptor("offline_echo"))

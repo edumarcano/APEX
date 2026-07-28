@@ -1,4 +1,7 @@
 import type { AssistantProfile, TtsEngine } from './telemetry'
+import type { McpProviderId } from '../lib/mcpProviders'
+
+export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
@@ -37,8 +40,6 @@ export interface VoiceSettings {
   gender: VoiceGender
   mode: VoiceMode
 }
-
-export type McpProviderId = 'github' | 'brave' | 'alphavantage'
 
 export interface McpServerEnablementSettings {
   enabled: boolean

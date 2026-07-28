@@ -65,8 +65,7 @@ class MCPClientManager:
         self._config = config
         self._loop: asyncio.AbstractEventLoop | None = None
         self._servers: dict[str, _ServerRuntime] = {}
-        self._discovery_tasks: list[asyncio.Task[None]] = []
-        self._discovery_tasks_by_server: dict[str, asyncio.Task[None]] = {}
+        self._discovery_tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = threading.RLock()
         self._reconfigure_lock = asyncio.Lock()
         self._started = False
@@ -173,12 +172,12 @@ class MCPClientManager:
     async def shutdown(self) -> None:
         """Cancel discovery, close transports, and unregister MCP capabilities."""
         self._shutting_down = True
-        for task in self._discovery_tasks:
+        tasks = list(self._discovery_tasks.values())
+        for task in tasks:
             task.cancel()
-        if self._discovery_tasks:
-            await asyncio.gather(*self._discovery_tasks, return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         self._discovery_tasks.clear()
-        self._discovery_tasks_by_server.clear()
 
         with self._lock:
             server_ids = list(self._servers.keys())
@@ -318,15 +317,31 @@ class MCPClientManager:
             self._connect_and_discover(server_id, generation),
             name=f"mcp-discover-{server_id}",
         )
-        self._discovery_tasks.append(task)
-        self._discovery_tasks_by_server[server_id] = task
+        self._discovery_tasks[server_id] = task
+        task.add_done_callback(
+            lambda completed, sid=server_id: self._discard_discovery_task(
+                sid, completed
+            )
+        )
 
     async def _cancel_discovery(self, server_id: str) -> None:
-        task = self._discovery_tasks_by_server.pop(server_id, None)
+        task = self._discovery_tasks.pop(server_id, None)
         if task is None:
             return
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+    def _discard_discovery_task(
+        self, server_id: str, task: asyncio.Task[None]
+    ) -> None:
+        if self._discovery_tasks.get(server_id) is task:
+            self._discovery_tasks.pop(server_id, None)
+
+    async def _wait_for_discovery(self) -> None:
+        """Wait for the currently scheduled discovery tasks (test helper)."""
+        tasks = list(self._discovery_tasks.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def _is_current(self, server_id: str, generation: int) -> bool:
         with self._lock:

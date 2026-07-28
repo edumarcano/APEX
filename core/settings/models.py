@@ -27,6 +27,7 @@ VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
 SETTINGS_SCHEMA_VERSION: int = 4
+MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
 class FeaturesSettings(BaseModel):

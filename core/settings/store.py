@@ -13,6 +13,7 @@ from typing import Any
 
 from core.settings.models import RuntimeSettingsSnapshot, SettingsPatch
 from core.settings.normalize import (
+    NormalizationIssues,
     apply_patch_to_snapshot,
     normalize_layer,
     patch_to_ondisk,
@@ -116,33 +117,26 @@ class RuntimeSettingsStore:
                         local_warning,
                     )
                 else:
-                    validation_errors: list[str] = []
+                    issues = NormalizationIssues()
                     local_normalized = normalize_layer(
                         local_raw,
                         layer_name="config.local.json",
-                        validation_errors=validation_errors,
+                        issues=issues,
                     )
-                    fatal_errors = [
-                        error
-                        for error in validation_errors
-                        if not error.startswith("warning: ")
-                    ]
-                    warnings = [
-                        error.removeprefix("warning: ")
-                        for error in validation_errors
-                        if error.startswith("warning: ")
-                    ]
-                    if fatal_errors:
+                    if issues.errors:
                         warning = (
                             "Invalid config.local.json; using tracked defaults: "
-                            + "; ".join(fatal_errors)
+                            + "; ".join(issues.errors)
                         )
                         local_normalized = {}
                         _LOGGER.warning(warning)
                     else:
                         local_active = True
-                        if warnings:
-                            warning = "Configuration warning: " + "; ".join(warnings)
+                        if issues.warnings:
+                            warning = (
+                                "Configuration warning: "
+                                + "; ".join(issues.warnings)
+                            )
             else:
                 local_normalized = {}
 
@@ -173,17 +167,12 @@ class RuntimeSettingsStore:
 
             latest_raw = self._load_latest_raw_for_write()
             next_raw = recursive_overlay(latest_raw, patch_ondisk)
-            next_validation: list[str] = []
+            next_issues = NormalizationIssues()
             next_local = normalize_layer(
                 next_raw,
                 layer_name="config.local.json",
-                validation_errors=next_validation,
+                issues=next_issues,
             )
-            next_warnings = [
-                error.removeprefix("warning: ")
-                for error in next_validation
-                if error.startswith("warning: ")
-            ]
 
             prior_snapshot = self._snapshot
             prior_local = copy_dict(self._local_ondisk)
@@ -208,8 +197,8 @@ class RuntimeSettingsStore:
             self._local_file_present = True
             self._local_override_active = True
             self._load_warning = (
-                "Configuration warning: " + "; ".join(next_warnings)
-                if next_warnings
+                "Configuration warning: " + "; ".join(next_issues.warnings)
+                if next_issues.warnings
                 else None
             )
             self._snapshot = merged_snapshot
@@ -226,18 +215,13 @@ class RuntimeSettingsStore:
         if warning:
             return {}
 
-        validation_errors: list[str] = []
+        issues = NormalizationIssues()
         normalize_layer(
             raw,
             layer_name="config.local.json",
-            validation_errors=validation_errors,
+            issues=issues,
         )
-        fatal_errors = [
-            error
-            for error in validation_errors
-            if not error.startswith("warning: ")
-        ]
-        if not fatal_errors:
+        if not issues.errors:
             return raw
 
         # The invalid editable layer was never activated. Preserve unrelated

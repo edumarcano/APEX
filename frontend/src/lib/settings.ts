@@ -14,6 +14,7 @@ import type {
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
+import { MCP_PROVIDER_IDS } from './mcpProviders'
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
   'comet',
@@ -118,9 +119,8 @@ function parseMcpSettings(value: unknown): McpSettings | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' || !isRecord(value.servers)) {
     return null
   }
-  const providers = ['github', 'brave', 'alphavantage'] as const
   const parsedServers: Partial<McpSettings['servers']> = {}
-  for (const provider of providers) {
+  for (const provider of MCP_PROVIDER_IDS) {
     const server = value.servers[provider]
     if (!isRecord(server) || typeof server.enabled !== 'boolean') {
       return null
@@ -295,7 +295,7 @@ export function diffSettingsPatch(
   }
 
   const mcpServers: NonNullable<SettingsPatch['mcp']>['servers'] = {}
-  for (const provider of ['github', 'brave', 'alphavantage'] as const) {
+  for (const provider of MCP_PROVIDER_IDS) {
     if (baseline.mcp.servers[provider].enabled !== draft.mcp.servers[provider].enabled) {
       mcpServers[provider] = { enabled: draft.mcp.servers[provider].enabled }
     }
