@@ -1,14 +1,22 @@
 import logging
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NoReturn
 
 from clients.sports_client import fetch_f1_driver_standings, fetch_f1_season_calendar
 from clients.weather_client import fetch_weather_forecast
-from core.agent.capabilities import CapabilityDescriptor, register_capability
+from core.agent.capabilities import (
+    CapabilityDescriptor,
+    CapabilityError,
+    CapabilityErrorCategory,
+    register_capability,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 _NATIVE_TIMEOUT_SECONDS = 30.0
 _NATIVE_MAX_OUTPUT_CHARS = 50_000
+_GMAIL_SEARCH_MAX_RESULTS = 20
+_GMAIL_OUTPUT_MAX_CHARS = 50_000
 
 
 def _stable_tool_result(
@@ -135,6 +143,116 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
             type(exc).__name__,
         )
         return {"error": "Calendar data unavailable."}
+
+
+def _gmail_service() -> Any:
+    from google.auth.exceptions import GoogleAuthError
+
+    try:
+        from clients.google_auth import get_service
+
+        service = get_service("gmail", "v1")
+    except (FileNotFoundError, GoogleAuthError) as exc:
+        raise CapabilityError(
+            CapabilityErrorCategory.AUTHENTICATION,
+            "Gmail authentication is required.",
+        ) from exc
+    except Exception as exc:
+        _LOGGER.warning(
+            "Agent tool unavailable: tool=gmail error_type=%s",
+            type(exc).__name__,
+        )
+        raise CapabilityError(
+            CapabilityErrorCategory.UNAVAILABLE,
+            "Gmail service is unavailable.",
+        ) from exc
+    if not service:
+        raise CapabilityError(
+            CapabilityErrorCategory.AUTHENTICATION,
+            "Gmail authentication is required.",
+        )
+    return service
+
+
+def _raise_gmail_capability_error(exc: Exception) -> NoReturn:
+    from clients.gmail_client import (
+        GmailAuthenticationRequiredError,
+        GmailInsufficientScopeError,
+    )
+
+    error_category = CapabilityErrorCategory.AUTHENTICATION
+    if isinstance(exc, GmailAuthenticationRequiredError):
+        message = "Gmail authentication is required."
+    elif isinstance(exc, GmailInsufficientScopeError):
+        message = "Gmail read permission is required."
+    else:
+        error_category = CapabilityErrorCategory.UPSTREAM_FAILURE
+        message = "Gmail data is unavailable."
+        _LOGGER.warning(
+            "Agent tool unavailable: tool=gmail error_type=%s",
+            type(exc).__name__,
+        )
+    raise CapabilityError(
+        error_category,
+        message,
+    ) from exc
+
+
+def _invoke_gmail(
+    operation: Callable[..., dict[str, Any]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    try:
+        return operation(_gmail_service(), *args, **kwargs)
+    except CapabilityError:
+        raise
+    except Exception as exc:
+        _raise_gmail_capability_error(exc)
+
+
+def search_gmail(query: str, max_results: int = 10) -> dict[str, Any]:
+    """Search Gmail without changing any messages.
+
+    Args:
+        query: Gmail search expression, such as ``from:example.com is:unread``.
+        max_results: Maximum number of results to return, clamped to 1–20.
+
+    Returns:
+        A bounded list of message identifiers, thread identifiers, sender,
+        subject, date, labels, and snippets.
+    """
+    from clients.gmail_client import search_gmail as fetch_messages
+
+    query = query.strip()
+    if not query:
+        raise CapabilityError(
+            CapabilityErrorCategory.INVALID_INPUT,
+            "Gmail search query cannot be empty.",
+        )
+    return _invoke_gmail(
+        fetch_messages,
+        query,
+        max_results=max(1, min(_GMAIL_SEARCH_MAX_RESULTS, max_results)),
+    )
+
+
+def get_gmail_message(message_id: str) -> dict[str, Any]:
+    """Retrieve one Gmail message as bounded, sanitized plain text.
+
+    Attachments, embedded resources, active HTML, and raw MIME data are never
+    returned.
+    """
+    from clients.gmail_client import get_gmail_message as fetch_message
+
+    message_id = message_id.strip()
+    if not message_id:
+        raise CapabilityError(
+            CapabilityErrorCategory.INVALID_INPUT,
+            "Gmail message identifier cannot be empty.",
+        )
+    return _invoke_gmail(fetch_message, message_id)
 
 
 def get_active_reminders() -> list[dict[str, Any]]:
@@ -364,6 +482,79 @@ def register_native_capabilities() -> None:
             **native_common,
         ),
         get_briefing_history,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="search_gmail",
+            title="Search Gmail",
+            description=(
+                "Search the operator's Gmail mailbox with Gmail query syntax. "
+                "Returns bounded read-only message metadata and snippets; it "
+                "cannot modify email."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Gmail search expression, such as "
+                            "'from:example.com is:unread'."
+                        ),
+                        "minLength": 1,
+                        "maxLength": 500,
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": (
+                            "Maximum messages to return, between 1 and 20. "
+                            "Defaults to 10."
+                        ),
+                        "minimum": 1,
+                        "maximum": _GMAIL_SEARCH_MAX_RESULTS,
+                        "default": 10,
+                    },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            **{
+                **native_common,
+                "max_output_chars": _GMAIL_OUTPUT_MAX_CHARS,
+            },
+        ),
+        search_gmail,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="get_gmail_message",
+            title="Read Gmail Message",
+            description=(
+                "Read one Gmail message selected by message identifier. "
+                "Returns bounded sanitized plain text without attachments, "
+                "embedded resources, active HTML, or raw MIME data."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": (
+                            "Gmail message identifier returned by search_gmail."
+                        ),
+                        "minLength": 1,
+                        "maxLength": 256,
+                    }
+                },
+                "required": ["message_id"],
+                "additionalProperties": False,
+            },
+            **{
+                **native_common,
+                "max_output_chars": _GMAIL_OUTPUT_MAX_CHARS,
+            },
+        ),
+        get_gmail_message,
     )
 
 

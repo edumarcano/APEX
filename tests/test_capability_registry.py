@@ -46,6 +46,8 @@ class CapabilityRegistryTests(unittest.TestCase):
                 "get_upcoming_calendar_events",
                 "get_active_reminders",
                 "get_briefing_history",
+                "search_gmail",
+                "get_gmail_message",
             },
         )
         for capability in capabilities:
@@ -66,6 +68,27 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.assertEqual(days_schema["minimum"], 1)
         self.assertEqual(days_schema["maximum"], 14)
         self.assertEqual(days_schema["default"], 14)
+
+    def test_gmail_capabilities_are_bounded_and_read_only(self) -> None:
+        capabilities = {
+            capability.name: capability
+            for capability in list_assistant_capabilities()
+        }
+        search = capabilities["search_gmail"]
+        message = capabilities["get_gmail_message"]
+
+        self.assertEqual(search.risk, "read")
+        self.assertEqual(message.risk, "read")
+        self.assertFalse(search.expose_to_mcp_server)
+        self.assertFalse(message.expose_to_mcp_server)
+        self.assertEqual(
+            search.input_schema["properties"]["max_results"]["maximum"],
+            20,
+        )
+        self.assertEqual(
+            search.input_schema["properties"]["max_results"]["default"],
+            10,
+        )
 
     def test_duplicate_registration_is_rejected(self) -> None:
         descriptor = CapabilityDescriptor(

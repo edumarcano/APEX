@@ -223,7 +223,7 @@ apex/
 │   ├── weather_client.py    # OpenWeatherMap connector
 │   ├── sports_client.py     # F1 (Jolpica/Ergast) + 24-hr file cache; FC Barcelona fixture connector
 │   ├── news_client.py       # GNews API — AI and Global Events headlines
-│   ├── gmail_client.py      # Gmail API v1 — unread primary inbox extraction; DEV_MODE PII masking
+│   ├── gmail_client.py      # Gmail API v1 — unread telemetry plus bounded read-only assistant search/message retrieval
 │   ├── calendar_client.py   # Google Calendar — 48-hr upcoming events; DEV_MODE PII masking
 │   ├── google_auth.py       # Centralized OAuth2 helper for Gmail and Calendar
 │   ├── .f1_cache.json       # Auto-generated F1 cache — 24-hr TTL (gitignored)
@@ -425,8 +425,12 @@ The tracked provider pilots are disabled by default. GitHub uses the official re
 | `get_upcoming_calendar_events(days)` | `calendar_client.get_upcoming_calendar_events()`, clamped to 1–14 days; independent of the HUD's seven-day telemetry window |
 | `get_active_reminders` | `database.fetch_unread_reminders()` |
 | `get_briefing_history(limit)` | `database.fetch_briefing_history()`, clamped to 1–5 records |
+| `search_gmail(query, max_results)` | Gmail search using the existing read-only Google authorization; clamped to 1–20 metadata results |
+| `get_gmail_message(message_id)` | One Gmail message rendered as sanitized plain text, capped at 12,000 characters without attachments or active HTML |
 
 All current native capabilities are `risk=read` with `expose_to_assistant` and `expose_to_client_display` enabled; none can mutate reminders, settings, or telemetry state.
+
+The Gmail capabilities reuse the same `gmail.readonly` authorization as email telemetry. Search returns message and thread identifiers, sender, subject, date, labels, and a bounded snippet. Message retrieval prefers `text/plain`, converts HTML-only bodies into inert text, excludes attachments and embedded resources, and never returns raw MIME. Missing authorization and insufficient Gmail scope become stable authentication-category capability errors. `DEV_MODE` preserves identifiers and structural metadata while masking sender, subject, snippet, and body content.
 
 **`core/agent/loop.py`** — `run_agent_loop()` drives a bounded turn loop: each turn calls `provider.generate_turn()` with assistant-exposed capability descriptors, appends the model's message to history, and if the model requested tool calls, dispatches them via `invoke_capability()` (wrapped by `default_tools_dispatcher` for injectable tests). Argument validation and clamping come from each capability's JSON schema. The loop terminates when the model returns a message with no tool calls (success), when `profile.max_tool_calls` total executions are reached, or when `profile.max_tool_turns` turns elapse without a final answer. The latter two return the best available partial answer with `error` populated rather than looping indefinitely. `CapabilityError` and other invocation failures become `status="error"` tool outputs with stable messages and do not terminate the loop. Any unhandled exception in the outer loop is caught and converted into a generic unavailability message plus `Local/Cloud provider error (ExcName).` in `error`.
 
@@ -634,7 +638,7 @@ Provider-neutral local model lifecycle control mounted beneath `ApexLogo` in `Ap
 
 ### `AssistantToolCards.tsx`
 
-Renders one structured result card per client-display-exposed capability executed during an assistant turn, reading from `AgentMessage.tool_outputs` (see [client-display exposure](api.md#post-apiv1agentquery) in the API reference). Dedicated card layouts exist for `get_weather_forecast` (per-day high/low/condition rows), `get_f1_driver_standings` and `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, and `get_briefing_history`. Approved `github_*`, `brave_*`, and `alphavantage_*` results use a generic MCP card showing the provider, operation, status, timing, and a compact escaped structured result. Failed calls use the masked error card; capabilities without client-display exposure receive an opaque placeholder instead of their result. Mounted inside `ConsoleTray.tsx` beneath each model turn's text answer.
+Renders one structured result card per client-display-exposed capability executed during an assistant turn, reading from `AgentMessage.tool_outputs` (see [client-display exposure](api.md#post-apiv1agentquery) in the API reference). Dedicated card layouts exist for `get_weather_forecast` (per-day high/low/condition rows), `get_f1_driver_standings` and `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`, `search_gmail`, and `get_gmail_message`. Gmail search cards show bounded message metadata and snippets; selected-message cards render only escaped plain text. Approved `github_*`, `brave_*`, and `alphavantage_*` results use a generic MCP card showing the provider, operation, status, timing, and a compact escaped structured result. Failed calls use the masked error card; capabilities without client-display exposure receive an opaque placeholder instead of their result. Mounted inside `ConsoleTray.tsx` beneath each model turn's text answer.
 
 ### `ReminderListRow.tsx`
 

@@ -5,7 +5,9 @@ import {
   Flag,
   History,
   ListTodo,
+  Mail,
   Network,
+  Search,
 } from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 
@@ -82,6 +84,34 @@ interface BriefingHistoryPayload {
   error?: string
 }
 
+interface GmailMetadata {
+  id: string
+  thread_id: string
+  sender: string
+  subject: string
+  date: string
+  labels: string[]
+  snippet: string
+}
+
+interface GmailSearchResult {
+  query?: string
+  result_count?: number
+  messages: GmailMetadata[]
+}
+
+interface GmailMessage extends GmailMetadata {
+  body: string
+  truncated: boolean
+}
+
+interface ToolErrorPayload {
+  error: string
+}
+
+type GmailSearchPayload = GmailSearchResult | ToolErrorPayload
+type GmailMessagePayload = GmailMessage | ToolErrorPayload
+
 const CARD_SHELL =
   'w-full max-w-full rounded-xl border border-white/10 bg-white/[0.02] backdrop-blur-sm'
 const CARD_HEADER =
@@ -140,6 +170,19 @@ function formatEventStart(start: string, allDay = false): string {
   const parsed = new Date(start)
   if (Number.isNaN(parsed.getTime())) {
     return start
+  }
+  return parsed.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function formatEmailDate(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return truncateText(value, 80)
   }
   return parsed.toLocaleString(undefined, {
     month: 'short',
@@ -357,6 +400,69 @@ function parseCalendarEventsPayload(output: unknown): CalendarEventsPayload | nu
         ? output.days_queried
         : undefined,
     events,
+  }
+}
+
+function parseGmailSearchPayload(output: unknown): GmailSearchPayload | null {
+  if (!isRecord(output)) {
+    return null
+  }
+  if (typeof output.error === 'string') {
+    return { error: output.error }
+  }
+
+  const messages = Array.isArray(output.messages)
+    ? output.messages
+        .map(parseGmailMetadata)
+        .filter((entry): entry is GmailMetadata => entry !== null)
+    : []
+
+  return {
+    query: typeof output.query === 'string' ? output.query : undefined,
+    result_count:
+      typeof output.result_count === 'number' &&
+      Number.isFinite(output.result_count)
+        ? output.result_count
+        : messages.length,
+    messages,
+  }
+}
+
+function parseGmailMessagePayload(output: unknown): GmailMessagePayload | null {
+  if (!isRecord(output)) {
+    return null
+  }
+  if (typeof output.error === 'string') {
+    return { error: output.error }
+  }
+  const metadata = parseGmailMetadata(output)
+  if (!metadata) {
+    return null
+  }
+  return {
+    ...metadata,
+    body: typeof output.body === 'string' ? output.body : '',
+    truncated: output.truncated === true,
+  }
+}
+
+function parseGmailMetadata(output: unknown): GmailMetadata | null {
+  if (!isRecord(output) || typeof output.id !== 'string' || !output.id) {
+    return null
+  }
+  return {
+    id: output.id,
+    thread_id:
+      typeof output.thread_id === 'string' ? output.thread_id : '',
+    sender: typeof output.sender === 'string' ? output.sender : '',
+    subject: typeof output.subject === 'string' ? output.subject : '',
+    date: typeof output.date === 'string' ? output.date : '',
+    labels: Array.isArray(output.labels)
+      ? output.labels.filter(
+          (label): label is string => typeof label === 'string',
+        )
+      : [],
+    snippet: typeof output.snippet === 'string' ? output.snippet : '',
   }
 }
 
@@ -742,6 +848,151 @@ function CalendarEventsCard({
   )
 }
 
+function GmailLabels({ message }: { message: GmailMetadata }): ReactElement | null {
+  if (message.labels.length === 0) {
+    return null
+  }
+  return (
+    <div className="flex flex-wrap gap-1 pt-0.5">
+      {message.labels.slice(0, 4).map((label) => (
+        <span
+          key={`${message.id}-${label}`}
+          className="rounded-full border border-white/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-500"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function GmailSearchCard({
+  durationMs,
+  output,
+}: {
+  durationMs: number
+  output: unknown
+}): ReactElement {
+  const payload = parseGmailSearchPayload(output)
+
+  if (!payload || 'error' in payload) {
+    return (
+      <ErrorFallbackCard
+        toolName="search_gmail"
+        durationMs={durationMs}
+        message={payload?.error ?? 'Gmail search payload is unavailable.'}
+      />
+    )
+  }
+
+  const messages = payload.messages
+
+  return (
+    <ToolCardFrame
+      title="Gmail Search"
+      icon={<Search className="size-3.5" aria-hidden />}
+      durationMs={durationMs}
+      accentClass="text-[#7EB3FF]"
+    >
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+        <span className="truncate normal-case tracking-normal">
+          {payload.query ?? 'Mailbox search'}
+        </span>
+        <span className="shrink-0">
+          {payload.result_count ?? messages.length} result
+          {(payload.result_count ?? messages.length) === 1 ? '' : 's'}
+        </span>
+      </div>
+      <ul className={LIST_SCROLL}>
+        {messages.length === 0 ? (
+          <li className="text-sm text-zinc-500">No matching messages.</li>
+        ) : (
+          messages.map((message) => (
+            <li
+              key={message.id}
+              className="space-y-1 rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
+                  {message.subject || '(No subject)'}
+                </p>
+                {message.date ? (
+                  <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                    {formatEmailDate(message.date)}
+                  </span>
+                ) : null}
+              </div>
+              <p className="truncate text-xs text-[#7EB3FF]">
+                {message.sender || 'Unknown sender'}
+              </p>
+              {message.snippet ? (
+                <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
+                  {message.snippet}
+                </p>
+              ) : null}
+              <GmailLabels message={message} />
+            </li>
+          ))
+        )}
+      </ul>
+    </ToolCardFrame>
+  )
+}
+
+function GmailMessageCard({
+  durationMs,
+  output,
+}: {
+  durationMs: number
+  output: unknown
+}): ReactElement {
+  const payload = parseGmailMessagePayload(output)
+
+  if (!payload || 'error' in payload) {
+    return (
+      <ErrorFallbackCard
+        toolName="get_gmail_message"
+        durationMs={durationMs}
+        message={payload?.error ?? 'Gmail message payload is unavailable.'}
+      />
+    )
+  }
+
+  return (
+    <ToolCardFrame
+      title="Gmail Message"
+      icon={<Mail className="size-3.5" aria-hidden />}
+      durationMs={durationMs}
+      accentClass="text-[#7EB3FF]"
+    >
+      <div className="space-y-1 border-b border-white/5 pb-2">
+        <p className="text-sm font-medium text-zinc-100">
+          {payload.subject || '(No subject)'}
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <span className="min-w-0 truncate text-xs text-[#7EB3FF]">
+            {payload.sender || 'Unknown sender'}
+          </span>
+          {payload.date ? (
+            <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+              {formatEmailDate(payload.date)}
+            </span>
+          ) : null}
+        </div>
+        <GmailLabels message={payload} />
+      </div>
+      <div className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-sm leading-relaxed text-zinc-300 scrollbar-thin">
+        {payload.body || payload.snippet || 'This message has no readable text body.'}
+      </div>
+      {payload.truncated ? (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-wide text-[#FBBF24]">
+          Message text truncated
+        </p>
+      ) : null}
+    </ToolCardFrame>
+  )
+}
+
 function ReminderListCard({
   durationMs,
   output,
@@ -955,6 +1206,14 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
     case 'get_briefing_history':
       return (
         <BriefingHistoryCard durationMs={item.duration_ms} output={item.output} />
+      )
+    case 'search_gmail':
+      return (
+        <GmailSearchCard durationMs={item.duration_ms} output={item.output} />
+      )
+    case 'get_gmail_message':
+      return (
+        <GmailMessageCard durationMs={item.duration_ms} output={item.output} />
       )
     default:
       return (
