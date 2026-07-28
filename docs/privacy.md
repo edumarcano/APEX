@@ -30,6 +30,8 @@ The assistant is a separate path from briefing synthesis. A cloud profile sends 
 
 Conversation history is held by the browser tab and is lost on reload. There is no server-side chat-session store. A current telemetry snapshot or briefing is included only when its identifier is explicitly supplied; APEX does not implicitly inject the latest persisted briefing.
 
+The assistant can search Gmail and read a selected message through the existing `gmail.readonly` authorization. Search metadata and message text can therefore be sent to the selected assistant model when one of these tools is invoked. Results are bounded, treated as untrusted model input, and rendered as escaped text in the HUD. Message retrieval excludes attachments, embedded resources, active HTML, and raw MIME; it cannot send, delete, archive, label, or otherwise modify email.
+
 Enabled MCP providers receive the arguments selected by the assistant for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives interactive web or news searches; Alpha Vantage receives market-research parameters. Returned content is untrusted, bounded before model and HUD delivery, and never forwarded into scheduled briefing telemetry by these integrations. The presets are disabled by default and imported tools are not re-exported.
 
 ## Local Persistence
@@ -53,5 +55,5 @@ Public assistant tool failures use stable messages instead of raw exception stri
 ## Runtime Modes
 
 - `DEMO_MODE=true` uses static mock briefing and assistant data, skips live connectors, and does not write briefing history.
-- `DEV_MODE=true` suppresses configured-network preflight warnings and production run logging. Gmail and Calendar may still make live OAuth-authenticated requests, but returned content is masked before briefing use.
+- `DEV_MODE=true` suppresses configured-network preflight warnings and production run logging. Gmail and Calendar may still make live OAuth-authenticated requests, but returned connector and Gmail assistant content is masked before model or HUD use.
 - Production mode calls only enabled connectors. Disabling a connector skips its network or authentication attempt and excludes it from synthesis and Sync Health scoring.

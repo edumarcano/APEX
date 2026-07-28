@@ -76,3 +76,81 @@ describe('AssistantToolCards calendar presentation', () => {
     expect(screen.getByText(/Jul 26 · All day/)).toBeInTheDocument()
   })
 })
+
+describe('AssistantToolCards Gmail presentation', () => {
+  it('renders bounded Gmail search metadata in a dedicated result list', () => {
+    render(
+      <AssistantToolCards
+        toolOutputs={[
+          {
+            name: 'search_gmail',
+            status: 'ok',
+            duration_ms: 21,
+            output: {
+              query: 'from:travel@example.com newer_than:30d',
+              result_count: 1,
+              messages: [
+                {
+                  id: 'message-1',
+                  thread_id: 'thread-1',
+                  sender: 'Travel Desk <travel@example.com>',
+                  subject: 'Flight confirmation',
+                  date: 'Mon, 27 Jul 2026 09:30:00 -0400',
+                  labels: ['INBOX', 'IMPORTANT'],
+                  snippet: 'Your flight is confirmed for Wednesday.',
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Gmail Search')).toBeInTheDocument()
+    expect(
+      screen.getByText('from:travel@example.com newer_than:30d'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('1 result')).toBeInTheDocument()
+    expect(screen.getByText('Flight confirmation')).toBeInTheDocument()
+    expect(
+      screen.getByText('Travel Desk <travel@example.com>'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Your flight is confirmed for Wednesday.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('IMPORTANT')).toBeInTheDocument()
+  })
+
+  it('renders a selected message as inert plain text and marks truncation', () => {
+    const { container } = render(
+      <AssistantToolCards
+        toolOutputs={[
+          {
+            name: 'get_gmail_message',
+            status: 'ok',
+            duration_ms: 17,
+            output: {
+              id: 'message-2',
+              thread_id: 'thread-2',
+              sender: 'Reports <reports@example.com>',
+              subject: 'Quarterly report',
+              date: 'Mon, 27 Jul 2026 10:15:00 -0400',
+              labels: ['INBOX'],
+              snippet: 'Report preview',
+              body: '<img src=x onerror=alert(1)> Plain report text',
+              truncated: true,
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Gmail Message')).toBeInTheDocument()
+    expect(screen.getByText('Quarterly report')).toBeInTheDocument()
+    expect(
+      screen.getByText('<img src=x onerror=alert(1)> Plain report text'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Message text truncated')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+  })
+})
