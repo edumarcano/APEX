@@ -75,7 +75,7 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 3)
+        self.assertEqual(payload["schema_version"], 4)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "comet")
@@ -83,6 +83,8 @@ class SettingsApiTests(unittest.TestCase):
         self.assertTrue(payload["settings"]["modules"]["f1"])
         self.assertEqual(payload["settings"]["assistant"]["default_profile"], "comet")
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
+        self.assertFalse(payload["settings"]["mcp"]["enabled"])
+        self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])
         self.assertIn("local_file_present", payload)
         self.assertIn("local_override_active", payload)
         self.assertIn("load_warning", payload)
@@ -124,6 +126,138 @@ class SettingsApiTests(unittest.TestCase):
             json={"features": {"weather": True, "unknown": True}},
         )
         self.assertEqual(response.status_code, 422)
+
+    def test_mcp_patch_rejects_advanced_or_unknown_fields(self) -> None:
+        for payload in (
+            {"mcp": {"servers": {"custom": {"enabled": True}}}},
+            {"mcp": {"servers": {"github": {"url": "https://unsafe.test"}}}},
+            {"mcp": {"auth_token": "secret"}},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.patch("/api/v1/settings", json=payload)
+                self.assertEqual(response.status_code, 422)
+
+    def test_mcp_patch_preserves_advanced_local_configuration(self) -> None:
+        advanced = {
+            "unrelated": {"keep": True},
+            "mcp": {
+                "enabled": False,
+                "servers": {
+                    "github": {
+                        "enabled": False,
+                        "url": "https://example.test/mcp",
+                        "auth_env": "GITHUB_TOKEN_NAME_ONLY",
+                        "tool_allowlist": ["search_code"],
+                    },
+                    "custom": {
+                        "enabled": True,
+                        "transport": "http",
+                        "url": "https://custom.test/mcp",
+                    },
+                },
+            },
+        }
+        _write_json(self.local_path, advanced)
+        store = RuntimeSettingsStore(
+            config_path=self.config_path,
+            local_config_path=self.local_path,
+        )
+        store.apply_patch(
+            SettingsPatch.model_validate(
+                {
+                    "mcp": {
+                        "enabled": True,
+                        "servers": {"github": {"enabled": True}},
+                    }
+                }
+            )
+        )
+        persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertTrue(persisted["mcp"]["enabled"])
+        self.assertTrue(persisted["mcp"]["servers"]["github"]["enabled"])
+        self.assertEqual(
+            persisted["mcp"]["servers"]["github"]["tool_allowlist"],
+            ["search_code"],
+        )
+        self.assertEqual(
+            persisted["mcp"]["servers"]["custom"]["url"],
+            "https://custom.test/mcp",
+        )
+        self.assertEqual(persisted["unrelated"], {"keep": True})
+
+    def test_malformed_mcp_enablement_fails_closed_with_warning(self) -> None:
+        _write_json(
+            self.local_path,
+            {
+                "mcp": {
+                    "enabled": "yes",
+                    "servers": {"github": {"enabled": "yes", "url": "preserved"}},
+                }
+            },
+        )
+        store = RuntimeSettingsStore(
+            config_path=self.config_path,
+            local_config_path=self.local_path,
+        )
+        self.assertFalse(store.get_snapshot().mcp.enabled)
+        self.assertFalse(store.get_snapshot().mcp.servers.github.enabled)
+        self.assertIn("Configuration warning", store.load_warning or "")
+        store.apply_patch(
+            SettingsPatch.model_validate({"mcp": {"enabled": True}})
+        )
+        persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            persisted["mcp"]["servers"]["github"]["url"],
+            "preserved",
+        )
+
+    def test_mcp_save_reconciles_running_manager(self) -> None:
+        manager = mock.Mock()
+        manager.reconfigure = mock.AsyncMock()
+        resolved = mock.sentinel.resolved_mcp_config
+        with (
+            mock.patch(
+                "core.api.routers.system.get_mcp_manager",
+                return_value=manager,
+            ),
+            mock.patch(
+                "core.api.routers.system.load_mcp_config",
+                return_value=resolved,
+            ),
+        ):
+            response = self.client.patch(
+                "/api/v1/settings",
+                json={
+                    "mcp": {
+                        "enabled": True,
+                        "servers": {"github": {"enabled": True}},
+                    }
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["settings"]["mcp"]["enabled"])
+        manager.reconfigure.assert_awaited_once_with(resolved)
+
+    def test_mcp_persistence_failure_does_not_reconcile(self) -> None:
+        manager = mock.Mock()
+        manager.reconfigure = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                self.store,
+                "apply_patch",
+                side_effect=SettingsPersistenceError("disk full"),
+            ),
+            mock.patch(
+                "core.api.routers.system.get_mcp_manager",
+                return_value=manager,
+            ),
+        ):
+            response = self.client.patch(
+                "/api/v1/settings",
+                json={"mcp": {"enabled": True}},
+            )
+        self.assertEqual(response.status_code, 500)
+        manager.reconfigure.assert_not_awaited()
 
     def test_invalid_profile_rejected(self) -> None:
         response = self.client.patch(

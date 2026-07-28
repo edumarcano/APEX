@@ -29,7 +29,7 @@ _DEFAULT_LOCAL_CONFIG_PATH: Path = _PROJECT_ROOT / "config.local.json"
 _REPLACE_MAX_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
 _EDITABLE_ROOT_KEYS = frozenset(
-    {"features", "modules", "ask_apex", "tts_settings"}
+    {"features", "modules", "ask_apex", "briefing", "tts_settings"}
 )
 
 
@@ -122,15 +122,27 @@ class RuntimeSettingsStore:
                         layer_name="config.local.json",
                         validation_errors=validation_errors,
                     )
-                    if validation_errors:
+                    fatal_errors = [
+                        error
+                        for error in validation_errors
+                        if not error.startswith("warning: ")
+                    ]
+                    warnings = [
+                        error.removeprefix("warning: ")
+                        for error in validation_errors
+                        if error.startswith("warning: ")
+                    ]
+                    if fatal_errors:
                         warning = (
                             "Invalid config.local.json; using tracked defaults: "
-                            + "; ".join(validation_errors)
+                            + "; ".join(fatal_errors)
                         )
                         local_normalized = {}
                         _LOGGER.warning(warning)
                     else:
                         local_active = True
+                        if warnings:
+                            warning = "Configuration warning: " + "; ".join(warnings)
             else:
                 local_normalized = {}
 
@@ -161,7 +173,17 @@ class RuntimeSettingsStore:
 
             latest_raw = self._load_latest_raw_for_write()
             next_raw = recursive_overlay(latest_raw, patch_ondisk)
-            next_local = normalize_layer(next_raw, layer_name="config.local.json")
+            next_validation: list[str] = []
+            next_local = normalize_layer(
+                next_raw,
+                layer_name="config.local.json",
+                validation_errors=next_validation,
+            )
+            next_warnings = [
+                error.removeprefix("warning: ")
+                for error in next_validation
+                if error.startswith("warning: ")
+            ]
 
             prior_snapshot = self._snapshot
             prior_local = copy_dict(self._local_ondisk)
@@ -185,7 +207,11 @@ class RuntimeSettingsStore:
             self._local_raw = next_raw
             self._local_file_present = True
             self._local_override_active = True
-            self._load_warning = None
+            self._load_warning = (
+                "Configuration warning: " + "; ".join(next_warnings)
+                if next_warnings
+                else None
+            )
             self._snapshot = merged_snapshot
             return merged_snapshot
 
@@ -206,7 +232,12 @@ class RuntimeSettingsStore:
             layer_name="config.local.json",
             validation_errors=validation_errors,
         )
-        if not validation_errors:
+        fatal_errors = [
+            error
+            for error in validation_errors
+            if not error.startswith("warning: ")
+        ]
+        if not fatal_errors:
             return raw
 
         # The invalid editable layer was never activated. Preserve unrelated

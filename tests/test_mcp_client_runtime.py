@@ -18,6 +18,8 @@ from fastmcp.client.auth import OAuth
 from key_value.aio.stores.keyring import KeyringStore
 
 from core.agent.capabilities import (
+    CapabilityError,
+    CapabilityErrorCategory,
     clear_capability_registry_for_tests,
     get_capability_descriptor,
     invoke_capability,
@@ -31,6 +33,8 @@ from core.mcp import empty_mcp_status, set_mcp_manager
 from core.mcp.config import load_mcp_config
 from core.mcp.manager import MCPClientManager, _build_client
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
+
+_SLOW_TOOL_STARTED = threading.Event()
 
 
 def _build_demo_server() -> FastMCP:
@@ -50,6 +54,13 @@ def _build_demo_server() -> FastMCP:
     def bounded_search(count: int = 10) -> dict[str, int]:
         """Return the admitted result count."""
         return {"count": count}
+
+    @server.tool
+    async def slow_tool() -> str:
+        """Wait long enough for live disable coverage."""
+        _SLOW_TOOL_STARTED.set()
+        await asyncio.sleep(0.25)
+        return "late result"
 
     return server
 
@@ -293,6 +304,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         set_mcp_manager(None)
         self._demo_server = _build_demo_server()
         self._manager: MCPClientManager | None = None
+        _SLOW_TOOL_STARTED.clear()
 
     async def asyncTearDown(self) -> None:
         if self._manager is not None:
@@ -336,6 +348,132 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(name.startswith("demo_") for name in names))
         snapshot = manager.status_snapshot()
         self.assertEqual(snapshot.status, "disabled")
+
+    async def test_live_reconfigure_enables_and_disables_provider(self) -> None:
+        manager = MCPClientManager(McpRuntimeConfig(enabled=False, servers={}))
+        self._manager = manager
+        await manager.start()
+        enabled = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                )
+            },
+        )
+        with self._patch_inmemory_client():
+            await manager.reconfigure(enabled)
+            await asyncio.gather(*manager._discovery_tasks)
+        self.assertIsNotNone(get_capability_descriptor("demo_echo"))
+        self.assertEqual(manager.status_snapshot().servers[0].status, "connected")
+
+        await manager.reconfigure(
+            McpRuntimeConfig(
+                enabled=True,
+                servers={"demo": enabled.servers["demo"].model_copy(update={"enabled": False})},
+            )
+        )
+        self.assertIsNone(get_capability_descriptor("demo_echo"))
+        self.assertEqual(manager.status_snapshot().servers[0].status, "disabled")
+
+    async def test_disabling_master_unregisters_all_imported_tools(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                )
+            },
+        )
+        manager = await self._start_manager(config)
+        self.assertIsNotNone(get_capability_descriptor("demo_echo"))
+        await manager.reconfigure(config.model_copy(update={"enabled": False}))
+        self.assertIsNone(get_capability_descriptor("demo_echo"))
+        self.assertEqual(manager.status_snapshot().status, "disabled")
+
+    async def test_reconfigure_does_not_restart_unchanged_provider(self) -> None:
+        server = McpServerConfig(
+            enabled=True,
+            transport="http",
+            url="https://example.invalid/mcp",
+            tool_allowlist=["echo"],
+            tool_risks={"echo": "read"},
+        )
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={"github": server, "brave": server},
+        )
+        manager = await self._start_manager(config)
+        github_client = manager._servers["github"].client
+        await manager.reconfigure(
+            McpRuntimeConfig(
+                enabled=True,
+                servers={
+                    "github": server,
+                    "brave": server.model_copy(update={"enabled": False}),
+                },
+            )
+        )
+        self.assertIs(manager._servers["github"].client, github_client)
+        self.assertIsNotNone(get_capability_descriptor("github_echo"))
+        self.assertIsNone(get_capability_descriptor("brave_echo"))
+
+    async def test_disable_during_invocation_returns_unavailable(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["slow_tool"],
+                    tool_risks={"slow_tool": "read"},
+                )
+            },
+        )
+        manager = await self._start_manager(config)
+        invocation = asyncio.create_task(
+            asyncio.to_thread(invoke_capability, "demo_slow_tool", {})
+        )
+        self.assertTrue(await asyncio.to_thread(_SLOW_TOOL_STARTED.wait, 1.0))
+        await manager.reconfigure(config.model_copy(update={"enabled": False}))
+        with self.assertRaises(CapabilityError) as raised:
+            await invocation
+        self.assertEqual(
+            raised.exception.category,
+            CapabilityErrorCategory.UNAVAILABLE,
+        )
+
+    async def test_rapid_enable_disable_cannot_register_stale_tools(self) -> None:
+        disabled = McpRuntimeConfig(
+            enabled=False,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                )
+            },
+        )
+        manager = MCPClientManager(disabled)
+        self._manager = manager
+        await manager.start()
+        with self._patch_inmemory_client():
+            await manager.reconfigure(disabled.model_copy(update={"enabled": True}))
+            await manager.reconfigure(disabled)
+            await asyncio.sleep(0)
+        self.assertIsNone(get_capability_descriptor("demo_echo"))
+        self.assertEqual(manager.status_snapshot().status, "disabled")
 
     async def test_allowlist_registers_only_approved_tools(self) -> None:
         config = McpRuntimeConfig(

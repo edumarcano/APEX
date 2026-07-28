@@ -26,7 +26,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 3
+SETTINGS_SCHEMA_VERSION: int = 4
 
 
 class FeaturesSettings(BaseModel):
@@ -78,6 +78,39 @@ class VoiceSettings(BaseModel):
     mode: VoiceMode = "automatic"
 
 
+class McpServerEnablementSettings(BaseModel):
+    """Editable enablement for one tracked MCP provider preset."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+
+
+class McpServersSettings(BaseModel):
+    """Fixed MCP provider presets exposed through Runtime Settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    github: McpServerEnablementSettings = Field(
+        default_factory=McpServerEnablementSettings
+    )
+    brave: McpServerEnablementSettings = Field(
+        default_factory=McpServerEnablementSettings
+    )
+    alphavantage: McpServerEnablementSettings = Field(
+        default_factory=McpServerEnablementSettings
+    )
+
+
+class McpSettings(BaseModel):
+    """Editable MCP client and tracked-provider enablement."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    servers: McpServersSettings = Field(default_factory=McpServersSettings)
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -88,6 +121,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     assistant: AssistantSettings = Field(default_factory=AssistantSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
+    mcp: McpSettings = Field(default_factory=McpSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -139,6 +173,33 @@ class VoicePatch(BaseModel):
     mode: VoiceMode | None = None
 
 
+class McpServerEnablementPatch(BaseModel):
+    """Partial enablement update for one tracked MCP provider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+
+
+class McpServersPatch(BaseModel):
+    """Partial updates for the fixed MCP provider presets."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    github: McpServerEnablementPatch | None = None
+    brave: McpServerEnablementPatch | None = None
+    alphavantage: McpServerEnablementPatch | None = None
+
+
+class McpPatch(BaseModel):
+    """Partial MCP runtime enablement update."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    servers: McpServersPatch | None = None
+
+
 class SettingsPatch(BaseModel):
     """Strict dirty-field patch for transactional settings updates."""
 
@@ -149,6 +210,7 @@ class SettingsPatch(BaseModel):
     assistant: AssistantPatch | None = None
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
+    mcp: McpPatch | None = None
 
 
 class SettingsResponse(BaseModel):

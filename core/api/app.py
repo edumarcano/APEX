@@ -38,10 +38,10 @@ async def _app_lifespan(_app: FastAPI):
         _LOGGER.info("Started Ollama idle model monitor")
 
     mcp_config = load_mcp_config()
+    mcp_manager = MCPClientManager(mcp_config)
+    set_mcp_manager(mcp_manager)
+    await mcp_manager.start()
     if mcp_config.enabled:
-        mcp_manager = MCPClientManager(mcp_config)
-        set_mcp_manager(mcp_manager)
-        await mcp_manager.start()
         _LOGGER.info("Started MCP client runtime")
 
     yield

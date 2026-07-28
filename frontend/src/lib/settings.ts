@@ -3,6 +3,8 @@ import type {
   BriefingMode,
   FeaturesSettings,
   ModulesSettings,
+  McpSettings,
+  McpStatusResponse,
   RuntimeSettings,
   SettingsEffectiveTiming,
   SettingsPatch,
@@ -33,6 +35,13 @@ const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_VOICE_GENDERS: readonly VoiceGender[] = ['male', 'female']
 const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
+const VALID_MCP_STATUSES = [
+  'configured',
+  'connected',
+  'degraded',
+  'disabled',
+  'authentication-required',
+] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -105,6 +114,25 @@ function parseModules(value: unknown): ModulesSettings | null {
   }
 }
 
+function parseMcpSettings(value: unknown): McpSettings | null {
+  if (!isRecord(value) || typeof value.enabled !== 'boolean' || !isRecord(value.servers)) {
+    return null
+  }
+  const providers = ['github', 'brave', 'alphavantage'] as const
+  const parsedServers: Partial<McpSettings['servers']> = {}
+  for (const provider of providers) {
+    const server = value.servers[provider]
+    if (!isRecord(server) || typeof server.enabled !== 'boolean') {
+      return null
+    }
+    parsedServers[provider] = { enabled: server.enabled }
+  }
+  return {
+    enabled: value.enabled,
+    servers: parsedServers as McpSettings['servers'],
+  }
+}
+
 function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!isRecord(value)) {
     return null
@@ -112,9 +140,11 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
 
   const features = parseFeatures(value.features)
   const modules = parseModules(value.modules)
+  const mcp = parseMcpSettings(value.mcp)
   if (
     !features ||
     !modules ||
+    !mcp ||
     !isRecord(value.assistant) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -154,6 +184,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       gender: value.voice.gender,
       mode: value.voice.mode,
     },
+    mcp,
   }
 }
 
@@ -164,6 +195,14 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     assistant: { ...settings.assistant },
     briefing: { ...settings.briefing },
     voice: { ...settings.voice },
+    mcp: {
+      enabled: settings.mcp.enabled,
+      servers: {
+        github: { ...settings.mcp.servers.github },
+        brave: { ...settings.mcp.servers.brave },
+        alphavantage: { ...settings.mcp.servers.alphavantage },
+      },
+    },
   }
 }
 
@@ -255,6 +294,25 @@ export function diffSettingsPatch(
     patch.voice = voice
   }
 
+  const mcpServers: NonNullable<SettingsPatch['mcp']>['servers'] = {}
+  for (const provider of ['github', 'brave', 'alphavantage'] as const) {
+    if (baseline.mcp.servers[provider].enabled !== draft.mcp.servers[provider].enabled) {
+      mcpServers[provider] = { enabled: draft.mcp.servers[provider].enabled }
+    }
+  }
+  if (
+    baseline.mcp.enabled !== draft.mcp.enabled ||
+    Object.keys(mcpServers).length > 0
+  ) {
+    patch.mcp = {}
+    if (baseline.mcp.enabled !== draft.mcp.enabled) {
+      patch.mcp.enabled = draft.mcp.enabled
+    }
+    if (Object.keys(mcpServers).length > 0) {
+      patch.mcp.servers = mcpServers
+    }
+  }
+
   return patch
 }
 
@@ -264,7 +322,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.modules === undefined &&
     patch.assistant === undefined &&
     patch.briefing === undefined &&
-    patch.voice === undefined
+    patch.voice === undefined &&
+    patch.mcp === undefined
   )
 }
 
@@ -310,6 +369,10 @@ export function resolveEffectiveTiming(
     return runtime.briefingActive ? 'Applies next briefing' : 'Active'
   }
 
+  if (group === 'mcp') {
+    return 'Active'
+  }
+
   // voice
   if (runtime.isSpeaking) {
     return 'Applies next delivery'
@@ -321,6 +384,51 @@ export function resolveEffectiveTiming(
   }
 
   return 'Active'
+}
+
+export function parseMcpStatusResponse(body: unknown): McpStatusResponse | null {
+  if (
+    !isRecord(body) ||
+    typeof body.enabled !== 'boolean' ||
+    typeof body.status !== 'string' ||
+    !(VALID_MCP_STATUSES as readonly string[]).includes(body.status) ||
+    typeof body.reason !== 'string' ||
+    !Array.isArray(body.servers)
+  ) {
+    return null
+  }
+  const servers = body.servers.map((server) => {
+    if (
+      !isRecord(server) ||
+      typeof server.id !== 'string' ||
+      typeof server.enabled !== 'boolean' ||
+      (server.transport !== 'http' && server.transport !== 'stdio') ||
+      typeof server.status !== 'string' ||
+      !(VALID_MCP_STATUSES as readonly string[]).includes(server.status) ||
+      typeof server.reason !== 'string' ||
+      !Array.isArray(server.registered_tools) ||
+      !server.registered_tools.every((tool) => typeof tool === 'string')
+    ) {
+      return null
+    }
+    return {
+      id: server.id,
+      enabled: server.enabled,
+      transport: server.transport,
+      status: server.status,
+      reason: server.reason,
+      registered_tools: server.registered_tools,
+    }
+  })
+  if (servers.some((server) => server === null)) {
+    return null
+  }
+  return {
+    enabled: body.enabled,
+    status: body.status as McpStatusResponse['status'],
+    reason: body.reason,
+    servers: servers as McpStatusResponse['servers'],
+  }
 }
 
 export async function extractSettingsErrorDetail(response: Response): Promise<string> {

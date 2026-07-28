@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { Settings, X } from 'lucide-react'
 
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useMcpStatus } from '../hooks/useMcpStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
 import {
   buildSettingsTimingRuntime,
@@ -25,12 +26,35 @@ import type {
 } from '../types/telemetry'
 import type {
   BriefingMode,
+  McpProviderId,
   RuntimeSettings,
   SettingsEffectiveTiming,
   SettingsResponse,
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
+
+const MCP_PROVIDERS: readonly {
+  id: McpProviderId
+  label: string
+  prerequisite: string
+}[] = [
+  {
+    id: 'github',
+    label: 'GitHub',
+    prerequisite: 'Read-only repository tools. Requires GITHUB_PERSONAL_ACCESS_TOKEN.',
+  },
+  {
+    id: 'brave',
+    label: 'Brave Search',
+    prerequisite: 'Read-only web and news search. Requires BRAVE_API_KEY, Node.js, and npx.',
+  },
+  {
+    id: 'alphavantage',
+    label: 'Alpha Vantage',
+    prerequisite: 'Read-only market research. Authorization opens through browser OAuth.',
+  },
+]
 
 const FEATURE_CONTROLS: readonly {
   key: keyof RuntimeSettings['features']
@@ -290,6 +314,40 @@ function resolveConnectorStatus(
   return { value: 'Clear last briefing', tone: 'ok' }
 }
 
+function resolveMcpProviderStatus(
+  provider: McpProviderId,
+  baseline: RuntimeSettings | null,
+  runtime: ReturnType<typeof useMcpStatus>,
+): {
+  value: string
+  tone: 'neutral' | 'ok' | 'warn' | 'error'
+  tools: string[]
+} {
+  if (!baseline?.mcp.enabled || !baseline.mcp.servers[provider].enabled) {
+    return { value: 'Disabled', tone: 'neutral', tools: [] }
+  }
+  if (runtime.unavailable) {
+    return { value: 'Status unavailable', tone: 'warn', tools: [] }
+  }
+  const server = runtime.status?.servers.find((item) => item.id === provider)
+  if (!server) {
+    return { value: 'Connecting', tone: 'neutral', tools: [] }
+  }
+  if (server.status === 'connected') {
+    return { value: 'Connected', tone: 'ok', tools: server.registered_tools }
+  }
+  if (server.status === 'authentication-required') {
+    return { value: 'Authentication required', tone: 'warn', tools: [] }
+  }
+  if (server.status === 'degraded') {
+    return { value: 'Degraded', tone: 'error', tools: [] }
+  }
+  if (server.status === 'configured') {
+    return { value: 'Connecting', tone: 'neutral', tools: [] }
+  }
+  return { value: 'Disabled', tone: 'neutral', tools: [] }
+}
+
 export default function SettingsPanel({
   open,
   onClose,
@@ -318,6 +376,7 @@ export default function SettingsPanel({
     setDraft,
     save,
   } = useSettingsEditor({ open, onApplied })
+  const mcpRuntime = useMcpStatus(open)
 
   useFocusTrap(open, dialogRef, restoreFocusRef)
 
@@ -338,6 +397,7 @@ export default function SettingsPanel({
   const assistantTiming = resolveEffectiveTiming('assistant', timingRuntime)
   const briefingTiming = resolveEffectiveTiming('briefing', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
+  const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
 
   const requestClose = useCallback(() => {
     if (isDirty || saving) {
@@ -371,8 +431,10 @@ export default function SettingsPanel({
   )
 
   const handleSave = useCallback(() => {
-    void save()
-  }, [save])
+    void save().then((saved) => {
+      if (saved) void mcpRuntime.refresh()
+    })
+  }, [save, mcpRuntime])
 
   const defaultProfileStatus = useMemo(() => {
     if (!draft) {
@@ -557,6 +619,78 @@ export default function SettingsPanel({
                       {profileUnavailableWarning}
                     </p>
                   ) : null}
+                </div>
+              </section>
+
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-mcp`}>
+                <SectionHeading id={`${titleId}-mcp`} title="External MCP Tools" />
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  Approved external tools become available to the assistant after Save.
+                  Credentials remain outside APEX settings.
+                </p>
+                <div className="space-y-2">
+                  <SettingsToggle
+                    id="settings-mcp-enabled"
+                    label="External MCP tools"
+                    checked={draft.mcp.enabled}
+                    timing={mcpTiming}
+                    onChange={(next) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        mcp: { ...prev.mcp, enabled: next },
+                      }))
+                    }
+                  />
+                  <div className="ml-3 space-y-2 border-l border-white/10 pl-3">
+                    {MCP_PROVIDERS.map((provider) => {
+                      const runtime = resolveMcpProviderStatus(
+                        provider.id,
+                        baseline,
+                        mcpRuntime,
+                      )
+                      return (
+                        <div
+                          key={provider.id}
+                          className="space-y-1.5 rounded-lg border border-white/5 bg-white/[0.015] p-2"
+                        >
+                          <SettingsToggle
+                            id={`settings-mcp-${provider.id}`}
+                            label={provider.label}
+                            checked={draft.mcp.servers[provider.id].enabled}
+                            disabled={!draft.mcp.enabled}
+                            timing={mcpTiming}
+                            onChange={(next) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                mcp: {
+                                  ...prev.mcp,
+                                  servers: {
+                                    ...prev.mcp.servers,
+                                    [provider.id]: { enabled: next },
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                          <p className="px-1 text-[10px] leading-relaxed text-zinc-500">
+                            {provider.prerequisite}
+                          </p>
+                          <div className="px-1">
+                            <StatusRow
+                              label="Active runtime"
+                              value={runtime.value}
+                              tone={runtime.tone}
+                            />
+                            {runtime.tools.length > 0 ? (
+                              <p className="break-words py-1 font-mono text-[9px] leading-relaxed text-zinc-500">
+                                {runtime.tools.join(' · ')}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </section>
 
