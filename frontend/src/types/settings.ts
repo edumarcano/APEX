@@ -1,4 +1,7 @@
 import type { AssistantProfile, TtsEngine } from './telemetry'
+import type { McpProviderId } from '../lib/mcpProviders'
+
+export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
@@ -38,12 +41,22 @@ export interface VoiceSettings {
   mode: VoiceMode
 }
 
+export interface McpServerEnablementSettings {
+  enabled: boolean
+}
+
+export interface McpSettings {
+  enabled: boolean
+  servers: Record<McpProviderId, McpServerEnablementSettings>
+}
+
 export interface RuntimeSettings {
   features: FeaturesSettings
   modules: ModulesSettings
   assistant: AssistantSettings
   briefing: BriefingSettings
   voice: VoiceSettings
+  mcp: McpSettings
 }
 
 export interface FeaturesPatch {
@@ -75,12 +88,22 @@ export interface VoicePatch {
   mode?: VoiceMode
 }
 
+export interface McpPatch {
+  enabled?: boolean
+  servers?: Partial<Record<McpProviderId, McpServerEnablementPatch>>
+}
+
+export interface McpServerEnablementPatch {
+  enabled?: boolean
+}
+
 export interface SettingsPatch {
   features?: FeaturesPatch
   modules?: ModulesPatch
   assistant?: AssistantPatch
   briefing?: BriefingPatch
   voice?: VoicePatch
+  mcp?: McpPatch
 }
 
 export interface SettingsResponse {
@@ -107,6 +130,30 @@ export type SettingsTimingFieldGroup =
   | 'assistant'
   | 'briefing'
   | 'voice'
+  | 'mcp'
+
+export type McpRuntimeStatus =
+  | 'configured'
+  | 'connected'
+  | 'degraded'
+  | 'disabled'
+  | 'authentication-required'
+
+export interface McpServerStatus {
+  id: string
+  enabled: boolean
+  transport: 'http' | 'stdio'
+  status: McpRuntimeStatus
+  reason: string
+  registered_tools: string[]
+}
+
+export interface McpStatusResponse {
+  enabled: boolean
+  status: McpRuntimeStatus
+  reason: string
+  servers: McpServerStatus[]
+}
 
 export interface SettingsTimingRuntime {
   briefingActive: boolean

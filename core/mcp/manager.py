@@ -50,6 +50,7 @@ _STATUS_PRIORITY: tuple[McpServerStatusValue, ...] = (
 @dataclass
 class _ServerRuntime:
     config: McpServerConfig
+    generation: int = 0
     status: McpServerStatusValue = "disabled"
     reason: str = "MCP server is disabled."
     client: Client[Any] | None = None
@@ -64,8 +65,9 @@ class MCPClientManager:
         self._config = config
         self._loop: asyncio.AbstractEventLoop | None = None
         self._servers: dict[str, _ServerRuntime] = {}
-        self._discovery_tasks: list[asyncio.Task[None]] = []
+        self._discovery_tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = threading.RLock()
+        self._reconfigure_lock = asyncio.Lock()
         self._started = False
         self._shutting_down = False
 
@@ -95,25 +97,86 @@ class MCPClientManager:
         self._started = True
         self._loop = asyncio.get_running_loop()
 
-        if not self._config.enabled:
-            return
+        if self._config.enabled:
+            for server_id, runtime in self._servers.items():
+                if runtime.config.enabled:
+                    self._schedule_discovery(server_id)
 
-        for server_id, runtime in self._servers.items():
-            if not runtime.config.enabled:
-                continue
-            task = asyncio.create_task(
-                self._connect_and_discover(server_id),
-                name=f"mcp-discover-{server_id}",
-            )
-            self._discovery_tasks.append(task)
+    async def reconfigure(self, config: McpRuntimeConfig) -> None:
+        """Apply a persisted MCP configuration without restarting APEX."""
+        async with self._reconfigure_lock:
+            if self._shutting_down:
+                return
+            if not self._started:
+                self._config = config
+                return
+
+            previous = self._config
+            previous_effective = {
+                server_id: previous.enabled and runtime.config.enabled
+                for server_id, runtime in self._servers.items()
+            }
+            next_effective = {
+                server_id: config.enabled and server_config.enabled
+                for server_id, server_config in config.servers.items()
+            }
+            changed = {
+                server_id
+                for server_id in set(self._servers) | set(config.servers)
+                if (
+                    server_id not in self._servers
+                    or server_id not in config.servers
+                    or self._servers[server_id].config
+                    != config.servers[server_id]
+                    or previous_effective.get(server_id, False)
+                    != next_effective.get(server_id, False)
+                )
+            }
+
+            for server_id in changed:
+                await self._cancel_discovery(server_id)
+                await self._teardown_server(server_id)
+
+            with self._lock:
+                self._config = config
+                for server_id in set(self._servers) - set(config.servers):
+                    del self._servers[server_id]
+                for server_id, server_config in config.servers.items():
+                    if server_id in changed:
+                        prior_generation = (
+                            self._servers[server_id].generation
+                            if server_id in self._servers
+                            else 0
+                        )
+                        self._servers[server_id] = _ServerRuntime(
+                            config=server_config,
+                            generation=prior_generation + 1,
+                            status=(
+                                "configured"
+                                if config.enabled and server_config.enabled
+                                else "disabled"
+                            ),
+                            reason=(
+                                "MCP server is configured and awaiting connection."
+                                if config.enabled and server_config.enabled
+                                else "MCP server is disabled."
+                            ),
+                        )
+
+            if config.enabled:
+                for server_id in changed:
+                    runtime = self._servers.get(server_id)
+                    if runtime is not None and runtime.config.enabled:
+                        self._schedule_discovery(server_id)
 
     async def shutdown(self) -> None:
         """Cancel discovery, close transports, and unregister MCP capabilities."""
         self._shutting_down = True
-        for task in self._discovery_tasks:
+        tasks = list(self._discovery_tasks.values())
+        for task in tasks:
             task.cancel()
-        if self._discovery_tasks:
-            await asyncio.gather(*self._discovery_tasks, return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         self._discovery_tasks.clear()
 
         with self._lock:
@@ -202,25 +265,107 @@ class MCPClientManager:
         coro = self._call_tool(client, remote_name, arguments, timeout_seconds)
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         try:
-            return future.result(timeout=timeout_seconds + 1.0)
+            result = future.result(timeout=timeout_seconds + 1.0)
+            if not self._is_active_client(server_id, client):
+                raise CapabilityError(
+                    CapabilityErrorCategory.UNAVAILABLE,
+                    "MCP capability is unavailable.",
+                )
+            return result
         except concurrent.futures.TimeoutError as exc:
             future.cancel()
             raise CapabilityError(
                 CapabilityErrorCategory.TIMEOUT,
                 "Capability invocation timed out.",
             ) from exc
-        except CapabilityError:
+        except CapabilityError as exc:
+            if not self._is_active_client(server_id, client):
+                raise CapabilityError(
+                    CapabilityErrorCategory.UNAVAILABLE,
+                    "MCP capability is unavailable.",
+                ) from exc
             raise
         except Exception as exc:
+            if not self._is_active_client(server_id, client):
+                raise CapabilityError(
+                    CapabilityErrorCategory.UNAVAILABLE,
+                    "MCP capability is unavailable.",
+                ) from exc
             mapped = _map_exception(exc)
             raise mapped from exc
 
-    async def _connect_and_discover(self, server_id: str) -> None:
+    def _is_active_client(self, server_id: str, client: Client[Any]) -> bool:
+        with self._lock:
+            runtime = self._servers.get(server_id)
+            return (
+                self._config.enabled
+                and runtime is not None
+                and runtime.config.enabled
+                and runtime.status == "connected"
+                and runtime.client is client
+            )
+
+    def _schedule_discovery(self, server_id: str) -> None:
+        with self._lock:
+            runtime = self._servers.get(server_id)
+            if runtime is None:
+                return
+            generation = runtime.generation
+            runtime.status = "configured"
+            runtime.reason = "MCP server is configured and awaiting connection."
+        task = asyncio.create_task(
+            self._connect_and_discover(server_id, generation),
+            name=f"mcp-discover-{server_id}",
+        )
+        self._discovery_tasks[server_id] = task
+        task.add_done_callback(
+            lambda completed, sid=server_id: self._discard_discovery_task(
+                sid, completed
+            )
+        )
+
+    async def _cancel_discovery(self, server_id: str) -> None:
+        task = self._discovery_tasks.pop(server_id, None)
+        if task is None:
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    def _discard_discovery_task(
+        self, server_id: str, task: asyncio.Task[None]
+    ) -> None:
+        if self._discovery_tasks.get(server_id) is task:
+            self._discovery_tasks.pop(server_id, None)
+
+    async def _wait_for_discovery(self) -> None:
+        """Wait for the currently scheduled discovery tasks (test helper)."""
+        tasks = list(self._discovery_tasks.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _is_current(self, server_id: str, generation: int) -> bool:
+        with self._lock:
+            runtime = self._servers.get(server_id)
+            return (
+                not self._shutting_down
+                and self._config.enabled
+                and runtime is not None
+                and runtime.config.enabled
+                and runtime.generation == generation
+            )
+
+    async def _connect_and_discover(
+        self, server_id: str, generation: int | None = None
+    ) -> None:
         if self._shutting_down:
             return
 
         with self._lock:
-            runtime = self._servers[server_id]
+            runtime = self._servers.get(server_id)
+            if runtime is None:
+                return
+            if generation is None:
+                generation = runtime.generation
             config = runtime.config
 
         auth_token, headers, auth_error = _resolve_auth(config)
@@ -238,7 +383,6 @@ class MCPClientManager:
             _LOGGER.warning(
                 "Failed to configure MCP server %s; marking degraded.",
                 server_id,
-                exc_info=True,
             )
             self._set_status(
                 server_id,
@@ -276,7 +420,6 @@ class MCPClientManager:
                 _LOGGER.warning(
                     "MCP server %s is offline or unreachable.",
                     server_id,
-                    exc_info=True,
                 )
                 self._set_status(
                     server_id,
@@ -286,7 +429,7 @@ class MCPClientManager:
             await _safe_close(client)
             return
 
-        if self._shutting_down:
+        if not self._is_current(server_id, generation):
             await _safe_close(client)
             return
 
@@ -310,13 +453,16 @@ class MCPClientManager:
             _LOGGER.warning(
                 "MCP tool discovery failed for server %s.",
                 server_id,
-                exc_info=True,
             )
             self._set_status(
                 server_id,
                 "degraded",
                 "MCP tool discovery failed.",
             )
+            await _safe_close(client)
+            return
+
+        if not self._is_current(server_id, generation):
             await _safe_close(client)
             return
 
@@ -390,7 +536,6 @@ class MCPClientManager:
                 _LOGGER.warning(
                     "Skipping duplicate or invalid MCP capability %s.",
                     capability_name,
-                    exc_info=True,
                 )
                 continue
 
@@ -398,25 +543,40 @@ class MCPClientManager:
             remote_map[capability_name] = remote_name
 
         with self._lock:
-            runtime = self._servers[server_id]
-            runtime.client = client
-            runtime.registered_names = registered
-            runtime.remote_tool_names = remote_map
-            runtime.status = "connected"
-            if not allowlist:
-                runtime.reason = (
-                    "MCP server connected; tool allowlist is empty so no tools "
-                    "were registered."
-                )
-            elif not registered:
-                runtime.reason = (
-                    "MCP server connected; no allowlisted tools with explicit risk "
-                    "classifications were registered."
-                )
+            runtime = self._servers.get(server_id)
+            if (
+                runtime is None
+                or runtime.generation != generation
+                or not self._config.enabled
+                or not runtime.config.enabled
+            ):
+                runtime = None
+            if runtime is None:
+                stale = True
             else:
-                runtime.reason = (
-                    f"MCP server connected with {len(registered)} registered tool(s)."
-                )
+                stale = False
+                runtime.client = client
+                runtime.registered_names = registered
+                runtime.remote_tool_names = remote_map
+                runtime.status = "connected"
+                if not allowlist:
+                    runtime.reason = (
+                        "MCP server connected; tool allowlist is empty so no tools "
+                        "were registered."
+                    )
+                elif not registered:
+                    runtime.reason = (
+                        "MCP server connected; no allowlisted tools with explicit risk "
+                        "classifications were registered."
+                    )
+                else:
+                    runtime.reason = (
+                        f"MCP server connected with {len(registered)} registered tool(s)."
+                    )
+        if stale:
+            for name in registered:
+                unregister_capability(name)
+            await _safe_close(client)
 
     async def _teardown_server(self, server_id: str) -> None:
         with self._lock:
@@ -476,7 +636,9 @@ class MCPClientManager:
         reason: str,
     ) -> None:
         with self._lock:
-            runtime = self._servers[server_id]
+            runtime = self._servers.get(server_id)
+            if runtime is None:
+                return
             runtime.status = status
             runtime.reason = reason
 
@@ -680,10 +842,10 @@ def _aggregate_reason(
 
 async def _safe_close(client: Client[Any]) -> None:
     try:
-        await client.__aexit__(None, None, None)
+        await asyncio.wait_for(client.__aexit__(None, None, None), timeout=5.0)
     except Exception:
-        _LOGGER.debug("Error while closing MCP client.", exc_info=True)
+        _LOGGER.debug("MCP client transport close did not complete cleanly.")
     try:
-        await client.close()
+        await asyncio.wait_for(client.close(), timeout=5.0)
     except Exception:
-        _LOGGER.debug("Error while disposing MCP client.", exc_info=True)
+        _LOGGER.debug("MCP client disposal did not complete cleanly.")

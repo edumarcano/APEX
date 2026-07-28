@@ -5,11 +5,16 @@ import {
   cloneRuntimeSettings,
   diffSettingsPatch,
   isSettingsPatchEmpty,
+  parseMcpStatusResponse,
   parseSettingsResponse,
   resolveEffectiveTiming,
   settingsAreEqual,
 } from './settings'
-import { BASE_SETTINGS, buildSettingsResponse } from '../test/settingsFixtures'
+import {
+  BASE_SETTINGS,
+  buildMcpStatusResponse,
+  buildSettingsResponse,
+} from '../test/settingsFixtures'
 
 describe('settings response parsing', () => {
   it('accepts a complete valid response', () => {
@@ -28,6 +33,8 @@ describe('settings response parsing', () => {
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
     ['voice mode', ['settings', 'voice', 'mode'], 'invalid'],
+    ['MCP master boolean', ['settings', 'mcp', 'enabled'], 'yes'],
+    ['MCP provider boolean', ['settings', 'mcp', 'servers', 'github', 'enabled'], 1],
     ['schema version', ['schema_version'], '1'],
     ['local file flag', ['local_file_present'], 'false'],
     ['local override flag', ['local_override_active'], 0],
@@ -70,6 +77,8 @@ describe('settings editing utilities', () => {
     expect(clone.assistant).not.toBe(BASE_SETTINGS.assistant)
     expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
+    expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
+    expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
   })
 
   it('generates a patch containing only dirty fields', () => {
@@ -80,12 +89,18 @@ describe('settings editing utilities', () => {
     draft.briefing.default_mode = 'acinonyx'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
+    draft.mcp.enabled = true
+    draft.mcp.servers.github.enabled = true
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       features: { weather: false, market: false },
       assistant: { default_profile: 'lynx' },
       briefing: { default_mode: 'acinonyx' },
       voice: { gender: 'male', mode: 'manual' },
+      mcp: {
+        enabled: true,
+        servers: { github: { enabled: true } },
+      },
     })
   })
 
@@ -98,6 +113,32 @@ describe('settings editing utilities', () => {
 
     clone.modules.football = true
     expect(settingsAreEqual(BASE_SETTINGS, clone)).toBe(false)
+  })
+})
+
+describe('MCP status parsing', () => {
+  it('accepts sanitized provider status', () => {
+    const body = buildMcpStatusResponse({
+      enabled: true,
+      status: 'connected',
+      servers: [
+        {
+          id: 'github',
+          enabled: true,
+          transport: 'http',
+          status: 'connected',
+          reason: 'Connected.',
+          registered_tools: ['github_search_code'],
+        },
+      ],
+    })
+    expect(parseMcpStatusResponse(body)).toEqual(body)
+  })
+
+  it('rejects malformed tool lists and statuses', () => {
+    const malformed = buildMcpStatusResponse() as unknown as Record<string, unknown>
+    malformed.status = 'secret-provider-state'
+    expect(parseMcpStatusResponse(malformed)).toBeNull()
   })
 })
 

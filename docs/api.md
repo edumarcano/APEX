@@ -88,7 +88,7 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 **Response `200`** — `SettingsResponse`
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "settings": {
     "features": {
       "weather": true,
@@ -113,6 +113,14 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
       "engine": "google",
       "gender": "female",
       "mode": "automatic"
+    },
+    "mcp": {
+      "enabled": false,
+      "servers": {
+        "github": { "enabled": false },
+        "brave": { "enabled": false },
+        "alphavantage": { "enabled": false }
+      }
     }
   },
   "local_file_present": false,
@@ -125,8 +133,8 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | integer | Settings contract version (currently `3`) |
-| `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `briefing`, `voice`) |
+| `schema_version` | integer | Settings contract version (currently `4`) |
+| `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `briefing`, `voice`, `mcp`) |
 | `local_file_present` | boolean | Whether `config.local.json` exists on disk |
 | `local_override_active` | boolean | Whether a valid local overlay is active |
 | `load_warning` | string \| null | Diagnostic from the last load when local overlay was discarded |
@@ -143,7 +151,11 @@ Merges dirty nested fields into the runtime settings store, validates, persists 
 ```json
 {
   "features": { "news": true },
-  "voice": { "gender": "male" }
+  "voice": { "gender": "male" },
+  "mcp": {
+    "enabled": true,
+    "servers": { "github": { "enabled": true } }
+  }
 }
 ```
 
@@ -154,6 +166,7 @@ Merges dirty nested fields into the runtime settings store, validates, persists 
 | `assistant` | `enabled` (boolean), `default_profile` (one of the six profile identities) |
 | `briefing` | `default_mode` (`comet` \| `lynx` \| `acinonyx` \| `neofelis` \| `structured_digest`) |
 | `voice` | `engine` (`google` \| `pyttsx3` \| `kokoro`), `gender` (`male` \| `female`), `mode` (`off` \| `manual` \| `automatic`) |
+| `mcp` | `enabled` plus `servers.github.enabled`, `servers.brave.enabled`, and `servers.alphavantage.enabled` (booleans) |
 
 **Response `200`** — same `SettingsResponse` envelope as GET after the patch applies.
 
@@ -167,6 +180,8 @@ Merges dirty nested fields into the runtime settings store, validates, persists 
 Empty patches (`{}`) return the current envelope without writing.
 
 `DEV_MODE` and `DEMO_MODE` are not patchable through this endpoint.
+
+MCP changes are persisted before the running client manager reconciles them. Enabling a provider starts connection and discovery immediately after Save; disabling it unregisters imported tools before closing the transport. An unavailable provider remains enabled in settings while `/api/v1/mcp/status` reports its degraded state. The settings API cannot edit credentials, endpoints, commands, allowlists, tool risks, or custom servers.
 
 **Effective timing:** briefing connector and module flags are captured at briefing start; `briefing.default_mode` applies to the next trigger/generate; `features.market` immediately starts or stops HUD polling; assistant enablement is checked when a query begins (in-flight queries finish); voice engine/gender/mode are bound when delivery/`speak` begins.
 
@@ -742,7 +757,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 ### `GET /api/v1/mcp/status`
 
-Returns sanitized MCP client connection status for the runtime and each configured server. Used for diagnostics; there is no MCP settings UI in this release.
+Returns sanitized MCP client connection status for the runtime and each configured server. Runtime Settings polls this endpoint while open so connection and authentication state remains separate from saved toggle state.
 
 When `mcp.enabled` is false or the manager was not started, the response reports `status: "disabled"` with an empty `servers` list. Credentials, authorization headers, environment values, and raw upstream exception text are never included.
 
@@ -795,7 +810,7 @@ Non-secret MCP configuration lives under `mcp` in `config.json` (overlaid by `co
 
 Each allowlisted tool must have an explicit `tool_risks` entry or it is not registered. Tokens stay outside tracked configuration. Alpha Vantage OAuth state is stored in the operating-system credential manager under the `APEX MCP OAuth` service rather than in the repository.
 
-To enable one preset, copy only the enable flags into `config.local.json`; the recursive overlay retains the tracked endpoint, allowlist, and limits:
+The tracked presets can be enabled from Runtime Settings. Saving applies the new state immediately: newly enabled providers connect in the background, while disabled providers are unregistered and disconnected. The equivalent file-only configuration is:
 
 ```json
 {
@@ -809,6 +824,8 @@ To enable one preset, copy only the enable flags into `config.local.json`; the r
 ```
 
 GitHub requires `GITHUB_PERSONAL_ACCESS_TOKEN` and uses the official remote server's read-only endpoint. Brave requires `BRAVE_API_KEY`, Node.js 22 or later, and `npx`; it does not replace scheduled news telemetry. Enabling Alpha Vantage starts browser authorization and keeps the native cached market ticker active independently.
+
+Runtime Settings exposes only enablement booleans for the three tracked presets. Custom servers and advanced non-secret connection options remain file-configured. APEX does not expose an MCP server in v1.18.
 
 ---
 

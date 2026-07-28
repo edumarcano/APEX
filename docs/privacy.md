@@ -34,6 +34,8 @@ The assistant can search Gmail and read a selected message through the existing 
 
 Enabled MCP providers receive the arguments selected by the assistant for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives interactive web or news searches; Alpha Vantage receives market-research parameters. Returned content is untrusted, bounded before model and HUD delivery, and never forwarded into scheduled briefing telemetry by these integrations. The presets are disabled by default and imported tools are not re-exported.
 
+Runtime Settings can enable or disable only the tracked provider presets. It never returns or accepts credential values, authorization headers, OAuth artifacts, endpoints, subprocess commands, allowlists, or risk classifications. Disabling a provider removes its imported capabilities before its connection closes. APEX remains a loopback-only MCP client in v1.18 and does not expose an MCP server.
+
 ## Local Persistence
 
 `apex_memory.db` stores production run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata such as `run_id`. New run and briefing timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.

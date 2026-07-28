@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 from typing import Any
@@ -19,6 +20,7 @@ from core.settings import (
     SettingsResponse,
     get_settings_store,
 )
+from core.mcp import get_mcp_manager, load_mcp_config
 
 router = APIRouter(tags=["system"])
 _LOGGER = logging.getLogger(__name__)
@@ -110,7 +112,7 @@ def get_runtime_settings() -> SettingsResponse:
 
 
 @router.patch("/api/v1/settings", response_model=SettingsResponse)
-def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
+async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
     """
     Merge dirty nested fields into the runtime settings store.
 
@@ -123,7 +125,7 @@ def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
     if not dirty:
         return _build_settings_response()
     try:
-        store.apply_patch(payload)
+        await asyncio.to_thread(store.apply_patch, payload)
     except SettingsPersistenceError:
         _LOGGER.exception("Settings persistence failed")
         raise HTTPException(
@@ -133,6 +135,10 @@ def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                 "Active settings were not changed."
             ),
         ) from None
+    if payload.mcp is not None:
+        manager = get_mcp_manager()
+        if manager is not None:
+            await manager.reconfigure(load_mcp_config())
     return _build_settings_response()
 
 

@@ -1,4 +1,8 @@
-import type { RuntimeSettings, SettingsResponse } from '../types/settings'
+import type {
+  McpStatusResponse,
+  RuntimeSettings,
+  SettingsResponse,
+} from '../types/settings'
 
 export const BASE_SETTINGS: RuntimeSettings = {
   features: {
@@ -25,13 +29,21 @@ export const BASE_SETTINGS: RuntimeSettings = {
     gender: 'female',
     mode: 'automatic',
   },
+  mcp: {
+    enabled: false,
+    servers: {
+      github: { enabled: false },
+      brave: { enabled: false },
+      alphavantage: { enabled: false },
+    },
+  },
 }
 
 export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 3,
+    schema_version: 4,
     settings,
     local_file_present: false,
     local_override_active: false,
@@ -47,4 +59,16 @@ export function jsonResponse(body: unknown, init?: ResponseInit): Response {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   })
+}
+
+export function buildMcpStatusResponse(
+  overrides: Partial<McpStatusResponse> = {},
+): McpStatusResponse {
+  return {
+    enabled: false,
+    status: 'disabled',
+    reason: 'MCP client runtime is disabled.',
+    servers: [],
+    ...overrides,
+  }
 }

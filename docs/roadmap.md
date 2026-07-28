@@ -309,12 +309,12 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 
 ---
 
-## v1.18.0 - Cortex: FastMCP Protocol Layer & Bidirectional MCP Hub
+## v1.18.0 - Cortex: MCP Client Foundation & Read-Only Integrations
 
 **Status:** In Progress
 
 **Objective:**
-Establish APEX's provider-neutral capability layer, enabling approved external MCP integrations, an authenticated local APEX MCP server, expanded read-only assistant tools, and a full seven-day calendar HUD.
+Establish APEX's provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, and full seven-day calendar awareness.
 
 ---
 
@@ -327,12 +327,12 @@ Integrate the Hermes Agent platform for production-grade background workflows, a
 
 ---
 
-## v1.20.0 - Workspace Meta-Briefing & Context Ingestion
+## v1.20.0 - Workspace Meta-Briefing & Secure Context Ingestion
 
 **Status:** Planned
 
 **Objective:**
-Create a structured ingestion layer for workspace digests and external context, allowing APEX to combine that information with local telemetry and produce a unified briefing experience.
+Create a structured, authenticated inbound context layer, including a narrowly scoped APEX MCP ingestion surface, so external services can deliver information that APEX combines with local telemetry into a unified briefing experience.
 
 ---
 

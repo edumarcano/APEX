@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel'
 import {
   buildSettingsResponse,
+  buildMcpStatusResponse,
   jsonResponse,
 } from '../test/settingsFixtures'
 
@@ -166,6 +167,7 @@ describe('SettingsPanel', () => {
   it('preserves the dirty controls and reports a failed save', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+      .mockResolvedValueOnce(jsonResponse(buildMcpStatusResponse()))
       .mockResolvedValueOnce(
         jsonResponse({ detail: 'Write failed.' }, { status: 503 }),
       )
@@ -198,6 +200,94 @@ describe('SettingsPanel', () => {
         expect(option).toHaveClass('bg-zinc-950', 'text-zinc-100')
       }
     }
+  })
+
+  it('gates MCP providers behind the master toggle and applies them on Save', async () => {
+    const saved = structuredClone(buildSettingsResponse())
+    saved.settings.mcp.enabled = true
+    saved.settings.mcp.servers.github.enabled = true
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+      .mockResolvedValueOnce(jsonResponse(buildMcpStatusResponse()))
+      .mockResolvedValueOnce(jsonResponse(saved))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          buildMcpStatusResponse({
+            enabled: true,
+            status: 'configured',
+            reason: 'Connecting.',
+            servers: [
+              {
+                id: 'github',
+                enabled: true,
+                transport: 'http',
+                status: 'configured',
+                reason: 'Connecting.',
+                registered_tools: [],
+              },
+            ],
+          }),
+        ),
+      )
+    const user = userEvent.setup()
+    renderPanel()
+
+    const master = await screen.findByRole('switch', { name: 'External MCP tools' })
+    const github = screen.getByRole('switch', { name: 'GitHub' })
+    expect(github).toBeDisabled()
+
+    await user.click(master)
+    expect(github).toBeEnabled()
+    await user.click(github)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/settings'),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            mcp: {
+              enabled: true,
+              servers: { github: { enabled: true } },
+            },
+          }),
+        }),
+      ),
+    )
+  })
+
+  it('shows sanitized MCP status and approved registered tools', async () => {
+    const settings = structuredClone(buildSettingsResponse())
+    settings.settings.mcp.enabled = true
+    settings.settings.mcp.servers.github.enabled = true
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(settings))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          buildMcpStatusResponse({
+            enabled: true,
+            status: 'connected',
+            reason: 'secret aggregate detail',
+            servers: [
+              {
+                id: 'github',
+                enabled: true,
+                transport: 'http',
+                status: 'connected',
+                reason: 'Bearer should-never-render',
+                registered_tools: ['github_search_code'],
+              },
+            ],
+          }),
+        ),
+      )
+    renderPanel()
+
+    expect(await screen.findByText('Connected')).toBeVisible()
+    expect(screen.getByText('github_search_code')).toBeVisible()
+    expect(screen.queryByText(/should-never-render/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/secret aggregate detail/)).not.toBeInTheDocument()
   })
 
   it('describes briefing modes and recommends only Acinonyx', async () => {
