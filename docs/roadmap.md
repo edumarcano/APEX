@@ -314,9 +314,7 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 **Status:** In Progress
 
 **Objective:**
-Establish APEX's provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, and full seven-day calendar awareness.
-
-**Emergency stabilization item:** Add explicit one-shot local command scopes and a visible context budget so 4K-context Ollama profiles do not receive the complete capability catalog. This is a bounded v1.18 fix; MCP client foundations remain the milestone's primary focus. Automatic local tool selection and local GitHub access are deferred.
+Establish APEX’s provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, full seven-day calendar awareness, and bounded local assistant command scopes with context-aware budgets for 4K-context Ollama profiles.
 
 ---
 
