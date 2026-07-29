@@ -24,6 +24,8 @@ import {
   type ActiveReminder,
   type AgentProfileStatus,
   type AssistantProfile,
+  type LocalContextUsage,
+  type LocalToolScope,
 } from '../types/telemetry'
 
 import { AssistantToolCards } from './AssistantToolCards'
@@ -142,9 +144,14 @@ interface ConsoleTrayProps {
   isAssistantQuerying: boolean
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
+  assistantContextUsage: LocalContextUsage | null
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
-  queryAssistant: (prompt: string, profile: AssistantProfile) => Promise<void>
+  queryAssistant: (
+    prompt: string,
+    profile: AssistantProfile,
+    toolScope?: LocalToolScope | null,
+  ) => Promise<void>
   clearAssistantChat: () => void
   activeProfile: AssistantProfile
   setActiveProfile: (profile: AssistantProfile) => void
@@ -532,6 +539,7 @@ export function ConsoleTray({
   isAssistantQuerying,
   assistantLatestTrace,
   assistantError,
+  assistantContextUsage,
   profilesStatus,
   profilesStatusHydrated,
   queryAssistant,
@@ -553,10 +561,14 @@ export function ConsoleTray({
   }, [isExpanded, setExpanded])
 
   const handleAgentSubmit = useCallback(
-    (query: string, profile: AssistantProfile): void => {
+    (
+      query: string,
+      profile: AssistantProfile,
+      toolScope?: LocalToolScope | null,
+    ): void => {
       setActiveTab('assistant')
       setExpanded(true)
-      void queryAssistant(query, profile)
+      void queryAssistant(query, profile, toolScope)
     },
     [queryAssistant, setActiveTab, setExpanded],
   )
@@ -746,6 +758,8 @@ export function ConsoleTray({
               profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
+              showCommands
+              contextUsage={assistantContextUsage}
               integrated
             />
           </footer>
@@ -850,6 +864,8 @@ export function ConsoleTray({
               profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
+              showCommands
+              contextUsage={assistantContextUsage}
               integrated
             />
           </footer>

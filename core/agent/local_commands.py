@@ -1,0 +1,142 @@
+"""Explicit local assistant command bundles and availability resolution."""
+
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import dataclass
+
+from core.agent.capabilities import (
+    CapabilityDescriptor,
+    get_capability_descriptor,
+)
+from core.agent.types import LocalCommandStatus, LocalToolScope
+
+
+@dataclass(frozen=True)
+class LocalCommandDefinition:
+    key: LocalToolScope
+    label: str
+    description: str
+    tool_names: tuple[str, ...]
+
+    @property
+    def command(self) -> str:
+        return f"/{self.key}"
+
+
+LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
+    LocalCommandDefinition(
+        key="schedule",
+        label="Schedule",
+        description="Calendar events and pending reminders.",
+        tool_names=("get_upcoming_calendar_events", "get_active_reminders"),
+    ),
+    LocalCommandDefinition(
+        key="weather",
+        label="Weather",
+        description="Configured-location forecast up to five days.",
+        tool_names=("get_weather_forecast",),
+    ),
+    LocalCommandDefinition(
+        key="f1",
+        label="Formula 1",
+        description="Driver standings and season race calendar.",
+        tool_names=("get_f1_driver_standings", "get_f1_season_calendar"),
+    ),
+    LocalCommandDefinition(
+        key="mail",
+        label="Mail",
+        description="Search Gmail and retrieve a selected message.",
+        tool_names=("search_gmail", "get_gmail_message"),
+    ),
+    LocalCommandDefinition(
+        key="search",
+        label="Web Search",
+        description="Brave web and news search.",
+        tool_names=("brave_brave_web_search", "brave_brave_news_search"),
+    ),
+    LocalCommandDefinition(
+        key="market",
+        label="Market",
+        description="Quotes, symbols, company details, time series, and market news.",
+        tool_names=(
+            "alphavantage_time_series_daily",
+            "alphavantage_global_quote",
+            "alphavantage_symbol_search",
+            "alphavantage_news_sentiment",
+            "alphavantage_company_overview",
+        ),
+    ),
+    LocalCommandDefinition(
+        key="briefings",
+        label="Briefings",
+        description="Recent persisted APEX briefing history.",
+        tool_names=("get_briefing_history",),
+    ),
+)
+
+_DEFINITIONS_BY_KEY = {definition.key: definition for definition in LOCAL_COMMAND_DEFINITIONS}
+
+
+def _estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
+    if not descriptors:
+        return 0
+    payload = [
+        {
+            "type": "function",
+            "function": {
+                "name": descriptor.name,
+                "description": descriptor.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    **descriptor.input_schema,
+                },
+            },
+        }
+        for descriptor in descriptors
+    ]
+    byte_count = len(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    )
+    return math.ceil(byte_count / 3)
+
+
+def resolve_local_command(
+    scope: LocalToolScope,
+) -> tuple[list[CapabilityDescriptor], tuple[str, ...]]:
+    definition = _DEFINITIONS_BY_KEY[scope]
+    descriptors: list[CapabilityDescriptor] = []
+    missing: list[str] = []
+    for tool_name in definition.tool_names:
+        descriptor = get_capability_descriptor(tool_name)
+        if descriptor is None or not descriptor.expose_to_assistant:
+            missing.append(tool_name)
+        else:
+            descriptors.append(descriptor)
+    return descriptors, tuple(missing)
+
+
+def list_local_command_statuses() -> list[LocalCommandStatus]:
+    statuses: list[LocalCommandStatus] = []
+    for definition in LOCAL_COMMAND_DEFINITIONS:
+        descriptors, missing = resolve_local_command(definition.key)
+        available = not missing
+        statuses.append(
+            LocalCommandStatus(
+                key=definition.key,
+                command=definition.command,
+                label=definition.label,
+                description=definition.description,
+                tool_count=len(definition.tool_names),
+                estimated_schema_tokens=_estimate_schema_tokens(descriptors),
+                available=available,
+                unavailable_reason=(
+                    None
+                    if available
+                    else "Required provider tools are not currently connected."
+                ),
+            )
+        )
+    return statuses

@@ -5,6 +5,8 @@ import type {
   AgentProfileStatus,
   AssistantProfile,
   LoadedOllamaModelStatus,
+  LocalContextUsage,
+  LocalToolScope,
   ProfileAvailabilityStatus,
   ProfileStability,
   ToolOutputItem,
@@ -48,6 +50,7 @@ interface AgentQueryResponseBody {
   tool_trace?: ToolTraceItem[]
   tool_outputs?: ToolOutputItem[]
   error?: string | null
+  local_context_usage?: LocalContextUsage | null
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -269,7 +272,24 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
     .map(parseToolOutputItem)
     .filter((item): item is ToolOutputItem => item !== null)
 
-  return { answer, tool_trace, tool_outputs, error }
+  const usageRecord =
+    record.local_context_usage && typeof record.local_context_usage === 'object'
+      ? (record.local_context_usage as Record<string, unknown>)
+      : null
+  const local_context_usage =
+    usageRecord &&
+    typeof usageRecord.estimated_prompt_tokens === 'number' &&
+    typeof usageRecord.context_window === 'number' &&
+    typeof usageRecord.history_messages_dropped === 'number'
+      ? {
+          estimated_prompt_tokens: usageRecord.estimated_prompt_tokens,
+          peak_prompt_tokens: parseNullableFiniteNumber(usageRecord.peak_prompt_tokens),
+          context_window: usageRecord.context_window,
+          history_messages_dropped: usageRecord.history_messages_dropped,
+        }
+      : null
+
+  return { answer, tool_trace, tool_outputs, error, local_context_usage }
 }
 
 export interface UseApexAssistantResult {
@@ -278,12 +298,17 @@ export interface UseApexAssistantResult {
   isAssistantOpen: boolean
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
+  assistantContextUsage: LocalContextUsage | null
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
   queryAssistant: (
     prompt: string,
     profile: AssistantProfile,
-    context?: { snapshotId?: string | null; briefingId?: number | null },
+    context?: {
+      snapshotId?: string | null
+      briefingId?: number | null
+      toolScope?: LocalToolScope | null
+    },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
   clearAssistantChat: () => void
@@ -297,6 +322,8 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
   const [isAssistantOpen, setAssistantOpen] = useState(false)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
   const [assistantError, setAssistantError] = useState<string | null>(null)
+  const [assistantContextUsage, setAssistantContextUsage] =
+    useState<LocalContextUsage | null>(null)
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
 
@@ -405,7 +432,11 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     async (
       prompt: string,
       profile: AssistantProfile,
-      context?: { snapshotId?: string | null; briefingId?: number | null },
+      context?: {
+        snapshotId?: string | null
+        briefingId?: number | null
+        toolScope?: LocalToolScope | null
+      },
     ): Promise<void> => {
       const trimmedPrompt = prompt.trim()
       if (!trimmedPrompt) {
@@ -429,6 +460,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
             history: assistantHistory,
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
+            ...(context?.toolScope ? { tool_scope: context.toolScope } : {}),
           }),
         })
 
@@ -461,6 +493,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
 
         setAssistantHistory((prev) => [...prev, userMsg, modelMsg])
         setAssistantLatestTrace(body.tool_trace ?? [])
+        setAssistantContextUsage(body.local_context_usage ?? null)
 
         if (body.error) {
           setAssistantError(body.error)
@@ -486,6 +519,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     setAssistantHistory([])
     setAssistantLatestTrace([])
     setAssistantError(null)
+    setAssistantContextUsage(null)
   }, [])
 
   const resetAssistantSession = useCallback((): void => {
@@ -499,6 +533,7 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     isAssistantOpen,
     assistantLatestTrace,
     assistantError,
+    assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant,

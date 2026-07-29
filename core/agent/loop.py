@@ -12,10 +12,12 @@ from core.agent.capabilities import (
 )
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
+from core.agent.local_commands import resolve_local_command
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
     AgentQueryResponse,
+    LocalContextUsage,
     ToolResult,
 )
 
@@ -61,10 +63,48 @@ def run_agent_loop(
     tool_outputs: list[dict[str, Any]] = []
     total_tool_executions = 0
     last_model_content: str | None = None
+    is_local = isinstance(profile, OllamaModelProfile)
+    local_tools, _missing = (
+        resolve_local_command(request.tool_scope)
+        if is_local and request.tool_scope is not None
+        else ([], ())
+    )
+    allowed_local_tools = {tool.name for tool in local_tools}
+    estimated_prompt_tokens = 0
+    peak_prompt_tokens: int | None = None
+    history_messages_dropped = 0
+
+    def response(
+        *,
+        answer: str,
+        error: str | None = None,
+    ) -> AgentQueryResponse:
+        context_usage = None
+        if is_local:
+            context_usage = LocalContextUsage(
+                estimated_prompt_tokens=estimated_prompt_tokens,
+                peak_prompt_tokens=peak_prompt_tokens,
+                context_window=profile.context_window,
+                history_messages_dropped=history_messages_dropped,
+            )
+        return AgentQueryResponse(
+            answer=answer,
+            profile_used=profile.model_dump(),
+            tool_trace=tool_trace,
+            tool_outputs=tool_outputs,
+            session_id=request.session_id,
+            error=error,
+            tool_scope_used=request.tool_scope if is_local else None,
+            local_context_usage=context_usage,
+        )
 
     try:
         for _turn in range(profile.max_tool_turns):
-            turn_tools: list[CapabilityDescriptor] = list_assistant_capabilities()
+            turn_tools: list[CapabilityDescriptor] = (
+                list(local_tools)
+                if is_local
+                else list_assistant_capabilities()
+            )
 
             # On the last permitted local turn, withhold tools so the model is
             # forced into a text answer under the final-answer token budget
@@ -82,29 +122,32 @@ def run_agent_loop(
                 system_instruction_override=system_instruction_override,
             )
             history.append(model_message)
+            estimated_prompt_tokens = max(
+                estimated_prompt_tokens,
+                model_message.estimated_prompt_tokens or 0,
+            )
+            history_messages_dropped = max(
+                history_messages_dropped,
+                model_message.history_messages_dropped,
+            )
+            if model_message.prompt_tokens is not None:
+                peak_prompt_tokens = max(
+                    peak_prompt_tokens or 0,
+                    model_message.prompt_tokens,
+                )
 
             if model_message.content:
                 last_model_content = model_message.content
 
             if not model_message.tool_calls:
-                return AgentQueryResponse(
-                    answer=model_message.content or "",
-                    profile_used=profile.model_dump(),
-                    tool_trace=tool_trace,
-                    tool_outputs=tool_outputs,
-                    session_id=request.session_id,
-                )
+                return response(answer=model_message.content or "")
 
             tool_results: list[ToolResult] = []
 
             for call in model_message.tool_calls:
                 if total_tool_executions >= profile.max_tool_calls:
-                    return AgentQueryResponse(
+                    return response(
                         answer=last_model_content or "",
-                        profile_used=profile.model_dump(),
-                        tool_trace=tool_trace,
-                        tool_outputs=tool_outputs,
-                        session_id=request.session_id,
                         error=(
                             f"Tool execution limit reached "
                             f"({profile.max_tool_calls} calls)."
@@ -116,6 +159,11 @@ def run_agent_loop(
                 output: Any
 
                 try:
+                    if is_local and call.name not in allowed_local_tools:
+                        raise CapabilityError(
+                            CapabilityErrorCategory.UNAVAILABLE,
+                            "Tool is outside the selected local command scope.",
+                        )
                     output = tools_dispatcher(call.name, call.arguments)
                 except CapabilityError as exc:
                     status = "error"
@@ -175,12 +223,8 @@ def run_agent_loop(
 
             history.append(AgentMessage(role="tool", tool_results=tool_results))
 
-        return AgentQueryResponse(
+        return response(
             answer=last_model_content or "",
-            profile_used=profile.model_dump(),
-            tool_trace=tool_trace,
-            tool_outputs=tool_outputs,
-            session_id=request.session_id,
             error=(
                 f"Agent turn limit reached ({profile.max_tool_turns} turns) "
                 "without a final answer."
@@ -207,11 +251,7 @@ def run_agent_loop(
             )
             error_detail = f"Cloud provider error ({type(exc).__name__})."
 
-        return AgentQueryResponse(
+        return response(
             answer=answer,
-            profile_used=profile.model_dump(),
-            tool_trace=tool_trace,
-            tool_outputs=tool_outputs,
-            session_id=request.session_id,
             error=error_detail,
         )

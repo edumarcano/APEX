@@ -45,7 +45,7 @@ import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
-import type { AssistantProfile } from './types/telemetry'
+import type { AssistantProfile, LocalToolScope } from './types/telemetry'
 import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
 interface ParsedEmail {
@@ -203,6 +203,7 @@ export default function App(): ReactElement {
     isAssistantOpen,
     assistantLatestTrace,
     assistantError,
+    assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant,
@@ -678,7 +679,11 @@ export default function App(): ReactElement {
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
   const queryAssistantWithContext = useCallback(
-    async (prompt: string, profile: AssistantProfile): Promise<void> => {
+    async (
+      prompt: string,
+      profile: AssistantProfile,
+      toolScope?: LocalToolScope | null,
+    ): Promise<void> => {
       const resolution = await preflight.requestOperation('assistant_query', {
         synthesis_profile: profile,
         involves_cloud: profile === 'comet' || profile === 'nova' || profile === 'pulsar',
@@ -688,6 +693,7 @@ export default function App(): ReactElement {
       }
       await queryAssistant(prompt, profile, {
         snapshotId: telemetry.snapshot?.snapshot_id ?? null,
+        toolScope,
       })
     },
     [preflight, queryAssistant, telemetry.snapshot?.snapshot_id],
@@ -702,6 +708,7 @@ export default function App(): ReactElement {
     isAssistantQuerying,
     assistantLatestTrace,
     assistantError,
+    assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant: queryAssistantWithContext,

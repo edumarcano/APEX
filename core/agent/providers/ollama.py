@@ -17,6 +17,9 @@ from core.agent.types import AgentMessage, ToolCall, ToolResult
 from core.config import OLLAMA_HOST
 
 _LOGGER = logging.getLogger(__name__)
+_PROMPT_BYTES_PER_TOKEN = 3
+_PROMPT_TEMPLATE_ALLOWANCE_TOKENS = 128
+_PROMPT_SAFETY_MARGIN_TOKENS = 512
 
 _SECURITY_BOUNDARY_DIRECTIVE = (
     "\n\nSECURITY BOUNDARY DIRECTIVE:\n"
@@ -189,12 +192,21 @@ def _post_chat(payload: dict[str, Any], profile: OllamaModelProfile) -> dict[str
             "Ensure the local Ollama daemon is running."
         ) from exc
     except RequestException as exc:
-        status_detail = ""
+        status_code = exc.response.status_code if exc.response is not None else None
+        detail = ""
         if exc.response is not None:
-            status_detail = f" (HTTP {exc.response.status_code})"
-        raise RuntimeError(
+            try:
+                raw_detail = exc.response.json().get("error")
+                if isinstance(raw_detail, str):
+                    detail = " ".join(raw_detail.split())[:300]
+            except (ValueError, AttributeError):
+                pass
+        status_detail = f" (HTTP {status_code})" if status_code is not None else ""
+        raise OllamaRequestError(
             f"Ollama request failed for model {profile.api_model!r}"
-            f"{status_detail}: {exc}"
+            f"{status_detail}{f': {detail}' if detail else '.'}",
+            status_code=status_code,
+            detail=detail,
         ) from exc
 
     try:
@@ -250,6 +262,137 @@ def _post_chat(payload: dict[str, Any], profile: OllamaModelProfile) -> dict[str
     return data
 
 
+class OllamaRequestError(RuntimeError):
+    """Sanitized provider failure with enough detail to identify overflow."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        detail: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.detail = detail
+
+    @property
+    def is_context_overflow(self) -> bool:
+        normalized = self.detail.lower()
+        return self.status_code == 400 and any(
+            marker in normalized
+            for marker in (
+                "context length",
+                "context window",
+                "too many tokens",
+                "prompt is too long",
+                "input length",
+            )
+        )
+
+
+def _estimate_payload_tokens(payload: dict[str, Any]) -> int:
+    """Estimate serialized request tokens without retaining prompt content."""
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+    byte_count = len(serialized.encode("utf-8"))
+    return (
+        byte_count + _PROMPT_BYTES_PER_TOKEN - 1
+    ) // _PROMPT_BYTES_PER_TOKEN + _PROMPT_TEMPLATE_ALLOWANCE_TOKENS
+
+
+def _current_turn_start(messages: list[AgentMessage]) -> int:
+    """Return the user-message index that starts the current interaction."""
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].role == "user":
+            return index
+    return 0
+
+
+def _build_payload(
+    messages: list[AgentMessage],
+    tools: list[CapabilityDescriptor],
+    profile: OllamaModelProfile,
+    system_instruction: str,
+    *,
+    num_predict: int,
+) -> dict[str, Any]:
+    ollama_messages = _messages_to_ollama(messages)
+    if system_instruction:
+        ollama_messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": system_instruction + _SECURITY_BOUNDARY_DIRECTIVE,
+            },
+        )
+    payload: dict[str, Any] = {
+        "model": profile.api_model,
+        "messages": ollama_messages,
+        "stream": False,
+        "options": {
+            "temperature": profile.default_temperature,
+            "num_predict": num_predict,
+            "num_thread": profile.num_thread,
+            "num_ctx": profile.context_window,
+        },
+        "think": profile.think,
+        "keep_alive": get_keep_alive_duration(),
+    }
+    if tools:
+        payload["tools"] = [_descriptor_to_openai_schema(tool) for tool in tools]
+    return payload
+
+
+def _budget_payload(
+    messages: list[AgentMessage],
+    tools: list[CapabilityDescriptor],
+    profile: OllamaModelProfile,
+    system_instruction: str,
+    *,
+    num_predict: int,
+) -> tuple[dict[str, Any], int, int]:
+    """Trim complete historical interactions until the local prompt fits."""
+    current_start = _current_turn_start(messages)
+    historical = list(messages[:current_start])
+    current = list(messages[current_start:])
+    dropped = 0
+    target = profile.context_window - num_predict - _PROMPT_SAFETY_MARGIN_TOKENS
+
+    while True:
+        payload = _build_payload(
+            historical + current,
+            tools,
+            profile,
+            system_instruction,
+            num_predict=num_predict,
+        )
+        estimated = _estimate_payload_tokens(payload)
+        if estimated <= target:
+            return payload, estimated, dropped
+        if not historical:
+            raise RuntimeError(
+                "Local prompt budget exceeded after removing prior history "
+                f"(estimated={estimated}, budget={target}, "
+                f"context_window={profile.context_window})."
+            )
+
+        next_user = next(
+            (
+                index
+                for index, message in enumerate(historical[1:], start=1)
+                if message.role == "user"
+            ),
+            len(historical),
+        )
+        dropped += next_user
+        historical = historical[next_user:]
+
+
 def _extract_message(data: dict[str, Any]) -> dict[str, Any]:
     """Validate and return the 'message' object from an Ollama chat response."""
     message = data.get("message")
@@ -270,54 +413,60 @@ class OllamaProvider:
         profile: OllamaModelProfile,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
-        ollama_messages = _messages_to_ollama(messages)
         system_instruction = system_instruction_override or profile.system_instruction
-
-        if system_instruction:
-            ollama_messages.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": system_instruction + _SECURITY_BOUNDARY_DIRECTIVE,
-                },
-            )
-
         resolved_num_predict = (
             profile.tool_select_max_tokens
             if tools
             else profile.final_answer_max_tokens
         )
-        options: dict[str, Any] = {
-            "temperature": profile.default_temperature,
-            "num_predict": resolved_num_predict,
-            "num_thread": profile.num_thread,
-            "num_ctx": profile.context_window,
-        }
-
-        payload: dict[str, Any] = {
-            "model": profile.api_model,
-            "messages": ollama_messages,
-            "stream": False,
-            "options": options,
-            "think": profile.think,
-            "keep_alive": get_keep_alive_duration(),
-        }
-
-        if tools:
-            payload["tools"] = [
-                _descriptor_to_openai_schema(tool) for tool in tools
-            ]
-
-        _LOGGER.info(
-            "[AGENT][OLLAMA] generate_turn — model=%s messages=%d tools=%d",
-            profile.api_model,
-            len(ollama_messages),
-            len(tools),
+        payload, estimated_tokens, dropped_messages = _budget_payload(
+            messages,
+            tools,
+            profile,
+            system_instruction,
+            num_predict=resolved_num_predict,
         )
 
-        data = _post_chat(payload, profile)
+        _LOGGER.info(
+            "[AGENT][OLLAMA] generate_turn — model=%s messages=%d tools=%d "
+            "estimated_prompt_tokens=%d history_messages_dropped=%d "
+            "context_window=%d",
+            profile.api_model,
+            len(payload["messages"]),
+            len(tools),
+            estimated_tokens,
+            dropped_messages,
+            profile.context_window,
+        )
+
+        try:
+            data = _post_chat(payload, profile)
+        except OllamaRequestError as exc:
+            current_messages = messages[_current_turn_start(messages):]
+            if not exc.is_context_overflow or len(current_messages) == len(messages):
+                raise
+            _LOGGER.warning(
+                "[AGENT][OLLAMA] Context overflow; retrying once without prior "
+                "history model=%s context_window=%d",
+                profile.api_model,
+                profile.context_window,
+            )
+            payload, estimated_tokens, retry_dropped = _budget_payload(
+                current_messages,
+                tools,
+                profile,
+                system_instruction,
+                num_predict=resolved_num_predict,
+            )
+            dropped_messages += retry_dropped + len(messages) - len(current_messages)
+            data = _post_chat(payload, profile)
 
         register_activity(profile.api_model)
+        peak_prompt_tokens = (
+            data.get("prompt_eval_count")
+            if isinstance(data.get("prompt_eval_count"), int)
+            else None
+        )
 
         message = _extract_message(data)
 
@@ -332,9 +481,9 @@ class OllamaProvider:
             _LOGGER.info(
                 "[AGENT][OLLAMA] Tool-select turn truncated at %s tokens without "
                 "a tool call; regenerating as final answer",
-                options.get("num_predict"),
+                payload["options"].get("num_predict"),
             )
-            retry_options = dict(options)
+            retry_options = dict(payload["options"])
             retry_options["num_predict"] = profile.final_answer_max_tokens
             retry_payload = dict(payload)
             retry_payload.pop("tools", None)
@@ -342,10 +491,19 @@ class OllamaProvider:
 
             data = _post_chat(retry_payload, profile)
             register_activity(profile.api_model)
+            if isinstance(data.get("prompt_eval_count"), int):
+                peak_prompt_tokens = max(
+                    peak_prompt_tokens or 0,
+                    data["prompt_eval_count"],
+                )
             message = _extract_message(data)
 
         raw_content = message.get("content")
         if isinstance(raw_content, str) and raw_content:
             message["content"] = _strip_thinking_tags(raw_content)
 
-        return _ollama_message_to_agent_message(message)
+        agent_message = _ollama_message_to_agent_message(message)
+        agent_message.prompt_tokens = peak_prompt_tokens
+        agent_message.estimated_prompt_tokens = estimated_tokens
+        agent_message.history_messages_dropped = dropped_messages
+        return agent_message

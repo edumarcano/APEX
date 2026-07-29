@@ -682,6 +682,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `profile` | string | Cloud (`"comet"`, `"nova"`, `"pulsar"`) or local (`"lynx"`, `"acinonyx"`, `"neofelis"`) profile. Defaults to `"comet"`. |
 | `session_id` | string \| null | Optional client-generated grouping identifier; passed through unchanged. |
 | `history` | `AgentMessage[]` | Prior turns for this session, including `tool_calls`/`tool_results`. Empty on the first turn. |
+| `tool_scope` | string \| null | Local-only one-turn bundle: `schedule`, `weather`, `f1`, `mail`, `search`, `market`, or `briefings`. Omit for a tool-free local turn. Cloud profiles retain automatic tool discovery. |
 | `snapshot_id` | string \| null | Optional telemetry snapshot ID. When present and matching the current in-memory snapshot, module display text is injected as HUD context. Absent or mismatched IDs inject no snapshot context. |
 | `briefing_id` | integer \| null | Optional briefing history row ID. When present, that briefing's prose and insights are injected as HUD context. Absent or unknown IDs inject no briefing context. |
 
@@ -696,6 +697,8 @@ The endpoint is stateless on the server. The full conversation history is suppli
     { "name": "get_weather_forecast", "status": "ok", "duration_ms": 412.3 }
   ],
   "tool_outputs": [],
+  "tool_scope_used": null,
+  "local_context_usage": null,
   "session_id": null,
   "error": null
 }
@@ -709,6 +712,8 @@ The endpoint is stateless on the server. The full conversation history is suppli
 | `tool_outputs` | object[] | One entry per tool executed this turn with its full structured output: `name`, `status`, `duration_ms`, `output`. Only capabilities with `expose_to_client_display=True` return their real `output`; all others return `{"error": "Tool output is not whitelisted for client display."}`. A dispatcher or capability failure returns a stable public payload such as `{"error": "Tool execution failed.", "error_category": "upstream-failure"}` rather than exception text. |
 | `session_id` | string \| null | Echo of the request's `session_id`. |
 | `error` | string \| null | Populated when a bounded-loop limit was reached or an exception occurred; `answer` still contains a usable fallback message in that case. |
+| `tool_scope_used` | string \| null | Local command bundle applied to the turn; null for cloud and tool-free local turns. |
+| `local_context_usage` | object \| null | Local-only sanitized counts: estimated and provider-reported prompt tokens, context window, and dropped history messages. |
 
 **Client-display exposure:** `tool_outputs` exists so the HUD can render structured result cards (forecast tables, standings, calendar entries, Gmail results, and approved MCP results) without re-deriving them from `answer` text. Exposure is controlled by each capability's `expose_to_client_display` flag. The eight native capabilities currently exposed are `get_weather_forecast`, `get_f1_driver_standings`, `get_f1_season_calendar`, `get_upcoming_calendar_events`, `get_active_reminders`, `get_briefing_history`, `search_gmail`, and `get_gmail_message`. The tracked GitHub, Brave Search, and Alpha Vantage presets also enable generic client presentation for their explicitly allowlisted tools; arbitrary MCP server entries remain hidden by default.
 
@@ -726,6 +731,14 @@ The endpoint is stateless on the server. The full conversation history is suppli
 **HUD context injection:** The handler does **not** implicitly inject the latest persisted briefing. Optional `briefing_id` and/or `snapshot_id` on the request select explicit HUD context. Absent identifiers mean no HUD briefing/telemetry context is appended to the system instruction. Selected context is sanitized, bounded to 2,000 characters, wrapped in `<untrusted_hud_context>` markers, and accompanied by an instruction to treat it as data rather than commands.
 
 **Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
+
+Local profiles receive no tools by default. Explicit bundles are `/schedule`, `/weather`, `/f1`, `/mail`, `/search` (Brave), `/market` (Alpha Vantage), and `/briefings`. GitHub and automatic local discovery are intentionally excluded. The loop enforces selected names at dispatch time.
+
+Local Ollama requests budget the serialized prompt, selected schemas, output allowance, and a safety margin against the configured context window. Old history is removed as complete user-led interactions. A provider-reported overflow receives one retry without prior history; the selected bundle is preserved.
+
+### `GET /api/v1/agent/commands`
+
+Returns the local command catalog with command text, description, tool count, conservative schema-token estimate, current availability, and a stable unavailability reason. MCP-backed commands are disabled when any required imported capability is absent.
 
 **Demo path:** When `DEMO_MODE=true`, returns a deterministic canned response selected by keyword-matching the prompt against entries in `core/mock/assistant.json` (weather/forecast, F1/standings/calendar, reminders/tasks, or a generic fallback). Each entry supplies its own `answer`, `tool_trace`, and `tool_outputs`. No live Gemini or Ollama call is made.
 

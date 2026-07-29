@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 
 from core import config, database
 from core.agent.loop import run_agent_loop
+from core.agent.local_commands import list_local_command_statuses, resolve_local_command
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
@@ -28,7 +29,12 @@ from core.agent.providers.ollama_lifecycle import (
     unload_active_local_model,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
-from core.agent.types import AgentMessage, AgentQueryRequest, AgentQueryResponse
+from core.agent.types import (
+    AgentMessage,
+    AgentQueryRequest,
+    AgentQueryResponse,
+    LocalCommandStatus,
+)
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
     AgentProfileStatus,
@@ -55,6 +61,11 @@ _BUSY_REASON = "Briefing synthesis is using local inference."
 _HUD_CONTEXT_OPEN = "<untrusted_hud_context>"
 _HUD_CONTEXT_CLOSE = "</untrusted_hud_context>"
 _HUD_CONTEXT_MAX_CHARS = 2000
+_LOCAL_TOOL_FREE_INSTRUCTION = (
+    "\n\nLOCAL COMMAND SCOPE:\n"
+    "No live tools are available for this turn. Answer from the conversation "
+    "only and do not claim to have queried live data."
+)
 
 _PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
@@ -199,6 +210,11 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
     return profiles
 
 
+def build_local_command_statuses() -> list[LocalCommandStatus]:
+    """Return the authoritative local command catalog and live availability."""
+    return list_local_command_statuses()
+
+
 def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     """
     Manually unload the currently active local Ollama model from memory.
@@ -319,11 +335,20 @@ def _execute_agent_turn(
         if isinstance(profile, OllamaModelProfile):
             provider: GeminiProvider | OllamaProvider = OllamaProvider()
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
+            if payload.tool_scope is None:
+                scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
+            else:
+                scope_instruction = (
+                    "\n\nLOCAL COMMAND SCOPE:\n"
+                    f"Only the /{payload.tool_scope} command tools are available "
+                    "for this turn. Use only those tools for live data."
+                )
         else:
             provider = GeminiProvider(api_key=api_key)
             base_prompt = config.AGENT_SYSTEM_PROMPT
+            scope_instruction = ""
 
-        local_system_instruction = base_prompt + hud_context
+        local_system_instruction = base_prompt + scope_instruction + hud_context
 
         return run_agent_loop(
             payload,
@@ -390,6 +415,23 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown agent profile: {payload.profile!r}",
         )
+
+    if isinstance(profile, GeminiModelProfile) and payload.tool_scope is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Command scopes are available only for local profiles.",
+        )
+
+    if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
+        _descriptors, missing = resolve_local_command(payload.tool_scope)
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"/{payload.tool_scope} is unavailable because its provider "
+                    "tools are not currently connected."
+                ),
+            )
 
     api_key: str | None = None
     if payload.profile in GEMINI_MODEL_PROFILES:

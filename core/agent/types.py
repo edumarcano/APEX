@@ -1,6 +1,47 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, TypeAlias
 
 from pydantic import BaseModel, Field
+
+
+LocalToolScope: TypeAlias = Literal[
+    "schedule",
+    "weather",
+    "f1",
+    "mail",
+    "search",
+    "market",
+    "briefings",
+]
+
+
+class LocalContextUsage(BaseModel):
+    estimated_prompt_tokens: int = Field(
+        ge=0, description="Conservative preflight prompt-token estimate."
+    )
+    peak_prompt_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Largest prompt_eval_count returned across local model turns.",
+    )
+    context_window: int = Field(
+        ge=1, description="Configured Ollama context window for the profile."
+    )
+    history_messages_dropped: int = Field(
+        default=0,
+        ge=0,
+        description="Prior session messages omitted to keep the local prompt bounded.",
+    )
+
+
+class LocalCommandStatus(BaseModel):
+    key: LocalToolScope
+    command: str = Field(description="Slash command shown in the Ask APEX console.")
+    label: str
+    description: str
+    tool_count: int = Field(ge=0)
+    estimated_schema_tokens: int = Field(ge=0)
+    available: bool
+    unavailable_reason: str | None = None
 
 
 class ToolCall(BaseModel):
@@ -36,6 +77,9 @@ class AgentMessage(BaseModel):
     tool_results: Optional[List[ToolResult]] = Field(
         default=None, description="Tool execution results returned to the model."
     )
+    prompt_tokens: Optional[int] = Field(default=None, exclude=True)
+    estimated_prompt_tokens: Optional[int] = Field(default=None, exclude=True)
+    history_messages_dropped: int = Field(default=0, exclude=True)
 
 
 class AgentQueryRequest(BaseModel):
@@ -52,6 +96,13 @@ class AgentQueryRequest(BaseModel):
     history: List[AgentMessage] = Field(
         default_factory=list,
         description="Recent conversation history for the session.",
+    )
+    tool_scope: LocalToolScope | None = Field(
+        default=None,
+        description=(
+            "Explicit local Ollama command bundle. Omit for tool-free local turns; "
+            "cloud profiles retain their normal automatic capability set."
+        ),
     )
     snapshot_id: Optional[str] = Field(
         default=None,
@@ -91,4 +142,12 @@ class AgentQueryResponse(BaseModel):
     )
     error: Optional[str] = Field(
         default=None, description="Detailed error diagnostics, if any."
+    )
+    tool_scope_used: LocalToolScope | None = Field(
+        default=None,
+        description="Resolved local command bundle used for this response.",
+    )
+    local_context_usage: LocalContextUsage | None = Field(
+        default=None,
+        description="Local Ollama prompt-window usage; null for cloud profiles.",
     )
