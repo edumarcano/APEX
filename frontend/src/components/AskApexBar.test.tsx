@@ -30,6 +30,12 @@ const weatherCommand: LocalCommandStatus = {
   unavailable_reason: null,
 }
 
+const unavailableWeatherCommand: LocalCommandStatus = {
+  ...weatherCommand,
+  available: false,
+  unavailable_reason: 'Required provider tools are not currently connected.',
+}
+
 describe('AskApexBar local commands', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -73,5 +79,42 @@ describe('AskApexBar local commands', () => {
       'weather',
     )
     expect(screen.getByText('No tools')).toBeInTheDocument()
+  })
+
+  it('refreshes provider availability when the command panel opens', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([unavailableWeatherCommand]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([weatherCommand]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+    render(
+      <AskApexBar
+        activeProfile="lynx"
+        onProfileChange={vi.fn()}
+        onSubmit={vi.fn()}
+        profilesStatus={[localProfile]}
+        profilesStatusHydrated
+        isSubmitting={false}
+        showCommands
+        integrated
+      />,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'Commands' }))
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /\/weather/ })).toBeEnabled(),
+    )
   })
 })

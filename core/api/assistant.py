@@ -9,8 +9,12 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from core import config, database
-from core.agent.loop import run_agent_loop
-from core.agent.local_commands import list_local_command_statuses, resolve_local_command
+from core.agent.local_commands import (
+    ResolvedLocalCommand,
+    list_local_command_statuses,
+    resolve_local_command,
+)
+from core.agent.loop import build_agent_failure_details, run_agent_loop
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
@@ -327,6 +331,7 @@ def _execute_agent_turn(
     payload: AgentQueryRequest,
     profile: GeminiModelProfile | OllamaModelProfile,
     api_key: str | None,
+    resolved_local_command: ResolvedLocalCommand | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -340,8 +345,9 @@ def _execute_agent_turn(
             else:
                 scope_instruction = (
                     "\n\nLOCAL COMMAND SCOPE:\n"
-                    f"Only the /{payload.tool_scope} command tools are available "
-                    "for this turn. Use only those tools for live data."
+                    f"The /{payload.tool_scope} command defines the only tools "
+                    "that may be offered during tool-selection turns. Use only "
+                    "results from those tools for live data."
                 )
         else:
             provider = GeminiProvider(api_key=api_key)
@@ -355,28 +361,14 @@ def _execute_agent_turn(
             provider,
             profile,
             system_instruction_override=local_system_instruction,
+            resolved_local_command=resolved_local_command,
         )
     except Exception as exc:
         _LOGGER.exception(
             "Agent turn failed for profile %s",
             payload.profile,
         )
-        if isinstance(profile, OllamaModelProfile):
-            answer = (
-                "The APEX assistant encountered an issue reaching the local Ollama "
-                "provider or running the requested operations. Please verify that "
-                "Ollama is running, the model is installed, and system resources "
-                "are sufficient, then try again."
-            )
-            error_detail = f"Local provider error ({type(exc).__name__})."
-        else:
-            answer = (
-                "The APEX assistant encountered an issue reaching the cloud provider "
-                "or running the requested operations. Please check your "
-                "credentials, network status, or quota allocations, and try again."
-            )
-            error_detail = f"Cloud provider error ({type(exc).__name__})."
-
+        answer, error_detail = build_agent_failure_details(profile, exc)
         return AgentQueryResponse(
             answer=answer,
             profile_used=profile.model_dump(),
@@ -422,9 +414,10 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             detail="Command scopes are available only for local profiles.",
         )
 
+    resolved_local_command: ResolvedLocalCommand | None = None
     if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
-        _descriptors, missing = resolve_local_command(payload.tool_scope)
-        if missing:
+        resolved_local_command = resolve_local_command(payload.tool_scope)
+        if resolved_local_command.missing_tool_names:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
@@ -492,7 +485,12 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                     ),
                 )
 
-            return _execute_agent_turn(payload, profile, api_key=None)
+            return _execute_agent_turn(
+                payload,
+                profile,
+                api_key=None,
+                resolved_local_command=resolved_local_command,
+            )
         finally:
             end_local_execution()
 

@@ -2,7 +2,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS, DEFAULT_AGENT_SYSTEM_PROMPT
+from core.config import (
+    DEFAULT_AGENT_SYSTEM_PROMPT,
+    GEMINI_AGENT_MAX_TOOL_CALLS,
+    GEMINI_AGENT_MAX_TURNS,
+)
 
 
 GeminiThinkingLevel = Literal["minimal", "low", "medium", "high"]
@@ -45,8 +49,8 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="fast",
         stability="stable",
         thinking_level="minimal",
-        max_tool_turns=min(6, AGENT_MAX_TURNS),
-        max_tool_calls=min(10, AGENT_MAX_TOOL_CALLS),
+        max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
     ),
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
@@ -55,8 +59,8 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="balanced",
         stability="stable",
         thinking_level="low",
-        max_tool_turns=min(4, AGENT_MAX_TURNS),
-        max_tool_calls=min(6, AGENT_MAX_TOOL_CALLS),
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
     ),
     "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
@@ -65,7 +69,7 @@ GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
         tier="advanced",
         stability="stable",
         thinking_level="medium",
-        max_tool_turns=min(4, AGENT_MAX_TURNS),
-        max_tool_calls=min(6, AGENT_MAX_TOOL_CALLS),
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
     ),
 }

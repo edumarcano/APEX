@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import math
 from dataclasses import dataclass
 
 from core.agent.capabilities import (
     CapabilityDescriptor,
     get_capability_descriptor,
 )
+from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.types import LocalCommandStatus, LocalToolScope
 
 
@@ -23,6 +22,13 @@ class LocalCommandDefinition:
     @property
     def command(self) -> str:
         return f"/{self.key}"
+
+
+@dataclass(frozen=True)
+class ResolvedLocalCommand:
+    scope: LocalToolScope
+    descriptors: tuple[CapabilityDescriptor, ...]
+    missing_tool_names: tuple[str, ...]
 
 
 LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
@@ -120,30 +126,14 @@ def _project_local_descriptor(
 def _estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
     if not descriptors:
         return 0
-    payload = [
-        {
-            "type": "function",
-            "function": {
-                "name": descriptor.name,
-                "description": descriptor.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    **descriptor.input_schema,
-                },
-            },
-        }
-        for descriptor in descriptors
-    ]
-    byte_count = len(
-        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return estimate_json_tokens(
+        [descriptor_to_openai_schema(descriptor) for descriptor in descriptors]
     )
-    return math.ceil(byte_count / 3)
 
 
 def resolve_local_command(
     scope: LocalToolScope,
-) -> tuple[list[CapabilityDescriptor], tuple[str, ...]]:
+) -> ResolvedLocalCommand:
     definition = _DEFINITIONS_BY_KEY[scope]
     descriptors: list[CapabilityDescriptor] = []
     missing: list[str] = []
@@ -153,14 +143,18 @@ def resolve_local_command(
             missing.append(tool_name)
         else:
             descriptors.append(_project_local_descriptor(scope, descriptor))
-    return descriptors, tuple(missing)
+    return ResolvedLocalCommand(
+        scope=scope,
+        descriptors=tuple(descriptors),
+        missing_tool_names=tuple(missing),
+    )
 
 
 def list_local_command_statuses() -> list[LocalCommandStatus]:
     statuses: list[LocalCommandStatus] = []
     for definition in LOCAL_COMMAND_DEFINITIONS:
-        descriptors, missing = resolve_local_command(definition.key)
-        available = not missing
+        resolution = resolve_local_command(definition.key)
+        available = not resolution.missing_tool_names
         statuses.append(
             LocalCommandStatus(
                 key=definition.key,
@@ -168,7 +162,9 @@ def list_local_command_statuses() -> list[LocalCommandStatus]:
                 label=definition.label,
                 description=definition.description,
                 tool_count=len(definition.tool_names),
-                estimated_schema_tokens=_estimate_schema_tokens(descriptors),
+                estimated_schema_tokens=_estimate_schema_tokens(
+                    list(resolution.descriptors)
+                ),
                 available=available,
                 unavailable_reason=(
                     None

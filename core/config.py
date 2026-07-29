@@ -14,8 +14,8 @@ from typing import Any, Final, Literal, cast
 from dotenv import load_dotenv
 
 __all__ = [
-    "AGENT_MAX_TOOL_CALLS",
-    "AGENT_MAX_TURNS",
+    "GEMINI_AGENT_MAX_TOOL_CALLS",
+    "GEMINI_AGENT_MAX_TURNS",
     "AGENT_SYSTEM_PROMPT",
     "DEFAULT_AGENT_SYSTEM_PROMPT",
     "DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT",
@@ -539,14 +539,14 @@ try:
         _LOGGER.warning('Config key "gemini" must be a JSON object; using defaults.')
         _gemini_cfg = {}
 
-    AGENT_MAX_TURNS: Final[int] = _parse_config_int(
+    GEMINI_AGENT_MAX_TURNS: Final[int] = _parse_config_int(
         _gemini_cfg.get("agent_max_turns"),
         key="gemini.agent_max_turns",
         default=6,
         min_value=1,
         max_value=6,
     )
-    AGENT_MAX_TOOL_CALLS: Final[int] = _parse_config_int(
+    GEMINI_AGENT_MAX_TOOL_CALLS: Final[int] = _parse_config_int(
         _gemini_cfg.get("agent_max_tool_calls"),
         key="gemini.agent_max_tool_calls",
         default=10,
@@ -555,8 +555,8 @@ try:
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse gemini config: %s; using defaults.", exc)
-    AGENT_MAX_TURNS = 6
-    AGENT_MAX_TOOL_CALLS = 10
+    GEMINI_AGENT_MAX_TURNS = 6
+    GEMINI_AGENT_MAX_TOOL_CALLS = 10
 
 _DEFAULT_LYNX_RAM: Final[float] = 88.0
 _DEFAULT_LYNX_CPU: Final[float] = 95.0

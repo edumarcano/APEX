@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.local_commands import (
+    ResolvedLocalCommand,
     _estimate_schema_tokens,
     _project_local_descriptor,
     list_local_command_statuses,
 )
 from core.agent.loop import run_agent_loop
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
-from core.agent.providers.ollama import _budget_payload
+from core.agent.providers.ollama import (
+    OllamaProvider,
+    _budget_payload,
+    _build_payload,
+    _estimate_payload_tokens,
+)
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 
@@ -21,6 +28,7 @@ class _CapturingProvider:
     def __init__(self, responses: list[AgentMessage]) -> None:
         self.responses = responses
         self.tool_names: list[list[str]] = []
+        self.system_instructions: list[str | None] = []
 
     def generate_turn(
         self,
@@ -29,8 +37,8 @@ class _CapturingProvider:
         _profile: object,
         system_instruction_override: str | None = None,
     ) -> AgentMessage:
-        del system_instruction_override
         self.tool_names.append([tool.name for tool in tools])
+        self.system_instructions.append(system_instruction_override)
         return self.responses.pop(0)
 
 
@@ -139,17 +147,37 @@ class LocalCommandScopeTests(unittest.TestCase):
         )
         dispatched: list[str] = []
 
-        response = run_agent_loop(
-            AgentQueryRequest(
-                prompt="Forecast",
-                profile="lynx",
-                tool_scope="weather",
+        resolution = ResolvedLocalCommand(
+            scope="weather",
+            descriptors=(
+                CapabilityDescriptor(
+                    name="get_weather_forecast",
+                    title="Weather",
+                    description="Weather forecast.",
+                    input_schema={"type": "object", "properties": {}},
+                    origin="native",
+                    risk="read",
+                    expose_to_assistant=True,
+                    expose_to_mcp_server=False,
+                    expose_to_client_display=True,
+                ),
             ),
-            provider,
-            OLLAMA_MODEL_PROFILES["lynx"],
-            tools_dispatcher=lambda name, _arguments: dispatched.append(name),
+            missing_tool_names=(),
         )
+        with patch("core.agent.loop.resolve_local_command") as resolver:
+            response = run_agent_loop(
+                AgentQueryRequest(
+                    prompt="Forecast",
+                    profile="lynx",
+                    tool_scope="weather",
+                ),
+                provider,
+                OLLAMA_MODEL_PROFILES["lynx"],
+                tools_dispatcher=lambda name, _arguments: dispatched.append(name),
+                resolved_local_command=resolution,
+            )
 
+        resolver.assert_not_called()
         self.assertEqual(provider.tool_names[0], ["get_weather_forecast"])
         self.assertEqual(dispatched, [])
         self.assertEqual(
@@ -198,6 +226,8 @@ class LocalCommandScopeTests(unittest.TestCase):
 
         self.assertGreater(len(provider.tool_names[0]), 0)
         self.assertEqual(provider.tool_names[1], [])
+        self.assertNotIn("FINAL ANSWER PHASE", provider.system_instructions[0] or "")
+        self.assertIn("FINAL ANSWER PHASE", provider.system_instructions[1] or "")
         self.assertEqual(response.answer, "Forecast ready.")
         self.assertIsNone(response.error)
 
@@ -223,6 +253,110 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertEqual(dropped, 2)
         self.assertNotIn("old answer", contents)
         self.assertIn("current question", contents)
+
+    def test_security_directive_does_not_claim_tools_are_available(self) -> None:
+        profile = OLLAMA_MODEL_PROFILES["lynx"]
+        payload = _build_payload(
+            [AgentMessage(role="user", content="Hello")],
+            [],
+            profile,
+            "Short system instruction.",
+            num_predict=profile.final_answer_max_tokens,
+        )
+
+        system_content = payload["messages"][0]["content"]
+        self.assertIn("when present", system_content)
+        self.assertNotIn("You have access to external tools", system_content)
+
+    def test_truncated_tool_turn_rebudgets_for_larger_final_answer(self) -> None:
+        profile = OLLAMA_MODEL_PROFILES["neofelis"].model_copy(
+            update={
+                "context_window": 2200,
+                "tool_select_max_tokens": 64,
+                "final_answer_max_tokens": 512,
+            }
+        )
+        descriptor = CapabilityDescriptor(
+            name="get_weather_forecast",
+            title="Weather",
+            description="Weather forecast.",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_assistant=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+        messages: list[AgentMessage] | None = None
+        for word_count in range(100, 1200, 25):
+            candidate = [
+                AgentMessage(role="user", content="old " * word_count),
+                AgentMessage(role="model", content="old answer"),
+                AgentMessage(role="user", content="current question"),
+            ]
+            try:
+                _tool_payload, _tool_estimate, tool_dropped = _budget_payload(
+                    candidate,
+                    [descriptor],
+                    profile,
+                    "Short system instruction.",
+                    num_predict=profile.tool_select_max_tokens,
+                )
+                _final_payload, _final_estimate, final_dropped = _budget_payload(
+                    candidate,
+                    [],
+                    profile,
+                    "Short system instruction.",
+                    num_predict=profile.final_answer_max_tokens,
+                )
+            except RuntimeError:
+                continue
+            if tool_dropped == 0 and final_dropped > 0:
+                messages = candidate
+                break
+        self.assertIsNotNone(messages)
+
+        responses = [
+            {
+                "message": {"role": "assistant", "content": "partial"},
+                "done_reason": "length",
+                "prompt_eval_count": 900,
+            },
+            {
+                "message": {"role": "assistant", "content": "Final answer."},
+                "done_reason": "stop",
+                "prompt_eval_count": 600,
+            },
+        ]
+        payloads: list[dict[str, object]] = []
+
+        def fake_post(payload: dict[str, object], _profile: object) -> dict[str, object]:
+            payloads.append(payload)
+            return responses.pop(0)
+
+        with patch("core.agent.providers.ollama._post_chat", side_effect=fake_post):
+            result = OllamaProvider().generate_turn(
+                messages or [],
+                [descriptor],
+                profile,
+                system_instruction_override="Short system instruction.",
+            )
+
+        self.assertEqual(result.content, "Final answer.")
+        self.assertEqual(len(payloads), 2)
+        retry_payload = payloads[1]
+        self.assertNotIn("tools", retry_payload)
+        self.assertEqual(
+            retry_payload["options"]["num_predict"],  # type: ignore[index]
+            profile.final_answer_max_tokens,
+        )
+        retry_target = (
+            profile.context_window
+            - profile.final_answer_max_tokens
+            - 512
+        )
+        self.assertLessEqual(_estimate_payload_tokens(retry_payload), retry_target)
+        self.assertGreater(result.history_messages_dropped, 0)
 
 
 if __name__ == "__main__":

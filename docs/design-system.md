@@ -148,7 +148,7 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Local command scope
 
-The expanded Assistant console may show a compact Commands control directly above Ask APEX when a local profile is selected. Keep the collapsed tray free of this control. List every supported slash command by topic, disable unavailable provider-backed commands in place, and show the active command as a one-shot armed state. A bare slash command selects the scope without submitting; the next query consumes and clears it.
+The expanded Assistant console may show a compact Commands control directly above Ask APEX when a local profile is selected. Keep the collapsed tray free of this control. List every supported slash command by topic, disable unavailable provider-backed commands in place, and refresh provider availability whenever the command panel opens. Show the active command as a one-shot armed state. A bare slash command selects the scope without submitting; the next query consumes and clears it.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 

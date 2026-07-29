@@ -758,7 +758,7 @@ export function ConsoleTray({
               profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
-              showCommands
+              showCommands={isExpanded}
               contextUsage={assistantContextUsage}
               integrated
             />
@@ -864,7 +864,7 @@ export function ConsoleTray({
               profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
-              showCommands
+              showCommands={isExpanded}
               contextUsage={assistantContextUsage}
               integrated
             />
