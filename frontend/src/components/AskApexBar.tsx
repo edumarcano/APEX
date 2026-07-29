@@ -6,21 +6,35 @@ import {
   type ReactElement,
 } from 'react'
 
-import type { AgentProfileStatus, AssistantProfile } from '../types/telemetry'
+import type {
+  AgentProfileStatus,
+  AssistantProfile,
+  LocalCommandStatus,
+  LocalContextUsage,
+  LocalToolScope,
+} from '../types/telemetry'
+import { useLocalCommands } from '../hooks/useLocalCommands'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 
 import { CloudProfileSelector } from './CloudProfileSelector'
+import { LocalCommandSelector } from './LocalCommandSelector'
 
 interface AskApexBarProps {
   activeProfile: AssistantProfile
   onProfileChange: (profile: AssistantProfile) => void
-  onSubmit: (query: string, profile: AssistantProfile) => void
+  onSubmit: (
+    query: string,
+    profile: AssistantProfile,
+    toolScope?: LocalToolScope | null,
+  ) => void
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
   onSelectChip?: (query: string) => void
   isSubmitting: boolean
   disabled?: boolean
   integrated?: boolean
+  showCommands?: boolean
+  contextUsage?: LocalContextUsage | null
 }
 
 export function AskApexBar({
@@ -33,9 +47,29 @@ export function AskApexBar({
   isSubmitting,
   disabled = false,
   integrated = false,
+  showCommands = false,
+  contextUsage = null,
 }: AskApexBarProps): ReactElement {
   const [query, setQuery] = useState('')
+  const [commandsOpen, setCommandsOpen] = useState(false)
+  const [activeScope, setActiveScope] = useState<LocalToolScope | null>(null)
   const isInputDisabled = disabled || isSubmitting
+  const isLocalProfile = profilesStatus.some(
+    (profile) => profile.key === activeProfile && profile.provider === 'ollama',
+  )
+  const showLocalCommands = showCommands && isLocalProfile
+  const { commands, refreshCommands } = useLocalCommands(showLocalCommands)
+  const slashPrefix =
+    query.startsWith('/') && !query.includes(' ') ? query.toLowerCase() : null
+
+  const selectCommand = useCallback((command: LocalCommandStatus): void => {
+    if (!command.available) {
+      return
+    }
+    setActiveScope(command.key)
+    setQuery('')
+    setCommandsOpen(false)
+  }, [])
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>): void => {
@@ -46,10 +80,32 @@ export function AskApexBar({
         return
       }
 
-      onSubmit(trimmed, activeProfile)
+      const [possibleCommand, ...remaining] = trimmed.split(/\s+/)
+      const command = commands.find(
+        (item) => item.command.toLowerCase() === possibleCommand.toLowerCase(),
+      )
+      if (command && remaining.length === 0) {
+        selectCommand(command)
+        return
+      }
+      if (command && !command.available) {
+        return
+      }
+      const submittedQuery = command ? remaining.join(' ') : trimmed
+      onSubmit(submittedQuery, activeProfile, command?.key ?? activeScope)
+      setActiveScope(null)
       setQuery('')
     },
-    [activeProfile, disabled, isSubmitting, onSubmit, query],
+    [
+      activeProfile,
+      activeScope,
+      commands,
+      disabled,
+      isSubmitting,
+      onSubmit,
+      query,
+      selectCommand,
+    ],
   )
 
   const handleInputKeyDown = useCallback(
@@ -63,6 +119,13 @@ export function AskApexBar({
     },
     [],
   )
+
+  const handleCommandsToggle = useCallback((): void => {
+    if (!commandsOpen) {
+      void refreshCommands()
+    }
+    setCommandsOpen((open) => !open)
+  }, [commandsOpen, refreshCommands])
 
   const chipClassName = [
     'px-2 py-0.5 rounded-full border border-white/5 bg-white/5',
@@ -91,6 +154,17 @@ export function AskApexBar({
 
   return (
     <div className={wrapperClassName}>
+      {showLocalCommands ? (
+        <LocalCommandSelector
+          commands={commands}
+          commandsOpen={commandsOpen}
+          slashPrefix={slashPrefix}
+          activeScope={activeScope}
+          contextUsage={contextUsage}
+          onToggle={handleCommandsToggle}
+          onSelect={selectCommand}
+        />
+      ) : null}
       {!integrated && query.length === 0 ? (
         <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none w-full max-w-full">
           {OPERATION_PROMPT_CHIPS.map((chip) => (
@@ -139,7 +213,11 @@ export function AskApexBar({
 
           <CloudProfileSelector
             activeProfile={activeProfile}
-            onChange={onProfileChange}
+            onChange={(profile) => {
+              setActiveScope(null)
+              setCommandsOpen(false)
+              onProfileChange(profile)
+            }}
             profilesStatus={profilesStatus}
             profilesStatusHydrated={profilesStatusHydrated}
             disabled={isInputDisabled}

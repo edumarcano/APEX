@@ -314,7 +314,7 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 **Status:** In Progress
 
 **Objective:**
-Establish APEX's provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, and full seven-day calendar awareness.
+Establish APEX’s provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, full seven-day calendar awareness, and bounded local assistant command scopes with context-aware budgets for 4K-context Ollama profiles.
 
 ---
 

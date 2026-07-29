@@ -26,9 +26,11 @@ Google states that paid Gemini API services do not use prompts or responses to i
 
 ## Assistant Data
 
-The assistant is a separate path from briefing synthesis. A cloud profile sends the current prompt, browser-provided conversation history, explicitly selected HUD context, and any requested tool results to Gemini. A local profile sends the same categories to the configured Ollama host, which defaults to `http://localhost:11434` and can be changed in APEX configuration. Tool results are wrapped in `<untrusted_tool_output>` markers before another model turn.
+The assistant is a separate path from briefing synthesis. A cloud profile sends the current prompt, browser-provided conversation history, explicitly selected HUD context, and any requested tool results to Gemini. A local profile sends the same categories to the configured Ollama host, which defaults to `http://localhost:11434` and can be changed in APEX configuration. Local turns are tool-free unless the operator explicitly arms one command bundle for that request. GitHub is not offered to local profiles. Tool results are wrapped in `<untrusted_tool_output>` markers before another model turn.
 
 Conversation history is held by the browser tab and is lost on reload. There is no server-side chat-session store. A current telemetry snapshot or briefing is included only when its identifier is explicitly supplied; APEX does not implicitly inject the latest persisted briefing.
+
+Local prompt budgeting may omit the oldest complete conversation interactions before calling Ollama. Responses and logs expose token counts, the configured window, and the number of omitted messages, never prompt or tool-result content. One overflow retry removes prior history but preserves the explicitly selected command schemas.
 
 The assistant can search Gmail and read a selected message through the existing `gmail.readonly` authorization. Search metadata and message text can therefore be sent to the selected assistant model when one of these tools is invoked. Results are bounded, treated as untrusted model input, and rendered as escaped text in the HUD. Message retrieval excludes attachments, embedded resources, active HTML, and raw MIME; it cannot send, delete, archive, label, or otherwise modify email.
 

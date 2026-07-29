@@ -10,12 +10,15 @@ from core.agent.capabilities import (
     is_client_display_enabled,
     list_assistant_capabilities,
 )
+from core.agent.local_commands import ResolvedLocalCommand, resolve_local_command
+from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
     AgentQueryResponse,
+    LocalContextUsage,
     ToolResult,
 )
 
@@ -47,12 +50,36 @@ def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
     return invoke_capability(name, arguments)
 
 
+def build_agent_failure_details(
+    profile: AgentModelProfile,
+    exc: Exception,
+) -> tuple[str, str]:
+    """Return the sanitized provider-specific failure response."""
+    if isinstance(profile, OllamaModelProfile):
+        answer = (
+            "The APEX assistant encountered an issue reaching the local Ollama "
+            "provider or running the requested operations. Please verify that "
+            "Ollama is running, the model is installed, and system resources "
+            "are sufficient, then try again."
+        )
+        error_detail = f"Local provider error ({type(exc).__name__})."
+    else:
+        answer = (
+            "The APEX assistant encountered an issue reaching the cloud provider "
+            "or running the requested operations. Please check your credentials, "
+            "network status, or quota allocations, and try again."
+        )
+        error_detail = f"Cloud provider error ({type(exc).__name__})."
+    return answer, error_detail
+
+
 def run_agent_loop(
     request: AgentQueryRequest,
     provider: AgentProvider[P],
     profile: P,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
+    resolved_local_command: ResolvedLocalCommand | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -61,50 +88,97 @@ def run_agent_loop(
     tool_outputs: list[dict[str, Any]] = []
     total_tool_executions = 0
     last_model_content: str | None = None
+    is_local = isinstance(profile, OllamaModelProfile)
+    if is_local and request.tool_scope is not None:
+        local_command = resolved_local_command or resolve_local_command(
+            request.tool_scope
+        )
+        if local_command.scope != request.tool_scope:
+            raise ValueError("Resolved local command does not match the request scope.")
+        local_tools = list(local_command.descriptors)
+    else:
+        local_tools = []
+    allowed_local_tools = {tool.name for tool in local_tools}
+    estimated_prompt_tokens = 0
+    peak_prompt_tokens: int | None = None
+    history_messages_dropped = 0
+
+    def response(
+        *,
+        answer: str,
+        error: str | None = None,
+    ) -> AgentQueryResponse:
+        context_usage = None
+        if is_local:
+            context_usage = LocalContextUsage(
+                estimated_prompt_tokens=estimated_prompt_tokens,
+                peak_prompt_tokens=peak_prompt_tokens,
+                context_window=profile.context_window,
+                history_messages_dropped=history_messages_dropped,
+            )
+        return AgentQueryResponse(
+            answer=answer,
+            profile_used=profile.model_dump(),
+            tool_trace=tool_trace,
+            tool_outputs=tool_outputs,
+            session_id=request.session_id,
+            error=error,
+            tool_scope_used=request.tool_scope if is_local else None,
+            local_context_usage=context_usage,
+        )
 
     try:
         for _turn in range(profile.max_tool_turns):
-            turn_tools: list[CapabilityDescriptor] = list_assistant_capabilities()
+            turn_tools: list[CapabilityDescriptor] = (
+                list(local_tools)
+                if is_local
+                else list_assistant_capabilities()
+            )
 
-            # On the last permitted local turn, withhold tools so the model is
-            # forced into a text answer under the final-answer token budget
-            # instead of burning the turn on a tool call that can never run.
-            if (
-                isinstance(profile, OllamaModelProfile)
-                and _turn == profile.max_tool_turns - 1
-            ):
+            # Withhold tools on the last permitted turn so every provider must
+            # use its final model request to answer from the results already
+            # collected instead of requesting a call that cannot be followed up.
+            is_final_turn = _turn == profile.max_tool_turns - 1
+            turn_instruction = system_instruction_override
+            if is_final_turn:
                 turn_tools = []
+                turn_instruction = (
+                    system_instruction_override or profile.system_instruction
+                ) + FINAL_ANSWER_INSTRUCTION
 
             model_message = provider.generate_turn(
                 history,
                 turn_tools,
                 profile,
-                system_instruction_override=system_instruction_override,
+                system_instruction_override=turn_instruction,
             )
             history.append(model_message)
+            estimated_prompt_tokens = max(
+                estimated_prompt_tokens,
+                model_message.estimated_prompt_tokens or 0,
+            )
+            history_messages_dropped = max(
+                history_messages_dropped,
+                model_message.history_messages_dropped,
+            )
+            if model_message.prompt_tokens is not None:
+                peak_prompt_tokens = max(
+                    peak_prompt_tokens or 0,
+                    model_message.prompt_tokens,
+                )
 
             if model_message.content:
                 last_model_content = model_message.content
 
             if not model_message.tool_calls:
-                return AgentQueryResponse(
-                    answer=model_message.content or "",
-                    profile_used=profile.model_dump(),
-                    tool_trace=tool_trace,
-                    tool_outputs=tool_outputs,
-                    session_id=request.session_id,
-                )
+                return response(answer=model_message.content or "")
 
             tool_results: list[ToolResult] = []
 
             for call in model_message.tool_calls:
                 if total_tool_executions >= profile.max_tool_calls:
-                    return AgentQueryResponse(
+                    return response(
                         answer=last_model_content or "",
-                        profile_used=profile.model_dump(),
-                        tool_trace=tool_trace,
-                        tool_outputs=tool_outputs,
-                        session_id=request.session_id,
                         error=(
                             f"Tool execution limit reached "
                             f"({profile.max_tool_calls} calls)."
@@ -116,6 +190,11 @@ def run_agent_loop(
                 output: Any
 
                 try:
+                    if is_local and call.name not in allowed_local_tools:
+                        raise CapabilityError(
+                            CapabilityErrorCategory.UNAVAILABLE,
+                            "Tool is outside the selected local command scope.",
+                        )
                     output = tools_dispatcher(call.name, call.arguments)
                 except CapabilityError as exc:
                     status = "error"
@@ -175,12 +254,8 @@ def run_agent_loop(
 
             history.append(AgentMessage(role="tool", tool_results=tool_results))
 
-        return AgentQueryResponse(
+        return response(
             answer=last_model_content or "",
-            profile_used=profile.model_dump(),
-            tool_trace=tool_trace,
-            tool_outputs=tool_outputs,
-            session_id=request.session_id,
             error=(
                 f"Agent turn limit reached ({profile.max_tool_turns} turns) "
                 "without a final answer."
@@ -191,27 +266,8 @@ def run_agent_loop(
             "Bounded agent loop failed for profile %s",
             profile.api_model,
         )
-        if isinstance(profile, OllamaModelProfile):
-            answer = (
-                "The APEX assistant encountered an issue reaching the local Ollama "
-                "provider or running the requested operations. Please verify that "
-                "Ollama is running, the model is installed, and system resources "
-                "are sufficient, then try again."
-            )
-            error_detail = f"Local provider error ({type(exc).__name__})."
-        else:
-            answer = (
-                "The APEX assistant encountered an issue reaching the cloud provider "
-                "or running the requested operations. Please check your "
-                "credentials, network status, or quota allocations, and try again."
-            )
-            error_detail = f"Cloud provider error ({type(exc).__name__})."
-
-        return AgentQueryResponse(
+        answer, error_detail = build_agent_failure_details(profile, exc)
+        return response(
             answer=answer,
-            profile_used=profile.model_dump(),
-            tool_trace=tool_trace,
-            tool_outputs=tool_outputs,
-            session_id=request.session_id,
             error=error_detail,
         )

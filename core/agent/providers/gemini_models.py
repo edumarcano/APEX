@@ -2,7 +2,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from core.config import AGENT_MAX_TOOL_CALLS, AGENT_MAX_TURNS, DEFAULT_AGENT_SYSTEM_PROMPT
+from core.config import (
+    DEFAULT_AGENT_SYSTEM_PROMPT,
+    GEMINI_AGENT_MAX_TOOL_CALLS,
+    GEMINI_AGENT_MAX_TURNS,
+)
 
 
 GeminiThinkingLevel = Literal["minimal", "low", "medium", "high"]
@@ -40,32 +44,32 @@ class GeminiModelProfile(BaseModel):
 GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {
     "comet": GeminiModelProfile(
         display_name="Apex Comet",
-        profile_version="1.1",
+        profile_version="1.2",
         api_model="gemini-3.5-flash-lite",
         tier="fast",
         stability="stable",
         thinking_level="minimal",
-        max_tool_turns=min(2, AGENT_MAX_TURNS),
-        max_tool_calls=min(3, AGENT_MAX_TOOL_CALLS),
+        max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
     ),
     "nova": GeminiModelProfile(
         display_name="Apex Nova",
-        profile_version="1.1",
+        profile_version="1.2",
         api_model="gemini-3.5-flash",
         tier="balanced",
         stability="stable",
         thinking_level="low",
-        max_tool_turns=AGENT_MAX_TURNS,
-        max_tool_calls=AGENT_MAX_TOOL_CALLS,
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
     ),
     "pulsar": GeminiModelProfile(
         display_name="Apex Pulsar",
-        profile_version="1.1",
+        profile_version="1.2",
         api_model="gemini-3.6-flash",
         tier="advanced",
         stability="stable",
         thinking_level="medium",
-        max_tool_turns=AGENT_MAX_TURNS,
-        max_tool_calls=AGENT_MAX_TOOL_CALLS,
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
     ),
 }

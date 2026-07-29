@@ -30,8 +30,8 @@
     "max_session_messages": 6
   },
   "gemini": {
-    "agent_max_turns": 3,
-    "agent_max_tool_calls": 4
+    "agent_max_turns": 6,
+    "agent_max_tool_calls": 10
   },
   "ollama": {
     "enabled": true,

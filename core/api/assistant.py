@@ -9,7 +9,12 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from core import config, database
-from core.agent.loop import run_agent_loop
+from core.agent.local_commands import (
+    ResolvedLocalCommand,
+    list_local_command_statuses,
+    resolve_local_command,
+)
+from core.agent.loop import build_agent_failure_details, run_agent_loop
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
@@ -28,7 +33,12 @@ from core.agent.providers.ollama_lifecycle import (
     unload_active_local_model,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
-from core.agent.types import AgentMessage, AgentQueryRequest, AgentQueryResponse
+from core.agent.types import (
+    AgentMessage,
+    AgentQueryRequest,
+    AgentQueryResponse,
+    LocalCommandStatus,
+)
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
     AgentProfileStatus,
@@ -55,6 +65,11 @@ _BUSY_REASON = "Briefing synthesis is using local inference."
 _HUD_CONTEXT_OPEN = "<untrusted_hud_context>"
 _HUD_CONTEXT_CLOSE = "</untrusted_hud_context>"
 _HUD_CONTEXT_MAX_CHARS = 2000
+_LOCAL_TOOL_FREE_INSTRUCTION = (
+    "\n\nLOCAL COMMAND SCOPE:\n"
+    "No live tools are available for this turn. Answer from the conversation "
+    "only and do not claim to have queried live data."
+)
 
 _PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
@@ -199,6 +214,11 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
     return profiles
 
 
+def build_local_command_statuses() -> list[LocalCommandStatus]:
+    """Return the authoritative local command catalog and live availability."""
+    return list_local_command_statuses()
+
+
 def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     """
     Manually unload the currently active local Ollama model from memory.
@@ -311,6 +331,7 @@ def _execute_agent_turn(
     payload: AgentQueryRequest,
     profile: GeminiModelProfile | OllamaModelProfile,
     api_key: str | None,
+    resolved_local_command: ResolvedLocalCommand | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -319,39 +340,35 @@ def _execute_agent_turn(
         if isinstance(profile, OllamaModelProfile):
             provider: GeminiProvider | OllamaProvider = OllamaProvider()
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
+            if payload.tool_scope is None:
+                scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
+            else:
+                scope_instruction = (
+                    "\n\nLOCAL COMMAND SCOPE:\n"
+                    f"The /{payload.tool_scope} command defines the only tools "
+                    "that may be offered during tool-selection turns. Use only "
+                    "results from those tools for live data."
+                )
         else:
             provider = GeminiProvider(api_key=api_key)
             base_prompt = config.AGENT_SYSTEM_PROMPT
+            scope_instruction = ""
 
-        local_system_instruction = base_prompt + hud_context
+        local_system_instruction = base_prompt + scope_instruction + hud_context
 
         return run_agent_loop(
             payload,
             provider,
             profile,
             system_instruction_override=local_system_instruction,
+            resolved_local_command=resolved_local_command,
         )
     except Exception as exc:
         _LOGGER.exception(
             "Agent turn failed for profile %s",
             payload.profile,
         )
-        if isinstance(profile, OllamaModelProfile):
-            answer = (
-                "The APEX assistant encountered an issue reaching the local Ollama "
-                "provider or running the requested operations. Please verify that "
-                "Ollama is running, the model is installed, and system resources "
-                "are sufficient, then try again."
-            )
-            error_detail = f"Local provider error ({type(exc).__name__})."
-        else:
-            answer = (
-                "The APEX assistant encountered an issue reaching the cloud provider "
-                "or running the requested operations. Please check your "
-                "credentials, network status, or quota allocations, and try again."
-            )
-            error_detail = f"Cloud provider error ({type(exc).__name__})."
-
+        answer, error_detail = build_agent_failure_details(profile, exc)
         return AgentQueryResponse(
             answer=answer,
             profile_used=profile.model_dump(),
@@ -390,6 +407,24 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown agent profile: {payload.profile!r}",
         )
+
+    if isinstance(profile, GeminiModelProfile) and payload.tool_scope is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Command scopes are available only for local profiles.",
+        )
+
+    resolved_local_command: ResolvedLocalCommand | None = None
+    if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
+        resolved_local_command = resolve_local_command(payload.tool_scope)
+        if resolved_local_command.missing_tool_names:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"/{payload.tool_scope} is unavailable because its provider "
+                    "tools are not currently connected."
+                ),
+            )
 
     api_key: str | None = None
     if payload.profile in GEMINI_MODEL_PROFILES:
@@ -450,7 +485,12 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                     ),
                 )
 
-            return _execute_agent_turn(payload, profile, api_key=None)
+            return _execute_agent_turn(
+                payload,
+                profile,
+                api_key=None,
+                resolved_local_command=resolved_local_command,
+            )
         finally:
             end_local_execution()
 

@@ -4,15 +4,25 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from core.agent.types import AgentQueryRequest, AgentQueryResponse
+from core.agent.types import AgentQueryRequest, AgentQueryResponse, LocalCommandStatus
 from core.api.assistant import (
     build_agent_profile_statuses,
+    build_local_command_statuses,
     query_agent,
     unload_active_local_model_endpoint,
 )
 from core.api.models import AgentProfileStatus, LocalUnloadResponse
 
 router = APIRouter(tags=["assistant"])
+
+
+@router.get(
+    "/api/v1/agent/commands",
+    response_model=list[LocalCommandStatus],
+)
+def list_local_commands() -> list[LocalCommandStatus]:
+    """Return local-only command bundles and current provider availability."""
+    return build_local_command_statuses()
 
 
 @router.get("/api/v1/agent/profiles", response_model=list[AgentProfileStatus])

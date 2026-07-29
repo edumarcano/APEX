@@ -79,6 +79,33 @@ export type AssistantProfile =
   | 'acinonyx'
   | 'neofelis'
 
+export type LocalToolScope =
+  | 'schedule'
+  | 'weather'
+  | 'f1'
+  | 'mail'
+  | 'search'
+  | 'market'
+  | 'briefings'
+
+export interface LocalCommandStatus {
+  key: LocalToolScope
+  command: string
+  label: string
+  description: string
+  tool_count: number
+  estimated_schema_tokens: number
+  available: boolean
+  unavailable_reason: string | null
+}
+
+export interface LocalContextUsage {
+  estimated_prompt_tokens: number
+  peak_prompt_tokens: number | null
+  context_window: number
+  history_messages_dropped: number
+}
+
 export type ProfileAvailabilityStatus =
   | 'available'
   | 'busy'
