@@ -13,6 +13,36 @@ from core.agent.types import AgentMessage
 
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
+    def test_cloud_profiles_apply_quota_aware_loop_caps(self) -> None:
+        self.assertEqual(
+            {profile.profile_version for profile in GEMINI_MODEL_PROFILES.values()},
+            {"1.2"},
+        )
+        self.assertEqual(
+            {
+                key: (profile.max_tool_turns, profile.max_tool_calls)
+                for key, profile in GEMINI_MODEL_PROFILES.items()
+            },
+            {
+                "comet": (6, 10),
+                "nova": (4, 6),
+                "pulsar": (4, 6),
+            },
+        )
+
+    def test_local_profiles_retain_existing_loop_caps(self) -> None:
+        self.assertEqual(
+            {
+                key: (profile.max_tool_turns, profile.max_tool_calls)
+                for key, profile in OLLAMA_MODEL_PROFILES.items()
+            },
+            {
+                "lynx": (2, 3),
+                "acinonyx": (3, 4),
+                "neofelis": (3, 4),
+            },
+        )
+
     def test_gemini_model_profile_omits_default_temperature_and_description(self) -> None:
         """Verify GeminiModelProfile schema has no default_temperature or description field."""
         profile = GEMINI_MODEL_PROFILES["comet"]

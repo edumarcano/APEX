@@ -106,13 +106,10 @@ def run_agent_loop(
                 else list_assistant_capabilities()
             )
 
-            # On the last permitted local turn, withhold tools so the model is
-            # forced into a text answer under the final-answer token budget
-            # instead of burning the turn on a tool call that can never run.
-            if (
-                isinstance(profile, OllamaModelProfile)
-                and _turn == profile.max_tool_turns - 1
-            ):
+            # Withhold tools on the last permitted turn so every provider must
+            # use its final model request to answer from the results already
+            # collected instead of requesting a call that cannot be followed up.
+            if _turn == profile.max_tool_turns - 1:
                 turn_tools = []
 
             model_message = provider.generate_turn(

@@ -169,6 +169,38 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertGreater(len(provider.tool_names[0]), 0)
         self.assertIsNone(response.local_context_usage)
 
+    def test_cloud_final_turn_withholds_tools_for_answer(self) -> None:
+        provider = _CapturingProvider(
+            [
+                AgentMessage(
+                    role="model",
+                    tool_calls=[
+                        ToolCall(
+                            id="weather-call",
+                            name="get_weather_forecast",
+                            arguments={"days": 1},
+                        )
+                    ],
+                ),
+                AgentMessage(role="model", content="Forecast ready."),
+            ]
+        )
+        profile = GEMINI_MODEL_PROFILES["comet"].model_copy(
+            update={"max_tool_turns": 2}
+        )
+
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Forecast", profile="comet"),
+            provider,
+            profile,
+            tools_dispatcher=lambda _name, _arguments: {"forecast": "clear"},
+        )
+
+        self.assertGreater(len(provider.tool_names[0]), 0)
+        self.assertEqual(provider.tool_names[1], [])
+        self.assertEqual(response.answer, "Forecast ready.")
+        self.assertIsNone(response.error)
+
     def test_budget_trims_oldest_complete_interaction(self) -> None:
         profile = OLLAMA_MODEL_PROFILES["lynx"].model_copy(
             update={"context_window": 1400, "final_answer_max_tokens": 128}

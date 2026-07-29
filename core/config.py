@@ -542,21 +542,21 @@ try:
     AGENT_MAX_TURNS: Final[int] = _parse_config_int(
         _gemini_cfg.get("agent_max_turns"),
         key="gemini.agent_max_turns",
-        default=3,
+        default=6,
         min_value=1,
-        max_value=5,
+        max_value=6,
     )
     AGENT_MAX_TOOL_CALLS: Final[int] = _parse_config_int(
         _gemini_cfg.get("agent_max_tool_calls"),
         key="gemini.agent_max_tool_calls",
-        default=4,
+        default=10,
         min_value=1,
         max_value=10,
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse gemini config: %s; using defaults.", exc)
-    AGENT_MAX_TURNS = 3
-    AGENT_MAX_TOOL_CALLS = 4
+    AGENT_MAX_TURNS = 6
+    AGENT_MAX_TOOL_CALLS = 10
 
 _DEFAULT_LYNX_RAM: Final[float] = 88.0
 _DEFAULT_LYNX_CPU: Final[float] = 95.0

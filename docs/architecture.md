@@ -384,11 +384,11 @@ Backs `POST /api/v1/agent/query`. Separate from `brain.py`; briefing synthesis a
 
 | Profile | Display Name | Model | Tier | Stability | Thinking | Max Turns | Max Tool Calls |
 |---|---|---|---|---|---|---|---|
-| `comet` | Apex Comet | `gemini-3.5-flash-lite` | fast | stable | minimal | `min(2, AGENT_MAX_TURNS)` | `min(3, AGENT_MAX_TOOL_CALLS)` |
-| `nova` | Apex Nova | `gemini-3.5-flash` | balanced | stable | low | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` |
-| `pulsar` | Apex Pulsar | `gemini-3.6-flash` | advanced | stable | medium | `AGENT_MAX_TURNS` | `AGENT_MAX_TOOL_CALLS` |
+| `comet` | Apex Comet | `gemini-3.5-flash-lite` | fast | stable | minimal | `min(6, AGENT_MAX_TURNS)` | `min(10, AGENT_MAX_TOOL_CALLS)` |
+| `nova` | Apex Nova | `gemini-3.5-flash` | balanced | stable | low | `min(4, AGENT_MAX_TURNS)` | `min(6, AGENT_MAX_TOOL_CALLS)` |
+| `pulsar` | Apex Pulsar | `gemini-3.6-flash` | advanced | stable | medium | `min(4, AGENT_MAX_TURNS)` | `min(6, AGENT_MAX_TOOL_CALLS)` |
 
-Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` are omitted from Gemini profile definitions and `GenerateContentConfig` requests so models run with native model defaults. `AGENT_MAX_TURNS` (1–5, default 3) and `AGENT_MAX_TOOL_CALLS` (1–10, default 4) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`; Comet always applies a lower fixed ceiling regardless of configured values.
+Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` are omitted from Gemini profile definitions and `GenerateContentConfig` requests so models run with native model defaults. `AGENT_MAX_TURNS` (1–6, default 6) and `AGENT_MAX_TOOL_CALLS` (1–10, default 10) are read from `config.json` `gemini.agent_max_turns` / `gemini.agent_max_tool_calls` in `core/config.py`. Profile-specific ceilings reflect the configured free-tier request limits: Comet receives the larger Flash-Lite allowance, while Nova and Pulsar share the more conservative full-Flash allowance. The last permitted turn is answer-only for every provider so an exhausted loop cannot spend its final model request on another tool call.
 
 <a id="local-agent-profiles"></a>
 
@@ -400,7 +400,7 @@ Per Google's Gemini 3.x guidelines, sampling parameters such as `temperature` ar
 | `acinonyx` | Apex Acinonyx | `qwen3:4b-instruct` | balanced | stable | 4096 | 128 | 768 | 6 | 150s | 78% | 90% |
 | `neofelis` | Apex Neofelis | `qwen3:8b` | capable | stable | 4096 | 128 | 1024 | 4 | 180s | 68% | 85% |
 
-`max_tool_turns` and `max_tool_calls` mirror `AGENT_MAX_TURNS`/`AGENT_MAX_TOOL_CALLS` the same way the Gemini profiles do (Lynx applies a lower fixed ceiling: `min(2, AGENT_MAX_TURNS)` / `min(3, AGENT_MAX_TOOL_CALLS)`). All three profiles default `think=False` (Ollama's chain-of-thought phase is disabled) and `default_temperature=0.2` (`0.1` for Neofelis). RAM and CPU limits are percentage thresholds evaluated by the resource gate before a cold load; they are configurable per profile via `config.json` `ollama.resource_gates.{lynx,acinonyx,neofelis}.{ram_limit,cpu_limit}`, defaulting to the values above.
+`max_tool_turns` and `max_tool_calls` remain bounded by the shared operator ceiling without inheriting the larger cloud allowance: Lynx applies `min(2, AGENT_MAX_TURNS)` / `min(3, AGENT_MAX_TOOL_CALLS)`, while Acinonyx and Neofelis apply `min(3, AGENT_MAX_TURNS)` / `min(4, AGENT_MAX_TOOL_CALLS)`. All three profiles default `think=False` (Ollama's chain-of-thought phase is disabled) and `default_temperature=0.2` (`0.1` for Neofelis). RAM and CPU limits are percentage thresholds evaluated by the resource gate before a cold load; they are configurable per profile via `config.json` `ollama.resource_gates.{lynx,acinonyx,neofelis}.{ram_limit,cpu_limit}`, defaulting to the values above.
 
 **`core/agent/providers/ollama_lifecycle.py`** — Owns all local-model runtime state:
 
