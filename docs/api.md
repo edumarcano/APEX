@@ -732,7 +732,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 **Bounded tool-calling loop:** Execution is capped by the active profile's `max_tool_turns` and `max_tool_calls` (see [Cloud Agent Profiles](architecture.md#cloud-agent-profiles) in the architecture reference). Reaching either limit ends the loop and returns the last model text with `error` populated, rather than looping indefinitely or failing the request.
 
-Local profiles receive no tools by default. Explicit bundles are `/schedule`, `/weather`, `/f1`, `/mail`, `/search` (Brave), `/market` (Alpha Vantage), and `/briefings`. GitHub and automatic local discovery are intentionally excluded. The loop enforces selected names at dispatch time.
+Local profiles receive no tools by default. Explicit bundles are `/schedule`, `/weather`, `/f1`, `/mail`, `/search` (Brave), `/market` (Alpha Vantage), and `/briefings`. GitHub and automatic local discovery are intentionally excluded. The loop enforces selected names at dispatch time. To fit the 4K local context budget, `/search` exposes only Brave web search with the compact `query` and bounded `count` arguments; cloud profiles retain the complete registered Brave web/news schemas.
 
 Local Ollama requests budget the serialized prompt, selected schemas, output allowance, and a safety margin against the configured context window. Old history is removed as complete user-led interactions. A provider-reported overflow receives one retry without prior history; the selected bundle is preserved.
 

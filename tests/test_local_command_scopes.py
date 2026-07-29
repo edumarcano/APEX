@@ -5,7 +5,11 @@ from __future__ import annotations
 import unittest
 
 from core.agent.capabilities import CapabilityDescriptor
-from core.agent.local_commands import list_local_command_statuses
+from core.agent.local_commands import (
+    _estimate_schema_tokens,
+    _project_local_descriptor,
+    list_local_command_statuses,
+)
 from core.agent.loop import run_agent_loop
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.providers.ollama import _budget_payload
@@ -64,6 +68,58 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertEqual(provider.tool_names, [[]])
         self.assertIsNone(response.tool_scope_used)
         self.assertIsNotNone(response.local_context_usage)
+
+    def test_search_projection_replaces_verbose_schema_without_mutating_source(
+        self,
+    ) -> None:
+        verbose_descriptor = CapabilityDescriptor(
+            name="brave_brave_web_search",
+            title="Brave Web Search",
+            description="Verbose remote description " * 200,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    **{
+                        f"remote_option_{index}": {
+                            "type": "string",
+                            "description": "Verbose option " * 30,
+                        }
+                        for index in range(20)
+                    },
+                },
+                "required": ["query"],
+            },
+            origin="mcp",
+            risk="read",
+            expose_to_assistant=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+
+        projected = _project_local_descriptor("search", verbose_descriptor)
+
+        self.assertEqual(
+            set(projected.input_schema["properties"]),
+            {"query", "count"},
+        )
+        self.assertLess(_estimate_schema_tokens([projected]), 250)
+        self.assertIn("remote_option_0", verbose_descriptor.input_schema["properties"])
+
+    def test_non_search_projection_preserves_descriptor(self) -> None:
+        descriptor = CapabilityDescriptor(
+            name="get_weather_forecast",
+            title="Weather",
+            description="Weather forecast.",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_assistant=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+
+        self.assertIs(_project_local_descriptor("weather", descriptor), descriptor)
 
     def test_weather_scope_exposes_only_weather_and_rejects_other_calls(self) -> None:
         provider = _CapturingProvider(

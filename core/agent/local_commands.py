@@ -53,8 +53,8 @@ LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
     LocalCommandDefinition(
         key="search",
         label="Web Search",
-        description="Brave web and news search.",
-        tool_names=("brave_brave_web_search", "brave_brave_news_search"),
+        description="Brave web search with a compact local schema.",
+        tool_names=("brave_brave_web_search",),
     ),
     LocalCommandDefinition(
         key="market",
@@ -77,6 +77,44 @@ LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
 )
 
 _DEFINITIONS_BY_KEY = {definition.key: definition for definition in LOCAL_COMMAND_DEFINITIONS}
+
+_LOCAL_SEARCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "The concise web search query.",
+            "minLength": 1,
+        },
+        "count": {
+            "type": "integer",
+            "description": "Maximum results to return.",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5,
+        },
+    },
+    "required": ["query"],
+    "additionalProperties": False,
+}
+
+
+def _project_local_descriptor(
+    scope: LocalToolScope,
+    descriptor: CapabilityDescriptor,
+) -> CapabilityDescriptor:
+    """Return a smaller model-facing schema without changing the registry."""
+    if scope == "search" and descriptor.name == "brave_brave_web_search":
+        return descriptor.model_copy(
+            update={
+                "description": (
+                    "Search the public web for current information. Use a concise "
+                    "query and request no more results than needed."
+                ),
+                "input_schema": _LOCAL_SEARCH_SCHEMA,
+            }
+        )
+    return descriptor
 
 
 def _estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
@@ -114,7 +152,7 @@ def resolve_local_command(
         if descriptor is None or not descriptor.expose_to_assistant:
             missing.append(tool_name)
         else:
-            descriptors.append(descriptor)
+            descriptors.append(_project_local_descriptor(scope, descriptor))
     return descriptors, tuple(missing)
 
 
