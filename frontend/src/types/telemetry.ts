@@ -87,6 +87,7 @@ export type LocalToolScope =
   | 'search'
   | 'market'
   | 'briefings'
+  | 'todo'
 
 export interface LocalCommandStatus {
   key: LocalToolScope

@@ -228,6 +228,8 @@ apex/
 │   ├── gmail_client.py      # Gmail API v1 — unread telemetry plus bounded read-only assistant search/message retrieval
 │   ├── calendar_client.py   # Google Calendar — 48-hr upcoming events; DEV_MODE PII masking
 │   ├── google_auth.py       # Centralized OAuth2 helper for Gmail and Calendar
+│   ├── microsoft_auth.py   # MSAL device-code flow and encrypted token persistence
+│   ├── microsoft_todo_client.py # GET-only bounded Microsoft Graph To Do provider
 │   ├── .f1_cache.json       # Auto-generated F1 cache — 24-hr TTL (gitignored)
 │   └── __init__.py
 ├── frontend/                # React/TypeScript source — compiled by Vite
@@ -431,6 +433,12 @@ The tracked provider pilots are disabled by default. GitHub uses the official re
 | `get_briefing_history(limit)` | `database.fetch_briefing_history()`, clamped to 1–5 records |
 | `search_gmail(query, max_results)` | Gmail search using the existing read-only Google authorization; clamped to 1–20 metadata results |
 | `get_gmail_message(message_id)` | One Gmail message rendered as sanitized plain text, capped at 12,000 characters without attachments or active HTML |
+| `list_microsoft_todo_lists()` | List Microsoft To Do lists through delegated `Tasks.Read` |
+| `list_microsoft_todo_tasks(list_id, include_completed, max_results)` | Read 1â€“50 normalized tasks from one selected list |
+
+The Microsoft To Do authentication service is owned by the FastAPI lifespan. Device authorization is explicit through Runtime Settings and polling runs outside the event loop. MSAL Extensions stores the delegated cache through encrypted operating-system persistence; plaintext fallback is not allowed. The Graph provider exposes GET operations only, validates pagination hosts, bounds content, and maps failures into stable capability categories. `/todo` exposes only these two read tools to local models.
+
+SQLite reminders remain authoritative in v1.18. Microsoft data is excluded from telemetry, briefings, notifications, and synchronization. The normalized read contracts support a separately reviewed `Tasks.ReadWrite` migration in v1.19.
 
 All current native capabilities are `risk=read` with `expose_to_assistant` and `expose_to_client_display` enabled; none can mutate reminders, settings, or telemetry state.
 

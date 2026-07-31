@@ -33,6 +33,10 @@ Conversation history is held by the browser tab and is lost on reload. There is 
 Local prompt budgeting may omit the oldest complete conversation interactions before calling Ollama. Responses and logs expose token counts, the configured window, and the number of omitted messages, never prompt or tool-result content. One overflow retry removes prior history but preserves the explicitly selected command schemas.
 
 The assistant can search Gmail and read a selected message through the existing `gmail.readonly` authorization. Search metadata and message text can therefore be sent to the selected assistant model when one of these tools is invoked. Results are bounded, treated as untrusted model input, and rendered as escaped text in the HUD. Message retrieval excludes attachments, embedded resources, active HTML, and raw MIME; it cannot send, delete, archive, label, or otherwise modify email.
+Microsoft To Do is an optional, explicit read-only assistant source. APEX requests delegated `Tasks.Read`, stores the MSAL cache through encrypted operating-system persistence outside the repository, and never uses a client secret. Task titles, dates, list identifiers, and bounded metadata can be sent to the selected assistant model when its tools are invoked; they are treated as untrusted content and rendered as escaped text. The provider has no task mutation methods in v1.18.
+
+Connecting or disconnecting Microsoft affects only the local authorization cache. SQLite reminders remain authoritative, and Microsoft data is excluded from telemetry, scheduled briefings, notifications, and reminder synchronization.
+
 
 Enabled MCP providers receive the arguments selected by the assistant for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives interactive web or news searches; Alpha Vantage receives market-research parameters. Returned content is untrusted, bounded before model and HUD delivery, and never forwarded into scheduled briefing telemetry by these integrations. The presets are disabled by default and imported tools are not re-exported.
 

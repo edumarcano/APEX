@@ -11,6 +11,8 @@ export const API_ENDPOINTS = {
   diagnostics: `${API_BASE}/api/v1/diagnostics`,
   market: `${API_BASE}/api/v1/market`,
   mcpStatus: `${API_BASE}/api/v1/mcp/status`,
+  microsoftTodoStatus: `${API_BASE}/api/v1/microsoft-todo/status`,
+  microsoftTodoAuth: `${API_BASE}/api/v1/microsoft-todo/auth`,
   preflight: `${API_BASE}/api/v1/preflight`,
   reminders: `${API_BASE}/api/v1/reminders`,
   remindersRead: `${API_BASE}/api/v1/reminders/read`,

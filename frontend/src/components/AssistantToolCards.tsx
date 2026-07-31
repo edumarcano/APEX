@@ -105,7 +105,45 @@ interface GmailMessage extends GmailMetadata {
   truncated: boolean
 }
 
+interface MicrosoftTodoList {
+  id: string
+  display_name: string
+  is_owner: boolean
+  is_shared: boolean
+}
+
+interface MicrosoftTodoListsPayload {
+  lists: MicrosoftTodoList[]
+}
+
+interface MicrosoftTodoDateTime {
+  date_time: string
+  time_zone: string
+}
+
+interface MicrosoftTodoTask {
+  id: string
+  title: string
+  status: string
+  importance: string
+  is_completed: boolean
+  due: MicrosoftTodoDateTime | null
+}
+
+interface MicrosoftTodoTasksPayload {
+  tasks: MicrosoftTodoTask[]
+  include_completed: boolean
+}
+
+function parseTodoDateTime(value: unknown): MicrosoftTodoDateTime | null {
+  if (!isRecord(value) || typeof value.date_time !== 'string') return null
+  return {
+    date_time: value.date_time,
+    time_zone: typeof value.time_zone === 'string' ? value.time_zone : '',
+  }
+}
 interface ToolErrorPayload {
+
   error: string
 }
 
@@ -464,6 +502,61 @@ function parseGmailMetadata(output: unknown): GmailMetadata | null {
       : [],
     snippet: typeof output.snippet === 'string' ? output.snippet : '',
   }
+}
+
+function parseMicrosoftTodoLists(output: unknown): MicrosoftTodoListsPayload | null {
+  if (!isRecord(output) || !Array.isArray(output.lists)) return null
+  const lists = output.lists
+    .map((item): MicrosoftTodoList | null => {
+      if (!isRecord(item) || typeof item.id !== 'string' || typeof item.display_name !== 'string') return null
+      return {
+        id: item.id,
+        display_name: item.display_name,
+        is_owner: item.is_owner === true,
+        is_shared: item.is_shared === true,
+      }
+    })
+    .filter((item): item is MicrosoftTodoList => item !== null)
+  return { lists }
+}
+
+function parseMicrosoftTodoTasks(output: unknown): MicrosoftTodoTasksPayload | null {
+  if (!isRecord(output) || !Array.isArray(output.tasks)) return null
+  const tasks = output.tasks
+    .map((item): MicrosoftTodoTask | null => {
+      if (!isRecord(item) || typeof item.id !== 'string' || typeof item.title !== 'string') return null
+      return {
+        id: item.id,
+        title: item.title,
+        status: typeof item.status === 'string' ? item.status : '',
+        importance: typeof item.importance === 'string' ? item.importance : '',
+        is_completed: item.is_completed === true,
+        due: parseTodoDateTime(item.due),
+      }
+    })
+    .filter((item): item is MicrosoftTodoTask => item !== null)
+  return { tasks, include_completed: output.include_completed === true }
+}
+
+function formatTodoDue(value: MicrosoftTodoDateTime | null): string | null {
+  if (!value?.date_time) return null
+  const parsed = new Date(value.date_time)
+  if (Number.isNaN(parsed.getTime())) return value.date_time
+  const hasTime = /T\d{2}:\d{2}/.test(value.date_time)
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(hasTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+  }).format(parsed)
+}
+
+function TodoSourceLabel(): ReactElement {
+  return (
+    <p className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[#60A5FA]">
+      Microsoft To Do · Read only
+    </p>
+  )
 }
 
 function parseReminderList(output: unknown): ActiveReminder[] {
@@ -1030,6 +1123,64 @@ function ReminderListCard({
   )
 }
 
+function MicrosoftTodoListsCard({ durationMs, output }: { durationMs: number; output: unknown }): ReactElement {
+  const payload = parseMicrosoftTodoLists(output)
+  if (!payload) return <ErrorFallbackCard toolName="list_microsoft_todo_lists" durationMs={durationMs} message="Microsoft To Do list data is unavailable." />
+  return (
+    <ToolCardFrame
+      title="Microsoft To Do Lists"
+      icon={<ListTodo className="size-3.5" aria-hidden />}
+      durationMs={durationMs}
+      accentClass="text-[#60A5FA]"
+    >
+      <TodoSourceLabel />
+      <ul className={LIST_SCROLL}>
+        {payload.lists.length === 0 ? <li className="text-sm text-zinc-500">No task lists found.</li> : payload.lists.map((list) => (
+          <li key={list.id} className="rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-zinc-200">{list.display_name}</span>
+              <span className="text-[10px] text-zinc-500">{list.is_shared ? 'Shared' : list.is_owner ? 'Owned' : ''}</span>
+            </div>
+            <p className="mt-1 truncate font-mono text-[9px] text-zinc-600" title={list.id}>{list.id}</p>
+          </li>
+        ))}
+      </ul>
+    </ToolCardFrame>
+  )
+}
+
+function MicrosoftTodoTasksCard({ durationMs, output }: { durationMs: number; output: unknown }): ReactElement {
+  const payload = parseMicrosoftTodoTasks(output)
+  if (!payload) return <ErrorFallbackCard toolName="list_microsoft_todo_tasks" durationMs={durationMs} message="Microsoft To Do task data is unavailable." />
+  return (
+    <ToolCardFrame
+      title="Microsoft To Do Tasks"
+      icon={<ListTodo className="size-3.5" aria-hidden />}
+      durationMs={durationMs}
+      accentClass="text-[#60A5FA]"
+    >
+      <TodoSourceLabel />
+      <ul className={LIST_SCROLL}>
+        {payload.tasks.length === 0 ? <li className="text-sm text-zinc-500">No tasks found.</li> : payload.tasks.map((task) => {
+          const due = formatTodoDue(task.due)
+          return (
+            <li key={task.id} className="rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <span className={task.is_completed ? 'text-sm text-zinc-500 line-through' : 'text-sm text-zinc-200'}>{task.title}</span>
+                {task.importance === 'high' ? <span className="font-mono text-[9px] uppercase text-amber-300">High</span> : null}
+              </div>
+              <div className="mt-1 flex gap-2 font-mono text-[9px] uppercase tracking-wide text-zinc-500">
+                {due ? <span>Due {due}</span> : null}
+                {payload.include_completed && task.is_completed ? <span>Completed</span> : null}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </ToolCardFrame>
+  )
+}
+
 function BriefingHistoryCard({
   durationMs,
   output,
@@ -1214,6 +1365,14 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
     case 'get_gmail_message':
       return (
         <GmailMessageCard durationMs={item.duration_ms} output={item.output} />
+      )
+    case 'list_microsoft_todo_lists':
+      return (
+        <MicrosoftTodoListsCard durationMs={item.duration_ms} output={item.output} />
+      )
+    case 'list_microsoft_todo_tasks':
+      return (
+        <MicrosoftTodoTasksCard durationMs={item.duration_ms} output={item.output} />
       )
     default:
       return (

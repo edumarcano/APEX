@@ -11,6 +11,7 @@ LocalToolScope: TypeAlias = Literal[
     "search",
     "market",
     "briefings",
+    "todo",
 ]
 
 
