@@ -11,6 +11,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.api.routers import assistant, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
@@ -33,7 +34,9 @@ async def _app_lifespan(_app: FastAPI):
     idle_model_task: asyncio.Task[None] | None = None
     mcp_manager: MCPClientManager | None = None
     microsoft_auth = MicrosoftTodoAuthenticationService()
+    microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
     set_microsoft_auth_service(microsoft_auth)
+    set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db()
 
     if OLLAMA_ENABLED:
@@ -55,6 +58,8 @@ async def _app_lifespan(_app: FastAPI):
         _LOGGER.info("Stopped MCP client runtime")
 
     await microsoft_auth.shutdown()
+    microsoft_todo_client.close()
+    set_microsoft_todo_client(None)
     set_microsoft_auth_service(None)
 
     if idle_model_task is not None:

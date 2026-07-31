@@ -13,6 +13,14 @@ from clients.microsoft_auth import (
     MicrosoftTodoAuthenticationService,
     MicrosoftTodoNotConfiguredError,
 )
+from clients.microsoft_todo_models import (
+    MicrosoftTodoAuthStatus,
+    TodoDateTime,
+    TodoTask,
+    TodoTaskList,
+    TodoTaskListsResult,
+    TodoTasksResult,
+)
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 _MAX_LISTS = 50
@@ -34,32 +42,26 @@ def _text(value: Any, limit: int) -> str:
     return cleaned[:limit]
 
 
-def _date_time(value: Any) -> dict[str, str] | None:
+def _date_time(value: Any) -> TodoDateTime | None:
     if not isinstance(value, dict):
         return None
     date_time = _text(value.get("dateTime"), 64)
     if not date_time:
         return None
-    return {"date_time": date_time, "time_zone": _text(value.get("timeZone"), 64)}
+    return TodoDateTime(date_time=date_time, time_zone=_text(value.get("timeZone"), 64))
 
 
-def _normalize_list(value: Any) -> dict[str, Any] | None:
+def _normalize_list(value: Any) -> TodoTaskList | None:
     if not isinstance(value, dict):
         return None
     identifier = _text(value.get("id"), 512)
     name = _text(value.get("displayName"), 300)
     if not identifier or not name:
         return None
-    return {
-        "id": identifier,
-        "display_name": name,
-        "is_owner": bool(value.get("isOwner")),
-        "is_shared": bool(value.get("isShared")),
-        "well_known_name": _text(value.get("wellknownListName"), 64),
-    }
+    return TodoTaskList(id=identifier, display_name=name, is_owner=bool(value.get("isOwner")), is_shared=bool(value.get("isShared")), well_known_name=_text(value.get("wellknownListName"), 64))
 
 
-def _normalize_task(value: Any) -> dict[str, Any] | None:
+def _normalize_task(value: Any) -> TodoTask | None:
     if not isinstance(value, dict):
         return None
     identifier = _text(value.get("id"), 512)
@@ -72,18 +74,7 @@ def _normalize_task(value: Any) -> dict[str, Any] | None:
         for item in (value.get("categories") or [])[:10]
         if isinstance(item, str) and _text(item, 100)
     ]
-    return {
-        "id": identifier,
-        "title": title,
-        "status": status,
-        "importance": _text(value.get("importance"), 32),
-        "is_completed": status.lower() == "completed",
-        "created_at": _text(value.get("createdDateTime"), 64),
-        "last_modified_at": _text(value.get("lastModifiedDateTime"), 64),
-        "due": _date_time(value.get("dueDateTime")),
-        "completed_at": _date_time(value.get("completedDateTime")),
-        "categories": categories,
-    }
+    return TodoTask(id=identifier, title=title, status=status, importance=_text(value.get("importance"), 32), is_completed=status.lower() == "completed", created_at=_text(value.get("createdDateTime"), 64), last_modified_at=_text(value.get("lastModifiedDateTime"), 64), due=_date_time(value.get("dueDateTime")), completed_at=_date_time(value.get("completedDateTime")), categories=tuple(categories))
 
 
 class MicrosoftTodoClient:
@@ -98,7 +89,7 @@ class MicrosoftTodoClient:
         self.auth = auth
         self.session = session or requests.Session()
 
-    def get_status(self) -> dict[str, Any]:
+    def get_status(self) -> MicrosoftTodoAuthStatus:
         return self.auth.status_snapshot()
 
     def _get_pages(self, url: str, *, limit: int, path_prefix: str) -> list[Any]:
@@ -154,15 +145,15 @@ class MicrosoftTodoClient:
             raise MicrosoftTodoUpstreamError("Microsoft To Do pagination is invalid.")
         return value
 
-    def list_task_lists(self) -> dict[str, Any]:
+    def list_task_lists(self) -> TodoTaskListsResult:
         path = "/v1.0/me/todo/lists"
         raw = self._get_pages(
             f"{GRAPH_ROOT}/me/todo/lists?$select=id,displayName,isOwner,isShared,wellknownListName&$top={_MAX_LISTS}",
             limit=_MAX_LISTS,
             path_prefix=path,
         )
-        lists = [item for value in raw if (item := _normalize_list(value))]
-        return {"list_count": len(lists), "lists": lists}
+        lists = tuple(item for value in raw if (item := _normalize_list(value)))
+        return TodoTaskListsResult(lists=lists)
 
     def list_tasks(
         self,
@@ -170,7 +161,7 @@ class MicrosoftTodoClient:
         *,
         include_completed: bool = False,
         max_results: int = 20,
-    ) -> dict[str, Any]:
+    ) -> TodoTasksResult:
         identifier = _text(list_id, 512)
         if not identifier or identifier != list_id.strip():
             raise MicrosoftTodoInvalidInputError("A valid To Do list identifier is required.")
@@ -188,20 +179,25 @@ class MicrosoftTodoClient:
         )
         tasks = [item for value in raw if (item := _normalize_task(value))]
         if not include_completed:
-            tasks = [task for task in tasks if not task["is_completed"]]
+            tasks = [task for task in tasks if not task.is_completed]
         tasks = tasks[:limit]
-        return {
-            "list_id": identifier,
-            "include_completed": include_completed,
-            "task_count": len(tasks),
-            "tasks": tasks,
-        }
+        return TodoTasksResult(list_id=identifier, include_completed=include_completed, tasks=tuple(tasks))
 
+
+    def close(self) -> None:
+        """Release the reusable HTTP transport owned by the application lifespan."""
+        self.session.close()
 
 def get_microsoft_todo_client() -> MicrosoftTodoClient:
-    from clients.microsoft_auth import get_microsoft_auth_service
-
-    service = get_microsoft_auth_service()
-    if service is None:
+    if _CLIENT is None:
         raise MicrosoftTodoNotConfiguredError("Microsoft To Do is unavailable.")
-    return MicrosoftTodoClient(service)
+    return _CLIENT
+
+
+def set_microsoft_todo_client(client: MicrosoftTodoClient | None) -> None:
+    """Install the lifespan-owned client for tools and routes."""
+    global _CLIENT
+    _CLIENT = client
+
+
+_CLIENT: MicrosoftTodoClient | None = None

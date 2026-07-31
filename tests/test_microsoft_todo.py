@@ -22,6 +22,14 @@ from clients.microsoft_todo_client import (
     MicrosoftTodoInvalidInputError,
     MicrosoftTodoUpstreamError,
 )
+from clients.microsoft_todo_models import (
+    MicrosoftTodoAuthConfig,
+    MicrosoftTodoAuthStatus,
+    MicrosoftTodoDeviceAuthorization,
+    TodoTaskListsResult,
+    TodoTasksResult,
+)
+
 from core.agent.capabilities import (
     CapabilityError,
     CapabilityErrorCategory,
@@ -40,8 +48,8 @@ class _Auth:
     def acquire_access_token(self) -> str:
         return "test-token"
 
-    def status_snapshot(self):
-        return {"configured": True, "state": "connected", "permission": "Tasks.Read"}
+    def status_snapshot(self) -> MicrosoftTodoAuthStatus:
+        return MicrosoftTodoAuthStatus(configured=True, state="connected")
 
 
 class _Response:
@@ -87,10 +95,10 @@ class MicrosoftTodoClientTests(unittest.TestCase):
         lists = client.list_task_lists()
         tasks = client.list_tasks("list-1")
 
-        self.assertEqual(lists["lists"][0]["display_name"], "Tasks")
-        self.assertEqual(tasks["task_count"], 1)
-        self.assertEqual(tasks["tasks"][0]["title"], "Ship release")
-        self.assertEqual(tasks["tasks"][0]["due"]["time_zone"], "Eastern Standard Time")
+        self.assertEqual(lists.lists[0].display_name, "Tasks")
+        self.assertEqual(tasks.task_count, 1)
+        self.assertEqual(tasks.tasks[0].title, "Ship release")
+        self.assertEqual(tasks.tasks[0].due.time_zone, "Eastern Standard Time")
         self.assertTrue(all(call[0].startswith("https://graph.microsoft.com/v1.0/") for call in session.calls))
         self.assertTrue(all(call[1]["headers"]["Authorization"] == "Bearer test-token" for call in session.calls))
 
@@ -114,7 +122,7 @@ class MicrosoftTodoClientTests(unittest.TestCase):
 
     def test_client_has_no_write_operations(self) -> None:
         public = {name for name in dir(MicrosoftTodoClient) if not name.startswith("_")}
-        self.assertEqual(public, {"get_status", "list_task_lists", "list_tasks"})
+        self.assertEqual(public, {"close", "get_status", "list_task_lists", "list_tasks"})
 
 
 class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
@@ -123,7 +131,7 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             "clients.microsoft_auth.build_encrypted_persistence"
         ) as persistence:
             service = MicrosoftTodoAuthenticationService(client_id="")
-        self.assertEqual(service.status_snapshot()["state"], "not-configured")
+        self.assertEqual(service.status_snapshot().state, "not-configured")
         persistence.assert_not_called()
         with self.assertRaises(MicrosoftTodoNotConfiguredError):
             service.acquire_access_token()
@@ -134,23 +142,26 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             service = MicrosoftTodoAuthenticationService(
                 client_id="client", cache_path=repository_cache
             )
-        self.assertEqual(service.status_snapshot()["state"], "degraded")
+        self.assertEqual(service.status_snapshot().state, "degraded")
         persistence.assert_not_called()
 
     def test_scope_is_exactly_tasks_read(self) -> None:
         self.assertEqual(MICROSOFT_TODO_SCOPES, ("Tasks.Read",))
 
+    @staticmethod
+    def _service_for(app: mock.Mock) -> MicrosoftTodoAuthenticationService:
+        app.get_accounts.return_value = []
+        return MicrosoftTodoAuthenticationService(
+            config=MicrosoftTodoAuthConfig(
+                client_id="client",
+                tenant_id="common",
+                cache_path=Path("C:/apex-tests/microsoft-todo.cache"),
+            ),
+            application_factory=lambda _config: (app, mock.Mock()),
+        )
+
+
     async def test_device_flow_returns_only_public_fields(self) -> None:
-        service = MicrosoftTodoAuthenticationService.__new__(MicrosoftTodoAuthenticationService)
-        service.client_id = "client"
-        service.tenant_id = "common"
-        service.cache_path = mock.Mock()
-        service._lock = threading.RLock()
-        service._authorization_lock = asyncio.Lock()
-        service._flow = None
-        service._poll_task = None
-        service._state = "disconnected"
-        service._cache = None
         app = mock.Mock()
         app.initiate_device_flow.return_value = {
             "user_code": "ABCD-EFGH",
@@ -159,27 +170,17 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             "secret": "must-not-leak",
         }
         app.acquire_token_by_device_flow.return_value = {"access_token": "token"}
-        service._application = app
+        service = self._service_for(app)
 
         result = await service.begin_device_authorization()
         await asyncio.sleep(0)
         await service.shutdown()
 
-        self.assertEqual(set(result), {"state", "verification_uri", "user_code", "expires_at"})
-        self.assertNotIn("secret", result)
+        self.assertEqual(set(result.to_dict()), {"state", "verification_uri", "user_code", "expires_at"})
+        self.assertNotIn("secret", result.to_dict())
         app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.Read"])
 
     async def test_concurrent_starts_share_one_device_flow(self) -> None:
-        service = MicrosoftTodoAuthenticationService.__new__(MicrosoftTodoAuthenticationService)
-        service.client_id = "client"
-        service.tenant_id = "common"
-        service.cache_path = mock.Mock()
-        service._lock = threading.RLock()
-        service._authorization_lock = asyncio.Lock()
-        service._flow = None
-        service._poll_task = None
-        service._state = "disconnected"
-        service._cache = None
         release_poll = threading.Event()
         app = mock.Mock()
         app.initiate_device_flow.return_value = {
@@ -190,7 +191,7 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         app.acquire_token_by_device_flow.side_effect = lambda flow: (
             release_poll.wait(1) or {"access_token": "token"}
         )
-        service._application = app
+        service = self._service_for(app)
 
         first, second = await asyncio.gather(
             service.begin_device_authorization(),
@@ -199,7 +200,7 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         release_poll.set()
         await service.shutdown()
 
-        self.assertEqual(first["user_code"], second["user_code"])
+        self.assertEqual(first.user_code, second.user_code)
         app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.Read"])
 
 
@@ -215,18 +216,15 @@ class MicrosoftTodoApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_and_disconnect_delegate_to_service(self) -> None:
         service = mock.Mock()
-        service.begin_device_authorization = mock.AsyncMock(return_value={
-            "state": "authorizing",
-            "verification_uri": "https://microsoft.com/devicelogin",
-            "user_code": "ABCD-EFGH",
-            "expires_at": "2026-08-01T00:00:00Z",
-        })
+        service.begin_device_authorization = mock.AsyncMock(return_value=MicrosoftTodoDeviceAuthorization(
+            verification_uri="https://microsoft.com/devicelogin",
+            user_code="ABCD-EFGH",
+            expires_at="2026-08-01T00:00:00Z",
+        ))
         service.disconnect = mock.AsyncMock()
-        service.status_snapshot.return_value = {
-            "configured": True,
-            "state": "disconnected",
-            "permission": "Tasks.Read",
-        }
+        service.status_snapshot.return_value = MicrosoftTodoAuthStatus(
+            configured=True, state="disconnected"
+        )
         set_microsoft_auth_service(service)
 
         started = await start_microsoft_todo_authorization()
@@ -258,8 +256,8 @@ class MicrosoftTodoCapabilityTests(unittest.TestCase):
 
     def test_tools_delegate_with_clamped_reads(self) -> None:
         client = mock.Mock()
-        client.list_task_lists.return_value = {"list_count": 0, "lists": []}
-        client.list_tasks.return_value = {"task_count": 0, "tasks": []}
+        client.list_task_lists.return_value = TodoTaskListsResult(lists=())
+        client.list_tasks.return_value = TodoTasksResult(list_id="list-1", include_completed=False, tasks=())
         with mock.patch(
             "clients.microsoft_todo_client.get_microsoft_todo_client",
             return_value=client,

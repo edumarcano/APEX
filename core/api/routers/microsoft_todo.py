@@ -8,6 +8,7 @@ from clients.microsoft_auth import (
     MicrosoftTodoNotConfiguredError,
     get_microsoft_auth_service,
 )
+from clients.microsoft_todo_models import MicrosoftTodoAuthStatus
 from core.api.models import (
     MicrosoftTodoAuthorizationResponse,
     MicrosoftTodoStatusResponse,
@@ -26,12 +27,11 @@ def _service():
 @router.get("/api/v1/microsoft-todo/status", response_model=MicrosoftTodoStatusResponse)
 def microsoft_todo_status() -> MicrosoftTodoStatusResponse:
     service = get_microsoft_auth_service()
-    snapshot = service.status_snapshot() if service is not None else {
-        "configured": False,
-        "state": "not-configured",
-        "permission": "Tasks.Read",
-    }
-    return MicrosoftTodoStatusResponse.model_validate(snapshot)
+    snapshot = service.status_snapshot() if service is not None else MicrosoftTodoAuthStatus(
+        configured=False,
+        state="not-configured",
+    )
+    return MicrosoftTodoStatusResponse.model_validate(snapshot.to_dict())
 
 
 @router.post(
@@ -48,7 +48,7 @@ async def start_microsoft_todo_authorization() -> MicrosoftTodoAuthorizationResp
             status_code=503,
             detail="Microsoft authorization could not be started.",
         ) from exc
-    return MicrosoftTodoAuthorizationResponse.model_validate(result)
+    return MicrosoftTodoAuthorizationResponse.model_validate(result.to_dict())
 
 
 @router.delete("/api/v1/microsoft-todo/auth", response_model=MicrosoftTodoStatusResponse)
@@ -61,4 +61,4 @@ async def disconnect_microsoft_todo() -> MicrosoftTodoStatusResponse:
             status_code=503,
             detail="Microsoft authorization could not be removed.",
         ) from exc
-    return MicrosoftTodoStatusResponse.model_validate(service.status_snapshot())
+    return MicrosoftTodoStatusResponse.model_validate(service.status_snapshot().to_dict())

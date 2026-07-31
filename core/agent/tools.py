@@ -296,8 +296,8 @@ def _raise_microsoft_todo_capability_error(exc: Exception) -> NoReturn:
 
 
 def _invoke_microsoft_todo(
-    operation: Callable[..., dict[str, Any]], /, *args: Any, **kwargs: Any
-) -> dict[str, Any]:
+    operation: Callable[..., Any], /, *args: Any, **kwargs: Any
+) -> Any:
     try:
         return operation(*args, **kwargs)
     except CapabilityError:
@@ -310,7 +310,7 @@ def list_microsoft_todo_lists() -> dict[str, Any]:
     """List Microsoft To Do lists without modifying remote data."""
     from clients.microsoft_todo_client import get_microsoft_todo_client
 
-    return _invoke_microsoft_todo(get_microsoft_todo_client().list_task_lists)
+    return _invoke_microsoft_todo(lambda: get_microsoft_todo_client().list_task_lists()).to_dict()
 
 
 def list_microsoft_todo_tasks(
@@ -322,11 +322,12 @@ def list_microsoft_todo_tasks(
     from clients.microsoft_todo_client import get_microsoft_todo_client
 
     return _invoke_microsoft_todo(
-        get_microsoft_todo_client().list_tasks,
-        list_id,
-        include_completed=include_completed,
-        max_results=max(1, min(_MICROSOFT_TODO_MAX_RESULTS, max_results)),
-    )
+        lambda: get_microsoft_todo_client().list_tasks(
+            list_id,
+            include_completed=include_completed,
+            max_results=max(1, min(_MICROSOFT_TODO_MAX_RESULTS, max_results)),
+        )
+    ).to_dict()
 
 
 def get_active_reminders() -> list[dict[str, Any]]:

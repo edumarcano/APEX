@@ -5,24 +5,46 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import msal
 from msal_extensions import PersistedTokenCache, build_encrypted_persistence
 
+from clients.microsoft_todo_models import (
+    MicrosoftAuthState,
+    MicrosoftTodoAuthConfig,
+    MicrosoftTodoAuthStatus,
+    MicrosoftTodoDeviceAuthorization,
+)
+
 MICROSOFT_TODO_SCOPES = ("Tasks.Read",)
 _DEFAULT_TENANT = "common"
 
-MicrosoftAuthState = Literal[
-    "not-configured",
-    "disconnected",
-    "authorizing",
-    "connected",
-    "authentication-required",
-    "degraded",
-]
+MicrosoftTodoApplicationFactory = Callable[[MicrosoftTodoAuthConfig], tuple[Any, Any]]
+
+
+def _create_msal_application(
+    config: MicrosoftTodoAuthConfig,
+) -> tuple[msal.PublicClientApplication, PersistedTokenCache]:
+    """Build encrypted persistence and an MSAL application for one configuration."""
+    if not config.cache_path.is_absolute():
+        raise ValueError("Microsoft token cache path must be absolute.")
+    resolved_cache = config.cache_path.resolve()
+    project_root = Path(__file__).resolve().parent.parent
+    if resolved_cache == project_root or project_root in resolved_cache.parents:
+        raise ValueError("Microsoft token cache path must be outside the repository.")
+    resolved_cache.parent.mkdir(parents=True, exist_ok=True)
+    persistence = build_encrypted_persistence(str(resolved_cache))
+    cache = PersistedTokenCache(persistence)
+    application = msal.PublicClientApplication(
+        config.client_id,
+        authority=f"https://login.microsoftonline.com/{config.tenant_id}",
+        token_cache=cache,
+    )
+    return application, cache
 
 
 class MicrosoftTodoNotConfiguredError(RuntimeError):
@@ -42,26 +64,36 @@ class MicrosoftTodoAuthenticationService:
         client_id: str | None = None,
         tenant_id: str | None = None,
         cache_path: str | Path | None = None,
+        config: MicrosoftTodoAuthConfig | None = None,
+        application_factory: MicrosoftTodoApplicationFactory | None = None,
     ) -> None:
-        self.client_id = (client_id if client_id is not None else os.getenv(
-            "MICROSOFT_TODO_CLIENT_ID", ""
-        )).strip()
-        self.tenant_id = (tenant_id if tenant_id is not None else os.getenv(
-            "MICROSOFT_TODO_TENANT_ID", _DEFAULT_TENANT
-        )).strip() or _DEFAULT_TENANT
-        self.cache_path = Path(cache_path) if cache_path else self._default_cache_path()
+        if config is not None and any(value is not None for value in (client_id, tenant_id, cache_path)):
+            raise ValueError("Use either config or individual Microsoft authentication settings.")
+        self.config = config or MicrosoftTodoAuthConfig(
+            client_id=(client_id if client_id is not None else os.getenv(
+                "MICROSOFT_TODO_CLIENT_ID", ""
+            )).strip(),
+            tenant_id=(tenant_id if tenant_id is not None else os.getenv(
+                "MICROSOFT_TODO_TENANT_ID", _DEFAULT_TENANT
+            )).strip() or _DEFAULT_TENANT,
+            cache_path=Path(cache_path) if cache_path else self._default_cache_path(),
+        )
+        self.client_id = self.config.client_id
+        self.tenant_id = self.config.tenant_id
+        self.cache_path = self.config.cache_path
+        self._application_factory = application_factory or _create_msal_application
         self._lock = threading.RLock()
         self._authorization_lock = asyncio.Lock()
         self._flow: dict[str, Any] | None = None
         self._poll_task: asyncio.Task[None] | None = None
         self._state: MicrosoftAuthState = (
-            "disconnected" if self.client_id else "not-configured"
+            "disconnected" if self.config.client_id else "not-configured"
         )
-        self._application: msal.PublicClientApplication | None = None
-        self._cache: PersistedTokenCache | None = None
-        if self.client_id:
+        self._application: Any | None = None
+        self._cache: Any | None = None
+        if self.config.client_id:
             try:
-                self._build_application()
+                self._initialize_application()
                 if self._application and self._application.get_accounts():
                     self._state = "connected"
             except Exception:
@@ -76,32 +108,14 @@ class MicrosoftTodoAuthenticationService:
         root = Path(base) if base else Path.home() / ".local" / "share"
         return root / "APEX" / "auth" / "microsoft_todo_token_cache.bin"
 
-    def _build_application(self) -> None:
-        if not self.cache_path.is_absolute():
-            raise ValueError("Microsoft token cache path must be absolute.")
-        resolved_cache = self.cache_path.resolve()
-        project_root = Path(__file__).resolve().parent.parent
-        if resolved_cache == project_root or project_root in resolved_cache.parents:
-            raise ValueError(
-                "Microsoft token cache path must be outside the repository."
-            )
-        self.cache_path = resolved_cache
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        persistence = build_encrypted_persistence(str(self.cache_path))
-        self._cache = PersistedTokenCache(persistence)
-        self._application = msal.PublicClientApplication(
-            self.client_id,
-            authority=f"https://login.microsoftonline.com/{self.tenant_id}",
-            token_cache=self._cache,
-        )
+    def _initialize_application(self) -> None:
+        self._application, self._cache = self._application_factory(self.config)
 
-    def status_snapshot(self) -> dict[str, Any]:
+    def status_snapshot(self) -> MicrosoftTodoAuthStatus:
         with self._lock:
-            return {
-                "configured": bool(self.client_id),
-                "state": self._state,
-                "permission": "Tasks.Read",
-            }
+            return MicrosoftTodoAuthStatus(
+                configured=bool(self.config.client_id), state=self._state
+            )
 
     def acquire_access_token(self) -> str:
         """Return a cached/refreshable token without starting interactive auth."""
@@ -132,7 +146,7 @@ class MicrosoftTodoAuthenticationService:
             self._state = "connected"
             return token
 
-    async def begin_device_authorization(self) -> dict[str, Any]:
+    async def begin_device_authorization(self) -> MicrosoftTodoDeviceAuthorization:
         if not self.client_id:
             raise MicrosoftTodoNotConfiguredError("Microsoft To Do is not configured.")
         async with self._authorization_lock:
@@ -184,19 +198,18 @@ class MicrosoftTodoAuthenticationService:
                     self._poll_task = None
 
     @staticmethod
-    def _public_flow(flow: dict[str, Any]) -> dict[str, Any]:
+    def _public_flow(flow: dict[str, Any]) -> MicrosoftTodoDeviceAuthorization:
         expires_at = flow.get("expires_at")
         if not isinstance(expires_at, (int, float)):
             expires_in = int(flow.get("expires_in") or 0)
             expires_at = datetime.now(timezone.utc).timestamp() + expires_in
-        return {
-            "state": "authorizing",
-            "verification_uri": str(flow.get("verification_uri") or ""),
-            "user_code": str(flow.get("user_code") or ""),
-            "expires_at": datetime.fromtimestamp(
+        return MicrosoftTodoDeviceAuthorization(
+            verification_uri=str(flow.get("verification_uri") or ""),
+            user_code=str(flow.get("user_code") or ""),
+            expires_at=datetime.fromtimestamp(
                 float(expires_at), tz=timezone.utc
             ).isoformat(),
-        }
+        )
 
     async def disconnect(self) -> None:
         await self._cancel_polling()
@@ -209,7 +222,7 @@ class MicrosoftTodoAuthenticationService:
                 self._state = "degraded"
                 raise RuntimeError("Microsoft authorization could not be removed.")
             try:
-                self._build_application()
+                self._initialize_application()
                 self._state = "disconnected"
             except Exception:
                 self._state = "degraded"
