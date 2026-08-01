@@ -13,6 +13,7 @@ from core.agent.local_commands import (
     list_local_command_statuses,
 )
 from core.agent.loop import run_agent_loop
+from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.providers.ollama import (
     OllamaProvider,
@@ -36,10 +37,10 @@ class _CapturingProvider:
         tools: list[CapabilityDescriptor],
         _profile: object,
         system_instruction_override: str | None = None,
-    ) -> AgentMessage:
+    ) -> ProviderTurnResult:
         self.tool_names.append([tool.name for tool in tools])
         self.system_instructions.append(system_instruction_override)
-        return self.responses.pop(0)
+        return ProviderTurnResult(message=self.responses.pop(0))
 
 
 class LocalCommandScopeTests(unittest.TestCase):
@@ -343,7 +344,7 @@ class LocalCommandScopeTests(unittest.TestCase):
                 system_instruction_override="Short system instruction.",
             )
 
-        self.assertEqual(result.content, "Final answer.")
+        self.assertEqual(result.message.content, "Final answer.")
         self.assertEqual(len(payloads), 2)
         retry_payload = payloads[1]
         self.assertNotIn("tools", retry_payload)

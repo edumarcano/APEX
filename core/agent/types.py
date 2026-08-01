@@ -14,6 +14,65 @@ LocalToolScope: TypeAlias = Literal[
     "todo",
 ]
 
+CostCompleteness = Literal["complete", "partial", "unavailable"]
+
+
+class TokenUsage(BaseModel):
+    """Normalized token accounting for one provider turn or aggregated query."""
+
+    input_tokens: int | None = Field(
+        default=None, ge=0, description="Prompt / input tokens."
+    )
+    cached_input_tokens: int | None = Field(
+        default=None, ge=0, description="Cached prompt tokens when reported."
+    )
+    reasoning_tokens: int | None = Field(
+        default=None, ge=0, description="Hidden reasoning / thinking tokens."
+    )
+    output_tokens: int | None = Field(
+        default=None, ge=0, description="Visible completion tokens."
+    )
+    total_tokens: int | None = Field(
+        default=None, ge=0, description="Provider-reported or derived total."
+    )
+
+
+class QueryTiming(BaseModel):
+    """Wall-clock timing for a completed assistant query."""
+
+    total_ms: float | None = Field(
+        default=None, ge=0, description="End-to-end query duration."
+    )
+    provider_ms: float | None = Field(
+        default=None, ge=0, description="Time spent in provider generate_turn calls."
+    )
+    apex_tool_ms: float | None = Field(
+        default=None, ge=0, description="Time spent executing APEX-managed tools."
+    )
+
+
+class Citation(BaseModel):
+    """Normalized citation or grounding reference from a provider-hosted tool."""
+
+    title: str | None = None
+    uri: str | None = None
+    snippet: str | None = None
+    source: str | None = Field(
+        default=None,
+        description="Provider-specific citation source label when available.",
+    )
+
+
+class CostEstimate(BaseModel):
+    """Estimated inference cost derived from the versioned pricing registry."""
+
+    token_cost: float | None = Field(default=None, ge=0)
+    hosted_tool_cost: float | None = Field(default=None, ge=0)
+    total_cost: float | None = Field(default=None, ge=0)
+    currency: str = "USD"
+    pricing_version: str
+    completeness: CostCompleteness = "unavailable"
+
 
 class LocalContextUsage(BaseModel):
     estimated_prompt_tokens: int = Field(
@@ -81,6 +140,11 @@ class AgentMessage(BaseModel):
     prompt_tokens: Optional[int] = Field(default=None, exclude=True)
     estimated_prompt_tokens: Optional[int] = Field(default=None, exclude=True)
     history_messages_dropped: int = Field(default=0, exclude=True)
+    # Opaque provider continuation payload for Responses API adapters
+    # (encrypted reasoning / output items). Never serialized to clients.
+    provider_output_items: Optional[List[Dict[str, Any]]] = Field(
+        default=None, exclude=True
+    )
 
 
 class AgentQueryRequest(BaseModel):
@@ -151,4 +215,24 @@ class AgentQueryResponse(BaseModel):
     local_context_usage: LocalContextUsage | None = Field(
         default=None,
         description="Local Ollama prompt-window usage; null for cloud profiles.",
+    )
+    resolved_model: Optional[str] = Field(
+        default=None,
+        description="Model identifier resolved by the provider, when available.",
+    )
+    usage: TokenUsage | None = Field(
+        default=None,
+        description="Aggregated token usage across provider turns.",
+    )
+    timing: QueryTiming | None = Field(
+        default=None,
+        description="Query timing breakdown (total / provider / APEX tools).",
+    )
+    cost_estimate: CostEstimate | None = Field(
+        default=None,
+        description="Estimated provider token and hosted-tool cost.",
+    )
+    citations: List[Citation] = Field(
+        default_factory=list,
+        description="Normalized citations from provider-hosted grounding tools.",
     )

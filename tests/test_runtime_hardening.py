@@ -9,6 +9,7 @@ from unittest import mock
 
 from core.agent import tools as agent_tools
 from core.agent.loop import run_agent_loop
+from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.api.models import RuntimeMetadata
@@ -135,22 +136,26 @@ class StableAgentErrorTests(unittest.TestCase):
                 _tools: list[object],
                 _profile: object,
                 system_instruction_override: str | None = None,
-            ) -> AgentMessage:
+            ) -> ProviderTurnResult:
                 del system_instruction_override
                 self.calls += 1
                 if self.calls == 1:
-                    return AgentMessage(
-                        role="model",
-                        tool_calls=[
-                            ToolCall(
-                                id="call-1",
-                                name="get_weather_forecast",
-                                arguments={"days": 1},
-                            )
-                        ],
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="model",
+                            tool_calls=[
+                                ToolCall(
+                                    id="call-1",
+                                    name="get_weather_forecast",
+                                    arguments={"days": 1},
+                                )
+                            ],
+                        )
                     )
                 self.tool_result = messages[-1].tool_results[0].output
-                return AgentMessage(role="model", content="Done.")
+                return ProviderTurnResult(
+                    message=AgentMessage(role="model", content="Done.")
+                )
 
         provider = Provider()
 

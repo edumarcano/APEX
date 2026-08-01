@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
+from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.synthesis.formatting import compact_payload, deterministic_fallback, parse_model_output
 from core.synthesis.models import CalendarFact, F1Fact, NewsFact, SynthesisInput, SynthesisResult
@@ -125,9 +126,11 @@ class RoutingTests(unittest.TestCase):
 
     def test_ollama_generation_has_no_tools_history_or_thinking(self) -> None:
         router = SynthesisRouter()
-        response = AgentMessage(
-            role="model",
-            content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+        response = ProviderTurnResult(
+            message=AgentMessage(
+                role="model",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            )
         )
         with patch("core.synthesis.router.try_begin_local_execution", return_value=True), patch(
             "core.synthesis.router.end_local_execution"
@@ -149,9 +152,11 @@ class RoutingTests(unittest.TestCase):
 
     def test_lynx_uses_local_prompt_acinonyx_uses_comet_prompt(self) -> None:
         router = SynthesisRouter()
-        response = AgentMessage(
-            role="model",
-            content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+        response = ProviderTurnResult(
+            message=AgentMessage(
+                role="model",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            )
         )
         with patch("core.synthesis.router.try_begin_local_execution", return_value=True), patch(
             "core.synthesis.router.end_local_execution"

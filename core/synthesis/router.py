@@ -240,12 +240,12 @@ class SynthesisRouter:
                 }
             )
             self._state("generating", "ollama", profile_key, None)
-            message = OllamaProvider().generate_turn(
+            turn = OllamaProvider().generate_turn(
                 [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
                 [],
                 profile,
             )
-            briefing, insights = parse_model_output(message.content or "")
+            briefing, insights = parse_model_output(turn.message.content or "")
             return SynthesisResult(
                 briefing=briefing,
                 insights=insights,

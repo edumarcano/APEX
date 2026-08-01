@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from typing import Any
 
 import requests
@@ -8,6 +9,7 @@ from requests.exceptions import RequestException
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
+from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.ollama_lifecycle import (
     get_http_session,
     get_keep_alive_duration,
@@ -15,7 +17,7 @@ from core.agent.providers.ollama_lifecycle import (
 )
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
-from core.agent.types import AgentMessage, ToolCall, ToolResult
+from core.agent.types import AgentMessage, TokenUsage, ToolCall, ToolResult
 from core.config import OLLAMA_HOST
 
 _LOGGER = logging.getLogger(__name__)
@@ -373,6 +375,23 @@ def _extract_message(data: dict[str, Any]) -> dict[str, Any]:
     return message
 
 
+def _parse_ollama_usage(data: dict[str, Any]) -> TokenUsage | None:
+    prompt_tokens = data.get("prompt_eval_count")
+    output_tokens = data.get("eval_count")
+    if not isinstance(prompt_tokens, int) and not isinstance(output_tokens, int):
+        return None
+    input_tokens = prompt_tokens if isinstance(prompt_tokens, int) else None
+    completion_tokens = output_tokens if isinstance(output_tokens, int) else None
+    total = None
+    if input_tokens is not None or completion_tokens is not None:
+        total = (input_tokens or 0) + (completion_tokens or 0)
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=completion_tokens,
+        total_tokens=total,
+    )
+
+
 class OllamaProvider:
     """Local Ollama agent provider backed by the /api/chat REST endpoint."""
 
@@ -382,7 +401,7 @@ class OllamaProvider:
         tools: list[CapabilityDescriptor],
         profile: OllamaModelProfile,
         system_instruction_override: str | None = None,
-    ) -> AgentMessage:
+    ) -> ProviderTurnResult:
         system_instruction = system_instruction_override or profile.system_instruction
         resolved_num_predict = (
             profile.tool_select_max_tokens
@@ -398,6 +417,7 @@ class OllamaProvider:
         )
         budget_messages = messages
         peak_estimated_tokens = estimated_tokens
+        retry_count = 0
 
         _LOGGER.info(
             "[AGENT][OLLAMA] generate_turn — model=%s messages=%d tools=%d "
@@ -411,6 +431,7 @@ class OllamaProvider:
             profile.context_window,
         )
 
+        started = time.perf_counter()
         try:
             data = _post_chat(payload, profile)
         except OllamaRequestError as exc:
@@ -437,6 +458,7 @@ class OllamaProvider:
                 overflow_dropped + retry_dropped,
             )
             peak_estimated_tokens = max(peak_estimated_tokens, estimated_tokens)
+            retry_count += 1
             data = _post_chat(payload, profile)
 
         register_activity(profile.api_model)
@@ -445,6 +467,7 @@ class OllamaProvider:
             if isinstance(data.get("prompt_eval_count"), int)
             else None
         )
+        usage = _parse_ollama_usage(data)
 
         message = _extract_message(data)
 
@@ -482,13 +505,33 @@ class OllamaProvider:
 
             data = _post_chat(retry_payload, profile)
             register_activity(profile.api_model)
+            retry_count += 1
             if isinstance(data.get("prompt_eval_count"), int):
                 peak_prompt_tokens = max(
                     peak_prompt_tokens or 0,
                     data["prompt_eval_count"],
                 )
+            retry_usage = _parse_ollama_usage(data)
+            if usage is None:
+                usage = retry_usage
+            elif retry_usage is not None:
+                usage = TokenUsage(
+                    input_tokens=max(
+                        usage.input_tokens or 0, retry_usage.input_tokens or 0
+                    )
+                    or None,
+                    output_tokens=(
+                        (usage.output_tokens or 0) + (retry_usage.output_tokens or 0)
+                    )
+                    or None,
+                    total_tokens=(
+                        (usage.total_tokens or 0) + (retry_usage.total_tokens or 0)
+                    )
+                    or None,
+                )
             message = _extract_message(data)
 
+        provider_ms = round((time.perf_counter() - started) * 1000, 2)
         raw_content = message.get("content")
         if isinstance(raw_content, str) and raw_content:
             message["content"] = _strip_thinking_tags(raw_content)
@@ -497,4 +540,16 @@ class OllamaProvider:
         agent_message.prompt_tokens = peak_prompt_tokens
         agent_message.estimated_prompt_tokens = peak_estimated_tokens
         agent_message.history_messages_dropped = dropped_messages
-        return agent_message
+        resolved_model = data.get("model")
+        if not isinstance(resolved_model, str):
+            resolved_model = profile.api_model
+
+        return ProviderTurnResult(
+            message=agent_message,
+            resolved_model=resolved_model,
+            usage=usage,
+            provider_ms=provider_ms,
+            retry_count=retry_count,
+            estimated_prompt_tokens=peak_estimated_tokens,
+            history_messages_dropped=dropped_messages,
+        )

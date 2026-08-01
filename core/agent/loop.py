@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Callable, Dict, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, Protocol, TypeVar, runtime_checkable
 
 from core.agent.capabilities import (
     CapabilityDescriptor,
@@ -11,24 +11,34 @@ from core.agent.capabilities import (
     list_assistant_capabilities,
 )
 from core.agent.local_commands import ResolvedLocalCommand, resolve_local_command
+from core.agent.pricing import estimate_inference_cost
 from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
+from core.agent.providers.contract import (
+    ProviderProfile,
+    ProviderToolEvent,
+    ProviderTurnResult,
+    merge_token_usage,
+)
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
     AgentQueryResponse,
+    Citation,
     LocalContextUsage,
+    QueryTiming,
+    TokenUsage,
     ToolResult,
 )
 
 # Import native handlers so capability registration runs at process start.
 import core.agent.tools as _native_agent_tools  # noqa: F401
 
-AgentModelProfile = GeminiModelProfile | OllamaModelProfile
+AgentModelProfile = GeminiModelProfile | OllamaModelProfile | ProviderProfile
 P = TypeVar("P", bound=AgentModelProfile, contravariant=True)
 
-ToolsDispatcher = Callable[[str, Dict[str, Any]], Any]
+ToolsDispatcher = Callable[[str, dict[str, Any]], Any]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +51,7 @@ class AgentProvider(Protocol[P]):
         tools: list[CapabilityDescriptor],
         profile: P,
         system_instruction_override: str | None = None,
-    ) -> AgentMessage:
+    ) -> ProviderTurnResult:
         ...
 
 
@@ -86,6 +96,8 @@ def run_agent_loop(
 
     tool_trace: list[dict[str, Any]] = []
     tool_outputs: list[dict[str, Any]] = []
+    citations: list[Citation] = []
+    provider_tool_events: list[ProviderToolEvent] = []
     total_tool_executions = 0
     last_model_content: str | None = None
     is_local = isinstance(profile, OllamaModelProfile)
@@ -102,6 +114,11 @@ def run_agent_loop(
     estimated_prompt_tokens = 0
     peak_prompt_tokens: int | None = None
     history_messages_dropped = 0
+    aggregated_usage: TokenUsage | None = None
+    resolved_model: str | None = profile.api_model
+    provider_ms_total = 0.0
+    apex_tool_ms_total = 0.0
+    started_at = time.perf_counter()
 
     def response(
         *,
@@ -116,6 +133,18 @@ def run_agent_loop(
                 context_window=profile.context_window,
                 history_messages_dropped=history_messages_dropped,
             )
+        total_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        timing = QueryTiming(
+            total_ms=total_ms,
+            provider_ms=round(provider_ms_total, 2),
+            apex_tool_ms=round(apex_tool_ms_total, 2),
+        )
+        cost_estimate = estimate_inference_cost(
+            model=resolved_model or profile.api_model,
+            configured_model=profile.api_model,
+            usage=aggregated_usage,
+            hosted_tool_events=provider_tool_events,
+        )
         return AgentQueryResponse(
             answer=answer,
             profile_used=profile.model_dump(),
@@ -125,6 +154,11 @@ def run_agent_loop(
             error=error,
             tool_scope_used=request.tool_scope if is_local else None,
             local_context_usage=context_usage,
+            resolved_model=resolved_model,
+            usage=aggregated_usage,
+            timing=timing,
+            cost_estimate=cost_estimate,
+            citations=citations,
         )
 
     try:
@@ -146,25 +180,54 @@ def run_agent_loop(
                     system_instruction_override or profile.system_instruction
                 ) + FINAL_ANSWER_INSTRUCTION
 
-            model_message = provider.generate_turn(
+            turn_result = provider.generate_turn(
                 history,
                 turn_tools,
                 profile,
                 system_instruction_override=turn_instruction,
             )
+            model_message = turn_result.message
             history.append(model_message)
+            if turn_result.provider_ms is not None:
+                provider_ms_total += turn_result.provider_ms
+            aggregated_usage = merge_token_usage(aggregated_usage, turn_result.usage)
+            if turn_result.resolved_model:
+                resolved_model = turn_result.resolved_model
+            if turn_result.citations:
+                citations.extend(turn_result.citations)
+            if turn_result.provider_tool_events:
+                provider_tool_events.extend(turn_result.provider_tool_events)
+                for event in turn_result.provider_tool_events:
+                    tool_trace.append(
+                        {
+                            "name": event.name,
+                            "status": event.status,
+                            "duration_ms": event.duration_ms,
+                            "origin": "provider",
+                            "billable_units": event.billable_units,
+                        }
+                    )
+
             estimated_prompt_tokens = max(
                 estimated_prompt_tokens,
-                model_message.estimated_prompt_tokens or 0,
+                turn_result.estimated_prompt_tokens
+                or model_message.estimated_prompt_tokens
+                or 0,
             )
             history_messages_dropped = max(
                 history_messages_dropped,
+                turn_result.history_messages_dropped,
                 model_message.history_messages_dropped,
             )
             if model_message.prompt_tokens is not None:
                 peak_prompt_tokens = max(
                     peak_prompt_tokens or 0,
                     model_message.prompt_tokens,
+                )
+            elif turn_result.usage and turn_result.usage.input_tokens is not None:
+                peak_prompt_tokens = max(
+                    peak_prompt_tokens or 0,
+                    turn_result.usage.input_tokens,
                 )
 
             if model_message.content:
@@ -185,7 +248,7 @@ def run_agent_loop(
                         ),
                     )
 
-                started_at = time.perf_counter()
+                tool_started = time.perf_counter()
                 status = "ok"
                 output: Any
 
@@ -218,7 +281,8 @@ def run_agent_loop(
                         ),
                     }
 
-                duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+                duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
+                apex_tool_ms_total += duration_ms
                 total_tool_executions += 1
 
                 tool_trace.append(
@@ -226,6 +290,7 @@ def run_agent_loop(
                         "name": call.name,
                         "status": status,
                         "duration_ms": duration_ms,
+                        "origin": "apex",
                     }
                 )
 

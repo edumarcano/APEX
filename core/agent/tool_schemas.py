@@ -12,7 +12,7 @@ from core.agent.capabilities import CapabilityDescriptor
 def descriptor_to_openai_schema(
     descriptor: CapabilityDescriptor,
 ) -> dict[str, Any]:
-    """Convert a capability descriptor into an OpenAI-compatible tool schema."""
+    """Convert a capability descriptor into an OpenAI Chat Completions tool schema."""
     parameters = dict(descriptor.input_schema)
     parameters.setdefault("type", "object")
     parameters.setdefault("properties", {})
@@ -23,6 +23,21 @@ def descriptor_to_openai_schema(
             "description": descriptor.description,
             "parameters": parameters,
         },
+    }
+
+
+def descriptor_to_responses_tool(
+    descriptor: CapabilityDescriptor,
+) -> dict[str, Any]:
+    """Convert a capability descriptor into a Responses API function tool."""
+    parameters = dict(descriptor.input_schema)
+    parameters.setdefault("type", "object")
+    parameters.setdefault("properties", {})
+    return {
+        "type": "function",
+        "name": descriptor.name,
+        "description": descriptor.description,
+        "parameters": parameters,
     }
 
 

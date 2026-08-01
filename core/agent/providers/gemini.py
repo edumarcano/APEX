@@ -1,6 +1,4 @@
 import base64
-import logging
-import random
 import time
 from typing import Any
 
@@ -10,10 +8,14 @@ from google.genai.errors import APIError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
+from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini_models import GeminiModelProfile
-from core.agent.types import AgentMessage, ToolCall, ToolResult
-
-_LOGGER = logging.getLogger(__name__)
+from core.agent.providers.retries import (
+    call_with_bounded_retries,
+    exponential_backoff_seconds,
+    fixed_backoff_seconds,
+)
+from core.agent.types import AgentMessage, TokenUsage, ToolCall, ToolResult
 
 def _wrap_untrusted_tool_output(result: ToolResult) -> str:
     return (
@@ -119,6 +121,51 @@ def _descriptors_to_gemini_tools(
     return [types.Tool(function_declarations=declarations)]
 
 
+def _parse_gemini_usage(response: Any) -> TokenUsage | None:
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata is None:
+        return None
+
+    input_tokens = getattr(metadata, "prompt_token_count", None)
+    output_tokens = getattr(metadata, "candidates_token_count", None)
+    total_tokens = getattr(metadata, "total_token_count", None)
+    cached_tokens = getattr(metadata, "cached_content_token_count", None)
+    reasoning_tokens = getattr(metadata, "thoughts_token_count", None)
+
+    if all(
+        value is None
+        for value in (
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            cached_tokens,
+            reasoning_tokens,
+        )
+    ):
+        return None
+
+    def _as_int(value: Any) -> int | None:
+        return value if isinstance(value, int) else None
+
+    return TokenUsage(
+        input_tokens=_as_int(input_tokens),
+        cached_input_tokens=_as_int(cached_tokens),
+        reasoning_tokens=_as_int(reasoning_tokens),
+        output_tokens=_as_int(output_tokens),
+        total_tokens=_as_int(total_tokens),
+    )
+
+
+def _is_retryable_gemini_error(exc: BaseException) -> bool:
+    return isinstance(exc, APIError) and exc.code in {429, 500, 502, 503, 504}
+
+
+def _gemini_wait_seconds(attempt: int, exc: BaseException) -> float:
+    if isinstance(exc, APIError) and exc.code == 429:
+        return exponential_backoff_seconds(attempt)
+    return fixed_backoff_seconds(attempt)
+
+
 class GeminiProvider:
     def __init__(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -129,7 +176,7 @@ class GeminiProvider:
         tools: list[CapabilityDescriptor],
         profile: GeminiModelProfile,
         system_instruction_override: str | None = None,
-    ) -> AgentMessage:
+    ) -> ProviderTurnResult:
         contents = _messages_to_contents(messages)
 
         config_kwargs: dict[str, Any] = {
@@ -149,39 +196,21 @@ class GeminiProvider:
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        max_attempts = 3
-        response = None
-        for attempt in range(max_attempts):
-            try:
-                response = self.client.models.generate_content(
-                    model=profile.api_model,
-                    contents=contents,
-                    config=config,
-                )
-                break
-            except APIError as e:
-                if e.code == 429:
-                    if attempt == max_attempts - 1:
-                        raise
-                    wait_time = (1.0 * (2**attempt)) + random.uniform(0, 0.5)
-                    _LOGGER.warning(
-                        "Rate limited (429). Retrying in %.2f seconds...",
-                        wait_time,
-                    )
-                    time.sleep(wait_time)
-                elif e.code in (500, 502, 503, 504):
-                    if attempt == max_attempts - 1:
-                        raise
-                    _LOGGER.warning(
-                        "Server error (%s). Retrying in 2.0 seconds...",
-                        e.code,
-                    )
-                    time.sleep(2.0)
-                else:
-                    raise
+        def _generate() -> Any:
+            return self.client.models.generate_content(
+                model=profile.api_model,
+                contents=contents,
+                config=config,
+            )
 
-        if response is None:
-            raise RuntimeError("Gemini generate_content failed without a response.")
+        started = time.perf_counter()
+        response, retry_count = call_with_bounded_retries(
+            _generate,
+            is_retryable=_is_retryable_gemini_error,
+            wait_seconds=_gemini_wait_seconds,
+            log_label="gemini",
+        )
+        provider_ms = round((time.perf_counter() - started) * 1000, 2)
 
         if not response.candidates:
             raise ValueError("Gemini returned no response candidates.")
@@ -190,4 +219,19 @@ class GeminiProvider:
         if candidate_content is None:
             raise ValueError("Gemini returned empty candidate content.")
 
-        return _content_to_agent_message(candidate_content)
+        message = _content_to_agent_message(candidate_content)
+        resolved_model = (
+            getattr(response, "model_version", None)
+            or getattr(response, "model", None)
+            or profile.api_model
+        )
+        if not isinstance(resolved_model, str):
+            resolved_model = profile.api_model
+
+        return ProviderTurnResult(
+            message=message,
+            resolved_model=resolved_model,
+            usage=_parse_gemini_usage(response),
+            provider_ms=provider_ms,
+            retry_count=retry_count,
+        )

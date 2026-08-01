@@ -18,6 +18,7 @@ from core.agent.capabilities import (
     register_capability,
 )
 from core.agent.loop import run_agent_loop
+from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _descriptors_to_gemini_tools
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.providers.ollama import _descriptor_to_openai_schema
@@ -333,21 +334,25 @@ class CapabilityRegistryTests(unittest.TestCase):
                 _tools: list[CapabilityDescriptor],
                 _profile: object,
                 system_instruction_override: str | None = None,
-            ) -> AgentMessage:
+            ) -> ProviderTurnResult:
                 del system_instruction_override
                 self.calls += 1
                 if self.calls == 1:
-                    return AgentMessage(
-                        role="model",
-                        tool_calls=[
-                            ToolCall(
-                                id="call-1",
-                                name="hidden_tool",
-                                arguments={},
-                            )
-                        ],
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="model",
+                            tool_calls=[
+                                ToolCall(
+                                    id="call-1",
+                                    name="hidden_tool",
+                                    arguments={},
+                                )
+                            ],
+                        )
                     )
-                return AgentMessage(role="model", content="Done.")
+                return ProviderTurnResult(
+                    message=AgentMessage(role="model", content="Done.")
+                )
 
         response = run_agent_loop(
             AgentQueryRequest(prompt="Hide this", profile="comet"),
@@ -406,22 +411,26 @@ class CapabilityRegistryTests(unittest.TestCase):
                 _tools: list[CapabilityDescriptor],
                 _profile: object,
                 system_instruction_override: str | None = None,
-            ) -> AgentMessage:
+            ) -> ProviderTurnResult:
                 del system_instruction_override
                 self.calls += 1
                 if self.calls == 1:
-                    return AgentMessage(
-                        role="model",
-                        tool_calls=[
-                            ToolCall(
-                                id="call-1",
-                                name="missing_capability",
-                                arguments={},
-                            )
-                        ],
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="model",
+                            tool_calls=[
+                                ToolCall(
+                                    id="call-1",
+                                    name="missing_capability",
+                                    arguments={},
+                                )
+                            ],
+                        )
                     )
                 self.tool_result = messages[-1].tool_results[0].output
-                return AgentMessage(role="model", content="Recovered.")
+                return ProviderTurnResult(
+                    message=AgentMessage(role="model", content="Recovered.")
+                )
 
         response = run_agent_loop(
             AgentQueryRequest(prompt="Call missing", profile="comet"),
