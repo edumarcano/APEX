@@ -1,67 +1,88 @@
 # Privacy and Data Boundaries
 
-APEX is local-first, but it is not entirely offline. The HUD, API, SQLite database, and default Ollama endpoint run on the local machine; enabled connectors and cloud model or speech providers send selected data needed for their configured operation to external services.
+APEX is local-first, not entirely offline. This reference separates project-controlled behavior from external provider policy so I can make an informed choice before enabling personal connectors or cloud processing.
 
-## Local Service Boundary
+> **Provider terms last verified: August 1, 2026.** External terms can change independently of this repository; follow the linked primary sources before relying on a cloud-service claim.
 
-`launcher.py` binds FastAPI to `127.0.0.1:8000` and the compiled HUD to `127.0.0.1:5500`. The API has no authentication, so loopback binding is part of the security model. LAN and public access are intentionally unsupported; adding either would require authentication, authorization, and transport-security work first.
+## Data-flow summary
 
-`APEX_ALLOWED_ORIGINS` changes which browser origins can call the API. CORS is not authentication and does not protect a remotely bound service from non-browser clients.
+| Data or operation | Stays local by default | Can leave the machine | Persisted by APEX | Cloud-free choice |
+|---|---|---|---|---|
+| HUD and API traffic | Yes, loopback only | No | No | Default behavior |
+| Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
+| Briefing synthesis | Typed bounded input is built locally | Gemini receives it when Comet is selected | Production transcript/digest in SQLite | Lynx, Acinonyx, Neofelis, or Structured Digest |
+| Assistant conversation | Browser tab owns history | Selected cloud/local model and invoked tools receive required context | No server-side chat store | Local profile with explicit local command scope |
+| Reminders | SQLite | No | Yes | Default behavior |
+| Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected assistant model | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
+| Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
+| MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
-## Briefing Synthesis Data
+## Local service boundary
 
-Enabled connectors return typed `ConnectorResult` objects. Briefing orchestration selects a bounded set of facts for `SynthesisInput`: weather, limited email subjects and unread count, limited news headlines, calendar facts, reminders, F1, one eligible football fixture, and connector-health fields. Football telemetry retains up to three followed teams’ next fixtures, but synthesis receives only the earliest fixture in the seven-day horizon. Before model use, text is Unicode-normalized, stripped of control characters and markup, truncated per field, serialized to at most 2,000 characters, and wrapped in `<untrusted_connector_data>` markers.
+`launcher.py` binds FastAPI to `127.0.0.1:8000` and the compiled HUD to `127.0.0.1:5500`. The API has no authentication, so loopback binding is part of the security model. LAN and public access are unsupported; adding either requires authentication, authorization, and transport security first.
 
-Gemini and Ollama receive the same sanitized payload. Concatenated connector display strings are returned to the HUD for compatibility but are never forwarded to a briefing model. Briefing synthesis receives no assistant tools or chat history, disables model thinking, limits output to 512 tokens, and accepts only the expected speech/insight marker format. Invalid provider output falls back to deterministic synthesis from the same typed input.
+`APEX_ALLOWED_ORIGINS` changes which browser origins may call the API. CORS is not authentication and does not protect a remotely bound service from non-browser clients.
 
-The untrusted-data markers and output validation reduce prompt-injection risk; they do not make model output a security boundary. Connector text should still be treated as untrusted evidence, and model output must not authorize actions.
+The backend child receives connector and provider credentials. The static server and browser receive a restricted environment containing only process essentials, so API keys are not copied into those child environments.
 
-### Cloud-processing choice
+## Briefing synthesis
 
-Comet remains the default briefing mode and routes synthesis through Gemini. The briefing selector in the global header can instead select Lynx, Acinonyx, or Neofelis for local Ollama synthesis, or Structured Digest for deterministic no-model output. The typed payload is smaller and safer than raw connector telemetry, but cloud mode can still disclose personal facts such as calendar events, reminders, email subjects, or briefing context.
+Enabled connectors return typed results. Briefing orchestration selects bounded weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts for `SynthesisInput`. Text is normalized, stripped of control characters and markup, truncated per field, serialized to a fixed bound, and wrapped in `<untrusted_connector_data>` markers.
 
-On the Gemini API unpaid/free tier, Google states that submitted content and generated responses may be used to provide, improve, and develop Google products and machine-learning technologies, and that human reviewers may process API inputs and outputs. Sanitization limits what APEX sends; it does not make free-tier cloud processing confidential. The current free-tier path is therefore not appropriate for sensitive or confidential personal data. See Google's [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [pricing data-use table](https://ai.google.dev/gemini-api/docs/pricing).
+Gemini and Ollama receive the same selected facts. Concatenated display telemetry, assistant tools, and assistant history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
 
-Google states that paid Gemini API services do not use prompts or responses to improve products, although limited abuse-monitoring retention can still apply. Moving this project to paid Gemini usage provides a stronger provider boundary when Comet is selected. Choosing a local mode or Structured Digest avoids sending briefing synthesis data to Gemini.
+The markers and validation reduce prompt-injection risk. They do not make model output an authorization boundary, and model prose must never authorize an action.
 
-## Assistant Data
+### Gemini policy boundary
 
-The assistant is a separate path from briefing synthesis. A cloud profile sends the current prompt, browser-provided conversation history, explicitly selected HUD context, and any requested tool results to Gemini. A local profile sends the same categories to the configured Ollama host, which defaults to `http://localhost:11434` and can be changed in APEX configuration. Local turns are tool-free unless the operator explicitly arms one command bundle for that request. GitHub is not offered to local profiles. Tool results are wrapped in `<untrusted_tool_output>` markers before another model turn.
+Comet sends briefing input to the Gemini API. That input can include personal facts such as calendar events, reminders, and bounded email subjects.
 
-Conversation history is held by the browser tab and is lost on reload. There is no server-side chat-session store. A current telemetry snapshot or briefing is included only when its identifier is explicitly supplied; APEX does not implicitly inject the latest persisted briefing.
+Google's current terms state that unpaid Gemini API services may use submitted content and generated responses to improve products and that human reviewers may process inputs and outputs. Google instructs users not to submit sensitive, confidential, or personal information to unpaid services. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [pricing data-use table](https://ai.google.dev/gemini-api/docs/pricing).
 
-Local prompt budgeting may omit the oldest complete conversation interactions before calling Ollama. Responses and logs expose token counts, the configured window, and the number of omitted messages, never prompt or tool-result content. One overflow retry removes prior history but preserves the explicitly selected command schemas.
+The same terms state that paid Gemini API services do not use prompts or responses to improve products, while limited abuse-monitoring retention and required disclosures can still apply. This is provider policy, not a guarantee implemented by APEX.
 
-The assistant can search Gmail and read a selected message through the existing `gmail.readonly` authorization. Search metadata and message text can therefore be sent to the selected assistant model when one of these tools is invoked. Results are bounded, treated as untrusted model input, and rendered as escaped text in the HUD. Message retrieval excludes attachments, embedded resources, active HTML, and raw MIME; it cannot send, delete, archive, label, or otherwise modify email.
-Microsoft To Do is an optional, explicit read-only assistant source. APEX requests delegated `Tasks.Read`, stores the MSAL cache through encrypted operating-system persistence outside the repository, and never uses a client secret. Task titles, dates, list identifiers, and bounded metadata can be sent to the selected assistant model when its tools are invoked; they are treated as untrusted content and rendered as escaped text. The provider has no task mutation methods in v1.18.
+Selecting a local briefing profile or Structured Digest avoids sending briefing synthesis data to Gemini.
 
-Connecting or disconnecting Microsoft affects only the local authorization cache. SQLite reminders remain authoritative, and Microsoft data is excluded from telemetry, scheduled briefings, notifications, and reminder synchronization.
+## Assistant data
 
+The assistant is separate from briefing synthesis. A cloud profile sends the prompt, browser-provided history, explicitly selected HUD context, and invoked tool results to Gemini. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed.
 
-Enabled MCP providers receive the arguments selected by the assistant for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives interactive web or news searches; Alpha Vantage receives market-research parameters. Returned content is untrusted, bounded before model and HUD delivery, and never forwarded into scheduled briefing telemetry by these integrations. The presets are disabled by default and imported tools are not re-exported.
+HUD context is never implicit. A briefing is attached only through an explicit valid `briefing_id`; telemetry is attached only through the current matching `snapshot_id`. Omitting both identifiers injects neither. Tool results and HUD context are marked as untrusted model data.
 
-Runtime Settings can enable or disable only the tracked provider presets. It never returns or accepts credential values, authorization headers, OAuth artifacts, endpoints, subprocess commands, allowlists, or risk classifications. Disabling a provider removes its imported capabilities before its connection closes. APEX remains a loopback-only MCP client in v1.18 and does not expose an MCP server.
+Conversation history exists in the browser tab and is lost on reload. The backend has no chat-session store. Local context budgeting can omit old complete interactions and reports counts, never prompt or tool-result content.
 
-## Local Persistence
+### Native personal-data tools
 
-`apex_memory.db` stores production run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata such as `run_id`. New run and briefing timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
+Gmail tools can search bounded metadata and read one selected plain-text message under `gmail.readonly`. They exclude attachments, embedded resources, active HTML, and raw MIME and cannot send, delete, archive, or label mail.
 
-The SQLite database is local but not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, and local model weights are gitignored.
+Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected assistant model when invoked. The integration has no mutation methods, and SQLite reminders remain authoritative.
 
-## Credentials and Child Processes
+## MCP providers
 
-Secrets and machine-specific credential paths belong in `.env`; non-secret runtime preferences belong in `config.json` or the gitignored `config.local.json`. The uvicorn child receives the backend environment because it owns connector and provider access. The static server and browser receive a restricted environment containing only process essentials, so API keys are not copied into those child environments.
+Enabled MCP providers receive arguments selected for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives web or news search; Alpha Vantage receives market-research parameters.
 
-OAuth credentials and service-account keys remain local files. They must not be committed. Alpha Vantage MCP authorization is stored by the operating-system credential manager rather than in the repository. `.env.example` contains placeholders only.
+Imported results are untrusted and bounded before model and HUD delivery. The presets are disabled by default, must be allowlisted and locally risk-classified, and are never included in scheduled briefing telemetry.
+
+Runtime Settings exposes only preset enablement. It never returns or accepts credentials, authorization headers, OAuth artifacts, endpoints, subprocess commands, allowlists, or tool-risk classifications. APEX remains an MCP client and exposes no MCP server.
+
+## Local persistence
+
+`apex_memory.db` stores production run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
+
+The database is not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, local settings, and model weights are gitignored.
+
+OAuth credential and service-account files remain local and must not be committed. Alpha Vantage MCP authorization and the default Microsoft To Do cache use operating-system credential protection rather than tracked files.
 
 ## Logging
 
-The API and launcher use standard module loggers. Briefing records receive a `run_id` that is propagated into pipeline state, persisted metadata, and relevant worker-thread logs for correlation. Operational failures log component names, stable categories, and exception types rather than connector payloads or credentials. Malformed history records are identified by row ID and parse-error category without logging the stored briefing or digest contents.
+API and launcher logs use module loggers. Briefing `run_id` values correlate pipeline, worker, and persistence events. Operational failures record components, stable categories, and exception types rather than connector payloads, credentials, prompts, or stored briefings.
 
-Public assistant tool failures use stable messages instead of raw exception strings. Logs and public errors should still be reviewed when new connectors or providers are added, because third-party exception objects are not guaranteed to be privacy-safe.
+Public assistant failures use stable messages instead of raw third-party exceptions. New connectors and providers still require a privacy review because external exception objects are not guaranteed to be safe.
 
-## Runtime Modes
+## Runtime modes
 
-- `DEMO_MODE=true` uses static mock briefing and assistant data, skips live connectors, and does not write briefing history.
-- `DEV_MODE=true` suppresses configured-network preflight warnings and production run logging. Gmail and Calendar may still make live OAuth-authenticated requests, but returned connector and Gmail assistant content is masked before model or HUD use.
-- Production mode calls only enabled connectors. Disabling a connector skips its network or authentication attempt and excludes it from synthesis and Sync Health scoring.
+- `DEMO_MODE=true` uses static mock data, skips live connectors, and does not write production briefing history.
+- `DEV_MODE=true` can still make Gmail and Calendar OAuth requests, but returned personal content is masked before model or HUD use.
+- Production mode calls only enabled connectors. Disabling a connector skips its request and excludes it from briefing input and Sync Health.
+
+See [Configuration](configuration.md) for exact mode ownership and [Architecture](architecture.md) for the process and trust model.

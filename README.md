@@ -1,308 +1,128 @@
 # APEX: Automated Personal Environment Xylem
 
-A Python-based personal HUD that delivers a synchronized audio-visual briefing on demand. APEX evaluates the local environment, collects live data from configurable connectors, converts it into bounded structured facts, routes those facts through cloud, local, or deterministic synthesis, and reads the result aloud through a browser dashboard. It started as a personal utility and grew into a practical exercise in multi-threaded Python, FastAPI API design, React/TypeScript frontend engineering, and AI pipeline integration.
+APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
+
+Today, it is a local-first personal intelligence HUD that brings weather, schedules, reminders, news, markets, system health, and AI-assisted analysis into one deliberate workspace. It turns those signals into an on-demand overview, a concise briefing, and a conversational assistant while keeping the local machine, not a hosted account, at the center of the system.
 
 <p align="center">
-  <img src="docs/assets/apex-hero.png" alt="APEX dormant standby HUD" width="900">
+  <img src="docs/assets/apex-hero.png" alt="APEX standby screen with Start APEX and Start with Briefing controls" width="900">
 </p>
 
 <p align="center">
-  <em>Dormant standby mode with centralized command trigger, parallax starfield, and live system diagnostics.</em>
+  <em>Standby keeps the interface quiet until I choose to load the overview or begin with a briefing.</em>
 </p>
 
----
+## What APEX does
 
-## Architecture Overview
+### Builds a live personal overview
 
-`launcher.py` starts loopback-bound FastAPI (port 8000) and static frontend (port 5500) child processes, waits for backend readiness and frontend HTTP availability, then opens the HUD in a kiosk browser window. The HUD starts in standby. An "INITIATE SYSTEM SYNTHESIS" button (or `Enter` key) fires `POST /api/v1/trigger`, which runs a four-stage pipeline while the frontend polls `/api/v1/status` at 500 ms to track progress and drive animations.
+APEX collects enabled weather, calendar, inbox, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
 
+### Produces briefings on my terms
+
+A briefing can use Gemini, one of three local Ollama profiles, or a deterministic Structured Digest. All routes receive the same sanitized, size-bounded facts; a provider failure ends in a useful model-free result instead of a blank screen.
+
+### Answers follow-up questions
+
+Ask APEX can query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local profiles share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
+
+### Keeps runtime control visible
+
+The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, assistant queries, and speech are independent operations rather than one mandatory pipeline.
+
+<p align="center">
+  <img src="docs/assets/apex-active-hud.png" alt="Activated APEX overview with demo telemetry and a generated briefing" width="900">
+</p>
+
+<p align="center">
+  <em>An activated demo overview using static, non-personal telemetry.</em>
+</p>
+
+## Engineering highlights
+
+- **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
+- **Independent runtime paths** — telemetry, briefing generation, assistant work, and voice delivery can succeed or fail without taking the entire HUD down.
+- **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
+- **Cloud, local, and deterministic execution** — Gemini and Ollama are optional strategies, with Structured Digest as the final model-free fallback.
+- **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
+- **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held assistant conversations disappear on reload.
+- **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
+- **Privacy-aware process isolation** — the backend receives credentials; the static server and browser receive a restricted child environment.
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+    L["launcher.py"] --> API["FastAPI · 127.0.0.1:8000"]
+    L --> HUD["React HUD · 127.0.0.1:5500"]
+    HUD --> T["Telemetry snapshots"]
+    HUD --> B["Briefing synthesis"]
+    HUD --> A["Ask APEX"]
+    HUD --> V["Voice delivery"]
+    T --> C["Local and external connectors"]
+    B --> M["Gemini · Ollama · Structured Digest"]
+    A --> P["Native and approved MCP capabilities"]
+    API --> DB["SQLite"]
 ```
-launcher.py → [uvicorn (8000) + http.server (5500)] → Browser (kiosk)
-                          ↓
-core/api/ → scanner.py → [Data Connectors] → core/synthesis/ → speaker.py
-              (Gate)         (Collection)        (Synthesis)      (Delivery)
-```
 
-Full pipeline walkthrough, mermaid sequence diagram, component inventory, and data contracts are in [docs/architecture.md](docs/architecture.md).
+The browser owns the interactive session. FastAPI owns connector access, runtime coordination, model/provider boundaries, speech, and persistence. See the [architecture reference](docs/architecture.md) for the state owners, request flows, and failure model.
 
----
+## Technology
 
-## Interface Preview
-
-<p align="center">
-  <img src="docs/assets/apex-active-hud.png" alt="APEX active briefing HUD with live modules, reminders, diagnostics, and delivery status" width="900">
-</p>
-
-<p align="center">
-  <em>Active briefing mode in demo mode, showcasing simulated telemetry panels, staged briefing delivery, the AskApex bar, the closed console tray (with assistant and reminders tabs), and live system diagnostics rendered in the full HUD layout.</em>
-</p>
-
----
-
-## Features
-
-- **Advisory operational preflight** — reports configured-network, battery, rapid-refresh, cloud-disclosure, credential, and local-model risks without treating Wi-Fi or power as proof of authorization
-- **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hour file cache), configured football fixtures (football-data.org with six-hour cache), GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hour window), Alpha Vantage (EOD market ticker)
-- **AI briefing synthesis** — connector output routed through a provider-neutral `SynthesisRouter`; uses Gemini 3.1 Flash Lite (cloud strategy), a resident or warmed Ollama model (local strategy), or deterministic compact output (raw fallback) depending on the configured strategy and provider availability
-- **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
-- **Text-to-speech** — Google Cloud TTS primary with native pyttsx3 fallback; Kokoro ONNX available as an optional local engine that falls back to Google on failure; pre-warmed singletons, serialized `_SPEAK_LOCK`
-- **Persistent reminders** — SQLite-backed reminder management with full create/dismiss lifecycle from the HUD
-- **Real-time system diagnostics** — CPU, RAM, and disk polled at 1,000 ms and rendered as color-coded micro-bars in a six-column status footer; additional columns show internet connectivity, briefing lifecycle state, sync health, and live system time
-- **Dormant ambient HUD mode** — idle state collapses peripheral data wings, expands the central command area, surfaces pending reminders, and animates the APEX logo with pipeline-driven color states and parallax background motion
-- **Pipeline state visibility** — run ID, step, label, UTC timestamp, and `is_speaking` exposed via `/api/v1/status` under a threading lock
-- **Sync Health scoring** — each production run produces typed connector results and a `sync_health_score` (0–100) with `connector_health` rows; `confidence_score` and `failed_connectors` remain as compatibility fields and render in the system status Sync Health popup
-- **Briefing history ledger** — every production briefing and its `DigestPayload` are persisted to SQLite; the last 50 records are accessible via `GET /api/v1/briefings/history` and viewable in a portal-mounted modal from the HUD
-- **APEX assistant** — a conversational assistant with tool-calling access to live weather, F1 standings/calendar, Google Calendar, reminders, and briefing history; answered from an inline query bar or a slide-out chat drawer with six selectable performance profiles across two providers — cloud (Gemini: Comet, Nova, Pulsar) and local (Ollama: Lynx, Acinonyx, Neofelis)
-- **Structured tool output cards** — assistant responses render a dedicated card per executed tool (weather forecast, F1 standings/calendar, calendar events, reminders, briefing history) in the console tray, in addition to the synthesized text answer
-- **Local Ollama inference** — optional on-device model execution shared by briefing synthesis and the APEX assistant, with automatic model load/unload, a single-loaded-model policy, idle auto-unload, RAM/CPU resource gating, and one lifecycle control beneath the logo
-- **EOD market ticker** — end-of-day price, change, and 7-day sparkline for a configurable symbol set via Alpha Vantage, with file-backed caching and a provider-error cooldown; runs independently of the briefing pipeline
-- **Demo mode** — `DEMO_MODE=true` intercepts the trigger, runs a staged simulation with static mock telemetry, and displays a badge in the HUD; no external API calls are made
-- **Atmospheric theming** — weather condition selects an animated per-condition icon on the Weather card
-- **Pipeline attention-tier reveal** — each telemetry surface unlocks on a schedule keyed to its data-source latency (reminders, then weather/news, then events/market/inbox, then insights), driving a glass-power and curtain-reveal transition per card
-- **Variable Typography Engine** — primary temperature font weight linearly interpolated from `font-weight: 300` (40°F) to `font-weight: 800` (90°F)
-
----
-
-## Technology Stack
-
-| Layer | Tool |
+| Layer | Current stack |
 |---|---|
-| Language | Python `==3.14.*` with dependencies locked by uv |
-| API Framework | FastAPI, uvicorn |
-| AI Engine (cloud) | Google GenAI SDK — Gemini 3.1 Flash Lite (briefing synthesis); Gemini 3.1 Flash Lite, Gemini 3 Flash (preview), Gemini 3.5 Flash (assistant reasoning tiers) |
-| AI Engine (local) | Ollama — `qwen3:1.7b`, `qwen3:4b-instruct`, `qwen3:8b` (assistant local reasoning tiers; optional briefing synthesis via local strategy) |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
-| Icons | lucide-react |
-| Database | SQLite3 |
-| TTS | Google Cloud TTS, pyttsx3, Kokoro ONNX (optional) |
-| Key Libraries | `psutil`, `requests`, `python-dotenv`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`, `google-cloud-texttospeech`, `google-genai`, `pygame-ce`, `tzdata`, `kokoro-onnx`, `onnxruntime`, `numpy` |
-| Market Data | Alpha Vantage (`TIME_SERIES_DAILY`, EOD only) |
+| Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
+| Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
+| Persistence | SQLite |
+| Cloud reasoning | Gemini 3.5 Flash Lite, Gemini 3.5 Flash, Gemini 3.6 Flash |
+| Local reasoning | Ollama with Qwen3 profiles |
+| Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
+| Tool integrations | Native connectors plus allowlisted MCP clients |
+| Validation | unittest, Vitest, ESLint, TypeScript, Vite build |
 
----
+## Try it safely
 
-## Environment Modes
+The quickest evaluation path uses static demo data and needs no external credentials:
 
-Both flags are read from `.env`. Values are normalized at read time (`true`, `True`, `1` all resolve the same). Unset flags default to the values shown.
+```powershell
+copy .env.example .env
+# Set DEMO_MODE=true in .env
 
-| Configuration | Operational preflight | Gemini | Gmail + Calendar | Logs Run |
-|---|---|---|---|---|
-| Production (`DEV_MODE=false`) | Advisory network, battery, refresh, cloud, credential, and local-model checks | ✅ live | ✅ per config | ✅ yes |
-| `DEV_MODE=true` | Network policy warning bypassed; local cold-load checks retained | ⬜ depends on `DEV_AI_SYNTHESIS` | ⬜ fetched; content masked | ⬜ no |
-| `DEMO_MODE=true` | No warnings or live checks | ⬜ bypassed | ⬜ bypassed | ⬜ no |
-
-`DEMO_MODE` intercepts the trigger entirely and serves static mock telemetry from `core/mock/telemetry.json`. It does not run any connectors or write to the database. `DEV_MODE` and `DEMO_MODE` are independent flags; `DEMO_MODE` takes priority in the trigger path when both are set.
-
-Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, `local` routes to local Ollama then raw, `cloud` routes Gemini → eligible local model → raw) and `DEV_TTS_PLAYBACK` (`pyttsx3` default, `google`, `kokoro`). `DEMO_TTS` is only read when `DEMO_MODE=true` and sets the TTS engine for the demo path (`pyttsx3`, `google`, or `kokoro`). Every non-demo synthesis strategy receives the same sanitized, size-bounded `SynthesisInput`: selected weather, email, news, calendar, reminder, F1, football, and connector-health facts. Raw display telemetry, assistant tools, and assistant history are excluded.
-
----
-
-## Feature Toggles
-
-Editable operator preferences—connectors, sports modules, assistant enablement/default profile, and TTS engine/gender—are managed at runtime from the HUD **Runtime Settings** panel (diagnostics header) or through `GET` / `PATCH /api/v1/settings`. Saves persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults so machine-local preference changes stay out of version control. Followed football teams remain file-configured and are not editable in Runtime Settings.
-
-**When changes take effect**
-
-- Connector and sports module flags are captured at briefing start (a save during an active briefing applies to the next briefing).
-- Assistant enablement is checked when a query begins (in-flight queries finish; later submissions are blocked while disabled).
-- Default profile updates immediately when idle, or after an active assistant query finishes.
-- Voice engine and gender bind when delivery/`speak` begins (a change during collection/synthesis can affect that delivery; a change during speech applies to the next delivery).
-
-`DEV_MODE` and `DEMO_MODE` remain environment-only and appear as read-only status in the settings panel.
-
-Tracked `config.json` remains the committed baseline for all configuration, including non-editable keys (prompts, Ollama host/gates, synthesis grace windows, and so on):
-
-```json
-{
-  "features":    { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
-  "modules":     { "f1": true, "football": false },
-  "football":    { "teams": [{ "id": 81, "name": "Barcelona" }] },
-  "tts_settings": { "primary_tts": "google", "voice_gender": "female" },
-  "system_prompt": "You are APEX. Deliver a concise briefing in under 75 words. No emojis or markdown.",
-  "synthesis": {
-    "gemini_system_prompt": "...",
-    "ollama_system_prompt": "...",
-    "local_primary_grace_seconds": 5,
-    "local_fallback_grace_seconds": 5
-  },
-  "agent_system_prompt": "You are APEX, a cloud-powered agent assisting Chief with operations.",
-  "local_agent_system_prompt": "You are APEX, a local operations assistant assisting Chief with operations.",
-  "ask_apex": { "enabled": true, "default_profile": "comet", "max_session_messages": 6 },
-  "gemini": { "agent_max_turns": 3, "agent_max_tool_calls": 4 },
-  "ollama": {
-    "enabled": true,
-    "host": "http://localhost:11434",
-    "idle_unload_timeout_minutes": 5,
-    "single_loaded_model": true,
-    "manual_unload_enabled": true,
-    "resource_gates": {
-      "lynx": { "ram_limit": 88.0, "cpu_limit": 95.0 },
-      "acinonyx": { "ram_limit": 78.0, "cpu_limit": 90.0 },
-      "neofelis": { "ram_limit": 68.0, "cpu_limit": 85.0 }
-    }
-  }
-}
-```
-
-When a connector is off, no API call or auth attempt is made for it, and the module is excluded from briefing synthesis input and Sync Health scoring. `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
-
-`football.teams` contains one to three unique football-data.org team IDs and display names. A `config.local.json` `football.teams` array replaces the tracked array as a whole. Football telemetry fetches only each team’s next scheduled fixture and displays team, home/away, competition, and browser-local kickoff time. The briefing receives only the earliest fixture in the next seven days.
-
-`synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the local strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and local is the fallback. Both omit the key to accept the defaults.
-
-`agent_system_prompt` sets the cloud APEX assistant persona; `local_agent_system_prompt` sets the equivalent persona for local Ollama profiles. Both are independent of the briefing `system_prompt`. `ask_apex.enabled` toggles the post-briefing assistant interface and assistant drawer off entirely (`POST /api/v1/agent/query` returns `403` when disabled). Prefer `ask_apex.default_profile` (`"comet"`, `"nova"`, `"pulsar"`, `"lynx"`, `"acinonyx"`, or `"neofelis"`); legacy `default_cloud_profile` is still accepted as a read-time fallback. `max_session_messages` (2–20) bounds the client-held chat history. `gemini.agent_max_turns` (1–5) and `gemini.agent_max_tool_calls` (1–10) cap the assistant tool-calling loop per query for both cloud and local profiles. See [docs/api.md](docs/api.md) for the settings and agent query contracts.
-
-`ollama.enabled` toggles local inference off entirely. `ollama.host` points at the Ollama daemon's HTTP address. `ollama.idle_unload_timeout_minutes` (1–60) sets how long an unused local model stays loaded before automatic unload. `ollama.manual_unload_enabled` toggles the shared rust-orange unload control beneath the APEX logo. `synthesis.local_primary_grace_seconds` and `local_fallback_grace_seconds` default to 5 and accept 0–30 seconds. `ollama.resource_gates.{lynx,acinonyx,neofelis}` set the RAM/CPU utilization thresholds above which a cold load is blocked; a resident model is reused without another gate.
-
----
-
-## Setup
-
-**Prerequisites**
-
-The validated development baseline is Windows with Python 3.14.x, [uv](https://docs.astral.sh/uv/), Node.js 24, and npm. `pyproject.toml` requires exactly the Python 3.14 series, and Windows CI verifies the locked Python environment plus the frontend test, lint, and build workflow.
-
-**1. Clone**
-```bash
-git clone https://github.com/edumarcano/apex.git
-cd apex
-```
-
-**2. Install Python dependencies**
-
-APEX uses uv with `pyproject.toml` as the canonical dependency manifest and `uv.lock` as the exact resolved dependency set. From the repository root:
-
-```bash
 uv sync --locked
-```
-
-This creates a local virtual environment and installs the exact versions recorded in `uv.lock`. Run Python commands through that environment with `uv run`:
-
-```bash
-uv run python -m unittest discover -s tests
-uv run python launcher.py
-```
-
-**3. Install and build the frontend**
-```bash
 cd frontend
 npm ci
 npm run build
 cd ..
-```
-
-**4. Configure environment variables**
-
-Copy the template and fill in your values:
-```bash
-cp .env.example .env          # macOS / Linux
-copy .env.example .env        # Windows
-```
-
-`.env.example` documents every key with inline comments. Credentials are required only for the live features that use them: `GEMINI_API_KEY` enables cloud synthesis and cloud assistant profiles, while connector keys enable their corresponding modules. `HOME_SSID` is optional configured-network policy for advisory preflight; it is not an authentication boundary. Local/raw synthesis and demo mode do not require Gemini credentials. `GOOGLE_APPLICATION_CREDENTIALS` takes the **absolute file path** to `service_account.json`, not the file contents. `CUSTOM_BROWSER_PATH` points the launcher at a specific browser executable (Brave, Vivaldi, etc.); Chrome and Edge are checked by default. `ALPHA_VANTAGE_API_KEY` and `MARKET_SYMBOLS` (comma-separated ticker symbols) are optional; when either is unset, `GET /api/v1/market` serves a simulated ticker feed instead of an error.
-
-Optional MCP provider pilots are disabled by default. GitHub requires `GITHUB_PERSONAL_ACCESS_TOKEN`; Brave Search requires `BRAVE_API_KEY`, Node.js 22 or later, and `npx`. Alpha Vantage MCP uses browser-based OAuth and stores authorization in the operating-system credential manager. Enable the MCP runtime and individual presets through Runtime Settings; saved changes connect or disconnect providers without restarting APEX. Advanced non-secret options and custom servers remain file-configured. See [the MCP status and configuration reference](docs/api.md#get-apiv1mcpstatus). These assistant integrations do not replace scheduled news collection or the native cached market ticker.
-
-**Cloud privacy note:** A normal production run currently defaults to Comet (Gemini) for primary briefing synthesis. If the API key uses Gemini's unpaid/free quota, Google may use prompts and responses to improve its products and may subject them to human review. APEX limits the data sent through a bounded synthesis payload, but that data is still disclosed to the provider. Moving the project to paid Gemini usage provides stronger no-product-improvement terms. Explicit local modes (Lynx, Acinonyx, Neofelis) and Structured Digest are available as production alternatives through the briefing selector in the global header. See [docs/privacy.md](docs/privacy.md).
-
-**5. Set up Google OAuth credentials (Gmail + Calendar)**
-
-- Enable the Gmail API and Google Calendar API in Google Cloud Console.
-- Create an OAuth client ID for a desktop application and download it as `credentials.json`.
-- Place `credentials.json` in the project root.
-- On first run the OAuth flow opens in the browser and writes `token.json` automatically. If you later change API scopes, delete `token.json` to force re-authentication.
-
-**Optional Microsoft To Do read access**
-
-Register a public/native application in Microsoft Entra, enable public-client device-code flow, and grant delegated `Tasks.Read`. Set `MICROSOFT_TODO_CLIENT_ID` in `.env`; `MICROSOFT_TODO_TENANT_ID` defaults to `common`. Connect from Runtime Settings, then use the assistant's Microsoft To Do tools or the local `/todo` command. APEX stores the token cache through encrypted operating-system persistence outside the repository and never uses a client secret.
-
-This integration cannot create, update, complete, move, synchronize, or delete Microsoft tasks. SQLite remains authoritative for APEX reminders, HUD notifications, and briefings during v1.18.
-
-**6. Set up Google Cloud TTS**
-
-- Enable the Cloud Text-to-Speech API in Google Cloud Console.
-- Create a service account, grant it the `Cloud Text-to-Speech User` role, and download the JSON key.
-- Save the key as `service_account.json` in the project root (gitignored).
-- Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` to its absolute path.
-
-**7. (Optional) Set up Local Neural Voices (Kokoro ONNX)**
-
-APEX supports offline speech synthesis using local Kokoro ONNX model weights. To use this engine, place the required files in the gitignored folder as follows:
-- **Kokoro ONNX**:
-  - Save the ONNX model files inside `core/weights/kokoro/`.
-  - Required files: `kokoro-v1.0.onnx` and `voices-v1.0.bin` (available from the Kokoro ONNX releases).
-
-**8. (Optional) Set up local Ollama models for the APEX assistant**
-
-The APEX assistant can run entirely on-device instead of calling Gemini. To enable the local Lynx, Acinonyx, and Neofelis profiles:
-- Install [Ollama](https://ollama.com) and start the daemon.
-- Pull the model tags used by the profiles you want available:
-  ```bash
-  ollama pull qwen3:1.7b          # Lynx (lightweight)
-  ollama pull qwen3:4b-instruct   # Acinonyx (balanced)
-  ollama pull qwen3:8b            # Neofelis (capable)
-  ```
-- No `.env` keys are required for local inference. `config.json` `ollama.host` defaults to `http://localhost:11434`; change it only if Ollama runs on a different host or port.
-- A profile whose model tag isn't installed reports `model_not_installed` in the HUD's profile selector rather than failing a query. Set `ollama.enabled: false` in `config.json` to hide local profiles entirely.
-
-**9. (Optional) Customize persona and connectors**
-
-Edit `config.json` to change the briefing voice, toggle connectors, or switch TTS engine. See [Feature Toggles](#feature-toggles) above. API keys for disabled connectors are not required.
-
-**10. (Optional) Dev and demo overrides**
-
-Set `DEV_MODE=true` in `.env` for local development. Configured-network preflight warnings, run logging, and (by default) Gemini synthesis are bypassed. Gmail and Calendar connectors still make live OAuth-authenticated requests; returned content is masked to `[HIDDEN]`. Set `DEMO_MODE=true` for a fully offline simulation using static mock telemetry. See [Environment Modes](#environment-modes) above.
-
----
-
-## Running
-
-**Recommended — full orchestrator:**
-```bash
 uv run python launcher.py
 ```
-Starts both servers, probes `GET /api/v1/health/ready` and frontend HTTP availability, and opens the HUD only after both are ready. A timeout, bind conflict, or child-process exit suppresses the browser, cleans up both servers, and exits nonzero. Closing a tracked Chrome/Edge kiosk process shuts down both servers; the default-browser fallback has no process handle, so use `Ctrl+C` to stop that path.
 
-**Manual — two terminals:**
-```bash
-# Terminal 1 — API server
-uv run python -m uvicorn core.api:app --reload
+Demo mode bypasses live connectors and model calls, does not write briefing history, and uses the configured demo voice path. For the complete Windows setup, optional providers, manual launch commands, and troubleshooting, see [Getting Started](docs/getting-started.md).
 
-# Terminal 2 — static file server
-uv run python -m http.server 5500 --directory dist
-```
-Then open `http://127.0.0.1:5500`. Run both commands from the project root.
+## Local trust boundary
 
----
+APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-## Deployment
-
-`launch_apex.bat` in the project root runs `launcher.py` and holds the terminal window open on exit so errors are visible:
-```powershell
-.\launch_apex.bat
-```
-
-**Desktop shortcut (Windows):** right-click `launch_apex.bat` → Create shortcut → open shortcut Properties → set **Start in** to the full project path (e.g., `C:\Users\you\Documents\APEX`). Without this field, `launcher.py` cannot resolve its relative paths and the run fails immediately.
-
-The launcher binds both services to `127.0.0.1`. The API has no authentication, so remote access is intentionally unsupported. Changing the bind address would first require authentication, authorization, and transport-security work. CORS configuration is a browser policy, not an access-control boundary. See [docs/privacy.md](docs/privacy.md).
-
----
-
-## Project Planning
-
-Active development is tracked on [GitHub Projects](https://github.com/edumarcano/apex/projects).
-
-Long-term architecture planning and milestone progression are documented in [roadmap.md](docs/roadmap.md).
-
-Full version history is available in [CHANGELOG.md](CHANGELOG.md).
-
----
+Use a local Ollama briefing mode or Structured Digest to avoid Gemini disclosure for briefing synthesis. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 
-| File | Contents |
+| Document | Its one job |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Pipeline internals, component inventory, data contracts, F1 cache, theming systems, project structure |
-| [docs/api.md](docs/api.md) | All API endpoints, request/response schemas, Pydantic models, environment variables |
-| [docs/decisions.md](docs/decisions.md) | Engineering rationale, TTS selection history, AI workflow, design trade-offs |
-| [docs/privacy.md](docs/privacy.md) | Local trust boundary, model-bound data, persistence, logging, and secrets |
-| [docs/roadmap.md](docs/roadmap.md) | Milestone history, current phase, planned platform evolution |
+| [Getting Started](docs/getting-started.md) | Install APEX, run a safe demo, launch the full system, and resolve common startup problems |
+| [Configuration](docs/configuration.md) | Configure modes, settings, credentials, connectors, models, speech, and MCP providers |
+| [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
+| [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
+| [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
+| [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |
+| [Design System](docs/design-system.md) | Preserve the HUD's visual language, state semantics, responsiveness, and accessibility |
+| [Roadmap](docs/roadmap.md) | Follow APEX's product and architectural evolution and its planned direction |
+| [Changelog](CHANGELOG.md) | Review the detailed record of released changes |
+| [Frontend Guide](frontend/README.md) | Work specifically in the React/TypeScript application |
+
+Run the documentation consistency check after editing public docs:
+
+```powershell
+uv run python scripts/check_docs.py
+```
+
+APEX is a personal project, but the engineering is intentionally explicit: local constraints, privacy boundaries, failure modes, and visual behavior are part of the product rather than afterthoughts.

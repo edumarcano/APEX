@@ -1,9 +1,9 @@
 # APEX Roadmap
 
 > [!NOTE]
-> This roadmap is a strategic planning document and represents the intended evolution of APEX.
-> Milestone ordering, scope, implementation details, and phase boundaries may change as development progresses.
-> Completed milestones reflect historical architectural decisions. Planned milestones reflect current project direction and are not contractual commitments.
+> This roadmap records APEX's product and architectural evolution: the problems each phase set out to solve, the initiatives that shaped the current system, and the directions still under consideration.
+> Completed milestones provide historical context; [the changelog](../CHANGELOG.md) remains the detailed record of released changes.
+> Planned milestones reflect current intent. Their ordering, scope, implementation details, and phase boundaries may change as development progresses.
 
 **Current Phase:** Phase IV: Interactive Intelligence
 
@@ -11,7 +11,7 @@
 
 # Roadmap Summary
 
-This document serves as the permanent chronological architecture reference for the APEX lifecycle.
+This document tells the long-form development story behind APEX while preserving the forward-looking roadmap.
 
 It maps the evolution of APEX from a collection of single-purpose Python automation scripts into a multi-layer intelligence platform featuring:
 
