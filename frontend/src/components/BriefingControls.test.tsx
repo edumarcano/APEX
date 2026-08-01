@@ -11,12 +11,17 @@ function profile(
   status: ProfileAvailabilityStatus = 'available',
   reason: string | null = null,
 ): AgentProfileStatus {
+  const mode = key === 'sorex' || key === 'mus' ? 'local' : 'cloud'
   return {
     key,
     display_name: `Apex ${key}`,
-    provider: key === 'comet' ? 'gemini' : 'ollama',
+    provider: mode === 'cloud' ? 'openai' : 'ollama',
+    version: '2.0',
+    mode,
     tier: 'stable',
     stability: 'stable',
+    effort_options: mode === 'cloud' ? ['light', 'focused', 'extended'] : null,
+    default_effort: mode === 'cloud' ? 'focused' : null,
     status,
     active: false,
     loading: false,
@@ -27,15 +32,14 @@ function profile(
 }
 
 const AVAILABLE_PROFILES = [
-  profile('comet'),
-  profile('lynx'),
-  profile('acinonyx'),
-  profile('neofelis'),
+  profile('panthera'),
+  profile('sorex'),
+  profile('mus'),
 ]
 
 function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSelector>> = {}) {
   const props: ComponentProps<typeof BriefingModeSelector> = {
-    value: 'comet',
+    value: 'panthera',
     onChange: vi.fn(),
     profiles: AVAILABLE_PROFILES,
     hydrated: true,
@@ -50,15 +54,15 @@ describe('BriefingModeSelector', () => {
     const user = userEvent.setup()
     renderSelector()
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: comet/i }))
+    await user.click(screen.getByRole('button', { name: /briefing mode: panthera/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
     expect(screen.getByText('Briefing Synthesis')).toBeVisible()
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
-    expect(within(listbox).getByText('Full briefing · fast cloud synthesis')).toBeVisible()
-    expect(within(listbox).getByText('Full briefing · higher capacity, slower')).toBeVisible()
+    expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
+    expect(within(listbox).getByText('Full briefing · balanced local synthesis')).toBeVisible()
     expect(within(listbox).getByText('Structured facts · no model or synthesis')).toBeVisible()
   })
 
@@ -68,15 +72,14 @@ describe('BriefingModeSelector', () => {
     renderSelector({
       onChange: onModeChange,
       profiles: [
-        profile('comet'),
-        profile('lynx'),
-        profile('acinonyx', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
-        profile('neofelis'),
+        profile('panthera'),
+        profile('sorex'),
+        profile('mus', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
       ],
     })
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: comet/i }))
-    expect(screen.getByRole('option', { name: /acinonyx/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /briefing mode: panthera/i }))
+    expect(screen.getByRole('option', { name: /mus/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured_digest')
@@ -86,7 +89,7 @@ describe('BriefingModeSelector', () => {
   it('closes on Escape and restores focus to the selector', async () => {
     const user = userEvent.setup()
     renderSelector()
-    const trigger = screen.getByRole('button', { name: /briefing mode: comet/i })
+    const trigger = screen.getByRole('button', { name: /briefing mode: panthera/i })
 
     await user.click(trigger)
     expect(screen.getByRole('listbox')).toBeInTheDocument()

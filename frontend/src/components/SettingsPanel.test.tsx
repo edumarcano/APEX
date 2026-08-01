@@ -297,7 +297,7 @@ describe('SettingsPanel', () => {
     expect(screen.queryByText(/secret aggregate detail/)).not.toBeInTheDocument()
   })
 
-  it('describes briefing modes and recommends only Acinonyx', async () => {
+  it('describes briefing modes and recommends only Mus', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     renderPanel()
 
@@ -305,10 +305,9 @@ describe('SettingsPanel', () => {
     const labels = within(select).getAllByRole('option').map((option) => option.textContent)
 
     expect(labels).toEqual([
-      'Comet — Full briefing · fast cloud synthesis',
-      'Lynx — Quick briefing · limited telemetry',
-      'Acinonyx — Full briefing · balanced synthesis (Recommended)',
-      'Neofelis — Full briefing · higher capacity, slower',
+      'Panthera — Full briefing · cloud synthesis',
+      'Sorex — Quick briefing · limited telemetry',
+      'Mus — Full briefing · balanced local synthesis (Recommended)',
       'Structured Digest — Structured facts · no model or synthesis',
     ])
     expect(labels.filter((label) => label?.includes('Recommended'))).toHaveLength(1)

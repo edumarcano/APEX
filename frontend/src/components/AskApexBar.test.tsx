@@ -6,11 +6,15 @@ import type { AgentProfileStatus, LocalCommandStatus } from '../types/telemetry'
 import { AskApexBar } from './AskApexBar'
 
 const localProfile: AgentProfileStatus = {
-  key: 'lynx',
-  display_name: 'Apex Lynx',
+  key: 'mus',
+  display_name: 'Apex Mus',
   provider: 'ollama',
-  tier: 'lightweight',
+  version: '2.0',
+  mode: 'local',
+  tier: 'balanced',
   stability: 'stable',
+  effort_options: null,
+  default_effort: null,
   status: 'available',
   active: false,
   loading: false,
@@ -52,7 +56,7 @@ describe('AskApexBar local commands', () => {
 
     render(
       <AskApexBar
-        activeProfile="lynx"
+        activeProfile="mus"
         onProfileChange={vi.fn()}
         onSubmit={onSubmit}
         profilesStatus={[localProfile]}
@@ -75,7 +79,7 @@ describe('AskApexBar local commands', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       'What is the forecast?',
-      'lynx',
+      'mus',
       'weather',
     )
     expect(screen.getByText('No tools')).toBeInTheDocument()
@@ -98,7 +102,7 @@ describe('AskApexBar local commands', () => {
 
     render(
       <AskApexBar
-        activeProfile="lynx"
+        activeProfile="mus"
         onProfileChange={vi.fn()}
         onSubmit={vi.fn()}
         profilesStatus={[localProfile]}

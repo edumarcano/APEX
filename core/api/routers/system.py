@@ -13,6 +13,7 @@ from core import config, database, scanner
 from core.api.models import PipelineStatusSnapshot
 from core.api.state import global_pipeline_state
 from core.config import DEMO_MODE, DEV_AI_SYNTHESIS, is_dev_mode
+from core.agent.profiles import resolve_assistant_selection
 from core.settings import (
     SETTINGS_SCHEMA_VERSION,
     SettingsPatch,
@@ -72,8 +73,9 @@ def readiness() -> dict[str, str]:
 def get_global_config() -> dict[str, Any]:
     """Expose global system configurations to the frontend HUD on boot."""
     snapshot = get_settings_store().get_snapshot()
+    mode, profile, effort = resolve_assistant_selection(snapshot.assistant)
     return {
-        "default_profile": snapshot.assistant.default_profile,
+        "default_profile": profile,
         "ask_apex_enabled": snapshot.assistant.enabled,
         "market_enabled": snapshot.features.market,
         "max_session_messages": config.MAX_SESSION_MESSAGES,
@@ -83,11 +85,19 @@ def get_global_config() -> dict[str, Any]:
             "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "cloud"
         ),
         "synthesis_profile": (
-            None if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw") else
-            "acinonyx" if is_dev_mode() and DEV_AI_SYNTHESIS == "local" else "comet"
+            None
+            if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw")
+            else "mus"
+            if is_dev_mode() and DEV_AI_SYNTHESIS == "local"
+            else "panthera"
         ),
         "briefing_default_mode": snapshot.briefing.default_mode,
         "voice_mode": snapshot.voice.mode,
+        "assistant_initial_selection": {
+            "mode": mode,
+            "profile": profile,
+            "effort": effort,
+        },
     }
 
 

@@ -51,7 +51,11 @@ export type UseBriefingPipelineReturn = BriefingPipelineState & {
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = ['gemini', 'ollama', 'raw', 'demo']
-const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = ['comet', 'lynx', 'acinonyx', 'neofelis']
+const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = [
+  'panthera',
+  'mus',
+  'sorex',
+]
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
   return typeof value === 'string' && values.includes(value as T) ? (value as T) : null

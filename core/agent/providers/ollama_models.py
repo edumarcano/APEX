@@ -3,13 +3,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from core.config import (
-    ACINONYX_CPU_LIMIT,
-    ACINONYX_RAM_LIMIT,
     DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
-    LYNX_CPU_LIMIT,
-    LYNX_RAM_LIMIT,
-    NEOFELIS_CPU_LIMIT,
-    NEOFELIS_RAM_LIMIT,
+    MUS_CPU_LIMIT,
+    MUS_RAM_LIMIT,
+    SOREX_CPU_LIMIT,
+    SOREX_RAM_LIMIT,
 )
 
 
@@ -66,9 +64,9 @@ class OllamaModelProfile(BaseModel):
 
 
 OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
-    "lynx": OllamaModelProfile(
-        display_name="Apex Lynx",
-        profile_version="1.0",
+    "sorex": OllamaModelProfile(
+        display_name="Apex Sorex",
+        profile_version="2.0",
         api_model="qwen3:1.7b",
         tier="lightweight",
         stability="stable",
@@ -81,12 +79,12 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         num_thread=4,
         generation_timeout=120,
         think=False,
-        ram_limit=LYNX_RAM_LIMIT,
-        cpu_limit=LYNX_CPU_LIMIT,
+        ram_limit=SOREX_RAM_LIMIT,
+        cpu_limit=SOREX_CPU_LIMIT,
     ),
-    "acinonyx": OllamaModelProfile(
-        display_name="Apex Acinonyx",
-        profile_version="1.0",
+    "mus": OllamaModelProfile(
+        display_name="Apex Mus",
+        profile_version="2.0",
         api_model="qwen3:4b-instruct",
         tier="balanced",
         stability="stable",
@@ -99,25 +97,7 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         num_thread=6,
         generation_timeout=150,
         think=False,
-        ram_limit=ACINONYX_RAM_LIMIT,
-        cpu_limit=ACINONYX_CPU_LIMIT,
-    ),
-    "neofelis": OllamaModelProfile(
-        display_name="Apex Neofelis",
-        profile_version="1.0",
-        api_model="qwen3:8b",
-        tier="capable",
-        stability="stable",
-        default_temperature=0.1,
-        max_tool_turns=3,
-        max_tool_calls=4,
-        context_window=4096,
-        tool_select_max_tokens=128,
-        final_answer_max_tokens=1024,
-        num_thread=4,
-        generation_timeout=180,
-        think=False,
-        ram_limit=NEOFELIS_RAM_LIMIT,
-        cpu_limit=NEOFELIS_CPU_LIMIT,
+        ram_limit=MUS_RAM_LIMIT,
+        cpu_limit=MUS_CPU_LIMIT,
     ),
 }

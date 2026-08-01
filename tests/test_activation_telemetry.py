@@ -136,7 +136,7 @@ class TelemetryApiTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",
@@ -445,7 +445,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "activate",
-                    "synthesis_profile": "lynx",
+                    "synthesis_profile": "sorex",
                     "involves_cloud": False,
                 },
             )
@@ -501,7 +501,7 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertNotIn("missing_credentials", blocker_codes)
         self.assertTrue(payload["can_proceed"])
 
-    def test_comet_briefing_mode_drives_cloud_preflight(self) -> None:
+    def test_panthera_briefing_mode_drives_cloud_preflight(self) -> None:
         with mock.patch(
             "core.telemetry.preflight.is_dev_mode", return_value=True
         ), mock.patch(
@@ -513,7 +513,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "generate_briefing",
-                    "briefing_mode": "comet",
+                    "briefing_mode": "panthera",
                     "involves_cloud": False,
                 },
             )
@@ -637,7 +637,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "assistant_query", "synthesis_profile": "lynx"},
+                json={"operation": "assistant_query", "synthesis_profile": "sorex"},
             )
 
         payload = response.json()
@@ -757,7 +757,7 @@ class TriggerWithoutGateTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",

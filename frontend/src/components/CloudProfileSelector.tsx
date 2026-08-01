@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -30,24 +31,26 @@ interface ProfileOption {
 }
 
 const CLOUD_PROFILE_OPTIONS: readonly ProfileOption[] = [
-  { key: 'comet', label: 'Apex Comet', subtitle: 'Fast' },
-  { key: 'nova', label: 'Apex Nova', subtitle: 'Balanced' },
-  { key: 'pulsar', label: 'Apex Pulsar', subtitle: 'Advanced' },
+  { key: 'panthera', label: 'Apex Panthera', subtitle: 'Balanced' },
+  { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Advanced' },
+  { key: 'delphinus', label: 'Apex Delphinus', subtitle: 'Balanced' },
+  { key: 'orcinus', label: 'Apex Orcinus', subtitle: 'Advanced' },
+  { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Fast (DEV)' },
 ]
 
 const LOCAL_PROFILE_OPTIONS: readonly ProfileOption[] = [
-  { key: 'lynx', label: 'Apex Lynx', subtitle: 'Lightweight' },
-  { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Balanced' },
-  { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Capable' },
+  { key: 'sorex', label: 'Apex Sorex', subtitle: 'Lightweight' },
+  { key: 'mus', label: 'Apex Mus', subtitle: 'Balanced' },
 ]
 
 const PROFILE_LABELS: Record<AssistantProfile, string> = {
-  comet: 'Apex Comet',
-  nova: 'Apex Nova',
-  pulsar: 'Apex Pulsar',
-  lynx: 'Apex Lynx',
-  acinonyx: 'Apex Acinonyx',
+  panthera: 'Apex Panthera',
   neofelis: 'Apex Neofelis',
+  delphinus: 'Apex Delphinus',
+  orcinus: 'Apex Orcinus',
+  acinonyx: 'Apex Acinonyx',
+  sorex: 'Apex Sorex',
+  mus: 'Apex Mus',
 }
 
 const STATUS_FALLBACK_REASONS: Record<ProfileAvailabilityStatus, string> = {
@@ -66,11 +69,6 @@ interface ProfileSection {
   icon: LucideIcon
   options: readonly ProfileOption[]
 }
-
-const PROFILE_SECTIONS: readonly ProfileSection[] = [
-  { title: 'Cloud Models', icon: Cloud, options: CLOUD_PROFILE_OPTIONS },
-  { title: 'Local Models', icon: Cpu, options: LOCAL_PROFILE_OPTIONS },
-]
 
 interface CloudProfileSelectorProps {
   activeProfile: AssistantProfile
@@ -133,8 +131,8 @@ function resolveProfileProviderLabel(
   profilesStatus: AgentProfileStatus[],
 ): string {
   const metadata = resolveProfileMetadata(profile, profilesStatus)
-  if (metadata?.provider === 'ollama') return 'Local'
-  if (metadata?.provider === 'gemini') return 'Cloud'
+  if (metadata?.mode === 'local') return 'Local'
+  if (metadata?.mode === 'cloud') return 'Cloud'
   return LOCAL_PROFILE_OPTIONS.some((option) => option.key === profile)
     ? 'Local'
     : 'Cloud'
@@ -164,6 +162,23 @@ export function CloudProfileSelector({
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const visibleSections = useMemo((): readonly ProfileSection[] => {
+    const visibleKeys = profilesStatusHydrated
+      ? new Set(profilesStatus.map((profile) => profile.key))
+      : null
+    const cloudOptions = CLOUD_PROFILE_OPTIONS.filter((option) => {
+      if (option.key !== 'acinonyx') {
+        return true
+      }
+      // Hide Acinonyx entirely outside DEV_MODE; backend only returns it then.
+      return visibleKeys?.has('acinonyx') ?? false
+    })
+    return [
+      { title: 'Cloud Models', icon: Cloud, options: cloudOptions },
+      { title: 'Local Models', icon: Cpu, options: LOCAL_PROFILE_OPTIONS },
+    ]
+  }, [profilesStatus, profilesStatusHydrated])
 
   const closeDropdown = useCallback((): void => {
     setIsOpen(false)
@@ -415,7 +430,7 @@ export function CloudProfileSelector({
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
           <ul role="listbox" aria-label="Select assistant profile">
-            {PROFILE_SECTIONS.map((section, sectionIndex) => (
+            {visibleSections.map((section, sectionIndex) => (
               <li key={section.title} role="presentation">
                 {sectionIndex > 0 ? (
                   <div className="mx-2 border-t border-white/10" aria-hidden />

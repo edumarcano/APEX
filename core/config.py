@@ -24,12 +24,10 @@ __all__ = [
     "CONFIG_PATH",
     "DEFAULT_CLOUD_PROFILE",
     "MAX_SESSION_MESSAGES",
-    "ACINONYX_CPU_LIMIT",
-    "ACINONYX_RAM_LIMIT",
-    "LYNX_CPU_LIMIT",
-    "LYNX_RAM_LIMIT",
-    "NEOFELIS_CPU_LIMIT",
-    "NEOFELIS_RAM_LIMIT",
+    "MUS_CPU_LIMIT",
+    "MUS_RAM_LIMIT",
+    "SOREX_CPU_LIMIT",
+    "SOREX_RAM_LIMIT",
     "OLLAMA_ENABLED",
     "OLLAMA_HOST",
     "OLLAMA_IDLE_UNLOAD_MINUTES",
@@ -353,7 +351,9 @@ _module_map = load_module_flags()
 MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
 MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
 
-_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset({"comet", "nova", "pulsar"})
+_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset(
+    {"panthera", "neofelis", "delphinus", "orcinus"}
+)
 
 
 def _parse_config_bool(raw: Any, *, key: str, default: bool) -> bool:
@@ -516,9 +516,10 @@ try:
         default=True,
     )
     DEFAULT_CLOUD_PROFILE: Final[str] = _parse_cloud_profile(
-        _ask_apex_cfg.get("default_cloud_profile"),
-        key="ask_apex.default_cloud_profile",
-        default="comet",
+        _ask_apex_cfg.get("cloud_profile")
+        or _ask_apex_cfg.get("default_cloud_profile"),
+        key="ask_apex.cloud_profile",
+        default="panthera",
     )
     MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
         _ask_apex_cfg.get("max_session_messages"),
@@ -530,7 +531,7 @@ try:
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
     ASK_APEX_ENABLED = True
-    DEFAULT_CLOUD_PROFILE = "comet"
+    DEFAULT_CLOUD_PROFILE = "panthera"
     MAX_SESSION_MESSAGES = 6
 
 try:
@@ -558,12 +559,10 @@ except Exception as exc:
     GEMINI_AGENT_MAX_TURNS = 6
     GEMINI_AGENT_MAX_TOOL_CALLS = 10
 
-_DEFAULT_LYNX_RAM: Final[float] = 88.0
-_DEFAULT_LYNX_CPU: Final[float] = 95.0
-_DEFAULT_ACINONYX_RAM: Final[float] = 78.0
-_DEFAULT_ACINONYX_CPU: Final[float] = 90.0
-_DEFAULT_NEOFELIS_RAM: Final[float] = 68.0
-_DEFAULT_NEOFELIS_CPU: Final[float] = 85.0
+_DEFAULT_SOREX_RAM: Final[float] = 88.0
+_DEFAULT_SOREX_CPU: Final[float] = 95.0
+_DEFAULT_MUS_RAM: Final[float] = 78.0
+_DEFAULT_MUS_CPU: Final[float] = 90.0
 
 try:
     _ollama_cfg = _CONFIG_DATA.get("ollama", {})
@@ -614,32 +613,23 @@ try:
             )
         _resource_gates = {}
 
-    _lynx_ram, _lynx_cpu = _parse_resource_gate(
-        _resource_gates.get("lynx"),
-        profile="lynx",
-        default_ram=_DEFAULT_LYNX_RAM,
-        default_cpu=_DEFAULT_LYNX_CPU,
+    _sorex_ram, _sorex_cpu = _parse_resource_gate(
+        _resource_gates.get("sorex") or _resource_gates.get("lynx"),
+        profile="sorex",
+        default_ram=_DEFAULT_SOREX_RAM,
+        default_cpu=_DEFAULT_SOREX_CPU,
     )
-    LYNX_RAM_LIMIT: Final[float] = _lynx_ram
-    LYNX_CPU_LIMIT: Final[float] = _lynx_cpu
+    SOREX_RAM_LIMIT: Final[float] = _sorex_ram
+    SOREX_CPU_LIMIT: Final[float] = _sorex_cpu
 
-    _acinonyx_ram, _acinonyx_cpu = _parse_resource_gate(
-        _resource_gates.get("acinonyx"),
-        profile="acinonyx",
-        default_ram=_DEFAULT_ACINONYX_RAM,
-        default_cpu=_DEFAULT_ACINONYX_CPU,
+    _mus_ram, _mus_cpu = _parse_resource_gate(
+        _resource_gates.get("mus") or _resource_gates.get("acinonyx"),
+        profile="mus",
+        default_ram=_DEFAULT_MUS_RAM,
+        default_cpu=_DEFAULT_MUS_CPU,
     )
-    ACINONYX_RAM_LIMIT: Final[float] = _acinonyx_ram
-    ACINONYX_CPU_LIMIT: Final[float] = _acinonyx_cpu
-
-    _neofelis_ram, _neofelis_cpu = _parse_resource_gate(
-        _resource_gates.get("neofelis"),
-        profile="neofelis",
-        default_ram=_DEFAULT_NEOFELIS_RAM,
-        default_cpu=_DEFAULT_NEOFELIS_CPU,
-    )
-    NEOFELIS_RAM_LIMIT: Final[float] = _neofelis_ram
-    NEOFELIS_CPU_LIMIT: Final[float] = _neofelis_cpu
+    MUS_RAM_LIMIT: Final[float] = _mus_ram
+    MUS_CPU_LIMIT: Final[float] = _mus_cpu
 except Exception as exc:
     _LOGGER.warning("Unable to parse ollama config: %s; using defaults.", exc)
     OLLAMA_ENABLED = True
@@ -647,9 +637,7 @@ except Exception as exc:
     OLLAMA_IDLE_UNLOAD_MINUTES = 5
     OLLAMA_SINGLE_LOADED_MODEL = True
     OLLAMA_MANUAL_UNLOAD_ENABLED = True
-    LYNX_RAM_LIMIT = _DEFAULT_LYNX_RAM
-    LYNX_CPU_LIMIT = _DEFAULT_LYNX_CPU
-    ACINONYX_RAM_LIMIT = _DEFAULT_ACINONYX_RAM
-    ACINONYX_CPU_LIMIT = _DEFAULT_ACINONYX_CPU
-    NEOFELIS_RAM_LIMIT = _DEFAULT_NEOFELIS_RAM
-    NEOFELIS_CPU_LIMIT = _DEFAULT_NEOFELIS_CPU
+    SOREX_RAM_LIMIT = _DEFAULT_SOREX_RAM
+    SOREX_CPU_LIMIT = _DEFAULT_SOREX_CPU
+    MUS_RAM_LIMIT = _DEFAULT_MUS_RAM
+    MUS_CPU_LIMIT = _DEFAULT_MUS_CPU

@@ -42,7 +42,10 @@ class SettingsApiTests(unittest.TestCase):
             "modules": {"football": False, "f1": True},
             "ask_apex": {
                 "enabled": True,
-                "default_profile": "comet",
+                "mode": "cloud",
+                "cloud_profile": "panthera",
+                "cloud_effort": "focused",
+                "local_profile": "mus",
             },
             "tts_settings": {
                 "primary_tts": "google",
@@ -75,13 +78,14 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 5)
+        self.assertEqual(payload["schema_version"], 6)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
-        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "comet")
+        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
-        self.assertEqual(payload["settings"]["assistant"]["default_profile"], "comet")
+        self.assertEqual(payload["settings"]["assistant"]["cloud_profile"], "panthera")
+        self.assertEqual(payload["settings"]["assistant"]["mode"], "cloud")
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
         self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])
@@ -262,7 +266,7 @@ class SettingsApiTests(unittest.TestCase):
     def test_invalid_profile_rejected(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"assistant": {"default_profile": "not-a-profile"}},
+            json={"assistant": {"cloud_profile": "not-a-profile"}},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -329,13 +333,13 @@ class SettingsApiTests(unittest.TestCase):
     def test_config_boot_reads_store_including_local_profile(self) -> None:
         self.store.apply_patch(
             SettingsPatch.model_validate(
-                {"assistant": {"enabled": False, "default_profile": "lynx"}}
+                {"assistant": {"enabled": False, "mode": "local", "local_profile": "sorex"}}
             )
         )
         response = self.client.get("/api/v1/config")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["default_profile"], "lynx")
+        self.assertEqual(payload["default_profile"], "sorex")
         self.assertFalse(payload["ask_apex_enabled"])
         self.assertIn("max_session_messages", payload)
         self.assertIn("dev_mode_active", payload)
@@ -351,11 +355,11 @@ class SettingsApiTests(unittest.TestCase):
     def test_unavailable_profile_remains_valid_default(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"assistant": {"default_profile": "neofelis"}},
+            json={"assistant": {"cloud_profile": "neofelis"}},
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json()["settings"]["assistant"]["default_profile"],
+            response.json()["settings"]["assistant"]["cloud_profile"],
             "neofelis",
         )
         config_payload = self.client.get("/api/v1/config").json()

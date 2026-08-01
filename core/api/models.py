@@ -7,7 +7,6 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from core.agent.providers.gemini_models import GeminiThinkingLevel
 from core.connectors.models import ConnectorHealthEntry
 
 
@@ -34,13 +33,13 @@ class RuntimeMetadata(BaseModel):
         description="Active briefing synthesis backend (dev config or production default).",
     )
     briefing_mode: (
-        Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] | None
+        Literal["panthera", "mus", "sorex", "structured_digest"] | None
     ) = Field(
         default=None,
         description="Explicit briefing mode used for this run.",
     )
-    synthesis_provider: Literal["gemini", "ollama", "raw", "demo"] | None = None
-    synthesis_profile: Literal["comet", "lynx", "acinonyx", "neofelis"] | None = None
+    synthesis_provider: Literal["gemini", "ollama", "raw", "demo", "openai"] | None = None
+    synthesis_profile: Literal["panthera", "mus", "sorex"] | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_warmup_ms: int | None = None
     synthesis_generation_ms: int | None = None
@@ -332,18 +331,24 @@ class LocalLoadedModelStatus(BaseModel):
 class AgentProfileStatus(BaseModel):
     key: str = Field(description="Stable profile identifier used by the HUD.")
     display_name: str = Field(description="Human-readable profile label.")
-    provider: Literal["ollama", "gemini"] = Field(
+    provider: Literal["ollama", "gemini", "openai", "xai"] = Field(
         description="Inference backend for this profile.",
+    )
+    version: str = Field(description="Profile configuration version string.")
+    mode: Literal["cloud", "local"] = Field(
+        description="Whether this profile runs in the cloud or locally.",
     )
     tier: str = Field(description="Profile performance tier label.")
     stability: Literal["stable", "preview"] = Field(
         description="Release stage classification for this profile.",
     )
-    thinking_level: GeminiThinkingLevel | None = Field(
+    effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
         default=None,
-        description=(
-            "Gemini thinking level for this profile. Null for Ollama profiles."
-        ),
+        description="Selectable APEX effort tiers; null for fixed-effort local profiles.",
+    )
+    default_effort: Literal["light", "focused", "extended"] | None = Field(
+        default=None,
+        description="Default APEX effort tier for this profile.",
     )
     status: ProfileAvailabilityStatus = Field(
         description="Current availability state for this profile.",
@@ -394,7 +399,7 @@ class BriefingHistoryRecord(BaseModel):
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
     provider: Literal["gemini", "ollama", "raw", "demo"] | None = None
-    profile: Literal["comet", "lynx", "acinonyx", "neofelis"] | None = None
+    profile: Literal["panthera", "mus", "sorex"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
@@ -488,7 +493,7 @@ class VoiceSpeakResponse(BaseModel):
 
 
 class BriefingTriggerRequest(BaseModel):
-    mode: Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] | None = Field(
+    mode: Literal["panthera", "mus", "sorex", "structured_digest"] | None = Field(
         default=None,
         description="Optional briefing mode override; omitted requests use the saved default.",
     )
@@ -500,7 +505,7 @@ class BriefingGenerateRequest(BaseModel):
         min_length=1,
         description="Process-current telemetry snapshot identity to synthesize from.",
     )
-    mode: Literal["comet", "lynx", "acinonyx", "neofelis", "structured_digest"] = Field(
+    mode: Literal["panthera", "mus", "sorex", "structured_digest"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
     )

@@ -5,28 +5,35 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
+from core.agent.profiles import PROFILE_SPECS, build_concrete_profile, resolve_effort
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
+from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
 from core.agent.types import AgentMessage
+from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
+
+
+def _concrete_profile(key: str):
+    _apex, native = resolve_effort(key, None)
+    return build_concrete_profile(key, native_effort=native)
 
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_profiles_apply_quota_aware_loop_caps(self) -> None:
         self.assertEqual(
-            {profile.profile_version for profile in GEMINI_MODEL_PROFILES.values()},
-            {"1.2"},
+            {PROFILE_SPECS[key].profile_version for key in ("panthera", "neofelis")},
+            {"2.0"},
         )
         self.assertEqual(
             {
-                key: (profile.max_tool_turns, profile.max_tool_calls)
-                for key, profile in GEMINI_MODEL_PROFILES.items()
+                key: (PROFILE_SPECS[key].max_tool_turns, PROFILE_SPECS[key].max_tool_calls)
+                for key in ("panthera", "neofelis", "acinonyx")
             },
             {
-                "comet": (6, 10),
-                "nova": (4, 6),
-                "pulsar": (4, 6),
+                "panthera": (min(6, GEMINI_AGENT_MAX_TURNS), min(10, GEMINI_AGENT_MAX_TOOL_CALLS)),
+                "neofelis": (min(4, GEMINI_AGENT_MAX_TURNS), min(6, GEMINI_AGENT_MAX_TOOL_CALLS)),
+                "acinonyx": (min(4, GEMINI_AGENT_MAX_TURNS), min(6, GEMINI_AGENT_MAX_TOOL_CALLS)),
             },
         )
 
@@ -37,15 +44,14 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
                 for key, profile in OLLAMA_MODEL_PROFILES.items()
             },
             {
-                "lynx": (2, 3),
-                "acinonyx": (3, 4),
-                "neofelis": (3, 4),
+                "sorex": (2, 3),
+                "mus": (3, 4),
             },
         )
 
     def test_gemini_model_profile_omits_default_temperature_and_description(self) -> None:
         """Verify GeminiModelProfile schema has no default_temperature or description field."""
-        profile = GEMINI_MODEL_PROFILES["comet"]
+        profile = _concrete_profile("neofelis")
         self.assertFalse(hasattr(profile, "default_temperature"))
         self.assertFalse(hasattr(profile, "description"))
         self.assertNotIn("default_temperature", profile.model_dump())
@@ -57,7 +63,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         self,
     ) -> None:
         """Verify OllamaModelProfile schema retains default_temperature and omits description."""
-        profile = OLLAMA_MODEL_PROFILES["lynx"]
+        profile = OLLAMA_MODEL_PROFILES["sorex"]
         self.assertTrue(hasattr(profile, "default_temperature"))
         self.assertFalse(hasattr(profile, "description"))
         self.assertIn("default_temperature", profile.model_dump())
@@ -83,7 +89,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_client.models.generate_content.return_value = mock_response
 
         provider = GeminiProvider(api_key="test-api-key")
-        profile = GEMINI_MODEL_PROFILES["nova"]
+        profile = _concrete_profile("neofelis")
         messages = [AgentMessage(role="user", content="Hello")]
 
         provider.generate_turn(messages=messages, tools=[], profile=profile)
@@ -92,7 +98,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         _args, kwargs = mock_client.models.generate_content.call_args
         config = kwargs["config"]
         self.assertFalse(hasattr(config, "temperature") and config.temperature is not None)
-        self.assertEqual(kwargs["model"], "gemini-3.5-flash")
+        self.assertEqual(kwargs["model"], "gemini-3.6-flash")
 
     @patch("core.agent.providers.ollama.get_http_session")
     def test_ollama_provider_retains_temperature(
@@ -109,7 +115,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_get_session.return_value = mock_session
 
         provider = OllamaProvider()
-        profile = OLLAMA_MODEL_PROFILES["acinonyx"]
+        profile = OLLAMA_MODEL_PROFILES["mus"]
         messages = [AgentMessage(role="user", content="Hello")]
 
         provider.generate_turn(messages=messages, tools=[], profile=profile)
@@ -120,3 +126,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         self.assertIn("options", payload)
         self.assertIn("temperature", payload["options"])
         self.assertEqual(payload["options"]["temperature"], 0.2)
+
+
+if __name__ == "__main__":
+    unittest.main()

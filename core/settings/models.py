@@ -6,27 +6,28 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AssistantProfile = Literal[
-    "comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"
-]
-BriefingMode = Literal[
-    "comet", "lynx", "acinonyx", "neofelis", "structured_digest"
-]
+CloudSettingsProfile = Literal["panthera", "neofelis", "delphinus", "orcinus"]
+LocalSettingsProfile = Literal["sorex", "mus"]
+AssistantMode = Literal["cloud", "local"]
+CloudEffort = Literal["light", "focused", "extended"]
+BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
-VALID_ASSISTANT_PROFILES: frozenset[str] = frozenset(
-    {"comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"}
+VALID_CLOUD_SETTINGS_PROFILES: frozenset[str] = frozenset(
+    {"panthera", "neofelis", "delphinus", "orcinus"}
 )
+VALID_LOCAL_SETTINGS_PROFILES: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
+    {"panthera", "mus", "sorex", "structured_digest"}
 )
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 5
+SETTINGS_SCHEMA_VERSION: int = 6
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
@@ -70,12 +71,16 @@ class FootballSettings(BaseModel):
 
 
 class AssistantSettings(BaseModel):
-    """Ask-APEX assistant enablement and default profile."""
+    """Ask-APEX assistant enablement, mode, and profile preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     enabled: bool = True
-    default_profile: AssistantProfile = "comet"
+    mode: AssistantMode = "cloud"
+    cloud_profile: CloudSettingsProfile = "panthera"
+    cloud_effort: CloudEffort = "focused"
+    local_profile: LocalSettingsProfile = "mus"
+    neofelis_google_search_enabled: bool = True
 
 
 class BriefingSettings(BaseModel):
@@ -83,7 +88,7 @@ class BriefingSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    default_mode: BriefingMode = "comet"
+    default_mode: BriefingMode = "panthera"
 
 
 class VoiceSettings(BaseModel):
@@ -171,7 +176,11 @@ class AssistantPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool | None = None
-    default_profile: AssistantProfile | None = None
+    mode: AssistantMode | None = None
+    cloud_profile: CloudSettingsProfile | None = None
+    cloud_effort: CloudEffort | None = None
+    local_profile: LocalSettingsProfile | None = None
+    neofelis_google_search_enabled: bool | None = None
 
 
 class BriefingPatch(BaseModel):

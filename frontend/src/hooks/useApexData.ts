@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ActiveReminder,
   ApexDataState,
+  AssistantInitialSelection,
   AssistantProfile,
+  CloudEffort,
   ConnectorHealthEntry,
   PipelineState,
   SynthesisLiveState,
@@ -34,7 +36,7 @@ export type UseApexDataReturn = ApexDataState & {
   triggerSynthesis: () => Promise<void>
   applyBootSettings: (next: {
     askApexEnabled: boolean
-    defaultProfile: AssistantProfile
+    assistantInitialSelection: AssistantInitialSelection
     marketEnabled: boolean
   }) => void
 }
@@ -112,26 +114,59 @@ function getStringField(
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_AGENT_PROFILES: readonly AssistantProfile[] = [
-  'comet',
-  'nova',
-  'pulsar',
-  'lynx',
-  'acinonyx',
+  'panthera',
   'neofelis',
+  'delphinus',
+  'orcinus',
+  'sorex',
+  'mus',
+  'acinonyx',
 ]
-const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = ['gemini', 'ollama', 'raw', 'demo']
-const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = ['comet', 'lynx', 'acinonyx', 'neofelis']
+const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
+  'gemini',
+  'ollama',
+  'openai',
+  'xai',
+  'raw',
+  'demo',
+]
+const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = [
+  'panthera',
+  'mus',
+  'sorex',
+]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
   return typeof value === 'string' && values.includes(value as T) ? value as T : null
 }
 
-function parseDefaultProfile(value: unknown): AssistantProfile | undefined {
-  if (typeof value === 'string' && VALID_AGENT_PROFILES.includes(value as AssistantProfile)) {
-    return value as AssistantProfile
+function parseAssistantInitialSelection(value: unknown): AssistantInitialSelection | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
   }
-  return undefined
+  const record = value as Record<string, unknown>
+  const mode = record.mode
+  const profile = record.profile
+  if (mode !== 'cloud' && mode !== 'local') {
+    return undefined
+  }
+  if (typeof profile !== 'string' || !VALID_AGENT_PROFILES.includes(profile as AssistantProfile)) {
+    return undefined
+  }
+  const effort =
+    record.effort === null || record.effort === undefined
+      ? null
+      : parseEnum(record.effort, VALID_CLOUD_EFFORTS)
+  if (record.effort !== null && record.effort !== undefined && effort === null) {
+    return undefined
+  }
+  return {
+    mode,
+    profile: profile as AssistantProfile,
+    effort,
+  }
 }
 
 function parseTtsEngine(value: unknown): TtsEngine {
@@ -245,8 +280,8 @@ export function useApexData(): UseApexDataReturn {
     askApexEnabled: true,
     marketEnabled: true,
     synthesisStrategy: 'cloud',
-    synthesisProvider: 'gemini',
-    synthesisProfile: 'comet',
+    synthesisProvider: 'openai',
+    synthesisProfile: 'panthera',
     synthesisFallbackReason: null,
   })
 
@@ -273,17 +308,22 @@ export function useApexData(): UseApexDataReturn {
   }, [])
 
   const applyBootSettings = useCallback(
-    (next: { askApexEnabled: boolean; defaultProfile: AssistantProfile; marketEnabled: boolean }): void => {
+    (next: {
+      askApexEnabled: boolean
+      assistantInitialSelection: AssistantInitialSelection
+      marketEnabled: boolean
+    }): void => {
       setState((prev) => ({
         ...prev,
         askApexEnabled: next.askApexEnabled,
-        defaultProfile: next.defaultProfile,
+        defaultProfile: next.assistantInitialSelection.profile,
+        assistantInitialSelection: next.assistantInitialSelection,
         marketEnabled: next.marketEnabled,
         data: prev.data
           ? {
               ...prev.data,
               askApexEnabled: next.askApexEnabled,
-              defaultProfile: next.defaultProfile,
+              defaultProfile: next.assistantInitialSelection.profile,
             }
           : prev.data,
       }))
@@ -584,6 +624,7 @@ export function useApexData(): UseApexDataReturn {
         }
 
         let defaultProfile: AssistantProfile | undefined
+        let assistantInitialSelection: AssistantInitialSelection | undefined
         let askApexEnabled: boolean | undefined
         let marketEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
@@ -596,6 +637,7 @@ export function useApexData(): UseApexDataReturn {
             if (configBody && typeof configBody === 'object') {
               const body = configBody as {
                 default_profile?: unknown
+                assistant_initial_selection?: unknown
                 ask_apex_enabled?: unknown
                 market_enabled?: unknown
                 demo_mode_active?: unknown
@@ -603,7 +645,18 @@ export function useApexData(): UseApexDataReturn {
                 synthesis_strategy?: unknown
                 synthesis_profile?: unknown
               }
-              defaultProfile = parseDefaultProfile(body.default_profile)
+              assistantInitialSelection = parseAssistantInitialSelection(
+                body.assistant_initial_selection,
+              )
+              if (assistantInitialSelection) {
+                defaultProfile = assistantInitialSelection.profile
+              } else {
+                defaultProfile =
+                  typeof body.default_profile === 'string' &&
+                  VALID_AGENT_PROFILES.includes(body.default_profile as AssistantProfile)
+                    ? (body.default_profile as AssistantProfile)
+                    : undefined
+              }
               if (typeof body.ask_apex_enabled === 'boolean') {
                 askApexEnabled = body.ask_apex_enabled
               }
@@ -632,6 +685,7 @@ export function useApexData(): UseApexDataReturn {
         if (!remindersResp.ok) {
           if (
             defaultProfile !== undefined ||
+            assistantInitialSelection !== undefined ||
             askApexEnabled !== undefined ||
             marketEnabled !== undefined ||
             demoModeActive !== undefined ||
@@ -646,6 +700,9 @@ export function useApexData(): UseApexDataReturn {
               return {
                 ...prev,
                 defaultProfile,
+                ...(assistantInitialSelection !== undefined
+                  ? { assistantInitialSelection }
+                  : {}),
                 ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 ...(marketEnabled !== undefined ? { marketEnabled } : {}),
                 ...modePatch,
@@ -692,6 +749,9 @@ export function useApexData(): UseApexDataReturn {
             status: 'idle',
             activeReminders,
             ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+            ...(assistantInitialSelection !== undefined
+              ? { assistantInitialSelection }
+              : {}),
             ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
             ...(marketEnabled !== undefined ? { marketEnabled } : {}),
             ...modePatch,

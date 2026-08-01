@@ -157,7 +157,7 @@ class AssistantGateTests(unittest.TestCase):
         _write_json(
             self.config_path,
             {
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "mode": "cloud", "cloud_profile": "panthera"},
             },
         )
         reset_settings_store_for_tests()
@@ -184,7 +184,7 @@ class AssistantGateTests(unittest.TestCase):
                 AgentQueryRequest(
                     prompt="hello",
                     history=[],
-                    profile="comet",
+                    profile="panthera",
                 )
             )
         self.assertEqual(ctx.exception.status_code, 403)

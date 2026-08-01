@@ -54,7 +54,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"f1": True, "football": False},
-                "assistant": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
                 "voice": {"engine": "pyttsx3", "gender": "male"},
             },
         )
@@ -87,7 +87,6 @@ class ProfileBusyStatusTests(unittest.TestCase):
                     "installed_tags": [
                         "qwen3:1.7b",
                         "qwen3:4b-instruct",
-                        "qwen3:8b",
                     ],
                     "loaded_models": [],
                     "vitals": vitals,
@@ -105,19 +104,22 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 "core.api.assistant.get_idle_unload_remaining_seconds",
                 return_value=None,
             ),
-            mock.patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
+            mock.patch.dict(
+                "os.environ",
+                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
+            ),
         ):
             profiles = build_agent_profile_statuses()
 
         by_key = {entry.key: entry for entry in profiles}
-        for key in ("lynx", "acinonyx", "neofelis"):
+        for key in ("sorex", "mus"):
             self.assertEqual(by_key[key].status, "busy")
             self.assertEqual(
                 by_key[key].reason,
                 "Briefing synthesis is using local inference.",
             )
-        self.assertEqual(by_key["comet"].status, "available")
-        self.assertIsNone(by_key["comet"].reason)
+        self.assertEqual(by_key["panthera"].status, "available")
+        self.assertIsNone(by_key["panthera"].reason)
 
     def test_cloud_available_during_local_execution(self) -> None:
         with (
@@ -126,7 +128,10 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 "core.api.assistant.is_local_execution_active",
                 return_value=True,
             ),
-            mock.patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
+            mock.patch.dict(
+                "os.environ",
+                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
+            ),
         ):
             profiles = build_agent_profile_statuses()
         cloud = [entry for entry in profiles if entry.provider == "gemini"]
@@ -243,7 +248,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"f1": True, "football": False},
-                "assistant": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
                 "voice": {"engine": "pyttsx3", "gender": "male"},
             },
         )

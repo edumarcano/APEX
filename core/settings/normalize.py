@@ -7,9 +7,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.agent.profiles import migrate_schema5_ask_apex, migrate_schema5_briefing
 from core.settings.models import (
-    VALID_ASSISTANT_PROFILES,
     VALID_BRIEFING_MODES,
+    VALID_CLOUD_EFFORTS,
+    VALID_CLOUD_SETTINGS_PROFILES,
+    VALID_LOCAL_SETTINGS_PROFILES,
     VALID_VOICE_ENGINES,
     VALID_VOICE_GENDERS,
     VALID_VOICE_MODES,
@@ -71,7 +74,7 @@ def normalize_layer(
     """
     Normalize a single config layer for editable settings.
 
-    - Prefer ``ask_apex.default_profile``; fall back to ``default_cloud_profile``.
+    - Migrate legacy schema-5 ask_apex keys to schema-6 shape.
     - Map legacy TTS engine ``piper`` to ``pyttsx3``.
     - Warn and drop unknown keys under editable sections.
     """
@@ -297,20 +300,27 @@ def _normalize_modules(
 def _normalize_ask_apex(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
-    result: dict[str, Any] = {}
     if not isinstance(value, dict):
         if value is not None:
             _record_error(errors, "ask_apex must be a JSON object")
             _LOGGER.warning(
                 'Config key "ask_apex" in %s must be a JSON object.', layer_name
             )
-        return result
+        return {}
+
+    migrated = migrate_schema5_ask_apex(value)
+    result: dict[str, Any] = {}
 
     known_keys = {
         "enabled",
+        "mode",
+        "cloud_profile",
+        "cloud_effort",
+        "local_profile",
+        "neofelis_google_search_enabled",
+        "max_session_messages",
         "default_profile",
         "default_cloud_profile",
-        "max_session_messages",
     }
     for key in value:
         if key not in known_keys:
@@ -318,71 +328,49 @@ def _normalize_ask_apex(
                 "Ignoring unknown ask_apex key %r in %s.", key, layer_name
             )
 
-    enabled_raw = value.get("enabled")
+    enabled_raw = migrated.get("enabled")
     if isinstance(enabled_raw, bool):
         result["enabled"] = enabled_raw
     elif enabled_raw is not None:
         _record_error(errors, "ask_apex.enabled must be a boolean")
-        _LOGGER.warning(
-            "ask_apex.enabled in %s must be a boolean; ignoring.",
-            layer_name,
-        )
 
-    # Prefer default_profile; retain default_cloud_profile as read-time fallback.
-    if "default_profile" in value:
-        preferred = _coerce_profile(
-            value.get("default_profile"),
-            key="ask_apex.default_profile",
-            layer_name=layer_name,
-            errors=errors,
-        )
-        if preferred is not None:
-            result["default_profile"] = preferred
-        elif "default_cloud_profile" in value:
-            legacy = _coerce_profile(
-                value.get("default_cloud_profile"),
-                key="ask_apex.default_cloud_profile",
-                layer_name=layer_name,
-                errors=errors,
-            )
-            if legacy is not None:
-                result["default_profile"] = legacy
-    elif "default_cloud_profile" in value:
-        legacy = _coerce_profile(
-            value.get("default_cloud_profile"),
-            key="ask_apex.default_cloud_profile",
-            layer_name=layer_name,
-            errors=errors,
-        )
-        if legacy is not None:
-            result["default_profile"] = legacy
+    mode = migrated.get("mode", "cloud")
+    if mode in {"cloud", "local"}:
+        result["mode"] = mode
+    else:
+        _record_error(errors, "ask_apex.mode must be cloud or local")
+
+    cloud_profile = migrated.get("cloud_profile", "panthera")
+    if isinstance(cloud_profile, str):
+        normalized = cloud_profile.strip().lower()
+        if normalized in VALID_CLOUD_SETTINGS_PROFILES:
+            result["cloud_profile"] = normalized
+        else:
+            _record_error(errors, "ask_apex.cloud_profile is not valid")
+
+    cloud_effort = migrated.get("cloud_effort", "focused")
+    if isinstance(cloud_effort, str):
+        normalized = cloud_effort.strip().lower()
+        if normalized in VALID_CLOUD_EFFORTS:
+            result["cloud_effort"] = normalized
+        else:
+            _record_error(errors, "ask_apex.cloud_effort is not valid")
+
+    local_profile = migrated.get("local_profile", "mus")
+    if isinstance(local_profile, str):
+        normalized = local_profile.strip().lower()
+        if normalized in VALID_LOCAL_SETTINGS_PROFILES:
+            result["local_profile"] = normalized
+        else:
+            _record_error(errors, "ask_apex.local_profile is not valid")
+
+    google_search = migrated.get("neofelis_google_search_enabled", True)
+    if isinstance(google_search, bool):
+        result["neofelis_google_search_enabled"] = google_search
+    elif google_search is not None:
+        _record_error(errors, "ask_apex.neofelis_google_search_enabled must be a boolean")
 
     return result
-
-
-def _coerce_profile(
-    raw: Any, *, key: str, layer_name: str, errors: NormalizationIssues | None
-) -> str | None:
-    if not isinstance(raw, str):
-        if raw is not None:
-            _record_error(errors, f"{key} must be a string")
-            _LOGGER.warning(
-                "Config key %r in %s must be a string; ignoring.",
-                key,
-                layer_name,
-            )
-        return None
-    normalized = raw.strip().lower()
-    if normalized in VALID_ASSISTANT_PROFILES:
-        return normalized
-    _record_error(errors, f"{key} is not a valid profile")
-    _LOGGER.warning(
-        "Config key %r=%r in %s is not a valid profile; ignoring.",
-        key,
-        raw,
-        layer_name,
-    )
-    return None
 
 
 def _normalize_tts_settings(
@@ -431,15 +419,26 @@ def _normalize_briefing(
             )
         return result
 
+    migrated = migrate_schema5_briefing(value)
     for key, raw in value.items():
         if key == "default_mode":
-            mode = _coerce_briefing_mode(raw, layer_name=layer_name, errors=errors)
+            mode = _coerce_briefing_mode(
+                migrated.get("default_mode", raw),
+                layer_name=layer_name,
+                errors=errors,
+            )
             if mode is not None:
                 result["default_mode"] = mode
         else:
             _LOGGER.warning(
                 "Ignoring unknown briefing key %r in %s.", key, layer_name
             )
+    if "default_mode" not in result and "default_mode" in migrated:
+        mode = _coerce_briefing_mode(
+            migrated["default_mode"], layer_name=layer_name, errors=errors
+        )
+        if mode is not None:
+            result["default_mode"] = mode
     return result
 
 
@@ -546,7 +545,8 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     features_raw = merged.get("features") if isinstance(merged.get("features"), dict) else {}
     modules_raw = merged.get("modules") if isinstance(merged.get("modules"), dict) else {}
     football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
-    ask_apex = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
+    ask_apex_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
+    ask_apex = migrate_schema5_ask_apex(ask_apex_raw)
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
     mcp_raw = merged.get("mcp") if isinstance(merged.get("mcp"), dict) else {}
     mcp_servers_raw = (
@@ -572,14 +572,29 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             if isinstance(team, dict)
         )
     )
-    profile = ask_apex.get("default_profile", "comet")
-    if profile not in VALID_ASSISTANT_PROFILES:
-        profile = "comet"
+    mode = ask_apex.get("mode", "cloud")
+    if mode not in {"cloud", "local"}:
+        mode = "cloud"
+    cloud_profile = ask_apex.get("cloud_profile", "panthera")
+    if cloud_profile not in VALID_CLOUD_SETTINGS_PROFILES:
+        cloud_profile = "panthera"
+    cloud_effort = ask_apex.get("cloud_effort", "focused")
+    if cloud_effort not in VALID_CLOUD_EFFORTS:
+        cloud_effort = "focused"
+    local_profile = ask_apex.get("local_profile", "mus")
+    if local_profile not in VALID_LOCAL_SETTINGS_PROFILES:
+        local_profile = "mus"
     assistant = AssistantSettings(
         enabled=bool(ask_apex.get("enabled", True))
         if "enabled" in ask_apex
         else True,
-        default_profile=profile,  # type: ignore[arg-type]
+        mode=mode,  # type: ignore[arg-type]
+        cloud_profile=cloud_profile,  # type: ignore[arg-type]
+        cloud_effort=cloud_effort,  # type: ignore[arg-type]
+        local_profile=local_profile,  # type: ignore[arg-type]
+        neofelis_google_search_enabled=bool(
+            ask_apex.get("neofelis_google_search_enabled", True)
+        ),
     )
     engine = tts.get("primary_tts", "pyttsx3")
     if engine not in VALID_VOICE_ENGINES:
@@ -598,9 +613,10 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     briefing_raw = (
         merged.get("briefing") if isinstance(merged.get("briefing"), dict) else {}
     )
-    default_mode = briefing_raw.get("default_mode", "comet")
+    briefing_migrated = migrate_schema5_briefing(briefing_raw)
+    default_mode = briefing_migrated.get("default_mode", "panthera")
     if default_mode not in VALID_BRIEFING_MODES:
-        default_mode = "comet"
+        default_mode = "panthera"
     briefing = BriefingSettings(
         default_mode=default_mode,  # type: ignore[arg-type]
     )
@@ -636,7 +652,13 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
         "modules": snapshot.modules.model_dump(),
         "ask_apex": {
             "enabled": snapshot.assistant.enabled,
-            "default_profile": snapshot.assistant.default_profile,
+            "mode": snapshot.assistant.mode,
+            "cloud_profile": snapshot.assistant.cloud_profile,
+            "cloud_effort": snapshot.assistant.cloud_effort,
+            "local_profile": snapshot.assistant.local_profile,
+            "neofelis_google_search_enabled": (
+                snapshot.assistant.neofelis_google_search_enabled
+            ),
         },
         "briefing": {
             "default_mode": snapshot.briefing.default_mode,
@@ -679,10 +701,8 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
             ondisk["modules"] = modules
     if patch.assistant is not None:
         ask_apex: dict[str, Any] = {}
-        if patch.assistant.enabled is not None:
-            ask_apex["enabled"] = patch.assistant.enabled
-        if patch.assistant.default_profile is not None:
-            ask_apex["default_profile"] = patch.assistant.default_profile
+        assistant_patch = patch.assistant.model_dump(exclude_none=True)
+        ask_apex.update(assistant_patch)
         if ask_apex:
             ondisk["ask_apex"] = ask_apex
     if patch.briefing is not None:

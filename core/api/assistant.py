@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -15,8 +14,20 @@ from core.agent.local_commands import (
     resolve_local_command,
 )
 from core.agent.loop import build_agent_failure_details, run_agent_loop
+from core.agent.profiles import (
+    PROFILE_SPECS,
+    AgentModelProfile,
+    build_concrete_profile,
+    build_profile_used_metadata,
+    credential_missing_error,
+    credential_missing_message,
+    is_acinonyx_fail_closed,
+    is_profile_visible,
+    profile_has_credentials,
+    resolve_effort,
+    runtime_profile_order,
+)
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     SystemVitals,
@@ -32,7 +43,9 @@ from core.agent.providers.ollama_lifecycle import (
     try_begin_local_execution,
     unload_active_local_model,
 )
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
+from core.agent.providers.ollama_models import OllamaModelProfile
+from core.agent.providers.openai_provider import OpenAIProvider
+from core.agent.providers.xai_provider import XAIProvider
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -46,20 +59,11 @@ from core.api.models import (
     LocalUnloadResponse,
     ProfileAvailabilityStatus,
 )
-from core.config import DEMO_MODE, OLLAMA_ENABLED, OLLAMA_MANUAL_UNLOAD_ENABLED
+from core.config import DEMO_MODE, OLLAMA_ENABLED, OLLAMA_MANUAL_UNLOAD_ENABLED, is_dev_mode
 from core.settings import get_settings_store
 from core.synthesis.formatting import sanitize_fact
 
 _LOGGER = logging.getLogger(__name__)
-
-_AGENT_PROFILE_ORDER: tuple[str, ...] = (
-    "lynx",
-    "acinonyx",
-    "neofelis",
-    "comet",
-    "nova",
-    "pulsar",
-)
 
 _BUSY_REASON = "Briefing synthesis is using local inference."
 _HUD_CONTEXT_OPEN = "<untrusted_hud_context>"
@@ -111,11 +115,13 @@ def _resolve_local_profile_status(
     return "available", None
 
 
-def _resolve_cloud_profile_status() -> tuple[ProfileAvailabilityStatus, str | None]:
-    """Evaluate cloud profile availability based on Gemini credentials."""
-    if os.getenv("GEMINI_API_KEY"):
+def _resolve_cloud_profile_status(profile_key: str) -> tuple[ProfileAvailabilityStatus, str | None]:
+    """Evaluate cloud profile availability based on per-profile credentials."""
+    if profile_has_credentials(profile_key):
         return "available", None
-    return "disabled", "Gemini API key is not configured"
+    spec = PROFILE_SPECS[profile_key]
+    env_key = spec.credential_env or "API_KEY"
+    return "disabled", f"{spec.provider.title()} API key is not configured ({env_key})"
 
 
 def build_agent_profile_statuses() -> list[AgentProfileStatus]:
@@ -123,6 +129,7 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
     tracked_active_model = get_active_loaded_model()
     loading_model = get_loading_model()
     idle_remaining = get_idle_unload_remaining_seconds()
+    dev_mode = is_dev_mode()
 
     ollama_reachable = False
     installed_tags: list[str] = []
@@ -135,13 +142,17 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
         loaded_models = snapshot["loaded_models"]
         vitals = snapshot["vitals"]
 
-    cloud_status, cloud_reason = _resolve_cloud_profile_status()
-
     profiles: list[AgentProfileStatus] = []
 
-    for key in _AGENT_PROFILE_ORDER:
-        if key in OLLAMA_MODEL_PROFILES:
-            profile = OLLAMA_MODEL_PROFILES[key]
+    for key in runtime_profile_order(dev_mode=dev_mode):
+        spec = PROFILE_SPECS[key]
+        effort_options = (
+            ["light", "focused", "extended"] if spec.supports_effort else None
+        )
+
+        if spec.provider == "ollama":
+            profile = build_concrete_profile(key, native_effort=None)
+            assert isinstance(profile, OllamaModelProfile)
             loaded_model = next(
                 (
                     model
@@ -152,31 +163,29 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 None,
             )
             is_tracked_active = tracked_active_model == profile.api_model
-            is_active = (
-                loaded_model is not None
-                or is_tracked_active
-            )
+            is_active = loaded_model is not None or is_tracked_active
             is_loading = loading_model == profile.api_model
-            status, reason = _resolve_local_profile_status(
+            profile_status, reason = _resolve_local_profile_status(
                 profile,
                 is_active=is_active,
                 ollama_reachable=ollama_reachable,
                 installed_tags=installed_tags,
                 vitals=vitals,
             )
-            # Local synthesis owns the shared execution slot; surface busy so
-            # the HUD disables local assistant profiles without blocking cloud.
-            if status == "available" and is_local_execution_active():
-                status, reason = "busy", _BUSY_REASON
+            if profile_status == "available" and is_local_execution_active():
+                profile_status, reason = "busy", _BUSY_REASON
             profiles.append(
                 AgentProfileStatus(
                     key=key,
-                    display_name=profile.display_name,
+                    display_name=spec.display_name,
                     provider="ollama",
-                    tier=profile.tier,
-                    stability=profile.stability,
-                    thinking_level=None,
-                    status=status,
+                    version=spec.profile_version,
+                    mode=spec.mode,
+                    tier=spec.tier,
+                    stability=spec.stability,
+                    effort_options=effort_options,
+                    default_effort=spec.default_effort,
+                    status=profile_status,
                     active=is_active,
                     loading=is_loading,
                     reason=reason,
@@ -192,18 +201,18 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             )
             continue
 
-        gemini_profile = GEMINI_MODEL_PROFILES.get(key)
-        if gemini_profile is None:
-            continue
-
+        cloud_status, cloud_reason = _resolve_cloud_profile_status(key)
         profiles.append(
             AgentProfileStatus(
                 key=key,
-                display_name=gemini_profile.display_name,
-                provider="gemini",
-                tier=gemini_profile.tier,
-                stability=gemini_profile.stability,
-                thinking_level=gemini_profile.thinking_level,
+                display_name=spec.display_name,
+                provider=spec.provider,
+                version=spec.profile_version,
+                mode=spec.mode,
+                tier=spec.tier,
+                stability=spec.stability,
+                effort_options=effort_options,
+                default_effort=spec.default_effort,
                 status=cloud_status,
                 active=False,
                 loading=False,
@@ -327,18 +336,35 @@ def _build_hud_context(payload: AgentQueryRequest) -> str:
     )
 
 
+def _create_provider(profile_key: str, api_key: str):
+    spec = PROFILE_SPECS[profile_key]
+    if spec.provider == "gemini":
+        return GeminiProvider(api_key=api_key)
+    if spec.provider == "openai":
+        return OpenAIProvider(api_key=api_key)
+    if spec.provider == "xai":
+        return XAIProvider(api_key=api_key)
+    return OllamaProvider()
+
+
 def _execute_agent_turn(
     payload: AgentQueryRequest,
-    profile: GeminiModelProfile | OllamaModelProfile,
+    profile: AgentModelProfile,
+    *,
+    profile_key: str,
     api_key: str | None,
+    resolved_apex_effort,
+    resolved_native_effort,
     resolved_local_command: ResolvedLocalCommand | None = None,
+    disable_tools: bool = False,
+    disable_hud_context: bool = False,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
-        hud_context = _build_hud_context(payload)
+        hud_context = "" if disable_hud_context else _build_hud_context(payload)
 
         if isinstance(profile, OllamaModelProfile):
-            provider: GeminiProvider | OllamaProvider = OllamaProvider()
+            provider = OllamaProvider()
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
             if payload.tool_scope is None:
                 scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
@@ -350,28 +376,45 @@ def _execute_agent_turn(
                     "results from those tools for live data."
                 )
         else:
-            provider = GeminiProvider(api_key=api_key)
+            provider = _create_provider(profile_key, api_key or "")
             base_prompt = config.AGENT_SYSTEM_PROMPT
             scope_instruction = ""
 
         local_system_instruction = base_prompt + scope_instruction + hud_context
 
-        return run_agent_loop(
+        response = run_agent_loop(
             payload,
             provider,
             profile,
             system_instruction_override=local_system_instruction,
             resolved_local_command=resolved_local_command,
+            disable_cloud_tools=disable_tools,
         )
+        response.profile_used = build_profile_used_metadata(
+            profile_key,
+            configured_model=profile.api_model,
+            resolved_model=response.resolved_model,
+            requested_effort=payload.effort,
+            resolved_apex_effort=resolved_apex_effort,
+            resolved_native_effort=resolved_native_effort,
+        )
+        return response
     except Exception as exc:
         _LOGGER.exception(
             "Agent turn failed for profile %s",
-            payload.profile,
+            profile_key,
         )
         answer, error_detail = build_agent_failure_details(profile, exc)
         return AgentQueryResponse(
             answer=answer,
-            profile_used=profile.model_dump(),
+            profile_used=build_profile_used_metadata(
+                profile_key,
+                configured_model=profile.api_model,
+                resolved_model=None,
+                requested_effort=payload.effort,
+                resolved_apex_effort=resolved_apex_effort,
+                resolved_native_effort=resolved_native_effort,
+            ),
             session_id=payload.session_id,
             error=error_detail,
         )
@@ -394,25 +437,40 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             detail="APEX is currently disabled in system settings.",
         )
 
+    profile_key = payload.profile
+    if profile_key not in PROFILE_SPECS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown agent profile: {profile_key!r}",
+        )
+
+    if not is_profile_visible(profile_key):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent profile {profile_key!r} is not available.",
+        )
+
     if DEMO_MODE:
         return run_demo_agent_query(payload)
 
-    profile: GeminiModelProfile | OllamaModelProfile | None = None
-    if payload.profile in OLLAMA_MODEL_PROFILES:
-        profile = OLLAMA_MODEL_PROFILES[payload.profile]
-    elif payload.profile in GEMINI_MODEL_PROFILES:
-        profile = GEMINI_MODEL_PROFILES[payload.profile]
-    else:
+    spec = PROFILE_SPECS[profile_key]
+    if spec.provider == "ollama" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown agent profile: {payload.profile!r}",
+            detail="Effort cannot be set for local profiles.",
         )
 
-    if isinstance(profile, GeminiModelProfile) and payload.tool_scope is not None:
+    if spec.provider != "ollama" and payload.tool_scope is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Command scopes are available only for local profiles.",
         )
+
+    resolved_apex_effort, resolved_native_effort = resolve_effort(
+        profile_key, payload.effort
+    )
+    profile = build_concrete_profile(profile_key, native_effort=resolved_native_effort)
+    fail_closed = is_acinonyx_fail_closed(profile_key)
 
     resolved_local_command: ResolvedLocalCommand | None = None
     if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
@@ -426,24 +484,35 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 ),
             )
 
-    api_key: str | None = None
-    if payload.profile in GEMINI_MODEL_PROFILES:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return AgentQueryResponse(
-                answer=(
-                    "APEX is currently unavailable because the Gemini "
-                    "API key is not configured. Please set GEMINI_API_KEY in your "
-                    "environment and restart the API server."
-                ),
-                profile_used={},
-                session_id=payload.session_id,
-                error="GEMINI_API_KEY is missing from environment variables.",
-            )
+    if spec.credential_env and not profile_has_credentials(profile_key):
+        return AgentQueryResponse(
+            answer=credential_missing_message(profile_key),
+            profile_used=build_profile_used_metadata(
+                profile_key,
+                configured_model=profile.api_model,
+                resolved_model=None,
+                requested_effort=payload.effort,
+                resolved_apex_effort=resolved_apex_effort,
+                resolved_native_effort=resolved_native_effort,
+            ),
+            session_id=payload.session_id,
+            error=credential_missing_error(profile_key),
+        )
 
     payload.history = _trim_agent_history(
         payload.history, config.MAX_SESSION_MESSAGES
     )
+
+    if fail_closed:
+        # Fail closed: no tools, HUD context, or production conversation history.
+        payload = payload.model_copy(
+            update={
+                "snapshot_id": None,
+                "briefing_id": None,
+                "tool_scope": None,
+                "history": [],
+            }
+        )
 
     if isinstance(profile, OllamaModelProfile):
         if not OLLAMA_ENABLED:
@@ -488,10 +557,30 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             return _execute_agent_turn(
                 payload,
                 profile,
+                profile_key=profile_key,
                 api_key=None,
+                resolved_apex_effort=resolved_apex_effort,
+                resolved_native_effort=resolved_native_effort,
                 resolved_local_command=resolved_local_command,
+                disable_tools=fail_closed,
+                disable_hud_context=fail_closed,
             )
         finally:
             end_local_execution()
 
-    return _execute_agent_turn(payload, profile, api_key=api_key)
+    api_key = None
+    if spec.credential_env:
+        import os
+
+        api_key = os.getenv(spec.credential_env)
+
+    return _execute_agent_turn(
+        payload,
+        profile,
+        profile_key=profile_key,
+        api_key=api_key,
+        resolved_apex_effort=resolved_apex_effort,
+        resolved_native_effort=resolved_native_effort,
+        disable_tools=fail_closed,
+        disable_hud_context=fail_closed,
+    )

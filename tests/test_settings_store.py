@@ -73,7 +73,10 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(snap.modules.football)
         self.assertTrue(snap.modules.f1)
         self.assertTrue(snap.assistant.enabled)
-        self.assertEqual(snap.assistant.default_profile, "comet")
+        self.assertEqual(snap.assistant.mode, "cloud")
+        self.assertEqual(snap.assistant.cloud_profile, "panthera")
+        self.assertEqual(snap.assistant.cloud_effort, "focused")
+        self.assertEqual(snap.assistant.local_profile, "mus")
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "female")
         self.assertFalse(store.local_file_present)
@@ -94,7 +97,8 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.features.news)
         self.assertFalse(snap.assistant.enabled)
-        self.assertEqual(snap.assistant.default_profile, "nova")
+        self.assertEqual(snap.assistant.mode, "cloud")
+        self.assertEqual(snap.assistant.cloud_profile, "panthera")
         self.assertEqual(snap.voice.engine, "kokoro")
         self.assertEqual(snap.voice.gender, "female")
         self.assertTrue(store.local_file_present)
@@ -116,16 +120,22 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual([(team.id, team.name) for team in store.get_snapshot().football.teams], [(1, "One")])
 
     def test_local_agent_profile_loading(self) -> None:
-        for profile in ("lynx", "acinonyx", "neofelis"):
+        expectations = {
+            "lynx": ("local", "mus"),
+            "acinonyx": ("local", "mus"),
+            "neofelis": ("local", "mus"),
+        }
+        for profile, (mode, local_profile) in expectations.items():
             with self.subTest(profile=profile):
                 _write_json(
                     self.local_path,
                     {"ask_apex": {"default_profile": profile}},
                 )
                 store = self._store()
-                self.assertEqual(
-                    store.get_snapshot().assistant.default_profile, profile
-                )
+                snap = store.get_snapshot().assistant
+                self.assertEqual(snap.mode, mode)
+                self.assertEqual(snap.local_profile, local_profile)
+                self.assertEqual(snap.cloud_profile, "panthera")
 
     def test_recursive_precedence(self) -> None:
         base = {"features": {"weather": True, "sports": False}, "modules": {"f1": True}}
@@ -157,7 +167,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         )
         store = self._store()
         snap = store.get_snapshot()
-        self.assertEqual(snap.assistant.default_profile, "pulsar")
+        self.assertEqual(snap.assistant.cloud_profile, "panthera")
         self.assertEqual(snap.voice.engine, "pyttsx3")
         self.assertEqual(snap.voice.gender, "male")
 
@@ -172,7 +182,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
         )
         store = self._store()
-        self.assertEqual(store.get_snapshot().assistant.default_profile, "nova")
+        self.assertEqual(store.get_snapshot().assistant.cloud_profile, "panthera")
 
         normalized = normalize_layer(
             {
@@ -183,7 +193,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
             layer_name="test",
         )
-        self.assertEqual(normalized["ask_apex"]["default_profile"], "pulsar")
+        self.assertEqual(normalized["ask_apex"]["cloud_profile"], "panthera")
 
     def test_missing_local_file(self) -> None:
         store = self._store()
@@ -196,7 +206,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         store = self._store()
         snap = store.get_snapshot()
         self.assertTrue(snap.features.weather)
-        self.assertEqual(snap.assistant.default_profile, "comet")
+        self.assertEqual(snap.assistant.cloud_profile, "panthera")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
         self.assertFalse(store.local_override_active)
@@ -225,7 +235,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         # One invalid known value rejects every local editable override.
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.modules.f1)
-        self.assertEqual(snap.assistant.default_profile, "comet")
+        self.assertEqual(snap.assistant.cloud_profile, "panthera")
         self.assertEqual(snap.voice.engine, "google")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
@@ -285,12 +295,12 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch.model_validate({"unknown_root": {"a": 1}})
 
     def test_local_profiles_are_valid_patch_values(self) -> None:
-        for profile in ("lynx", "acinonyx", "neofelis"):
+        for profile in ("sorex", "mus"):
             with self.subTest(profile=profile):
                 patch = SettingsPatch.model_validate(
-                    {"assistant": {"default_profile": profile}}
+                    {"assistant": {"local_profile": profile}}
                 )
-                self.assertEqual(patch.assistant.default_profile, profile)
+                self.assertEqual(patch.assistant.local_profile, profile)
 
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
         store = self._store()
@@ -400,17 +410,16 @@ class SettingsStorePatchTests(unittest.TestCase):
     def test_same_field_last_successful_write_wins(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(assistant=AssistantPatch(default_profile="nova"))
+            SettingsPatch(assistant=AssistantPatch(cloud_profile="neofelis"))
         )
         store.apply_patch(
-            SettingsPatch(assistant=AssistantPatch(default_profile="pulsar"))
+            SettingsPatch(assistant=AssistantPatch(cloud_profile="orcinus"))
         )
         self.assertEqual(
-            store.get_snapshot().assistant.default_profile, "pulsar"
+            store.get_snapshot().assistant.cloud_profile, "orcinus"
         )
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(written["ask_apex"]["default_profile"], "pulsar")
-        self.assertNotIn("default_cloud_profile", written["ask_apex"])
+        self.assertEqual(written["ask_apex"]["cloud_profile"], "orcinus")
 
 
 class SettingsStoreConcurrencyTests(unittest.TestCase):
@@ -453,7 +462,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                 for _ in range(40):
                     snap = self.store.get_snapshot()
                     _ = snap.features.weather
-                    _ = snap.assistant.default_profile
+                    _ = snap.assistant.cloud_profile
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
 
@@ -508,21 +517,21 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
             time.sleep(delay)
             snap = self.store.apply_patch(
                 SettingsPatch(
-                    assistant=AssistantPatch(default_profile=profile)  # type: ignore[arg-type]
+                    assistant=AssistantPatch(cloud_profile=profile)  # type: ignore[arg-type]
                 )
             )
             with lock:
-                results.append(snap.assistant.default_profile)
+                results.append(snap.assistant.cloud_profile)
 
-        t1 = threading.Thread(target=write_profile, args=("nova", 0.0))
-        t2 = threading.Thread(target=write_profile, args=("pulsar", 0.05))
+        t1 = threading.Thread(target=write_profile, args=("neofelis", 0.0))
+        t2 = threading.Thread(target=write_profile, args=("orcinus", 0.05))
         t1.start()
         t2.start()
         t1.join(timeout=10)
         t2.join(timeout=10)
         self.assertEqual(len(results), 2)
         # Last successful write should be reflected in the published snapshot.
-        self.assertEqual(self.store.get_snapshot().assistant.default_profile, "pulsar")
+        self.assertEqual(self.store.get_snapshot().assistant.cloud_profile, "orcinus")
 
 
 if __name__ == "__main__":

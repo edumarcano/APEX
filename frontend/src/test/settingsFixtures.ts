@@ -19,10 +19,14 @@ export const BASE_SETTINGS: RuntimeSettings = {
   },
   assistant: {
     enabled: true,
-    default_profile: 'comet',
+    mode: 'cloud',
+    cloud_profile: 'panthera',
+    cloud_effort: 'focused',
+    local_profile: 'mus',
+    neofelis_google_search_enabled: true,
   },
   briefing: {
-    default_mode: 'comet',
+    default_mode: 'panthera',
   },
   voice: {
     engine: 'google',
@@ -43,7 +47,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 4,
+    schema_version: 6,
     settings,
     local_file_present: false,
     local_override_active: false,

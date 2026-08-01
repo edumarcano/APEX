@@ -1,4 +1,12 @@
-import type { AssistantProfile, SystemState, TtsEngine } from '../types/telemetry'
+import type {
+  AssistantMode,
+  AssistantProfile,
+  CloudEffort,
+  CloudSettingsProfile,
+  LocalSettingsProfile,
+  SystemState,
+  TtsEngine,
+} from '../types/telemetry'
 import type {
   BriefingMode,
   FeaturesSettings,
@@ -16,20 +24,23 @@ import type {
 } from '../types/settings'
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
-const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
-  'comet',
-  'nova',
-  'pulsar',
-  'lynx',
-  'acinonyx',
+const VALID_CLOUD_SETTINGS_PROFILES: readonly CloudSettingsProfile[] = [
+  'panthera',
   'neofelis',
+  'delphinus',
+  'orcinus',
 ]
 
+const VALID_LOCAL_SETTINGS_PROFILES: readonly LocalSettingsProfile[] = ['sorex', 'mus']
+
+const VALID_ASSISTANT_MODES: readonly AssistantMode[] = ['cloud', 'local']
+
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
+
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
-  'comet',
-  'lynx',
-  'acinonyx',
-  'neofelis',
+  'panthera',
+  'mus',
+  'sorex',
   'structured_digest',
 ]
 
@@ -48,10 +59,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isAssistantProfile(value: unknown): value is AssistantProfile {
+function isCloudSettingsProfile(value: unknown): value is CloudSettingsProfile {
   return (
     typeof value === 'string' &&
-    (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
+    (VALID_CLOUD_SETTINGS_PROFILES as readonly string[]).includes(value)
+  )
+}
+
+function isLocalSettingsProfile(value: unknown): value is LocalSettingsProfile {
+  return (
+    typeof value === 'string' &&
+    (VALID_LOCAL_SETTINGS_PROFILES as readonly string[]).includes(value)
+  )
+}
+
+function isAssistantMode(value: unknown): value is AssistantMode {
+  return (
+    typeof value === 'string' && (VALID_ASSISTANT_MODES as readonly string[]).includes(value)
+  )
+}
+
+function isCloudEffort(value: unknown): value is CloudEffort {
+  return (
+    typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
   )
 }
 
@@ -155,7 +185,19 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.assistant.enabled !== 'boolean') {
     return null
   }
-  if (!isAssistantProfile(value.assistant.default_profile)) {
+  if (!isAssistantMode(value.assistant.mode)) {
+    return null
+  }
+  if (!isCloudSettingsProfile(value.assistant.cloud_profile)) {
+    return null
+  }
+  if (!isCloudEffort(value.assistant.cloud_effort)) {
+    return null
+  }
+  if (!isLocalSettingsProfile(value.assistant.local_profile)) {
+    return null
+  }
+  if (typeof value.assistant.neofelis_google_search_enabled !== 'boolean') {
     return null
   }
   if (!isBriefingMode(value.briefing.default_mode)) {
@@ -174,7 +216,11 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     modules,
     assistant: {
       enabled: value.assistant.enabled,
-      default_profile: value.assistant.default_profile,
+      mode: value.assistant.mode,
+      cloud_profile: value.assistant.cloud_profile,
+      cloud_effort: value.assistant.cloud_effort,
+      local_profile: value.assistant.local_profile,
+      neofelis_google_search_enabled: value.assistant.neofelis_google_search_enabled,
     },
     briefing: {
       default_mode: value.briefing.default_mode,
@@ -186,6 +232,10 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     },
     mcp,
   }
+}
+
+export function resolveAssistantProfile(settings: RuntimeSettings['assistant']): AssistantProfile {
+  return settings.mode === 'local' ? settings.local_profile : settings.cloud_profile
 }
 
 export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings {

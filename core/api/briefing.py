@@ -51,7 +51,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _mode_to_strategy(mode: BriefingMode) -> str:
-    if mode == "comet":
+    if mode == "panthera":
         return "cloud"
     if mode == "structured_digest":
         return "raw"
