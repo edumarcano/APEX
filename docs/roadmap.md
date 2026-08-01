@@ -311,7 +311,7 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 
 ## v1.18.0 - Cortex: MCP Client Foundation & Read-Only Integrations
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
 Establish APEX’s provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, full seven-day calendar awareness, and bounded local assistant command scopes with context-aware budgets for 4K-context Ollama profiles.
