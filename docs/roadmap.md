@@ -315,12 +315,21 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 
 **Objective:**
 Establish APEX’s provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, full seven-day calendar awareness, and bounded local assistant command scopes with context-aware budgets for 4K-context Ollama profiles.
-This milestone also establishes delegated read-only Microsoft To Do access and normalized task contracts for the separately reviewed v1.19 reminder migration.
+This milestone also establishes delegated read-only Microsoft To Do access and normalized task contracts for the separately reviewed v1.20 reminder migration.
 
 
 ---
 
-## v1.19.0 - Cortex: Hermes Agent & Personal Action Execution
+## v1.19.0 - Federated Intelligence Profiles & Cortex Workspace
+
+**Status:** Planned
+
+**Objective:**
+Replace the current profile family with federated cloud and local intelligence profiles, add provider-neutral observability and tool policies, and establish the Cortex workspace as APEX's dedicated assistant surface.
+
+---
+
+## v1.20.0 - Cortex: Hermes Agent & Personal Action Execution
 
 **Status:** Planned
 
@@ -329,7 +338,7 @@ Integrate the Hermes Agent platform for production-grade background workflows, a
 
 ---
 
-## v1.20.0 - Workspace Meta-Briefing & Secure Context Ingestion
+## v1.21.0 - Workspace Meta-Briefing & Secure Context Ingestion
 
 **Status:** Planned
 
@@ -338,7 +347,7 @@ Create a structured, authenticated inbound context layer, including a narrowly s
 
 ---
 
-## v1.21.0 - Cortex: Proactive Life OS & Event-Driven Orchestration
+## v1.22.0 - Cortex: Proactive Life OS & Event-Driven Orchestration
 
 **Status:** Planned
 
