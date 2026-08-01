@@ -182,6 +182,7 @@ class TelemetryService:
             features=settings.features,
             modules=settings.modules,
             connectors=names,
+            force=force,
         )
 
         # Partial refresh merges into the prior complete snapshot.

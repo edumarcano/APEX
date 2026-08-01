@@ -232,6 +232,14 @@ def _connector_credential_blockers(names: set[str]) -> list[PreflightBlocker]:
     ]
 
 
+def _football_configuration_blockers(
+    names: set[str], settings: RuntimeSettingsSnapshot | None
+) -> list[PreflightBlocker]:
+    if "football" not in names or settings is None or settings.football.teams:
+        return []
+    return [_blocker("configuration_failure", "Football requires one to three configured teams.")]
+
+
 def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     """
     Evaluate advisory warnings and hard blockers for a planned operation.
@@ -321,6 +329,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         warnings.append(_warning("high_resource_local_profile"))
 
     blockers.extend(_cloud_credential_blockers(involves_cloud=involves_cloud))
+    blockers.extend(_football_configuration_blockers(effective_connectors, settings))
     blockers.extend(_connector_credential_blockers(effective_connectors))
 
     if request.connectors:

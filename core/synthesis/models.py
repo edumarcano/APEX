@@ -49,9 +49,11 @@ class NewsFact(BaseModel):
 
 
 class FootballFact(BaseModel):
+    team: str
     opponent: str
-    fixture_date: str
-    summary: str | None = None
+    home_or_away: Literal["home", "away"]
+    competition: str
+    kickoff: str
 
 
 class ConnectorHealthFact(BaseModel):

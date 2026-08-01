@@ -23,6 +23,7 @@ import { ConsoleTray } from './components/ConsoleTray'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingGenerateControl } from './components/BriefingControls'
 import { CalendarEventList } from './components/CalendarEventList'
+import { FootballFixtureList } from './components/FootballFixtureList'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
@@ -43,6 +44,7 @@ import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
+import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import type { AssistantProfile, LocalToolScope } from './types/telemetry'
@@ -662,6 +664,7 @@ export default function App(): ReactElement {
   const emailInfo = parseEmailTelemetry(emailModule?.display_text ?? '')
   const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
   const calendarInfo = resolveCalendarTelemetry(calendarModule)
+  const footballInfo = resolveFootballTelemetry(footballModule)
 
   const synthesisInsights = briefing.insights
 
@@ -671,9 +674,10 @@ export default function App(): ReactElement {
       ? `${primaryTemperatureF}°, ${weatherBody}`
       : weatherCompactValue
   const eventsCompactValue = hasSnapshot
-    ? calendarInfo.totalCount > 0
-      ? `${calendarInfo.totalCount} events`
-      : 'No events'
+    ? [
+        calendarInfo.totalCount > 0 ? `${calendarInfo.totalCount} calendar` : null,
+        footballInfo.fixtures.length > 0 ? `${footballInfo.fixtures.length} football` : null,
+      ].filter((value): value is string => value !== null).join(' · ') || 'No events'
     : null
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
@@ -828,11 +832,14 @@ export default function App(): ReactElement {
                           Loading schedule…
                         </p>
                       ) : (
-                        <CalendarEventList
-                          compact
-                          telemetry={calendarInfo}
-                          hasSnapshot={hasSnapshot}
-                        />
+                        <>
+                          <CalendarEventList
+                            compact
+                            telemetry={calendarInfo}
+                            hasSnapshot={hasSnapshot}
+                          />
+                          <FootballFixtureList telemetry={footballInfo} module={footballModule} hasSnapshot={hasSnapshot} />
+                        </>
                       )}
                     </TelemetryCard>
 
@@ -950,10 +957,13 @@ export default function App(): ReactElement {
                       Loading schedule…
                     </p>
                   ) : (
-                    <CalendarEventList
-                      telemetry={calendarInfo}
-                      hasSnapshot={hasSnapshot}
-                    />
+                    <>
+                      <CalendarEventList
+                        telemetry={calendarInfo}
+                        hasSnapshot={hasSnapshot}
+                      />
+                      <FootballFixtureList telemetry={footballInfo} module={footballModule} hasSnapshot={hasSnapshot} />
+                    </>
                   )}
                 </TelemetryCard>
 

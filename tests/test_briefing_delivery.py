@@ -216,7 +216,7 @@ class BriefingDeliveryTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 4)
+        self.assertEqual(payload["schema_version"], 5)
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "comet")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])

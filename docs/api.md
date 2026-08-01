@@ -133,8 +133,8 @@ Returns the resolved editable settings snapshot plus read-only runtime metadata.
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | integer | Settings contract version (currently `4`) |
-| `settings` | object | Resolved editable snapshot (`features`, `modules`, `assistant`, `briefing`, `voice`, `mcp`) |
+| `schema_version` | integer | Settings contract version (currently `5`) |
+| `settings` | object | Resolved settings snapshot (`features`, `modules`, read-only `football.teams`, `assistant`, `briefing`, `voice`, `mcp`) |
 | `local_file_present` | boolean | Whether `config.local.json` exists on disk |
 | `local_override_active` | boolean | Whether a valid local overlay is active |
 | `load_warning` | string \| null | Diagnostic from the last load when local overlay was discarded |
@@ -163,6 +163,7 @@ Merges dirty nested fields into the runtime settings store, validates, persists 
 |---|---|
 | `features` | `weather`, `sports`, `news`, `email`, `calendar`, `market` (booleans) |
 | `modules` | `football`, `f1` (booleans) |
+| `football` | Read-only followed-team configuration; not accepted by PATCH |
 | `assistant` | `enabled` (boolean), `default_profile` (one of the six profile identities) |
 | `briefing` | `default_mode` (`comet` \| `lynx` \| `acinonyx` \| `neofelis` \| `structured_digest`) |
 | `voice` | `engine` (`google` \| `pyttsx3` \| `kokoro`), `gender` (`male` \| `female`), `mode` (`off` \| `manual` \| `automatic`) |

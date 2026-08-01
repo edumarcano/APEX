@@ -20,6 +20,8 @@ load_dotenv()
 
 F1_CACHE_FILENAME = ".f1_cache.json"
 F1_CACHE_TTL = timedelta(hours=24)
+FOOTBALL_CACHE_FILENAME = ".football_cache.json"
+FOOTBALL_CACHE_TTL = timedelta(hours=6)
 try:
     EASTERN_TZ = ZoneInfo("America/New_York")
 except Exception:
@@ -206,97 +208,178 @@ def collect_f1() -> ConnectorResult:
         )
 
 
-def collect_football() -> ConnectorResult:
-    """Collect Barcelona fixture telemetry as a typed connector result."""
-    observed_at = utc_now_iso()
+def _get_football_cache_path() -> str:
+    return os.path.join(os.path.dirname(__file__), FOOTBALL_CACHE_FILENAME)
+
+
+def _parse_utc_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
     try:
-        football_api_key = os.getenv("FOOTBALL_API_KEY")
-        if not football_api_key:
-            return ConnectorResult(
-                name="football",
-                status="unavailable",
-                freshness="none",
-                reason_code="missing_credentials",
-                observed_at=observed_at,
-                display_text="Barcelona fixture telemetry unavailable.",
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
+def _is_valid_football_fixture(value: object, *, now: datetime) -> bool:
+    if not isinstance(value, dict):
+        return False
+    required_text = ("fixture_id", "team", "opponent", "home_or_away", "competition", "kickoff_at")
+    if not all(isinstance(value.get(key), str) and value[key].strip() for key in required_text):
+        return False
+    if value.get("home_or_away") not in {"home", "away"}:
+        return False
+    if isinstance(value.get("team_id"), bool) or not isinstance(value.get("team_id"), int):
+        return False
+    if isinstance(value.get("competition_id"), bool) or not isinstance(value.get("competition_id"), int):
+        return False
+    kickoff = _parse_utc_datetime(value.get("kickoff_at"))
+    return kickoff is not None and kickoff > now
+
+
+def _read_football_cache(*, now: datetime) -> dict[int, tuple[datetime, dict[str, Any]]]:
+    try:
+        with open(_get_football_cache_path(), "r", encoding="utf-8") as cache_file:
+            payload = json.load(cache_file)
+    except (OSError, ValueError, TypeError):
+        return {}
+    entries = payload.get("teams") if isinstance(payload, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    valid: dict[int, tuple[datetime, dict[str, Any]]] = {}
+    for raw_id, entry in entries.items():
+        try:
+            team_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(entry, dict):
+            continue
+        cached_at = _parse_utc_datetime(entry.get("cached_at"))
+        fixture = entry.get("fixture")
+        if cached_at is not None and _is_valid_football_fixture(fixture, now=now):
+            valid[team_id] = (cached_at, fixture)
+    return valid
+
+
+def _write_football_cache(entries: dict[int, dict[str, Any]]) -> None:
+    try:
+        payload = {
+            "teams": {
+                str(team_id): {"cached_at": utc_now_iso(), "fixture": fixture}
+                for team_id, fixture in entries.items()
+            }
+        }
+        with open(_get_football_cache_path(), "w", encoding="utf-8") as cache_file:
+            json.dump(payload, cache_file, separators=(",", ":"))
+    except (OSError, TypeError):
+        sys.stderr.write("[SPORTS][FOOTBALL][CACHE] write_failed\n")
+
+
+def _normalize_football_match(match: object, *, team_id: int, team_name: str, now: datetime) -> dict[str, Any] | None:
+    if not isinstance(match, dict):
+        return None
+    home = match.get("homeTeam")
+    away = match.get("awayTeam")
+    competition = match.get("competition")
+    kickoff = _parse_utc_datetime(match.get("utcDate"))
+    if not isinstance(home, dict) or not isinstance(away, dict) or not isinstance(competition, dict) or kickoff is None or kickoff <= now:
+        return None
+    home_id, away_id = home.get("id"), away.get("id")
+    if home_id == team_id:
+        opponent, home_or_away = away.get("name"), "home"
+    elif away_id == team_id:
+        opponent, home_or_away = home.get("name"), "away"
+    else:
+        return None
+    fixture_id = match.get("id")
+    competition_id = competition.get("id")
+    competition_name = competition.get("name")
+    if isinstance(fixture_id, bool) or not isinstance(fixture_id, int) or isinstance(competition_id, bool) or not isinstance(competition_id, int):
+        return None
+    if not all(isinstance(value, str) and value.strip() for value in (opponent, competition_name)):
+        return None
+    fixture = {
+        "fixture_id": str(fixture_id),
+        "team_id": team_id,
+        "team": team_name,
+        "opponent": opponent.strip(),
+        "home_or_away": home_or_away,
+        "competition_id": competition_id,
+        "competition": competition_name.strip(),
+        "kickoff_at": kickoff.isoformat(),
+    }
+    return fixture if _is_valid_football_fixture(fixture, now=now) else None
+
+
+def _football_display_text(fixtures: list[dict[str, Any]]) -> str:
+    if not fixtures:
+        return "No upcoming football fixtures."
+    return " ".join(
+        f"{fixture['team']}: {'Home' if fixture['home_or_away'] == 'home' else 'Away'} vs {fixture['opponent']} ({fixture['competition']})."
+        for fixture in fixtures
+    )
+
+
+def collect_football(*, force: bool = False) -> ConnectorResult:
+    """Collect the next scheduled fixture for each configured followed team."""
+    observed_at = utc_now_iso()
+    now = datetime.now(timezone.utc)
+    teams = get_settings_store().get_snapshot().football.teams
+    if not teams:
+        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code="configuration_failure", observed_at=observed_at, display_text="Football fixture configuration is unavailable.", data={"fixtures": [], "configured_team_count": 0})
+    football_api_key = os.getenv("FOOTBALL_API_KEY")
+    if not football_api_key:
+        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code="missing_credentials", observed_at=observed_at, display_text="Football fixture telemetry unavailable.", data={"fixtures": [], "configured_team_count": len(teams)})
+
+    cache = _read_football_cache(now=now)
+    fixtures: list[dict[str, Any]] = []
+    failures: list[str] = []
+    live_entries: dict[int, dict[str, Any]] = {}
+    fresh_cache_used = False
+    headers = {"X-Auth-Token": football_api_key}
+    for team in teams:
+        cached = cache.get(team.id)
+        cache_is_fresh = cached is not None and now - cached[0] <= FOOTBALL_CACHE_TTL
+        if cached is not None and cache_is_fresh and not force:
+            fixtures.append(cached[1])
+            fresh_cache_used = True
+            continue
+        try:
+            response = requests.get(
+                f"https://api.football-data.org/v4/teams/{team.id}/matches?status=SCHEDULED&limit=1",
+                headers=headers,
+                timeout=10,
             )
+            if response.status_code == 429:
+                raise RuntimeError("throttled")
+            if response.status_code != 200:
+                raise RuntimeError("provider_error")
+            payload = response.json()
+            matches = payload.get("matches") if isinstance(payload, dict) else None
+            if not isinstance(matches, list):
+                raise RuntimeError("malformed_payload")
+            if matches:
+                fixture = _normalize_football_match(matches[0], team_id=team.id, team_name=team.name, now=now)
+                if fixture is None:
+                    raise RuntimeError("malformed_payload")
+                fixtures.append(fixture)
+                live_entries[team.id] = fixture
+        except (requests.RequestException, ValueError, RuntimeError) as exc:
+            reason = str(exc) if str(exc) in {"throttled", "provider_error", "malformed_payload"} else "network_error"
+            failures.append(reason)
+            if cached is not None:
+                fixtures.append(cached[1])
 
-        barcelona_url = (
-            "https://api.football-data.org/v4/teams/81/matches"
-            "?status=SCHEDULED&limit=1"
-        )
-        headers = {"X-Auth-Token": football_api_key}
-        response = requests.get(barcelona_url, headers=headers, timeout=10)
-
-        if response.status_code == 429:
-            return ConnectorResult(
-                name="football",
-                status="unavailable",
-                freshness="none",
-                reason_code="throttled",
-                observed_at=observed_at,
-                display_text="Barcelona fixture telemetry throttled",
-            )
-
-        if response.status_code != 200:
-            return ConnectorResult(
-                name="football",
-                status="unavailable",
-                freshness="none",
-                reason_code="provider_error",
-                observed_at=observed_at,
-                display_text="Barcelona fixture telemetry unavailable.",
-            )
-
-        matches = response.json().get("matches", [])
-        if not matches:
-            return ConnectorResult(
-                name="football",
-                status="unavailable",
-                freshness="none",
-                reason_code="empty_payload",
-                observed_at=observed_at,
-                display_text="Barcelona fixture telemetry unavailable.",
-            )
-
-        match = matches[0]
-        if str(match["homeTeam"]["id"]) == "81":
-            opponent = match["awayTeam"]["name"]
-        else:
-            opponent = match["homeTeam"]["name"]
-
-        match_dt = datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
-        day = match_dt.day
-        suffix = (
-            "th"
-            if 11 <= day % 100 <= 13
-            else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-        )
-        fixture_date = match_dt.strftime("%A, %B ") + f"{day}{suffix}"
-        display = f"Barcelona plays {opponent} on {fixture_date}."
-        return ConnectorResult(
-            name="football",
-            status="healthy",
-            freshness="live",
-            reason_code="ok",
-            observed_at=observed_at,
-            display_text=display,
-            data={
-                "opponent": opponent,
-                "fixture_date": fixture_date,
-                "summary": display,
-            },
-        )
-    except Exception:
-        sys.stderr.write("[SPORTS][FOOTBALL] fetch_failed\n")
-        return ConnectorResult(
-            name="football",
-            status="unavailable",
-            freshness="none",
-            reason_code="network_error",
-            observed_at=observed_at,
-            display_text="Barcelona fixture telemetry unavailable.",
-        )
+    if live_entries:
+        _write_football_cache({**{team_id: fixture for team_id, (_, fixture) in cache.items()}, **live_entries})
+    fixtures.sort(key=lambda fixture: fixture["kickoff_at"])
+    data = {"fixtures": fixtures, "configured_team_count": len(teams)}
+    if failures:
+        if fixtures:
+            return ConnectorResult(name="football", status="degraded", freshness="stale", reason_code=failures[0], observed_at=observed_at, display_text=_football_display_text(fixtures), data=data)
+        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code=failures[0], observed_at=observed_at, display_text="Football fixture telemetry unavailable.", data=data)
+    return ConnectorResult(name="football", status="healthy", freshness="fresh_cache" if fresh_cache_used and not live_entries else "live", reason_code="ok", observed_at=observed_at, display_text=_football_display_text(fixtures), data=data)
 
 
 def fetch_sports_snapshot(

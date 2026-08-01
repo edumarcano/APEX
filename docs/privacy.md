@@ -10,7 +10,7 @@ APEX is local-first, but it is not entirely offline. The HUD, API, SQLite databa
 
 ## Briefing Synthesis Data
 
-Enabled connectors return typed `ConnectorResult` objects. Briefing orchestration selects a bounded set of facts for `SynthesisInput`: weather, limited email subjects and unread count, limited news headlines, calendar facts, reminders, F1, football, and connector-health fields. Before model use, text is Unicode-normalized, stripped of control characters and markup, truncated per field, serialized to at most 2,000 characters, and wrapped in `<untrusted_connector_data>` markers.
+Enabled connectors return typed `ConnectorResult` objects. Briefing orchestration selects a bounded set of facts for `SynthesisInput`: weather, limited email subjects and unread count, limited news headlines, calendar facts, reminders, F1, one eligible football fixture, and connector-health fields. Football telemetry retains up to three followed teams’ next fixtures, but synthesis receives only the earliest fixture in the seven-day horizon. Before model use, text is Unicode-normalized, stripped of control characters and markup, truncated per field, serialized to at most 2,000 characters, and wrapped in `<untrusted_connector_data>` markers.
 
 Gemini and Ollama receive the same sanitized payload. Concatenated connector display strings are returned to the HUD for compatibility but are never forwarded to a briefing model. Briefing synthesis receives no assistant tools or chat history, disables model thinking, limits output to 512 tokens, and accepts only the expected speech/insight marker format. Invalid provider output falls back to deterministic synthesis from the same typed input.
 

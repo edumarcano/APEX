@@ -42,7 +42,7 @@ Full pipeline walkthrough, mermaid sequence diagram, component inventory, and da
 ## Features
 
 - **Advisory operational preflight** — reports configured-network, battery, rapid-refresh, cloud-disclosure, credential, and local-model risks without treating Wi-Fi or power as proof of authorization
-- **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hr file cache), FC Barcelona fixtures, GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hr window), Alpha Vantage (EOD market ticker)
+- **Live data connectors** — OpenWeatherMap, F1 schedule (Jolpica/Ergast with 24-hour file cache), configured football fixtures (football-data.org with six-hour cache), GNews (AI + Global Events headlines), Gmail (unread primary inbox), Google Calendar (48-hour window), Alpha Vantage (EOD market ticker)
 - **AI briefing synthesis** — connector output routed through a provider-neutral `SynthesisRouter`; uses Gemini 3.1 Flash Lite (cloud strategy), a resident or warmed Ollama model (local strategy), or deterministic compact output (raw fallback) depending on the configured strategy and provider availability
 - **Config-driven persona and feature flags** — voice, tone, enabled connectors, and TTS engine set in `config.json` without touching code
 - **Text-to-speech** — Google Cloud TTS primary with native pyttsx3 fallback; Kokoro ONNX available as an optional local engine that falls back to Google on failure; pre-warmed singletons, serialized `_SPEAK_LOCK`
@@ -98,7 +98,7 @@ Two keys are only read when `DEV_MODE=true`: `DEV_AI_SYNTHESIS` (`raw` default, 
 
 ## Feature Toggles
 
-Editable operator preferences—connectors, sports modules, assistant enablement/default profile, and TTS engine/gender—are managed at runtime from the HUD **Runtime Settings** panel (diagnostics header) or through `GET` / `PATCH /api/v1/settings`. Saves persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults so machine-local preference changes stay out of version control.
+Editable operator preferences—connectors, sports modules, assistant enablement/default profile, and TTS engine/gender—are managed at runtime from the HUD **Runtime Settings** panel (diagnostics header) or through `GET` / `PATCH /api/v1/settings`. Saves persist only to gitignored `config.local.json`, which overlays tracked `config.json` defaults so machine-local preference changes stay out of version control. Followed football teams remain file-configured and are not editable in Runtime Settings.
 
 **When changes take effect**
 
@@ -115,6 +115,7 @@ Tracked `config.json` remains the committed baseline for all configuration, incl
 {
   "features":    { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
   "modules":     { "f1": true, "football": false },
+  "football":    { "teams": [{ "id": 81, "name": "Barcelona" }] },
   "tts_settings": { "primary_tts": "google", "voice_gender": "female" },
   "system_prompt": "You are APEX. Deliver a concise briefing in under 75 words. No emojis or markdown.",
   "synthesis": {
@@ -143,6 +144,8 @@ Tracked `config.json` remains the committed baseline for all configuration, incl
 ```
 
 When a connector is off, no API call or auth attempt is made for it, and the module is excluded from briefing synthesis input and Sync Health scoring. `modules.football` ships disabled; enable it when `FOOTBALL_API_KEY` is set. `primary_tts` accepts `"google"`, `"pyttsx3"`, or `"kokoro"`. `voice_gender` accepts `"male"` or `"female"`. If `config.json` is missing or malformed, all feature flags default to `false` and `system_prompt` falls back to a neutral placeholder.
+
+`football.teams` contains one to three unique football-data.org team IDs and display names. A `config.local.json` `football.teams` array replaces the tracked array as a whole. Football telemetry fetches only each team’s next scheduled fixture and displays team, home/away, competition, and browser-local kickoff time. The briefing receives only the earliest fixture in the next seven days.
 
 `synthesis.gemini_system_prompt` overrides the Gemini briefing persona (falls back to `system_prompt` then a built-in default); `synthesis.ollama_system_prompt` sets the local model briefing persona independently. `synthesis.local_primary_grace_seconds` (0–30, default 5) is the warmup budget when the local strategy is the primary path; `synthesis.local_fallback_grace_seconds` (0–30, default 5) is the budget when Gemini has already failed and local is the fallback. Both omit the key to accept the defaults.
 

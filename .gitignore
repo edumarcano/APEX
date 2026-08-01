@@ -16,7 +16,9 @@ service_account.json
 dist/
 frontend/node_modules/
 clients/.f1_cache.json
+clients/.football_cache.json
 .f1_cache.json
+.football_cache.json
 clients/.market_cache.json
 .market_cache.json
 digest.txt

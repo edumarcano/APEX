@@ -47,9 +47,9 @@ const CONNECTOR_LABELS: Record<string, string> = {
   calendar: 'Calendar',
   sports: 'Sports',
   f1: 'Formula 1',
-  football: 'Barcelona Football',
+  football: 'Football',
   sports_f1: 'Formula 1',
-  sports_football: 'Barcelona Football',
+  sports_football: 'Football',
   reminders: 'Reminders',
 }
 

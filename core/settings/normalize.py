@@ -16,6 +16,8 @@ from core.settings.models import (
     AssistantSettings,
     BriefingSettings,
     FeaturesSettings,
+    FootballSettings,
+    FootballTeamSettings,
     McpServerEnablementSettings,
     McpServersSettings,
     McpSettings,
@@ -33,7 +35,7 @@ _FEATURE_KEYS: frozenset[str] = frozenset(
 )
 _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 _EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
-    {"features", "modules", "ask_apex", "briefing", "tts_settings", "mcp"}
+    {"features", "modules", "football", "ask_apex", "briefing", "tts_settings", "mcp"}
 )
 
 
@@ -104,6 +106,10 @@ def normalize_layer(
             normalized["modules"] = _normalize_modules(
                 value, layer_name, issues
             )
+        elif key == "football":
+            football = _normalize_football(value, layer_name, issues)
+            if football:
+                normalized["football"] = football
         elif key == "ask_apex":
             ask_apex = _normalize_ask_apex(value, layer_name, issues)
             if ask_apex:
@@ -122,6 +128,39 @@ def normalize_layer(
                 normalized["mcp"] = mcp
 
     return normalized
+
+
+def _normalize_football(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any]:
+    """Validate the file-configured followed-team list as one replaceable value."""
+    if not isinstance(value, dict):
+        _record_error(issues, "football must be a JSON object")
+        return {}
+    teams = value.get("teams")
+    if not isinstance(teams, list) or not 1 <= len(teams) <= 3:
+        _record_error(issues, "football.teams must contain one to three teams")
+        return {}
+    normalized_teams: list[dict[str, Any]] = []
+    team_ids: set[int] = set()
+    for team in teams:
+        if not isinstance(team, dict):
+            _record_error(issues, "football.teams entries must be objects")
+            return {}
+        team_id = team.get("id")
+        name = team.get("name")
+        if isinstance(team_id, bool) or not isinstance(team_id, int) or team_id <= 0:
+            _record_error(issues, "football team id must be a positive integer")
+            return {}
+        if team_id in team_ids:
+            _record_error(issues, "football team ids must be unique")
+            return {}
+        if not isinstance(name, str) or not (clean_name := name.strip()) or len(clean_name) > 100:
+            _record_error(issues, "football team name must be a non-empty string up to 100 characters")
+            return {}
+        team_ids.add(team_id)
+        normalized_teams.append({"id": team_id, "name": clean_name})
+    return {"teams": normalized_teams}
 
 
 def _normalize_mcp_settings(
@@ -506,6 +545,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     """Build a validated immutable snapshot from a merged on-disk dict."""
     features_raw = merged.get("features") if isinstance(merged.get("features"), dict) else {}
     modules_raw = merged.get("modules") if isinstance(merged.get("modules"), dict) else {}
+    football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
     ask_apex = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
     mcp_raw = merged.get("mcp") if isinstance(merged.get("mcp"), dict) else {}
@@ -524,6 +564,13 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     modules = ModulesSettings(
         football=bool(modules_raw.get("football", False)),
         f1=bool(modules_raw.get("f1", False)),
+    )
+    football = FootballSettings(
+        teams=tuple(
+            FootballTeamSettings.model_validate(team)
+            for team in football_raw.get("teams", [])
+            if isinstance(team, dict)
+        )
     )
     profile = ask_apex.get("default_profile", "comet")
     if profile not in VALID_ASSISTANT_PROFILES:
@@ -574,6 +621,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     return RuntimeSettingsSnapshot(
         features=features,
         modules=modules,
+        football=football,
         assistant=assistant,
         briefing=briefing,
         voice=voice,

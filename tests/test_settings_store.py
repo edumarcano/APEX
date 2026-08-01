@@ -100,6 +100,21 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(store.local_file_present)
         self.assertTrue(store.local_override_active)
 
+    def test_football_team_array_is_replaced_by_local_overlay(self) -> None:
+        self.base["football"] = {"teams": [{"id": 1, "name": "One"}, {"id": 2, "name": "Two"}]}
+        _write_json(self.config_path, self.base)
+        _write_json(self.local_path, {"football": {"teams": [{"id": 3, "name": "Three"}]}})
+        store = self._store()
+        self.assertEqual([(team.id, team.name) for team in store.get_snapshot().football.teams], [(3, "Three")])
+
+    def test_invalid_football_team_array_discards_local_overlay(self) -> None:
+        self.base["football"] = {"teams": [{"id": 1, "name": "One"}]}
+        _write_json(self.config_path, self.base)
+        _write_json(self.local_path, {"football": {"teams": [{"id": 1, "name": "One"}, {"id": 1, "name": "Duplicate"}]}})
+        store = self._store()
+        self.assertFalse(store.local_override_active)
+        self.assertEqual([(team.id, team.name) for team in store.get_snapshot().football.teams], [(1, "One")])
+
     def test_local_agent_profile_loading(self) -> None:
         for profile in ("lynx", "acinonyx", "neofelis"):
             with self.subTest(profile=profile):

@@ -26,7 +26,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 4
+SETTINGS_SCHEMA_VERSION: int = 5
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
@@ -50,6 +50,23 @@ class ModulesSettings(BaseModel):
 
     football: bool = False
     f1: bool = False
+
+
+class FootballTeamSettings(BaseModel):
+    """One followed football-data.org team, configured outside Runtime Settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=100)
+
+
+class FootballSettings(BaseModel):
+    """Read-only football connector preferences from the configuration files."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    teams: tuple[FootballTeamSettings, ...] = ()
 
 
 class AssistantSettings(BaseModel):
@@ -119,6 +136,7 @@ class RuntimeSettingsSnapshot(BaseModel):
 
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
+    football: FootballSettings = Field(default_factory=FootballSettings)
     assistant: AssistantSettings = Field(default_factory=AssistantSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
