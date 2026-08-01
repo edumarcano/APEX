@@ -223,14 +223,15 @@ apex/
 │   └── __init__.py
 ├── clients/
 │   ├── weather_client.py    # OpenWeatherMap connector
-│   ├── sports_client.py     # F1 (Jolpica/Ergast) + 24-hr file cache; FC Barcelona fixture connector
+│   ├── sports_client.py     # F1 and configurable football fixture connectors with file caches
 │   ├── news_client.py       # GNews API — AI and Global Events headlines
 │   ├── gmail_client.py      # Gmail API v1 — unread telemetry plus bounded read-only assistant search/message retrieval
 │   ├── calendar_client.py   # Google Calendar — 48-hr upcoming events; DEV_MODE PII masking
 │   ├── google_auth.py       # Centralized OAuth2 helper for Gmail and Calendar
 │   ├── microsoft_auth.py   # MSAL device-code flow and encrypted token persistence
 │   ├── microsoft_todo_client.py # GET-only bounded Microsoft Graph To Do provider
-│   ├── .f1_cache.json       # Auto-generated F1 cache — 24-hr TTL (gitignored)
+│   ├── .f1_cache.json       # Auto-generated F1 cache — 24-hour TTL (gitignored)
+│   ├── .football_cache.json # Auto-generated per-team football cache — six-hour TTL (gitignored)
 │   └── __init__.py
 ├── frontend/                # React/TypeScript source — compiled by Vite
 │   ├── src/
@@ -358,7 +359,7 @@ The briefing synthesis subsystem. `brain.py` delegates to `SynthesisRouter.synth
 
 **`core/synthesis/models.py`** — Pydantic types used across the subsystem:
 
-- `SynthesisInput` — privacy-bounded context object passed to cloud, local, and raw paths: weather summary/temp/condition, bounded email subjects and unread count, news headlines, calendar facts, reminders, this-week F1, next football fixture, connector health, legacy `failed_connectors`, `generated_at`, and `timezone`. Fields are sanitized, truncated, and capped before serialization.
+- `SynthesisInput` — privacy-bounded context object passed to cloud, local, and raw paths: weather summary/temp/condition, bounded email subjects and unread count, news headlines, calendar facts, reminders, this-week F1, the earliest configured football fixture within seven days, connector health, legacy `failed_connectors`, `generated_at`, and `timezone`. Fields are sanitized, truncated, and capped before serialization.
 - `SynthesisResult` — router output: `briefing`, `insights`, `provider`, `profile`, `fallback_reason`, `warmup_ms`, `generation_ms`.
 - Literal type aliases: `BriefingMode` (`comet | lynx | acinonyx | neofelis | structured_digest`), `SynthesisProvider` (`gemini | ollama | raw | demo`), `SynthesisProfile` (`comet | lynx | acinonyx | neofelis`), `SynthesisPhase` (`idle | loading | ready | generating | fallback | complete`).
 

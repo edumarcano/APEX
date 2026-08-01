@@ -55,8 +55,11 @@ def sample_input(**overrides: object) -> SynthesisInput:
         "first_pending_reminder": "Charge laptop",
         "f1_this_week": F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
         "football_next_fixture": FootballFact(
+            team="Barcelona",
             opponent="Real Madrid",
-            fixture_date="Saturday, July 18th",
+            home_or_away="home",
+            competition="La Liga",
+            kickoff="2026-07-18T18:00:00+00:00",
         ),
         "connector_health": [
             ConnectorHealthFact(name="weather", status="healthy", reason_code="ok")
@@ -196,9 +199,11 @@ class AdversarialSynthesisTests(unittest.TestCase):
             first_pending_reminder="R" * 1000,
             f1_this_week=F1Fact(race_name="F" * 1000, start="D" * 1000),
             football_next_fixture=FootballFact(
+                team="T" * 1000,
                 opponent="O" * 1000,
-                fixture_date="X" * 1000,
-                summary="Y" * 1000,
+                home_or_away="away",
+                competition="C" * 1000,
+                kickoff="2026-07-18T18:00:00+00:00",
             ),
             connector_health=[
                 ConnectorHealthFact(

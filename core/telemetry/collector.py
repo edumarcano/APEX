@@ -72,6 +72,7 @@ def collect_connector_results(
     features: FeaturesSettings,
     modules: ModulesSettings,
     connectors: list[str] | None = None,
+    force: bool = False,
 ) -> dict[str, ConnectorResult]:
     """
     Collect enabled connectors synchronously.
@@ -110,7 +111,7 @@ def collect_connector_results(
 
     if _wanted("football"):
         if is_connector_enabled("football", features=features, modules=modules):
-            results["football"] = sports_client.collect_football()
+            results["football"] = sports_client.collect_football(force=force)
         else:
             if features.sports and not modules.football:
                 _LOGGER.info("Football module bypassed via user preference")

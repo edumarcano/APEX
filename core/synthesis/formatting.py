@@ -146,9 +146,11 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
         }
     if source.football_next_fixture:
         data["football_next_fixture"] = {
+            "team": sanitize_fact(source.football_next_fixture.team, 96),
             "opponent": sanitize_fact(source.football_next_fixture.opponent, 96),
-            "fixture_date": sanitize_fact(source.football_next_fixture.fixture_date, 96),
-            "summary": sanitize_fact(source.football_next_fixture.summary, 160) or None,
+            "home_or_away": source.football_next_fixture.home_or_away,
+            "competition": sanitize_fact(source.football_next_fixture.competition, 96),
+            "kickoff": sanitize_fact(source.football_next_fixture.kickoff, 96),
         }
 
     while True:
@@ -252,9 +254,11 @@ def deterministic_fallback(source: SynthesisInput) -> tuple[str, list[str]]:
         )
     if source.football_next_fixture:
         fixture = source.football_next_fixture
+        venue = "Home" if fixture.home_or_away == "home" else "Away"
         parts.append(
-            f"Football: Barcelona plays {sanitize_fact(fixture.opponent, 80)} on "
-            f"{sanitize_fact(fixture.fixture_date, 72)}."
+            f"Football: {sanitize_fact(fixture.team, 80)} is {venue} vs "
+            f"{sanitize_fact(fixture.opponent, 80)} in {sanitize_fact(fixture.competition, 80)} at "
+            f"{sanitize_fact(fixture.kickoff, 72)}."
         )
     briefing = _clamp_words(" ".join(parts), 75)
     insights = ["Deterministic privacy-safe briefing fallback active."]

@@ -11,6 +11,11 @@
     "football": false,
     "f1": true
   },
+  "football": {
+    "teams": [
+      {"id": 81, "name": "Barcelona"}
+    ]
+  },
   "tts_settings": {
     "primary_tts": "google",
     "voice_gender": "female"

@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 
@@ -125,12 +125,32 @@ def _build_synthesis_input(
         )
 
     football_fact: FootballFact | None = None
-    if football and football.status != "unavailable" and football_data.get("opponent"):
-        football_fact = FootballFact(
-            opponent=str(football_data.get("opponent", "")),
-            fixture_date=str(football_data.get("fixture_date", "")),
-            summary=str(football_data.get("summary") or "") or None,
-        )
+    fixtures = football_data.get("fixtures") if isinstance(football_data, dict) else None
+    now = datetime.now(timezone.utc)
+    if football and football.status != "unavailable" and isinstance(fixtures, list):
+        eligible: list[tuple[datetime, int, dict[str, object]]] = []
+        for index, raw_fixture in enumerate(fixtures):
+            if not isinstance(raw_fixture, dict):
+                continue
+            raw_kickoff = raw_fixture.get("kickoff_at")
+            if not isinstance(raw_kickoff, str):
+                continue
+            try:
+                kickoff = datetime.fromisoformat(raw_kickoff.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            kickoff = kickoff.replace(tzinfo=timezone.utc) if kickoff.tzinfo is None else kickoff.astimezone(timezone.utc)
+            if now <= kickoff <= now + timedelta(days=7):
+                eligible.append((kickoff, index, raw_fixture))
+        if eligible:
+            kickoff, _index, fixture = min(eligible, key=lambda item: (item[0], item[1]))
+            home_or_away = fixture.get("home_or_away")
+            if home_or_away in {"home", "away"}:
+                team = fixture.get("team")
+                opponent = fixture.get("opponent")
+                competition = fixture.get("competition")
+                if all(isinstance(value, str) and value.strip() for value in (team, opponent, competition)):
+                    football_fact = FootballFact(team=team, opponent=opponent, home_or_away=home_or_away, competition=competition, kickoff=kickoff.isoformat())
 
     news_headlines: list[NewsFact] = []
     if news and isinstance(news.data.get("headlines"), list):
