@@ -16,6 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 _NATIVE_TIMEOUT_SECONDS = 30.0
 _NATIVE_MAX_OUTPUT_CHARS = 50_000
 _GMAIL_SEARCH_MAX_RESULTS = 20
+_MICROSOFT_TODO_MAX_RESULTS = 50
 _GMAIL_OUTPUT_MAX_CHARS = 50_000
 
 
@@ -253,6 +254,80 @@ def get_gmail_message(message_id: str) -> dict[str, Any]:
             "Gmail message identifier cannot be empty.",
         )
     return _invoke_gmail(fetch_message, message_id)
+
+
+def _raise_microsoft_todo_capability_error(exc: Exception) -> NoReturn:
+    from clients.microsoft_auth import (
+        MicrosoftTodoAuthenticationRequiredError,
+        MicrosoftTodoNotConfiguredError,
+    )
+    from clients.microsoft_todo_client import (
+        MicrosoftTodoInvalidInputError,
+        MicrosoftTodoUpstreamError,
+    )
+
+    if isinstance(exc, MicrosoftTodoAuthenticationRequiredError):
+        category = CapabilityErrorCategory.AUTHENTICATION
+        message = str(exc)
+    elif isinstance(exc, MicrosoftTodoNotConfiguredError):
+        category = CapabilityErrorCategory.UNAVAILABLE
+        message = "Microsoft To Do is not configured."
+    elif isinstance(exc, MicrosoftTodoInvalidInputError):
+        category = CapabilityErrorCategory.INVALID_INPUT
+        message = str(exc)
+    elif isinstance(exc, TimeoutError):
+        category = CapabilityErrorCategory.TIMEOUT
+        message = "Microsoft To Do request timed out."
+    elif isinstance(exc, MicrosoftTodoUpstreamError):
+        category = CapabilityErrorCategory.UPSTREAM_FAILURE
+        message = "Microsoft To Do data is unavailable."
+    else:
+        category = CapabilityErrorCategory.UNAVAILABLE
+        message = "Microsoft To Do is unavailable."
+    if category not in {
+        CapabilityErrorCategory.AUTHENTICATION,
+        CapabilityErrorCategory.INVALID_INPUT,
+    }:
+        _LOGGER.warning(
+            "Agent tool unavailable: tool=microsoft_todo error_type=%s",
+            type(exc).__name__,
+        )
+    raise CapabilityError(category, message) from exc
+
+
+def _invoke_microsoft_todo(
+    operation: Callable[..., Any], /, *args: Any, **kwargs: Any
+) -> Any:
+    try:
+        return operation(*args, **kwargs)
+    except CapabilityError:
+        raise
+    except Exception as exc:
+        _raise_microsoft_todo_capability_error(exc)
+
+
+def list_microsoft_todo_lists() -> dict[str, Any]:
+    """List Microsoft To Do lists without modifying remote data."""
+    from clients.microsoft_todo_client import get_microsoft_todo_client
+
+    return _invoke_microsoft_todo(lambda: get_microsoft_todo_client().list_task_lists()).to_dict()
+
+
+def list_microsoft_todo_tasks(
+    list_id: str,
+    include_completed: bool = False,
+    max_results: int = 20,
+) -> dict[str, Any]:
+    """Read bounded tasks from one Microsoft To Do list."""
+    from clients.microsoft_todo_client import get_microsoft_todo_client
+
+    return _invoke_microsoft_todo(
+        lambda: get_microsoft_todo_client().list_tasks(
+            list_id,
+            include_completed=include_completed,
+            max_results=max(1, min(_MICROSOFT_TODO_MAX_RESULTS, max_results)),
+        )
+    ).to_dict()
 
 
 def get_active_reminders() -> list[dict[str, Any]]:
@@ -555,6 +630,64 @@ def register_native_capabilities() -> None:
             },
         ),
         get_gmail_message,
+    )
+
+    register_capability(
+        CapabilityDescriptor(
+            name="list_microsoft_todo_lists",
+            title="Microsoft To Do Lists",
+            description=(
+                "List the operator's Microsoft To Do lists using delegated "
+                "read-only access. It cannot modify tasks or APEX reminders."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        list_microsoft_todo_lists,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="list_microsoft_todo_tasks",
+            title="Microsoft To Do Tasks",
+            description=(
+                "Read tasks from one Microsoft To Do list selected by its "
+                "identifier. It cannot create, update, complete, or delete tasks."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "list_id": {
+                        "type": "string",
+                        "description": (
+                            "Opaque list identifier returned by "
+                            "list_microsoft_todo_lists."
+                        ),
+                        "minLength": 1,
+                        "maxLength": 512,
+                    },
+                    "include_completed": {
+                        "type": "boolean",
+                        "description": "Whether completed tasks should be included.",
+                        "default": False,
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum tasks to return, between 1 and 50.",
+                        "minimum": 1,
+                        "maximum": _MICROSOFT_TODO_MAX_RESULTS,
+                        "default": 20,
+                    },
+                },
+                "required": ["list_id"],
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        list_microsoft_todo_tasks,
     )
 
 

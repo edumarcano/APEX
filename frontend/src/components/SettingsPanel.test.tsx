@@ -169,6 +169,13 @@ describe('SettingsPanel', () => {
       .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
       .mockResolvedValueOnce(jsonResponse(buildMcpStatusResponse()))
       .mockResolvedValueOnce(
+        jsonResponse({
+          configured: false,
+          state: 'not-configured',
+          permission: 'Tasks.Read',
+        }),
+      )
+      .mockResolvedValueOnce(
         jsonResponse({ detail: 'Write failed.' }, { status: 503 }),
       )
     const user = userEvent.setup()

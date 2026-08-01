@@ -14,6 +14,8 @@ dependencies = [
     "google-genai>=1.56.0",
     "jsonschema>=4.26.0,<5",
     "kokoro-onnx",
+    "msal>=1.33,<2",
+    "msal-extensions>=1.3,<2",
     "numpy",
     "onnxruntime",
     "psutil",

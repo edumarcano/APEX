@@ -47,6 +47,8 @@ class CapabilityRegistryTests(unittest.TestCase):
                 "get_active_reminders",
                 "get_briefing_history",
                 "search_gmail",
+                "list_microsoft_todo_lists",
+                "list_microsoft_todo_tasks",
                 "get_gmail_message",
             },
         )

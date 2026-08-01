@@ -208,6 +208,12 @@ Optional MCP provider pilots are disabled by default. GitHub requires `GITHUB_PE
 - Place `credentials.json` in the project root.
 - On first run the OAuth flow opens in the browser and writes `token.json` automatically. If you later change API scopes, delete `token.json` to force re-authentication.
 
+**Optional Microsoft To Do read access**
+
+Register a public/native application in Microsoft Entra, enable public-client device-code flow, and grant delegated `Tasks.Read`. Set `MICROSOFT_TODO_CLIENT_ID` in `.env`; `MICROSOFT_TODO_TENANT_ID` defaults to `common`. Connect from Runtime Settings, then use the assistant's Microsoft To Do tools or the local `/todo` command. APEX stores the token cache through encrypted operating-system persistence outside the repository and never uses a client secret.
+
+This integration cannot create, update, complete, move, synchronize, or delete Microsoft tasks. SQLite remains authoritative for APEX reminders, HUD notifications, and briefings during v1.18.
+
 **6. Set up Google Cloud TTS**
 
 - Enable the Cloud Text-to-Speech API in Google Cloud Console.

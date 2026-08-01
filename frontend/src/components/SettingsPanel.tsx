@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { Settings, X } from 'lucide-react'
 
 import McpSettingsSection from './McpSettingsSection'
+import MicrosoftTodoSettingsSection from './MicrosoftTodoSettingsSection'
 import {
   SectionHeading,
   SettingsSelect,
@@ -20,6 +21,7 @@ import {
 } from './SettingsControls'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useMcpStatus } from '../hooks/useMcpStatus'
+import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
 import {
   buildSettingsTimingRuntime,
@@ -173,6 +175,7 @@ export default function SettingsPanel({
   } = useSettingsEditor({ open, onApplied })
   const mcpRuntime = useMcpStatus(open)
 
+  const microsoftTodoRuntime = useMicrosoftTodoStatus(open)
   useFocusTrap(open, dialogRef, restoreFocusRef)
 
   const timingRuntime = useMemo(
@@ -429,6 +432,11 @@ export default function SettingsPanel({
                     mcp: updater(prev.mcp),
                   }))
                 }
+              />
+
+              <MicrosoftTodoSettingsSection
+                sectionId={`${titleId}-microsoft-todo`}
+                runtime={microsoftTodoRuntime}
               />
 
               <section className="space-y-2.5" aria-labelledby={`${titleId}-briefing`}>

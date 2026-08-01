@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -256,6 +257,40 @@ class MarkReadResponse(BaseModel):
         default="success",
         description="Outcome label for the mark-read operation.",
     )
+
+
+MicrosoftTodoState = Literal[
+    "not-configured",
+    "disconnected",
+    "authorizing",
+    "connected",
+    "authentication-required",
+    "degraded",
+]
+MicrosoftTodoAuthErrorCode = Literal[
+    "app-configuration",
+    "permission",
+    "request",
+    "cancelled",
+    "expired",
+    "sign-in-failed",
+    "initialization-failed",
+]
+
+
+class MicrosoftTodoStatusResponse(BaseModel):
+    configured: bool
+    state: MicrosoftTodoState
+    permission: Literal["Tasks.Read"] = "Tasks.Read"
+    auth_error_code: MicrosoftTodoAuthErrorCode | None = None
+    auth_error_message: str | None = Field(default=None, max_length=240)
+
+
+class MicrosoftTodoAuthorizationResponse(BaseModel):
+    state: Literal["authorizing"] = "authorizing"
+    verification_uri: str = Field(min_length=1, max_length=2048)
+    user_code: str = Field(min_length=1, max_length=64)
+    expires_at: datetime
 
 
 ProfileAvailabilityStatus = Literal[

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass
 
 from core.agent.capabilities import (
@@ -80,6 +82,12 @@ LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
         description="Recent persisted APEX briefing history.",
         tool_names=("get_briefing_history",),
     ),
+    LocalCommandDefinition(
+        key="todo",
+        label="Microsoft To Do",
+        description="Read-only Microsoft To Do lists and tasks.",
+        tool_names=("list_microsoft_todo_lists", "list_microsoft_todo_tasks"),
+    ),
 )
 
 _DEFINITIONS_BY_KEY = {definition.key: definition for definition in LOCAL_COMMAND_DEFINITIONS}
@@ -154,7 +162,15 @@ def list_local_command_statuses() -> list[LocalCommandStatus]:
     statuses: list[LocalCommandStatus] = []
     for definition in LOCAL_COMMAND_DEFINITIONS:
         resolution = resolve_local_command(definition.key)
-        available = not resolution.missing_tool_names
+        todo_not_configured = definition.key == "todo" and not os.getenv(
+            "MICROSOFT_TODO_CLIENT_ID", ""
+        ).strip()
+        available = not resolution.missing_tool_names and not todo_not_configured
+        unavailable_reason = None
+        if todo_not_configured:
+            unavailable_reason = "Microsoft To Do is not configured."
+        elif not available:
+            unavailable_reason = "Required provider tools are not currently connected."
         statuses.append(
             LocalCommandStatus(
                 key=definition.key,
@@ -166,11 +182,7 @@ def list_local_command_statuses() -> list[LocalCommandStatus]:
                     list(resolution.descriptors)
                 ),
                 available=available,
-                unavailable_reason=(
-                    None
-                    if available
-                    else "Required provider tools are not currently connected."
-                ),
+                unavailable_reason=unavailable_reason,
             )
         )
     return statuses

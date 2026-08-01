@@ -719,6 +719,10 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 `search_gmail(query, max_results=10)` accepts Gmail query syntax and clamps the result count to 1–20. Each result contains `id`, `thread_id`, `sender`, `subject`, `date`, `labels`, and a snippet capped at 500 characters. `get_gmail_message(message_id)` returns the same metadata plus a sanitized plain-text `body` capped at 12,000 characters and a `truncated` flag. Neither capability can mutate email; attachments, embedded resources, active HTML, and raw MIME are excluded. Missing authorization or insufficient Gmail read scope produces an `authentication` tool error with a stable public message.
 
+`list_microsoft_todo_lists()` returns bounded list names and opaque identifiers. `list_microsoft_todo_tasks(list_id, include_completed=false, max_results=20)` reads 1–50 normalized tasks from one selected list. Both are native read-risk capabilities, treat task content as untrusted, and are excluded from any APEX MCP server surface. They never initiate authorization or issue Graph mutations.
+
+Local profiles can select `/todo`, which exposes only these two Microsoft tools. `/schedule` continues to represent Google Calendar and authoritative SQLite reminders.
+
 **Response `403`** — Assistant interface disabled via runtime settings (`assistant.enabled` / `ask_apex.enabled`)
 ```json
 { "detail": "APEX is currently disabled in system settings." }
@@ -1240,7 +1244,24 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 
 ---
 
+## Microsoft To Do Authorization API
+
+### `GET /api/v1/microsoft-todo/status`
+
+Returns only `configured`, the fixed `Tasks.Read` permission label, and one sanitized state: `not-configured`, `disconnected`, `authorizing`, `connected`, `authentication-required`, or `degraded`.
+
+### `POST /api/v1/microsoft-todo/auth/start`
+
+Starts one delegated device-code flow without blocking the request. Returns the Microsoft verification URL, one-time user code, and expiration timestamp. Tokens, the MSAL flow object, claims, and raw errors are never returned.
+
+### `DELETE /api/v1/microsoft-todo/auth`
+
+Cancels an active device flow and removes only the local encrypted Microsoft token cache. It does not modify Microsoft tasks or SQLite reminders.
+
+The provider calls only the Microsoft Graph v1.0 task-list and task-list-items GET endpoints. Pagination, result counts, text, timeouts, and output size are bounded; pagination links must remain HTTPS links on `graph.microsoft.com` within the requested endpoint family.
+
 ## Environment Variables Affecting API Behavior
+
 
 | Variable | Default | Description |
 |---|---|---|
@@ -1254,6 +1275,9 @@ A reminder that is entirely emoji or markdown returns an empty string, which tri
 | `ALPHA_VANTAGE_API_KEY` | _(unset)_ | Alpha Vantage API key for `GET /api/v1/market`; when unset, the endpoint serves a simulated ticker feed instead of live data |
 | `MARKET_SYMBOLS` | _(unset)_ | Comma-separated ticker symbols for `GET /api/v1/market`; when unset, the endpoint returns `status: "not_configured"` with an empty ticker list |
 | _(MCP `auth_env` / `header_env` names)_ | _(unset)_ | Credential values referenced by name from `mcp.servers.*.auth_env` or `mcp.servers.*.header_env` in config; missing values mark that server `authentication-required` without blocking API startup |
+| `MICROSOFT_TODO_CLIENT_ID` | _(unset)_ | Public/native Microsoft application identifier; when unset, only Microsoft To Do is unavailable |
+| `MICROSOFT_TODO_TENANT_ID` | `common` | Microsoft authority tenant selection |
+| `MICROSOFT_TODO_TOKEN_CACHE_PATH` | OS app-data directory | Optional machine-specific encrypted token-cache location outside the repository |
 
 **Default CORS origins** (when `APEX_ALLOWED_ORIGINS` is unset):
 ```

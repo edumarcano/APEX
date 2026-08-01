@@ -315,6 +315,8 @@ Complete APEX's reproducibility, API, telemetry, persistence, startup, and docum
 
 **Objective:**
 Establish APEX’s provider-neutral capability layer, approved external MCP client integrations, operator controls, expanded read-only assistant tools, full seven-day calendar awareness, and bounded local assistant command scopes with context-aware budgets for 4K-context Ollama profiles.
+This milestone also establishes delegated read-only Microsoft To Do access and normalized task contracts for the separately reviewed v1.19 reminder migration.
+
 
 ---
 

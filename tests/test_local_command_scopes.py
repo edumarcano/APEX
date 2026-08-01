@@ -57,6 +57,7 @@ class LocalCommandScopeTests(unittest.TestCase):
                 "/search",
                 "/market",
                 "/briefings",
+                "/todo",
             },
         )
         self.assertNotIn("/github", commands)
