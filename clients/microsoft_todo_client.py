@@ -110,6 +110,7 @@ class MicrosoftTodoClient:
                     "Microsoft To Do is unavailable."
                 ) from exc
             if response.status_code == 401:
+                self.auth.mark_authentication_required()
                 raise MicrosoftTodoAuthenticationRequiredError(
                     "Reconnect Microsoft To Do in Settings."
                 )

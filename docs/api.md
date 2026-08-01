@@ -719,7 +719,7 @@ The endpoint is stateless on the server. The full conversation history is suppli
 
 `search_gmail(query, max_results=10)` accepts Gmail query syntax and clamps the result count to 1–20. Each result contains `id`, `thread_id`, `sender`, `subject`, `date`, `labels`, and a snippet capped at 500 characters. `get_gmail_message(message_id)` returns the same metadata plus a sanitized plain-text `body` capped at 12,000 characters and a `truncated` flag. Neither capability can mutate email; attachments, embedded resources, active HTML, and raw MIME are excluded. Missing authorization or insufficient Gmail read scope produces an `authentication` tool error with a stable public message.
 
-`list_microsoft_todo_lists()` returns bounded list names and opaque identifiers. `list_microsoft_todo_tasks(list_id, include_completed=false, max_results=20)` reads 1â€“50 normalized tasks from one selected list. Both are native read-risk capabilities, treat task content as untrusted, and are excluded from any APEX MCP server surface. They never initiate authorization or issue Graph mutations.
+`list_microsoft_todo_lists()` returns bounded list names and opaque identifiers. `list_microsoft_todo_tasks(list_id, include_completed=false, max_results=20)` reads 1–50 normalized tasks from one selected list. Both are native read-risk capabilities, treat task content as untrusted, and are excluded from any APEX MCP server surface. They never initiate authorization or issue Graph mutations.
 
 Local profiles can select `/todo`, which exposes only these two Microsoft tools. `/schedule` continues to represent Google Calendar and authoritative SQLite reminders.
 

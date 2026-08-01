@@ -172,6 +172,12 @@ class MicrosoftTodoAuthenticationService:
             self._state = "connected"
             return token
 
+    def mark_authentication_required(self) -> None:
+        """Reflect a rejected Graph token in the visible connection state."""
+        with self._lock:
+            self._state = "authentication-required"
+            self._auth_error = None
+
     async def begin_device_authorization(self) -> MicrosoftTodoDeviceAuthorization:
         if not self.client_id:
             raise MicrosoftTodoNotConfiguredError("Microsoft To Do is not configured.")

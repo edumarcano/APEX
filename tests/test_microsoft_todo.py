@@ -52,6 +52,9 @@ class _Auth:
         return MicrosoftTodoAuthStatus(configured=True, state="connected")
 
 
+    def mark_authentication_required(self) -> None:
+        self.authentication_required = True
+
 class _Response:
     def __init__(self, payload, status_code: int = 200):
         self.payload = payload
@@ -122,6 +125,17 @@ class MicrosoftTodoClientTests(unittest.TestCase):
         with self.assertRaises(MicrosoftTodoInvalidInputError):
             client.list_tasks("bad\x00id")
         self.assertEqual(session.calls, [])
+
+    def test_unauthorized_graph_response_updates_authentication_state(self) -> None:
+        auth = _Auth()
+        client = MicrosoftTodoClient(
+            auth,
+            session=_Session([_Response({"value": []}, status_code=401)]),
+        )
+
+        with self.assertRaises(MicrosoftTodoAuthenticationRequiredError):
+            client.list_task_lists()
+        self.assertTrue(auth.authentication_required)
 
     def test_client_has_no_write_operations(self) -> None:
         public = {name for name in dir(MicrosoftTodoClient) if not name.startswith("_")}
