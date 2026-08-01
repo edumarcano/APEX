@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from core.settings.models import (
     AssistantPatch,
+    BriefingPatch,
     FeaturesPatch,
     ModulesPatch,
     SettingsPatch,
@@ -148,6 +149,35 @@ class SettingsStoreLoadTests(unittest.TestCase):
                 "modules": {"f1": True, "football": True},
             },
         )
+
+    def test_partial_schema6_assistant_overlay_preserves_base_selection(self) -> None:
+        self.base["ask_apex"] = {
+            "enabled": True,
+            "mode": "cloud",
+            "cloud_profile": "orcinus",
+            "cloud_effort": "extended",
+            "local_profile": "sorex",
+            "neofelis_google_search_enabled": False,
+        }
+        _write_json(self.config_path, self.base)
+        _write_json(self.local_path, {"ask_apex": {"enabled": False}})
+
+        assistant = self._store().get_snapshot().assistant
+
+        self.assertFalse(assistant.enabled)
+        self.assertEqual(assistant.cloud_profile, "orcinus")
+        self.assertEqual(assistant.cloud_effort, "extended")
+        self.assertEqual(assistant.local_profile, "sorex")
+        self.assertFalse(assistant.neofelis_google_search_enabled)
+
+    def test_schema6_briefing_mode_survives_reload(self) -> None:
+        store = self._store()
+        store.apply_patch(
+            SettingsPatch(briefing=BriefingPatch(default_mode="sorex"))
+        )
+
+        self.assertEqual(store.get_snapshot().briefing.default_mode, "sorex")
+        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "sorex")
 
     def test_immutable_snapshot(self) -> None:
         store = self._store()

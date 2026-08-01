@@ -629,6 +629,8 @@ export function useApexData(): UseApexDataReturn {
         let marketEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
         let devModeActive: boolean | undefined
+        let briefingDefaultMode: ApexDataState['briefingDefaultMode']
+        let voiceMode: ApexDataState['voiceMode']
         let synthesisStrategy: SynthesisStrategy | undefined
         let synthesisProfile: SynthesisProfile | null | undefined
         if (configResp.ok) {
@@ -642,6 +644,8 @@ export function useApexData(): UseApexDataReturn {
                 market_enabled?: unknown
                 demo_mode_active?: unknown
                 dev_mode_active?: unknown
+                briefing_default_mode?: unknown
+                voice_mode?: unknown
                 synthesis_strategy?: unknown
                 synthesis_profile?: unknown
               }
@@ -669,6 +673,13 @@ export function useApexData(): UseApexDataReturn {
               if (typeof body.dev_mode_active === 'boolean') {
                 devModeActive = body.dev_mode_active
               }
+              briefingDefaultMode = parseEnum(body.briefing_default_mode, [
+                'panthera',
+                'mus',
+                'sorex',
+                'structured_digest',
+              ] as const) ?? undefined
+              voiceMode = parseEnum(body.voice_mode, ['off', 'manual', 'automatic'] as const) ?? undefined
               synthesisStrategy = parseEnum(body.synthesis_strategy, VALID_SYNTHESIS_STRATEGIES) ?? undefined
               synthesisProfile = parseEnum(body.synthesis_profile, VALID_SYNTHESIS_PROFILES)
             }
@@ -705,6 +716,8 @@ export function useApexData(): UseApexDataReturn {
                   : {}),
                 ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 ...(marketEnabled !== undefined ? { marketEnabled } : {}),
+                ...(briefingDefaultMode !== undefined ? { briefingDefaultMode } : {}),
+                ...(voiceMode !== undefined ? { voiceMode } : {}),
                 ...modePatch,
                 ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
                 ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),
@@ -754,6 +767,8 @@ export function useApexData(): UseApexDataReturn {
               : {}),
             ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
             ...(marketEnabled !== undefined ? { marketEnabled } : {}),
+            ...(briefingDefaultMode !== undefined ? { briefingDefaultMode } : {}),
+            ...(voiceMode !== undefined ? { voiceMode } : {}),
             ...modePatch,
             ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
             ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),

@@ -325,6 +325,8 @@ export interface ApexDataState {
   system_load_throttled: boolean
   defaultProfile?: AssistantProfile
   assistantInitialSelection?: AssistantInitialSelection
+  briefingDefaultMode?: 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+  voiceMode?: 'off' | 'manual' | 'automatic'
   askApexEnabled?: boolean
   marketEnabled: boolean
   synthesisStrategy: SynthesisStrategy

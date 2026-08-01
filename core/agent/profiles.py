@@ -351,6 +351,10 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     """One-way schema-5 → 6 migration for ask_apex on-disk shape."""
     if raw.get("mode") in {"cloud", "local"}:
         return raw
+    if not ({"default_profile", "default_cloud_profile"} & raw.keys()):
+        # Schema-6 local overrides are intentionally partial. Do not synthesize
+        # defaults that would replace values from the base configuration layer.
+        return raw
 
     migrated: dict[str, Any] = {
         "enabled": raw.get("enabled", True),
@@ -391,8 +395,12 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
-def migrate_schema5_briefing(raw: dict[str, Any]) -> dict[str, Any]:
+def migrate_schema5_briefing(
+    raw: dict[str, Any], *, schema5: bool = True
+) -> dict[str, Any]:
     """Map every legacy briefing mode to panthera (schema-5 one-way migration)."""
+    if not schema5:
+        return raw
     return {"default_mode": "panthera"}
 
 

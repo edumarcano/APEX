@@ -18,7 +18,6 @@ from core.agent.providers.contract import (
     resolve_inference_provider,
 )
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.openai_provider import OPENAI_INTERNAL_PROFILES, OpenAIProvider
@@ -571,7 +570,10 @@ class PublicRosterTests(unittest.TestCase):
         self.assertIn("openai", providers)
         self.assertIn("xai", providers)
         self.assertEqual(set(OLLAMA_MODEL_PROFILES), {"sorex", "mus"})
-        self.assertEqual(GEMINI_MODEL_PROFILES, {})
+        self.assertEqual(
+            {key for key, spec in PROFILE_SPECS.items() if spec.provider == "gemini"},
+            {"acinonyx", "neofelis"},
+        )
 
 
 if __name__ == "__main__":

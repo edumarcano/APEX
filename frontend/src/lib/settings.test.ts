@@ -8,6 +8,7 @@ import {
   parseMcpStatusResponse,
   parseSettingsResponse,
   resolveAssistantProfile,
+  resolveInitialAssistantSelection,
   resolveEffectiveTiming,
   settingsAreEqual,
 } from './settings'
@@ -16,6 +17,15 @@ import {
   buildMcpStatusResponse,
   buildSettingsResponse,
 } from '../test/settingsFixtures'
+
+describe('assistant boot hydration', () => {
+  it('does not reapply the saved selection after initial hydration', () => {
+    const saved = { profile: 'panthera' as const, effort: 'focused' as const }
+
+    expect(resolveInitialAssistantSelection(false, saved, 'panthera')).toEqual(saved)
+    expect(resolveInitialAssistantSelection(true, saved, 'panthera')).toBeNull()
+  })
+})
 
 describe('settings response parsing', () => {
   it('accepts a complete valid response', () => {

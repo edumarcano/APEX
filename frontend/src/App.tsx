@@ -47,7 +47,7 @@ import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
-import { resolveAssistantProfile } from './lib/settings'
+import { resolveAssistantProfile, resolveInitialAssistantSelection } from './lib/settings'
 import type {
   AssistantProfile,
   CloudEffort,
@@ -129,20 +129,6 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
   })
 }
 
-const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
-  'panthera',
-  'neofelis',
-  'delphinus',
-  'orcinus',
-  'sorex',
-  'mus',
-  'acinonyx',
-]
-
-function isAssistantProfile(value: string): value is AssistantProfile {
-  return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
-}
-
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
   'mus',
@@ -203,6 +189,8 @@ export default function App(): ReactElement {
     marketEnabled,
     defaultProfile,
     assistantInitialSelection,
+    briefingDefaultMode,
+    voiceMode: bootVoiceMode,
     refreshReminders,
     markReminderAsRead,
     applyBootSettings,
@@ -232,71 +220,33 @@ export default function App(): ReactElement {
     setAssistantOpen,
   } = useApexAssistant(true, agentProfile)
 
-  // Synchronize the active profile with backend defaults when idle (not mid-query).
+  const assistantSelectionHydratedRef = useRef(false)
+
+  // Hydrate backend defaults once; later profile changes belong to the active session.
   useEffect(() => {
-    if (isAssistantQuerying) {
-      return
-    }
-    const selection = assistantInitialSelection
-    if (selection && isAssistantProfile(selection.profile)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors backend boot/settings config into selectable profile state.
+    const selection = resolveInitialAssistantSelection(
+      assistantSelectionHydratedRef.current,
+      assistantInitialSelection,
+      defaultProfile,
+    )
+    if (selection) {
       setAgentProfile(selection.profile)
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
-      return
+      assistantSelectionHydratedRef.current = true
     }
-    if (defaultProfile && isAssistantProfile(defaultProfile)) {
-      setAgentProfile(defaultProfile)
-    }
-  }, [assistantInitialSelection, defaultProfile, isAssistantQuerying])
+  }, [assistantInitialSelection, defaultProfile])
 
   useEffect(() => {
-    let cancelled = false
-    void fetch(API_ENDPOINTS.config)
-      .then(async (response) => {
-        if (!response.ok) {
-          return null
-        }
-        return (await response.json()) as Record<string, unknown>
-      })
-      .then((body) => {
-        if (cancelled || !body) {
-          return
-        }
-        const selection = body.assistant_initial_selection
-        if (selection && typeof selection === 'object') {
-          const record = selection as Record<string, unknown>
-          const profile = record.profile
-          const effort = record.effort
-          if (typeof profile === 'string' && isAssistantProfile(profile)) {
-            setAgentProfile(profile)
-          }
-          if (effort === 'light' || effort === 'focused' || effort === 'extended') {
-            setCloudEffort(effort)
-          }
-        } else {
-          const profile = body.default_profile
-          if (typeof profile === 'string' && isAssistantProfile(profile)) {
-            setAgentProfile(profile)
-          }
-        }
-        const mode = body.briefing_default_mode
-        if (typeof mode === 'string' && isBriefingMode(mode)) {
-          setBriefingMode(mode)
-        }
-        const voice = body.voice_mode
-        if (typeof voice === 'string' && isVoiceMode(voice)) {
-          setVoiceMode(voice)
-        }
-      })
-      .catch(() => {
-        // Boot hydration for briefing/voice mode is best-effort.
-      })
-    return () => {
-      cancelled = true
+    if (briefingDefaultMode && isBriefingMode(briefingDefaultMode)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors asynchronous boot configuration into local controls.
+      setBriefingMode(briefingDefaultMode)
     }
-  }, [])
+    if (bootVoiceMode && isVoiceMode(bootVoiceMode)) {
+      setVoiceMode(bootVoiceMode)
+    }
+  }, [bootVoiceMode, briefingDefaultMode])
 
   const handleSettingsApplied = useCallback(
     (response: SettingsResponse) => {

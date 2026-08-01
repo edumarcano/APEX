@@ -33,6 +33,17 @@ const VALID_CLOUD_SETTINGS_PROFILES: readonly CloudSettingsProfile[] = [
 
 const VALID_LOCAL_SETTINGS_PROFILES: readonly LocalSettingsProfile[] = ['sorex', 'mus']
 
+export function resolveInitialAssistantSelection(
+  alreadyHydrated: boolean,
+  selection: { profile: AssistantProfile; effort: CloudEffort | null } | undefined,
+  defaultProfile: AssistantProfile | undefined,
+): { profile: AssistantProfile; effort: CloudEffort | null } | null {
+  if (alreadyHydrated) return null
+  if (selection) return selection
+  if (defaultProfile) return { profile: defaultProfile, effort: null }
+  return null
+}
+
 const VALID_ASSISTANT_MODES: readonly AssistantMode[] = ['cloud', 'local']
 
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']

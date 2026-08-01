@@ -83,6 +83,11 @@ def normalize_layer(
         return {}
 
     normalized: dict[str, Any] = {}
+    ask_apex_raw = raw.get("ask_apex")
+    schema5_layer = raw.get("schema_version") == 5 or (
+        isinstance(ask_apex_raw, dict)
+        and bool({"default_profile", "default_cloud_profile"} & ask_apex_raw.keys())
+    )
 
     for key, value in raw.items():
         if key not in _EDITABLE_ROOT_KEYS:
@@ -118,7 +123,9 @@ def normalize_layer(
             if ask_apex:
                 normalized["ask_apex"] = ask_apex
         elif key == "briefing":
-            briefing = _normalize_briefing(value, layer_name, issues)
+            briefing = _normalize_briefing(
+                value, layer_name, issues, schema5=schema5_layer
+            )
             if briefing:
                 normalized["briefing"] = briefing
         elif key == "tts_settings":
@@ -334,41 +341,46 @@ def _normalize_ask_apex(
     elif enabled_raw is not None:
         _record_error(errors, "ask_apex.enabled must be a boolean")
 
-    mode = migrated.get("mode", "cloud")
-    if mode in {"cloud", "local"}:
-        result["mode"] = mode
-    else:
-        _record_error(errors, "ask_apex.mode must be cloud or local")
-
-    cloud_profile = migrated.get("cloud_profile", "panthera")
-    if isinstance(cloud_profile, str):
-        normalized = cloud_profile.strip().lower()
-        if normalized in VALID_CLOUD_SETTINGS_PROFILES:
-            result["cloud_profile"] = normalized
+    if "mode" in migrated:
+        mode = migrated["mode"]
+        if mode in {"cloud", "local"}:
+            result["mode"] = mode
         else:
-            _record_error(errors, "ask_apex.cloud_profile is not valid")
+            _record_error(errors, "ask_apex.mode must be cloud or local")
 
-    cloud_effort = migrated.get("cloud_effort", "focused")
-    if isinstance(cloud_effort, str):
-        normalized = cloud_effort.strip().lower()
-        if normalized in VALID_CLOUD_EFFORTS:
-            result["cloud_effort"] = normalized
-        else:
-            _record_error(errors, "ask_apex.cloud_effort is not valid")
+    if "cloud_profile" in migrated:
+        cloud_profile = migrated["cloud_profile"]
+        if isinstance(cloud_profile, str):
+            normalized = cloud_profile.strip().lower()
+            if normalized in VALID_CLOUD_SETTINGS_PROFILES:
+                result["cloud_profile"] = normalized
+            else:
+                _record_error(errors, "ask_apex.cloud_profile is not valid")
 
-    local_profile = migrated.get("local_profile", "mus")
-    if isinstance(local_profile, str):
-        normalized = local_profile.strip().lower()
-        if normalized in VALID_LOCAL_SETTINGS_PROFILES:
-            result["local_profile"] = normalized
-        else:
-            _record_error(errors, "ask_apex.local_profile is not valid")
+    if "cloud_effort" in migrated:
+        cloud_effort = migrated["cloud_effort"]
+        if isinstance(cloud_effort, str):
+            normalized = cloud_effort.strip().lower()
+            if normalized in VALID_CLOUD_EFFORTS:
+                result["cloud_effort"] = normalized
+            else:
+                _record_error(errors, "ask_apex.cloud_effort is not valid")
 
-    google_search = migrated.get("neofelis_google_search_enabled", True)
-    if isinstance(google_search, bool):
-        result["neofelis_google_search_enabled"] = google_search
-    elif google_search is not None:
-        _record_error(errors, "ask_apex.neofelis_google_search_enabled must be a boolean")
+    if "local_profile" in migrated:
+        local_profile = migrated["local_profile"]
+        if isinstance(local_profile, str):
+            normalized = local_profile.strip().lower()
+            if normalized in VALID_LOCAL_SETTINGS_PROFILES:
+                result["local_profile"] = normalized
+            else:
+                _record_error(errors, "ask_apex.local_profile is not valid")
+
+    if "neofelis_google_search_enabled" in migrated:
+        google_search = migrated["neofelis_google_search_enabled"]
+        if isinstance(google_search, bool):
+            result["neofelis_google_search_enabled"] = google_search
+        elif google_search is not None:
+            _record_error(errors, "ask_apex.neofelis_google_search_enabled must be a boolean")
 
     return result
 
@@ -407,7 +419,11 @@ def _normalize_tts_settings(
 
 
 def _normalize_briefing(
-    value: Any, layer_name: str, errors: NormalizationIssues | None
+    value: Any,
+    layer_name: str,
+    errors: NormalizationIssues | None,
+    *,
+    schema5: bool,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
@@ -419,7 +435,7 @@ def _normalize_briefing(
             )
         return result
 
-    migrated = migrate_schema5_briefing(value)
+    migrated = migrate_schema5_briefing(value, schema5=schema5)
     for key, raw in value.items():
         if key == "default_mode":
             mode = _coerce_briefing_mode(
@@ -613,7 +629,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     briefing_raw = (
         merged.get("briefing") if isinstance(merged.get("briefing"), dict) else {}
     )
-    briefing_migrated = migrate_schema5_briefing(briefing_raw)
+    briefing_migrated = migrate_schema5_briefing(briefing_raw, schema5=False)
     default_mode = briefing_migrated.get("default_mode", "panthera")
     if default_mode not in VALID_BRIEFING_MODES:
         default_mode = "panthera"

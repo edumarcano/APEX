@@ -39,6 +39,3 @@ class GeminiModelProfile(BaseModel):
         default=DEFAULT_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the cloud agent.",
     )
-
-
-GEMINI_MODEL_PROFILES: dict[str, GeminiModelProfile] = {}

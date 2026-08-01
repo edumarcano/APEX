@@ -397,15 +397,10 @@ export function useApexAssistant(
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
-  const acinonyxHistoryRef = useRef<AgentMessage[]>([])
 
   useEffect(() => {
     productionHistoryRef.current = productionHistory
   }, [productionHistory])
-
-  useEffect(() => {
-    acinonyxHistoryRef.current = acinonyxHistory
-  }, [acinonyxHistory])
 
   const assistantHistory = useMemo(
     () => (isAcinonyxProfile(activeProfile) ? acinonyxHistory : productionHistory),
@@ -524,9 +519,7 @@ export function useApexAssistant(
       }
 
       const useAcinonyxStore = isAcinonyxProfile(profile)
-      const priorHistory = useAcinonyxStore
-        ? acinonyxHistoryRef.current
-        : productionHistoryRef.current
+      const priorHistory = useAcinonyxStore ? [] : productionHistoryRef.current
 
       isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
@@ -577,11 +570,11 @@ export function useApexAssistant(
           tool_outputs: body.tool_outputs,
         }
 
-        const appendHistory = (prev: AgentMessage[]): AgentMessage[] => [...prev, userMsg, modelMsg]
         if (useAcinonyxStore) {
-          setAcinonyxHistory(appendHistory)
+          // Acinonyx is intentionally single-turn: show only the latest exchange.
+          setAcinonyxHistory([userMsg, modelMsg])
         } else {
-          setProductionHistory(appendHistory)
+          setProductionHistory((prev) => [...prev, userMsg, modelMsg])
         }
         setAssistantLatestTrace(body.tool_trace ?? [])
         setAssistantContextUsage(body.local_context_usage ?? null)
