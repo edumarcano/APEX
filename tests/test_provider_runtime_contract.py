@@ -260,6 +260,19 @@ class OllamaContractTests(unittest.TestCase):
 
 
 class PricingRegistryTests(unittest.TestCase):
+    def test_luna_uses_the_configured_august_rates(self) -> None:
+        estimate = estimate_inference_cost(
+            model="gpt-5.6-luna",
+            usage=TokenUsage(
+                input_tokens=1_000_000,
+                cached_input_tokens=400_000,
+                output_tokens=1_000_000,
+            ),
+        )
+
+        # 0.6M uncached at $0.20 + 0.4M cached at $0.02 + 1M output at $1.20.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 1.328, places=4)
+
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(
             model="gemini-3.5-flash",
@@ -464,7 +477,7 @@ class ResponsesAdapterTests(unittest.TestCase):
                 "content": [{"type": "output_text", "text": "Hello from OpenAI"}],
             }
         ]
-        mock_response.model = "gpt-5.6"
+        mock_response.model = "gpt-5.6-luna"
         mock_response.usage = {
             "input_tokens": 12,
             "output_tokens": 4,
@@ -483,7 +496,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertNotIn("tools", kwargs)
         self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
         self.assertEqual(result.message.content, "Hello from OpenAI")
-        self.assertEqual(result.resolved_model, "gpt-5.6")
+        self.assertEqual(result.resolved_model, "gpt-5.6-luna")
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_non_reasoning_profile_omits_reasoning_request_fields(

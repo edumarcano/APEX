@@ -225,7 +225,7 @@ Returns the local assistant command bundles, including availability, reason, too
 
 Returns the visible assistant profiles with provider, profile version, tier, supported effort levels, availability, active/loading state, and local lifecycle diagnostics. Acinonyx appears only in development mode.
 
-The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
+The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
 Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active resident model.
 

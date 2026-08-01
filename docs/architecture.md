@@ -126,7 +126,7 @@ Attached context and tool results are separately marked as untrusted model data.
 | Profile | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
 | Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Focused; development-only | Up to 4 turns / 6 calls; no tools or personal context |
-| Panthera 2.0 | OpenAI `gpt-5.6` | Light, Focused, Extended | Up to 6 turns / 10 calls |
+| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
 | Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 | Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 | Orcinus 2.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |

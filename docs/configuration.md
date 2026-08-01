@@ -87,7 +87,7 @@ Football telemetry keeps each configured team's next fixture. Briefing synthesis
 | Profile | Provider and model | Role |
 |---|---|---|
 | Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only, fail-closed sandbox; receives no personal tools, HUD context, or conversation history |
-| Panthera 2.0 | OpenAI `gpt-5.6` | Default balanced cloud profile |
+| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud profile |
 | Neofelis 2.0 | Gemini `gemini-3.6-flash` | Gemini cloud profile; its optional native Google Search preference is stored in Runtime Settings |
 | Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud profile |
 | Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud profile |
