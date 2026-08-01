@@ -53,6 +53,31 @@ describe('Microsoft To Do settings', () => {
     )
     expect(screen.queryByText(/token/i)).not.toBeInTheDocument()
   })
+
+  it('renders a bounded authentication diagnostic without upstream details', () => {
+    render(
+      <MicrosoftTodoSettingsSection
+        sectionId="todo-settings"
+        runtime={{
+          status: {
+            configured: true,
+            state: 'authentication-required',
+            permission: 'Tasks.Read',
+            auth_error_code: 'request',
+            auth_error_message: 'Microsoft rejected the sign-in request. Check the app registration settings.',
+          },
+          authorization: null,
+          loading: false,
+          error: null,
+          refresh: vi.fn(async () => undefined),
+          connect: vi.fn(async () => undefined),
+          disconnect: vi.fn(async () => undefined),
+        }}
+      />,
+    )
+    expect(screen.getByText(/Microsoft rejected the sign-in request/i)).toBeInTheDocument()
+    expect(screen.queryByText(/client_secret/i)).not.toBeInTheDocument()
+  })
 })
 
 describe('Microsoft To Do assistant cards', () => {

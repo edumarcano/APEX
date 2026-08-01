@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import threading
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from msal_extensions import PersistedTokenCache, build_encrypted_persistence
 
 from clients.microsoft_todo_models import (
     MicrosoftAuthState,
+    MicrosoftTodoAuthErrorCode,
     MicrosoftTodoAuthConfig,
     MicrosoftTodoAuthStatus,
     MicrosoftTodoDeviceAuthorization,
@@ -22,6 +24,22 @@ from clients.microsoft_todo_models import (
 
 MICROSOFT_TODO_SCOPES = ("Tasks.Read",)
 _DEFAULT_TENANT = "common"
+_LOGGER = logging.getLogger(__name__)
+
+_AUTH_FAILURES: dict[str, tuple[MicrosoftTodoAuthErrorCode, str]] = {
+    "access_denied": ("cancelled", "Microsoft sign-in was cancelled or permission was declined."),
+    "authorization_declined": ("cancelled", "Microsoft sign-in was cancelled or permission was declined."),
+    "bad_verification_code": ("expired", "The Microsoft sign-in code is invalid or has expired. Start a new connection."),
+    "expired_token": ("expired", "The Microsoft sign-in code has expired. Start a new connection."),
+    "invalid_client": ("app-configuration", "Microsoft rejected this app registration. Check its client ID and public-client settings."),
+    "unauthorized_client": ("app-configuration", "Microsoft rejected this app registration. Check supported accounts and public-client settings."),
+    "invalid_scope": ("permission", "Microsoft rejected the requested To Do permission. Confirm delegated Tasks.Read is configured."),
+    "invalid_request": ("request", "Microsoft rejected the sign-in request. Check the app registration settings."),
+}
+_DEFAULT_AUTH_FAILURE: tuple[MicrosoftTodoAuthErrorCode, str] = (
+    "sign-in-failed",
+    "Microsoft did not complete sign-in. Start a new connection and try again.",
+)
 
 MicrosoftTodoApplicationFactory = Callable[[MicrosoftTodoAuthConfig], tuple[Any, Any]]
 
@@ -91,6 +109,7 @@ class MicrosoftTodoAuthenticationService:
         )
         self._application: Any | None = None
         self._cache: Any | None = None
+        self._auth_error: tuple[MicrosoftTodoAuthErrorCode, str] | None = None
         if self.config.client_id:
             try:
                 self._initialize_application()
@@ -98,6 +117,10 @@ class MicrosoftTodoAuthenticationService:
                     self._state = "connected"
             except Exception:
                 self._state = "degraded"
+                self._auth_error = (
+                    "initialization-failed",
+                    "Microsoft authentication could not be initialized on this device.",
+                )
 
     @staticmethod
     def _default_cache_path() -> Path:
@@ -114,7 +137,10 @@ class MicrosoftTodoAuthenticationService:
     def status_snapshot(self) -> MicrosoftTodoAuthStatus:
         with self._lock:
             return MicrosoftTodoAuthStatus(
-                configured=bool(self.config.client_id), state=self._state
+                configured=bool(self.config.client_id),
+                state=self._state,
+                auth_error_code=self._auth_error[0] if self._auth_error else None,
+                auth_error_message=self._auth_error[1] if self._auth_error else None,
             )
 
     def acquire_access_token(self) -> str:
@@ -163,10 +189,12 @@ class MicrosoftTodoAuthenticationService:
             if not isinstance(flow, dict) or not flow.get("user_code"):
                 with self._lock:
                     self._state = "degraded"
+                    self._record_auth_failure(flow if isinstance(flow, dict) else None)
                 raise RuntimeError("Microsoft authorization could not be started.")
             with self._lock:
                 self._flow = flow
                 self._state = "authorizing"
+                self._auth_error = None
                 self._poll_task = asyncio.create_task(self._complete_device_flow(flow))
             return self._public_flow(flow)
 
@@ -185,12 +213,17 @@ class MicrosoftTodoAuthenticationService:
                     if isinstance(result, dict) and result.get("access_token")
                     else "authentication-required"
                 )
+                if self._state == "connected":
+                    self._auth_error = None
+                else:
+                    self._record_auth_failure(result if isinstance(result, dict) else None)
         except asyncio.CancelledError:
             raise
         except Exception:
             with self._lock:
                 if self._flow is flow:
                     self._state = "degraded"
+                    self._record_auth_failure(None)
         finally:
             with self._lock:
                 if self._flow is flow:
@@ -224,9 +257,17 @@ class MicrosoftTodoAuthenticationService:
             try:
                 self._initialize_application()
                 self._state = "disconnected"
+                self._auth_error = None
             except Exception:
                 self._state = "degraded"
                 raise RuntimeError("Microsoft authentication could not be reset.")
+
+    def _record_auth_failure(self, result: dict[str, Any] | None) -> None:
+        """Keep only a locally classified error; never retain upstream details."""
+        upstream_code = result.get("error") if result else None
+        failure = _AUTH_FAILURES.get(upstream_code, _DEFAULT_AUTH_FAILURE)
+        self._auth_error = failure
+        _LOGGER.warning("Microsoft To Do authentication failed: category=%s", failure[0])
 
     async def _cancel_polling(self) -> None:
         with self._lock:

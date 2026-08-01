@@ -14,7 +14,18 @@ export interface MicrosoftTodoStatus {
   configured: boolean
   state: MicrosoftTodoState
   permission: 'Tasks.Read'
+  auth_error_code?: MicrosoftTodoAuthErrorCode | null
+  auth_error_message?: string | null
 }
+
+export type MicrosoftTodoAuthErrorCode =
+  | 'app-configuration'
+  | 'permission'
+  | 'request'
+  | 'cancelled'
+  | 'expired'
+  | 'sign-in-failed'
+  | 'initialization-failed'
 
 export interface MicrosoftTodoAuthorization {
   state: 'authorizing'
@@ -31,6 +42,15 @@ const STATES: readonly MicrosoftTodoState[] = [
   'authentication-required',
   'degraded',
 ]
+const AUTH_ERROR_CODES: readonly MicrosoftTodoAuthErrorCode[] = [
+  'app-configuration',
+  'permission',
+  'request',
+  'cancelled',
+  'expired',
+  'sign-in-failed',
+  'initialization-failed',
+]
 
 function parseStatus(value: unknown): MicrosoftTodoStatus | null {
   if (!value || typeof value !== 'object') return null
@@ -40,6 +60,16 @@ function parseStatus(value: unknown): MicrosoftTodoStatus | null {
     typeof item.state !== 'string' ||
     !STATES.includes(item.state as MicrosoftTodoState) ||
     item.permission !== 'Tasks.Read'
+  ) return null
+  if (
+    item.auth_error_code !== undefined &&
+    item.auth_error_code !== null &&
+    (typeof item.auth_error_code !== 'string' || !AUTH_ERROR_CODES.includes(item.auth_error_code as MicrosoftTodoAuthErrorCode))
+  ) return null
+  if (
+    item.auth_error_message !== undefined &&
+    item.auth_error_message !== null &&
+    (typeof item.auth_error_message !== 'string' || item.auth_error_message.length > 240)
   ) return null
   return item as unknown as MicrosoftTodoStatus
 }
@@ -94,7 +124,7 @@ export function useMicrosoftTodoStatus(open: boolean) {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(API_ENDPOINTS.microsoftTodoAuth, { method: 'POST' })
+      const response = await fetch(API_ENDPOINTS.microsoftTodoAuthStart, { method: 'POST' })
       const parsed = response.ok ? parseAuthorization(await response.json()) : null
       if (!parsed) throw new Error()
       setAuthorization(parsed)

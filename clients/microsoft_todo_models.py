@@ -14,6 +14,15 @@ MicrosoftAuthState = Literal[
     "authentication-required",
     "degraded",
 ]
+MicrosoftTodoAuthErrorCode = Literal[
+    "app-configuration",
+    "permission",
+    "request",
+    "cancelled",
+    "expired",
+    "sign-in-failed",
+    "initialization-failed",
+]
 
 
 @dataclass(frozen=True)
@@ -30,6 +39,8 @@ class MicrosoftTodoAuthStatus:
     configured: bool
     state: MicrosoftAuthState
     permission: Literal["Tasks.Read"] = "Tasks.Read"
+    auth_error_code: MicrosoftTodoAuthErrorCode | None = None
+    auth_error_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

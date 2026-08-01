@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   market: `${API_BASE}/api/v1/market`,
   mcpStatus: `${API_BASE}/api/v1/mcp/status`,
   microsoftTodoStatus: `${API_BASE}/api/v1/microsoft-todo/status`,
+  microsoftTodoAuthStart: `${API_BASE}/api/v1/microsoft-todo/auth/start`,
   microsoftTodoAuth: `${API_BASE}/api/v1/microsoft-todo/auth`,
   preflight: `${API_BASE}/api/v1/preflight`,
   reminders: `${API_BASE}/api/v1/reminders`,

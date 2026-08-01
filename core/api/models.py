@@ -267,12 +267,23 @@ MicrosoftTodoState = Literal[
     "authentication-required",
     "degraded",
 ]
+MicrosoftTodoAuthErrorCode = Literal[
+    "app-configuration",
+    "permission",
+    "request",
+    "cancelled",
+    "expired",
+    "sign-in-failed",
+    "initialization-failed",
+]
 
 
 class MicrosoftTodoStatusResponse(BaseModel):
     configured: bool
     state: MicrosoftTodoState
     permission: Literal["Tasks.Read"] = "Tasks.Read"
+    auth_error_code: MicrosoftTodoAuthErrorCode | None = None
+    auth_error_message: str | None = Field(default=None, max_length=240)
 
 
 class MicrosoftTodoAuthorizationResponse(BaseModel):

@@ -148,7 +148,7 @@ class MicrosoftTodoClient:
     def list_task_lists(self) -> TodoTaskListsResult:
         path = "/v1.0/me/todo/lists"
         raw = self._get_pages(
-            f"{GRAPH_ROOT}/me/todo/lists?$select=id,displayName,isOwner,isShared,wellknownListName&$top={_MAX_LISTS}",
+            f"{GRAPH_ROOT}/me/todo/lists?$top={_MAX_LISTS}",
             limit=_MAX_LISTS,
             path_prefix=path,
         )
@@ -168,12 +168,8 @@ class MicrosoftTodoClient:
         limit = max(1, min(_MAX_TASKS, int(max_results)))
         encoded = quote(identifier, safe="")
         path = f"/v1.0/me/todo/lists/{encoded}/tasks"
-        fields = (
-            "id,title,status,importance,createdDateTime,lastModifiedDateTime,"
-            "dueDateTime,completedDateTime,categories"
-        )
         raw = self._get_pages(
-            f"{GRAPH_ROOT}/me/todo/lists/{encoded}/tasks?$select={fields}&$top={_MAX_TASKS}",
+            f"{GRAPH_ROOT}/me/todo/lists/{encoded}/tasks?$top={_MAX_TASKS}",
             limit=_MAX_TASKS,
             path_prefix=path,
         )

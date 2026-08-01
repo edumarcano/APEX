@@ -50,6 +50,11 @@ export default function MicrosoftTodoSettingsSection({
             </a>
           </div>
         ) : null}
+        {runtime.status?.auth_error_message ? (
+          <p className="mt-2 text-[11px] text-amber-200" role="status">
+            {runtime.status.auth_error_message}
+          </p>
+        ) : null}
         {runtime.error ? <p className="mt-2 text-[11px] text-red-300" role="status">{runtime.error}</p> : null}
         {!runtime.status?.configured ? (
           <p className="mt-2 text-[10px] text-zinc-500">Set MICROSOFT_TODO_CLIENT_ID to enable connection.</p>

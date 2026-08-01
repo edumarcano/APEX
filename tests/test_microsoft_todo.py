@@ -101,6 +101,9 @@ class MicrosoftTodoClientTests(unittest.TestCase):
         self.assertEqual(tasks.tasks[0].due.time_zone, "Eastern Standard Time")
         self.assertTrue(all(call[0].startswith("https://graph.microsoft.com/v1.0/") for call in session.calls))
         self.assertTrue(all(call[1]["headers"]["Authorization"] == "Bearer test-token" for call in session.calls))
+        self.assertTrue(all("$select" not in call[0] for call in session.calls))
+        self.assertIn("?$top=50", session.calls[0][0])
+        self.assertIn("/tasks?$top=50", session.calls[1][0])
 
     def test_untrusted_pagination_host_is_rejected(self) -> None:
         client = MicrosoftTodoClient(
@@ -202,6 +205,29 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(first.user_code, second.user_code)
         app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.Read"])
+
+    async def test_device_flow_failure_exposes_only_safe_diagnostic(self) -> None:
+        app = mock.Mock()
+        app.initiate_device_flow.return_value = {
+            "user_code": "ABCD-EFGH",
+            "verification_uri": "https://microsoft.com/devicelogin",
+            "expires_in": 900,
+        }
+        app.acquire_token_by_device_flow.return_value = {
+            "error": "invalid_request",
+            "error_description": "client_secret=must-not-leak",
+        }
+        service = self._service_for(app)
+
+        await service.begin_device_authorization()
+        await asyncio.sleep(0)
+        snapshot = service.status_snapshot()
+        await service.shutdown()
+
+        self.assertEqual(snapshot.state, "authentication-required")
+        self.assertEqual(snapshot.auth_error_code, "request")
+        self.assertIn("app registration", snapshot.auth_error_message or "")
+        self.assertNotIn("client_secret", snapshot.auth_error_message or "")
 
 
 class MicrosoftTodoApiTests(unittest.IsolatedAsyncioTestCase):
