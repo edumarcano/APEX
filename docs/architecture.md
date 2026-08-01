@@ -88,17 +88,16 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Gemini and Ollama receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, assistant history, and assistant tools are not forwarded to the briefing model.
 
-The five modes are:
+The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
-| Comet | Gemini | `gemini-3.5-flash-lite` |
-| Lynx | Ollama | `qwen3:1.7b` |
-| Acinonyx | Ollama | `qwen3:4b-instruct` |
-| Neofelis | Ollama | `qwen3:8b` |
+| Panthera | Cloud briefing path | Cloud synthesis profile |
+| Mus | Ollama | `qwen3:4b-instruct` |
+| Sorex | Ollama | `qwen3:1.7b` |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local profile. Comet may use an eligible local fallback when Gemini fails. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local profile. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
 
 Production generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no production write.
 
@@ -124,17 +123,19 @@ Attached context and tool results are separately marked as untrusted model data.
 
 ### Cloud profiles
 
-| Profile | Model | Thinking | Maximum tool loop |
+| Profile | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Comet | `gemini-3.5-flash-lite` | Minimal | Up to 6 turns / 10 calls, bounded by operator settings |
-| Nova | `gemini-3.5-flash` | Low | Up to 4 turns / 6 calls |
-| Pulsar | `gemini-3.6-flash` | Medium | Up to 4 turns / 6 calls |
+| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Focused; development-only | Up to 4 turns / 6 calls; no tools or personal context |
+| Panthera 2.0 | OpenAI `gpt-5.6` | Light, Focused, Extended | Up to 6 turns / 10 calls |
+| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Orcinus 2.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 
 ### Local profiles and command scopes
 
-Local assistant queries use the same Lynx, Acinonyx, and Neofelis models as local briefing modes, but prompts and context remain separate. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+Local assistant queries use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
 Local queries are tool-free unless the user arms one command bundle for that request. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the profile's 4K context window and reports sanitized usage counts.
 

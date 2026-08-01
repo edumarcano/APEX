@@ -17,14 +17,14 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `5`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `6`.
 
 | Group | Editable values |
 |---|---|
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
-| Assistant | Enabled state and default Comet, Nova, Pulsar, Lynx, Acinonyx, or Neofelis profile |
-| Briefing | Default Comet, Lynx, Acinonyx, Neofelis, or Structured Digest mode |
+| Assistant | Enabled state, Cloud/Local mode, cloud profile and effort, local profile, and the Neofelis Google Search preference |
+| Briefing | Default Panthera, Mus, Sorex, or Structured Digest mode |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 
@@ -53,7 +53,7 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 - `raw` — deterministic output without a model call
 - `local` — selected local behavior with deterministic fallback
-- `cloud` — Gemini with eligible local and deterministic fallback
+- `cloud` — configured cloud briefing path with eligible local and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -84,21 +84,24 @@ Football telemetry keeps each configured team's next fixture. Briefing synthesis
 
 ### Cloud profiles
 
-| Profile | Model | Role |
+| Profile | Provider and model | Role |
 |---|---|---|
-| Comet | `gemini-3.5-flash-lite` | Fast default; also the cloud briefing profile |
-| Nova | `gemini-3.5-flash` | Balanced assistant reasoning |
-| Pulsar | `gemini-3.6-flash` | Higher-depth assistant reasoning |
+| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only, fail-closed sandbox; receives no personal tools, HUD context, or conversation history |
+| Panthera 2.0 | OpenAI `gpt-5.6` | Default balanced cloud profile |
+| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Gemini cloud profile; its optional native Google Search preference is stored in Runtime Settings |
+| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud profile |
+| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud profile |
 
-Cloud profiles require `GEMINI_API_KEY`. Assistant loops are bounded by the configured global ceilings and each profile's smaller internal limit where applicable.
+Cloud profiles run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. Cloud profiles support Light, Focused, and Extended effort except where a profile's own default applies.
+
+The `acinonyx` profile uses `gemini-3.5-flash-lite` and remains hidden outside development mode.
 
 ### Local profiles
 
 | Profile | Ollama model | Intended use |
 |---|---|---|
-| Lynx | `qwen3:1.7b` | Lightweight and fast |
-| Acinonyx | `qwen3:4b-instruct` | Balanced local default |
-| Neofelis | `qwen3:8b` | More capable and resource-intensive |
+| Sorex 2.0 | `qwen3:1.7b` | Lightweight fixed-effort local profile |
+| Mus 2.0 | `qwen3:4b-instruct` | Balanced fixed-effort local profile |
 
 `ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-profile CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
 

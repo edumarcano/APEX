@@ -229,7 +229,7 @@ def check_gemini_profiles(
             )
 
     known_models = set(expected_profiles.values())
-    model_pattern = re.compile(r"gemini-\d+(?:\.\d+)*-[a-z0-9-]+")
+    model_pattern = re.compile(r"gemini-\d+(?:\.\d+)*-[a-z0-9-]+(?![a-z0-9-])")
     for path in paths:
         for line_number, line in enumerate(
             texts[path].splitlines(), start=1

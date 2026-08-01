@@ -33,9 +33,9 @@ Gemini and Ollama receive the same selected facts. Concatenated display telemetr
 
 The markers and validation reduce prompt-injection risk. They do not make model output an authorization boundary, and model prose must never authorize an action.
 
-### Gemini policy boundary
+### Gemini briefing policy boundary
 
-Comet sends briefing input to the Gemini API. That input can include personal facts such as calendar events, reminders, and bounded email subjects.
+The current Panthera briefing path sends briefing input to the Gemini API. That input can include personal facts such as calendar events, reminders, and bounded email subjects.
 
 Google's current terms state that unpaid Gemini API services may use submitted content and generated responses to improve products and that human reviewers may process inputs and outputs. Google instructs users not to submit sensitive, confidential, or personal information to unpaid services. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [pricing data-use table](https://ai.google.dev/gemini-api/docs/pricing).
 
@@ -45,11 +45,13 @@ Selecting a local briefing profile or Structured Digest avoids sending briefing 
 
 ## Assistant data
 
-The assistant is separate from briefing synthesis. A cloud profile sends the prompt, browser-provided history, explicitly selected HUD context, and invoked tool results to Gemini. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed.
+The assistant is separate from briefing synthesis. A cloud profile sends the prompt, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed.
 
 HUD context is never implicit. A briefing is attached only through an explicit valid `briefing_id`; telemetry is attached only through the current matching `snapshot_id`. Omitting both identifiers injects neither. Tool results and HUD context are marked as untrusted model data.
 
 Conversation history exists in the browser tab and is lost on reload. The backend has no chat-session store. Local context budgeting can omit old complete interactions and reports counts, never prompt or tool-result content.
+
+Acinonyx is a development-only, single-turn Gemini sandbox. It receives no conversation history, tools, briefing context, telemetry context, or personal connector data. The HUD retains only its latest displayed exchange so it does not imply multi-turn context.
 
 ### Native personal-data tools
 

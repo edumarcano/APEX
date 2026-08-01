@@ -140,7 +140,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Comet, Lynx, Acinonyx, Neofelis, and Structured Digest rather than one opaque automatic selector.
+**Decision.** The HUD offers Panthera, Mus, Sorex, and Structured Digest rather than one opaque automatic selector.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
 
@@ -168,9 +168,9 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use named profiles instead of raw model IDs in the HUD
 
-**Decision.** Assistant and briefing controls expose Comet, Nova, Pulsar, Lynx, Acinonyx, and Neofelis.
+**Decision.** Assistant controls expose the Apex Profiles 2.0 family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, and Mus.
 
-**Why.** The names communicate relative speed and resource intent while provider model IDs remain an implementation detail that can be audited in configuration and architecture references.
+**Why.** The names communicate the intended intelligence profile while provider model IDs remain separate implementation details that can be audited in configuration and architecture references. The shared 2.0 version identifies the reworked profile contract; later profile changes can version independently.
 
 **Trade-off.** Profile documentation must remain synchronized with current model mappings and stability labels.
 

@@ -107,7 +107,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 
 | Capability | What to prepare |
 |---|---|
-| Gemini briefings and cloud assistant profiles | `GEMINI_API_KEY` |
+| Cloud assistant profiles | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the selected profile |
 | Weather, news, football, and market data | The corresponding key from `.env.example` |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
