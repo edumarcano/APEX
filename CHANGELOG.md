@@ -3,6 +3,63 @@
 ---
 
 
+## v1.18.0 — Cortex: MCP Client Foundation & Read-Only Integrations
+
+**Released:** August 1, 2026
+
+This release gives APEX a provider-neutral capability layer and its first external tool integrations. A `CapabilityDescriptor` registry replaces direct callable dispatch for every assistant tool, an MCP client runtime built on FastMCP connects to configured Model Context Protocol servers at startup, and read-only pilot presets for GitHub, Brave Search, and Alpha Vantage ship disabled by default behind a Settings-panel toggle. The assistant gains read-only Gmail search/message tools and a read-only Microsoft To Do connector via device-code OAuth, calendar telemetry now covers a full seven-day HUD horizon, and a new local command scopes subsystem bounds Ollama-based turns to a declared tool bundle to keep 4K-context local profiles within their prompt budget. Football telemetry becomes configurable to any followed teams, and the documentation set was restructured into focused onboarding, configuration, architecture, API, and privacy guides with an automated consistency checker.
+
+---
+
+### What's New
+
+- Added a provider-neutral capability registry (`core/agent/capabilities.py`) with `CapabilityDescriptor` schemas, risk classes, origin metadata, and a `CapabilityErrorCategory` error taxonomy; all native assistant tools are now registered as capabilities instead of plain callables, and Gemini/Ollama tool schemas are derived from the descriptors.
+- Added an external MCP client runtime (`core/mcp/`) backed by FastMCP: when `mcp.enabled` is `true`, APEX connects to configured servers over HTTP or stdio transport at startup, discovers tools, and registers allowlisted tools into the capability registry; offline or unauthenticated servers degrade to `degraded`/`authentication-required` status without blocking API readiness.
+- Added disabled-by-default MCP provider pilot presets for GitHub (read-only), Brave Search, and Alpha Vantage, with per-tool argument bounds, output-size caps, and structured result cards (`AssistantToolCards.tsx`) for search, repository, issue/PR, and financial-data results.
+- Added a Settings-panel MCP section (`McpSettingsSection.tsx`) with a master toggle and per-provider switches, live server status polling (`useMcpStatus`), and a `reconfigure()` path on `MCPClientManager` that reconciles connections after a settings patch without a restart.
+- Added two read-only Gmail assistant tools, `search_gmail` and `get_gmail_message`, reusing the existing `gmail.readonly` OAuth scope; message bodies are capped at 12,000 characters, HTML-only bodies are converted to inert text, and attachments/raw MIME are excluded.
+- Added a read-only Microsoft To Do integration: `MicrosoftAuthService` performs the OAuth 2.0 device-authorization flow with encrypted token-cache persistence, `MicrosoftTodoClient` reads task lists and tasks via Microsoft Graph, and a Settings section exposes connect/disconnect controls and device-code display; a `list_microsoft_todo_tasks` assistant tool and `/todo`/`/todo-status` local commands round out the read path. Gated entirely by the presence of `MICROSOFT_TODO_CLIENT_ID` in `.env`; task creation and mutation are out of scope.
+- Extended calendar telemetry to a full seven-day HUD horizon (previously a shorter display window) while keeping the assistant's independent calendar lookback configurable up to 14 days.
+- Added local command scopes (`core/agent/local_commands.py`): a registry of pre-declared tool bundles that confine Ollama-based agent turns to a fixed set of capabilities, plus a dedicated tool-free final-answer turn for both local and cloud agents and context-window budget trimming (oldest complete interaction pairs dropped first) for the Ollama provider. Exposed in the HUD via a `LocalCommandSelector` dropdown in the console tray.
+- Made followed football teams configurable via a `football.teams` array in `config.json` (one to three football-data.org team IDs/names, replacing the previous single-team FC Barcelona connector); football telemetry now fetches each team's next fixture with a six-hour file cache, and the briefing receives only the earliest fixture within the next seven days.
+- Restructured project documentation into `docs/getting-started.md` and `docs/configuration.md`, trimmed `README.md`, `docs/api.md`, and `docs/architecture.md` for scannability, and added `scripts/check_docs.py` with `tests/test_documentation.py` to validate documentation links, headings, and versioned contract references in CI.
+- Raised the assistant tool-calling loop ceiling (`gemini.agent_max_turns` 3→6, `gemini.agent_max_tool_calls` 4→10) to accommodate multi-tool MCP and Gmail/To Do workflows.
+
+### Architecture Changes
+
+- Registered all native assistant tools (`get_weather_forecast`, `fetch_crypto_price`, `get_sports_schedule`, `search_financial_news`, `get_user_briefing_preferences`, `update_user_briefing_preferences`, `search_gmail`, `get_gmail_message`, `list_microsoft_todo_tasks`) in the capability registry; `run_agent_loop` now invokes tools through the registry and filters `tool_outputs` by each descriptor's `expose_to_client_display` flag before serializing to the client.
+- Added `core/mcp/` (`manager.py`, `config.py`, `models.py`, `__init__.py`): `MCPClientManager` is owned by the FastAPI lifespan, bridges synchronous capability invocations onto the application event loop via `asyncio.run_coroutine_threadsafe`, closes sessions and stdio subprocesses on shutdown, and unregisters imported capabilities cleanly; credentials are referenced only by environment-variable name and never persisted to config.
+- Hardened the capability registry with an `asyncio.Lock` guard over all registry mutations and added `unregister_capability()`/`unregister_capabilities_by_origin()` for MCP lifecycle cleanup; imported MCP capabilities must carry an explicit local risk classification.
+- Added `core/agent/tool_schemas.py` for canonical compact JSON-schema tool-input definitions shared across native and local-command tool bundles, and `core/agent/prompting.py` for local system-instruction construction and final-answer-phase injection.
+- Added `clients/gmail_client.py` search/message functions, `clients/microsoft_auth.py`, `clients/microsoft_todo_client.py`, and `clients/microsoft_todo_models.py` as new client modules; `clients/sports_client.py` was reworked from a single hardcoded team to a multi-team, per-team-cache football fixture engine.
+- Extended `core/settings/` with an `McpSettingsPatch` schema restricting the public settings surface to `mcp.enabled` and `mcp.servers.<name>.enabled` (custom server URLs and auth tokens remain local-config-only), read-only `football.teams` exposure in the resolved settings snapshot, and bumped the settings contract from schema version 3 to version 5 (4 for MCP controls, 5 for football read-only exposure).
+- Added `frontend/src/lib/mcpProviders.ts` (static MCP provider metadata registry), `frontend/src/lib/footballTelemetry.ts`, `frontend/src/lib/calendarTelemetry.ts`, and `frontend/src/components/SettingsControls.tsx` (shared toggle/select primitives), reducing duplicated inline control logic in `SettingsPanel.tsx`.
+
+### API Changes
+
+- Added `GET /api/v1/mcp/status`, returning sanitized per-server MCP connection diagnostics; no authentication is required and no secrets are exposed.
+- Added `GET /api/v1/microsoft-todo/status`, `POST /api/v1/microsoft-todo/auth/start`, and `DELETE /api/v1/microsoft-todo/auth`, backed by new `MicrosoftTodoStatusResponse` and `MicrosoftTodoAuthorizationResponse` models.
+- Added an `/assistant/local-commands` read-only endpoint listing available local command scopes; extended `AgentQueryRequest` with an optional, backward-compatible `tool_scope` field.
+- Extended `PATCH /api/v1/settings` to accept an optional `mcp` key restricted to enable/disable fields (out-of-scope fields return `422`); the endpoint now triggers `MCPClientManager.reconfigure()` after a successful persist and returns `500` without reconciling if persistence fails.
+- Bumped the settings contract to schema version 5; `GET /api/v1/settings` now also returns read-only `football.teams` alongside `features`, `modules`, `assistant`, `briefing`, `voice`, and `mcp`.
+
+### Frontend Changes
+
+- Added `AssistantToolCards.tsx` renderers for Gmail search/message results, Microsoft To Do task lists, and MCP provider tool output (GitHub, Brave Search, Alpha Vantage).
+- Added `McpSettingsSection.tsx`, `MicrosoftTodoSettingsSection.tsx`, `SettingsControls.tsx`, and `LocalCommandSelector.tsx` components, and `useMcpStatus.ts`, `useMicrosoftTodoStatus.ts`, and `useLocalCommands.ts` hooks.
+- Added `FootballFixtureList.tsx` and `CalendarEventList.tsx` components with dedicated `footballTelemetry.ts`/`calendarTelemetry.ts` parsing helpers, replacing inline schedule rendering in `App.tsx`.
+- Wired the local command selector into `AskApexBar.tsx` and `ConsoleTray.tsx`; extended `useApexAssistant.ts` and `settings.ts` for MCP/To Do patch helpers.
+- Added regression coverage across `AskApexBar.test.tsx`, `AssistantToolCards.test.tsx`, `CalendarEventList.test.tsx`, `FootballFixtureList.test.tsx`, `MicrosoftTodoFeatures.test.tsx`, and `SettingsPanel.test.tsx`.
+
+### Documentation Updates
+
+- Added `docs/getting-started.md` and `docs/configuration.md`, splitting onboarding and configuration reference content out of `README.md`, `docs/api.md`, and `docs/architecture.md`; substantially trimmed all three for scannability.
+- Added `scripts/check_docs.py` and `tests/test_documentation.py`, an automated checker that validates documentation links, heading anchors, and versioned API/schema references against the current codebase.
+- Documented the capability registry, MCP client runtime and provider presets, local command scopes, Gmail search/message tools, Microsoft To Do connector, configurable football telemetry, and the seven-day calendar horizon in `docs/api.md`, `docs/architecture.md`, `docs/privacy.md`, and `docs/design-system.md`.
+- Marked v1.18.0 Complete and updated the v1.20.0 objective in `docs/roadmap.md`.
+
+---
+
 ## v1.17.0 — Runtime Hardening & Decoupling
 
 **Released:** July 22, 2026

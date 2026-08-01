@@ -43,7 +43,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 4,
+    schema_version: 5,
     settings,
     local_file_present: false,
     local_override_active: false,

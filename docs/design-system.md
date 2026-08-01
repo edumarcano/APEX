@@ -1,5 +1,7 @@
 # APEX Design System
 
+This reference defines the durable visual and interaction language for contributors working on the React HUD. It describes design intent and invariants rather than component implementation; runtime ownership belongs in [Architecture](architecture.md), and frontend code conventions live in the [Frontend Guide](../frontend/README.md).
+
 ## Visual Direction
 
 APEX uses a dark intelligence and operations aesthetic built from cinematic atmospheric lighting, metallic state transitions, translucent glass surfaces, and mission-control chrome. Expressive background and identity layers surround comparatively restrained interaction surfaces so telemetry remains legible and operational states remain clear.
@@ -179,3 +181,5 @@ Weather conditions, market trends, provider badges, tool-result cards, demo/deve
 7. Explicit product intent
 
 Explicit feature requirements may override default treatments, but deviations should preserve accessibility and avoid creating conflicting state semantics.
+
+When a visual change introduces a new runtime state, update the state semantics here only if that meaning is reusable across the HUD. Keep feature-local behavior in the owning component and its tests.
