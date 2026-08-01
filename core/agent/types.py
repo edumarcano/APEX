@@ -18,19 +18,37 @@ CostCompleteness = Literal["complete", "partial", "unavailable"]
 
 
 class TokenUsage(BaseModel):
-    """Normalized token accounting for one provider turn or aggregated query."""
+    """Normalized token accounting for one provider turn or aggregated query.
+
+    Providers disagree on whether cached and reasoning tokens are nested inside
+    the input and output counters, so every adapter must normalize to this
+    convention before returning usage:
+
+    - ``input_tokens`` counts all prompt tokens and includes ``cached_input_tokens``.
+    - ``output_tokens`` counts visible completion tokens and excludes ``reasoning_tokens``.
+    - ``total_tokens`` is ``input_tokens + reasoning_tokens + output_tokens``;
+      cached tokens are never added again because they are already in the input.
+    """
 
     input_tokens: int | None = Field(
-        default=None, ge=0, description="Prompt / input tokens."
+        default=None,
+        ge=0,
+        description="All prompt tokens, including any cached prompt tokens.",
     )
     cached_input_tokens: int | None = Field(
-        default=None, ge=0, description="Cached prompt tokens when reported."
+        default=None,
+        ge=0,
+        description="Subset of input_tokens served from cache, when reported.",
     )
     reasoning_tokens: int | None = Field(
-        default=None, ge=0, description="Hidden reasoning / thinking tokens."
+        default=None,
+        ge=0,
+        description="Hidden reasoning tokens, counted separately from output_tokens.",
     )
     output_tokens: int | None = Field(
-        default=None, ge=0, description="Visible completion tokens."
+        default=None,
+        ge=0,
+        description="Visible completion tokens, excluding reasoning tokens.",
     )
     total_tokens: int | None = Field(
         default=None, ge=0, description="Provider-reported or derived total."

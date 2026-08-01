@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.agent.providers.contract import ProviderToolEvent
+from core.agent.providers.contract import InferenceProvider, ProviderToolEvent
 from core.agent.types import CostCompleteness, CostEstimate, TokenUsage
 
 PRICING_VERSION = "2026.08.01"
@@ -33,7 +33,10 @@ class HostedToolRate:
     usd_per_invocation: float
 
 
-# Rates are estimates for planning/observability. Keep keys lowercase.
+# Rates are unverified planning estimates, not billing figures. Every entry
+# below still needs to be reconciled against the provider's published pricing
+# page and that source recorded here before cost is surfaced in the UI.
+# Keep keys lowercase.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
     # Gemini (v1.18 roster + future sandbox)
     "gemini-3.5-flash-lite": ModelTokenRates(0.10, 0.40, cached_input_per_million=0.025),
@@ -65,17 +68,20 @@ _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
 }
 
 
-def lookup_model_rates(model: str | None) -> ModelTokenRates | None:
-    """Return token rates for a model id, including Ollama local zero-cost."""
+def lookup_model_rates(
+    model: str | None, *, provider: InferenceProvider | None = None
+) -> ModelTokenRates | None:
+    """Return token rates for a model id.
+
+    Local Ollama inference is free regardless of model tag. Unknown cloud
+    models return ``None`` so the estimate reports incomplete rather than
+    guessing a rate.
+    """
+    if provider == "ollama":
+        return _LOCAL_ZERO
     if not model:
         return None
-    normalized = model.strip().lower()
-    if normalized in _MODEL_RATES:
-        return _MODEL_RATES[normalized]
-    # Ollama tags (qwen3:1.7b, etc.) and unknown local identifiers.
-    if ":" in normalized or normalized.startswith("qwen"):
-        return _LOCAL_ZERO
-    return None
+    return _MODEL_RATES.get(model.strip().lower())
 
 
 def lookup_hosted_tool_rate(tool_name: str) -> HostedToolRate | None:
@@ -89,9 +95,16 @@ def estimate_inference_cost(
     usage: TokenUsage | None,
     hosted_tool_events: list[ProviderToolEvent] | None = None,
     configured_model: str | None = None,
+    provider: InferenceProvider | None = None,
 ) -> CostEstimate:
-    """Estimate token + hosted-tool cost for a completed query."""
-    rates = lookup_model_rates(model) or lookup_model_rates(configured_model)
+    """Estimate token + hosted-tool cost for a completed query.
+
+    Follows the ``TokenUsage`` convention: cached tokens are a subset of the
+    input count and reasoning tokens are billed separately from visible output.
+    """
+    rates = lookup_model_rates(model, provider=provider) or lookup_model_rates(
+        configured_model, provider=provider
+    )
     token_cost: float | None = None
     token_complete = False
 
@@ -102,13 +115,14 @@ def estimate_inference_cost(
             token_cost = 0.0
             token_complete = True
             if input_tokens is not None:
-                token_cost += (input_tokens / 1_000_000.0) * rates.input_per_million
+                cached_tokens = min(usage.cached_input_tokens or 0, input_tokens)
+                uncached_tokens = input_tokens - cached_tokens
+                token_cost += (uncached_tokens / 1_000_000.0) * rates.input_per_million
+                token_cost += (
+                    cached_tokens / 1_000_000.0
+                ) * rates.cached_input_per_million
             else:
                 token_complete = False
-            if usage.cached_input_tokens is not None:
-                token_cost += (
-                    usage.cached_input_tokens / 1_000_000.0
-                ) * rates.cached_input_per_million
             if usage.reasoning_tokens is not None:
                 reasoning_rate = (
                     rates.reasoning_per_million

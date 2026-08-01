@@ -18,6 +18,7 @@ from core.agent.providers.contract import (
 )
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
+from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.openai_provider import OPENAI_INTERNAL_PROFILES, OpenAIProvider
 from core.agent.providers.responses_api import (
@@ -119,6 +120,134 @@ class ProviderContractTests(unittest.TestCase):
             {"comet", "nova", "pulsar"},
         )
 
+    def test_provider_tool_events_reach_the_trace_with_numeric_durations(self) -> None:
+        class Provider:
+            def generate_turn(
+                self,
+                _messages: list[AgentMessage],
+                _tools: list[CapabilityDescriptor],
+                _profile: object,
+                system_instruction_override: str | None = None,
+            ) -> ProviderTurnResult:
+                del system_instruction_override
+                return ProviderTurnResult(
+                    message=AgentMessage(role="model", content="Grounded."),
+                    provider_tool_events=[
+                        ProviderToolEvent(
+                            name="google_search",
+                            status="ok",
+                            duration_ms=41.5,
+                            billable_units=1,
+                        )
+                    ],
+                )
+
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Search?", profile="comet"),
+            Provider(),
+            GEMINI_MODEL_PROFILES["comet"],
+        )
+
+        trace = response.tool_trace[0]
+        self.assertEqual(trace["origin"], "provider")
+        self.assertIsInstance(trace["duration_ms"], float)
+
+
+class OllamaContractTests(unittest.TestCase):
+    @staticmethod
+    def _descriptor() -> CapabilityDescriptor:
+        return CapabilityDescriptor(
+            name="get_weather_forecast",
+            title="Weather",
+            description="Forecast",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_assistant=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+
+    @patch("core.agent.providers.ollama.register_activity", return_value=None)
+    @patch("core.agent.providers.ollama._post_chat")
+    def test_usage_and_resolved_model_come_from_response_body(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = {
+            "model": "qwen3:1.7b-q4",
+            "message": {"role": "assistant", "content": "Local answer"},
+            "prompt_eval_count": 90,
+            "eval_count": 15,
+        }
+
+        result = OllamaProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            OLLAMA_MODEL_PROFILES["lynx"],
+        )
+
+        self.assertEqual(result.message.content, "Local answer")
+        self.assertEqual(result.resolved_model, "qwen3:1.7b-q4")
+        assert result.usage is not None
+        self.assertEqual(result.usage.input_tokens, 90)
+        self.assertEqual(result.usage.output_tokens, 15)
+        self.assertEqual(result.usage.total_tokens, 105)
+        self.assertEqual(result.retry_count, 0)
+        self.assertIsNotNone(result.provider_ms)
+
+    @patch("core.agent.providers.ollama.register_activity", return_value=None)
+    @patch("core.agent.providers.ollama._post_chat")
+    def test_resolved_model_falls_back_to_configured_tag(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = {
+            "message": {"role": "assistant", "content": "Local answer"},
+        }
+
+        result = OllamaProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            OLLAMA_MODEL_PROFILES["lynx"],
+        )
+
+        self.assertEqual(result.resolved_model, OLLAMA_MODEL_PROFILES["lynx"].api_model)
+        self.assertIsNone(result.usage)
+
+    @patch("core.agent.providers.ollama.register_activity", return_value=None)
+    @patch("core.agent.providers.ollama._post_chat")
+    def test_truncated_tool_turn_regenerates_and_sums_usage(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.side_effect = [
+            {
+                "model": "qwen3:1.7b",
+                "message": {"role": "assistant", "content": "truncated prose"},
+                "done_reason": "length",
+                "prompt_eval_count": 80,
+                "eval_count": 40,
+            },
+            {
+                "model": "qwen3:1.7b",
+                "message": {"role": "assistant", "content": "Final answer"},
+                "prompt_eval_count": 70,
+                "eval_count": 25,
+            },
+        ]
+
+        result = OllamaProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [self._descriptor()],
+            OLLAMA_MODEL_PROFILES["lynx"],
+        )
+
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(result.message.content, "Final answer")
+        self.assertEqual(result.retry_count, 1)
+        assert result.usage is not None
+        self.assertEqual(result.usage.input_tokens, 150)
+        self.assertEqual(result.usage.output_tokens, 65)
+        self.assertEqual(result.usage.total_tokens, 215)
+
 
 class PricingRegistryTests(unittest.TestCase):
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
@@ -139,11 +268,34 @@ class PricingRegistryTests(unittest.TestCase):
         estimate = estimate_inference_cost(
             model="qwen3:1.7b",
             usage=TokenUsage(input_tokens=1000, output_tokens=200, total_tokens=1200),
+            provider="ollama",
         )
         self.assertEqual(estimate.token_cost, 0.0)
         self.assertEqual(estimate.hosted_tool_cost, 0.0)
         self.assertEqual(estimate.total_cost, 0.0)
         self.assertEqual(estimate.completeness, "complete")
+
+    def test_cached_and_reasoning_tokens_are_not_charged_twice(self) -> None:
+        estimate = estimate_inference_cost(
+            model="gemini-3.5-flash",
+            usage=TokenUsage(
+                input_tokens=1_000_000,
+                cached_input_tokens=400_000,
+                reasoning_tokens=1_000_000,
+                output_tokens=1_000_000,
+            ),
+        )
+        # 0.6M uncached at 0.30 + 0.4M cached at 0.075 + 1M reasoning and 1M
+        # output at the 2.50 output rate.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 5.21, places=4)
+
+    def test_unknown_cloud_model_reports_unavailable_instead_of_guessing(self) -> None:
+        estimate = estimate_inference_cost(
+            model="mistral-large:latest",
+            usage=TokenUsage(input_tokens=1000, output_tokens=200),
+        )
+        self.assertIsNone(estimate.token_cost)
+        self.assertEqual(estimate.completeness, "unavailable")
 
 
 class RetryHelperTests(unittest.TestCase):
@@ -248,7 +400,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertEqual(items[3]["type"], "function_call_output")
         self.assertIn("untrusted_tool_output", items[3]["output"])
 
-    def test_usage_parser_reads_cached_and_reasoning_details(self) -> None:
+    def test_usage_parser_separates_reasoning_from_visible_output(self) -> None:
         usage = _parse_usage(
             {
                 "input_tokens": 100,
@@ -261,10 +413,15 @@ class ResponsesAdapterTests(unittest.TestCase):
         assert usage is not None
         self.assertEqual(usage.cached_input_tokens, 20)
         self.assertEqual(usage.reasoning_tokens, 10)
+        # The Responses API nests reasoning inside output_tokens.
+        self.assertEqual(usage.output_tokens, 30)
 
     def test_forbidden_native_web_search_tools_are_rejected(self) -> None:
         with self.assertRaises(ValueError):
             assert_no_forbidden_native_tools([{"type": "web_search"}])
+
+    def test_apex_function_tool_named_web_search_is_allowed(self) -> None:
+        assert_no_forbidden_native_tools([{"type": "function", "name": "web_search"}])
 
     def test_descriptor_to_responses_tool_is_flat_function_schema(self) -> None:
         tool = descriptor_to_responses_tool(
@@ -297,7 +454,7 @@ class ResponsesAdapterTests(unittest.TestCase):
                 "content": [{"type": "output_text", "text": "Hello from OpenAI"}],
             }
         ]
-        mock_response.model = "gpt-4.1-mini"
+        mock_response.model = "gpt-5.6"
         mock_response.usage = {
             "input_tokens": 12,
             "output_tokens": 4,
@@ -314,8 +471,59 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertFalse(kwargs["store"])
         self.assertNotIn("previous_response_id", kwargs)
         self.assertNotIn("tools", kwargs)
+        self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
         self.assertEqual(result.message.content, "Hello from OpenAI")
-        self.assertEqual(result.resolved_model, "gpt-4.1-mini")
+        self.assertEqual(result.resolved_model, "gpt-5.6")
+
+    @patch("core.agent.providers.responses_api.OpenAI")
+    def test_non_reasoning_profile_omits_reasoning_request_fields(
+        self, mock_openai_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.output = []
+        mock_response.model = "grok-4"
+        mock_response.usage = None
+        mock_client.responses.create.return_value = mock_response
+
+        XAIProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            XAI_INTERNAL_PROFILES["xai_default"],
+        )
+        kwargs = mock_client.responses.create.call_args.kwargs
+        self.assertNotIn("reasoning", kwargs)
+        self.assertNotIn("include", kwargs)
+
+    @patch("core.agent.providers.responses_api.OpenAI")
+    def test_hosted_tool_events_carry_attributed_durations(
+        self, mock_openai_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.output = [
+            {"type": "x_search_call", "status": "completed"},
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "Done"}],
+            },
+        ]
+        mock_response.model = "grok-4"
+        mock_response.usage = None
+        mock_client.responses.create.return_value = mock_response
+
+        result = XAIProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            XAI_INTERNAL_PROFILES["xai_default"],
+        )
+        self.assertEqual(len(result.provider_tool_events), 1)
+        event = result.provider_tool_events[0]
+        self.assertEqual(event.name, "x_search")
+        self.assertEqual(event.status, "ok")
+        self.assertIsNotNone(event.duration_ms)
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_xai_provider_uses_xai_base_url(self, mock_openai_cls: MagicMock) -> None:

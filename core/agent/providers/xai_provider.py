@@ -22,7 +22,8 @@ XAI_INTERNAL_PROFILES: dict[str, ResponsesModelProfile] = {
         max_tool_turns=4,
         max_tool_calls=6,
         system_instruction="You are an APEX assistant.",
-        reasoning_effort="medium",
+        # Grok 4 exposes no reasoning-effort control.
+        reasoning_effort=None,
     ),
 }
 

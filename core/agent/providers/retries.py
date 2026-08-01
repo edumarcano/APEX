@@ -31,12 +31,10 @@ def call_with_bounded_retries(
     if max_attempts < 1:
         raise ValueError("max_attempts must be >= 1")
 
-    last_error: BaseException | None = None
     for attempt in range(max_attempts):
         try:
             return operation(), attempt
-        except BaseException as exc:
-            last_error = exc
+        except Exception as exc:
             if attempt >= max_attempts - 1 or not is_retryable(exc):
                 raise
             delay = (
@@ -54,8 +52,7 @@ def call_with_bounded_retries(
             )
             time.sleep(delay)
 
-    assert last_error is not None
-    raise last_error
+    raise RuntimeError(f"{log_label} retry loop exited without a result.")
 
 
 def _default_wait_seconds(attempt: int) -> float:

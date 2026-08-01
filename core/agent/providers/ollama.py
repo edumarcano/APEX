@@ -9,7 +9,7 @@ from requests.exceptions import RequestException
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderTurnResult
+from core.agent.providers.contract import ProviderTurnResult, merge_token_usage
 from core.agent.providers.ollama_lifecycle import (
     get_http_session,
     get_keep_alive_duration,
@@ -511,24 +511,8 @@ class OllamaProvider:
                     peak_prompt_tokens or 0,
                     data["prompt_eval_count"],
                 )
-            retry_usage = _parse_ollama_usage(data)
-            if usage is None:
-                usage = retry_usage
-            elif retry_usage is not None:
-                usage = TokenUsage(
-                    input_tokens=max(
-                        usage.input_tokens or 0, retry_usage.input_tokens or 0
-                    )
-                    or None,
-                    output_tokens=(
-                        (usage.output_tokens or 0) + (retry_usage.output_tokens or 0)
-                    )
-                    or None,
-                    total_tokens=(
-                        (usage.total_tokens or 0) + (retry_usage.total_tokens or 0)
-                    )
-                    or None,
-                )
+            # Both posts evaluated a prompt, so the turn's cost is their sum.
+            usage = merge_token_usage(usage, _parse_ollama_usage(data))
             message = _extract_message(data)
 
         provider_ms = round((time.perf_counter() - started) * 1000, 2)

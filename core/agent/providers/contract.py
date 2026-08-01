@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,14 @@ class ProviderToolEvent(BaseModel):
     name: str
     origin: Literal["provider"] = "provider"
     status: Literal["ok", "error", "unknown"] = "unknown"
-    duration_ms: float | None = Field(default=None, ge=0)
+    duration_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Wall-clock duration attributed to this hosted call. Providers that "
+            "do not report per-call timing share the measured turn duration."
+        ),
+    )
     billable_units: int | None = Field(
         default=None,
         ge=0,
@@ -53,7 +60,10 @@ class ProviderTurnResult(BaseModel):
     retry_count: int = Field(
         default=0,
         ge=0,
-        description="Bounded provider retries consumed before success or final failure.",
+        description=(
+            "Bounded re-attempts consumed inside this turn, covering transport "
+            "retries and local recovery re-posts."
+        ),
     )
     estimated_prompt_tokens: int | None = Field(
         default=None,
@@ -67,7 +77,6 @@ class ProviderTurnResult(BaseModel):
     )
 
 
-@runtime_checkable
 class ProviderProfile(Protocol):
     """Shared profile surface required by the agent loop and providers."""
 
@@ -103,21 +112,17 @@ def merge_token_usage(
         output_tokens=_sum(left.output_tokens, right.output_tokens),
         total_tokens=_sum(left.total_tokens, right.total_tokens),
     )
-    if (
-        merged.total_tokens is None
-        and any(
-            value is not None
-            for value in (
-                merged.input_tokens,
-                merged.cached_input_tokens,
-                merged.reasoning_tokens,
-                merged.output_tokens,
-            )
+    if merged.total_tokens is None and any(
+        value is not None
+        for value in (
+            merged.input_tokens,
+            merged.reasoning_tokens,
+            merged.output_tokens,
         )
     ):
+        # Cached tokens are a subset of input_tokens and must not be added again.
         merged.total_tokens = (
             (merged.input_tokens or 0)
-            + (merged.cached_input_tokens or 0)
             + (merged.reasoning_tokens or 0)
             + (merged.output_tokens or 0)
         )

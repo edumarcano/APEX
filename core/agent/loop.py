@@ -14,10 +14,12 @@ from core.agent.local_commands import ResolvedLocalCommand, resolve_local_comman
 from core.agent.pricing import estimate_inference_cost
 from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
 from core.agent.providers.contract import (
+    InferenceProvider,
     ProviderProfile,
     ProviderToolEvent,
     ProviderTurnResult,
     merge_token_usage,
+    resolve_inference_provider,
 )
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
@@ -116,6 +118,11 @@ def run_agent_loop(
     history_messages_dropped = 0
     aggregated_usage: TokenUsage | None = None
     resolved_model: str | None = profile.api_model
+    inference_provider: InferenceProvider | None
+    try:
+        inference_provider = resolve_inference_provider(profile)
+    except TypeError:
+        inference_provider = None
     provider_ms_total = 0.0
     apex_tool_ms_total = 0.0
     started_at = time.perf_counter()
@@ -144,6 +151,7 @@ def run_agent_loop(
             configured_model=profile.api_model,
             usage=aggregated_usage,
             hosted_tool_events=provider_tool_events,
+            provider=inference_provider,
         )
         return AgentQueryResponse(
             answer=answer,

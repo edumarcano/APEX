@@ -242,14 +242,23 @@ def _parse_usage(raw_usage: Any) -> TokenUsage | None:
     if isinstance(output_details, dict):
         reasoning = output_details.get("reasoning_tokens")
 
-    if all(value is None for value in (input_tokens, output_tokens, total_tokens, cached, reasoning)):
+    if all(
+        value is None
+        for value in (input_tokens, output_tokens, total_tokens, cached, reasoning)
+    ):
         return None
+
+    visible_output = output_tokens if isinstance(output_tokens, int) else None
+    if visible_output is not None and isinstance(reasoning, int):
+        # The Responses API nests reasoning inside output_tokens; TokenUsage
+        # keeps them separate so cost is not charged twice.
+        visible_output = max(visible_output - reasoning, 0)
 
     return TokenUsage(
         input_tokens=input_tokens if isinstance(input_tokens, int) else None,
         cached_input_tokens=cached if isinstance(cached, int) else None,
         reasoning_tokens=reasoning if isinstance(reasoning, int) else None,
-        output_tokens=output_tokens if isinstance(output_tokens, int) else None,
+        output_tokens=visible_output,
         total_tokens=total_tokens if isinstance(total_tokens, int) else None,
     )
 
@@ -315,14 +324,28 @@ def _extract_provider_tool_events(
     return events
 
 
+def _attribute_hosted_durations(
+    events: list[ProviderToolEvent], provider_ms: float
+) -> None:
+    """Share the measured turn duration across hosted calls.
+
+    The Responses API reports no per-call timing, so an even share of the
+    turn's wall clock is the only measured value available.
+    """
+    if not events:
+        return
+    share = round(provider_ms / len(events), 2)
+    for event in events:
+        event.duration_ms = share
+
+
 def assert_no_forbidden_native_tools(tools: list[dict[str, Any]]) -> None:
     """Reject accidental attachment of provider-native web search tools."""
     for tool in tools:
         tool_type = str(tool.get("type") or "").lower()
-        tool_name = str(tool.get("name") or "").lower()
-        if tool_type in _FORBIDDEN_NATIVE_TOOLS or tool_name in _FORBIDDEN_NATIVE_TOOLS:
+        if tool_type in _FORBIDDEN_NATIVE_TOOLS:
             raise ValueError(
-                f"Native web-search tool {tool_type or tool_name!r} is not permitted "
+                f"Native web-search tool {tool_type!r} is not permitted "
                 "on APEX Responses adapters."
             )
 
@@ -366,12 +389,14 @@ class ResponsesApiProvider:
             "input": input_items,
             "instructions": system_instruction,
             "store": False,
-            "include": ["reasoning.encrypted_content"],
         }
         if request_tools:
             request["tools"] = request_tools
         if profile.reasoning_effort:
+            # Only reasoning models accept these fields; sending them to a
+            # non-reasoning model is rejected by the API.
             request["reasoning"] = {"effort": profile.reasoning_effort}
+            request["include"] = ["reasoning.encrypted_content"]
 
         def _create() -> Any:
             return self.client.responses.create(**request)
@@ -398,6 +423,7 @@ class ResponsesApiProvider:
         usage = _parse_usage(getattr(response, "usage", None))
         citations = _extract_citations(serialized_items)
         provider_tool_events = _extract_provider_tool_events(serialized_items)
+        _attribute_hosted_durations(provider_tool_events, provider_ms)
 
         return ProviderTurnResult(
             message=message,
