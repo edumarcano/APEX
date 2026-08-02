@@ -9,7 +9,7 @@ from google.genai.errors import APIError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
-from core.agent.pricing import PRICING_VERSION, estimate_inference_cost
+from core.agent.pricing import PRICING_VERSION, _MODEL_RATES, estimate_inference_cost
 from core.agent.profiles import PROFILE_SPECS, build_concrete_profile, resolve_effort
 from core.agent.providers.contract import (
     ProviderToolEvent,
@@ -260,6 +260,15 @@ class OllamaContractTests(unittest.TestCase):
 
 
 class PricingRegistryTests(unittest.TestCase):
+    def test_paid_model_rates_match_the_active_paid_cloud_profiles(self) -> None:
+        paid_profile_models = {
+            spec.api_model
+            for spec in PROFILE_SPECS.values()
+            if spec.mode == "cloud" and spec.key != "acinonyx"
+        }
+
+        self.assertEqual(set(_MODEL_RATES), paid_profile_models)
+
     def test_luna_uses_the_configured_august_rates(self) -> None:
         estimate = estimate_inference_cost(
             model="gpt-5.6-luna",
@@ -275,14 +284,14 @@ class PricingRegistryTests(unittest.TestCase):
 
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(
-            model="gemini-3.5-flash",
+            model="gemini-3.6-flash",
             usage=TokenUsage(input_tokens=1_000_000, output_tokens=1_000_000),
             hosted_tool_events=[
                 ProviderToolEvent(name="google_search", status="ok", billable_units=2),
                 ProviderToolEvent(name="unknown_hosted", status="ok", billable_units=1),
             ],
         )
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 2.80, places=4)
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 3.50, places=4)
         self.assertAlmostEqual(estimate.hosted_tool_cost or 0.0, 0.07, places=4)
         self.assertEqual(estimate.completeness, "partial")
         self.assertEqual(estimate.pricing_version, PRICING_VERSION)
@@ -300,7 +309,7 @@ class PricingRegistryTests(unittest.TestCase):
 
     def test_cached_and_reasoning_tokens_are_not_charged_twice(self) -> None:
         estimate = estimate_inference_cost(
-            model="gemini-3.5-flash",
+            model="gemini-3.6-flash",
             usage=TokenUsage(
                 input_tokens=1_000_000,
                 cached_input_tokens=400_000,
@@ -308,9 +317,9 @@ class PricingRegistryTests(unittest.TestCase):
                 output_tokens=1_000_000,
             ),
         )
-        # 0.6M uncached at 0.30 + 0.4M cached at 0.075 + 1M reasoning and 1M
-        # output at the 2.50 output rate.
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 5.21, places=4)
+        # 0.6M uncached at 0.50 + 0.4M cached at 0.125 + 1M reasoning and 1M
+        # output at the 3.00 output rate.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 6.35, places=4)
 
     def test_unknown_cloud_model_reports_unavailable_instead_of_guessing(self) -> None:
         estimate = estimate_inference_cost(

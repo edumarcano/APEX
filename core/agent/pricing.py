@@ -37,23 +37,13 @@ class HostedToolRate:
 # reconciled against provider pricing before being changed or surfaced in the UI.
 # Keep keys lowercase.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
-    # Gemini (v1.18 roster + future sandbox)
-    "gemini-3.5-flash-lite": ModelTokenRates(0.10, 0.40, cached_input_per_million=0.025),
-    "gemini-3.5-flash": ModelTokenRates(0.30, 2.50, cached_input_per_million=0.075),
+    # Gemini
     "gemini-3.6-flash": ModelTokenRates(0.50, 3.00, cached_input_per_million=0.125),
     # OpenAI — Luna rates effective 2026-08-01.
     "gpt-5.6-luna": ModelTokenRates(0.20, 1.20, cached_input_per_million=0.020),
-    "gpt-5.4": ModelTokenRates(1.25, 10.00, cached_input_per_million=0.125),
-    "gpt-4.1": ModelTokenRates(2.00, 8.00, cached_input_per_million=0.50),
-    "gpt-4.1-mini": ModelTokenRates(0.40, 1.60, cached_input_per_million=0.10),
-    "gpt-4o": ModelTokenRates(2.50, 10.00, cached_input_per_million=1.25),
-    "gpt-4o-mini": ModelTokenRates(0.15, 0.60, cached_input_per_million=0.075),
-    # xAI placeholders for unexposed adapters / future Delphinus & Orcinus
+    # xAI
     "grok-4.3": ModelTokenRates(3.00, 15.00),
     "grok-4.5": ModelTokenRates(3.00, 15.00),
-    "grok-4": ModelTokenRates(3.00, 15.00),
-    "grok-3": ModelTokenRates(3.00, 15.00),
-    "grok-3-mini": ModelTokenRates(0.30, 0.50),
 }
 
 # Local Ollama inference is treated as zero provider cost.
@@ -63,7 +53,6 @@ _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
     "google_search": HostedToolRate(0.035),
     "google_maps": HostedToolRate(0.025),
     "x_search": HostedToolRate(0.005),
-    "web_search": HostedToolRate(0.025),
 }
 
 
