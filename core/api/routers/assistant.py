@@ -8,10 +8,16 @@ from core.agent.types import AgentQueryRequest, AgentQueryResponse, LocalCommand
 from core.api.assistant import (
     build_agent_profile_statuses,
     build_local_command_statuses,
+    load_local_model_endpoint,
     query_agent,
     unload_active_local_model_endpoint,
 )
-from core.api.models import AgentProfileStatus, LocalUnloadResponse
+from core.api.models import (
+    AgentProfileStatus,
+    LocalLoadRequest,
+    LocalLoadResponse,
+    LocalUnloadResponse,
+)
 
 router = APIRouter(tags=["assistant"])
 
@@ -56,6 +62,17 @@ def unload_local_model() -> LocalUnloadResponse:
     Returns success when no model is active or the unload completes cleanly.
     """
     return unload_active_local_model_endpoint()
+
+
+@router.post(
+    "/api/v1/local-model/load",
+    response_model=LocalLoadResponse,
+    operation_id="load_local_model_endpoint_api_v1_local_model_load_post",
+    summary="Load Local Model Endpoint",
+)
+def load_local_model(payload: LocalLoadRequest) -> LocalLoadResponse:
+    """Pre-warm a selected local profile and confirm it is resident."""
+    return load_local_model_endpoint(payload.profile)
 
 
 @router.post(

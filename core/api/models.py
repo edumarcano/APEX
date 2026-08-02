@@ -394,6 +394,22 @@ class LocalUnloadResponse(BaseModel):
     )
 
 
+class LocalLoadRequest(BaseModel):
+    profile: Literal["mus", "sorex"] = Field(
+        description="Local APEX profile to pre-warm in Ollama memory."
+    )
+
+
+class LocalLoadResponse(BaseModel):
+    status: str = Field(
+        default="success",
+        description="Outcome label for the verified local model load.",
+    )
+    profile: Literal["mus", "sorex"] = Field(
+        description="Local profile confirmed resident by Ollama.",
+    )
+
+
 class BriefingHistoryRecord(BaseModel):
     id: int
     timestamp: str

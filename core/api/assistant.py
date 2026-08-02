@@ -46,6 +46,7 @@ from core.agent.providers.ollama_lifecycle import (
     get_status_snapshot,
     is_local_execution_active,
     is_local_model_loaded,
+    is_local_model_resident,
     switch_local_model,
     try_begin_local_execution,
     unload_active_local_model,
@@ -62,6 +63,7 @@ from core.agent.types import (
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
     AgentProfileStatus,
+    LocalLoadResponse,
     LocalLoadedModelStatus,
     LocalUnloadResponse,
     ProfileAvailabilityStatus,
@@ -171,7 +173,7 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 None,
             )
             is_tracked_active = tracked_active_model == profile.api_model
-            is_active = loaded_model is not None or is_tracked_active
+            is_active = loaded_model is not None
             is_loading = loading_model == profile.api_model
             profile_status, reason = _resolve_local_profile_status(
                 profile,
@@ -201,7 +203,7 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     loading=is_loading,
                     reason=reason,
                     idle_unload_remaining_seconds=(
-                        idle_remaining if is_tracked_active else None
+                        idle_remaining if is_active and is_tracked_active else None
                     ),
                     loaded_model=(
                         LocalLoadedModelStatus(**loaded_model)
@@ -277,21 +279,93 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
             detail="Manual local model unload is disabled in system settings.",
         )
 
-    if is_local_execution_active():
+    if not try_begin_local_execution():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "A local model generation is in progress. "
+                "A local model generation or lifecycle action is in progress. "
                 "Wait for it to finish before unloading."
             ),
         )
 
-    if not unload_active_local_model():
+    try:
+        if not get_status_snapshot(force_refresh=True)["reachable"]:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Ollama daemon is unreachable; local model state cannot be verified.",
+            )
+        if not unload_active_local_model():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Active local model failed to unload from Ollama.",
+            )
+    finally:
+        end_local_execution()
+    return LocalUnloadResponse()
+
+
+def load_local_model_endpoint(profile_key: str) -> LocalLoadResponse:
+    """Pre-warm one configured local profile and verify Ollama residency."""
+    if DEMO_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local model pre-warming is unavailable in demo mode.",
+        )
+
+    if not OLLAMA_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Active local model failed to unload from Ollama.",
+            detail="Local Ollama inference is disabled in system settings.",
         )
-    return LocalUnloadResponse()
+
+    spec = PROFILE_SPECS.get(profile_key)
+    if spec is None or spec.provider != "ollama":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only configured local profiles can be pre-warmed.",
+        )
+
+    profile = build_concrete_profile(profile_key, native_effort=None)
+    assert isinstance(profile, OllamaModelProfile)
+
+    if not try_begin_local_execution():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A local model generation or lifecycle action is in progress. "
+                "Wait for it to finish before loading another model."
+            ),
+        )
+
+    try:
+        already_resident = is_local_model_resident(profile.api_model)
+        if not already_resident:
+            gate_open, gate_reason = check_resource_gate(
+                profile.ram_limit, profile.cpu_limit
+            )
+            if not gate_open and gate_reason is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Local profile blocked: {_PROFILE_STATUS_REASONS[gate_reason]}.",
+                )
+
+        if not switch_local_model(profile) or not is_local_model_resident(
+            profile.api_model
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"Local model {profile.api_model} could not be verified in Ollama. "
+                    "Ensure Ollama is reachable and configured."
+                ),
+            )
+    finally:
+        end_local_execution()
+
+    # Force a post-transition snapshot so the next profile response reflects
+    # the daemon rather than a prior polling cache.
+    get_status_snapshot(force_refresh=True)
+    return LocalLoadResponse(profile=profile_key)
 
 
 def _trim_agent_history(

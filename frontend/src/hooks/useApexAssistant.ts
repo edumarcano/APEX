@@ -17,6 +17,7 @@ import { API_ENDPOINTS } from '../lib/api'
 const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.agentQuery
 const AGENT_PROFILES_ENDPOINT = API_ENDPOINTS.agentProfiles
 const AGENT_LOCAL_UNLOAD_ENDPOINT = API_ENDPOINTS.agentLocalUnload
+const AGENT_LOCAL_LOAD_ENDPOINT = API_ENDPOINTS.agentLocalLoad
 const PROFILE_POLL_INTERVAL_MS = 4000
 const PROFILE_POLL_INTERVAL_QUERYING_MS = 1000
 
@@ -513,12 +514,14 @@ function isAcinonyxProfile(profile: AssistantProfile): boolean {
 export interface UseApexAssistantResult {
   assistantHistory: AgentMessage[]
   isAssistantQuerying: boolean
+  activeQueryProfile: AssistantProfile | null
   isAssistantOpen: boolean
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
   assistantContextUsage: LocalContextUsage | null
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
+  isLocalModelActionPending: boolean
   queryAssistant: (
     prompt: string,
     profile: AssistantProfile,
@@ -531,6 +534,7 @@ export interface UseApexAssistantResult {
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
+  loadLocalModel: (profile: Extract<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
   clearAssistantChat: (profile?: AssistantProfile) => void
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
@@ -543,6 +547,7 @@ export function useApexAssistant(
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
   const [acinonyxHistory, setAcinonyxHistory] = useState<AgentMessage[]>([])
   const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
+  const [activeQueryProfile, setActiveQueryProfile] = useState<AssistantProfile | null>(null)
   const [isAssistantOpen, setAssistantOpen] = useState(false)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
   const [assistantError, setAssistantError] = useState<string | null>(null)
@@ -550,6 +555,7 @@ export function useApexAssistant(
     useState<LocalContextUsage | null>(null)
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
+  const [isLocalModelActionPending, setIsLocalModelActionPending] = useState(false)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
   const acinonyxHistoryRef = useRef<AgentMessage[]>([])
@@ -640,6 +646,8 @@ export function useApexAssistant(
   }, [isAssistantQuerying, shouldPollProfiles, fetchProfilesStatus])
 
   const unloadLocalModel = useCallback(async (): Promise<boolean> => {
+    if (isLocalModelActionPending) return false
+    setIsLocalModelActionPending(true)
     try {
       const response = await fetch(AGENT_LOCAL_UNLOAD_ENDPOINT, {
         method: 'POST',
@@ -659,8 +667,36 @@ export function useApexAssistant(
         fetchError instanceof Error ? fetchError.message : 'Unknown unload error'
       console.warn(`[useApexAssistant] Local model unload error: ${message}`)
       return false
+    } finally {
+      setIsLocalModelActionPending(false)
     }
-  }, [fetchProfilesStatus])
+  }, [fetchProfilesStatus, isLocalModelActionPending])
+
+  const loadLocalModel = useCallback(async (
+    profile: Extract<AssistantProfile, 'mus' | 'sorex'>,
+  ): Promise<boolean> => {
+    if (isLocalModelActionPending) return false
+    setIsLocalModelActionPending(true)
+    try {
+      const response = await fetch(AGENT_LOCAL_LOAD_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile }),
+      })
+      if (!response.ok) {
+        console.warn(`[useApexAssistant] Local model load failed (${response.status}).`)
+        return false
+      }
+      await fetchProfilesStatus()
+      return true
+    } catch (fetchError) {
+      const message = fetchError instanceof Error ? fetchError.message : 'Unknown load error'
+      console.warn(`[useApexAssistant] Local model load error: ${message}`)
+      return false
+    } finally {
+      setIsLocalModelActionPending(false)
+    }
+  }, [fetchProfilesStatus, isLocalModelActionPending])
 
   const queryAssistant = useCallback(
     async (
@@ -686,6 +722,7 @@ export function useApexAssistant(
 
       isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
+      setActiveQueryProfile(profile)
       setAssistantOpen(true)
       setAssistantError(null)
 
@@ -761,6 +798,7 @@ export function useApexAssistant(
       } finally {
         isAssistantQueryingRef.current = false
         setIsAssistantQuerying(false)
+        setActiveQueryProfile(null)
         void fetchProfilesStatus()
       }
     },
@@ -791,14 +829,17 @@ export function useApexAssistant(
   return {
     assistantHistory,
     isAssistantQuerying,
+    activeQueryProfile,
     isAssistantOpen,
     assistantLatestTrace,
     assistantError,
     assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
+    isLocalModelActionPending,
     queryAssistant,
     unloadLocalModel,
+    loadLocalModel,
     clearAssistantChat,
     resetAssistantSession,
     setAssistantOpen,

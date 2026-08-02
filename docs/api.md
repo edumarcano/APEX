@@ -24,6 +24,7 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
 | GET | `/api/v1/agent/commands` | Local assistant command scopes |
 | GET | `/api/v1/agent/profiles` | Cloud/local profile availability |
+| POST | `/api/v1/local-model/load` | Pre-warm a selected local model |
 | POST | `/api/v1/local-model/unload` | Unload the active local model |
 | POST | `/api/v1/agent/local/unload` | Compatibility alias for local unload |
 | POST | `/api/v1/agent/query` | Run one assistant turn |
@@ -227,15 +228,31 @@ Returns the visible assistant profiles with description, provider, configured mo
 
 The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
-Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active resident model.
+Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
+
+### POST `/api/v1/local-model/load`
+
+Pre-warms one installed local profile before a request:
+
+```json
+{ "profile": "mus" }
+```
+
+The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after Ollama confirms the selected model through its running-model status. Demo mode rejects pre-warming without contacting Ollama.
+
+- `403` — demo mode disallows model calls.
+- `409` — a local generation or lifecycle action is active.
+- `503` — local inference is disabled, gated, unreachable, or could not be verified.
 
 ### POST `/api/v1/local-model/unload`
 
-Canonical provider-neutral manual unload route. Returns success when no model is active or unload completes.
+Canonical provider-neutral manual unload route. Returns success only when no APEX local model is resident or Ollama confirms the active model is absent after the request.
+
+It also rejects a competing lifecycle action, and reports a failed post-action verification as unavailable.
 
 - `403` — manual unload is disabled.
-- `409` — local generation is in progress.
-- `503` — the Ollama unload request failed.
+- `409` — local generation or lifecycle action is in progress.
+- `503` — the unload request or post-action Ollama verification failed.
 
 ### POST `/api/v1/agent/local/unload`
 

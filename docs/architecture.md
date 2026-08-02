@@ -141,7 +141,7 @@ Production cloud profiles receive the APEX capability registry. Brave MCP is the
 
 Local assistant queries use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
-Local queries are tool-free unless the user arms one command bundle for that request. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the profile's 4K context window and reports sanitized usage counts.
+Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the profile's 4K context window and reports sanitized usage counts.
 
 ## Capability and MCP boundary
 
@@ -163,7 +163,9 @@ Ollama profiles share one lifecycle manager:
 - An already resident target model skips the cold-load resource gate.
 - A different target unloads the previous model before warming the new one.
 - Activity resets the idle timer; the lifespan monitor unloads an idle model.
-- Manual unload is rejected while local inference is busy.
+- Manual load and unload are rejected while local inference or another lifecycle action is busy.
+- A manual load is a pre-warm; normal request routing can still load a selected model.
+- Lifecycle success is verified against Ollama's running-model state before the HUD reports it.
 
 This same lifecycle serves briefings and assistant turns, exposing contention immediately rather than hiding it behind an unbounded queue.
 

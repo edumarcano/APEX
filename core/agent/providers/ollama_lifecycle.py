@@ -34,6 +34,8 @@ _execution_lock = threading.Lock()
 
 _STATUS_CACHE_TTL_SECONDS = 10.0
 _STATUS_PROBE_TIMEOUT_SECONDS = 2.0
+_STATE_VERIFICATION_ATTEMPTS = 3
+_STATE_VERIFICATION_DELAY_SECONDS = 0.2
 _status_lock = threading.Lock()
 
 ResourceGateReason = str  # "insufficient_ram" | "cpu_overloaded"
@@ -292,6 +294,32 @@ def is_local_model_loaded(model_name: str) -> bool:
     )
 
 
+def is_local_model_resident(model_name: str) -> bool:
+    """Return whether Ollama currently reports a model resident in memory."""
+    return any(
+        _loaded_model_matches(loaded_model, model_name)
+        for loaded_model in _probe_ollama_loaded_models()
+    )
+
+
+def _invalidate_status_snapshot() -> None:
+    """Discard cached daemon state after a verified lifecycle transition."""
+    global _status_snapshot
+    with _status_lock:
+        _status_snapshot = None
+
+
+def _verify_residency(model_name: str, *, expected: bool) -> bool:
+    """Confirm a lifecycle action against Ollama with bounded rechecks."""
+    for attempt in range(_STATE_VERIFICATION_ATTEMPTS):
+        resident = is_local_model_resident(model_name)
+        if resident is expected:
+            return True
+        if attempt < _STATE_VERIFICATION_ATTEMPTS - 1:
+            time.sleep(_STATE_VERIFICATION_DELAY_SECONDS)
+    return False
+
+
 def get_status_snapshot(force_refresh: bool = False) -> OllamaStatusSnapshot:
     """
     Return daemon reachability, installed tags, and host vitals from a TTL cache.
@@ -309,7 +337,7 @@ def get_status_snapshot(force_refresh: bool = False) -> OllamaStatusSnapshot:
     with _status_lock:
         snapshot = _status_snapshot
         if snapshot is not None:
-            if is_local_execution_active():
+            if is_local_execution_active() and not force_refresh:
                 return snapshot
             age = time.monotonic() - snapshot["sampled_at"]
             if age < _STATUS_CACHE_TTL_SECONDS and not force_refresh:
@@ -397,15 +425,15 @@ def _post_unload_request(model_name: str) -> bool:
     try:
         response = _SESSION.post(url, json=payload, timeout=5.0)
         response.raise_for_status()
-        _LOGGER.info("Unloaded model %s from Ollama", model_name)
+        _LOGGER.info("Requested unload for model %s from Ollama", model_name)
         return True
     except (RequestsConnectionError, ConnectionError) as exc:
         _LOGGER.warning(
-            "Ollama unreachable while unloading %s; clearing tracker anyway: %s",
+            "Ollama unreachable while unloading %s: %s",
             model_name,
             exc,
         )
-        return True
+        return False
     except RequestException as exc:
         _LOGGER.warning("Failed to unload model %s: %s", model_name, exc)
         return False
@@ -447,9 +475,15 @@ def unload_local_model(model_name: str) -> bool:
     if not _post_unload_request(model_name):
         return False
 
+    if not _verify_residency(model_name, expected=False):
+        _LOGGER.warning("Ollama still reports %s as resident after unload", model_name)
+        return False
+
     with _model_lock:
         if _active_loaded_model == model_name:
             _active_loaded_model = None
+
+    _invalidate_status_snapshot()
 
     return True
 
@@ -562,22 +596,37 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
         _loading_model = target_model_name
 
     try:
+        if previous_model is None:
+            configured_models = {
+                configured.api_model
+                for configured in OLLAMA_MODEL_PROFILES.values()
+            }
+            previous_model = next(
+                (
+                    loaded["model"]
+                    for loaded in _probe_ollama_loaded_models()
+                    if loaded["model"] in configured_models
+                    and loaded["model"] != target_model_name
+                ),
+                None,
+            )
         if previous_model is not None:
             _LOGGER.info(
                 "Unloading %s before switching to %s",
                 previous_model,
                 target_model_name,
             )
-            if not _post_unload_request(previous_model):
+            if not unload_local_model(previous_model):
                 _LOGGER.error("Failed to unload %s; aborting switch", previous_model)
                 with _model_lock:
                     _active_loaded_model = previous_model
                 return False
 
-        if is_local_model_loaded(target_model_name):
+        if is_local_model_resident(target_model_name):
             with _model_lock:
                 _active_loaded_model = target_model_name
                 _last_activity_time = time.monotonic()
+            _invalidate_status_snapshot()
             _LOGGER.info("Model %s already resident in Ollama", target_model_name)
             return True
 
@@ -613,9 +662,17 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
             _LOGGER.error("Failed to load model %s: %s", target_model_name, exc)
             return False
 
+        if not _verify_residency(target_model_name, expected=True):
+            _LOGGER.error(
+                "Ollama did not report %s as resident after warmup", target_model_name
+            )
+            return False
+
         with _model_lock:
             _active_loaded_model = target_model_name
             _last_activity_time = time.monotonic()
+
+        _invalidate_status_snapshot()
 
         return True
     finally:

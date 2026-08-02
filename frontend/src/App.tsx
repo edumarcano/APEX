@@ -36,6 +36,7 @@ import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
+import { useLocalCommands } from './hooks/useLocalCommands'
 import { useMarketData } from './hooks/useMarketData'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
@@ -148,12 +149,12 @@ export default function App(): ReactElement {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'overview' | 'cortex'>('overview')
   const [cloudProfile, setCloudProfile] = useState<Exclude<AssistantProfile, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
-  const [localProfile, setLocalProfile] = useState<'sorex' | 'mus'>('mus')
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [neofelisGoogleSearchEnabled, setNeofelisGoogleSearchEnabled] = useState(true)
   const [neofelisGoogleMapsEnabled, setNeofelisGoogleMapsEnabled] = useState(true)
   const [delphinusXSearchEnabled, setDelphinusXSearchEnabled] = useState(true)
   const [orcinusXSearchEnabled, setOrcinusXSearchEnabled] = useState(true)
+  const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
   )
@@ -188,15 +189,30 @@ export default function App(): ReactElement {
   const {
     assistantHistory,
     isAssistantQuerying,
+    activeQueryProfile,
     assistantLatestTrace,
     assistantError,
     assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant,
+    isLocalModelActionPending,
+    loadLocalModel,
     unloadLocalModel,
     clearAssistantChat,
   } = useApexAssistant(true, agentProfile)
+  const isLocalAgentProfile = agentProfile === 'sorex' || agentProfile === 'mus'
+  const { commands: localCommands } = useLocalCommands(isLocalAgentProfile)
+
+  useEffect(() => {
+    const armedScopeIsUnavailable = armedLocalToolScope && (
+      !isLocalAgentProfile ||
+      !localCommands.some((command) => command.key === armedLocalToolScope && command.available)
+    )
+    if (!armedScopeIsUnavailable) return
+    const timeoutId = window.setTimeout(() => setArmedLocalToolScope(null), 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [armedLocalToolScope, isLocalAgentProfile, localCommands])
 
   const assistantSelectionHydratedRef = useRef(false)
 
@@ -209,9 +225,7 @@ export default function App(): ReactElement {
     )
     if (selection) {
       setAgentProfile(selection.profile)
-      if (selection.profile === 'sorex' || selection.profile === 'mus') {
-        setLocalProfile(selection.profile)
-      } else if (selection.profile !== 'acinonyx') {
+      if (selection.profile !== 'sorex' && selection.profile !== 'mus' && selection.profile !== 'acinonyx') {
         setCloudProfile(selection.profile)
       }
       if (selection.effort) {
@@ -255,9 +269,7 @@ export default function App(): ReactElement {
         marketEnabled: response.settings.features.market,
       })
       setAgentProfile(selection.profile)
-      if (selection.profile === 'sorex' || selection.profile === 'mus') {
-        setLocalProfile(selection.profile)
-      } else if (selection.profile !== 'acinonyx') {
+      if (selection.profile !== 'sorex' && selection.profile !== 'mus' && selection.profile !== 'acinonyx') {
         setCloudProfile(selection.profile)
       }
       if (selection.effort) {
@@ -290,9 +302,6 @@ export default function App(): ReactElement {
         const values = assistant as Record<string, unknown>
         if (values.cloud_profile === 'panthera' || values.cloud_profile === 'neofelis' || values.cloud_profile === 'delphinus' || values.cloud_profile === 'orcinus') {
           setCloudProfile(values.cloud_profile)
-        }
-        if (values.local_profile === 'sorex' || values.local_profile === 'mus') {
-          setLocalProfile(values.local_profile)
         }
         if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
           setCloudEffort(values.cloud_effort)
@@ -327,6 +336,11 @@ export default function App(): ReactElement {
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
+  const localLifecycleBusy =
+    activeQueryProfile === 'sorex' ||
+    activeQueryProfile === 'mus' ||
+    liveSynthesis?.phase === 'loading' ||
+    liveSynthesis?.phase === 'generating'
 
   const activeStep = pipelineState?.step ?? null
   const isBriefingRunning = briefing.status === 'loading'
@@ -787,26 +801,20 @@ export default function App(): ReactElement {
 
   const handleProfileChange = useCallback((profile: AssistantProfile): void => {
     setAgentProfile(profile)
+    if (profile !== 'sorex' && profile !== 'mus') {
+      setArmedLocalToolScope(null)
+    }
     if (profile === 'acinonyx') {
       setCloudEffort('focused')
       return
     }
     if (profile === 'sorex' || profile === 'mus') {
-      setLocalProfile(profile)
       void persistAssistantSettings({ mode: 'local', local_profile: profile })
       return
     }
     setCloudProfile(profile)
     void persistAssistantSettings({ mode: 'cloud', cloud_profile: profile, cloud_effort: cloudEffort })
   }, [cloudEffort, persistAssistantSettings])
-
-  const handleModeChange = useCallback((mode: 'cloud' | 'local'): void => {
-    if (mode === 'local') {
-      handleProfileChange(localProfile)
-      return
-    }
-    handleProfileChange(devModeActive ? 'acinonyx' : cloudProfile)
-  }, [cloudProfile, devModeActive, handleProfileChange, localProfile])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     if (agentProfile === 'acinonyx') return
@@ -837,6 +845,7 @@ export default function App(): ReactElement {
   const handleNewCortexSession = useCallback((): void => {
     clearAssistantChat(agentProfile)
     setSnapshotAttached(false)
+    setArmedLocalToolScope(null)
     setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
   }, [agentProfile, clearAssistantChat])
 
@@ -1176,7 +1185,7 @@ export default function App(): ReactElement {
                     <LocalModelControl
                       profile={activeLocalModel}
                       loadingProfile={loadingLocalProfile}
-                      busy={isAssistantQuerying || liveSynthesis?.phase === 'generating'}
+                      busy={localLifecycleBusy}
                       onUnload={unloadLocalModel}
                     />
                     <div
@@ -1403,12 +1412,18 @@ export default function App(): ReactElement {
             latestTrace={assistantLatestTrace}
             error={assistantError}
             contextUsage={assistantContextUsage}
+            commands={localCommands}
+            armedToolScope={armedLocalToolScope}
+            onArmedToolScopeChange={setArmedLocalToolScope}
             isQuerying={isAssistantQuerying}
+            lifecycleBusy={localLifecycleBusy}
+            lifecycleActionPending={isLocalModelActionPending}
+            onLoadLocalModel={loadLocalModel}
+            onUnloadLocalModel={unloadLocalModel}
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
             onProfileChange={handleProfileChange}
-            onModeChange={handleModeChange}
             onEffortChange={handleEffortChange}
             onGoogleSearchChange={handleGoogleSearchChange}
             neofelisGoogleSearchEnabled={neofelisGoogleSearchEnabled}

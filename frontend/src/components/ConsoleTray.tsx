@@ -24,7 +24,6 @@ import {
   type ActiveReminder,
   type AgentProfileStatus,
   type AssistantProfile,
-  type LocalContextUsage,
   type LocalToolScope,
 } from '../types/telemetry'
 
@@ -144,7 +143,6 @@ interface ConsoleTrayProps {
   isAssistantQuerying: boolean
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
-  assistantContextUsage: LocalContextUsage | null
   profilesStatus: AgentProfileStatus[]
   queryAssistant: (
     prompt: string,
@@ -537,7 +535,6 @@ export function ConsoleTray({
   isAssistantQuerying,
   assistantLatestTrace,
   assistantError,
-  assistantContextUsage,
   profilesStatus,
   queryAssistant,
   clearAssistantChat,
@@ -752,8 +749,6 @@ export function ConsoleTray({
               profilesStatus={profilesStatus}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
-              showCommands={isExpanded}
-              contextUsage={assistantContextUsage}
               integrated
             />
           </footer>
@@ -854,8 +849,6 @@ export function ConsoleTray({
               profilesStatus={profilesStatus}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
-              showCommands={isExpanded}
-              contextUsage={assistantContextUsage}
               integrated
             />
           </footer>

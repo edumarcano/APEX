@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from core.agent.types import AgentQueryResponse
 from core.api import app
-from core.api.models import AgentProfileStatus, LocalUnloadResponse
+from core.api.models import AgentProfileStatus, LocalLoadResponse, LocalUnloadResponse
 
 
 class ApiPackageCompatibilityTests(unittest.TestCase):
@@ -63,6 +63,10 @@ class ApiPackageCompatibilityTests(unittest.TestCase):
         self.assertEqual(
             paths["/api/v1/local-model/unload"]["post"]["operationId"],
             "unload_active_local_model_endpoint_api_v1_local_model_unload_post",
+        )
+        self.assertEqual(
+            paths["/api/v1/local-model/load"]["post"]["operationId"],
+            "load_local_model_endpoint_api_v1_local_model_load_post",
         )
 
 
@@ -192,6 +196,15 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(first.json(), {"status": "success"})
         self.assertEqual(second.json(), {"status": "success"})
         self.assertEqual(unload.call_count, 2)
+
+        with mock.patch(
+            "core.api.routers.assistant.load_local_model_endpoint",
+            return_value=LocalLoadResponse(profile="mus"),
+        ) as load:
+            response = self.client.post("/api/v1/local-model/load", json={"profile": "mus"})
+
+        self.assertEqual(response.json(), {"status": "success", "profile": "mus"})
+        load.assert_called_once_with("mus")
 
 
 if __name__ == "__main__":
