@@ -10,6 +10,7 @@ from core.agent.providers.contract import InferenceProvider
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.responses_api import ResponsesModelProfile
+from core.agent.tool_policies import hosted_tools_for_profile
 from core.config import (
     DEFAULT_AGENT_SYSTEM_PROMPT,
     DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
@@ -67,6 +68,8 @@ class ProfileSpec:
 
     key: ProfileKey
     display_name: str
+    description: str
+    identity_instruction: str
     profile_version: str
     provider: InferenceProvider
     mode: AssistantMode
@@ -85,6 +88,11 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "acinonyx": ProfileSpec(
         key="acinonyx",
         display_name="Apex Acinonyx",
+        description="Development sandbox with isolated history and non-personal tools.",
+        identity_instruction=(
+            "You are Apex Acinonyx, an Apex Intelligence Profile powered by "
+            "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
+        ),
         profile_version="2.0",
         provider="gemini",
         mode="cloud",
@@ -100,6 +108,13 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "panthera": ProfileSpec(
         key="panthera",
         display_name="Apex Panthera",
+        description=(
+            "Balanced general-purpose cloud intelligence powered by GPT-5.6 Luna."
+        ),
+        identity_instruction=(
+            "You are Apex Panthera, an Apex Intelligence Profile powered by "
+            "GPT-5.6 Luna."
+        ),
         profile_version="2.0",
         provider="openai",
         mode="cloud",
@@ -114,6 +129,13 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "neofelis": ProfileSpec(
         key="neofelis",
         display_name="Apex Neofelis",
+        description=(
+            "Fast Gemini profile with optional Google Search and Google Maps grounding."
+        ),
+        identity_instruction=(
+            "You are Apex Neofelis, an Apex Intelligence Profile powered by "
+            "Gemini 3.6 Flash."
+        ),
         profile_version="2.0",
         provider="gemini",
         mode="cloud",
@@ -128,6 +150,10 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "delphinus": ProfileSpec(
         key="delphinus",
         display_name="Apex Delphinus",
+        description="Balanced xAI profile with live X Search grounding.",
+        identity_instruction=(
+            "You are Apex Delphinus, an Apex Intelligence Profile powered by Grok 4.3."
+        ),
         profile_version="2.0",
         provider="xai",
         mode="cloud",
@@ -142,6 +168,10 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "orcinus": ProfileSpec(
         key="orcinus",
         display_name="Apex Orcinus",
+        description="Advanced xAI profile for extended reasoning with X Search.",
+        identity_instruction=(
+            "You are Apex Orcinus, an Apex Intelligence Profile powered by Grok 4.5."
+        ),
         profile_version="2.0",
         provider="xai",
         mode="cloud",
@@ -156,6 +186,11 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "sorex": ProfileSpec(
         key="sorex",
         display_name="Apex Sorex",
+        description="Lightweight local profile for constrained systems.",
+        identity_instruction=(
+            "You are Apex Sorex, an Apex Intelligence Profile powered by "
+            "Qwen3 1.7B through Ollama."
+        ),
         profile_version="2.0",
         provider="ollama",
         mode="local",
@@ -171,6 +206,11 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
     "mus": ProfileSpec(
         key="mus",
         display_name="Apex Mus",
+        description="Balanced local profile for private on-device work.",
+        identity_instruction=(
+            "You are Apex Mus, an Apex Intelligence Profile powered by "
+            "Qwen3 4B Instruct through Ollama."
+        ),
         profile_version="2.0",
         provider="ollama",
         mode="local",
@@ -241,6 +281,13 @@ def profile_has_credentials(profile_key: str) -> bool:
     return bool(os.getenv(spec.credential_env))
 
 
+def compose_profile_system_instruction(profile_key: str, base_instruction: str) -> str:
+    """Prefix one immutable profile identity to the effective system prompt."""
+    identity = PROFILE_SPECS[profile_key].identity_instruction
+    normalized_base = base_instruction.strip()
+    return f"{identity}\n\n{normalized_base}" if normalized_base else identity
+
+
 def credential_missing_message(profile_key: str) -> str:
     spec = PROFILE_SPECS[profile_key]
     env_key = spec.credential_env or "API_KEY"
@@ -261,6 +308,7 @@ def build_concrete_profile(
     profile_key: str,
     *,
     native_effort: NativeEffort | None,
+    neofelis_google_search_enabled: bool = True,
 ) -> AgentModelProfile:
     """Materialize a provider-specific profile with effort applied."""
     spec = PROFILE_SPECS[profile_key]
@@ -275,7 +323,13 @@ def build_concrete_profile(
             thinking_level=thinking,
             max_tool_turns=spec.max_tool_turns,
             max_tool_calls=spec.max_tool_calls,
-            system_instruction=DEFAULT_AGENT_SYSTEM_PROMPT,
+            system_instruction=compose_profile_system_instruction(
+                profile_key, DEFAULT_AGENT_SYSTEM_PROMPT
+            ),
+            hosted_tools=hosted_tools_for_profile(
+                profile_key,
+                neofelis_google_search_enabled=neofelis_google_search_enabled,
+            ),
         )
     if spec.provider == "ollama":
         ram_limit = SOREX_RAM_LIMIT if profile_key == "sorex" else MUS_RAM_LIMIT
@@ -306,7 +360,9 @@ def build_concrete_profile(
             generation_timeout=generation_timeout,
             ram_limit=ram_limit,
             cpu_limit=cpu_limit,
-            system_instruction=DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
+            system_instruction=compose_profile_system_instruction(
+                profile_key, DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
+            ),
         )
     return ResponsesModelProfile(
         provider=spec.provider,  # type: ignore[arg-type]
@@ -315,8 +371,14 @@ def build_concrete_profile(
         api_model=spec.api_model,
         max_tool_turns=spec.max_tool_turns,
         max_tool_calls=spec.max_tool_calls,
-        system_instruction=DEFAULT_AGENT_SYSTEM_PROMPT,
+        system_instruction=compose_profile_system_instruction(
+            profile_key, DEFAULT_AGENT_SYSTEM_PROMPT
+        ),
         reasoning_effort=native_effort,
+        hosted_tools=hosted_tools_for_profile(
+            profile_key,
+            neofelis_google_search_enabled=neofelis_google_search_enabled,
+        ),
     )
 
 
@@ -343,7 +405,7 @@ def build_profile_used_metadata(
     }
 
 
-def is_acinonyx_fail_closed(profile_key: str) -> bool:
+def is_acinonyx_sandbox(profile_key: str) -> bool:
     return profile_key == "acinonyx"
 
 

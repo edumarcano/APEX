@@ -47,7 +47,7 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 ### Development
 
-`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and production run logging. Gmail and Calendar can still make live OAuth requests, but returned personal content is masked before display or model use.
+`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and production run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or Acinonyx context use.
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
@@ -86,13 +86,15 @@ Football telemetry keeps each configured team's next fixture. Briefing synthesis
 
 | Profile | Provider and model | Role |
 |---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only, fail-closed sandbox; receives no personal tools, HUD context, or conversation history |
+| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
 | Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud profile |
-| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Gemini cloud profile; its optional native Google Search preference is stored in Runtime Settings |
-| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud profile |
-| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud profile |
+| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Google Maps grounding plus persisted optional Google Search grounding |
+| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud profile with X Search |
+| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud profile with X Search |
 
 Cloud profiles run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. Cloud profiles support Light, Focused, and Extended effort except where a profile's own default applies.
+
+Brave MCP is the general web-search capability for every cloud profile when connected. Provider-hosted general web search is disabled for OpenAI and xAI. Neofelis's Google Search toggle does not affect its always-on Google Maps grounding.
 
 The `acinonyx` profile uses `gemini-3.5-flash-lite` and remains hidden outside development mode.
 

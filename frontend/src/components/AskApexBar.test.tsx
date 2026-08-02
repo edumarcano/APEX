@@ -8,6 +8,9 @@ import { AskApexBar } from './AskApexBar'
 const localProfile: AgentProfileStatus = {
   key: 'mus',
   display_name: 'Apex Mus',
+  description: 'Balanced local profile.',
+  configured_model: 'qwen3:4b-instruct',
+  native_tools: {},
   provider: 'ollama',
   version: '2.0',
   mode: 'local',

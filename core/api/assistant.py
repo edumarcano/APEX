@@ -14,18 +14,25 @@ from core.agent.local_commands import (
     resolve_local_command,
 )
 from core.agent.loop import build_agent_failure_details, run_agent_loop
+from core.agent.capabilities import CapabilityDescriptor, list_assistant_capabilities
 from core.agent.profiles import (
     PROFILE_SPECS,
     AgentModelProfile,
     build_concrete_profile,
     build_profile_used_metadata,
+    compose_profile_system_instruction,
     credential_missing_error,
     credential_missing_message,
-    is_acinonyx_fail_closed,
+    is_acinonyx_sandbox,
     is_profile_visible,
     profile_has_credentials,
     resolve_effort,
     runtime_profile_order,
+)
+from core.agent.sandbox_context import get_masked_briefing
+from core.agent.tool_policies import (
+    filter_profile_capabilities,
+    hosted_tools_for_profile,
 )
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
@@ -130,6 +137,7 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
     loading_model = get_loading_model()
     idle_remaining = get_idle_unload_remaining_seconds()
     dev_mode = is_dev_mode()
+    assistant_settings = get_settings_store().get_snapshot().assistant
 
     ollama_reachable = False
     installed_tags: list[str] = []
@@ -178,8 +186,11 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 AgentProfileStatus(
                     key=key,
                     display_name=spec.display_name,
+                    description=spec.description,
                     provider="ollama",
                     version=spec.profile_version,
+                    configured_model=spec.api_model,
+                    native_tools={},
                     mode=spec.mode,
                     tier=spec.tier,
                     stability=spec.stability,
@@ -202,12 +213,29 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             continue
 
         cloud_status, cloud_reason = _resolve_cloud_profile_status(key)
+        hosted_tools = hosted_tools_for_profile(
+            key,
+            neofelis_google_search_enabled=(
+                assistant_settings.neofelis_google_search_enabled
+            ),
+        )
+        known_native_tools = {
+            "neofelis": ("google_search", "google_maps"),
+            "delphinus": ("x_search",),
+            "orcinus": ("x_search",),
+        }.get(key, ())
         profiles.append(
             AgentProfileStatus(
                 key=key,
                 display_name=spec.display_name,
+                description=spec.description,
                 provider=spec.provider,
                 version=spec.profile_version,
+                configured_model=spec.api_model,
+                native_tools={
+                    tool_name: tool_name in hosted_tools
+                    for tool_name in known_native_tools
+                },
                 mode=spec.mode,
                 tier=spec.tier,
                 stability=spec.stability,
@@ -276,7 +304,9 @@ def _trim_agent_history(
     return trimmed
 
 
-def _build_hud_context(payload: AgentQueryRequest) -> str:
+def _build_hud_context(
+    payload: AgentQueryRequest, *, profile_key: str = "panthera"
+) -> str:
     """
     Build optional HUD context from explicit identifiers only.
 
@@ -285,7 +315,24 @@ def _build_hud_context(payload: AgentQueryRequest) -> str:
     """
     sections: list[str] = []
 
-    if payload.briefing_id is not None:
+    if profile_key == "acinonyx":
+        if payload.snapshot_id is None:
+            return ""
+        masked = get_masked_briefing(payload.snapshot_id)
+        if masked is None:
+            return ""
+        insight_text = ", ".join(
+            sanitize_fact(item, 160)
+            for item in masked.insights[:5]
+            if sanitize_fact(item, 160)
+        )
+        sections.append(
+            "CURRENT MASKED DEV BRIEFING:\n"
+            f'- Briefing Prose: "{sanitize_fact(masked.briefing, 800)}"\n'
+            f"- Active Summary Insights: {insight_text if insight_text else 'None'}"
+        )
+
+    if profile_key != "acinonyx" and payload.briefing_id is not None:
         record = database.fetch_briefing_by_id(payload.briefing_id)
         if record is not None:
             insights_list = record["digest"].get("insights", [])
@@ -303,7 +350,7 @@ def _build_hud_context(payload: AgentQueryRequest) -> str:
                 f"{insight_text if insight_text else 'None'}"
             )
 
-    if payload.snapshot_id is not None:
+    if profile_key != "acinonyx" and payload.snapshot_id is not None:
         from core.telemetry.service import get_telemetry_service
 
         snapshot = get_telemetry_service().latest()
@@ -358,10 +405,15 @@ def _execute_agent_turn(
     resolved_local_command: ResolvedLocalCommand | None = None,
     disable_tools: bool = False,
     disable_hud_context: bool = False,
+    cloud_tools: list[CapabilityDescriptor] | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
-        hud_context = "" if disable_hud_context else _build_hud_context(payload)
+        hud_context = (
+            ""
+            if disable_hud_context
+            else _build_hud_context(payload, profile_key=profile_key)
+        )
 
         if isinstance(profile, OllamaModelProfile):
             provider = OllamaProvider()
@@ -380,7 +432,11 @@ def _execute_agent_turn(
             base_prompt = config.AGENT_SYSTEM_PROMPT
             scope_instruction = ""
 
-        local_system_instruction = base_prompt + scope_instruction + hud_context
+        local_system_instruction = (
+            compose_profile_system_instruction(profile_key, base_prompt)
+            + scope_instruction
+            + hud_context
+        )
 
         response = run_agent_loop(
             payload,
@@ -389,6 +445,7 @@ def _execute_agent_turn(
             system_instruction_override=local_system_instruction,
             resolved_local_command=resolved_local_command,
             disable_cloud_tools=disable_tools,
+            cloud_tools=cloud_tools,
         )
         response.profile_used = build_profile_used_metadata(
             profile_key,
@@ -469,8 +526,15 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     resolved_apex_effort, resolved_native_effort = resolve_effort(
         profile_key, payload.effort
     )
-    profile = build_concrete_profile(profile_key, native_effort=resolved_native_effort)
-    fail_closed = is_acinonyx_fail_closed(profile_key)
+    settings = get_settings_store().get_snapshot()
+    profile = build_concrete_profile(
+        profile_key,
+        native_effort=resolved_native_effort,
+        neofelis_google_search_enabled=(
+            settings.assistant.neofelis_google_search_enabled
+        ),
+    )
+    acinonyx_sandbox = is_acinonyx_sandbox(profile_key)
 
     resolved_local_command: ResolvedLocalCommand | None = None
     if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
@@ -503,16 +567,30 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         payload.history, config.MAX_SESSION_MESSAGES
     )
 
-    if fail_closed:
-        # Fail closed: no tools, HUD context, or production conversation history.
+    if acinonyx_sandbox:
+        if payload.briefing_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Acinonyx cannot attach saved briefing history.",
+            )
+        # Keep the sandbox conversation isolated and reject arbitrary production
+        # context. Branch 3 supplies Acinonyx's explicit non-personal allowlist.
         payload = payload.model_copy(
             update={
-                "snapshot_id": None,
-                "briefing_id": None,
                 "tool_scope": None,
-                "history": [],
+                "history": (
+                    payload.history
+                    if payload.history_partition == "acinonyx"
+                    else []
+                ),
             }
         )
+    elif payload.history_partition != "production":
+        payload = payload.model_copy(update={"history": []})
+
+    cloud_tools = filter_profile_capabilities(
+        profile_key, list_assistant_capabilities()
+    )
 
     if isinstance(profile, OllamaModelProfile):
         if not OLLAMA_ENABLED:
@@ -562,8 +640,9 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 resolved_apex_effort=resolved_apex_effort,
                 resolved_native_effort=resolved_native_effort,
                 resolved_local_command=resolved_local_command,
-                disable_tools=fail_closed,
-                disable_hud_context=fail_closed,
+                disable_tools=False,
+                disable_hud_context=False,
+                cloud_tools=cloud_tools,
             )
         finally:
             end_local_execution()
@@ -581,6 +660,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         api_key=api_key,
         resolved_apex_effort=resolved_apex_effort,
         resolved_native_effort=resolved_native_effort,
-        disable_tools=fail_closed,
-        disable_hud_context=fail_closed,
+        disable_tools=False,
+        disable_hud_context=False,
+        cloud_tools=cloud_tools,
     )

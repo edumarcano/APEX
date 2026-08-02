@@ -10,14 +10,23 @@ from fastapi.testclient import TestClient
 
 from core.agent.profiles import (
     PROFILE_SPECS,
+    build_concrete_profile,
+    compose_profile_system_instruction,
     migrate_schema5_ask_apex,
     migrate_schema5_briefing,
     profile_has_credentials,
+    resolve_effort,
     resolve_assistant_selection,
     runtime_profile_order,
 )
-from core.agent.types import AgentQueryRequest
-from core.api.assistant import query_agent
+from core.agent.capabilities import CapabilityDescriptor
+from core.agent.tool_policies import (
+    filter_profile_capabilities,
+    hosted_tools_for_profile,
+)
+from core.agent.types import AgentQueryRequest, AgentQueryResponse
+from core.api.assistant import _execute_agent_turn, query_agent
+from core.api.assistant import build_agent_profile_statuses
 from core.settings.models import AssistantSettings, SETTINGS_SCHEMA_VERSION
 
 
@@ -111,6 +120,90 @@ class CredentialIsolationTests(unittest.TestCase):
             self.assertFalse(profile_has_credentials("neofelis"))
 
 
+class ProfileIdentityTests(unittest.TestCase):
+    _IDENTITIES = {
+        "acinonyx": (
+            "You are Apex Acinonyx, an Apex Intelligence Profile powered by "
+            "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
+        ),
+        "panthera": (
+            "You are Apex Panthera, an Apex Intelligence Profile powered by "
+            "GPT-5.6 Luna."
+        ),
+        "neofelis": (
+            "You are Apex Neofelis, an Apex Intelligence Profile powered by "
+            "Gemini 3.6 Flash."
+        ),
+        "delphinus": (
+            "You are Apex Delphinus, an Apex Intelligence Profile powered by Grok 4.3."
+        ),
+        "orcinus": (
+            "You are Apex Orcinus, an Apex Intelligence Profile powered by Grok 4.5."
+        ),
+        "sorex": (
+            "You are Apex Sorex, an Apex Intelligence Profile powered by "
+            "Qwen3 1.7B through Ollama."
+        ),
+        "mus": (
+            "You are Apex Mus, an Apex Intelligence Profile powered by "
+            "Qwen3 4B Instruct through Ollama."
+        ),
+    }
+
+    def test_every_profile_has_the_expected_immutable_identity(self) -> None:
+        self.assertEqual(set(PROFILE_SPECS), set(self._IDENTITIES))
+        for key, identity in self._IDENTITIES.items():
+            with self.subTest(profile=key):
+                self.assertEqual(PROFILE_SPECS[key].identity_instruction, identity)
+                _apex_effort, native_effort = resolve_effort(key, None)
+                profile = build_concrete_profile(key, native_effort=native_effort)
+                self.assertTrue(profile.system_instruction.startswith(identity))
+
+    def test_effective_request_prompts_preserve_identity_with_runtime_overrides(self) -> None:
+        captured_instructions: dict[str, str] = {}
+
+        def capture_loop(*_args, **kwargs):
+            profile = _args[2]
+            captured_instructions[profile.display_name] = kwargs[
+                "system_instruction_override"
+            ]
+            return AgentQueryResponse(answer="ok", profile_used={}, session_id=None)
+
+        with (
+            mock.patch("core.api.assistant._create_provider", return_value=mock.Mock()),
+            mock.patch("core.api.assistant.run_agent_loop", side_effect=capture_loop),
+            mock.patch(
+                "core.api.assistant.config.AGENT_SYSTEM_PROMPT", "Cloud runtime prompt."
+            ),
+            mock.patch(
+                "core.api.assistant.config.LOCAL_AGENT_SYSTEM_PROMPT", "Local runtime prompt."
+            ),
+        ):
+            for key, identity in self._IDENTITIES.items():
+                _apex_effort, native_effort = resolve_effort(key, None)
+                profile = build_concrete_profile(key, native_effort=native_effort)
+                _execute_agent_turn(
+                    AgentQueryRequest(prompt="Identify yourself.", profile=key),
+                    profile,
+                    profile_key=key,
+                    api_key="test",
+                    resolved_apex_effort=None,
+                    resolved_native_effort=native_effort,
+                )
+                instruction = captured_instructions[profile.display_name]
+                self.assertTrue(instruction.startswith(identity))
+                expected_runtime_prompt = (
+                    "Local runtime prompt."
+                    if PROFILE_SPECS[key].mode == "local"
+                    else "Cloud runtime prompt."
+                )
+                self.assertIn(expected_runtime_prompt, instruction)
+
+    def test_identity_composition_keeps_identity_when_base_prompt_is_empty(self) -> None:
+        identity = PROFILE_SPECS["panthera"].identity_instruction
+        self.assertEqual(compose_profile_system_instruction("panthera", "  "), identity)
+
+
 class LocalEffortRejectionTests(unittest.TestCase):
     def test_local_profile_rejects_effort_with_400(self) -> None:
         with mock.patch("core.api.assistant.DEMO_MODE", False), mock.patch(
@@ -128,8 +221,8 @@ class LocalEffortRejectionTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
 
-class AcinonyxFailClosedTests(unittest.TestCase):
-    def test_acinonyx_strips_hud_context_and_tools(self) -> None:
+class AcinonyxPolicyTests(unittest.TestCase):
+    def test_acinonyx_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
 
         class Provider:
@@ -181,7 +274,6 @@ class AcinonyxFailClosedTests(unittest.TestCase):
                     prompt="hello",
                     profile="acinonyx",
                     snapshot_id="snap-1",
-                    briefing_id=3,
                     history=[
                         __import__(
                             "core.agent.types", fromlist=["AgentMessage"]
@@ -190,11 +282,64 @@ class AcinonyxFailClosedTests(unittest.TestCase):
                 )
             )
 
-        self.assertIsNone(captured["snapshot_id"])
+        self.assertEqual(captured["snapshot_id"], "snap-1")
         self.assertIsNone(captured["briefing_id"])
         self.assertEqual(captured.get("history"), [])
-        self.assertTrue(captured["disable_tools"])
-        self.assertTrue(captured["disable_hud_context"])
+        self.assertFalse(captured["disable_tools"])
+        self.assertFalse(captured["disable_hud_context"])
+
+    def test_acinonyx_capability_policy_is_an_explicit_allowlist(self) -> None:
+        def descriptor(name: str) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name=name,
+                title=name,
+                description=name,
+                input_schema={"type": "object", "properties": {}},
+                origin="mcp" if "_" in name and name.startswith(("brave", "github", "alphavantage")) else "native",
+                risk="read",
+                expose_to_assistant=True,
+                expose_to_mcp_server=False,
+                expose_to_client_display=True,
+            )
+
+        filtered = filter_profile_capabilities(
+            "acinonyx",
+            [
+                descriptor("get_weather_forecast"),
+                descriptor("get_active_reminders"),
+                descriptor("brave_brave_web_search"),
+                descriptor("alphavantage_quote"),
+                descriptor("github_list_issues"),
+            ],
+        )
+        self.assertEqual(
+            [item.name for item in filtered],
+            [
+                "get_weather_forecast",
+                "brave_brave_web_search",
+                "alphavantage_quote",
+            ],
+        )
+
+    def test_hosted_tool_policy_matches_profiles_and_toggle(self) -> None:
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "neofelis", neofelis_google_search_enabled=True
+            ),
+            frozenset({"google_search", "google_maps"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "neofelis", neofelis_google_search_enabled=False
+            ),
+            frozenset({"google_maps"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "delphinus", neofelis_google_search_enabled=True
+            ),
+            frozenset({"x_search"}),
+        )
 
 
 class DemoRosterTests(unittest.TestCase):
@@ -213,6 +358,28 @@ class DemoRosterTests(unittest.TestCase):
                     AgentQueryRequest(prompt="status", profile="acinonyx")
                 )
         self.assertEqual(ctx.exception.status_code, 404)
+
+
+class ProfileStatusMetadataTests(unittest.TestCase):
+    def test_neofelis_reports_configured_model_and_effective_native_tools(self) -> None:
+        settings = mock.Mock()
+        settings.assistant.neofelis_google_search_enabled = False
+        with (
+            mock.patch("core.api.assistant.OLLAMA_ENABLED", False),
+            mock.patch("core.api.assistant.is_dev_mode", return_value=False),
+            mock.patch("core.api.assistant.profile_has_credentials", return_value=True),
+            mock.patch("core.api.assistant.get_settings_store") as store,
+        ):
+            store.return_value.get_snapshot.return_value = settings
+            profiles = build_agent_profile_statuses()
+
+        neofelis = next(item for item in profiles if item.key == "neofelis")
+        self.assertEqual(neofelis.configured_model, "gemini-3.6-flash")
+        self.assertTrue(neofelis.description)
+        self.assertEqual(
+            neofelis.native_tools,
+            {"google_search": False, "google_maps": True},
+        )
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):

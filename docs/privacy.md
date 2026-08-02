@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Typed bounded input is built locally | Gemini receives it when Comet is selected | Production transcript/digest in SQLite | Lynx, Acinonyx, Neofelis, or Structured Digest |
+| Briefing synthesis | Typed bounded input is built locally | Panthera's current briefing path sends it to Gemini; Mus and Sorex send it to Ollama | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
 | Assistant conversation | Browser tab owns history | Selected cloud/local model and invoked tools receive required context | No server-side chat store | Local profile with explicit local command scope |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected assistant model | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
@@ -51,7 +51,7 @@ HUD context is never implicit. A briefing is attached only through an explicit v
 
 Conversation history exists in the browser tab and is lost on reload. The backend has no chat-session store. Local context budgeting can omit old complete interactions and reports counts, never prompt or tool-result content.
 
-Acinonyx is a development-only, single-turn Gemini sandbox. It receives no conversation history, tools, briefing context, telemetry context, or personal connector data. The HUD retains only its latest displayed exchange so it does not imply multi-turn context.
+Acinonyx is a development-only Gemini sandbox with a browser history partition separate from production profiles. The backend rejects cross-partition history and saved briefing records. Acinonyx can receive only weather, Formula 1, Brave Search, Alpha Vantage, and the process-current development briefing after the backend has masked email subjects, calendar details, and reminder text. It never receives full telemetry, Gmail, Calendar, reminders, Microsoft To Do, briefing history, GitHub/private MCP, files, images, or production conversation history.
 
 ### Native personal-data tools
 
@@ -62,6 +62,8 @@ Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, a
 ## MCP providers
 
 Enabled MCP providers receive arguments selected for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives web or news search; Alpha Vantage receives market-research parameters.
+
+Neofelis can send a query to provider-hosted Google Search when its setting is enabled and to Google Maps grounding. Delphinus and Orcinus can use provider-hosted X Search. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and xAI general web search is not enabled.
 
 Imported results are untrusted and bounded before model and HUD delivery. The presets are disabled by default, must be allowlisted and locally risk-classified, and are never included in scheduled briefing telemetry.
 
@@ -84,7 +86,7 @@ Public assistant failures use stable messages instead of raw third-party excepti
 ## Runtime modes
 
 - `DEMO_MODE=true` uses static mock data, skips live connectors, and does not write production briefing history.
-- `DEV_MODE=true` can still make Gmail and Calendar OAuth requests, but returned personal content is masked before model or HUD use.
+- `DEV_MODE=true` can still collect Gmail, Calendar, and reminders, but returned personal text is masked before briefing synthesis or Acinonyx context use.
 - Production mode calls only enabled connectors. Disabling a connector skips its request and excludes it from briefing input and Sync Health.
 
 See [Configuration](configuration.md) for exact mode ownership and [Architecture](architecture.md) for the process and trust model.

@@ -15,6 +15,9 @@ function profile(
   return {
     key,
     display_name: `Apex ${key}`,
+    description: 'Test profile.',
+    configured_model: mode === 'cloud' ? 'test-cloud' : 'test-local',
+    native_tools: {},
     provider: mode === 'cloud' ? 'openai' : 'ollama',
     version: '2.0',
     mode,

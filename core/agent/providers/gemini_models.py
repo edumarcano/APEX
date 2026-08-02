@@ -39,3 +39,7 @@ class GeminiModelProfile(BaseModel):
         default=DEFAULT_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the cloud agent.",
     )
+    hosted_tools: frozenset[Literal["google_search", "google_maps"]] = Field(
+        default_factory=frozenset,
+        description="Provider-hosted grounding tools enabled for this profile.",
+    )

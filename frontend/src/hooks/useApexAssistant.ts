@@ -184,6 +184,8 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   const record = value as Record<string, unknown>
   const key = record.key
   const displayName = record.display_name
+  const description = record.description
+  const configuredModel = record.configured_model
   const provider = record.provider
   const version = record.version
   const mode = record.mode
@@ -195,6 +197,18 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     return null
   }
   if (typeof displayName !== 'string') {
+    return null
+  }
+  if (typeof description !== 'string' || typeof configuredModel !== 'string') {
+    return null
+  }
+  const nativeToolsRecord = record.native_tools
+  if (
+    !nativeToolsRecord ||
+    typeof nativeToolsRecord !== 'object' ||
+    Array.isArray(nativeToolsRecord) ||
+    !Object.values(nativeToolsRecord).every((value) => typeof value === 'boolean')
+  ) {
     return null
   }
   if (!isProvider(provider)) {
@@ -237,6 +251,9 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   return {
     key,
     display_name: displayName,
+    description,
+    configured_model: configuredModel,
+    native_tools: nativeToolsRecord as Record<string, boolean>,
     provider,
     version,
     mode,
@@ -397,10 +414,15 @@ export function useApexAssistant(
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
+  const acinonyxHistoryRef = useRef<AgentMessage[]>([])
 
   useEffect(() => {
     productionHistoryRef.current = productionHistory
   }, [productionHistory])
+
+  useEffect(() => {
+    acinonyxHistoryRef.current = acinonyxHistory
+  }, [acinonyxHistory])
 
   const assistantHistory = useMemo(
     () => (isAcinonyxProfile(activeProfile) ? acinonyxHistory : productionHistory),
@@ -519,7 +541,9 @@ export function useApexAssistant(
       }
 
       const useAcinonyxStore = isAcinonyxProfile(profile)
-      const priorHistory = useAcinonyxStore ? [] : productionHistoryRef.current
+      const priorHistory = useAcinonyxStore
+        ? acinonyxHistoryRef.current
+        : productionHistoryRef.current
 
       isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
@@ -536,6 +560,9 @@ export function useApexAssistant(
             prompt: trimmedPrompt,
             profile,
             history: priorHistory,
+            history_partition: isAcinonyxProfile(profile)
+              ? 'acinonyx'
+              : 'production',
             ...(context?.effort ? { effort: context.effort } : {}),
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
@@ -571,8 +598,7 @@ export function useApexAssistant(
         }
 
         if (useAcinonyxStore) {
-          // Acinonyx is intentionally single-turn: show only the latest exchange.
-          setAcinonyxHistory([userMsg, modelMsg])
+          setAcinonyxHistory((prev) => [...prev, userMsg, modelMsg])
         } else {
           setProductionHistory((prev) => [...prev, userMsg, modelMsg])
         }

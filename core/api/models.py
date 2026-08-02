@@ -331,10 +331,16 @@ class LocalLoadedModelStatus(BaseModel):
 class AgentProfileStatus(BaseModel):
     key: str = Field(description="Stable profile identifier used by the HUD.")
     display_name: str = Field(description="Human-readable profile label.")
+    description: str = Field(description="Short capability and role summary.")
     provider: Literal["ollama", "gemini", "openai", "xai"] = Field(
         description="Inference backend for this profile.",
     )
     version: str = Field(description="Profile configuration version string.")
+    configured_model: str = Field(description="Configured provider model identifier.")
+    native_tools: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Provider-hosted tools and their effective enabled state.",
+    )
     mode: Literal["cloud", "local"] = Field(
         description="Whether this profile runs in the cloud or locally.",
     )
