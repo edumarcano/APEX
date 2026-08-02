@@ -482,7 +482,7 @@ class TelemetryApiTests(unittest.TestCase):
         ), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch.dict(
-            "os.environ", {"GEMINI_API_KEY": ""}, clear=False
+            "os.environ", {"OPENAI_API_KEY": ""}, clear=False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
@@ -507,7 +507,7 @@ class TelemetryApiTests(unittest.TestCase):
         ), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch.dict(
-            "os.environ", {"GEMINI_API_KEY": ""}, clear=False
+            "os.environ", {"OPENAI_API_KEY": ""}, clear=False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
@@ -680,7 +680,7 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_preflight_hard_blocker_not_overridable(self) -> None:
         def _getenv(key: str, default: object = None) -> object:
-            if key == "GEMINI_API_KEY":
+            if key == "OPENAI_API_KEY":
                 return None
             import os
 

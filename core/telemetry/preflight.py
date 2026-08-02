@@ -186,16 +186,14 @@ def _cloud_credential_blockers(
     if not involves_cloud:
         return []
 
-    # Temporary branch-2 shim: panthera briefing still routes through Gemini
-    # until branch 4 wires OpenAI Panthera synthesis.
     briefing_ops = {"activate_with_briefing", "generate_briefing"}
     if profile == "panthera" and operation in briefing_ops:
-        if os.getenv("GEMINI_API_KEY"):
+        if os.getenv("OPENAI_API_KEY"):
             return []
         return [
             _blocker(
                 "missing_credentials",
-                "Gemini API key is not configured for cloud briefing.",
+                "OpenAI API key is not configured for cloud briefing.",
             )
         ]
 
@@ -210,12 +208,12 @@ def _cloud_credential_blockers(
             )
         ]
 
-    if os.getenv("GEMINI_API_KEY"):
+    if os.getenv("OPENAI_API_KEY"):
         return []
     return [
         _blocker(
             "missing_credentials",
-            "Required cloud credentials are not configured for this operation.",
+            "OpenAI API key is not configured for this cloud operation.",
         )
     ]
 

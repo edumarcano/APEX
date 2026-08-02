@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from google import genai
-from google.genai import types
-
+from core.agent.pricing import estimate_inference_cost
+from core.agent.profiles import (
+    build_concrete_profile,
+    compose_profile_system_instruction,
+)
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     check_resource_gate,
@@ -21,13 +22,14 @@ from core.agent.providers.ollama_lifecycle import (
     try_begin_local_execution,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
+from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.types import AgentMessage
 from core.config import (
-    GEMINI_SYNTHESIS_PROMPT,
     LOCAL_FALLBACK_GRACE_SECONDS,
     LOCAL_PRIMARY_GRACE_SECONDS,
     OLLAMA_ENABLED,
     OLLAMA_SYNTHESIS_PROMPT,
+    PANTHERA_SYNTHESIS_PROMPT,
 )
 from core.synthesis.formatting import (
     deterministic_fallback,
@@ -93,10 +95,10 @@ def _has_unrecognized_resident_model() -> bool:
 
 
 def _system_prompt_for_profile(profile_key: str) -> str:
-    """Sorex keeps its local prompt; Mus uses the Panthera cloud contract."""
+    """Sorex keeps its local prompt; Mus uses the shared briefing contract."""
     if profile_key == "sorex":
         return OLLAMA_SYNTHESIS_PROMPT
-    return GEMINI_SYNTHESIS_PROMPT
+    return PANTHERA_SYNTHESIS_PROMPT
 
 
 class SynthesisRouter:
@@ -204,29 +206,40 @@ class SynthesisRouter:
             warmup_ms=warmup_ms,
         )
 
-    def _gemini(self, source: SynthesisInput) -> SynthesisResult:
-        api_key = os.getenv("GEMINI_API_KEY")
+    def _panthera(self, source: SynthesisInput) -> SynthesisResult:
+        """Synthesize with the fixed-Light Panthera briefing profile."""
+        import os
+
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("gemini_unavailable")
-        self._state("generating", "gemini", "panthera", None)
-        started = time.monotonic()
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=[wrap_untrusted_payload(source)],
-            config=types.GenerateContentConfig(
-                system_instruction=GEMINI_SYNTHESIS_PROMPT,
-                max_output_tokens=512,
-                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
+            raise RuntimeError("openai_unavailable")
+        profile = build_concrete_profile("panthera", native_effort="low")
+        self._state("generating", "openai", "panthera", None)
+        turn = OpenAIProvider(api_key).generate_turn(
+            [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
+            [],
+            profile,
+            system_instruction_override=compose_profile_system_instruction(
+                "panthera", PANTHERA_SYNTHESIS_PROMPT
             ),
         )
-        briefing, insights = parse_model_output((response.text or "").strip())
+        briefing, insights = parse_model_output(turn.message.content or "")
         return SynthesisResult(
             briefing=briefing,
             insights=insights,
-            provider="gemini",
+            provider="openai",
             profile="panthera",
-            generation_ms=int((time.monotonic() - started) * 1000),
+            generation_ms=round(turn.provider_ms) if turn.provider_ms is not None else None,
+            provider_ms=turn.provider_ms,
+            resolved_model=turn.resolved_model or profile.api_model,
+            usage=turn.usage,
+            cost_estimate=estimate_inference_cost(
+                model=turn.resolved_model,
+                configured_model=profile.api_model,
+                provider="openai",
+                usage=turn.usage,
+                hosted_tool_events=turn.provider_tool_events,
+            ),
         )
 
     def _ollama(
@@ -257,6 +270,16 @@ class SynthesisRouter:
                 profile=profile_key,  # type: ignore[arg-type]
                 warmup_ms=warmup_ms,
                 generation_ms=int((time.monotonic() - started) * 1000),
+                provider_ms=turn.provider_ms,
+                resolved_model=turn.resolved_model or profile.api_model,
+                usage=turn.usage,
+                cost_estimate=estimate_inference_cost(
+                    model=turn.resolved_model,
+                    configured_model=profile.api_model,
+                    provider="ollama",
+                    usage=turn.usage,
+                    hosted_tool_events=turn.provider_tool_events,
+                ),
             )
         finally:
             end_local_execution()
@@ -299,56 +322,69 @@ class SynthesisRouter:
             reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
             return self._raw(source, reason, warmup.elapsed_ms)
 
-    def _synthesize_panthera(
-        self, source: SynthesisInput, warmup: WarmupHandle | None
-    ) -> SynthesisResult:
-        gemini_reason: str | None = None
+    def _synthesize_panthera(self, source: SynthesisInput) -> SynthesisResult:
+        """Route Panthera failure through Mus, Sorex, then Structured Digest."""
+        fallback_steps: list[str] = []
         try:
-            result = self._gemini(source)
+            result = self._panthera(source)
             self._state("complete", result.provider, result.profile, None)
             return result
         except Exception as exc:
             _LOGGER.error(
-                "Gemini briefing synthesis failed; falling back to local/raw. "
+                "Panthera briefing synthesis failed; falling back to local/raw. "
                 "error_type=%s",
                 type(exc).__name__,
             )
-            gemini_reason = str(exc) if str(exc).startswith("gemini_") else "gemini_error"
+            reason = str(exc) if str(exc).startswith("openai_") else "openai_error"
+            fallback_steps.append(f"panthera:{reason}")
 
-        resident = resident_profile_key()
-        if resident:
-            try:
-                result = self._ollama(source, resident, None)
-                result.fallback_reason = gemini_reason
+        for profile_key in ("mus", "sorex"):
+            result, local_reason = self._try_panthera_local_fallback(source, profile_key)
+            if result is not None:
+                fallback_steps.append(f"{profile_key}:resolved")
+                result.fallback_reason = fallback_steps[0].split(":", 1)[1]
+                result.fallback_steps = fallback_steps
                 self._state(
                     "complete", result.provider, result.profile, result.fallback_reason
                 )
                 return result
-            except Exception as exc:
-                reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-                return self._raw(source, reason)
+            fallback_steps.append(f"{profile_key}:{local_reason}")
+            reason = local_reason
 
-        if warmup is None:
-            warmup = self.start_sorex_warmup()
+        result = self._raw(source, reason)
+        fallback_steps.append("structured_digest:resolved")
+        result.fallback_steps = fallback_steps
+        self._state("complete", result.provider, result.profile, reason)
+        return result
+
+    def _try_panthera_local_fallback(
+        self, source: SynthesisInput, profile_key: str
+    ) -> tuple[SynthesisResult | None, str]:
+        """Attempt one ordered local fallback without substituting profiles."""
+        if resident_profile_key() == profile_key:
+            try:
+                return self._ollama(source, profile_key, None), ""
+            except Exception as exc:
+                return None, (
+                    str(exc)
+                    if str(exc).startswith("local_")
+                    else "local_generation_failed"
+                )
+
+        warmup = self.start_profile_warmup(profile_key)
         if not warmup.event.wait(LOCAL_FALLBACK_GRACE_SECONDS):
-            return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
+            return None, "local_warmup_timeout"
         if not warmup.success:
-            return self._raw(
-                source,
-                warmup.reason or gemini_reason or "local_warmup_failed",
-                warmup.elapsed_ms,
-            )
-        self._state("ready", "ollama", warmup.profile_key, gemini_reason)
+            return None, warmup.reason or "local_warmup_failed"
+        self._state("ready", "ollama", profile_key, None)
         try:
-            result = self._ollama(source, warmup.profile_key, warmup.elapsed_ms)
-            result.fallback_reason = gemini_reason
-            self._state(
-                "complete", result.provider, result.profile, result.fallback_reason
-            )
-            return result
+            return self._ollama(source, profile_key, warmup.elapsed_ms), ""
         except Exception as exc:
-            reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-            return self._raw(source, reason, warmup.elapsed_ms)
+            return None, (
+                str(exc)
+                if str(exc).startswith("local_")
+                else "local_generation_failed"
+            )
 
     def synthesize_mode(
         self,
@@ -362,7 +398,7 @@ class SynthesisRouter:
             return result
 
         if mode == "panthera":
-            return self._synthesize_panthera(source, warmup)
+            return self._synthesize_panthera(source)
 
         if mode in LOCAL_BRIEFING_PROFILES:
             return self._synthesize_explicit_local(source, mode, warmup)

@@ -227,37 +227,34 @@ class AdversarialSynthesisTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_model_output("===SPEECH===\n\n===INSIGHTS===\n- ok")
 
-    def test_gemini_path_never_receives_raw_telemetry(self) -> None:
+    def test_panthera_path_never_receives_raw_telemetry(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_gemini") as gemini:
+        with patch.object(router, "_panthera") as panthera:
             from core.synthesis.models import SynthesisResult
 
-            gemini.return_value = SynthesisResult(
+            panthera.return_value = SynthesisResult(
                 briefing="Ready.",
-                provider="gemini",
+                provider="openai",
                 profile="panthera",
             )
             result = router.synthesize(sample_input(), "cloud", full_telemetry="SECRET SUBJECT")
-        self.assertEqual(result.provider, "gemini")
-        gemini.assert_called_once()
-        args, _kwargs = gemini.call_args
+        self.assertEqual(result.provider, "openai")
+        panthera.assert_called_once()
+        args, _kwargs = panthera.call_args
         self.assertIsInstance(args[0], SynthesisInput)
         self.assertNotIn("SECRET SUBJECT", str(args[0]))
 
-    def test_gemini_failure_log_omits_exception_content(self) -> None:
+    def test_panthera_failure_log_omits_exception_content(self) -> None:
         secret = "PRIVATE_CONNECTOR_CONTENT"
         router = SynthesisRouter()
         with patch.object(
             router,
-            "_gemini",
+            "_panthera",
             side_effect=RuntimeError(secret),
-        ), patch(
-            "core.synthesis.router.resident_profile_key",
-            return_value="sorex",
         ), patch.object(
             router,
-            "_ollama",
-            side_effect=RuntimeError("local_generation_failed"),
+            "_try_panthera_local_fallback",
+            side_effect=[(None, "local_generation_failed"), (None, "local_generation_failed")],
         ), self.assertLogs("core.synthesis.router", level="ERROR") as captured:
             result = router.synthesize(sample_input(), "cloud")
 

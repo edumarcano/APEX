@@ -170,7 +170,7 @@ The body is optional. Valid modes are `panthera`, `mus`, `sorex`, and `structure
 - `409` — another full trigger owns execution.
 - `503` — a required operation-specific dependency cannot run and no applicable fallback completes the request.
 
-Runtime metadata includes `run_id`, active modes, resolved synthesis provider/profile, fallback reason and timings, TTS resolution, `snapshot_id`, and whether automatic speech started.
+Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/profile/model, ordered fallback steps, token usage, provider timing, estimated provider cost, TTS resolution, `snapshot_id`, and whether automatic speech started.
 
 ### POST `/api/v1/briefings/generate`
 
