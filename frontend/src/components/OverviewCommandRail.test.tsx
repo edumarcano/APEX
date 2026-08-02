@@ -88,6 +88,10 @@ describe('OverviewCommandRail', () => {
 
     await user.click(screen.getByRole('button', { name: /panthera.*available/i }))
     expect(screen.getByText('Assistant profile')).toBeVisible()
+    const selector = screen.getByRole('dialog', { name: 'Select assistant profile' })
+    expect(selector).toHaveAttribute('id', 'overview-profile-popover')
+    expect(selector.style.bottom).not.toBe('')
+    expect(selector.style.top).toBe('')
     expect(screen.queryByText(/powered by/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /verify access/i })).toBeNull()
     await user.click(within(screen.getByRole('listbox', { name: 'Local assistant profiles' })).getByRole('option', { name: 'Use APEX Mus' }))
