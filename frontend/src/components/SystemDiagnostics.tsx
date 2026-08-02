@@ -12,12 +12,9 @@ import {
 } from 'lucide-react'
 
 import {
-  type AgentProfileStatus,
   type ConnectorHealthEntry,
   type SystemDiagnostics as SystemDiagnosticsPayload,
 } from '../types/telemetry'
-import type { BriefingMode } from '../types/settings'
-import { BriefingModeSelector } from './BriefingControls'
 
 function clampPercentage(value: number): number {
   return Math.min(100, Math.max(0, value))
@@ -115,11 +112,6 @@ interface SystemDiagnosticsProps {
   connectorHealth?: ConnectorHealthEntry[]
   demoModeActive?: boolean
   devModeActive?: boolean
-  briefingMode: BriefingMode
-  onBriefingModeChange: (mode: BriefingMode) => void
-  profilesStatus: AgentProfileStatus[]
-  profilesStatusHydrated: boolean
-  briefingControlsBusy: boolean
   onOpenSettings?: () => void
   settingsButtonRef?: RefObject<HTMLButtonElement | null>
   workspaceNavigation?: ReactNode
@@ -229,11 +221,6 @@ export function SystemDiagnostics({
   connectorHealth = [],
   demoModeActive = false,
   devModeActive = false,
-  briefingMode,
-  onBriefingModeChange,
-  profilesStatus,
-  profilesStatusHydrated,
-  briefingControlsBusy,
   onOpenSettings,
   settingsButtonRef,
   workspaceNavigation,
@@ -400,13 +387,6 @@ export function SystemDiagnostics({
           percentage={ramPctClamped}
           unavailable={ramUnavailable}
           icon={Database}
-        />
-        <BriefingModeSelector
-          value={briefingMode}
-          onChange={onBriefingModeChange}
-          profiles={profilesStatus}
-          hydrated={profilesStatusHydrated}
-          disabled={briefingControlsBusy}
         />
       </div>
 

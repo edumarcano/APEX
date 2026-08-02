@@ -19,16 +19,14 @@ import { ApexLogo } from './components/ApexLogo'
 import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
-import { AskApexBar } from './components/AskApexBar'
 import { BriefingDigest } from './components/BriefingDigest'
-import { BriefingGenerateControl } from './components/BriefingControls'
 import { CalendarEventList } from './components/CalendarEventList'
 import { FootballFixtureList } from './components/FootballFixtureList'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import SettingsPanel from './components/SettingsPanel'
-import { StandbyActions } from './components/StandbyActions'
+import { OverviewCommandRail } from './components/OverviewCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
@@ -183,8 +181,6 @@ export default function App(): ReactElement {
   const telemetry = useTelemetrySnapshot()
   const briefing = useBriefingPipeline()
   const voiceDelivery = useVoiceDelivery()
-
-  const showAskApexBar = activated && Boolean(askApexEnabled)
 
   const {
     assistantHistory,
@@ -431,11 +427,11 @@ export default function App(): ReactElement {
     ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
     : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
   const centerColumnDormantClasses = useFullscreenOverviewLayout
-    ? 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
-    : 'h-auto min-h-0 flex flex-col justify-center'
+    ? 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] xl:max-w-full xl:flex-1'
+    : 'grid h-auto min-h-0 grid-rows-[auto_minmax(0,auto)_auto]'
   const centerColumnActiveClasses = useFullscreenOverviewLayout
-    ? 'h-full min-h-0 flex flex-col justify-start pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
-    : 'h-auto min-h-0 flex flex-col justify-start pt-0'
+    ? 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+    : 'grid h-auto min-h-0 grid-rows-[auto_minmax(0,auto)_auto] pt-0'
 
   // The logo is always visible and the insights panel stays mounted while the
   // desktop console opens in the right column.
@@ -447,14 +443,9 @@ export default function App(): ReactElement {
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
-  const logoShellClass = 'hud-logo-shell shrink-0 py-4 xl:py-0'
+  const logoShellClass = 'hud-logo-shell flex min-h-0 w-full items-center justify-center py-4 xl:py-0'
 
-  const largeLogoWrapperClass = [
-    'hud-logo-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
-    isDormant
-      ? 'h-64 justify-center xl:h-auto xl:flex-1'
-      : 'h-72 justify-center xl:h-80',
-  ].join(' ')
+  const largeLogoWrapperClass = 'hud-logo-wrapper relative flex h-full min-h-0 flex-col items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu opacity-100 scale-100'
 
   const logoSizeClass = 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
 
@@ -889,11 +880,6 @@ export default function App(): ReactElement {
             connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
-            briefingMode={briefingMode}
-            onBriefingModeChange={setBriefingMode}
-            profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
-            briefingControlsBusy={briefingControlsBusy}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
             workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
@@ -1119,7 +1105,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
-              className={`hud-center-column ${useFullscreenOverviewLayout ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+              className={`hud-center-column ${useFullscreenOverviewLayout ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-stretch justify-items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               {/* Ambient Logo Glow Projector */}
               <div
@@ -1171,7 +1157,7 @@ export default function App(): ReactElement {
                     />
                   </div>
                   <div
-                    className={`absolute left-1/2 top-full flex -translate-x-1/2 flex-col items-center whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    className={`flex flex-col items-center whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-7 xl:mt-9' : 'mt-2'
                     }`}
                   >
@@ -1185,56 +1171,41 @@ export default function App(): ReactElement {
                       isLocalModelLoading={isLocalModelLoading}
                       loadingDisplayName={loadingDisplayName}
                     />
-                    <LocalModelControl
-                      profile={activeLocalModel}
-                      loadingProfile={loadingLocalProfile}
-                      busy={localLifecycleBusy}
-                      onUnload={unloadLocalModel}
-                    />
-                    <div
-                      className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        isDormant
-                          ? 'pointer-events-auto translate-y-0 opacity-100'
-                          : 'pointer-events-none -translate-y-1 opacity-0'
-                      }`}
-                    >
-                      <StandbyActions
-                        onStartApex={() => void handleStartApex()}
-                        onStartWithBriefing={() => void handleStartWithBriefing()}
-                        disabled={preflight.isChecking}
-                      />
-                    </div>
-                    {activated ? (
-                      <div className="mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                        <div className="flex w-max flex-nowrap items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleRefreshAll}
-                            disabled={isRefreshingAll}
-                            data-slot="refresh-all-trigger"
-                            className="group hud-command-surface inline-flex items-center rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
-                          >
-                            {isRefreshingAll ? (
-                              '[ REFRESHING… ]'
-                            ) : (
-                              <>
-                                <span className="group-hover:hidden group-focus-visible:hidden">[ REFRESH ALL ]</span>
-                                <span className="hidden group-hover:inline group-focus-visible:inline">&gt; REFRESH ALL</span>
-                              </>
-                            )}
-                          </button>
-                          <BriefingGenerateControl
-                            mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
-                            refreshDisabled={briefingControlsBusy || !briefingModeAvailable}
-                            busy={briefingControlsBusy}
-                            onGenerate={() => void handleGenerateBriefing()}
-                            onRefreshAndGenerate={() => void handleRefreshAllAndGenerate()}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 </div>
+              </div>
+              <div className="flex w-full flex-col items-center">
+                <OverviewCommandRail
+                  activated={activated}
+                  askApexEnabled={Boolean(askApexEnabled)}
+                  activeProfile={agentProfile}
+                  profilesStatus={profilesStatus}
+                  profilesStatusHydrated={profilesStatusHydrated}
+                  devModeActive={devModeActive}
+                  isAssistantQuerying={isAssistantQuerying}
+                  verifyingCloudProfile={verifyingCloudProfile}
+                  onProfileChange={handleProfileChange}
+                  onVerifyCloudProfile={verifyCloudProfile}
+                  onAssistantSubmit={handleOverviewSubmit}
+                  onStartApex={() => void handleStartApex()}
+                  onStartWithBriefing={() => void handleStartWithBriefing()}
+                  startDisabled={preflight.isChecking}
+                  briefingMode={briefingMode}
+                  onBriefingModeChange={setBriefingMode}
+                  briefingControlsBusy={briefingControlsBusy}
+                  briefingModeAvailable={briefingModeAvailable}
+                  hasSnapshot={hasSnapshot}
+                  isRefreshingAll={isRefreshingAll}
+                  onRefreshAll={handleRefreshAll}
+                  onGenerateBriefing={() => void handleGenerateBriefing()}
+                  onRefreshAllAndGenerate={() => void handleRefreshAllAndGenerate()}
+                />
+                <LocalModelControl
+                  profile={activeLocalModel}
+                  loadingProfile={loadingLocalProfile}
+                  busy={localLifecycleBusy}
+                  onUnload={unloadLocalModel}
+                />
               </div>
             </div>
 
@@ -1391,17 +1362,6 @@ export default function App(): ReactElement {
             </div>
         </div>
 
-      {!isDormant && Boolean(showAskApexBar) ? (
-        <div className="relative z-[var(--z-bento-hud)] mx-auto mt-4 w-full max-w-xl">
-          <button type="button" onClick={() => setWorkspace('cortex')} className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[#7EB3FF] hover:text-white">Open Cortex</button>
-          <AskApexBar
-            activeProfile={agentProfile}
-            onSubmit={handleOverviewSubmit}
-            profilesStatus={profilesStatus}
-            isSubmitting={isAssistantQuerying}
-          />
-        </div>
-      ) : null}
           </>
         ) : (
           <CortexWorkspace

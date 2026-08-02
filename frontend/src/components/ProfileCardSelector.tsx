@@ -1,12 +1,16 @@
 import { Check, ChevronDown, Cloud, Cpu, Loader2, ShieldCheck } from 'lucide-react'
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { AgentProfileStatus, AssistantMode, AssistantProfile, ProfileAvailabilityStatus } from '../types/telemetry'
 
@@ -21,6 +25,7 @@ interface ProfileCardSelectorProps {
   isQuerying: boolean
   verifyingProfile: AssistantProfile | null
   onVerify: (profile: Exclude<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
+  presentation?: 'cortex' | 'overview'
 }
 
 const STATUS_LABELS: Record<ProfileAvailabilityStatus, string> = {
@@ -64,20 +69,35 @@ function statusClass(status: ProfileAvailabilityStatus): string {
 
 function rate(value: number): string { return `$${value.toFixed(2)}/1M` }
 
+function popoverPosition(trigger: HTMLButtonElement): CSSProperties {
+  const rect = trigger.getBoundingClientRect()
+  const width = Math.min(440, window.innerWidth - 24)
+  return {
+    bottom: window.innerHeight - rect.top + 8,
+    left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
+    width,
+  }
+}
+
 export function ProfileCardSelector({
   activeProfile, onChange, profilesStatus, profilesStatusHydrated, devModeActive,
-  isQuerying, verifyingProfile, onVerify,
+  isQuerying, verifyingProfile, onVerify, presentation = 'cortex',
 }: ProfileCardSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [isOpen, setIsOpen] = useState(false)
   const [browseMode, setBrowseMode] = useState<AssistantMode>(() => profileMode(activeProfile))
+  const [position, setPosition] = useState<CSSProperties | null>(null)
   const activeStatus = profilesStatus.find((profile) => profile.key === activeProfile)
+  const overview = presentation === 'overview'
 
   const profiles = useMemo(() => profilesStatus
     .filter((profile) => profile.mode === browseMode)
     .filter((profile) => profile.key !== 'acinonyx' || devModeActive)
     .sort((left, right) => left.sort_order - right.sort_order), [browseMode, devModeActive, profilesStatus])
+  const overviewProfiles = useMemo(() => profilesStatus
+    .filter((profile) => profile.key !== 'acinonyx' || devModeActive)
+    .sort((left, right) => left.sort_order - right.sort_order), [devModeActive, profilesStatus])
 
   useEffect(() => {
     if (!isOpen) return
@@ -100,6 +120,21 @@ export function ProfileCardSelector({
       window.clearTimeout(focusTimer)
     }
   }, [isOpen])
+
+  const updatePosition = useCallback((): void => {
+    if (overview && triggerRef.current) setPosition(popoverPosition(triggerRef.current))
+  }, [overview])
+
+  useLayoutEffect(() => {
+    if (!isOpen || !overview) return
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [isOpen, overview, updatePosition])
 
   const selectProfile = (profile: AssistantProfile): void => {
     onChange(profile)
@@ -131,13 +166,57 @@ export function ProfileCardSelector({
     </article>
   }
 
+  const renderOverviewOption = (profile: AgentProfileStatus): ReactElement => {
+    const selected = profile.key === activeProfile
+    const selectable = profile.mode === 'cloud' ? profile.status !== 'disabled' : profile.status === 'available'
+    return <li key={profile.key} role="presentation">
+      <button
+        type="button"
+        role="option"
+        disabled={!selectable}
+        aria-selected={selected}
+        aria-label={`Use ${profile.display_name}`}
+        onClick={() => selectProfile(profile.key)}
+        className={`flex min-h-16 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none ${selected ? 'bg-[#7E22CE]/12 ring-1 ring-[#7E22CE]/35' : ''} ${selectable ? 'hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15' : 'cursor-not-allowed opacity-45'}`}
+      >
+        <ProfileMark profile={profile.key} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{profile.display_name.replace(/^APEX\s+/i, '')}</span>
+          <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{profile.description}</span>
+        </span>
+        <span className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${statusClass(profile.status)}`}>{STATUS_LABELS[profile.status]}</span>
+        {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}
+      </button>
+      {!selectable && profile.reason ? <p className="px-2.5 pb-2 font-mono text-[9px] text-red-200">{profile.reason}</p> : null}
+    </li>
+  }
+
   const activeAvailability = activeStatus?.status ?? 'unknown'
   const activeName = activeStatus?.display_name ?? fallbackName(activeProfile)
   if (!profilesStatusHydrated && !activeStatus) {
-    return <section aria-label="Profile selector" className="rounded-xl border border-white/10 bg-white/[0.02] p-3 font-mono text-[10px] text-zinc-500">Loading profile catalog…</section>
+    return <section aria-label="Profile selector" className={overview ? 'flex h-10 w-full items-center rounded-lg border border-white/10 bg-black/25 px-3 font-mono text-[10px] text-zinc-500 sm:w-36' : 'rounded-xl border border-white/10 bg-white/[0.02] p-3 font-mono text-[10px] text-zinc-500'}>Loading profile catalog…</section>
   }
-  return <section aria-label="Profile selector" className="relative">
-    <button ref={triggerRef} type="button" aria-expanded={isOpen} aria-haspopup="dialog" aria-controls="cortex-profile-popover" onClick={() => { setBrowseMode(profileMode(activeProfile)); setIsOpen((open) => !open) }} className="w-full rounded-xl border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]"><span className="flex items-center gap-3"><ProfileMark profile={activeProfile} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{activeName}</span><ChevronDown className={`size-4 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></span>{activeStatus ? <span className="mt-1 block font-mono text-[10px] text-zinc-400">{poweredBy(activeStatus)}</span> : null}</span></span><span className={`mt-2 block font-mono text-[9px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></button>
-    {isOpen ? <div ref={popoverRef} id="cortex-profile-popover" role="dialog" aria-label="Select profile" className="absolute left-0 right-0 top-full z-40 mt-2 max-h-[min(62vh,38rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-xl scrollbar-thin"><div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-black/30 p-1" role="tablist" aria-label="Profile runtime">{([['cloud', Cloud, 'Cloud profiles'], ['local', Cpu, 'Local profiles']] as const).map(([mode, Icon, label]) => <button key={mode} data-mode={mode} type="button" role="tab" aria-selected={browseMode === mode} onClick={() => setBrowseMode(mode)} onKeyDown={handleTabKeyDown} className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 font-mono text-[10px] uppercase tracking-wider ${browseMode === mode ? mode === 'cloud' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'bg-[#78350F]/25 text-[#FDBA74]' : 'text-zinc-500 hover:text-zinc-300'}`}><Icon className="size-3.5" aria-hidden />{label}</button>)}</div><div className="mt-3 space-y-2">{profiles.map(renderCard)}</div></div> : null}
+  const popover = isOpen ? overview
+    ? <div ref={popoverRef} id="profile-catalog-popover" role="dialog" aria-label="Select assistant profile" style={position ?? undefined} className="fixed z-[100] max-h-[min(62vh,32rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl scrollbar-thin">
+        <div className="border-b border-white/10 px-2 pb-2 pt-1">
+          <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">Assistant profile</p>
+          <p className="mt-1 text-[10px] text-zinc-500">Applies to your next Ask APEX request.</p>
+        </div>
+        {(['cloud', 'local'] as const).map((mode) => {
+          const modeProfiles = overviewProfiles.filter((profile) => profile.mode === mode)
+          if (modeProfiles.length === 0) return null
+          const Icon = mode === 'cloud' ? Cloud : Cpu
+          return <section key={mode} className="py-1.5" aria-label={`${mode === 'cloud' ? 'Cloud' : 'Local'} profiles`}>
+            <p className="flex items-center gap-2 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-zinc-500"><Icon className="size-3.5 text-zinc-600" aria-hidden />{mode}</p>
+            <ul role="listbox" aria-label={`${mode === 'cloud' ? 'Cloud' : 'Local'} assistant profiles`} className="space-y-1">{modeProfiles.map(renderOverviewOption)}</ul>
+          </section>
+        })}
+      </div>
+    : <div ref={popoverRef} id="profile-catalog-popover" role="dialog" aria-label="Select profile" className="absolute bottom-full left-0 right-0 z-40 mb-2 max-h-[min(62vh,38rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-xl scrollbar-thin"><div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-black/30 p-1" role="tablist" aria-label="Profile runtime">{([['cloud', Cloud, 'Cloud profiles'], ['local', Cpu, 'Local profiles']] as const).map(([mode, Icon, label]) => <button key={mode} data-mode={mode} type="button" role="tab" aria-selected={browseMode === mode} onClick={() => setBrowseMode(mode)} onKeyDown={handleTabKeyDown} className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 font-mono text-[10px] uppercase tracking-wider ${browseMode === mode ? mode === 'cloud' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'bg-[#78350F]/25 text-[#FDBA74]' : 'text-zinc-500 hover:text-zinc-300'}`}><Icon className="size-3.5" aria-hidden />{label}</button>)}</div><div className="mt-3 space-y-2">{profiles.map(renderCard)}</div></div>
+    : null
+
+  return <section aria-label="Profile selector" className={overview ? 'relative w-full sm:w-auto' : 'relative'}>
+    <button ref={triggerRef} type="button" aria-expanded={isOpen} aria-haspopup="dialog" aria-controls="profile-catalog-popover" onClick={() => { setBrowseMode(profileMode(activeProfile)); setIsOpen((open) => !open) }} className={overview ? 'flex h-10 w-full items-center gap-2 rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/10 px-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] sm:w-auto sm:min-w-36' : 'w-full rounded-xl border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]'}>{overview ? <><ProfileMark profile={activeProfile} /><span className="min-w-0 flex-1"><span className="block truncate font-mono text-[10px] uppercase tracking-wider text-zinc-200">{activeName.replace(/^APEX\s+/i, '')}</span><span className={`block font-mono text-[8px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></span><ChevronDown className={`size-3.5 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></> : <><span className="flex items-center gap-3"><ProfileMark profile={activeProfile} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{activeName}</span><ChevronDown className={`size-4 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></span>{activeStatus ? <span className="mt-1 block font-mono text-[10px] text-zinc-400">{poweredBy(activeStatus)}</span> : null}</span></span><span className={`mt-2 block font-mono text-[9px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></>}</button>
+    {overview ? popover && position ? createPortal(popover, document.body) : null : popover}
   </section>
 }

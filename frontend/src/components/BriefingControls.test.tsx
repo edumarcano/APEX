@@ -63,11 +63,15 @@ describe('BriefingModeSelector', () => {
     const user = userEvent.setup()
     renderSelector()
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
     expect(screen.getByText('Briefing Synthesis')).toBeVisible()
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
+    expect(screen.getByLabelText('Panthera profile mark')).toBeVisible()
+    expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
+    expect(screen.getAllByText('No provider token charge')).toHaveLength(2)
+    expect(screen.getByText('No model cost')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
     expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
@@ -87,7 +91,7 @@ describe('BriefingModeSelector', () => {
       ],
     })
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
     expect(screen.getByRole('option', { name: /mus/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
@@ -98,7 +102,7 @@ describe('BriefingModeSelector', () => {
   it('closes on Escape and restores focus to the selector', async () => {
     const user = userEvent.setup()
     renderSelector()
-    const trigger = screen.getByRole('button', { name: /briefing mode: panthera/i })
+    const trigger = screen.getByRole('button', { name: /briefing: panthera/i })
 
     await user.click(trigger)
     expect(screen.getByRole('listbox')).toBeInTheDocument()

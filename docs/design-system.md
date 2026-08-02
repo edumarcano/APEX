@@ -86,9 +86,9 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ### Briefing and voice controls
 
-- Treat briefing synthesis as a global operation. Keep the mode selector beside system diagnostics, and place the split Synthesize command with Refresh All beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
+- Treat briefing synthesis as a global operation. Keep its selector, Refresh, and split Synthesize command together in the Overview command rail beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
 - Organize briefing modes into Cloud and Local sections. Use the shared profile availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
-- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
+- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Refresh and Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
 - Treat Refresh All & Synthesize as one ordered action: a failed refresh must stop synthesis and leave its error visible.
 - Show Speak / Replay as an icon action only on the Briefing tab when a transcript exists and voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
 - Keep provider, fallback, and delivery feedback with the transcript so the header selector continues to represent the next requested mode.
@@ -152,7 +152,7 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Cortex profile catalog
 
-The Cortex inspector is the only interactive assistant-configuration surface. Show one selected `APEX <Profile>` card; its popover presents catalog-provided names, descriptions, model metadata, ordered tags, availability, and compact pricing. The composer shows only the short profile name and a send control. Profile marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
+The Cortex inspector is the detailed assistant-configuration surface. Show one selected `APEX <Profile>` card; its popover presents catalog-provided names, descriptions, model metadata, ordered tags, availability, and compact pricing. The Overview command rail may expose the same catalog through a compact profile trigger, but it does not duplicate inspector-owned effort, grounding, local-tool, or lifecycle controls. The composer shows only the short profile name and a send control. Profile marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
 
 Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its profile-selection button.
 
