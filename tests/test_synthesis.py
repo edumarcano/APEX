@@ -80,30 +80,81 @@ class FormattingTests(unittest.TestCase):
 class RoutingTests(unittest.TestCase):
     def test_explicit_raw_calls_no_provider(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_gemini") as gemini, patch.object(router, "_ollama") as ollama:
+        with patch.object(router, "_panthera") as panthera, patch.object(router, "_ollama") as ollama:
             result = router.synthesize(sample_input(), "raw")
         self.assertEqual(result.provider, "raw")
-        gemini.assert_not_called()
+        panthera.assert_not_called()
         ollama.assert_not_called()
 
-    def test_gemini_success(self) -> None:
+    def test_panthera_success(self) -> None:
         router = SynthesisRouter()
-        expected = SynthesisResult(briefing="Ready.", provider="gemini", profile="panthera")
-        with patch.object(router, "_gemini", return_value=expected), patch(
+        expected = SynthesisResult(briefing="Ready.", provider="openai", profile="panthera")
+        with patch.object(router, "_panthera", return_value=expected), patch(
             "core.synthesis.router.resident_profile_key", return_value=None
         ):
             result = router.synthesize(sample_input(), "cloud")
         self.assertEqual(result, expected)
 
-    def test_resident_mus_reused_after_gemini_failure(self) -> None:
+    def test_panthera_uses_openai_at_fixed_light_effort_without_tools(self) -> None:
+        router = SynthesisRouter()
+        turn = ProviderTurnResult(
+            message=AgentMessage(
+                role="model",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            ),
+            resolved_model="gpt-5.6-luna-2026-08-01",
+            provider_ms=123.4,
+        )
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=False), patch(
+            "core.synthesis.router.OpenAIProvider.generate_turn", return_value=turn
+        ) as generate:
+            result = router._panthera(sample_input())
+        messages, tools, profile = generate.call_args.args
+        self.assertEqual(messages[0].role, "user")
+        self.assertEqual(tools, [])
+        self.assertEqual(profile.reasoning_effort, "low")
+        self.assertTrue(
+            generate.call_args.kwargs["system_instruction_override"].startswith(
+                "You are Apex Panthera"
+            )
+        )
+        self.assertEqual(result.provider, "openai")
+        self.assertEqual(result.resolved_model, "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(result.provider_ms, 123.4)
+
+    def test_panthera_falls_back_to_mus_before_sorex(self) -> None:
         router = SynthesisRouter()
         expected = SynthesisResult(briefing="Local.", provider="ollama", profile="mus")
-        with patch.object(router, "_gemini", side_effect=RuntimeError("gemini_error")), patch.object(
-            router, "_ollama", return_value=expected
-        ) as ollama, patch("core.synthesis.router.resident_profile_key", return_value="mus"):
+        with patch.object(router, "_panthera", side_effect=RuntimeError("openai_error")), patch.object(
+            router, "_try_panthera_local_fallback", return_value=(expected, "")
+        ) as local_fallback:
             result = router.synthesize(sample_input(), "cloud")
         self.assertEqual(result.profile, "mus")
-        ollama.assert_called_once_with(unittest.mock.ANY, "mus", None)
+        self.assertEqual(result.fallback_reason, "openai_error")
+        local_fallback.assert_called_once_with(unittest.mock.ANY, "mus")
+
+    def test_panthera_exhausts_mus_and_sorex_before_structured_digest(self) -> None:
+        router = SynthesisRouter()
+        with patch.object(router, "_panthera", side_effect=RuntimeError("openai_unavailable")), patch.object(
+            router,
+            "_try_panthera_local_fallback",
+            side_effect=[(None, "local_model_missing"), (None, "local_insufficient_ram")],
+        ) as local_fallback:
+            result = router.synthesize_mode(sample_input(), "panthera")
+        self.assertEqual(result.provider, "raw")
+        self.assertEqual(result.fallback_reason, "local_insufficient_ram")
+        self.assertEqual(
+            result.fallback_steps,
+            [
+                "panthera:openai_unavailable",
+                "mus:local_model_missing",
+                "sorex:local_insufficient_ram",
+                "structured_digest:resolved",
+            ],
+        )
+        self.assertEqual(
+            [call.args[1] for call in local_fallback.call_args_list], ["mus", "sorex"]
+        )
 
     def test_late_warmup_returns_raw_without_cancelling_worker(self) -> None:
         router = SynthesisRouter()
@@ -137,7 +188,7 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
         ) as generate, patch(
-            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
+            "core.synthesis.router.PANTHERA_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
         ), patch(
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
@@ -163,7 +214,7 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
         ) as generate, patch(
-            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
+            "core.synthesis.router.PANTHERA_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
         ), patch(
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
@@ -193,10 +244,10 @@ class RoutingTests(unittest.TestCase):
 
     def test_structured_digest_mode(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_gemini") as gemini, patch.object(router, "_ollama") as ollama:
+        with patch.object(router, "_panthera") as panthera, patch.object(router, "_ollama") as ollama:
             result = router.synthesize_mode(sample_input(), "structured_digest")
         self.assertEqual(result.provider, "raw")
-        gemini.assert_not_called()
+        panthera.assert_not_called()
         ollama.assert_not_called()
 
     def test_prepare_local_warms_mus(self) -> None:

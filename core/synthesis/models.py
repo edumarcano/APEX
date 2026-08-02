@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from core.agent.types import CostEstimate, TokenUsage
+
 SynthesisProvider = Literal["gemini", "ollama", "raw", "demo", "openai"]
 SynthesisProfile = Literal["panthera", "mus", "sorex"]
 BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
@@ -95,5 +97,10 @@ class SynthesisResult(BaseModel):
     provider: SynthesisProvider
     profile: SynthesisProfile | None = None
     fallback_reason: str | None = None
+    fallback_steps: list[str] = Field(default_factory=list)
     warmup_ms: int | None = None
     generation_ms: int | None = None
+    provider_ms: float | None = None
+    resolved_model: str | None = None
+    usage: TokenUsage | None = None
+    cost_estimate: CostEstimate | None = None

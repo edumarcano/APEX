@@ -45,6 +45,7 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
+    "PANTHERA_SYNTHESIS_PROMPT",
     "GEMINI_SYNTHESIS_PROMPT",
     "OLLAMA_SYNTHESIS_PROMPT",
     "LOCAL_PRIMARY_GRACE_SECONDS",
@@ -237,19 +238,26 @@ def _valid_prompt(value: object) -> str | None:
 
 
 _legacy_prompt = _valid_prompt(_CONFIG_DATA.get("system_prompt"))
-_gemini_prompt = _valid_prompt(_synthesis_cfg.get("gemini_system_prompt"))
+_panthera_prompt = _valid_prompt(_synthesis_cfg.get("panthera_system_prompt"))
+_legacy_gemini_prompt = _valid_prompt(_synthesis_cfg.get("gemini_system_prompt"))
 _ollama_prompt = _valid_prompt(_synthesis_cfg.get("ollama_system_prompt"))
-GEMINI_SYNTHESIS_PROMPT: Final[str] = (
-    _gemini_prompt or _legacy_prompt or _DEFAULT_SYSTEM_PROMPT
+PANTHERA_SYNTHESIS_PROMPT: Final[str] = (
+    _panthera_prompt or _legacy_gemini_prompt or _legacy_prompt or _DEFAULT_SYSTEM_PROMPT
 )
 OLLAMA_SYNTHESIS_PROMPT: Final[str] = (
     _ollama_prompt or _DEFAULT_OLLAMA_SYNTHESIS_PROMPT
 )
-# Compatibility alias for the legacy briefing caller.
-SYSTEM_PROMPT: Final[str] = GEMINI_SYNTHESIS_PROMPT
+# Compatibility aliases for integrations that still import the former name.
+GEMINI_SYNTHESIS_PROMPT: Final[str] = PANTHERA_SYNTHESIS_PROMPT
+SYSTEM_PROMPT: Final[str] = PANTHERA_SYNTHESIS_PROMPT
 
-if "gemini_system_prompt" in _synthesis_cfg and _gemini_prompt is None:
-    _LOGGER.warning("Invalid synthesis.gemini_system_prompt; using legacy/default prompt.")
+if "panthera_system_prompt" in _synthesis_cfg and _panthera_prompt is None:
+    _LOGGER.warning("Invalid synthesis.panthera_system_prompt; using legacy/default prompt.")
+if "gemini_system_prompt" in _synthesis_cfg:
+    _LOGGER.warning(
+        "synthesis.gemini_system_prompt is deprecated; use "
+        "synthesis.panthera_system_prompt."
+    )
 if "ollama_system_prompt" in _synthesis_cfg and _ollama_prompt is None:
     _LOGGER.warning("Invalid synthesis.ollama_system_prompt; using built-in default.")
 

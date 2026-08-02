@@ -21,7 +21,7 @@ flowchart TB
     Browser --> Voice["Voice delivery"]
 
     Telemetry --> Connectors["Local + external connectors"]
-    Briefing --> Models["Gemini · Ollama · Structured Digest"]
+    Briefing --> Models["OpenAI · Ollama · Structured Digest"]
     Assistant --> Capabilities["Native + approved MCP capabilities"]
     API --> SQLite["SQLite reminders + briefing ledger"]
 ```
@@ -30,7 +30,7 @@ flowchart TB
 |---|---|---|---|---|
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
-| Briefing | Current snapshot or full trigger | Briefing orchestration | Production briefing ledger | Selected Gemini/Ollama mode or none for Structured Digest |
+| Briefing | Current snapshot or full trigger | Briefing orchestration | Production briefing ledger | Panthera/OpenAI, selected Ollama mode, or Structured Digest |
 | Assistant | User prompt | Browser history plus backend turn execution | No chat-session store | Selected model and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
@@ -86,18 +86,18 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` synthesizes from an existing process-current snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Gemini and Ollama receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, assistant history, and assistant tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Ollama receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, assistant history, and assistant tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
-| Panthera | Cloud briefing path | Cloud synthesis profile |
+| Panthera | OpenAI | `gpt-5.6-luna` at fixed Light effort |
 | Mus | Ollama | `qwen3:4b-instruct` |
 | Sorex | Ollama | `qwen3:1.7b` |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local profile. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local profile. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest. Runtime metadata records the requested mode, resolved provider/profile/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
 
 Production generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no production write.
 

@@ -109,6 +109,8 @@ The `acinonyx` profile uses `gemini-3.5-flash-lite` and remains hidden outside d
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected assistant profile or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus or Sorex briefing request falls directly to Structured Digest on failure.
+
 ## Voice
 
 | Engine | Boundary | Fallback |

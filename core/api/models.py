@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from core.agent.types import CostEstimate, TokenUsage
 from core.connectors.models import ConnectorHealthEntry
 
 
@@ -38,11 +39,17 @@ class RuntimeMetadata(BaseModel):
         default=None,
         description="Explicit briefing mode used for this run.",
     )
+    # Gemini remains accepted here so historical briefing ledger rows parse.
     synthesis_provider: Literal["gemini", "ollama", "raw", "demo", "openai"] | None = None
     synthesis_profile: Literal["panthera", "mus", "sorex"] | None = None
+    synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
+    synthesis_fallback_steps: list[str] = Field(default_factory=list)
     synthesis_warmup_ms: int | None = None
     synthesis_generation_ms: int | None = None
+    synthesis_provider_ms: float | None = Field(default=None, ge=0)
+    synthesis_usage: TokenUsage | None = None
+    synthesis_cost_estimate: CostEstimate | None = None
     tts_strategy: Literal["google", "kokoro", "pyttsx3"] = Field(
         description="Active text-to-speech backend (google, kokoro, or pyttsx3).",
     )
@@ -404,7 +411,7 @@ class BriefingHistoryRecord(BaseModel):
 
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
-    provider: Literal["gemini", "ollama", "raw", "demo"] | None = None
+    provider: Literal["ollama", "raw", "demo", "openai"] | None = None
     profile: Literal["panthera", "mus", "sorex"] | None = None
     loading: bool = False
     fallback_reason: str | None = None

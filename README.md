@@ -20,7 +20,7 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 ### Produces briefings on my terms
 
-A briefing can use Gemini, one of three local Ollama profiles, or a deterministic Structured Digest. All routes receive the same sanitized, size-bounded facts; a provider failure ends in a useful model-free result instead of a blank screen.
+A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a deterministic Structured Digest. All routes receive the same sanitized, size-bounded facts; a provider failure ends in a useful model-free result instead of a blank screen.
 
 ### Answers follow-up questions
 
@@ -102,7 +102,7 @@ Demo mode bypasses live connectors and model calls, does not write briefing hist
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-Use a local Ollama briefing mode or Structured Digest to avoid Gemini disclosure for briefing synthesis. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+Use a local Ollama briefing mode or Structured Digest to avoid OpenAI disclosure for briefing synthesis. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 

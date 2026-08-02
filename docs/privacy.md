@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Typed bounded input is built locally | Panthera's current briefing path sends it to Gemini; Mus and Sorex send it to Ollama | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
+| Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Mus and Sorex send it to Ollama | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
 | Assistant conversation | Browser tab owns history | Selected cloud/local model and invoked tools receive required context | No server-side chat store | Local profile with explicit local command scope |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected assistant model | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
@@ -29,19 +29,19 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing orchestration selects bounded weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts for `SynthesisInput`. Text is normalized, stripped of control characters and markup, truncated per field, serialized to a fixed bound, and wrapped in `<untrusted_connector_data>` markers.
 
-Gemini and Ollama receive the same selected facts. Concatenated display telemetry, assistant tools, and assistant history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
+Panthera and Ollama receive the same selected facts. Concatenated display telemetry, assistant tools, and assistant history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
 
 The markers and validation reduce prompt-injection risk. They do not make model output an authorization boundary, and model prose must never authorize an action.
 
-### Gemini briefing policy boundary
+### Panthera briefing policy boundary
 
-The current Panthera briefing path sends briefing input to the Gemini API. That input can include personal facts such as calendar events, reminders, and bounded email subjects.
+The Panthera briefing path sends briefing input to the OpenAI Responses API. That input can include personal facts such as calendar events, reminders, and bounded email subjects.
 
-Google's current terms state that unpaid Gemini API services may use submitted content and generated responses to improve products and that human reviewers may process inputs and outputs. Google instructs users not to submit sensitive, confidential, or personal information to unpaid services. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [pricing data-use table](https://ai.google.dev/gemini-api/docs/pricing).
+OpenAI states that API inputs and outputs are not used to train or improve its models by default. Abuse-monitoring and endpoint-specific retention still apply, and eligible accounts may have more restrictive retention controls. See OpenAI's [API data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint).
 
-The same terms state that paid Gemini API services do not use prompts or responses to improve products, while limited abuse-monitoring retention and required disclosures can still apply. This is provider policy, not a guarantee implemented by APEX.
+This is provider policy, not a guarantee implemented by APEX. Review the linked current terms before sending sensitive data.
 
-Selecting a local briefing profile or Structured Digest avoids sending briefing synthesis data to Gemini.
+Selecting a local briefing profile or Structured Digest avoids sending briefing synthesis data to OpenAI.
 
 ## Assistant data
 

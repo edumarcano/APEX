@@ -10,6 +10,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from core.agent.types import CostEstimate, TokenUsage
 from core.settings.models import SettingsPatch, VoicePatch
 from core.settings.normalize import snapshot_from_merged
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
@@ -162,6 +163,40 @@ class BriefingDeliveryTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 409)
 
+    def test_panthera_metadata_reports_resolution_usage_and_cost(self) -> None:
+        snap = self._seed_snapshot("panthera-metadata")
+        synthesis = SynthesisResult(
+            briefing="Panthera briefing.",
+            insights=["One"],
+            provider="openai",
+            profile="panthera",
+            resolved_model="gpt-5.6-luna-2026-08-01",
+            fallback_steps=["panthera:openai_timeout", "mus:local_model_missing"],
+            provider_ms=321.5,
+            usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
+            cost_estimate=CostEstimate(
+                token_cost=0.000044,
+                hosted_tool_cost=0.0,
+                total_cost=0.000044,
+                pricing_version="test",
+                completeness="complete",
+            ),
+        )
+        with mock.patch("core.api.briefing.is_dev_mode", return_value=False), mock.patch(
+            "core.brain.process_telemetry", return_value=synthesis.model_dump()
+        ):
+            response = self.client.post(
+                "/api/v1/briefings/generate",
+                json={"snapshot_id": snap.snapshot_id, "mode": "panthera"},
+            )
+        self.assertEqual(response.status_code, 200)
+        metadata = response.json()["metadata"]
+        self.assertEqual(metadata["synthesis_resolved_model"], "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(metadata["synthesis_fallback_steps"], synthesis.fallback_steps)
+        self.assertEqual(metadata["synthesis_usage"]["total_tokens"], 120)
+        self.assertEqual(metadata["synthesis_provider_ms"], 321.5)
+        self.assertEqual(metadata["synthesis_cost_estimate"]["total_cost"], 0.000044)
+
     def test_demo_generate_requires_current_snapshot_and_preserves_mode(self) -> None:
         snap = self._seed_snapshot("demo-current")
         with mock.patch("core.api.briefing.DEMO_MODE", True), mock.patch(
@@ -231,7 +266,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             get_telemetry_service().store.set(snap)
             return snap
 
-        with mock.patch(
+        with mock.patch("core.api.briefing.is_dev_mode", return_value=False), mock.patch(
             "core.telemetry.service.TelemetryService.collect_for_briefing",
             side_effect=fake_collect,
         ), mock.patch(
@@ -239,7 +274,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             return_value=SynthesisResult(
                 briefing="Trigger briefing.",
                 insights=["Insight"],
-                provider="gemini",
+                provider="openai",
                 profile="panthera",
             ).model_dump(),
         ) as process, mock.patch("core.api.briefing.speaker.speak") as speak:
@@ -287,7 +322,7 @@ class BriefingDeliveryTests(unittest.TestCase):
 
     def test_automatic_delivery_is_recorded_in_persisted_metadata(self) -> None:
         snap = self._seed_snapshot("spoken-snap")
-        with mock.patch(
+        with mock.patch("core.api.briefing.is_dev_mode", return_value=False), mock.patch(
             "core.brain.process_telemetry",
             return_value=SynthesisResult(
                 briefing="Automatic briefing.",
