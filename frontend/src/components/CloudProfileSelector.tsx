@@ -20,6 +20,7 @@ import {
 
 import type {
   AgentProfileStatus,
+  AssistantMode,
   AssistantProfile,
   ProfileAvailabilityStatus,
 } from '../types/telemetry'
@@ -31,11 +32,11 @@ interface ProfileOption {
 }
 
 const CLOUD_PROFILE_OPTIONS: readonly ProfileOption[] = [
+  { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Sandbox (DEV)' },
   { key: 'panthera', label: 'Apex Panthera', subtitle: 'Balanced' },
   { key: 'neofelis', label: 'Apex Neofelis', subtitle: 'Advanced' },
   { key: 'delphinus', label: 'Apex Delphinus', subtitle: 'Balanced' },
   { key: 'orcinus', label: 'Apex Orcinus', subtitle: 'Advanced' },
-  { key: 'acinonyx', label: 'Apex Acinonyx', subtitle: 'Fast (DEV)' },
 ]
 
 const LOCAL_PROFILE_OPTIONS: readonly ProfileOption[] = [
@@ -76,6 +77,7 @@ interface CloudProfileSelectorProps {
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
   disabled?: boolean
+  modeFilter?: AssistantMode
 }
 
 function resolveProfileAvailability(
@@ -156,6 +158,7 @@ export function CloudProfileSelector({
   profilesStatus,
   profilesStatusHydrated,
   disabled = false,
+  modeFilter,
 }: CloudProfileSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | null>(null)
@@ -174,11 +177,17 @@ export function CloudProfileSelector({
       // Hide Acinonyx entirely outside DEV_MODE; backend only returns it then.
       return visibleKeys?.has('acinonyx') ?? false
     })
-    return [
+    const sections: ProfileSection[] = [
       { title: 'Cloud Models', icon: Cloud, options: cloudOptions },
       { title: 'Local Models', icon: Cpu, options: LOCAL_PROFILE_OPTIONS },
     ]
-  }, [profilesStatus, profilesStatusHydrated])
+    if (!modeFilter) {
+      return sections
+    }
+    return sections.filter((section) =>
+      modeFilter === 'cloud' ? section.title === 'Cloud Models' : section.title === 'Local Models',
+    )
+  }, [modeFilter, profilesStatus, profilesStatusHydrated])
 
   const closeDropdown = useCallback((): void => {
     setIsOpen(false)

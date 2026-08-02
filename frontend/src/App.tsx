@@ -11,7 +11,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
   type ReactElement,
 } from 'react'
@@ -19,7 +18,8 @@ import {
 import { ApexLogo } from './components/ApexLogo'
 import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
-import { ConsoleTray } from './components/ConsoleTray'
+import { CortexWorkspace } from './components/CortexWorkspace'
+import { AskApexBar } from './components/AskApexBar'
 import { BriefingDigest } from './components/BriefingDigest'
 import { BriefingGenerateControl } from './components/BriefingControls'
 import { CalendarEventList } from './components/CalendarEventList'
@@ -47,7 +47,11 @@ import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
-import { resolveAssistantProfile, resolveInitialAssistantSelection } from './lib/settings'
+import {
+  parseSettingsResponse,
+  resolveAssistantProfile,
+  resolveInitialAssistantSelection,
+} from './lib/settings'
 import type {
   AssistantProfile,
   CloudEffort,
@@ -80,38 +84,6 @@ function parseEmailTelemetry(emailText: string): { count: number; items: ParsedE
 interface ParsedNews {
   topic: string
   headline: string
-}
-
-function getMediaQueryMatch(query: string): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return false
-  }
-
-  return window.matchMedia(query).matches
-}
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => getMediaQueryMatch(query))
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return
-    }
-
-    const mediaQueryList = window.matchMedia(query)
-    const updateMatch = (): void => {
-      setMatches(mediaQueryList.matches)
-    }
-
-    updateMatch()
-    mediaQueryList.addEventListener('change', updateMatch)
-
-    return () => {
-      mediaQueryList.removeEventListener('change', updateMatch)
-    }
-  }, [query])
-
-  return matches
 }
 
 function parseNewsTelemetry(newsText: string): ParsedNews[] {
@@ -169,15 +141,21 @@ function isCloudAssistantProfile(
 }
 
 export default function App(): ReactElement {
-  const [reminderPulseCount, setReminderPulseCount] = useState(0)
+  const [reminderPulseCount] = useState(0)
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
-  const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
+  const [workspace, setWorkspace] = useState<'overview' | 'cortex'>('overview')
+  const [cloudProfile, setCloudProfile] = useState<Exclude<AssistantProfile, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
+  const [localProfile, setLocalProfile] = useState<'sorex' | 'mus'>('mus')
+  const [snapshotAttached, setSnapshotAttached] = useState(true)
+  const [neofelisGoogleSearchEnabled, setNeofelisGoogleSearchEnabled] = useState(true)
+  const [cortexSessionId, setCortexSessionId] = useState(() =>
+    globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
+  )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
-  const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
@@ -191,7 +169,6 @@ export default function App(): ReactElement {
     assistantInitialSelection,
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
-    refreshReminders,
     markReminderAsRead,
     applyBootSettings,
   } = apexData
@@ -208,7 +185,6 @@ export default function App(): ReactElement {
   const {
     assistantHistory,
     isAssistantQuerying,
-    isAssistantOpen,
     assistantLatestTrace,
     assistantError,
     assistantContextUsage,
@@ -217,7 +193,6 @@ export default function App(): ReactElement {
     queryAssistant,
     unloadLocalModel,
     clearAssistantChat,
-    setAssistantOpen,
   } = useApexAssistant(true, agentProfile)
 
   const assistantSelectionHydratedRef = useRef(false)
@@ -231,6 +206,11 @@ export default function App(): ReactElement {
     )
     if (selection) {
       setAgentProfile(selection.profile)
+      if (selection.profile === 'sorex' || selection.profile === 'mus') {
+        setLocalProfile(selection.profile)
+      } else if (selection.profile !== 'acinonyx') {
+        setCloudProfile(selection.profile)
+      }
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
@@ -272,14 +252,54 @@ export default function App(): ReactElement {
         marketEnabled: response.settings.features.market,
       })
       setAgentProfile(selection.profile)
+      if (selection.profile === 'sorex' || selection.profile === 'mus') {
+        setLocalProfile(selection.profile)
+      } else if (selection.profile !== 'acinonyx') {
+        setCloudProfile(selection.profile)
+      }
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
+      setNeofelisGoogleSearchEnabled(
+        response.settings.assistant.neofelis_google_search_enabled,
+      )
       setBriefingMode(response.settings.briefing.default_mode)
       setVoiceMode(response.settings.voice.mode)
     },
     [applyBootSettings],
   )
+
+  // Cortex remembers both production runtime choices. This is deliberately
+  // separate from DEV_MODE's Acinonyx startup override, which remains session-only.
+  useEffect(() => {
+    const controller = new AbortController()
+    void (async (): Promise<void> => {
+      try {
+        const response = await fetch(API_ENDPOINTS.settings, { signal: controller.signal })
+        if (!response.ok || controller.signal.aborted) return
+        const body: unknown = await response.json()
+        if (!body || typeof body !== 'object') return
+        const assistant = (body as { settings?: { assistant?: unknown } }).settings?.assistant
+        if (!assistant || typeof assistant !== 'object') return
+        const values = assistant as Record<string, unknown>
+        if (values.cloud_profile === 'panthera' || values.cloud_profile === 'neofelis' || values.cloud_profile === 'delphinus' || values.cloud_profile === 'orcinus') {
+          setCloudProfile(values.cloud_profile)
+        }
+        if (values.local_profile === 'sorex' || values.local_profile === 'mus') {
+          setLocalProfile(values.local_profile)
+        }
+        if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
+          setCloudEffort(values.cloud_effort)
+        }
+        if (typeof values.neofelis_google_search_enabled === 'boolean') {
+          setNeofelisGoogleSearchEnabled(values.neofelis_google_search_enabled)
+        }
+      } catch {
+        // Cortex falls back to boot defaults when settings are temporarily unavailable.
+      }
+    })()
+    return () => controller.abort()
+  }, [])
 
   const {
     pipelineState,
@@ -359,10 +379,10 @@ export default function App(): ReactElement {
 
   const pendingReminderCount = activeReminders.length
   const isDormant = !activated
-  // Expanded assistant sessions become a right rail on desktop. Smaller
-  // and height-constrained viewports keep the existing bottom tray behavior.
-  const useRightRailConsole = isShowcaseDesktop
-  const isConsoleCompact = isAssistantOpen && !isDormant && useRightRailConsole
+  // Overview stays spatially stable. Cortex owns assistant visibility and
+  // never changes polling, request, speech, or briefing lifecycles.
+  const useRightRailConsole = false
+  const isConsoleCompact = false
 
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
@@ -619,10 +639,6 @@ export default function App(): ReactElement {
     void markReminderAsRead(id)
   }
 
-  const handleReminderSaved = (): void => {
-    setReminderPulseCount((prev) => prev + 1)
-  }
-
   const handleGenerateBriefing = useCallback(async (): Promise<void> => {
     const snapshotId = telemetry.snapshot?.snapshot_id
     if (!snapshotId) {
@@ -709,36 +725,95 @@ export default function App(): ReactElement {
         return
       }
       await queryAssistant(prompt, profile, {
-        snapshotId: telemetry.snapshot?.snapshot_id ?? null,
+        snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
         toolScope,
-        effort: isCloudAssistantProfile(profile, profilesStatus) ? cloudEffort : null,
+        effort: isCloudAssistantProfile(profile, profilesStatus)
+          ? profile === 'acinonyx' ? 'focused' : cloudEffort
+          : null,
+        sessionId: cortexSessionId,
       })
     },
-    [preflight, queryAssistant, telemetry.snapshot?.snapshot_id, profilesStatus, cloudEffort],
+    [
+      preflight,
+      queryAssistant,
+      telemetry.snapshot?.snapshot_id,
+      profilesStatus,
+      cloudEffort,
+      snapshotAttached,
+      cortexSessionId,
+    ],
   )
 
-  const consoleTrayProps = {
-    isExpanded: isAssistantOpen,
-    setExpanded: setAssistantOpen,
-    activeTab,
-    setActiveTab,
-    assistantHistory,
-    isAssistantQuerying,
-    assistantLatestTrace,
-    assistantError,
-    assistantContextUsage,
-    profilesStatus,
-    profilesStatusHydrated,
-    queryAssistant: queryAssistantWithContext,
-    clearAssistantChat,
-    activeProfile: agentProfile,
-    setActiveProfile: setAgentProfile,
-    askApexEnabled: Boolean(showAskApexBar),
-    activeReminders,
-    markReminderAsRead: handleMarkReminderRead,
-    refreshReminders,
-    onReminderSaved: handleReminderSaved,
-  } satisfies ComponentProps<typeof ConsoleTray>
+  const persistAssistantSettings = useCallback(
+    async (assistant: Record<string, unknown>): Promise<void> => {
+      if (devModeActive) {
+        return
+      }
+      try {
+        const response = await fetch(API_ENDPOINTS.settings, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assistant }),
+        })
+        if (!response.ok) {
+          return
+        }
+        const body: unknown = await response.json()
+        const parsed = parseSettingsResponse(body)
+        if (parsed) {
+          handleSettingsApplied(parsed)
+        }
+      } catch {
+        // The session selection remains usable if local preference persistence fails.
+      }
+    },
+    [devModeActive, handleSettingsApplied],
+  )
+
+  const handleProfileChange = useCallback((profile: AssistantProfile): void => {
+    setAgentProfile(profile)
+    if (profile === 'acinonyx') {
+      setCloudEffort('focused')
+      return
+    }
+    if (profile === 'sorex' || profile === 'mus') {
+      setLocalProfile(profile)
+      void persistAssistantSettings({ mode: 'local', local_profile: profile })
+      return
+    }
+    setCloudProfile(profile)
+    void persistAssistantSettings({ mode: 'cloud', cloud_profile: profile, cloud_effort: cloudEffort })
+  }, [cloudEffort, persistAssistantSettings])
+
+  const handleModeChange = useCallback((mode: 'cloud' | 'local'): void => {
+    if (mode === 'local') {
+      handleProfileChange(localProfile)
+      return
+    }
+    handleProfileChange(devModeActive ? 'acinonyx' : cloudProfile)
+  }, [cloudProfile, devModeActive, handleProfileChange, localProfile])
+
+  const handleEffortChange = useCallback((effort: CloudEffort): void => {
+    if (agentProfile === 'acinonyx') return
+    setCloudEffort(effort)
+    void persistAssistantSettings({ mode: 'cloud', cloud_profile: cloudProfile, cloud_effort: effort })
+  }, [agentProfile, cloudProfile, persistAssistantSettings])
+
+  const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
+    setNeofelisGoogleSearchEnabled(enabled)
+    void persistAssistantSettings({ neofelis_google_search_enabled: enabled })
+  }, [persistAssistantSettings])
+
+  const handleNewCortexSession = useCallback((): void => {
+    clearAssistantChat(agentProfile)
+    setSnapshotAttached(false)
+    setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
+  }, [agentProfile, clearAssistantChat])
+
+  const handleOverviewSubmit = useCallback((query: string, profile: AssistantProfile, toolScope?: LocalToolScope | null): void => {
+    setWorkspace('cortex')
+    void queryAssistantWithContext(query, profile, toolScope)
+  }, [queryAssistantWithContext])
 
   return (
     <main
@@ -780,6 +855,10 @@ export default function App(): ReactElement {
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
           />
+          <nav className="pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-zinc-950/75 p-1 shadow-xl" aria-label="Workspace">
+            <button type="button" onClick={() => setWorkspace('overview')} aria-pressed={workspace === 'overview'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'overview' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Overview</button>
+            <button type="button" onClick={() => setWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
+          </nav>
         </header>
 
         <SettingsPanel
@@ -797,6 +876,8 @@ export default function App(): ReactElement {
           onApplied={handleSettingsApplied}
         />
 
+        {workspace === 'overview' ? (
+          <>
         <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
             {/* COLUMN 1: LEFT WING */}
             <div
@@ -1265,23 +1346,49 @@ export default function App(): ReactElement {
                 </div>
               </TelemetryCard>
 
-              <div className={`${useRightRailConsole ? (isAssistantOpen ? 'hidden h-full min-h-0 xl:flex xl:mt-auto' : 'hidden xl:flex xl:mt-auto') : 'hidden'}`}>
-                <ConsoleTray
-                  {...consoleTrayProps}
-                  placement="rail"
-                />
-              </div>
             </div>
         </div>
-      </div>
 
-      {!isDormant && !useRightRailConsole ? (
-        <div className="hud-console-bottom-tray relative z-[var(--z-bento-hud)] mt-4 flex-none shrink-0">
-          <ConsoleTray
-            {...consoleTrayProps}
+      {!isDormant && Boolean(showAskApexBar) ? (
+        <div className="relative z-[var(--z-bento-hud)] mx-auto mt-4 w-full max-w-xl">
+          <button type="button" onClick={() => setWorkspace('cortex')} className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[#7EB3FF] hover:text-white">Open Cortex</button>
+          <AskApexBar
+            activeProfile={agentProfile}
+            onProfileChange={handleProfileChange}
+            onSubmit={handleOverviewSubmit}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            isSubmitting={isAssistantQuerying}
           />
         </div>
       ) : null}
+          </>
+        ) : (
+          <CortexWorkspace
+            activeProfile={agentProfile}
+            cloudEffort={cloudEffort}
+            devModeActive={devModeActive}
+            askApexEnabled={Boolean(askApexEnabled)}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            history={assistantHistory}
+            latestTrace={assistantLatestTrace}
+            error={assistantError}
+            contextUsage={assistantContextUsage}
+            isQuerying={isAssistantQuerying}
+            snapshotAttached={snapshotAttached}
+            snapshotAvailable={telemetry.snapshot !== null}
+            onSnapshotAttachedChange={setSnapshotAttached}
+            onProfileChange={handleProfileChange}
+            onModeChange={handleModeChange}
+            onEffortChange={handleEffortChange}
+            onGoogleSearchChange={handleGoogleSearchChange}
+            neofelisGoogleSearchEnabled={neofelisGoogleSearchEnabled}
+            onSubmit={handleOverviewSubmit}
+            onNewSession={handleNewCortexSession}
+          />
+        )}
+      </div>
 
       <PreflightDialog
         open={preflight.dialogOpen}

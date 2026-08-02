@@ -38,12 +38,56 @@ export interface ToolResult {
 export interface AgentMessage extends TelemetryAgentMessage {
   tool_calls?: ToolCall[]
   tool_results?: ToolResult[]
+  tool_trace?: ToolTraceItem[]
+  metadata?: AssistantQueryMetadata
 }
 
 export interface ToolTraceItem {
   name: string
   status: string
   duration_ms: number
+  origin?: 'apex' | 'provider'
+  billable_units?: number | null
+}
+
+export interface AssistantCitation {
+  title: string | null
+  uri: string | null
+  snippet: string | null
+  source: string | null
+}
+
+export interface AssistantQueryMetadata {
+  profile: {
+    key: AssistantProfile
+    version: string | null
+    provider: string | null
+    configuredModel: string | null
+    resolvedModel: string | null
+    requestedEffort: CloudEffort | null
+    resolvedEffort: string | null
+  } | null
+  usage: {
+    inputTokens: number | null
+    cachedInputTokens: number | null
+    reasoningTokens: number | null
+    outputTokens: number | null
+    totalTokens: number | null
+  } | null
+  timing: {
+    totalMs: number | null
+    providerMs: number | null
+    apexToolMs: number | null
+  } | null
+  cost: {
+    tokenCost: number | null
+    hostedToolCost: number | null
+    totalCost: number | null
+    currency: string
+    pricingVersion: string | null
+    completeness: string | null
+  } | null
+  citations: AssistantCitation[]
 }
 
 interface AgentQueryResponseBody {
@@ -52,6 +96,7 @@ interface AgentQueryResponseBody {
   tool_outputs?: ToolOutputItem[]
   error?: string | null
   local_context_usage?: LocalContextUsage | null
+  metadata?: AssistantQueryMetadata
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -297,7 +342,92 @@ function parseToolTraceItem(value: unknown): ToolTraceItem | null {
     return null
   }
 
-  return { name, status, duration_ms: durationMs }
+  return {
+    name,
+    status,
+    duration_ms: durationMs,
+    ...(record.origin === 'apex' || record.origin === 'provider'
+      ? { origin: record.origin }
+      : {}),
+    ...(typeof record.billable_units === 'number' && Number.isFinite(record.billable_units)
+      ? { billable_units: record.billable_units }
+      : {}),
+  }
+}
+
+function parseMetricRecord(value: unknown, keys: readonly string[]): Record<string, number | null> | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  return Object.fromEntries(
+    keys.map((key) => [key, parseNullableFiniteNumber(record[key])]),
+  )
+}
+
+function parseQueryMetadata(record: Record<string, unknown>): AssistantQueryMetadata | undefined {
+  const profileRecord = record.profile_used && typeof record.profile_used === 'object'
+    ? record.profile_used as Record<string, unknown>
+    : null
+  const profile = profileRecord && isAssistantProfile(profileRecord.key)
+    ? {
+        key: profileRecord.key,
+        version: parseNullableString(profileRecord.version),
+        provider: parseNullableString(profileRecord.provider),
+        configuredModel: parseNullableString(profileRecord.configured_model),
+        resolvedModel: parseNullableString(profileRecord.resolved_model),
+        requestedEffort: isCloudEffort(profileRecord.requested_effort)
+          ? profileRecord.requested_effort
+          : null,
+        resolvedEffort: parseNullableString(profileRecord.resolved_effort),
+      }
+    : null
+  const usage = parseMetricRecord(record.usage, [
+    'input_tokens', 'cached_input_tokens', 'reasoning_tokens', 'output_tokens', 'total_tokens',
+  ])
+  const timing = parseMetricRecord(record.timing, ['total_ms', 'provider_ms', 'apex_tool_ms'])
+  const costRecord = record.cost_estimate && typeof record.cost_estimate === 'object'
+    ? record.cost_estimate as Record<string, unknown>
+    : null
+  const citations = Array.isArray(record.citations)
+    ? record.citations.flatMap((citation): AssistantCitation[] => {
+        if (!citation || typeof citation !== 'object') return []
+        const item = citation as Record<string, unknown>
+        return [{
+          title: parseNullableString(item.title),
+          uri: parseNullableString(item.uri),
+          snippet: parseNullableString(item.snippet),
+          source: parseNullableString(item.source),
+        }]
+      })
+    : []
+
+  if (!profile && !usage && !timing && !costRecord && citations.length === 0) {
+    return undefined
+  }
+
+  return {
+    profile,
+    usage: usage ? {
+      inputTokens: usage.input_tokens,
+      cachedInputTokens: usage.cached_input_tokens,
+      reasoningTokens: usage.reasoning_tokens,
+      outputTokens: usage.output_tokens,
+      totalTokens: usage.total_tokens,
+    } : null,
+    timing: timing ? {
+      totalMs: timing.total_ms,
+      providerMs: timing.provider_ms,
+      apexToolMs: timing.apex_tool_ms,
+    } : null,
+    cost: costRecord ? {
+      tokenCost: parseNullableFiniteNumber(costRecord.token_cost),
+      hostedToolCost: parseNullableFiniteNumber(costRecord.hosted_tool_cost),
+      totalCost: parseNullableFiniteNumber(costRecord.total_cost),
+      currency: typeof costRecord.currency === 'string' ? costRecord.currency : 'USD',
+      pricingVersion: parseNullableString(costRecord.pricing_version),
+      completeness: parseNullableString(costRecord.completeness),
+    } : null,
+    citations,
+  }
 }
 
 function parseToolOutputItem(value: unknown): ToolOutputItem | null {
@@ -366,7 +496,14 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
         }
       : null
 
-  return { answer, tool_trace, tool_outputs, error, local_context_usage }
+  return {
+    answer,
+    tool_trace,
+    tool_outputs,
+    error,
+    local_context_usage,
+    metadata: parseQueryMetadata(record),
+  }
 }
 
 function isAcinonyxProfile(profile: AssistantProfile): boolean {
@@ -390,6 +527,7 @@ export interface UseApexAssistantResult {
       briefingId?: number | null
       toolScope?: LocalToolScope | null
       effort?: CloudEffort | null
+      sessionId?: string | null
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
@@ -533,6 +671,7 @@ export function useApexAssistant(
         briefingId?: number | null
         toolScope?: LocalToolScope | null
         effort?: CloudEffort | null
+        sessionId?: string | null
       },
     ): Promise<void> => {
       const trimmedPrompt = prompt.trim()
@@ -567,6 +706,7 @@ export function useApexAssistant(
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
             ...(context?.toolScope ? { tool_scope: context.toolScope } : {}),
+            ...(context?.sessionId ? { session_id: context.sessionId } : {}),
           }),
         })
 
@@ -595,6 +735,10 @@ export function useApexAssistant(
           role: 'model',
           content: answer,
           tool_outputs: body.tool_outputs,
+          ...(body.tool_trace && body.tool_trace.length > 0
+            ? { tool_trace: body.tool_trace }
+            : {}),
+          ...(body.metadata ? { metadata: body.metadata } : {}),
         }
 
         if (useAcinonyxStore) {
