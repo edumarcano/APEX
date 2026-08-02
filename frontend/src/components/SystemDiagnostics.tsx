@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FocusEvent, KeyboardEvent, ReactElement, RefObject } from 'react'
+import type { FocusEvent, KeyboardEvent, ReactElement, ReactNode, RefObject } from 'react'
 import {
   Clock,
   Cpu,
@@ -122,6 +122,7 @@ interface SystemDiagnosticsProps {
   briefingControlsBusy: boolean
   onOpenSettings?: () => void
   settingsButtonRef?: RefObject<HTMLButtonElement | null>
+  workspaceNavigation?: ReactNode
 }
 
 function MetricBar({
@@ -235,6 +236,7 @@ export function SystemDiagnostics({
   briefingControlsBusy,
   onOpenSettings,
   settingsButtonRef,
+  workspaceNavigation,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isOpen, setIsOpen] = useState(false)
@@ -375,14 +377,14 @@ export function SystemDiagnostics({
   const diskText = formatPercentage(diagnostics.disk, isInitializing)
 
   const apexPillShellClass = [
-    'hud-corner-brackets hud-interactive-shell hud-glass relative flex h-11 min-w-[5.5rem] cursor-pointer flex-col items-center justify-center rounded-full px-5 transition-all duration-300',
+    'hud-corner-brackets hud-interactive-shell hud-glass relative flex min-w-[7rem] flex-col items-center rounded-2xl px-1 py-1 transition-all duration-300',
     hasConnectorFailures
       ? 'border border-red-500/70 shadow-[0_0_16px_rgba(220,38,38,0.55),0_0_4px_rgba(220,38,38,0.9)] hover:border-red-400'
       : 'hover-blue-medium',
   ].join(' ')
 
   return (
-    <div className="pointer-events-auto grid h-16 w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
+    <div className="pointer-events-auto grid h-full w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
       {/* Left flank — hardware */}
       <div className="flex min-w-0 items-center justify-self-start gap-2 sm:gap-2.5">
         <MetricPill
@@ -418,12 +420,7 @@ export function SystemDiagnostics({
         }}
         onBlur={handleBlur}
       >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleToggleClick}
-          onKeyDown={handleTriggerKeyDown}
-          className={apexPillShellClass}
+        <div className={apexPillShellClass}
           aria-expanded={isOpen}
           aria-label={
             hasConnectorFailures
@@ -433,7 +430,15 @@ export function SystemDiagnostics({
         >
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
-          <span className="hud-inner-lift flex flex-col items-center leading-none">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={handleToggleClick}
+            onKeyDown={handleTriggerKeyDown}
+            className="hud-inner-lift flex h-9 w-full cursor-pointer flex-col items-center justify-center rounded-xl px-3 leading-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+            aria-expanded={isOpen}
+            aria-label="APEX sync health"
+          >
             <span className="font-orbitron text-sm font-bold uppercase tracking-[0.28em] text-[color:var(--hud-accent)] sm:text-base">
               APEX
             </span>
@@ -453,7 +458,12 @@ export function SystemDiagnostics({
                 DEVELOPER
               </span>
             )}
-          </span>
+          </div>
+          {workspaceNavigation ? (
+            <div className="hud-inner-lift mt-1 w-full border-t border-white/10 pt-1">
+              {workspaceNavigation}
+            </div>
+          ) : null}
         </div>
 
         <div

@@ -379,30 +379,30 @@ export default function App(): ReactElement {
 
   const pendingReminderCount = activeReminders.length
   const isDormant = !activated
-  // Overview stays spatially stable. Cortex owns assistant visibility and
-  // never changes polling, request, speech, or briefing lifecycles.
-  const useRightRailConsole = false
+  // Overview retains its full desktop HUD. Cortex owns assistant visibility
+  // and never changes polling, request, speech, or briefing lifecycles.
+  const useFullscreenOverviewLayout = true
   const isConsoleCompact = false
 
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
-  const wingHeightClass = useRightRailConsole ? 'xl:h-full' : 'h-auto'
-  const leftWingDormantClasses = useRightRailConsole
+  const wingHeightClass = useFullscreenOverviewLayout ? 'xl:h-full' : 'h-auto'
+  const leftWingDormantClasses = useFullscreenOverviewLayout
     ? 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
     : 'hidden'
-  const leftWingActiveClasses = useRightRailConsole
+  const leftWingActiveClasses = useFullscreenOverviewLayout
     ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
     : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
-  const rightWingDormantClasses = useRightRailConsole
+  const rightWingDormantClasses = useFullscreenOverviewLayout
     ? 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
     : 'hidden'
-  const rightWingActiveClasses = useRightRailConsole
+  const rightWingActiveClasses = useFullscreenOverviewLayout
     ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
     : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
-  const centerColumnDormantClasses = useRightRailConsole
+  const centerColumnDormantClasses = useFullscreenOverviewLayout
     ? 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
     : 'h-auto min-h-0 flex flex-col justify-center'
-  const centerColumnActiveClasses = useRightRailConsole
+  const centerColumnActiveClasses = useFullscreenOverviewLayout
     ? 'h-full min-h-0 flex flex-col justify-start pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
     : 'h-auto min-h-0 flex flex-col justify-start pt-0'
 
@@ -544,18 +544,18 @@ export default function App(): ReactElement {
   const remindersModule = telemetry.snapshot?.modules.reminders
 
   const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
-  const weatherPanelLayoutClass = useRightRailConsole
+  const weatherPanelLayoutClass = useFullscreenOverviewLayout
     ? 'xl:flex-[0.5_1_0] xl:min-h-0'
     : 'hud-panel-natural min-h-[8rem]'
-  const eventsPanelLayoutClass = useRightRailConsole
+  const eventsPanelLayoutClass = useFullscreenOverviewLayout
     ? 'xl:flex-[1.5_1_0] xl:min-h-0'
     : 'hud-panel-natural min-h-[11rem]'
-  const marketPanelLayoutClass = useRightRailConsole
+  const marketPanelLayoutClass = useFullscreenOverviewLayout
     ? 'xl:flex-[1_1_0]'
     : 'hud-panel-natural min-h-[12rem]'
   const rightTelemetryPanelClass = isConsoleCompact
     ? 'xl:hidden'
-    : useRightRailConsole
+    : useFullscreenOverviewLayout
       ? 'flex-none xl:flex-1 xl:min-h-0'
       : 'hud-panel-natural min-h-[10rem]'
 
@@ -817,7 +817,7 @@ export default function App(): ReactElement {
 
   return (
     <main
-      className={`hud-app-shell ${useRightRailConsole ? 'hud-layout-fullscreen' : 'hud-layout-compact'} relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6`}
+      className={`hud-app-shell ${useFullscreenOverviewLayout ? 'hud-layout-fullscreen' : 'hud-layout-compact'} relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6`}
       style={{ '--glow-color': glowColor } as CSSProperties}
     >
       <CelestialBackground />
@@ -837,7 +837,7 @@ export default function App(): ReactElement {
       </div>
 
       <div className="hud-main-shell relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden">
-        <header className="hud-header relative pointer-events-none mb-4 flex h-16 w-full shrink-0 select-none flex-nowrap items-center">
+        <header className="hud-header relative pointer-events-none mb-4 flex h-20 w-full shrink-0 select-none flex-nowrap items-center">
           <SystemDiagnostics
             diagnostics={diagnostics}
             diagnosticsStatus={diagnosticsStatus}
@@ -854,11 +854,11 @@ export default function App(): ReactElement {
             briefingControlsBusy={briefingControlsBusy}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
-          />
-          <nav className="pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-zinc-950/75 p-1 shadow-xl" aria-label="Workspace">
+            workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
             <button type="button" onClick={() => setWorkspace('overview')} aria-pressed={workspace === 'overview'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'overview' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Overview</button>
             <button type="button" onClick={() => setWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
-          </nav>
+          </nav>}
+          />
         </header>
 
         <SettingsPanel
@@ -878,12 +878,12 @@ export default function App(): ReactElement {
 
         {workspace === 'overview' ? (
           <>
-        <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
+        <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useFullscreenOverviewLayout ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`hud-wing-column ${useRightRailConsole ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`hud-wing-column ${useFullscreenOverviewLayout ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useFullscreenOverviewLayout ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex ${useRightRailConsole ? 'xl:flex-1' : ''}`}>
+              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex ${useFullscreenOverviewLayout ? 'xl:flex-1' : ''}`}>
                 {isConsoleCompact ? (
                   <>
                     <TelemetryCard
@@ -1077,7 +1077,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
-              className={`hud-center-column ${useRightRailConsole ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+              className={`hud-center-column ${useFullscreenOverviewLayout ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               {/* Ambient Logo Glow Projector */}
               <div
@@ -1198,7 +1198,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useFullscreenOverviewLayout ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Inbox"
