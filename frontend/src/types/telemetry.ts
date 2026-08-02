@@ -10,8 +10,8 @@ export interface PipelineState {
   synthesis?: SynthesisLiveState | null
 }
 
-export type SynthesisProvider = 'gemini' | 'ollama' | 'raw' | 'demo'
-export type SynthesisProfile = 'comet' | 'lynx' | 'acinonyx' | 'neofelis'
+export type SynthesisProvider = 'gemini' | 'ollama' | 'openai' | 'xai' | 'raw' | 'demo'
+export type SynthesisProfile = 'panthera' | 'mus' | 'sorex'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -69,15 +69,17 @@ export type WeatherConditionArchetype =
   | 'rain'
   | 'thunderstorm'
 
-export type AgentCloudProfile = 'comet' | 'nova' | 'pulsar'
+export type AssistantMode = 'cloud' | 'local'
+export type CloudEffort = 'light' | 'focused' | 'extended'
+export type CloudSettingsProfile = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
+export type LocalSettingsProfile = 'sorex' | 'mus'
+
+export type AgentCloudProfile = CloudSettingsProfile
 
 export type AssistantProfile =
-  | 'comet'
-  | 'nova'
-  | 'pulsar'
-  | 'lynx'
+  | CloudSettingsProfile
+  | LocalSettingsProfile
   | 'acinonyx'
-  | 'neofelis'
 
 export type LocalToolScope =
   | 'schedule'
@@ -132,17 +134,25 @@ export interface LoadedOllamaModelStatus {
 export interface AgentProfileStatus {
   key: AssistantProfile
   display_name: string
-  provider: 'ollama' | 'gemini'
+  provider: 'ollama' | 'gemini' | 'openai' | 'xai'
+  version: string
+  mode: AssistantMode
   tier: string
   stability: ProfileStability
-  /** Gemini thinking level; null/omitted for Ollama or older API responses. */
-  thinking_level?: string | null
+  effort_options: CloudEffort[] | null
+  default_effort: CloudEffort | null
   status: ProfileAvailabilityStatus
   active: boolean
   loading: boolean
   reason: string | null
   idle_unload_remaining_seconds: number | null
   loaded_model: LoadedOllamaModelStatus | null
+}
+
+export interface AssistantInitialSelection {
+  mode: AssistantMode
+  profile: AssistantProfile
+  effort: CloudEffort | null
 }
 
 export interface DigestPayload {
@@ -188,6 +198,8 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
+export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+
 export type PreflightOperation =
   | 'activate'
   | 'activate_with_briefing'
@@ -228,13 +240,7 @@ export interface PreflightBlocker {
 export interface PreflightRequest {
   operation: PreflightOperation
   connectors?: string[] | null
-  briefing_mode?:
-    | 'comet'
-    | 'lynx'
-    | 'acinonyx'
-    | 'neofelis'
-    | 'structured_digest'
-    | null
+  briefing_mode?: BriefingMode | null
   synthesis_profile?: string | null
   force?: boolean
   involves_cloud?: boolean
@@ -318,6 +324,9 @@ export interface ApexDataState {
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
   defaultProfile?: AssistantProfile
+  assistantInitialSelection?: AssistantInitialSelection
+  briefingDefaultMode?: 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+  voiceMode?: 'off' | 'manual' | 'automatic'
   askApexEnabled?: boolean
   marketEnabled: boolean
   synthesisStrategy: SynthesisStrategy

@@ -15,6 +15,11 @@ from core.agent.providers.ollama_lifecycle import (
     get_status_snapshot,
     is_local_execution_active,
 )
+from core.agent.profiles import (
+    PROFILE_SPECS,
+    profile_has_credentials,
+    resolve_assistant_selection,
+)
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.config import ENV_PATH, OLLAMA_ENABLED, is_dev_mode
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
@@ -70,12 +75,10 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_LOCAL_PROFILES = frozenset({"lynx", "acinonyx", "neofelis"})
-_CLOUD_PROFILES = frozenset({"comet", "nova", "pulsar"})
+_LOCAL_PROFILES = frozenset({"sorex", "mus"})
+_CLOUD_PROFILES = frozenset({"panthera", "neofelis", "delphinus", "orcinus", "acinonyx"})
 _VALID_PROFILES = _LOCAL_PROFILES | _CLOUD_PROFILES
-_BRIEFING_MODES = frozenset(
-    {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
-)
+_BRIEFING_MODES = frozenset({"panthera", "mus", "sorex", "structured_digest"})
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
 )
@@ -174,15 +177,45 @@ def _evaluate_local_profile_blockers(
     return blockers, cold_load_required
 
 
-def _cloud_credential_blockers(*, involves_cloud: bool) -> list[PreflightBlocker]:
+def _cloud_credential_blockers(
+    *,
+    involves_cloud: bool,
+    profile: str | None,
+    operation: str,
+) -> list[PreflightBlocker]:
     if not involves_cloud:
         return []
+
+    # Temporary branch-2 shim: panthera briefing still routes through Gemini
+    # until branch 4 wires OpenAI Panthera synthesis.
+    briefing_ops = {"activate_with_briefing", "generate_briefing"}
+    if profile == "panthera" and operation in briefing_ops:
+        if os.getenv("GEMINI_API_KEY"):
+            return []
+        return [
+            _blocker(
+                "missing_credentials",
+                "Gemini API key is not configured for cloud briefing.",
+            )
+        ]
+
+    if profile and profile in PROFILE_SPECS:
+        if profile_has_credentials(profile):
+            return []
+        env_name = PROFILE_SPECS[profile].credential_env or "required credentials"
+        return [
+            _blocker(
+                "missing_credentials",
+                f"{env_name} is not configured for profile {profile}.",
+            )
+        ]
+
     if os.getenv("GEMINI_API_KEY"):
         return []
     return [
         _blocker(
             "missing_credentials",
-            "Gemini API key is not configured for cloud operations.",
+            "Required cloud credentials are not configured for this operation.",
         )
     ]
 
@@ -279,7 +312,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         "generate_briefing",
     }:
         profile = None if briefing_mode == "structured_digest" else briefing_mode
-        involves_cloud = briefing_mode == "comet"
+        involves_cloud = briefing_mode == "panthera"
     else:
         profile = (request.synthesis_profile or "").strip() or None
         if (
@@ -287,12 +320,17 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             and request.operation == "assistant_query"
             and settings is not None
         ):
-            profile = settings.assistant.default_profile
+            _mode, profile, _effort = resolve_assistant_selection(settings.assistant)
         if profile is None and request.operation in {
             "activate_with_briefing",
             "generate_briefing",
         }:
-            profile = "comet"
+            profile = (
+                settings.briefing.default_mode
+                if settings is not None
+                and settings.briefing.default_mode != "structured_digest"
+                else "panthera"
+            )
         cloud_profile = profile in _CLOUD_PROFILES if profile else False
         involves_cloud = bool(request.involves_cloud or cloud_profile)
 
@@ -325,10 +363,16 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     if involves_cloud and not request.cloud_disclosure_acknowledged:
         warnings.append(_warning("cloud_data_disclosure"))
 
-    if profile == "neofelis":
+    if profile == "mus":
         warnings.append(_warning("high_resource_local_profile"))
 
-    blockers.extend(_cloud_credential_blockers(involves_cloud=involves_cloud))
+    blockers.extend(
+        _cloud_credential_blockers(
+            involves_cloud=involves_cloud,
+            profile=profile,
+            operation=request.operation,
+        )
+    )
     blockers.extend(_football_configuration_blockers(effective_connectors, settings))
     blockers.extend(_connector_credential_blockers(effective_connectors))
 

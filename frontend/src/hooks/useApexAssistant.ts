@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   AgentMessage as TelemetryAgentMessage,
   AgentProfileStatus,
   AssistantProfile,
+  CloudEffort,
   LoadedOllamaModelStatus,
   LocalContextUsage,
   LocalToolScope,
@@ -54,12 +55,13 @@ interface AgentQueryResponseBody {
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
-  'comet',
-  'nova',
-  'pulsar',
-  'lynx',
-  'acinonyx',
+  'panthera',
   'neofelis',
+  'delphinus',
+  'orcinus',
+  'sorex',
+  'mus',
+  'acinonyx',
 ]
 
 const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
@@ -73,7 +75,17 @@ const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
   'cpu_overloaded',
 ]
 
-const VALID_PROVIDERS: readonly AgentProfileStatus['provider'][] = ['ollama', 'gemini']
+const VALID_PROVIDERS: readonly AgentProfileStatus['provider'][] = [
+  'ollama',
+  'gemini',
+  'openai',
+  'xai',
+]
+
+const VALID_PROFILE_MODES: readonly AgentProfileStatus['mode'][] = ['cloud', 'local']
+
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
+
 const VALID_PROFILE_STABILITY: readonly ProfileStability[] = ['stable', 'preview']
 
 function isAssistantProfile(value: unknown): value is AssistantProfile {
@@ -92,6 +104,14 @@ function isProfileAvailabilityStatus(value: unknown): value is ProfileAvailabili
 
 function isProvider(value: unknown): value is AgentProfileStatus['provider'] {
   return typeof value === 'string' && (VALID_PROVIDERS as readonly string[]).includes(value)
+}
+
+function isProfileMode(value: unknown): value is AgentProfileStatus['mode'] {
+  return typeof value === 'string' && (VALID_PROFILE_MODES as readonly string[]).includes(value)
+}
+
+function isCloudEffort(value: unknown): value is CloudEffort {
+  return typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
 }
 
 function isProfileStability(value: unknown): value is ProfileStability {
@@ -119,6 +139,17 @@ function parseNullableFiniteNumber(value: unknown): number | null {
     return null
   }
   return null
+}
+
+function parseCloudEffortList(value: unknown): CloudEffort[] | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (!Array.isArray(value)) {
+    return null
+  }
+  const parsed = value.filter(isCloudEffort)
+  return parsed.length === value.length ? parsed : null
 }
 
 function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus | null {
@@ -154,6 +185,8 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   const key = record.key
   const displayName = record.display_name
   const provider = record.provider
+  const version = record.version
+  const mode = record.mode
   const tier = record.tier
   const stability = record.stability
   const status = record.status
@@ -167,6 +200,12 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   if (!isProvider(provider)) {
     return null
   }
+  if (typeof version !== 'string') {
+    return null
+  }
+  if (!isProfileMode(mode)) {
+    return null
+  }
   if (typeof tier !== 'string') {
     return null
   }
@@ -177,13 +216,34 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     return null
   }
 
+  const effortOptions = parseCloudEffortList(record.effort_options)
+  if (record.effort_options !== undefined && record.effort_options !== null && effortOptions === null) {
+    return null
+  }
+  const defaultEffort =
+    record.default_effort === null || record.default_effort === undefined
+      ? null
+      : isCloudEffort(record.default_effort)
+        ? record.default_effort
+        : null
+  if (
+    record.default_effort !== undefined &&
+    record.default_effort !== null &&
+    defaultEffort === null
+  ) {
+    return null
+  }
+
   return {
     key,
     display_name: displayName,
     provider,
+    version,
+    mode,
     tier,
     stability,
-    thinking_level: parseNullableString(record.thinking_level),
+    effort_options: effortOptions,
+    default_effort: defaultEffort,
     status,
     active: typeof record.active === 'boolean' ? record.active : false,
     loading: typeof record.loading === 'boolean' ? record.loading : false,
@@ -292,6 +352,10 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   return { answer, tool_trace, tool_outputs, error, local_context_usage }
 }
 
+function isAcinonyxProfile(profile: AssistantProfile): boolean {
+  return profile === 'acinonyx'
+}
+
 export interface UseApexAssistantResult {
   assistantHistory: AgentMessage[]
   isAssistantQuerying: boolean
@@ -308,16 +372,21 @@ export interface UseApexAssistantResult {
       snapshotId?: string | null
       briefingId?: number | null
       toolScope?: LocalToolScope | null
+      effort?: CloudEffort | null
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
-  clearAssistantChat: () => void
+  clearAssistantChat: (profile?: AssistantProfile) => void
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
 }
 
-export function useApexAssistant(profilesPollingEnabled = false): UseApexAssistantResult {
-  const [assistantHistory, setAssistantHistory] = useState<AgentMessage[]>([])
+export function useApexAssistant(
+  profilesPollingEnabled = false,
+  activeProfile: AssistantProfile = 'panthera',
+): UseApexAssistantResult {
+  const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
+  const [acinonyxHistory, setAcinonyxHistory] = useState<AgentMessage[]>([])
   const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
   const [isAssistantOpen, setAssistantOpen] = useState(false)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
@@ -326,6 +395,17 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     useState<LocalContextUsage | null>(null)
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
+
+  const productionHistoryRef = useRef<AgentMessage[]>([])
+
+  useEffect(() => {
+    productionHistoryRef.current = productionHistory
+  }, [productionHistory])
+
+  const assistantHistory = useMemo(
+    () => (isAcinonyxProfile(activeProfile) ? acinonyxHistory : productionHistory),
+    [activeProfile, acinonyxHistory, productionHistory],
+  )
 
   // Mirrors isAssistantQuerying for the poll loop without restarting it on
   // every query state transition.
@@ -362,10 +442,6 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     let cancelled = false
     let timeoutId: number | undefined
 
-    // Self-scheduling loop: the next poll is armed only after the current
-    // request settles, so slow backend responses can never stack requests.
-    // Polls continue during queries (faster interval) so the HUD can observe
-    // local-model loading → active transitions mid-request.
     const pollLoop = async (): Promise<void> => {
       if (cancelled) {
         return
@@ -395,8 +471,6 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
     }
   }, [shouldPollProfiles, fetchProfilesStatus])
 
-  // Kick an immediate profile poll when a query starts so the HUD can
-  // observe local-model loading without waiting for the next interval.
   useEffect(() => {
     if (!isAssistantQuerying || !shouldPollProfiles) {
       return
@@ -436,12 +510,16 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
         snapshotId?: string | null
         briefingId?: number | null
         toolScope?: LocalToolScope | null
+        effort?: CloudEffort | null
       },
     ): Promise<void> => {
       const trimmedPrompt = prompt.trim()
       if (!trimmedPrompt) {
         return
       }
+
+      const useAcinonyxStore = isAcinonyxProfile(profile)
+      const priorHistory = useAcinonyxStore ? [] : productionHistoryRef.current
 
       isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
@@ -457,7 +535,8 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
           body: JSON.stringify({
             prompt: trimmedPrompt,
             profile,
-            history: assistantHistory,
+            history: priorHistory,
+            ...(context?.effort ? { effort: context.effort } : {}),
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
             ...(context?.toolScope ? { tool_scope: context.toolScope } : {}),
@@ -491,7 +570,12 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
           tool_outputs: body.tool_outputs,
         }
 
-        setAssistantHistory((prev) => [...prev, userMsg, modelMsg])
+        if (useAcinonyxStore) {
+          // Acinonyx is intentionally single-turn: show only the latest exchange.
+          setAcinonyxHistory([userMsg, modelMsg])
+        } else {
+          setProductionHistory((prev) => [...prev, userMsg, modelMsg])
+        }
         setAssistantLatestTrace(body.tool_trace ?? [])
         setAssistantContextUsage(body.local_context_usage ?? null)
 
@@ -507,25 +591,32 @@ export function useApexAssistant(profilesPollingEnabled = false): UseApexAssista
       } finally {
         isAssistantQueryingRef.current = false
         setIsAssistantQuerying(false)
-        // Resync active-model and idle-countdown badges now that the
-        // generation has settled.
         void fetchProfilesStatus()
       }
     },
-    [assistantHistory, fetchProfilesStatus],
+    [fetchProfilesStatus],
   )
 
-  const clearAssistantChat = useCallback((): void => {
-    setAssistantHistory([])
+  const clearAssistantChat = useCallback((profile?: AssistantProfile): void => {
+    const target = profile ?? activeProfile
+    if (isAcinonyxProfile(target)) {
+      setAcinonyxHistory([])
+    } else {
+      setProductionHistory([])
+    }
     setAssistantLatestTrace([])
     setAssistantError(null)
     setAssistantContextUsage(null)
-  }, [])
+  }, [activeProfile])
 
   const resetAssistantSession = useCallback((): void => {
-    clearAssistantChat()
+    setProductionHistory([])
+    setAcinonyxHistory([])
+    setAssistantLatestTrace([])
+    setAssistantError(null)
+    setAssistantContextUsage(null)
     setAssistantOpen(false)
-  }, [clearAssistantChat])
+  }, [])
 
   return {
     assistantHistory,

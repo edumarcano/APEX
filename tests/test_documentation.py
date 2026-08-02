@@ -67,10 +67,10 @@ class DocumentationCheckerTests(unittest.TestCase):
         source = Path("virtual-readme.md")
         issues = check_gemini_profiles(
             [source],
-            {"comet": "gemini-3.5-flash-lite"},
+            {"neofelis": "gemini-3.6-flash"},
             {
                 source: (
-                    "comet uses gemini-3.5-flash-lite; "
+                    "neofelis uses gemini-3.6-flash; "
                     "old uses gemini-3.1-flash\n"
                 )
             },

@@ -5,7 +5,7 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
+from core.agent.profiles import PROFILE_SPECS, build_concrete_profile, resolve_effort
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
@@ -88,22 +88,22 @@ class RoutingTests(unittest.TestCase):
 
     def test_gemini_success(self) -> None:
         router = SynthesisRouter()
-        expected = SynthesisResult(briefing="Ready.", provider="gemini", profile="comet")
+        expected = SynthesisResult(briefing="Ready.", provider="gemini", profile="panthera")
         with patch.object(router, "_gemini", return_value=expected), patch(
             "core.synthesis.router.resident_profile_key", return_value=None
         ):
             result = router.synthesize(sample_input(), "cloud")
         self.assertEqual(result, expected)
 
-    def test_resident_neofelis_reused_after_gemini_failure(self) -> None:
+    def test_resident_mus_reused_after_gemini_failure(self) -> None:
         router = SynthesisRouter()
-        expected = SynthesisResult(briefing="Local.", provider="ollama", profile="neofelis")
+        expected = SynthesisResult(briefing="Local.", provider="ollama", profile="mus")
         with patch.object(router, "_gemini", side_effect=RuntimeError("gemini_error")), patch.object(
             router, "_ollama", return_value=expected
-        ) as ollama, patch("core.synthesis.router.resident_profile_key", return_value="neofelis"):
+        ) as ollama, patch("core.synthesis.router.resident_profile_key", return_value="mus"):
             result = router.synthesize(sample_input(), "cloud")
-        self.assertEqual(result.profile, "neofelis")
-        ollama.assert_called_once_with(unittest.mock.ANY, "neofelis", None)
+        self.assertEqual(result.profile, "mus")
+        ollama.assert_called_once_with(unittest.mock.ANY, "mus", None)
 
     def test_late_warmup_returns_raw_without_cancelling_worker(self) -> None:
         router = SynthesisRouter()
@@ -137,20 +137,20 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
         ) as generate, patch(
-            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "COMET_PROMPT"
+            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
         ), patch(
-            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "LYNX_PROMPT"
+            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
-            result = router._ollama(sample_input(), "neofelis", None)
+            result = router._ollama(sample_input(), "mus", None)
         messages, tools, profile = generate.call_args.args
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
         self.assertFalse(profile.think)
         self.assertEqual(profile.final_answer_max_tokens, 512)
-        self.assertEqual(profile.system_instruction, "COMET_PROMPT")
-        self.assertEqual(result.profile, "neofelis")
+        self.assertEqual(profile.system_instruction, "PANTHERA_PROMPT")
+        self.assertEqual(result.profile, "mus")
 
-    def test_lynx_uses_local_prompt_acinonyx_uses_comet_prompt(self) -> None:
+    def test_sorex_uses_local_prompt_mus_uses_panthera_prompt(self) -> None:
         router = SynthesisRouter()
         response = ProviderTurnResult(
             message=AgentMessage(
@@ -163,33 +163,33 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
         ) as generate, patch(
-            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "COMET_PROMPT"
+            "core.synthesis.router.GEMINI_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
         ), patch(
-            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "LYNX_PROMPT"
+            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
-            router._ollama(sample_input(), "lynx", None)
-            self.assertEqual(generate.call_args.args[2].system_instruction, "LYNX_PROMPT")
-            router._ollama(sample_input(), "acinonyx", None)
-            self.assertEqual(generate.call_args.args[2].system_instruction, "COMET_PROMPT")
+            router._ollama(sample_input(), "sorex", None)
+            self.assertEqual(generate.call_args.args[2].system_instruction, "SOREX_PROMPT")
+            router._ollama(sample_input(), "mus", None)
+            self.assertEqual(generate.call_args.args[2].system_instruction, "PANTHERA_PROMPT")
 
-    def test_legacy_local_strategy_resolves_to_acinonyx(self) -> None:
+    def test_legacy_local_strategy_resolves_to_mus(self) -> None:
         from core.synthesis.models import strategy_to_briefing_mode
 
-        self.assertEqual(strategy_to_briefing_mode("local"), "acinonyx")
-        self.assertEqual(strategy_to_briefing_mode("cloud"), "comet")
+        self.assertEqual(strategy_to_briefing_mode("local"), "mus")
+        self.assertEqual(strategy_to_briefing_mode("cloud"), "panthera")
         self.assertEqual(strategy_to_briefing_mode("raw"), "structured_digest")
 
-    def test_explicit_neofelis_mode_does_not_reuse_resident_lynx(self) -> None:
+    def test_explicit_mus_mode_does_not_reuse_resident_sorex(self) -> None:
         router = SynthesisRouter()
-        handle = WarmupHandle(profile_key="neofelis", success=True)
+        handle = WarmupHandle(profile_key="mus", success=True)
         handle.event.set()
-        expected = SynthesisResult(briefing="Capable.", provider="ollama", profile="neofelis")
-        with patch("core.synthesis.router.resident_profile_key", return_value="lynx"), patch.object(
+        expected = SynthesisResult(briefing="Capable.", provider="ollama", profile="mus")
+        with patch("core.synthesis.router.resident_profile_key", return_value="sorex"), patch.object(
             router, "_ollama", return_value=expected
         ) as ollama:
-            result = router.synthesize_mode(sample_input(), "neofelis", handle)
-        self.assertEqual(result.profile, "neofelis")
-        ollama.assert_called_once_with(unittest.mock.ANY, "neofelis", handle.elapsed_ms)
+            result = router.synthesize_mode(sample_input(), "mus", handle)
+        self.assertEqual(result.profile, "mus")
+        ollama.assert_called_once_with(unittest.mock.ANY, "mus", handle.elapsed_ms)
 
     def test_structured_digest_mode(self) -> None:
         router = SynthesisRouter()
@@ -199,7 +199,7 @@ class RoutingTests(unittest.TestCase):
         gemini.assert_not_called()
         ollama.assert_not_called()
 
-    def test_prepare_local_warms_acinonyx(self) -> None:
+    def test_prepare_local_warms_mus(self) -> None:
         router = SynthesisRouter()
         with patch("core.synthesis.router.resident_profile_key", return_value=None), patch(
             "core.synthesis.router.OLLAMA_ENABLED", False
@@ -207,34 +207,41 @@ class RoutingTests(unittest.TestCase):
             handle = router.prepare("local")
         self.assertIsNotNone(handle)
         assert handle is not None
-        self.assertEqual(handle.profile_key, "acinonyx")
+        self.assertEqual(handle.profile_key, "mus")
         self.assertEqual(handle.reason, "local_disabled")
         self.assertTrue(handle.event.is_set())
 
 
 class ProfileAndPersistenceTests(unittest.TestCase):
-    def test_intentional_gemini_levels(self) -> None:
-        self.assertEqual(
-            {key: profile.thinking_level for key, profile in GEMINI_MODEL_PROFILES.items()},
-            {"comet": "minimal", "nova": "low", "pulsar": "medium"},
-        )
+    def test_gemini_profiles_map_effort_to_thinking_level(self) -> None:
+        expected = {
+            "acinonyx": {"light": "low", "focused": "medium", "extended": "high"},
+            "neofelis": {"light": "low", "focused": "medium", "extended": "high"},
+        }
+        for key, efforts in expected.items():
+            with self.subTest(profile=key):
+                for effort, thinking in efforts.items():
+                    _apex, native = resolve_effort(key, effort)  # type: ignore[arg-type]
+                    profile = build_concrete_profile(key, native_effort=native)
+                    self.assertEqual(profile.thinking_level, thinking)
 
-    def test_gemini_profile_models(self) -> None:
+    def test_federated_gemini_profile_models(self) -> None:
         self.assertEqual(
-            {key: (profile.api_model, profile.stability) for key, profile in GEMINI_MODEL_PROFILES.items()},
             {
-                "comet": ("gemini-3.5-flash-lite", "stable"),
-                "nova": ("gemini-3.5-flash", "stable"),
-                "pulsar": ("gemini-3.6-flash", "stable"),
+                key: (PROFILE_SPECS[key].api_model, PROFILE_SPECS[key].stability)
+                for key in ("acinonyx", "neofelis")
+            },
+            {
+                "acinonyx": ("gemini-3.5-flash-lite", "stable"),
+                "neofelis": ("gemini-3.6-flash", "stable"),
             },
         )
 
-    def test_neofelis_promotion_preserves_runtime(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["neofelis"]
-        self.assertEqual((profile.tier, profile.stability), ("capable", "stable"))
-        self.assertEqual((profile.api_model, profile.context_window), ("qwen3:8b", 4096))
-        self.assertEqual((profile.final_answer_max_tokens, profile.generation_timeout), (1024, 180))
-        self.assertEqual((profile.ram_limit, profile.cpu_limit), (68.0, 85.0))
+    def test_mus_local_profile_specs(self) -> None:
+        profile = OLLAMA_MODEL_PROFILES["mus"]
+        self.assertEqual((profile.tier, profile.stability), ("balanced", "stable"))
+        self.assertEqual((profile.api_model, profile.context_window), ("qwen3:4b-instruct", 4096))
+        self.assertEqual((profile.final_answer_max_tokens, profile.generation_timeout), (768, 150))
 
     def test_briefing_metadata_migration_and_legacy_compatibility(self) -> None:
         from core import database

@@ -131,7 +131,7 @@ class BrainFallbackShapeTests(unittest.TestCase):
     def test_process_telemetry_defaults_to_cloud_outside_dev_mode(self) -> None:
         from core import brain
 
-        expected = SynthesisResult(briefing="Cloud.", provider="gemini", profile="comet")
+        expected = SynthesisResult(briefing="Cloud.", provider="gemini", profile="panthera")
         router = mock.Mock()
         router.synthesize_mode.return_value = expected
 
@@ -139,7 +139,7 @@ class BrainFallbackShapeTests(unittest.TestCase):
             result = brain.process_telemetry("weather clear", router=router)
 
         self.assertEqual(result["provider"], "gemini")
-        self.assertEqual(router.synthesize_mode.call_args.args[1], "comet")
+        self.assertEqual(router.synthesize_mode.call_args.args[1], "panthera")
 
 
 class DemoHistoryEndpointTests(unittest.TestCase):

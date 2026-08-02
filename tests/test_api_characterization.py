@@ -41,7 +41,7 @@ class ApiCharacterizationBase(unittest.TestCase):
                     "market": True,
                 },
                 "modules": {"football": False, "f1": True},
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",

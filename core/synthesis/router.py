@@ -50,7 +50,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
 @dataclass
 class WarmupHandle:
-    profile_key: str = "acinonyx"
+    profile_key: str = "mus"
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
     reason: str | None = None
@@ -93,8 +93,8 @@ def _has_unrecognized_resident_model() -> bool:
 
 
 def _system_prompt_for_profile(profile_key: str) -> str:
-    """Lynx keeps its local prompt; Acinonyx/Neofelis use the Comet contract."""
-    if profile_key == "lynx":
+    """Sorex keeps its local prompt; Mus uses the Panthera cloud contract."""
+    if profile_key == "sorex":
         return OLLAMA_SYNTHESIS_PROMPT
     return GEMINI_SYNTHESIS_PROMPT
 
@@ -167,16 +167,20 @@ class SynthesisRouter:
         threading.Thread(target=worker, daemon=True, name="apex-synthesis-warmup").start()
         return handle
 
+    def start_sorex_warmup(self) -> WarmupHandle:
+        """Warm Sorex for cloud-fallback paths."""
+        return self.start_profile_warmup("sorex")
+
     def start_lynx_warmup(self) -> WarmupHandle:
-        """Warm Lynx for cloud-fallback paths."""
-        return self.start_profile_warmup("lynx")
+        """Compatibility alias for legacy callers."""
+        return self.start_sorex_warmup()
 
     def prepare(self, strategy: str) -> WarmupHandle | None:
         mode = strategy_to_briefing_mode(strategy)
         return self.prepare_mode(mode)
 
     def prepare_mode(self, mode: BriefingMode) -> WarmupHandle | None:
-        if mode == "structured_digest" or mode == "comet":
+        if mode == "structured_digest" or mode == "panthera":
             return None
         if mode not in LOCAL_BRIEFING_PROFILES:
             return None
@@ -204,7 +208,7 @@ class SynthesisRouter:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("gemini_unavailable")
-        self._state("generating", "gemini", "comet", None)
+        self._state("generating", "gemini", "panthera", None)
         started = time.monotonic()
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
@@ -221,7 +225,7 @@ class SynthesisRouter:
             briefing=briefing,
             insights=insights,
             provider="gemini",
-            profile="comet",
+            profile="panthera",
             generation_ms=int((time.monotonic() - started) * 1000),
         )
 
@@ -295,7 +299,7 @@ class SynthesisRouter:
             reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
             return self._raw(source, reason, warmup.elapsed_ms)
 
-    def _synthesize_comet(
+    def _synthesize_panthera(
         self, source: SynthesisInput, warmup: WarmupHandle | None
     ) -> SynthesisResult:
         gemini_reason: str | None = None
@@ -325,7 +329,7 @@ class SynthesisRouter:
                 return self._raw(source, reason)
 
         if warmup is None:
-            warmup = self.start_lynx_warmup()
+            warmup = self.start_sorex_warmup()
         if not warmup.event.wait(LOCAL_FALLBACK_GRACE_SECONDS):
             return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
         if not warmup.success:
@@ -357,8 +361,8 @@ class SynthesisRouter:
             self._state("complete", result.provider, result.profile, result.fallback_reason)
             return result
 
-        if mode == "comet":
-            return self._synthesize_comet(source, warmup)
+        if mode == "panthera":
+            return self._synthesize_panthera(source, warmup)
 
         if mode in LOCAL_BRIEFING_PROFILES:
             return self._synthesize_explicit_local(source, mode, warmup)

@@ -92,6 +92,7 @@ def run_agent_loop(
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
     resolved_local_command: ResolvedLocalCommand | None = None,
+    disable_cloud_tools: bool = False,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -174,7 +175,7 @@ def run_agent_loop(
             turn_tools: list[CapabilityDescriptor] = (
                 list(local_tools)
                 if is_local
-                else list_assistant_capabilities()
+                else ([] if disable_cloud_tools else list_assistant_capabilities())
             )
 
             # Withhold tools on the last permitted turn so every provider must

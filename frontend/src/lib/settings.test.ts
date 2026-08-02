@@ -7,6 +7,8 @@ import {
   isSettingsPatchEmpty,
   parseMcpStatusResponse,
   parseSettingsResponse,
+  resolveAssistantProfile,
+  resolveInitialAssistantSelection,
   resolveEffectiveTiming,
   settingsAreEqual,
 } from './settings'
@@ -15,6 +17,15 @@ import {
   buildMcpStatusResponse,
   buildSettingsResponse,
 } from '../test/settingsFixtures'
+
+describe('assistant boot hydration', () => {
+  it('does not reapply the saved selection after initial hydration', () => {
+    const saved = { profile: 'panthera' as const, effort: 'focused' as const }
+
+    expect(resolveInitialAssistantSelection(false, saved, 'panthera')).toEqual(saved)
+    expect(resolveInitialAssistantSelection(true, saved, 'panthera')).toBeNull()
+  })
+})
 
 describe('settings response parsing', () => {
   it('accepts a complete valid response', () => {
@@ -28,7 +39,11 @@ describe('settings response parsing', () => {
     ['market boolean', ['settings', 'features', 'market'], 'yes'],
     ['module boolean', ['settings', 'modules', 'f1'], 1],
     ['assistant boolean', ['settings', 'assistant', 'enabled'], null],
-    ['assistant profile', ['settings', 'assistant', 'default_profile'], 'invalid'],
+    ['assistant mode', ['settings', 'assistant', 'mode'], 'invalid'],
+    ['cloud profile', ['settings', 'assistant', 'cloud_profile'], 'invalid'],
+    ['cloud effort', ['settings', 'assistant', 'cloud_effort'], 'invalid'],
+    ['local profile', ['settings', 'assistant', 'local_profile'], 'invalid'],
+    ['neofelis google search', ['settings', 'assistant', 'neofelis_google_search_enabled'], null],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
@@ -81,12 +96,24 @@ describe('settings editing utilities', () => {
     expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
   })
 
+  it('resolves the active assistant profile from mode', () => {
+    expect(resolveAssistantProfile(BASE_SETTINGS.assistant)).toBe('panthera')
+    expect(
+      resolveAssistantProfile({
+        ...BASE_SETTINGS.assistant,
+        mode: 'local',
+        local_profile: 'sorex',
+      }),
+    ).toBe('sorex')
+  })
+
   it('generates a patch containing only dirty fields', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.features.weather = false
     draft.features.market = false
-    draft.assistant.default_profile = 'lynx'
-    draft.briefing.default_mode = 'acinonyx'
+    draft.assistant.mode = 'local'
+    draft.assistant.local_profile = 'sorex'
+    draft.briefing.default_mode = 'mus'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
     draft.mcp.enabled = true
@@ -94,8 +121,8 @@ describe('settings editing utilities', () => {
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       features: { weather: false, market: false },
-      assistant: { default_profile: 'lynx' },
-      briefing: { default_mode: 'acinonyx' },
+      assistant: { mode: 'local', local_profile: 'sorex' },
+      briefing: { default_mode: 'mus' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
         enabled: true,

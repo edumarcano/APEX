@@ -25,11 +25,15 @@ import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
 import {
   buildSettingsTimingRuntime,
+  resolveAssistantProfile,
   resolveEffectiveTiming,
 } from '../lib/settings'
 import type {
   AgentProfileStatus,
-  AssistantProfile,
+  AssistantMode,
+  CloudEffort,
+  CloudSettingsProfile,
+  LocalSettingsProfile,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
@@ -61,13 +65,27 @@ const MODULE_CONTROLS: readonly {
   { key: 'football', label: 'Football' },
 ]
 
-const PROFILE_OPTIONS: readonly { value: AssistantProfile; label: string }[] = [
-  { value: 'comet', label: 'Apex Comet' },
-  { value: 'nova', label: 'Apex Nova' },
-  { value: 'pulsar', label: 'Apex Pulsar' },
-  { value: 'lynx', label: 'Apex Lynx' },
-  { value: 'acinonyx', label: 'Apex Acinonyx' },
+const ASSISTANT_MODE_OPTIONS: readonly { value: AssistantMode; label: string }[] = [
+  { value: 'cloud', label: 'Cloud' },
+  { value: 'local', label: 'Local' },
+]
+
+const CLOUD_PROFILE_OPTIONS: readonly { value: CloudSettingsProfile; label: string }[] = [
+  { value: 'panthera', label: 'Apex Panthera' },
   { value: 'neofelis', label: 'Apex Neofelis' },
+  { value: 'delphinus', label: 'Apex Delphinus' },
+  { value: 'orcinus', label: 'Apex Orcinus' },
+]
+
+const LOCAL_PROFILE_OPTIONS: readonly { value: LocalSettingsProfile; label: string }[] = [
+  { value: 'sorex', label: 'Apex Sorex' },
+  { value: 'mus', label: 'Apex Mus' },
+]
+
+const CLOUD_EFFORT_OPTIONS: readonly { value: CloudEffort; label: string }[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'focused', label: 'Focused' },
+  { value: 'extended', label: 'Extended' },
 ]
 
 const ENGINE_OPTIONS: readonly { value: TtsEngine; label: string }[] = [
@@ -88,13 +106,12 @@ const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
 ]
 
 const BRIEFING_MODE_OPTIONS: readonly { value: BriefingMode; label: string }[] = [
-  { value: 'comet', label: 'Comet — Full briefing · fast cloud synthesis' },
-  { value: 'lynx', label: 'Lynx — Quick briefing · limited telemetry' },
+  { value: 'panthera', label: 'Panthera — Full briefing · cloud synthesis' },
+  { value: 'sorex', label: 'Sorex — Quick briefing · limited telemetry' },
   {
-    value: 'acinonyx',
-    label: 'Acinonyx — Full briefing · balanced synthesis (Recommended)',
+    value: 'mus',
+    label: 'Mus — Full briefing · balanced local synthesis (Recommended)',
   },
-  { value: 'neofelis', label: 'Neofelis — Full briefing · higher capacity, slower' },
   {
     value: 'structured_digest',
     label: 'Structured Digest — Structured facts · no model or synthesis',
@@ -238,7 +255,8 @@ export default function SettingsPanel({
     if (!draft) {
       return null
     }
-    return profilesStatus.find((profile) => profile.key === draft.assistant.default_profile) ?? null
+    const profileKey = resolveAssistantProfile(draft.assistant)
+    return profilesStatus.find((profile) => profile.key === profileKey) ?? null
   }, [draft, profilesStatus])
 
   const profileUnavailableWarning = useMemo(() => {
@@ -250,29 +268,29 @@ export default function SettingsPanel({
     }
     return (
       defaultProfileStatus.reason ??
-      `Default profile ${draft.assistant.default_profile} is currently unavailable.`
+      `Default profile ${resolveAssistantProfile(draft.assistant)} is currently unavailable.`
     )
   }, [draft, profilesStatusHydrated, defaultProfileStatus])
 
   const providerRows = useMemo(() => {
-    const gemini = profilesStatus.filter((profile) => profile.provider === 'gemini')
-    const ollama = profilesStatus.filter((profile) => profile.provider === 'ollama')
-    const geminiAvailable = gemini.some((profile) => profile.status === 'available')
-    const ollamaAvailable = ollama.some((profile) => profile.status === 'available')
-    const activeLocal = ollama.find((profile) => profile.active && profile.loaded_model)
+    const cloud = profilesStatus.filter((profile) => profile.mode === 'cloud')
+    const local = profilesStatus.filter((profile) => profile.mode === 'local')
+    const cloudAvailable = cloud.some((profile) => profile.status === 'available')
+    const localAvailable = local.some((profile) => profile.status === 'available')
+    const activeLocal = local.find((profile) => profile.active && profile.loaded_model)
 
     return {
-      gemini: !profilesStatusHydrated
+      cloud: !profilesStatusHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
-        : geminiAvailable
+        : cloudAvailable
           ? { value: 'Reachable', tone: 'ok' as const }
           : { value: 'Unavailable', tone: 'error' as const },
-      ollama: !profilesStatusHydrated
+      local: !profilesStatusHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
-        : ollamaAvailable
+        : localAvailable
           ? { value: 'Reachable', tone: 'ok' as const }
           : {
-              value: ollama.some((p) => p.status === 'ollama_unreachable')
+              value: local.some((p) => p.status === 'ollama_unreachable')
                 ? 'Unreachable'
                 : 'Unavailable',
               tone: 'error' as const,
@@ -397,15 +415,74 @@ export default function SettingsPanel({
                     }
                   />
                   <SettingsSelect
-                    id="settings-assistant-profile"
-                    label="Default profile"
-                    value={draft.assistant.default_profile}
-                    options={PROFILE_OPTIONS}
+                    id="settings-assistant-mode"
+                    label="Assistant mode"
+                    value={draft.assistant.mode}
+                    options={ASSISTANT_MODE_OPTIONS}
                     timing={assistantTiming}
                     onChange={(next) =>
                       setDraft((prev) => ({
                         ...prev,
-                        assistant: { ...prev.assistant, default_profile: next },
+                        assistant: { ...prev.assistant, mode: next },
+                      }))
+                    }
+                  />
+                  {draft.assistant.mode === 'cloud' ? (
+                    <>
+                      <SettingsSelect
+                        id="settings-assistant-cloud-profile"
+                        label="Cloud profile"
+                        value={draft.assistant.cloud_profile}
+                        options={CLOUD_PROFILE_OPTIONS}
+                        timing={assistantTiming}
+                        onChange={(next) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            assistant: { ...prev.assistant, cloud_profile: next },
+                          }))
+                        }
+                      />
+                      <SettingsSelect
+                        id="settings-assistant-cloud-effort"
+                        label="Cloud effort"
+                        value={draft.assistant.cloud_effort}
+                        options={CLOUD_EFFORT_OPTIONS}
+                        timing={assistantTiming}
+                        onChange={(next) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            assistant: { ...prev.assistant, cloud_effort: next },
+                          }))
+                        }
+                      />
+                    </>
+                  ) : (
+                    <SettingsSelect
+                      id="settings-assistant-local-profile"
+                      label="Local profile"
+                      value={draft.assistant.local_profile}
+                      options={LOCAL_PROFILE_OPTIONS}
+                      timing={assistantTiming}
+                      onChange={(next) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          assistant: { ...prev.assistant, local_profile: next },
+                        }))
+                      }
+                    />
+                  )}
+                  <SettingsToggle
+                    id="settings-neofelis-google-search"
+                    label="Neofelis Google Search"
+                    checked={draft.assistant.neofelis_google_search_enabled}
+                    timing={assistantTiming}
+                    onChange={(next) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        assistant: {
+                          ...prev.assistant,
+                          neofelis_google_search_enabled: next,
+                        },
                       }))
                     }
                   />
@@ -512,14 +589,14 @@ export default function SettingsPanel({
                     tone="ok"
                   />
                   <StatusRow
-                    label="Gemini"
-                    value={providerRows.gemini.value}
-                    tone={providerRows.gemini.tone}
+                    label="Cloud profiles"
+                    value={providerRows.cloud.value}
+                    tone={providerRows.cloud.tone}
                   />
                   <StatusRow
-                    label="Ollama"
-                    value={providerRows.ollama.value}
-                    tone={providerRows.ollama.tone}
+                    label="Local profiles"
+                    value={providerRows.local.value}
+                    tone={providerRows.local.tone}
                   />
                   <StatusRow label="Active local model" value={providerRows.activeModel} />
                   {FEATURE_CONTROLS.map((control) => {

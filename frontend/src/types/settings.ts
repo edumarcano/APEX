@@ -1,16 +1,17 @@
-import type { AssistantProfile, TtsEngine } from './telemetry'
+import type {
+  AssistantMode,
+  CloudEffort,
+  CloudSettingsProfile,
+  LocalSettingsProfile,
+  TtsEngine,
+} from './telemetry'
 import type { McpProviderId } from '../lib/mcpProviders'
 
 export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
-export type BriefingMode =
-  | 'comet'
-  | 'lynx'
-  | 'acinonyx'
-  | 'neofelis'
-  | 'structured_digest'
+export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
 
 export interface FeaturesSettings {
   weather: boolean
@@ -28,7 +29,11 @@ export interface ModulesSettings {
 
 export interface AssistantSettings {
   enabled: boolean
-  default_profile: AssistantProfile
+  mode: AssistantMode
+  cloud_profile: CloudSettingsProfile
+  cloud_effort: CloudEffort
+  local_profile: LocalSettingsProfile
+  neofelis_google_search_enabled: boolean
 }
 
 export interface BriefingSettings {
@@ -75,7 +80,11 @@ export interface ModulesPatch {
 
 export interface AssistantPatch {
   enabled?: boolean
-  default_profile?: AssistantProfile
+  mode?: AssistantMode
+  cloud_profile?: CloudSettingsProfile
+  cloud_effort?: CloudEffort
+  local_profile?: LocalSettingsProfile
+  neofelis_google_search_enabled?: boolean
 }
 
 export interface BriefingPatch {

@@ -10,6 +10,7 @@ from google.genai.errors import APIError
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
 from core.agent.pricing import PRICING_VERSION, estimate_inference_cost
+from core.agent.profiles import PROFILE_SPECS, build_concrete_profile, resolve_effort
 from core.agent.providers.contract import (
     ProviderToolEvent,
     ProviderTurnResult,
@@ -17,7 +18,6 @@ from core.agent.providers.contract import (
     resolve_inference_provider,
 )
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.openai_provider import OPENAI_INTERNAL_PROFILES, OpenAIProvider
@@ -32,13 +32,21 @@ from core.agent.tool_schemas import descriptor_to_responses_tool
 from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCall, ToolResult
 
 
+def _concrete_profile(key: str):
+    _apex, native = resolve_effort(key, None)
+    return build_concrete_profile(key, native_effort=native)
+
+
 class ProviderContractTests(unittest.TestCase):
     def test_resolve_inference_provider_for_existing_profiles(self) -> None:
         self.assertEqual(
-            resolve_inference_provider(GEMINI_MODEL_PROFILES["comet"]), "gemini"
+            resolve_inference_provider(_concrete_profile("neofelis")), "gemini"
         )
         self.assertEqual(
-            resolve_inference_provider(OLLAMA_MODEL_PROFILES["lynx"]), "ollama"
+            resolve_inference_provider(_concrete_profile("panthera")), "openai"
+        )
+        self.assertEqual(
+            resolve_inference_provider(OLLAMA_MODEL_PROFILES["sorex"]), "ollama"
         )
         self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
@@ -60,6 +68,8 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(merged.total_tokens, 22)
 
     def test_loop_aggregates_usage_timing_cost_and_apex_origin(self) -> None:
+        profile = _concrete_profile("neofelis")
+
         class Provider:
             def __init__(self) -> None:
                 self.calls = 0
@@ -85,26 +95,26 @@ class ProviderContractTests(unittest.TestCase):
                                 )
                             ],
                         ),
-                        resolved_model="gemini-3.5-flash-lite-rev",
+                        resolved_model="gemini-3.6-flash-rev",
                         usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
                         provider_ms=12.5,
                     )
                 return ProviderTurnResult(
                     message=AgentMessage(role="model", content="Clear skies."),
-                    resolved_model="gemini-3.5-flash-lite-rev",
+                    resolved_model="gemini-3.6-flash-rev",
                     usage=TokenUsage(input_tokens=140, output_tokens=30, total_tokens=170),
                     provider_ms=8.0,
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Weather?", profile="comet"),
+            AgentQueryRequest(prompt="Weather?", profile="neofelis"),
             Provider(),
-            GEMINI_MODEL_PROFILES["comet"],
+            profile,
             tools_dispatcher=lambda _name, _args: {"summary": "clear"},
         )
 
         self.assertEqual(response.answer, "Clear skies.")
-        self.assertEqual(response.resolved_model, "gemini-3.5-flash-lite-rev")
+        self.assertEqual(response.resolved_model, "gemini-3.6-flash-rev")
         assert response.usage is not None
         self.assertEqual(response.usage.input_tokens, 240)
         self.assertEqual(response.usage.output_tokens, 50)
@@ -115,10 +125,10 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(response.cost_estimate.pricing_version, PRICING_VERSION)
         self.assertEqual(response.cost_estimate.completeness, "complete")
         self.assertEqual(response.tool_trace[0]["origin"], "apex")
-        self.assertEqual(
-            {key for key in GEMINI_MODEL_PROFILES},
-            {"comet", "nova", "pulsar"},
-        )
+        gemini_keys = {
+            key for key, spec in PROFILE_SPECS.items() if spec.provider == "gemini"
+        }
+        self.assertEqual(gemini_keys, {"acinonyx", "neofelis"})
 
     def test_provider_tool_events_reach_the_trace_with_numeric_durations(self) -> None:
         class Provider:
@@ -143,9 +153,9 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Search?", profile="comet"),
+            AgentQueryRequest(prompt="Search?", profile="neofelis"),
             Provider(),
-            GEMINI_MODEL_PROFILES["comet"],
+            _concrete_profile("neofelis"),
         )
 
         trace = response.tool_trace[0]
@@ -183,7 +193,7 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            OLLAMA_MODEL_PROFILES["lynx"],
+            OLLAMA_MODEL_PROFILES["sorex"],
         )
 
         self.assertEqual(result.message.content, "Local answer")
@@ -207,10 +217,10 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            OLLAMA_MODEL_PROFILES["lynx"],
+            OLLAMA_MODEL_PROFILES["sorex"],
         )
 
-        self.assertEqual(result.resolved_model, OLLAMA_MODEL_PROFILES["lynx"].api_model)
+        self.assertEqual(result.resolved_model, OLLAMA_MODEL_PROFILES["sorex"].api_model)
         self.assertIsNone(result.usage)
 
     @patch("core.agent.providers.ollama.register_activity", return_value=None)
@@ -237,7 +247,7 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [self._descriptor()],
-            OLLAMA_MODEL_PROFILES["lynx"],
+            OLLAMA_MODEL_PROFILES["sorex"],
         )
 
         self.assertEqual(mock_post.call_count, 2)
@@ -250,6 +260,19 @@ class OllamaContractTests(unittest.TestCase):
 
 
 class PricingRegistryTests(unittest.TestCase):
+    def test_luna_uses_the_configured_august_rates(self) -> None:
+        estimate = estimate_inference_cost(
+            model="gpt-5.6-luna",
+            usage=TokenUsage(
+                input_tokens=1_000_000,
+                cached_input_tokens=400_000,
+                output_tokens=1_000_000,
+            ),
+        )
+
+        # 0.6M uncached at $0.20 + 0.4M cached at $0.02 + 1M output at $1.20.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 1.328, places=4)
+
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(
             model="gemini-3.5-flash",
@@ -338,7 +361,7 @@ class RetryHelperTests(unittest.TestCase):
             cached_content_token_count=None,
             thoughts_token_count=None,
         )
-        mock_response.model_version = "gemini-3.5-flash"
+        mock_response.model_version = "gemini-3.6-flash"
         mock_client.models.generate_content.side_effect = [
             APIError(429, {"error": {"message": "rate limited"}}),
             mock_response,
@@ -347,11 +370,11 @@ class RetryHelperTests(unittest.TestCase):
         result = GeminiProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hello")],
             [],
-            GEMINI_MODEL_PROFILES["nova"],
+            _concrete_profile("neofelis"),
         )
         self.assertEqual(result.message.content, "Recovered")
         self.assertEqual(result.retry_count, 1)
-        self.assertEqual(result.resolved_model, "gemini-3.5-flash")
+        self.assertEqual(result.resolved_model, "gemini-3.6-flash")
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 11)
         self.assertEqual(result.usage.output_tokens, 3)
@@ -454,7 +477,7 @@ class ResponsesAdapterTests(unittest.TestCase):
                 "content": [{"type": "output_text", "text": "Hello from OpenAI"}],
             }
         ]
-        mock_response.model = "gpt-5.6"
+        mock_response.model = "gpt-5.6-luna"
         mock_response.usage = {
             "input_tokens": 12,
             "output_tokens": 4,
@@ -473,7 +496,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertNotIn("tools", kwargs)
         self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
         self.assertEqual(result.message.content, "Hello from OpenAI")
-        self.assertEqual(result.resolved_model, "gpt-5.6")
+        self.assertEqual(result.resolved_model, "gpt-5.6-luna")
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_non_reasoning_profile_omits_reasoning_request_fields(
@@ -554,13 +577,15 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertIsNone(result.usage)
 
 
-class PublicRosterUnchangedTests(unittest.TestCase):
-    def test_openai_and_xai_profiles_are_not_in_public_registries(self) -> None:
-        self.assertNotIn("openai_default", GEMINI_MODEL_PROFILES)
-        self.assertNotIn("xai_default", OLLAMA_MODEL_PROFILES)
+class PublicRosterTests(unittest.TestCase):
+    def test_unified_registry_exposes_openai_and_xai_profiles(self) -> None:
+        providers = {PROFILE_SPECS[key].provider for key in PROFILE_SPECS}
+        self.assertIn("openai", providers)
+        self.assertIn("xai", providers)
+        self.assertEqual(set(OLLAMA_MODEL_PROFILES), {"sorex", "mus"})
         self.assertEqual(
-            set(OLLAMA_MODEL_PROFILES),
-            {"lynx", "acinonyx", "neofelis"},
+            {key for key, spec in PROFILE_SPECS.items() if spec.provider == "gemini"},
+            {"acinonyx", "neofelis"},
         )
 
 

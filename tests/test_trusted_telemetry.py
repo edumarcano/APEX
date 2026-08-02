@@ -235,7 +235,7 @@ class AdversarialSynthesisTests(unittest.TestCase):
             gemini.return_value = SynthesisResult(
                 briefing="Ready.",
                 provider="gemini",
-                profile="comet",
+                profile="panthera",
             )
             result = router.synthesize(sample_input(), "cloud", full_telemetry="SECRET SUBJECT")
         self.assertEqual(result.provider, "gemini")
@@ -253,7 +253,7 @@ class AdversarialSynthesisTests(unittest.TestCase):
             side_effect=RuntimeError(secret),
         ), patch(
             "core.synthesis.router.resident_profile_key",
-            return_value="lynx",
+            return_value="sorex",
         ), patch.object(
             router,
             "_ollama",

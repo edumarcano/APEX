@@ -139,10 +139,12 @@ class ExtractedRouterHttpTests(unittest.TestCase):
 
     def test_assistant_routes_delegate_and_preserve_payloads(self) -> None:
         profile = AgentProfileStatus(
-            key="comet",
-            display_name="Comet",
-            provider="gemini",
-            tier="fast",
+            key="panthera",
+            display_name="Apex Panthera",
+            provider="openai",
+            version="2.0",
+            mode="cloud",
+            tier="balanced",
             stability="stable",
             status="available",
             active=False,
@@ -154,11 +156,11 @@ class ExtractedRouterHttpTests(unittest.TestCase):
             response = self.client.get("/api/v1/agent/profiles")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()[0]["key"], "comet")
+        self.assertEqual(response.json()[0]["key"], "panthera")
 
         query_response = AgentQueryResponse(
             answer="Ready.",
-            profile_used={"key": "comet"},
+            profile_used={"key": "panthera"},
             session_id="session-1",
         )
         with mock.patch(
@@ -169,7 +171,7 @@ class ExtractedRouterHttpTests(unittest.TestCase):
                 "/api/v1/agent/query",
                 json={
                     "prompt": "Status?",
-                    "profile": "comet",
+                    "profile": "panthera",
                     "session_id": "session-1",
                 },
             )

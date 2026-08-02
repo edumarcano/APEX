@@ -33,17 +33,16 @@ class HostedToolRate:
     usd_per_invocation: float
 
 
-# Rates are unverified planning estimates, not billing figures. Every entry
-# below still needs to be reconciled against the provider's published pricing
-# page and that source recorded here before cost is surfaced in the UI.
+# Rates are point-in-time estimates, not billing figures. They must be
+# reconciled against provider pricing before being changed or surfaced in the UI.
 # Keep keys lowercase.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
     # Gemini (v1.18 roster + future sandbox)
     "gemini-3.5-flash-lite": ModelTokenRates(0.10, 0.40, cached_input_per_million=0.025),
     "gemini-3.5-flash": ModelTokenRates(0.30, 2.50, cached_input_per_million=0.075),
     "gemini-3.6-flash": ModelTokenRates(0.50, 3.00, cached_input_per_million=0.125),
-    # OpenAI placeholders for unexposed adapters / future Panthera
-    "gpt-5.6": ModelTokenRates(1.25, 10.00, cached_input_per_million=0.125),
+    # OpenAI — Luna rates effective 2026-08-01.
+    "gpt-5.6-luna": ModelTokenRates(0.20, 1.20, cached_input_per_million=0.020),
     "gpt-5.4": ModelTokenRates(1.25, 10.00, cached_input_per_million=0.125),
     "gpt-4.1": ModelTokenRates(2.00, 8.00, cached_input_per_million=0.50),
     "gpt-4.1-mini": ModelTokenRates(0.40, 1.60, cached_input_per_million=0.10),

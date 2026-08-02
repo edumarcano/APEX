@@ -4,17 +4,19 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-SynthesisProvider = Literal["gemini", "ollama", "raw", "demo"]
-SynthesisProfile = Literal["comet", "lynx", "acinonyx", "neofelis"]
-BriefingMode = Literal[
-    "comet", "lynx", "acinonyx", "neofelis", "structured_digest"
-]
+SynthesisProvider = Literal["gemini", "ollama", "raw", "demo", "openai"]
+SynthesisProfile = Literal["panthera", "mus", "sorex"]
+BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
 
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
+    {"panthera", "mus", "sorex", "structured_digest"}
+)
+LOCAL_BRIEFING_PROFILES: frozenset[str] = frozenset({"mus", "sorex"})
+
+_LEGACY_BRIEFING_MODES: frozenset[str] = frozenset(
     {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
 )
-LOCAL_BRIEFING_PROFILES: frozenset[str] = frozenset({"lynx", "acinonyx", "neofelis"})
 
 
 def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
@@ -23,12 +25,18 @@ def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
     if normalized == "raw":
         return "structured_digest"
     if normalized == "local":
-        return "acinonyx"
+        return "mus"
     if normalized == "cloud":
-        return "comet"
+        return "panthera"
+    if normalized == "comet":
+        return "panthera"
+    if normalized == "lynx":
+        return "sorex"
+    if normalized in {"acinonyx", "neofelis"}:
+        return "mus"
     if normalized in VALID_BRIEFING_MODES:
         return normalized  # type: ignore[return-value]
-    return "comet"
+    return "panthera"
 
 
 class CalendarFact(BaseModel):

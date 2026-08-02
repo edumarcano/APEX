@@ -10,7 +10,7 @@ from unittest import mock
 from core.agent import tools as agent_tools
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
+from core.agent.profiles import build_concrete_profile, resolve_effort
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.api.models import RuntimeMetadata
 from core.api.state import PipelineState
@@ -163,9 +163,11 @@ class StableAgentErrorTests(unittest.TestCase):
             raise RuntimeError("private-dispatcher-detail")
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Check weather", profile="comet"),
+            AgentQueryRequest(prompt="Check weather", profile="neofelis"),
             provider,
-            GEMINI_MODEL_PROFILES["comet"],
+            build_concrete_profile(
+                "neofelis", native_effort=resolve_effort("neofelis", None)[1]
+            ),
             tools_dispatcher=failing_dispatcher,
         )
 

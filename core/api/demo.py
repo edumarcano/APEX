@@ -8,8 +8,6 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES, GeminiModelProfile
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.api.models import DigestPayload, TelemetryPayload, parse_digest_payload
 
@@ -254,16 +252,25 @@ def build_demo_briefing(telemetry: TelemetryPayload) -> str:
 
 def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     """Return deterministic assistant responses when ``DEMO_MODE`` is active."""
-    profile: GeminiModelProfile | OllamaModelProfile | None = None
-    if payload.profile in GEMINI_MODEL_PROFILES:
-        profile = GEMINI_MODEL_PROFILES[payload.profile]
-    elif payload.profile in OLLAMA_MODEL_PROFILES:
-        profile = OLLAMA_MODEL_PROFILES[payload.profile]
-    else:
+    from core.agent.profiles import (
+        PROFILE_SPECS,
+        build_concrete_profile,
+        build_profile_used_metadata,
+        is_profile_visible,
+        resolve_effort,
+    )
+
+    profile_key = payload.profile
+    if profile_key not in PROFILE_SPECS or not is_profile_visible(profile_key):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown agent profile: {payload.profile!r}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent profile {profile_key!r} is not available.",
         )
+
+    resolved_apex_effort, resolved_native_effort = resolve_effort(
+        profile_key, payload.effort
+    )
+    profile = build_concrete_profile(profile_key, native_effort=resolved_native_effort)
 
     prompt_lower = payload.prompt.lower()
     responses, fallback = load_mock_agent_responses()
@@ -275,7 +282,14 @@ def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     return AgentQueryResponse(
         answer=selected_response["answer"],
-        profile_used=profile.model_dump(),
+        profile_used=build_profile_used_metadata(
+            profile_key,
+            configured_model=profile.api_model,
+            resolved_model=profile.api_model,
+            requested_effort=payload.effort,
+            resolved_apex_effort=resolved_apex_effort,
+            resolved_native_effort=resolved_native_effort,
+        ),
         tool_trace=selected_response["tool_trace"],
         tool_outputs=selected_response.get("tool_outputs", []),
         session_id=payload.session_id,

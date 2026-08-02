@@ -69,7 +69,7 @@ class BriefingDeliveryTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
                 "briefing": {"default_mode": "comet"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
@@ -158,7 +158,7 @@ class BriefingDeliveryTests(unittest.TestCase):
         self._seed_snapshot("current")
         response = self.client.post(
             "/api/v1/briefings/generate",
-            json={"snapshot_id": "stale", "mode": "comet"},
+            json={"snapshot_id": "stale", "mode": "panthera"},
         )
         self.assertEqual(response.status_code, 409)
 
@@ -170,17 +170,17 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             stale = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": "stale", "mode": "neofelis"},
+                json={"snapshot_id": "stale", "mode": "mus"},
             )
             response = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": snap.snapshot_id, "mode": "neofelis"},
+                json={"snapshot_id": snap.snapshot_id, "mode": "mus"},
             )
         self.assertEqual(stale.status_code, 409)
         self.assertEqual(response.status_code, 200)
         metadata = response.json()["metadata"]
         self.assertEqual(metadata["snapshot_id"], "demo-current")
-        self.assertEqual(metadata["briefing_mode"], "neofelis")
+        self.assertEqual(metadata["briefing_mode"], "mus")
 
     def test_voice_off_returns_403(self) -> None:
         self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="off")))
@@ -216,8 +216,8 @@ class BriefingDeliveryTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 5)
-        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "comet")
+        self.assertEqual(payload["schema_version"], 6)
+        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
 
@@ -240,17 +240,17 @@ class BriefingDeliveryTests(unittest.TestCase):
                 briefing="Trigger briefing.",
                 insights=["Insight"],
                 provider="gemini",
-                profile="comet",
+                profile="panthera",
             ).model_dump(),
         ) as process, mock.patch("core.api.briefing.speaker.speak") as speak:
             response = self.client.post("/api/v1/trigger")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["briefing"], "Trigger briefing.")
-        self.assertEqual(payload["metadata"]["briefing_mode"], "comet")
+        self.assertEqual(payload["metadata"]["briefing_mode"], "panthera")
         self.assertFalse(payload["metadata"]["spoken"])
         process.assert_called_once()
-        self.assertEqual(process.call_args.kwargs.get("mode"), "comet")
+        self.assertEqual(process.call_args.kwargs.get("mode"), "panthera")
         speak.assert_not_called()
 
     def test_trigger_accepts_an_explicit_session_mode(self) -> None:
@@ -315,7 +315,7 @@ class SettingsV3NormalizeTests(unittest.TestCase):
                 "tts_settings": {"primary_tts": "google", "voice_gender": "male"},
             }
         )
-        self.assertEqual(snap.briefing.default_mode, "comet")
+        self.assertEqual(snap.briefing.default_mode, "panthera")
         self.assertEqual(snap.voice.mode, "automatic")
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "male")

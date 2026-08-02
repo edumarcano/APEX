@@ -31,7 +31,11 @@
   "local_agent_system_prompt": "You are APEX (Automated Personal Environment Xylem), Chief's interactive local operations assistant. Answer direct questions using available tools when live data is required. Be concise, authoritative, and operational. Address the user as Chief when natural.",
   "ask_apex": {
     "enabled": true,
-    "default_profile": "comet",
+    "mode": "cloud",
+    "cloud_profile": "panthera",
+    "cloud_effort": "focused",
+    "local_profile": "mus",
+    "neofelis_google_search_enabled": true,
     "max_session_messages": 6
   },
   "gemini": {
@@ -45,9 +49,8 @@
     "single_loaded_model": true,
     "manual_unload_enabled": true,
     "resource_gates": {
-      "lynx": { "ram_limit": 88.0, "cpu_limit": 95.0 },
-      "acinonyx": { "ram_limit": 78.0, "cpu_limit": 90.0 },
-      "neofelis": { "ram_limit": 68.0, "cpu_limit": 85.0 }
+      "sorex": { "ram_limit": 88.0, "cpu_limit": 95.0 },
+      "mus": { "ram_limit": 78.0, "cpu_limit": 90.0 }
     }
   },
   "mcp": {

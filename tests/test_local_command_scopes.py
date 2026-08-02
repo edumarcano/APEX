@@ -14,7 +14,8 @@ from core.agent.local_commands import (
 )
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
+from core.agent.profiles import build_concrete_profile, resolve_effort
+from core.agent.profiles import build_concrete_profile, resolve_effort
 from core.agent.providers.ollama import (
     OllamaProvider,
     _budget_payload,
@@ -22,6 +23,11 @@ from core.agent.providers.ollama import (
     _estimate_payload_tokens,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
+
+
+def _cloud_profile(key: str = "neofelis"):
+    _apex, native = resolve_effort(key, None)
+    return build_concrete_profile(key, native_effort=native)
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 
 
@@ -70,9 +76,9 @@ class LocalCommandScopeTests(unittest.TestCase):
         )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hello", profile="lynx"),
+            AgentQueryRequest(prompt="Hello", profile="sorex"),
             provider,
-            OLLAMA_MODEL_PROFILES["lynx"],
+            OLLAMA_MODEL_PROFILES["sorex"],
         )
 
         self.assertEqual(provider.tool_names, [[]])
@@ -170,11 +176,11 @@ class LocalCommandScopeTests(unittest.TestCase):
             response = run_agent_loop(
                 AgentQueryRequest(
                     prompt="Forecast",
-                    profile="lynx",
+                    profile="sorex",
                     tool_scope="weather",
                 ),
                 provider,
-                OLLAMA_MODEL_PROFILES["lynx"],
+                OLLAMA_MODEL_PROFILES["sorex"],
                 tools_dispatcher=lambda name, _arguments: dispatched.append(name),
                 resolved_local_command=resolution,
             )
@@ -191,9 +197,9 @@ class LocalCommandScopeTests(unittest.TestCase):
         provider = _CapturingProvider([AgentMessage(role="model", content="Done.")])
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hello", profile="comet"),
+            AgentQueryRequest(prompt="Hello", profile="neofelis"),
             provider,
-            GEMINI_MODEL_PROFILES["comet"],
+            _cloud_profile("neofelis"),
         )
 
         self.assertGreater(len(provider.tool_names[0]), 0)
@@ -215,12 +221,12 @@ class LocalCommandScopeTests(unittest.TestCase):
                 AgentMessage(role="model", content="Forecast ready."),
             ]
         )
-        profile = GEMINI_MODEL_PROFILES["comet"].model_copy(
+        profile = _cloud_profile("neofelis").model_copy(
             update={"max_tool_turns": 2}
         )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Forecast", profile="comet"),
+            AgentQueryRequest(prompt="Forecast", profile="neofelis"),
             provider,
             profile,
             tools_dispatcher=lambda _name, _arguments: {"forecast": "clear"},
@@ -234,7 +240,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertIsNone(response.error)
 
     def test_budget_trims_oldest_complete_interaction(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["lynx"].model_copy(
+        profile = OLLAMA_MODEL_PROFILES["sorex"].model_copy(
             update={"context_window": 1400, "final_answer_max_tokens": 128}
         )
         history = [
@@ -257,7 +263,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertIn("current question", contents)
 
     def test_security_directive_does_not_claim_tools_are_available(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["lynx"]
+        profile = OLLAMA_MODEL_PROFILES["sorex"]
         payload = _build_payload(
             [AgentMessage(role="user", content="Hello")],
             [],
@@ -271,7 +277,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertNotIn("You have access to external tools", system_content)
 
     def test_truncated_tool_turn_rebudgets_for_larger_final_answer(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["neofelis"].model_copy(
+        profile = OLLAMA_MODEL_PROFILES["mus"].model_copy(
             update={
                 "context_window": 2200,
                 "tool_select_max_tokens": 64,

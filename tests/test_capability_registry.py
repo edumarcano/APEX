@@ -20,7 +20,7 @@ from core.agent.capabilities import (
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _descriptors_to_gemini_tools
-from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
+from core.agent.profiles import build_concrete_profile, resolve_effort
 from core.agent.providers.ollama import _descriptor_to_openai_schema
 from core.agent.tools import register_native_capabilities
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
@@ -355,9 +355,11 @@ class CapabilityRegistryTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hide this", profile="comet"),
+            AgentQueryRequest(prompt="Hide this", profile="neofelis"),
             Provider(),
-            GEMINI_MODEL_PROFILES["comet"],
+            build_concrete_profile(
+                "neofelis", native_effort=resolve_effort("neofelis", None)[1]
+            ),
         )
 
         self.assertEqual(
@@ -433,9 +435,11 @@ class CapabilityRegistryTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Call missing", profile="comet"),
+            AgentQueryRequest(prompt="Call missing", profile="neofelis"),
             Provider(),
-            GEMINI_MODEL_PROFILES["comet"],
+            build_concrete_profile(
+                "neofelis", native_effort=resolve_effort("neofelis", None)[1]
+            ),
         )
 
         self.assertEqual(response.answer, "Recovered.")

@@ -58,20 +58,20 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as assistant enablement/default profile, market enablement, message limits, runtime modes, and initial synthesis hints. Editable values come from the runtime settings store.
+Returns boot-time HUD values such as assistant enablement, the effective profile and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `assistant_initial_selection` is the effective selection; in development mode it can be Acinonyx without changing saved production preferences.
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `5`.
+Returns the resolved settings envelope. The current contract version is `6`.
 
 ```json
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "settings": {
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
-    "assistant": { "enabled": true, "default_profile": "comet" },
-    "briefing": { "default_mode": "comet" },
+    "assistant": { "enabled": true, "mode": "cloud", "cloud_profile": "panthera", "cloud_effort": "focused", "local_profile": "mus", "neofelis_google_search_enabled": true },
+    "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
   },
@@ -142,7 +142,7 @@ Evaluates warnings and non-overridable blockers for one intended operation witho
 ```json
 {
   "operation": "activate_with_briefing",
-  "briefing_mode": "comet",
+  "briefing_mode": "panthera",
   "connectors": ["weather", "calendar"],
   "force": false,
   "acknowledged_warnings": [],
@@ -161,10 +161,10 @@ Calling an operation endpoint directly skips advisory acknowledgement; operation
 Runs the full compatibility workflow: force-refresh telemetry, generate with an optional requested mode or configured default, persist production history, and apply automatic voice-delivery rules.
 
 ```json
-{ "mode": "comet" }
+{ "mode": "panthera" }
 ```
 
-The body is optional. Valid modes are `comet`, `lynx`, `acinonyx`, `neofelis`, and `structured_digest`.
+The body is optional. Valid modes are `panthera`, `mus`, `sorex`, and `structured_digest`.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.
@@ -223,13 +223,9 @@ Returns the local assistant command bundles, including availability, reason, too
 
 ### GET `/api/v1/agent/profiles`
 
-Returns all six assistant profiles with provider, tier, stability, availability, active/loading state, and local lifecycle diagnostics.
+Returns the visible assistant profiles with provider, profile version, tier, supported effort levels, availability, active/loading state, and local lifecycle diagnostics. Acinonyx appears only in development mode.
 
-Current cloud model identities are:
-
-- `comet` — `gemini-3.5-flash-lite`
-- `nova` — `gemini-3.5-flash`
-- `pulsar` — `gemini-3.6-flash`
+The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
 Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active resident model.
 
@@ -252,7 +248,8 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 ```json
 {
   "prompt": "What should I prioritize this afternoon?",
-  "profile": "comet",
+  "profile": "panthera",
+  "effort": "focused",
   "session_id": "browser-session-id",
   "history": [],
   "snapshot_id": "optional-current-snapshot-id",
@@ -263,13 +260,13 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data.
 
-Cloud profiles can receive the approved automatic capability registry. Local profiles receive no tools unless `tool_scope` selects one command bundle. Responses contain synthesized text, profile details, sanitized tool trace, client-display-approved structured outputs, optional stable error, and local context usage.
+Cloud profiles can receive the approved automatic capability registry. Local profiles receive no tools unless `tool_scope` selects one command bundle. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized tool trace, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `403` — assistant disabled.
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Assistant loops are bounded. Comet can use up to 6 model turns and 10 tool calls subject to operator ceilings; Nova and Pulsar use up to 4 turns and 6 calls. The last model turn is answer-only.
+Assistant loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud profiles can use up to 4 turns and 6 calls; Sorex and Mus use up to 2/3 and 3/4 turns/calls respectively. The last model turn is answer-only.
 
 ## Markets and MCP
 

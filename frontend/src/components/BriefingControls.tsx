@@ -33,13 +33,12 @@ interface BriefingOption {
 }
 
 const CLOUD_OPTIONS: readonly BriefingOption[] = [
-  { key: 'comet', label: 'Comet', description: 'Full briefing · fast cloud synthesis' },
+  { key: 'panthera', label: 'Panthera', description: 'Full briefing · cloud synthesis' },
 ]
 
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'lynx', label: 'Lynx', description: 'Quick briefing · limited telemetry' },
-  { key: 'acinonyx', label: 'Acinonyx', description: 'Full briefing · balanced synthesis' },
-  { key: 'neofelis', label: 'Neofelis', description: 'Full briefing · higher capacity, slower' },
+  { key: 'sorex', label: 'Sorex', description: 'Quick briefing · limited telemetry' },
+  { key: 'mus', label: 'Mus', description: 'Full briefing · balanced local synthesis' },
   {
     key: 'structured_digest',
     label: 'Structured Digest',
@@ -58,10 +57,9 @@ const SECTIONS: readonly {
 ]
 
 const MODE_LABELS: Record<BriefingMode, string> = {
-  comet: 'Comet',
-  lynx: 'Lynx',
-  acinonyx: 'Acinonyx',
-  neofelis: 'Neofelis',
+  panthera: 'Panthera',
+  sorex: 'Sorex',
+  mus: 'Mus',
   structured_digest: 'Structured',
 }
 

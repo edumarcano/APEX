@@ -229,7 +229,7 @@ def check_gemini_profiles(
             )
 
     known_models = set(expected_profiles.values())
-    model_pattern = re.compile(r"gemini-\d+(?:\.\d+)*-[a-z0-9-]+")
+    model_pattern = re.compile(r"gemini-\d+(?:\.\d+)*-[a-z0-9-]+(?![a-z0-9-])")
     for path in paths:
         for line_number, line in enumerate(
             texts[path].splitlines(), start=1
@@ -258,9 +258,13 @@ def public_openapi_routes() -> set[tuple[str, str]]:
 
 
 def current_gemini_profiles() -> dict[str, str]:
-    from core.agent.providers.gemini_models import GEMINI_MODEL_PROFILES
+    from core.agent.profiles import PROFILE_SPECS
 
-    return {key: profile.api_model for key, profile in GEMINI_MODEL_PROFILES.items()}
+    return {
+        key: spec.api_model
+        for key, spec in PROFILE_SPECS.items()
+        if spec.provider == "gemini"
+    }
 
 
 def run(root: Path = ROOT) -> list[DocumentationIssue]:

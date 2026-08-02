@@ -167,7 +167,7 @@ describe('usePreflight', () => {
 
     await act(async () => {
       await result.current.requestOperation('assistant_query', {
-        synthesis_profile: 'comet',
+        synthesis_profile: 'panthera',
         involves_cloud: true,
       })
     })
@@ -175,7 +175,7 @@ describe('usePreflight', () => {
     const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body))
     expect(body).toMatchObject({
       operation: 'assistant_query',
-      synthesis_profile: 'comet',
+      synthesis_profile: 'panthera',
       involves_cloud: true,
     })
   })

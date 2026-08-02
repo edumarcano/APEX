@@ -47,7 +47,12 @@ import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
-import type { AssistantProfile, LocalToolScope } from './types/telemetry'
+import { resolveAssistantProfile, resolveInitialAssistantSelection } from './lib/settings'
+import type {
+  AssistantProfile,
+  CloudEffort,
+  LocalToolScope,
+} from './types/telemetry'
 import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
 interface ParsedEmail {
@@ -124,24 +129,10 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
   })
 }
 
-const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
-  'comet',
-  'nova',
-  'pulsar',
-  'lynx',
-  'acinonyx',
-  'neofelis',
-]
-
-function isAssistantProfile(value: string): value is AssistantProfile {
-  return (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
-}
-
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
-  'comet',
-  'lynx',
-  'acinonyx',
-  'neofelis',
+  'panthera',
+  'mus',
+  'sorex',
   'structured_digest',
 ]
 
@@ -156,7 +147,7 @@ function isVoiceMode(value: string): value is VoiceMode {
 }
 
 function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
-  return mode === 'comet'
+  return mode === 'panthera'
 }
 
 function synthesisProfileForMode(mode: BriefingMode): string | null {
@@ -166,10 +157,22 @@ function synthesisProfileForMode(mode: BriefingMode): string | null {
   return mode
 }
 
+function isCloudAssistantProfile(
+  profile: AssistantProfile,
+  profilesStatus: { key: AssistantProfile; mode: 'cloud' | 'local' }[],
+): boolean {
+  const match = profilesStatus.find((entry) => entry.key === profile)
+  if (match) {
+    return match.mode === 'cloud'
+  }
+  return profile !== 'sorex' && profile !== 'mus'
+}
+
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
-  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('comet')
-  const [briefingMode, setBriefingMode] = useState<BriefingMode>('comet')
+  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('panthera')
+  const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
+  const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -185,6 +188,9 @@ export default function App(): ReactElement {
     askApexEnabled,
     marketEnabled,
     defaultProfile,
+    assistantInitialSelection,
+    briefingDefaultMode,
+    voiceMode: bootVoiceMode,
     refreshReminders,
     markReminderAsRead,
     applyBootSettings,
@@ -212,56 +218,63 @@ export default function App(): ReactElement {
     unloadLocalModel,
     clearAssistantChat,
     setAssistantOpen,
-  } = useApexAssistant(true)
+  } = useApexAssistant(true, agentProfile)
 
-  // Synchronize the active profile with backend defaults when idle (not mid-query).
+  const assistantSelectionHydratedRef = useRef(false)
+
+  // Hydrate backend defaults once; later profile changes belong to the active session.
   useEffect(() => {
-    if (isAssistantQuerying) {
-      return
+    const selection = resolveInitialAssistantSelection(
+      assistantSelectionHydratedRef.current,
+      assistantInitialSelection,
+      defaultProfile,
+    )
+    if (selection) {
+      setAgentProfile(selection.profile)
+      if (selection.effort) {
+        setCloudEffort(selection.effort)
+      }
+      assistantSelectionHydratedRef.current = true
     }
-    if (defaultProfile && isAssistantProfile(defaultProfile)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors backend boot/settings config into selectable profile state.
-      setAgentProfile(defaultProfile)
-    }
-  }, [defaultProfile, isAssistantQuerying])
+  }, [assistantInitialSelection, defaultProfile])
 
   useEffect(() => {
-    let cancelled = false
-    void fetch(API_ENDPOINTS.config)
-      .then(async (response) => {
-        if (!response.ok) {
-          return null
-        }
-        return (await response.json()) as Record<string, unknown>
-      })
-      .then((body) => {
-        if (cancelled || !body) {
-          return
-        }
-        const mode = body.briefing_default_mode
-        if (typeof mode === 'string' && isBriefingMode(mode)) {
-          setBriefingMode(mode)
-        }
-        const voice = body.voice_mode
-        if (typeof voice === 'string' && isVoiceMode(voice)) {
-          setVoiceMode(voice)
-        }
-      })
-      .catch(() => {
-        // Boot hydration for briefing/voice mode is best-effort.
-      })
-    return () => {
-      cancelled = true
+    if (briefingDefaultMode && isBriefingMode(briefingDefaultMode)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors asynchronous boot configuration into local controls.
+      setBriefingMode(briefingDefaultMode)
     }
-  }, [])
+    if (bootVoiceMode && isVoiceMode(bootVoiceMode)) {
+      setVoiceMode(bootVoiceMode)
+    }
+  }, [bootVoiceMode, briefingDefaultMode])
 
   const handleSettingsApplied = useCallback(
     (response: SettingsResponse) => {
+      // DEV_MODE keeps Acinonyx/Focused as the effective selection without
+      // writing it into saved production preferences.
+      const selection = response.dev_mode_active
+        ? {
+            mode: 'cloud' as const,
+            profile: 'acinonyx' as AssistantProfile,
+            effort: 'focused' as CloudEffort,
+          }
+        : {
+            mode: response.settings.assistant.mode,
+            profile: resolveAssistantProfile(response.settings.assistant),
+            effort:
+              response.settings.assistant.mode === 'cloud'
+                ? response.settings.assistant.cloud_effort
+                : null,
+          }
       applyBootSettings({
         askApexEnabled: response.settings.assistant.enabled,
-        defaultProfile: response.settings.assistant.default_profile,
+        assistantInitialSelection: selection,
         marketEnabled: response.settings.features.market,
       })
+      setAgentProfile(selection.profile)
+      if (selection.effort) {
+        setCloudEffort(selection.effort)
+      }
       setBriefingMode(response.settings.briefing.default_mode)
       setVoiceMode(response.settings.voice.mode)
     },
@@ -690,7 +703,7 @@ export default function App(): ReactElement {
     ): Promise<void> => {
       const resolution = await preflight.requestOperation('assistant_query', {
         synthesis_profile: profile,
-        involves_cloud: profile === 'comet' || profile === 'nova' || profile === 'pulsar',
+        involves_cloud: isCloudAssistantProfile(profile, profilesStatus),
       })
       if (resolution !== 'proceed') {
         return
@@ -698,9 +711,10 @@ export default function App(): ReactElement {
       await queryAssistant(prompt, profile, {
         snapshotId: telemetry.snapshot?.snapshot_id ?? null,
         toolScope,
+        effort: isCloudAssistantProfile(profile, profilesStatus) ? cloudEffort : null,
       })
     },
-    [preflight, queryAssistant, telemetry.snapshot?.snapshot_id],
+    [preflight, queryAssistant, telemetry.snapshot?.snapshot_id, profilesStatus, cloudEffort],
   )
 
   const consoleTrayProps = {

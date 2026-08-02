@@ -14,6 +14,17 @@ LocalToolScope: TypeAlias = Literal[
     "todo",
 ]
 
+ProfileKey: TypeAlias = Literal[
+    "acinonyx",
+    "panthera",
+    "neofelis",
+    "delphinus",
+    "orcinus",
+    "sorex",
+    "mus",
+]
+ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
+
 CostCompleteness = Literal["complete", "partial", "unavailable"]
 
 
@@ -167,11 +178,16 @@ class AgentMessage(BaseModel):
 
 class AgentQueryRequest(BaseModel):
     prompt: str = Field(description="The user's direct operations query.")
-    profile: Literal[
-        "comet", "nova", "pulsar", "lynx", "acinonyx", "neofelis"
-    ] = Field(
-        default="comet",
-        description="The APEX agent role tier (cloud or local Ollama profile).",
+    profile: ProfileKey = Field(
+        default="panthera",
+        description="The APEX federated profile key (cloud or local).",
+    )
+    effort: ApexEffort | None = Field(
+        default=None,
+        description=(
+            "Optional cloud effort override (light, focused, extended). "
+            "Rejected for local profiles."
+        ),
     )
     session_id: Optional[str] = Field(
         default=None, description="Optional temporary session grouping identifier."
