@@ -102,7 +102,7 @@ class RoutingTests(unittest.TestCase):
                 role="model",
                 content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
             ),
-            resolved_model="gpt-5.6-luna-2026-08-01",
+            resolved_model="gpt-5.6-luna",
             provider_ms=123.4,
         )
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=False), patch(
@@ -119,7 +119,7 @@ class RoutingTests(unittest.TestCase):
             )
         )
         self.assertEqual(result.provider, "openai")
-        self.assertEqual(result.resolved_model, "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(result.resolved_model, "gpt-5.6-luna")
         self.assertEqual(result.provider_ms, 123.4)
 
     def test_panthera_falls_back_to_mus_before_sorex(self) -> None:

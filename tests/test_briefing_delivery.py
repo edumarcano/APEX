@@ -170,7 +170,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             insights=["One"],
             provider="openai",
             profile="panthera",
-            resolved_model="gpt-5.6-luna-2026-08-01",
+            resolved_model="gpt-5.6-luna",
             fallback_steps=["panthera:openai_timeout", "mus:local_model_missing"],
             provider_ms=321.5,
             usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
@@ -191,7 +191,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         metadata = response.json()["metadata"]
-        self.assertEqual(metadata["synthesis_resolved_model"], "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(metadata["synthesis_resolved_model"], "gpt-5.6-luna")
         self.assertEqual(metadata["synthesis_fallback_steps"], synthesis.fallback_steps)
         self.assertEqual(metadata["synthesis_usage"]["total_tokens"], 120)
         self.assertEqual(metadata["synthesis_provider_ms"], 321.5)
