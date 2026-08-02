@@ -34,6 +34,9 @@ export interface AssistantSettings {
   cloud_effort: CloudEffort
   local_profile: LocalSettingsProfile
   neofelis_google_search_enabled: boolean
+  neofelis_google_maps_enabled: boolean
+  delphinus_x_search_enabled: boolean
+  orcinus_x_search_enabled: boolean
 }
 
 export interface BriefingSettings {
@@ -85,6 +88,9 @@ export interface AssistantPatch {
   cloud_effort?: CloudEffort
   local_profile?: LocalSettingsProfile
   neofelis_google_search_enabled?: boolean
+  neofelis_google_maps_enabled?: boolean
+  delphinus_x_search_enabled?: boolean
+  orcinus_x_search_enabled?: boolean
 }
 
 export interface BriefingPatch {

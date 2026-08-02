@@ -16,19 +16,18 @@ import type {
 import { useLocalCommands } from '../hooks/useLocalCommands'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 
-import { CloudProfileSelector } from './CloudProfileSelector'
 import { LocalCommandSelector } from './LocalCommandSelector'
+import { ProfileMark } from './ProfileMark'
+import { PROFILE_DISPLAY_NAMES } from './profileIdentity'
 
 interface AskApexBarProps {
   activeProfile: AssistantProfile
-  onProfileChange: (profile: AssistantProfile) => void
   onSubmit: (
     query: string,
     profile: AssistantProfile,
     toolScope?: LocalToolScope | null,
   ) => void
   profilesStatus: AgentProfileStatus[]
-  profilesStatusHydrated: boolean
   onSelectChip?: (query: string) => void
   isSubmitting: boolean
   disabled?: boolean
@@ -39,10 +38,8 @@ interface AskApexBarProps {
 
 export function AskApexBar({
   activeProfile,
-  onProfileChange,
   onSubmit,
   profilesStatus,
-  profilesStatusHydrated,
   onSelectChip,
   isSubmitting,
   disabled = false,
@@ -211,17 +208,10 @@ export function AskApexBar({
             spellCheck={false}
           />
 
-          <CloudProfileSelector
-            activeProfile={activeProfile}
-            onChange={(profile) => {
-              setActiveScope(null)
-              setCommandsOpen(false)
-              onProfileChange(profile)
-            }}
-            profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
-            disabled={isInputDisabled}
-          />
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-zinc-400" aria-label={`Using ${PROFILE_DISPLAY_NAMES[activeProfile]}`}>
+            <ProfileMark profile={activeProfile} />
+            <span className="hidden sm:inline">Using {PROFILE_DISPLAY_NAMES[activeProfile]}</span>
+          </span>
         </div>
       </form>
     </div>

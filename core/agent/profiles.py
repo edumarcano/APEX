@@ -309,6 +309,9 @@ def build_concrete_profile(
     *,
     native_effort: NativeEffort | None,
     neofelis_google_search_enabled: bool = True,
+    neofelis_google_maps_enabled: bool = True,
+    delphinus_x_search_enabled: bool = True,
+    orcinus_x_search_enabled: bool = True,
 ) -> AgentModelProfile:
     """Materialize a provider-specific profile with effort applied."""
     spec = PROFILE_SPECS[profile_key]
@@ -329,6 +332,9 @@ def build_concrete_profile(
             hosted_tools=hosted_tools_for_profile(
                 profile_key,
                 neofelis_google_search_enabled=neofelis_google_search_enabled,
+                neofelis_google_maps_enabled=neofelis_google_maps_enabled,
+                delphinus_x_search_enabled=delphinus_x_search_enabled,
+                orcinus_x_search_enabled=orcinus_x_search_enabled,
             ),
         )
     if spec.provider == "ollama":
@@ -378,6 +384,9 @@ def build_concrete_profile(
         hosted_tools=hosted_tools_for_profile(
             profile_key,
             neofelis_google_search_enabled=neofelis_google_search_enabled,
+            neofelis_google_maps_enabled=neofelis_google_maps_enabled,
+            delphinus_x_search_enabled=delphinus_x_search_enabled,
+            orcinus_x_search_enabled=orcinus_x_search_enabled,
         ),
     )
 

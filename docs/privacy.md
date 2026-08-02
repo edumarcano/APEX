@@ -63,7 +63,7 @@ Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, a
 
 Enabled MCP providers receive arguments selected for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives web or news search; Alpha Vantage receives market-research parameters.
 
-Neofelis can send a query to provider-hosted Google Search when its setting is enabled and to Google Maps grounding. Delphinus and Orcinus can use provider-hosted X Search. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and xAI general web search is not enabled.
+Neofelis can send a query to provider-hosted Google Search or Google Maps grounding when their settings are enabled. Delphinus and Orcinus can use provider-hosted X Search when their respective setting is enabled. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and xAI general web search is not enabled.
 
 Imported results are untrusted and bounded before model and HUD delivery. The presets are disabled by default, must be allowlisted and locally risk-classified, and are never included in scheduled briefing telemetry.
 

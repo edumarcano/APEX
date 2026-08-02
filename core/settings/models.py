@@ -27,7 +27,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 6
+SETTINGS_SCHEMA_VERSION: int = 7
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
@@ -81,6 +81,9 @@ class AssistantSettings(BaseModel):
     cloud_effort: CloudEffort = "focused"
     local_profile: LocalSettingsProfile = "mus"
     neofelis_google_search_enabled: bool = True
+    neofelis_google_maps_enabled: bool = True
+    delphinus_x_search_enabled: bool = True
+    orcinus_x_search_enabled: bool = True
 
 
 class BriefingSettings(BaseModel):
@@ -181,6 +184,9 @@ class AssistantPatch(BaseModel):
     cloud_effort: CloudEffort | None = None
     local_profile: LocalSettingsProfile | None = None
     neofelis_google_search_enabled: bool | None = None
+    neofelis_google_maps_enabled: bool | None = None
+    delphinus_x_search_enabled: bool | None = None
+    orcinus_x_search_enabled: bool | None = None
 
 
 class BriefingPatch(BaseModel):

@@ -211,6 +211,15 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.assistant.neofelis_google_search_enabled !== 'boolean') {
     return null
   }
+  if (typeof value.assistant.neofelis_google_maps_enabled !== 'boolean') {
+    return null
+  }
+  if (typeof value.assistant.delphinus_x_search_enabled !== 'boolean') {
+    return null
+  }
+  if (typeof value.assistant.orcinus_x_search_enabled !== 'boolean') {
+    return null
+  }
   if (!isBriefingMode(value.briefing.default_mode)) {
     return null
   }
@@ -232,6 +241,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       cloud_effort: value.assistant.cloud_effort,
       local_profile: value.assistant.local_profile,
       neofelis_google_search_enabled: value.assistant.neofelis_google_search_enabled,
+      neofelis_google_maps_enabled: value.assistant.neofelis_google_maps_enabled,
+      delphinus_x_search_enabled: value.assistant.delphinus_x_search_enabled,
+      orcinus_x_search_enabled: value.assistant.orcinus_x_search_enabled,
     },
     briefing: {
       default_mode: value.briefing.default_mode,

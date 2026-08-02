@@ -66,11 +66,11 @@ Returns the resolved settings envelope. The current contract version is `6`.
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "settings": {
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
-    "assistant": { "enabled": true, "mode": "cloud", "cloud_profile": "panthera", "cloud_effort": "focused", "local_profile": "mus", "neofelis_google_search_enabled": true },
+    "assistant": { "enabled": true, "mode": "cloud", "cloud_profile": "panthera", "cloud_effort": "focused", "local_profile": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
@@ -261,7 +261,7 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has Google Maps grounding and optional Google Search; Delphinus and Orcinus have X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `403` — assistant disabled.
 - `429` — another local generation owns the execution slot.

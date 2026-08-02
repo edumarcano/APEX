@@ -218,6 +218,15 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             neofelis_google_search_enabled=(
                 assistant_settings.neofelis_google_search_enabled
             ),
+            neofelis_google_maps_enabled=(
+                assistant_settings.neofelis_google_maps_enabled
+            ),
+            delphinus_x_search_enabled=(
+                assistant_settings.delphinus_x_search_enabled
+            ),
+            orcinus_x_search_enabled=(
+                assistant_settings.orcinus_x_search_enabled
+            ),
         )
         known_native_tools = {
             "neofelis": ("google_search", "google_maps"),
@@ -533,6 +542,11 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         neofelis_google_search_enabled=(
             settings.assistant.neofelis_google_search_enabled
         ),
+        neofelis_google_maps_enabled=(
+            settings.assistant.neofelis_google_maps_enabled
+        ),
+        delphinus_x_search_enabled=settings.assistant.delphinus_x_search_enabled,
+        orcinus_x_search_enabled=settings.assistant.orcinus_x_search_enabled,
     )
     acinonyx_sandbox = is_acinonyx_sandbox(profile_key)
 

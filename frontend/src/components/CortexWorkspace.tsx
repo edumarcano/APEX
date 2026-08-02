@@ -18,7 +18,7 @@ import type {
 
 import { AssistantToolCards } from './AssistantToolCards'
 import { AskApexBar } from './AskApexBar'
-import { CloudProfileSelector } from './CloudProfileSelector'
+import { ProfileCardSelector } from './ProfileCardSelector'
 
 interface CortexWorkspaceProps {
   activeProfile: AssistantProfile
@@ -40,6 +40,12 @@ interface CortexWorkspaceProps {
   onEffortChange: (effort: CloudEffort) => void
   onGoogleSearchChange: (enabled: boolean) => void
   neofelisGoogleSearchEnabled: boolean
+  onGoogleMapsChange: (enabled: boolean) => void
+  neofelisGoogleMapsEnabled: boolean
+  onDelphinusXSearchChange: (enabled: boolean) => void
+  delphinusXSearchEnabled: boolean
+  onOrcinusXSearchChange: (enabled: boolean) => void
+  orcinusXSearchEnabled: boolean
   onSubmit: (query: string, profile: AssistantProfile, toolScope?: LocalToolScope | null) => void
   onNewSession: () => void
 }
@@ -169,23 +175,31 @@ function Conversation({ history, latestTrace, error, isQuerying, profilesStatus,
 
 export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const mode = profileMode(props.activeProfile)
-  const activeProfileStatus = props.profilesStatus.find((profile) => profile.key === props.activeProfile)
   return (
     <section className="relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl" aria-label="Cortex workspace">
       <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5">
         <div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Independent operations workspace</p></div></div>
         <button type="button" onClick={props.onNewSession} disabled={props.isQuerying} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button>
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="space-y-4 border-b border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r scrollbar-thin">
-          <section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Runtime</p><div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-black/20 p-1"><button type="button" onClick={() => props.onModeChange('cloud')} className={`rounded-md px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider ${mode === 'cloud' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-300'}`}>Cloud</button><button type="button" onClick={() => props.onModeChange('local')} className={`rounded-md px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider ${mode === 'local' ? 'bg-[#78350F]/25 text-[#FDBA74]' : 'text-zinc-500 hover:text-zinc-300'}`}>Local</button></div></section>
-          <section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Profile</p><CloudProfileSelector activeProfile={props.activeProfile} onChange={props.onProfileChange} profilesStatus={props.profilesStatus} profilesStatusHydrated={props.profilesStatusHydrated} modeFilter={mode} /><p className="text-xs leading-relaxed text-zinc-500">{activeProfileStatus?.description ?? 'Checking profile availability…'}</p></section>
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} profilesStatus={props.profilesStatus} activeProfile={props.activeProfile} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar activeProfile={props.activeProfile} onSubmit={props.onSubmit} profilesStatus={props.profilesStatus} isSubmitting={props.isQuerying} showCommands contextUsage={props.contextUsage} integrated /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
+        <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector">
+          <section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Profile</p><ProfileCardSelector activeProfile={props.activeProfile} onChange={props.onProfileChange} onModeChange={props.onModeChange} profilesStatus={props.profilesStatus} profilesStatusHydrated={props.profilesStatusHydrated} devModeActive={props.devModeActive} /></section>
           {mode === 'cloud' ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.activeProfile === 'acinonyx' ? 'focused' : props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} disabled={props.activeProfile === 'acinonyx'} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF] disabled:opacity-50"><option value="light">Light</option><option value="focused">Focused</option><option value="extended">Extended</option></select>{props.activeProfile === 'acinonyx' ? <p className="text-[11px] text-zinc-500">Acinonyx is fixed to Focused in the sandbox.</p> : null}</section> : null}
-          {props.activeProfile === 'neofelis' ? <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-zinc-300">Google Search</span><span className="block text-[11px] text-zinc-500">Native grounding</span></span><input type="checkbox" checked={props.neofelisGoogleSearchEnabled} onChange={(event) => props.onGoogleSearchChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label> : null}
+          {props.activeProfile === 'neofelis' ? <GroundingControls label="Neofelis" note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="Google Search" detail="Provider grounding for later requests" checked={props.neofelisGoogleSearchEnabled} onChange={props.onGoogleSearchChange} /><GroundingToggle label="Google Maps" detail="Provider grounding for later requests" checked={props.neofelisGoogleMapsEnabled} onChange={props.onGoogleMapsChange} /></GroundingControls> : null}
+          {props.activeProfile === 'delphinus' ? <GroundingControls label="Delphinus" note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={props.delphinusXSearchEnabled} onChange={props.onDelphinusXSearchChange} /></GroundingControls> : null}
+          {props.activeProfile === 'orcinus' ? <GroundingControls label="Orcinus" note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={props.orcinusXSearchEnabled} onChange={props.onOrcinusXSearchChange} /></GroundingControls> : null}
           <section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Context</p><label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span className="text-xs text-zinc-300">Current HUD snapshot</span><input type="checkbox" checked={props.snapshotAttached} disabled={!props.snapshotAvailable} onChange={(event) => props.onSnapshotAttachedChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label><p className="text-[11px] leading-relaxed text-zinc-500">{props.snapshotAttached && props.snapshotAvailable ? 'The current snapshot will be included with the next turn.' : 'No HUD context will be attached.'}</p>{props.contextUsage ? <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-400"><div className="flex justify-between"><span>Local context</span><span>{formatNumber(props.contextUsage.peak_prompt_tokens ?? props.contextUsage.estimated_prompt_tokens)}/{formatNumber(props.contextUsage.context_window)}</span></div><p className="mt-1 text-zinc-600">{props.contextUsage.history_messages_dropped} messages trimmed</p></div> : null}</section>
         </aside>
-        <div className="flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} profilesStatus={props.profilesStatus} activeProfile={props.activeProfile} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar activeProfile={props.activeProfile} onProfileChange={props.onProfileChange} onSubmit={props.onSubmit} profilesStatus={props.profilesStatus} profilesStatusHydrated={props.profilesStatusHydrated} isSubmitting={props.isQuerying} showCommands contextUsage={props.contextUsage} integrated /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
       </div>
     </section>
   )
+}
+
+function GroundingToggle({ label, detail, checked, onChange }: { label: string; detail: string; checked: boolean; onChange: (enabled: boolean) => void }): ReactElement {
+  return <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-zinc-300">{label}</span><span className="block text-[11px] text-zinc-500">{detail} · {checked ? 'Enabled' : 'Disabled'}</span></span><input aria-label={`${label} grounding`} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label>
+}
+
+function GroundingControls({ label, note, children }: { label: string; note: string; children: ReactElement | ReactElement[] }): ReactElement {
+  return <section className="space-y-2" aria-label={`${label} grounding`}><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Grounding</p>{children}<p className="text-[11px] leading-relaxed text-zinc-500">{note}</p></section>
 }

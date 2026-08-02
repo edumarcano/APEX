@@ -151,6 +151,9 @@ export default function App(): ReactElement {
   const [localProfile, setLocalProfile] = useState<'sorex' | 'mus'>('mus')
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [neofelisGoogleSearchEnabled, setNeofelisGoogleSearchEnabled] = useState(true)
+  const [neofelisGoogleMapsEnabled, setNeofelisGoogleMapsEnabled] = useState(true)
+  const [delphinusXSearchEnabled, setDelphinusXSearchEnabled] = useState(true)
+  const [orcinusXSearchEnabled, setOrcinusXSearchEnabled] = useState(true)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
   )
@@ -263,6 +266,9 @@ export default function App(): ReactElement {
       setNeofelisGoogleSearchEnabled(
         response.settings.assistant.neofelis_google_search_enabled,
       )
+      setNeofelisGoogleMapsEnabled(response.settings.assistant.neofelis_google_maps_enabled)
+      setDelphinusXSearchEnabled(response.settings.assistant.delphinus_x_search_enabled)
+      setOrcinusXSearchEnabled(response.settings.assistant.orcinus_x_search_enabled)
       setBriefingMode(response.settings.briefing.default_mode)
       setVoiceMode(response.settings.voice.mode)
     },
@@ -293,6 +299,15 @@ export default function App(): ReactElement {
         }
         if (typeof values.neofelis_google_search_enabled === 'boolean') {
           setNeofelisGoogleSearchEnabled(values.neofelis_google_search_enabled)
+        }
+        if (typeof values.neofelis_google_maps_enabled === 'boolean') {
+          setNeofelisGoogleMapsEnabled(values.neofelis_google_maps_enabled)
+        }
+        if (typeof values.delphinus_x_search_enabled === 'boolean') {
+          setDelphinusXSearchEnabled(values.delphinus_x_search_enabled)
+        }
+        if (typeof values.orcinus_x_search_enabled === 'boolean') {
+          setOrcinusXSearchEnabled(values.orcinus_x_search_enabled)
         }
       } catch {
         // Cortex falls back to boot defaults when settings are temporarily unavailable.
@@ -802,6 +817,21 @@ export default function App(): ReactElement {
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
     setNeofelisGoogleSearchEnabled(enabled)
     void persistAssistantSettings({ neofelis_google_search_enabled: enabled })
+  }, [persistAssistantSettings])
+
+  const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
+    setNeofelisGoogleMapsEnabled(enabled)
+    void persistAssistantSettings({ neofelis_google_maps_enabled: enabled })
+  }, [persistAssistantSettings])
+
+  const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
+    setDelphinusXSearchEnabled(enabled)
+    void persistAssistantSettings({ delphinus_x_search_enabled: enabled })
+  }, [persistAssistantSettings])
+
+  const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
+    setOrcinusXSearchEnabled(enabled)
+    void persistAssistantSettings({ orcinus_x_search_enabled: enabled })
   }, [persistAssistantSettings])
 
   const handleNewCortexSession = useCallback((): void => {
@@ -1354,10 +1384,8 @@ export default function App(): ReactElement {
           <button type="button" onClick={() => setWorkspace('cortex')} className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[#7EB3FF] hover:text-white">Open Cortex</button>
           <AskApexBar
             activeProfile={agentProfile}
-            onProfileChange={handleProfileChange}
             onSubmit={handleOverviewSubmit}
             profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
             isSubmitting={isAssistantQuerying}
           />
         </div>
@@ -1384,6 +1412,12 @@ export default function App(): ReactElement {
             onEffortChange={handleEffortChange}
             onGoogleSearchChange={handleGoogleSearchChange}
             neofelisGoogleSearchEnabled={neofelisGoogleSearchEnabled}
+            onGoogleMapsChange={handleGoogleMapsChange}
+            neofelisGoogleMapsEnabled={neofelisGoogleMapsEnabled}
+            onDelphinusXSearchChange={handleDelphinusXSearchChange}
+            delphinusXSearchEnabled={delphinusXSearchEnabled}
+            onOrcinusXSearchChange={handleOrcinusXSearchChange}
+            orcinusXSearchEnabled={orcinusXSearchEnabled}
             onSubmit={handleOverviewSubmit}
             onNewSession={handleNewCortexSession}
           />

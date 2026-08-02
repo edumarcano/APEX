@@ -60,10 +60,8 @@ describe('AskApexBar local commands', () => {
     render(
       <AskApexBar
         activeProfile="mus"
-        onProfileChange={vi.fn()}
         onSubmit={onSubmit}
         profilesStatus={[localProfile]}
-        profilesStatusHydrated
         isSubmitting={false}
         showCommands
         integrated
@@ -106,10 +104,8 @@ describe('AskApexBar local commands', () => {
     render(
       <AskApexBar
         activeProfile="mus"
-        onProfileChange={vi.fn()}
         onSubmit={vi.fn()}
         profilesStatus={[localProfile]}
-        profilesStatusHydrated
         isSubmitting={false}
         showCommands
         integrated

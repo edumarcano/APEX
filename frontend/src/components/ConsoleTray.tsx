@@ -146,7 +146,6 @@ interface ConsoleTrayProps {
   assistantError: string | null
   assistantContextUsage: LocalContextUsage | null
   profilesStatus: AgentProfileStatus[]
-  profilesStatusHydrated: boolean
   queryAssistant: (
     prompt: string,
     profile: AssistantProfile,
@@ -154,7 +153,6 @@ interface ConsoleTrayProps {
   ) => Promise<void>
   clearAssistantChat: () => void
   activeProfile: AssistantProfile
-  setActiveProfile: (profile: AssistantProfile) => void
   askApexEnabled: boolean
   activeReminders: ActiveReminder[]
   markReminderAsRead: (id: number) => void
@@ -541,11 +539,9 @@ export function ConsoleTray({
   assistantError,
   assistantContextUsage,
   profilesStatus,
-  profilesStatusHydrated,
   queryAssistant,
   clearAssistantChat,
   activeProfile,
-  setActiveProfile,
   askApexEnabled,
   activeReminders,
   markReminderAsRead,
@@ -752,10 +748,8 @@ export function ConsoleTray({
           <footer className="relative z-[2] shrink-0 border-t border-white/10 bg-zinc-950/40 p-3">
             <AskApexBar
               activeProfile={activeProfile}
-              onProfileChange={setActiveProfile}
               onSubmit={handleAgentSubmit}
               profilesStatus={profilesStatus}
-              profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
               showCommands={isExpanded}
@@ -798,10 +792,8 @@ export function ConsoleTray({
           {activeTab === 'assistant' && askApexEnabled ? (
             <AskApexBar
               activeProfile={activeProfile}
-              onProfileChange={setActiveProfile}
               onSubmit={handleAgentSubmit}
               profilesStatus={profilesStatus}
-              profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
               integrated
@@ -858,10 +850,8 @@ export function ConsoleTray({
           <footer className="shrink-0 border-t border-white/10 bg-zinc-950/40 p-4">
             <AskApexBar
               activeProfile={activeProfile}
-              onProfileChange={setActiveProfile}
               onSubmit={handleAgentSubmit}
               profilesStatus={profilesStatus}
-              profilesStatusHydrated={profilesStatusHydrated}
               onSelectChip={handleChipSelect}
               isSubmitting={isAssistantQuerying}
               showCommands={isExpanded}

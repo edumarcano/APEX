@@ -321,7 +321,7 @@ class AcinonyxPolicyTests(unittest.TestCase):
             ],
         )
 
-    def test_hosted_tool_policy_matches_profiles_and_toggle(self) -> None:
+    def test_hosted_tool_policy_matches_profiles_and_toggles(self) -> None:
         self.assertEqual(
             hosted_tools_for_profile(
                 "neofelis", neofelis_google_search_enabled=True
@@ -336,9 +336,33 @@ class AcinonyxPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             hosted_tools_for_profile(
+                "neofelis",
+                neofelis_google_search_enabled=False,
+                neofelis_google_maps_enabled=False,
+            ),
+            frozenset(),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
                 "delphinus", neofelis_google_search_enabled=True
             ),
             frozenset({"x_search"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "delphinus",
+                neofelis_google_search_enabled=True,
+                delphinus_x_search_enabled=False,
+            ),
+            frozenset(),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "orcinus",
+                neofelis_google_search_enabled=True,
+                orcinus_x_search_enabled=False,
+            ),
+            frozenset(),
         )
 
 
@@ -383,8 +407,8 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_six(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 6)
+    def test_settings_schema_version_is_seven(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 7)
 
 
 if __name__ == "__main__":

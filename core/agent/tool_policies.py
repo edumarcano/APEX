@@ -42,13 +42,20 @@ def hosted_tools_for_profile(
     profile_key: str,
     *,
     neofelis_google_search_enabled: bool,
+    neofelis_google_maps_enabled: bool = True,
+    delphinus_x_search_enabled: bool = True,
+    orcinus_x_search_enabled: bool = True,
 ) -> frozenset[str]:
     """Resolve provider-hosted grounding independently from APEX tools."""
     if profile_key == "neofelis":
-        tools = {"google_maps"}
+        tools = set()
         if neofelis_google_search_enabled:
             tools.add("google_search")
+        if neofelis_google_maps_enabled:
+            tools.add("google_maps")
         return frozenset(tools)
-    if profile_key in {"delphinus", "orcinus"}:
+    if profile_key == "delphinus" and delphinus_x_search_enabled:
+        return frozenset({"x_search"})
+    if profile_key == "orcinus" and orcinus_x_search_enabled:
         return frozenset({"x_search"})
     return frozenset()
