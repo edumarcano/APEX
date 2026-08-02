@@ -17,14 +17,14 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `6`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `7`.
 
 | Group | Editable values |
 |---|---|
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
 | Assistant | Global Ask APEX enabled switch; Cortex owns profile, effort, and grounding selection |
-| Briefing | Default Panthera, Mus, Sorex, or Structured Digest mode |
+| Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Overview command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 
@@ -33,7 +33,7 @@ Followed football teams, prompts, Ollama host and resource gates, MCP endpoints 
 ### When changes take effect
 
 - Connector and sports flags are captured when telemetry collection begins.
-- The default briefing mode applies to the next generation request unless that request supplies an override.
+- The Overview command rail persists the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
 - Assistant enablement, profile selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately.

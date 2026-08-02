@@ -64,7 +64,7 @@ Returns boot-time HUD values such as assistant enablement, the effective profile
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `6`.
+Returns the resolved settings envelope. The current contract version is `7`.
 
 ```json
 {
@@ -86,6 +86,8 @@ Returns the resolved settings envelope. The current contract version is `6`.
 ```
 
 `football.teams` is also returned as read-only file configuration. OpenAPI contains the complete shape.
+
+`settings.briefing.default_mode` remains a persisted compatibility field. The Overview command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 

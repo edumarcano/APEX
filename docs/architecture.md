@@ -139,6 +139,8 @@ Production cloud profiles receive the APEX capability registry. Brave MCP is the
 
 `GET /api/v1/agent/profiles` is the backend-owned profile catalog. It publishes product ordering, profile content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; profile polling never performs a provider probe.
 
+The Overview command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
+
 ### Local profiles and command scopes
 
 Local assistant queries use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.

@@ -30,7 +30,7 @@ function profile(key: AssistantProfile, status: AgentProfileStatus['status'] = '
     provider_account_tier: null,
     pricing: {
       currency: 'USD', pricing_version: 'test', billing_basis: local ? 'local' : 'standard',
-      input_per_million: local ? 0 : 1, output_per_million: local ? 0 : 6,
+      input_per_million: local ? 0 : 0.2, output_per_million: local ? 0 : 1.2,
       cached_input_per_million: null, long_context_threshold_tokens: null,
       long_context_input_per_million: null, long_context_output_per_million: null,
       long_context_cached_input_per_million: null,

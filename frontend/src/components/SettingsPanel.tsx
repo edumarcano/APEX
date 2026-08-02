@@ -33,7 +33,6 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
-  BriefingMode,
   RuntimeSettings,
   SettingsResponse,
   VoiceGender,
@@ -76,19 +75,6 @@ const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
   { value: 'automatic', label: 'Automatic' },
   { value: 'manual', label: 'Manual' },
   { value: 'off', label: 'Off' },
-]
-
-const BRIEFING_MODE_OPTIONS: readonly { value: BriefingMode; label: string }[] = [
-  { value: 'panthera', label: 'Panthera — Full briefing · cloud synthesis' },
-  { value: 'sorex', label: 'Sorex — Quick briefing · limited telemetry' },
-  {
-    value: 'mus',
-    label: 'Mus — Full briefing · balanced local synthesis (Recommended)',
-  },
-  {
-    value: 'structured_digest',
-    label: 'Structured Digest — Structured facts · no model or synthesis',
-  },
 ]
 
 interface SettingsPanelProps {
@@ -183,7 +169,6 @@ export default function SettingsPanel({
   const marketTiming = resolveEffectiveTiming('market', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
   const assistantTiming = resolveEffectiveTiming('assistant', timingRuntime)
-  const briefingTiming = resolveEffectiveTiming('briefing', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
 
@@ -388,25 +373,6 @@ export default function SettingsPanel({
                 sectionId={`${titleId}-microsoft-todo`}
                 runtime={microsoftTodoRuntime}
               />
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-briefing`}>
-                <SectionHeading id={`${titleId}-briefing`} title="Briefing" />
-                <div className="space-y-2">
-                  <SettingsSelect
-                    id="settings-briefing-default-mode"
-                    label="Default mode"
-                    value={draft.briefing.default_mode}
-                    options={BRIEFING_MODE_OPTIONS}
-                    timing={briefingTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        briefing: { ...prev.briefing, default_mode: next },
-                      }))
-                    }
-                  />
-                </div>
-              </section>
 
               <section className="space-y-2.5" aria-labelledby={`${titleId}-voice`}>
                 <SectionHeading id={`${titleId}-voice`} title="Voice" />

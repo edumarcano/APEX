@@ -269,7 +269,18 @@ class PricingRegistryTests(unittest.TestCase):
 
         self.assertEqual(set(_MODEL_RATES), paid_profile_models)
 
-    def test_luna_uses_the_configured_august_rates(self) -> None:
+    def test_luna_uses_the_current_standard_rates(self) -> None:
+        standard = _MODEL_RATES["gpt-5.6-luna"]
+        self.assertEqual(standard.input_per_million, 0.20)
+        self.assertEqual(standard.output_per_million, 1.20)
+        self.assertEqual(standard.cached_input_per_million, 0.02)
+
+        standard_estimate = estimate_inference_cost(
+            model="gpt-5.6-luna",
+            usage=TokenUsage(input_tokens=1_000, output_tokens=1_000),
+        )
+        self.assertAlmostEqual(standard_estimate.token_cost or 0.0, 0.0014, places=6)
+
         estimate = estimate_inference_cost(
             model="gpt-5.6-luna",
             usage=TokenUsage(
@@ -279,9 +290,9 @@ class PricingRegistryTests(unittest.TestCase):
             ),
         )
 
-        # Above Luna's long-context threshold: 0.6M uncached at $2, 0.4M
-        # cached at $0.20, and 1M output at $9.
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 10.28, places=4)
+        # Above Luna's long-context threshold: 0.6M uncached at $0.40, 0.4M
+        # cached at $0.04, and 1M output at $1.80.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 2.056, places=4)
 
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(

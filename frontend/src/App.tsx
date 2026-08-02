@@ -143,6 +143,7 @@ export default function App(): ReactElement {
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
+  const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'overview' | 'cortex'>('overview')
   const [cloudProfile, setCloudProfile] = useState<Exclude<AssistantProfile, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
@@ -233,11 +234,15 @@ export default function App(): ReactElement {
   }, [assistantInitialSelection, defaultProfile])
 
   useEffect(() => {
-    if (briefingDefaultMode && isBriefingMode(briefingDefaultMode)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors asynchronous boot configuration into local controls.
+    if (
+      !briefingModeSelectionTouchedRef.current &&
+      briefingDefaultMode &&
+      isBriefingMode(briefingDefaultMode)
+    ) {
       setBriefingMode(briefingDefaultMode)
     }
     if (bootVoiceMode && isVoiceMode(bootVoiceMode)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors asynchronous boot configuration into local controls.
       setVoiceMode(bootVoiceMode)
     }
   }, [bootVoiceMode, briefingDefaultMode])
@@ -278,7 +283,9 @@ export default function App(): ReactElement {
       setNeofelisGoogleMapsEnabled(response.settings.assistant.neofelis_google_maps_enabled)
       setDelphinusXSearchEnabled(response.settings.assistant.delphinus_x_search_enabled)
       setOrcinusXSearchEnabled(response.settings.assistant.orcinus_x_search_enabled)
-      setBriefingMode(response.settings.briefing.default_mode)
+      if (!briefingModeSelectionTouchedRef.current) {
+        setBriefingMode(response.settings.briefing.default_mode)
+      }
       setVoiceMode(response.settings.voice.mode)
     },
     [applyBootSettings],
@@ -294,26 +301,41 @@ export default function App(): ReactElement {
         if (!response.ok || controller.signal.aborted) return
         const body: unknown = await response.json()
         if (!body || typeof body !== 'object') return
-        const assistant = (body as { settings?: { assistant?: unknown } }).settings?.assistant
-        if (!assistant || typeof assistant !== 'object') return
-        const values = assistant as Record<string, unknown>
-        if (values.cloud_profile === 'panthera' || values.cloud_profile === 'neofelis' || values.cloud_profile === 'delphinus' || values.cloud_profile === 'orcinus') {
-          setCloudProfile(values.cloud_profile)
+        const settings = (body as { settings?: unknown }).settings
+        if (!settings || typeof settings !== 'object') return
+        const settingsValues = settings as Record<string, unknown>
+        const assistant = settingsValues.assistant
+        if (assistant && typeof assistant === 'object') {
+          const values = assistant as Record<string, unknown>
+          if (values.cloud_profile === 'panthera' || values.cloud_profile === 'neofelis' || values.cloud_profile === 'delphinus' || values.cloud_profile === 'orcinus') {
+            setCloudProfile(values.cloud_profile)
+          }
+          if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
+            setCloudEffort(values.cloud_effort)
+          }
+          if (typeof values.neofelis_google_search_enabled === 'boolean') {
+            setNeofelisGoogleSearchEnabled(values.neofelis_google_search_enabled)
+          }
+          if (typeof values.neofelis_google_maps_enabled === 'boolean') {
+            setNeofelisGoogleMapsEnabled(values.neofelis_google_maps_enabled)
+          }
+          if (typeof values.delphinus_x_search_enabled === 'boolean') {
+            setDelphinusXSearchEnabled(values.delphinus_x_search_enabled)
+          }
+          if (typeof values.orcinus_x_search_enabled === 'boolean') {
+            setOrcinusXSearchEnabled(values.orcinus_x_search_enabled)
+          }
         }
-        if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
-          setCloudEffort(values.cloud_effort)
-        }
-        if (typeof values.neofelis_google_search_enabled === 'boolean') {
-          setNeofelisGoogleSearchEnabled(values.neofelis_google_search_enabled)
-        }
-        if (typeof values.neofelis_google_maps_enabled === 'boolean') {
-          setNeofelisGoogleMapsEnabled(values.neofelis_google_maps_enabled)
-        }
-        if (typeof values.delphinus_x_search_enabled === 'boolean') {
-          setDelphinusXSearchEnabled(values.delphinus_x_search_enabled)
-        }
-        if (typeof values.orcinus_x_search_enabled === 'boolean') {
-          setOrcinusXSearchEnabled(values.orcinus_x_search_enabled)
+        const briefing = settingsValues.briefing
+        if (
+          !briefingModeSelectionTouchedRef.current &&
+          briefing &&
+          typeof briefing === 'object'
+        ) {
+          const mode = (briefing as Record<string, unknown>).default_mode
+          if (typeof mode === 'string' && isBriefingMode(mode)) {
+            setBriefingMode(mode)
+          }
         }
       } catch {
         // Cortex falls back to boot defaults when settings are temporarily unavailable.
@@ -793,6 +815,24 @@ export default function App(): ReactElement {
     [devModeActive, handleSettingsApplied],
   )
 
+  const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
+    try {
+      await fetch(API_ENDPOINTS.settings, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ briefing: { default_mode: mode } }),
+      })
+    } catch {
+      // Keep the selected mode usable for this session if persistence is unavailable.
+    }
+  }, [])
+
+  const handleBriefingModeChange = useCallback((mode: BriefingMode): void => {
+    briefingModeSelectionTouchedRef.current = true
+    setBriefingMode(mode)
+    void persistBriefingMode(mode)
+  }, [persistBriefingMode])
+
   const handleProfileChange = useCallback((profile: AssistantProfile): void => {
     setAgentProfile(profile)
     if (profile !== 'sorex' && profile !== 'mus') {
@@ -1191,7 +1231,7 @@ export default function App(): ReactElement {
                   onStartWithBriefing={() => void handleStartWithBriefing()}
                   startDisabled={preflight.isChecking}
                   briefingMode={briefingMode}
-                  onBriefingModeChange={setBriefingMode}
+                  onBriefingModeChange={handleBriefingModeChange}
                   briefingControlsBusy={briefingControlsBusy}
                   briefingModeAvailable={briefingModeAvailable}
                   hasSnapshot={hasSnapshot}
