@@ -7,16 +7,16 @@ import { CortexWorkspace } from './CortexWorkspace'
 import type { AgentProfileStatus, LocalCommandStatus } from '../types/telemetry'
 
 const panthera: AgentProfileStatus = {
-  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', native_tools: {}, provider: 'openai', version: '2.0', mode: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', status: 'available', active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+  key: 'panthera', display_name: 'APEX Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '2.0', mode: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 1, output_per_million: 6, cached_input_per_million: 0.1, long_context_threshold_tokens: 272000, long_context_input_per_million: 2, long_context_output_per_million: 9, long_context_cached_input_per_million: 0.2 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
 }
-const neofelis: AgentProfileStatus = { ...panthera, key: 'neofelis', display_name: 'Apex Neofelis', configured_model: 'gemini-3.6-flash', provider: 'gemini', native_tools: { google_search: true, google_maps: true } }
-const acinonyx: AgentProfileStatus = { ...neofelis, key: 'acinonyx', display_name: 'Apex Acinonyx', configured_model: 'gemini-3.5-flash-lite' }
-const mus: AgentProfileStatus = { ...panthera, key: 'mus', display_name: 'Apex Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', mode: 'local', effort_options: null, default_effort: null, active: false }
+const neofelis: AgentProfileStatus = { ...panthera, key: 'neofelis', display_name: 'APEX Neofelis', configured_model: 'gemini-3.6-flash', provider: 'gemini', sort_order: 2, capabilities: ['Research', 'Google Search', 'Google Maps'], native_tools: { google_search: true, google_maps: true } }
+const acinonyx: AgentProfileStatus = { ...neofelis, key: 'acinonyx', display_name: 'APEX Acinonyx', configured_model: 'gemini-3.5-flash-lite', sort_order: 0, capabilities: ['Privacy sandbox', 'Masked context'], pricing: { ...neofelis.pricing, billing_basis: 'free_tier', input_per_million: 0, output_per_million: 0 } }
+const mus: AgentProfileStatus = { ...panthera, key: 'mus', display_name: 'APEX Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', mode: 'local', sort_order: 5, capabilities: ['Larger model', 'Primary local'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', active: false, pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
 const weather: LocalCommandStatus = { key: 'weather', command: '/weather', label: 'Weather', description: 'Configured-location forecast.', tool_count: 1, estimated_schema_tokens: 120, available: true, unavailable_reason: null }
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeProfile: 'panthera', cloudEffort: 'focused', devModeActive: false, askApexEnabled: true, profilesStatus: [panthera], profilesStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onProfileChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), neofelisGoogleSearchEnabled: true, onGoogleMapsChange: vi.fn(), neofelisGoogleMapsEnabled: true, onDelphinusXSearchChange: vi.fn(), delphinusXSearchEnabled: true, onOrcinusXSearchChange: vi.fn(), orcinusXSearchEnabled: true, onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
+    activeProfile: 'panthera', cloudEffort: 'focused', devModeActive: false, askApexEnabled: true, profilesStatus: [panthera], profilesStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudProfile: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudProfile: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onProfileChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), neofelisGoogleSearchEnabled: true, onGoogleMapsChange: vi.fn(), neofelisGoogleMapsEnabled: true, onDelphinusXSearchChange: vi.fn(), delphinusXSearchEnabled: true, onOrcinusXSearchChange: vi.fn(), orcinusXSearchEnabled: true, onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
   }
 }
 
@@ -51,6 +51,36 @@ describe('CortexWorkspace', () => {
     const cards = screen.getAllByRole('button', { name: /Use APEX (Acinonyx|Panthera|Neofelis)/ })
     expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['Use APEX Acinonyx', 'Use APEX Panthera', 'Use APEX Neofelis'])
     expect(screen.getAllByText('Powered by Gemini 3.6 Flash')).toHaveLength(2)
+  })
+
+  it('uses backend card tags, pricing, effort options, and verification actions', async () => {
+    const onEffortChange = vi.fn()
+    const onVerifyCloudProfile = vi.fn().mockResolvedValue(true)
+    const user = userEvent.setup()
+    render(<CortexWorkspace {...workspaceProps({ activeProfile: 'acinonyx', devModeActive: true, profilesStatus: [acinonyx, panthera], onEffortChange, onVerifyCloudProfile })} />)
+
+    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'extended')
+    expect(onEffortChange).toHaveBeenCalledWith('extended')
+    await user.click(screen.getByRole('button', { name: /APEX Acinonyx/ }))
+    expect(screen.getByText('Privacy sandbox')).toBeInTheDocument()
+    expect(screen.getByText('Masked context')).toBeInTheDocument()
+    expect(screen.getByText('Free tier')).toBeInTheDocument()
+    expect(screen.getByText(/In \$1\.00\/1M/)).toBeInTheDocument()
+    expect(screen.queryByText('Brave Search')).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'Verify access' })[0])
+    expect(onVerifyCloudProfile).toHaveBeenCalledWith('acinonyx')
+  })
+
+  it('keeps profile marks accessible when the catalog changes profile icons', async () => {
+    const delphinus: AgentProfileStatus = { ...panthera, key: 'delphinus', display_name: 'APEX Delphinus', provider: 'xai', configured_model: 'grok-4.3', sort_order: 3 }
+    const orcinus: AgentProfileStatus = { ...panthera, key: 'orcinus', display_name: 'APEX Orcinus', provider: 'xai', configured_model: 'grok-4.5', sort_order: 4 }
+    const user = userEvent.setup()
+    render(<CortexWorkspace {...workspaceProps({ profilesStatus: [panthera, delphinus, orcinus] })} />)
+
+    await user.click(screen.getByRole('button', { name: /APEX Panthera/ }))
+    expect(screen.getByLabelText('Delphinus profile mark')).toBeInTheDocument()
+    expect(screen.getByLabelText('Orcinus profile mark')).toBeInTheDocument()
   })
 
   it('moves local scopes and context diagnostics into the inspector and arms one next request', async () => {

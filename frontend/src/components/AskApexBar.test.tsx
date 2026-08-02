@@ -6,7 +6,7 @@ import type { AgentProfileStatus, LocalCommandStatus } from '../types/telemetry'
 import { AskApexBar } from './AskApexBar'
 
 const localProfile: AgentProfileStatus = {
-  key: 'mus', display_name: 'Apex Mus', description: 'Balanced local profile.', configured_model: 'qwen3:4b-instruct', native_tools: {}, provider: 'ollama', version: '2.0', mode: 'local', tier: 'balanced', stability: 'stable', effort_options: null, default_effort: null, status: 'available', active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+  key: 'mus', display_name: 'APEX Mus', description: 'Balanced local profile.', configured_model: 'qwen3:4b-instruct', sort_order: 5, capabilities: ['Larger model'], native_tools: {}, provider: 'ollama', version: '2.0', mode: 'local', tier: 'balanced', stability: 'stable', effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'local', input_per_million: 0, output_per_million: 0, cached_input_per_million: 0, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
 }
 
 const weatherCommand: LocalCommandStatus = {
@@ -14,6 +14,19 @@ const weatherCommand: LocalCommandStatus = {
 }
 
 describe('AskApexBar local command shortcuts', () => {
+  it('submits from the right-side send button only when a query is present', () => {
+    const onSubmit = vi.fn()
+    render(<AskApexBar activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} isSubmitting={false} integrated />)
+
+    const send = screen.getByRole('button', { name: 'Send query' })
+    expect(send).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Ask APEX query'), { target: { value: 'Check status' } })
+    expect(send).toBeEnabled()
+    fireEvent.click(send)
+
+    expect(onSubmit).toHaveBeenCalledWith('Check status', 'mus', null)
+  })
+
   it('arms a bare slash command and consumes the provided inspector scope on submit', () => {
     const onSubmit = vi.fn()
     const onArmedToolScopeChange = vi.fn()

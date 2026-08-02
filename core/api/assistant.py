@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -35,6 +36,12 @@ from core.agent.tool_policies import (
     hosted_tools_for_profile,
 )
 from core.agent.providers.gemini import GeminiProvider
+from core.agent.providers.cloud_verification import (
+    cloud_status,
+    record_cloud_request_failure,
+    record_cloud_request_success,
+    verify_cloud_profile,
+)
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     SystemVitals,
@@ -54,6 +61,7 @@ from core.agent.providers.ollama_lifecycle import (
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.providers.xai_provider import XAIProvider
+from core.agent.pricing import PRICING_VERSION, profile_pricing
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -63,10 +71,13 @@ from core.agent.types import (
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
     AgentProfileStatus,
+    CloudProfileVerificationResponse,
     LocalLoadResponse,
     LocalLoadedModelStatus,
     LocalUnloadResponse,
+    ProfilePricingMetadata,
     ProfileAvailabilityStatus,
+    ProfileStatusSource,
 )
 from core.config import DEMO_MODE, OLLAMA_ENABLED, OLLAMA_MANUAL_UNLOAD_ENABLED, is_dev_mode
 from core.settings import get_settings_store
@@ -92,6 +103,27 @@ _PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
     "insufficient_ram": "Current memory pressure exceeds threshold",
     "cpu_overloaded": "Current CPU utilization exceeds threshold",
 }
+
+
+def _profile_pricing_metadata(profile_key: str) -> ProfilePricingMetadata:
+    spec = PROFILE_SPECS[profile_key]
+    pricing = profile_pricing(
+        profile_key,
+        model=spec.api_model,
+        provider=spec.provider,
+    )
+    rates = pricing.rates
+    return ProfilePricingMetadata(
+        pricing_version=PRICING_VERSION,
+        billing_basis=pricing.billing_basis,  # type: ignore[arg-type]
+        input_per_million=rates.input_per_million,
+        output_per_million=rates.output_per_million,
+        cached_input_per_million=rates.cached_input_per_million,
+        long_context_threshold_tokens=rates.long_context_threshold_tokens,
+        long_context_input_per_million=rates.long_context_input_per_million,
+        long_context_output_per_million=rates.long_context_output_per_million,
+        long_context_cached_input_per_million=rates.long_context_cached_input_per_million,
+    )
 
 
 def _resolve_local_profile_status(
@@ -124,13 +156,21 @@ def _resolve_local_profile_status(
     return "available", None
 
 
-def _resolve_cloud_profile_status(profile_key: str) -> tuple[ProfileAvailabilityStatus, str | None]:
-    """Evaluate cloud profile availability based on per-profile credentials."""
+def _resolve_cloud_profile_status(
+    profile_key: str,
+) -> tuple[ProfileAvailabilityStatus, str | None, ProfileStatusSource, datetime | None]:
+    """Return configured or cached cloud verification state without probing."""
     if profile_has_credentials(profile_key):
-        return "available", None
+        result = cloud_status(profile_key)
+        return result.status, result.reason, result.source, result.checked_at
     spec = PROFILE_SPECS[profile_key]
     env_key = spec.credential_env or "API_KEY"
-    return "disabled", f"{spec.provider.title()} API key is not configured ({env_key})"
+    return (
+        "disabled",
+        f"{spec.provider.title()} API key is not configured ({env_key})",
+        "configuration",
+        None,
+    )
 
 
 def build_agent_profile_statuses() -> list[AgentProfileStatus]:
@@ -154,7 +194,7 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
 
     profiles: list[AgentProfileStatus] = []
 
-    for key in runtime_profile_order(dev_mode=dev_mode):
+    for sort_order, key in enumerate(runtime_profile_order(dev_mode=dev_mode)):
         spec = PROFILE_SPECS[key]
         effort_options = (
             ["light", "focused", "extended"] if spec.supports_effort else None
@@ -192,6 +232,8 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     provider="ollama",
                     version=spec.profile_version,
                     configured_model=spec.api_model,
+                    sort_order=sort_order,
+                    capabilities=list(spec.capability_tags),
                     native_tools={},
                     mode=spec.mode,
                     tier=spec.tier,
@@ -199,6 +241,8 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     effort_options=effort_options,
                     default_effort=spec.default_effort,
                     status=profile_status,
+                    status_source="runtime",
+                    pricing=_profile_pricing_metadata(key),
                     active=is_active,
                     loading=is_loading,
                     reason=reason,
@@ -214,7 +258,7 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             )
             continue
 
-        cloud_status, cloud_reason = _resolve_cloud_profile_status(key)
+        profile_status, cloud_reason, status_source, checked_at = _resolve_cloud_profile_status(key)
         hosted_tools = hosted_tools_for_profile(
             key,
             neofelis_google_search_enabled=(
@@ -243,6 +287,8 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 provider=spec.provider,
                 version=spec.profile_version,
                 configured_model=spec.api_model,
+                sort_order=sort_order,
+                capabilities=list(spec.capability_tags),
                 native_tools={
                     tool_name: tool_name in hosted_tools
                     for tool_name in known_native_tools
@@ -252,7 +298,10 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                 stability=spec.stability,
                 effort_options=effort_options,
                 default_effort=spec.default_effort,
-                status=cloud_status,
+                status=profile_status,
+                status_source=status_source,
+                status_checked_at=checked_at,
+                pricing=_profile_pricing_metadata(key),
                 active=False,
                 loading=False,
                 reason=cloud_reason,
@@ -260,6 +309,49 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
         )
 
     return profiles
+
+
+def verify_cloud_profile_endpoint(profile_key: str) -> CloudProfileVerificationResponse:
+    """Force one non-generative model-access check for a cloud profile."""
+    if DEMO_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cloud verification is unavailable in demo mode.",
+        )
+    spec = PROFILE_SPECS.get(profile_key)
+    if spec is None or not is_profile_visible(profile_key):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requested profile is not available.",
+        )
+    if spec.mode != "cloud":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only cloud profiles support provider verification.",
+        )
+    if not profile_has_credentials(profile_key):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Configure this profile's provider credentials before verification.",
+        )
+    try:
+        result = verify_cloud_profile(profile_key)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cloud verification is already in progress.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cloud verification cannot run for this profile.",
+        ) from exc
+    return CloudProfileVerificationResponse(
+        profile=profile_key,
+        status=result.status,
+        reason=result.reason,
+        checked_at=result.checked_at,
+    )
 
 
 def build_local_command_statuses() -> list[LocalCommandStatus]:
@@ -529,7 +621,10 @@ def _execute_agent_turn(
             resolved_local_command=resolved_local_command,
             disable_cloud_tools=disable_tools,
             cloud_tools=cloud_tools,
+            profile_key=profile_key,
         )
+        if not isinstance(profile, OllamaModelProfile):
+            record_cloud_request_success(profile_key)
         response.profile_used = build_profile_used_metadata(
             profile_key,
             configured_model=profile.api_model,
@@ -540,6 +635,8 @@ def _execute_agent_turn(
         )
         return response
     except Exception as exc:
+        if not isinstance(profile, OllamaModelProfile):
+            record_cloud_request_failure(profile_key, exc)
         _LOGGER.exception(
             "Agent turn failed for profile %s",
             profile_key,

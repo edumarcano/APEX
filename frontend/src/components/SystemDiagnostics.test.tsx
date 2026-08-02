@@ -7,9 +7,9 @@ import { SystemDiagnostics } from './SystemDiagnostics'
 
 const panthera: AgentProfileStatus = {
   key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.',
-  configured_model: 'gpt-5.6-luna', native_tools: {}, provider: 'openai', version: '2.0',
+  configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: [], native_tools: {}, provider: 'openai', version: '2.0',
   mode: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'],
-  default_effort: 'focused', status: 'available', active: false, loading: false, reason: null,
+  default_effort: 'focused', status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 1, output_per_million: 6, cached_input_per_million: 0.1, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, active: false, loading: false, reason: null,
   idle_unload_remaining_seconds: null, loaded_model: null,
 }
 

@@ -23,7 +23,8 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
 | GET | `/api/v1/agent/commands` | Local assistant command scopes |
-| GET | `/api/v1/agent/profiles` | Cloud/local profile availability |
+| GET | `/api/v1/agent/profiles` | Backend-owned profile catalog and availability |
+| POST | `/api/v1/agent/profiles/{profile}/verify` | Explicit non-generative cloud access check |
 | POST | `/api/v1/local-model/load` | Pre-warm a selected local model |
 | POST | `/api/v1/local-model/unload` | Unload the active local model |
 | POST | `/api/v1/agent/local/unload` | Compatibility alias for local unload |
@@ -224,11 +225,20 @@ Returns the local assistant command bundles, including availability, reason, too
 
 ### GET `/api/v1/agent/profiles`
 
-Returns the visible assistant profiles with description, provider, configured model, profile version, tier, supported effort levels, availability, provider-hosted tool state, active/loading state, and local lifecycle diagnostics. Acinonyx appears only in development mode.
+Returns the visible assistant profiles in stable product order. Each entry supplies its full display name, description, provider and configured model, version, mode, tier, stability, supported effort levels, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
 The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
-Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
+
+### POST `/api/v1/agent/profiles/{profile}/verify`
+
+Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud profile. Gemini uses its model metadata endpoint; OpenAI and xAI use `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+
+- `400` — the profile is local or has no supported verification path.
+- `403` — demo mode disallows provider contact.
+- `404` — the profile is not visible.
+- `409` — credentials are missing or that profile already has a verification in progress.
 
 ### POST `/api/v1/local-model/load`
 
@@ -278,7 +288,7 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud profile, including Acinonyx, and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `403` — assistant disabled.
 - `429` — another local generation owns the execution slot.

@@ -94,6 +94,7 @@ def run_agent_loop(
     resolved_local_command: ResolvedLocalCommand | None = None,
     disable_cloud_tools: bool = False,
     cloud_tools: list[CapabilityDescriptor] | None = None,
+    profile_key: str | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -164,6 +165,7 @@ def run_agent_loop(
             usage=aggregated_usage,
             hosted_tool_events=provider_tool_events,
             provider=inference_provider,
+            profile_key=profile_key,
         )
         return AgentQueryResponse(
             answer=answer,

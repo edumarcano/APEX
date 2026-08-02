@@ -66,6 +66,16 @@ const MODE_LABELS: Record<BriefingMode, string> = {
 const STATUS_REASONS: Record<ProfileAvailabilityStatus, string> = {
   available: '',
   busy: 'Local inference is currently busy',
+  configured: 'Provider credentials are configured but not yet verified',
+  verifying: 'Provider access is being verified',
+  verified: '',
+  unauthorized: 'Provider denied access to this profile',
+  model_unavailable: 'Configured model is unavailable to this provider account',
+  rate_limited: 'Provider rate limit is currently active',
+  quota_exhausted: 'Provider quota or credits are exhausted',
+  billing_blocked: 'Provider billing or account prerequisite is blocking requests',
+  provider_unreachable: 'Provider is temporarily unreachable',
+  provider_error: 'Provider verification failed',
   unknown: 'Checking mode availability…',
   disabled: 'Mode disabled in system settings',
   ollama_unreachable: 'Ollama daemon is unreachable',
@@ -102,8 +112,8 @@ function resolveBriefingModeAvailability(
 }
 
 function statusLedClass(status: ProfileAvailabilityStatus): string {
-  if (status === 'available') return 'hud-led--live'
-  if (status === 'busy') return 'hud-led--loading'
+  if (status === 'available' || status === 'configured' || status === 'verified') return 'hud-led--live'
+  if (status === 'busy' || status === 'verifying' || status === 'rate_limited') return 'hud-led--loading'
   if (status === 'unknown') return 'hud-led--stale'
   return 'hud-led--error'
 }
@@ -271,7 +281,7 @@ export function BriefingModeSelector({
                   {section.options.map((option) => {
                     const index = ALL_OPTIONS.findIndex((entry) => entry.key === option.key)
                     const availability = resolveBriefingModeAvailability(option.key, profiles, hydrated)
-                    const unavailable = availability.status !== 'available'
+                    const unavailable = !['available', 'configured', 'verified'].includes(availability.status)
                     const selected = option.key === value
                     return (
                       <li key={option.key} role="presentation" className="group/briefing-option relative">

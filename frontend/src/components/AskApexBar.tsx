@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react'
+import { Send } from 'lucide-react'
 
 import type {
   AgentProfileStatus,
@@ -13,9 +14,9 @@ import type {
   LocalToolScope,
 } from '../types/telemetry'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
+import { profileShortName } from '../lib/profileDisplay'
 
 import { ProfileMark } from './ProfileMark'
-import { PROFILE_DISPLAY_NAMES } from './profileIdentity'
 
 interface AskApexBarProps {
   activeProfile: AssistantProfile
@@ -45,6 +46,9 @@ export function AskApexBar({
   const [query, setQuery] = useState('')
   const isInputDisabled = disabled || isSubmitting
   const isLocalProfile = profilesStatus.some((profile) => profile.key === activeProfile && profile.provider === 'ollama')
+  const activeProfileName = profileShortName(
+    profilesStatus.find((profile) => profile.key === activeProfile)?.display_name ?? activeProfile,
+  )
 
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -90,7 +94,8 @@ export function AskApexBar({
         <span className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]" aria-hidden>&gt;_</span>
         <input type="text" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleInputKeyDown} placeholder="Ask APEX about this briefing or live telemetry..." disabled={isInputDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-500 outline-none focus:ring-0" aria-label="Ask APEX query" autoComplete="off" spellCheck={false} />
         {isLocalProfile && armedToolScope ? <span className="hidden shrink-0 rounded-md border border-orange-400/25 bg-orange-950/20 px-2 py-1 font-mono text-[10px] text-orange-200 sm:inline">Tool scope: /{armedToolScope}</span> : null}
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-zinc-400" aria-label={`Active profile ${PROFILE_DISPLAY_NAMES[activeProfile]}`}><ProfileMark profile={activeProfile} /><span className="hidden sm:inline">{PROFILE_DISPLAY_NAMES[activeProfile]}</span></span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-zinc-400" aria-label={`Active profile ${activeProfileName}`}><ProfileMark profile={activeProfile} /><span className="hidden sm:inline">{activeProfileName}</span></span>
+        <button type="submit" disabled={isInputDisabled || query.trim().length === 0} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/15 text-[#E9D5FF] transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send query"><Send className="size-3.5" aria-hidden /></button>
       </div>
     </form>
   </div>

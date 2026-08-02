@@ -23,7 +23,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 |---|---|
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
-| Assistant | Enabled state, Cloud/Local mode, cloud profile and effort, local profile, and profile-specific grounding preferences |
+| Assistant | Global Ask APEX enabled switch; Cortex owns profile, effort, and grounding selection |
 | Briefing | Default Panthera, Mus, Sorex, or Structured Digest mode |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
@@ -34,7 +34,7 @@ Followed football teams, prompts, Ollama host and resource gates, MCP endpoints 
 
 - Connector and sports flags are captured when telemetry collection begins.
 - The default briefing mode applies to the next generation request unless that request supplies an override.
-- Assistant enablement and profile selection are checked when a query begins; an in-flight query finishes.
+- Assistant enablement, profile selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
@@ -92,11 +92,11 @@ Football telemetry keeps each configured team's next fixture. Briefing synthesis
 | Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud profile with persisted optional X Search |
 | Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud profile with persisted optional X Search |
 
-Cloud profiles run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. Cloud profiles support Light, Focused, and Extended effort except where a profile's own default applies.
+Cloud profiles run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud profiles support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective profile while preserving the saved cloud effort.
 
 Brave MCP is the general web-search capability for every cloud profile when connected. Provider-hosted general web search is disabled for OpenAI and xAI. Neofelis's Google Search and Maps controls, and the X Search controls for Delphinus and Orcinus, apply to subsequent requests only.
 
-The `acinonyx` profile uses `gemini-3.5-flash-lite` and remains hidden outside development mode.
+The `acinonyx` profile uses `gemini-3.5-flash-lite` and remains hidden outside development mode. Its dedicated free-tier project means APEX reports zero provider token cost for that profile.
 
 ### Local profiles
 

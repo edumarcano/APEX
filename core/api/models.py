@@ -302,12 +302,37 @@ class MicrosoftTodoAuthorizationResponse(BaseModel):
 ProfileAvailabilityStatus = Literal[
     "available",
     "busy",
+    "configured",
+    "verifying",
+    "verified",
+    "unauthorized",
+    "model_unavailable",
+    "rate_limited",
+    "quota_exhausted",
+    "billing_blocked",
+    "provider_unreachable",
+    "provider_error",
     "disabled",
     "ollama_unreachable",
     "model_not_installed",
     "insufficient_ram",
     "cpu_overloaded",
 ]
+
+ProfileStatusSource = Literal["configuration", "verification", "request", "runtime"]
+
+
+class ProfilePricingMetadata(BaseModel):
+    currency: Literal["USD"] = "USD"
+    pricing_version: str
+    billing_basis: Literal["free_tier", "standard", "local"]
+    input_per_million: float = Field(ge=0)
+    output_per_million: float = Field(ge=0)
+    cached_input_per_million: float | None = Field(default=None, ge=0)
+    long_context_threshold_tokens: int | None = Field(default=None, ge=1)
+    long_context_input_per_million: float | None = Field(default=None, ge=0)
+    long_context_output_per_million: float | None = Field(default=None, ge=0)
+    long_context_cached_input_per_million: float | None = Field(default=None, ge=0)
 
 
 class LocalLoadedModelStatus(BaseModel):
@@ -344,6 +369,11 @@ class AgentProfileStatus(BaseModel):
     )
     version: str = Field(description="Profile configuration version string.")
     configured_model: str = Field(description="Configured provider model identifier.")
+    sort_order: int = Field(default=0, ge=0, description="Stable HUD ordering for this profile.")
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Product capability tags shown by the profile catalog.",
+    )
     native_tools: dict[str, bool] = Field(
         default_factory=dict,
         description="Provider-hosted tools and their effective enabled state.",
@@ -366,6 +396,27 @@ class AgentProfileStatus(BaseModel):
     status: ProfileAvailabilityStatus = Field(
         description="Current availability state for this profile.",
     )
+    status_source: ProfileStatusSource = Field(
+        default="configuration",
+        description="Whether configuration, verification, request, or runtime established status.",
+    )
+    status_checked_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the latest cloud verification or request outcome.",
+    )
+    provider_account_tier: str | None = Field(
+        default=None,
+        description="Provider-reported billing tier; null when APEX cannot verify it.",
+    )
+    pricing: ProfilePricingMetadata = Field(
+        default_factory=lambda: ProfilePricingMetadata(
+            pricing_version="unknown",
+            billing_basis="standard",
+            input_per_million=0,
+            output_per_million=0,
+        ),
+        description="Versioned profile pricing basis and token rates.",
+    )
     active: bool = Field(
         description="Whether this profile's model is currently loaded in memory.",
     )
@@ -385,6 +436,13 @@ class AgentProfileStatus(BaseModel):
         default=None,
         description="Runtime details reported by Ollama for the active loaded model.",
     )
+
+
+class CloudProfileVerificationResponse(BaseModel):
+    profile: str
+    status: ProfileAvailabilityStatus
+    reason: str | None = None
+    checked_at: datetime
 
 
 class LocalUnloadResponse(BaseModel):

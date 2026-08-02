@@ -150,6 +150,12 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Local command scope
 
+### Cortex profile catalog
+
+The Cortex inspector is the only interactive assistant-configuration surface. Show one selected `APEX <Profile>` card; its popover presents catalog-provided names, descriptions, model metadata, ordered tags, availability, and compact pricing. The composer shows only the short profile name and a send control. Profile marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
+
+Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its profile-selection button.
+
 The Cortex inspector owns local tool scopes when a local profile is selected. Show every supported slash command as compact selectable rows with availability, descriptions, tool counts, and schema-token estimates. Show the active command as a one-shot armed state. A bare slash command remains a shortcut that selects the scope without submitting; the next query consumes and clears it. Keep the composer limited to an armed-scope indicator.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.

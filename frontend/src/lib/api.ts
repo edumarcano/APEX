@@ -5,6 +5,7 @@ export const API_ENDPOINTS = {
   agentLocalUnload: `${API_BASE}/api/v1/local-model/unload`,
   agentCommands: `${API_BASE}/api/v1/agent/commands`,
   agentProfiles: `${API_BASE}/api/v1/agent/profiles`,
+  agentProfileVerify: (profile: string) => `${API_BASE}/api/v1/agent/profiles/${encodeURIComponent(profile)}/verify`,
   agentQuery: `${API_BASE}/api/v1/agent/query`,
   briefingHistory: `${API_BASE}/api/v1/briefings/history`,
   briefingsGenerate: `${API_BASE}/api/v1/briefings/generate`,

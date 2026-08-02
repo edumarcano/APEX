@@ -11,9 +11,11 @@ from core.api.assistant import (
     load_local_model_endpoint,
     query_agent,
     unload_active_local_model_endpoint,
+    verify_cloud_profile_endpoint,
 )
 from core.api.models import (
     AgentProfileStatus,
+    CloudProfileVerificationResponse,
     LocalLoadRequest,
     LocalLoadResponse,
     LocalUnloadResponse,
@@ -41,6 +43,15 @@ def list_agent_profiles() -> list[AgentProfileStatus]:
     frequent HUD polling never floods the daemon while a model is generating.
     """
     return build_agent_profile_statuses()
+
+
+@router.post(
+    "/api/v1/agent/profiles/{profile_key}/verify",
+    response_model=CloudProfileVerificationResponse,
+)
+def verify_agent_profile(profile_key: str) -> CloudProfileVerificationResponse:
+    """Verify configured cloud credentials and model access without inference."""
+    return verify_cloud_profile_endpoint(profile_key)
 
 
 @router.post(

@@ -125,7 +125,7 @@ Attached context and tool results are separately marked as untrusted model data.
 
 | Profile | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Focused; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
+| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
 | Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
 | Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 | Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
@@ -136,6 +136,8 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 Each non-demo assistant request begins with the selected profile's immutable identity instruction, followed by the configured APEX prompt, scoped context, and security boundary. Profile identity describes the active APEX profile and its model; it does not grant capabilities or override tool and privacy policy.
 
 Production cloud profiles receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+
+`GET /api/v1/agent/profiles` is the backend-owned profile catalog. It publishes product ordering, profile content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; profile polling never performs a provider probe.
 
 ### Local profiles and command scopes
 

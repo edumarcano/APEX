@@ -87,4 +87,32 @@ describe('useApexAssistant', () => {
     expect(response.metadata?.citations[0]?.uri).toBe('https://example.test')
     expect(response.tool_trace?.[0]).toMatchObject({ name: 'search', origin: 'apex' })
   })
+
+  it('adds the user turn immediately and keeps it when the request fails', async () => {
+    let rejectRequest: ((reason?: unknown) => void) | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      if (init?.method !== 'POST') {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        rejectRequest = reject
+      })
+    })
+    const { result } = renderHook(() => useApexAssistant(false, 'panthera'))
+
+    let pending: Promise<void>
+    act(() => {
+      pending = result.current.queryAssistant('Keep this question', 'panthera')
+    })
+    expect(result.current.assistantHistory).toEqual([{ role: 'user', content: 'Keep this question' }])
+    expect(result.current.isAssistantQuerying).toBe(true)
+
+    await act(async () => {
+      rejectRequest?.(new Error('Network unavailable'))
+      await pending
+    })
+
+    expect(result.current.assistantHistory).toEqual([{ role: 'user', content: 'Keep this question' }])
+    expect(result.current.assistantError).toContain('Network unavailable')
+  })
 })

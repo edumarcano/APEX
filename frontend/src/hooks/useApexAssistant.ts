@@ -9,6 +9,8 @@ import type {
   LocalContextUsage,
   LocalToolScope,
   ProfileAvailabilityStatus,
+  ProfilePricingMetadata,
+  ProfileStatusSource,
   ProfileStability,
   ToolOutputItem,
 } from '../types/telemetry'
@@ -113,6 +115,16 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
 const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
   'available',
   'busy',
+  'configured',
+  'verifying',
+  'verified',
+  'unauthorized',
+  'model_unavailable',
+  'rate_limited',
+  'quota_exhausted',
+  'billing_blocked',
+  'provider_unreachable',
+  'provider_error',
   'unknown',
   'disabled',
   'ollama_unreachable',
@@ -133,6 +145,7 @@ const VALID_PROFILE_MODES: readonly AgentProfileStatus['mode'][] = ['cloud', 'lo
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
 
 const VALID_PROFILE_STABILITY: readonly ProfileStability[] = ['stable', 'preview']
+const VALID_PROFILE_STATUS_SOURCES: readonly ProfileStatusSource[] = ['configuration', 'verification', 'request', 'runtime']
 
 function isAssistantProfile(value: unknown): value is AssistantProfile {
   return (
@@ -222,6 +235,32 @@ function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus |
   }
 }
 
+function parseProfilePricing(value: unknown): ProfilePricingMetadata {
+  const fallback: ProfilePricingMetadata = {
+    currency: 'USD', pricing_version: 'unknown', billing_basis: 'standard',
+    input_per_million: 0, output_per_million: 0, cached_input_per_million: null,
+    long_context_threshold_tokens: null, long_context_input_per_million: null,
+    long_context_output_per_million: null, long_context_cached_input_per_million: null,
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback
+  const record = value as Record<string, unknown>
+  const billingBasis = record.billing_basis
+  if (
+    record.currency !== 'USD' || typeof record.pricing_version !== 'string' ||
+    (billingBasis !== 'free_tier' && billingBasis !== 'standard' && billingBasis !== 'local') ||
+    typeof record.input_per_million !== 'number' || typeof record.output_per_million !== 'number'
+  ) return fallback
+  return {
+    currency: 'USD', pricing_version: record.pricing_version, billing_basis: billingBasis,
+    input_per_million: record.input_per_million, output_per_million: record.output_per_million,
+    cached_input_per_million: parseNullableFiniteNumber(record.cached_input_per_million),
+    long_context_threshold_tokens: parseNullableFiniteNumber(record.long_context_threshold_tokens),
+    long_context_input_per_million: parseNullableFiniteNumber(record.long_context_input_per_million),
+    long_context_output_per_million: parseNullableFiniteNumber(record.long_context_output_per_million),
+    long_context_cached_input_per_million: parseNullableFiniteNumber(record.long_context_cached_input_per_million),
+  }
+}
+
 function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   if (!value || typeof value !== 'object') {
     return null
@@ -302,12 +341,18 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     native_tools: nativeToolsRecord as Record<string, boolean>,
     provider,
     version,
+    sort_order: typeof record.sort_order === 'number' && Number.isInteger(record.sort_order) && record.sort_order >= 0 ? record.sort_order : 0,
+    capabilities: Array.isArray(record.capabilities) && record.capabilities.every((item) => typeof item === 'string') ? record.capabilities : [],
     mode,
     tier,
     stability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
     status,
+    status_source: isProfileStatusSource(record.status_source) ? record.status_source : 'configuration',
+    status_checked_at: parseNullableString(record.status_checked_at),
+    provider_account_tier: parseNullableString(record.provider_account_tier),
+    pricing: parseProfilePricing(record.pricing),
     active: typeof record.active === 'boolean' ? record.active : false,
     loading: typeof record.loading === 'boolean' ? record.loading : false,
     reason: parseNullableString(record.reason),
@@ -354,6 +399,10 @@ function parseToolTraceItem(value: unknown): ToolTraceItem | null {
       ? { billable_units: record.billable_units }
       : {}),
   }
+}
+
+function isProfileStatusSource(value: unknown): value is ProfileStatusSource {
+  return typeof value === 'string' && (VALID_PROFILE_STATUS_SOURCES as readonly string[]).includes(value)
 }
 
 function parseMetricRecord(value: unknown, keys: readonly string[]): Record<string, number | null> | null {
@@ -522,6 +571,7 @@ export interface UseApexAssistantResult {
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
   isLocalModelActionPending: boolean
+  verifyingCloudProfile: AssistantProfile | null
   queryAssistant: (
     prompt: string,
     profile: AssistantProfile,
@@ -535,6 +585,7 @@ export interface UseApexAssistantResult {
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
   loadLocalModel: (profile: Extract<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
+  verifyCloudProfile: (profile: Exclude<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
   clearAssistantChat: (profile?: AssistantProfile) => void
   resetAssistantSession: () => void
   setAssistantOpen: (open: boolean) => void
@@ -556,6 +607,7 @@ export function useApexAssistant(
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
   const [isLocalModelActionPending, setIsLocalModelActionPending] = useState(false)
+  const [verifyingCloudProfile, setVerifyingCloudProfile] = useState<AssistantProfile | null>(null)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
   const acinonyxHistoryRef = useRef<AgentMessage[]>([])
@@ -698,6 +750,23 @@ export function useApexAssistant(
     }
   }, [fetchProfilesStatus, isLocalModelActionPending])
 
+  const verifyCloudProfile = useCallback(async (
+    profile: Exclude<AssistantProfile, 'mus' | 'sorex'>,
+  ): Promise<boolean> => {
+    if (verifyingCloudProfile) return false
+    setVerifyingCloudProfile(profile)
+    try {
+      const response = await fetch(API_ENDPOINTS.agentProfileVerify(profile), { method: 'POST' })
+      if (!response.ok) return false
+      await fetchProfilesStatus()
+      return true
+    } catch {
+      return false
+    } finally {
+      setVerifyingCloudProfile(null)
+    }
+  }, [fetchProfilesStatus, verifyingCloudProfile])
+
   const queryAssistant = useCallback(
     async (
       prompt: string,
@@ -727,6 +796,11 @@ export function useApexAssistant(
       setAssistantError(null)
 
       const userMsg: AgentMessage = { role: 'user', content: trimmedPrompt }
+      if (useAcinonyxStore) {
+        setAcinonyxHistory((prev) => [...prev, userMsg])
+      } else {
+        setProductionHistory((prev) => [...prev, userMsg])
+      }
 
       try {
         const response = await fetch(AGENT_QUERY_ENDPOINT, {
@@ -779,9 +853,9 @@ export function useApexAssistant(
         }
 
         if (useAcinonyxStore) {
-          setAcinonyxHistory((prev) => [...prev, userMsg, modelMsg])
+          setAcinonyxHistory((prev) => [...prev, modelMsg])
         } else {
-          setProductionHistory((prev) => [...prev, userMsg, modelMsg])
+          setProductionHistory((prev) => [...prev, modelMsg])
         }
         setAssistantLatestTrace(body.tool_trace ?? [])
         setAssistantContextUsage(body.local_context_usage ?? null)
@@ -837,9 +911,11 @@ export function useApexAssistant(
     profilesStatus,
     profilesStatusHydrated,
     isLocalModelActionPending,
+    verifyingCloudProfile,
     queryAssistant,
     unloadLocalModel,
     loadLocalModel,
+    verifyCloudProfile,
     clearAssistantChat,
     resetAssistantSession,
     setAssistantOpen,

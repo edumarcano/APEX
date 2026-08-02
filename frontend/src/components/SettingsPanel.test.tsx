@@ -164,6 +164,18 @@ describe('SettingsPanel', () => {
     expect(within(weatherStatusRow as HTMLElement).queryByText('Disabled')).not.toBeInTheDocument()
   })
 
+  it('keeps assistant configuration in Cortex while retaining the global enable switch', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    renderPanel()
+
+    expect(await screen.findByRole('switch', { name: 'Ask APEX enabled' })).toBeVisible()
+    expect(screen.queryByLabelText('Assistant mode')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Cloud profile')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Local profile')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Cloud effort')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Google Search grounding')).not.toBeInTheDocument()
+  })
+
   it('preserves the dirty controls and reports a failed save', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))

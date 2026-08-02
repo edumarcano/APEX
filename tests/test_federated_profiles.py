@@ -27,6 +27,7 @@ from core.agent.tool_policies import (
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.api.assistant import _execute_agent_turn, query_agent
 from core.api.assistant import build_agent_profile_statuses
+from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.settings.models import AssistantSettings, SETTINGS_SCHEMA_VERSION
 
 
@@ -385,6 +386,10 @@ class DemoRosterTests(unittest.TestCase):
 
 
 class ProfileStatusMetadataTests(unittest.TestCase):
+    def setUp(self) -> None:
+        clear_cloud_status_cache()
+        self.addCleanup(clear_cloud_status_cache)
+
     def test_neofelis_reports_configured_model_and_effective_native_tools(self) -> None:
         settings = mock.Mock()
         settings.assistant.neofelis_google_search_enabled = False
@@ -400,6 +405,12 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         neofelis = next(item for item in profiles if item.key == "neofelis")
         self.assertEqual(neofelis.configured_model, "gemini-3.6-flash")
         self.assertTrue(neofelis.description)
+        self.assertEqual(neofelis.status, "configured")
+        self.assertEqual(neofelis.status_source, "configuration")
+        self.assertEqual(neofelis.capabilities, ["Research", "Google Search", "Google Maps"])
+        self.assertEqual(neofelis.pricing.input_per_million, 1.5)
+        self.assertEqual(neofelis.pricing.output_per_million, 7.5)
+        self.assertIsNone(neofelis.provider_account_tier)
         self.assertEqual(
             neofelis.native_tools,
             {"google_search": False, "google_maps": True},

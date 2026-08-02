@@ -197,8 +197,10 @@ export default function App(): ReactElement {
     profilesStatusHydrated,
     queryAssistant,
     isLocalModelActionPending,
+    verifyingCloudProfile,
     loadLocalModel,
     unloadLocalModel,
+    verifyCloudProfile,
     clearAssistantChat,
   } = useApexAssistant(true, agentProfile)
   const isLocalAgentProfile = agentProfile === 'sorex' || agentProfile === 'mus'
@@ -247,13 +249,13 @@ export default function App(): ReactElement {
 
   const handleSettingsApplied = useCallback(
     (response: SettingsResponse) => {
-      // DEV_MODE keeps Acinonyx/Focused as the effective selection without
+      // DEV_MODE keeps Acinonyx as the effective profile without
       // writing it into saved production preferences.
       const selection = response.dev_mode_active
         ? {
             mode: 'cloud' as const,
             profile: 'acinonyx' as AssistantProfile,
-            effort: 'focused' as CloudEffort,
+            effort: response.settings.assistant.cloud_effort,
           }
         : {
             mode: response.settings.assistant.mode,
@@ -548,7 +550,9 @@ export default function App(): ReactElement {
     selectedBriefingProfile === null ||
     (profilesStatusHydrated &&
       profilesStatus.some(
-        (profile) => profile.key === selectedBriefingProfile && profile.status === 'available',
+        (profile) =>
+          profile.key === selectedBriefingProfile &&
+          ['available', 'configured', 'verified'].includes(profile.status),
       ))
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
@@ -805,7 +809,7 @@ export default function App(): ReactElement {
       setArmedLocalToolScope(null)
     }
     if (profile === 'acinonyx') {
-      setCloudEffort('focused')
+      void persistAssistantSettings({ mode: 'cloud', cloud_effort: cloudEffort })
       return
     }
     if (profile === 'sorex' || profile === 'mus') {
@@ -817,10 +821,9 @@ export default function App(): ReactElement {
   }, [cloudEffort, persistAssistantSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
-    if (agentProfile === 'acinonyx') return
     setCloudEffort(effort)
     void persistAssistantSettings({ mode: 'cloud', cloud_profile: cloudProfile, cloud_effort: effort })
-  }, [agentProfile, cloudProfile, persistAssistantSettings])
+  }, [cloudProfile, persistAssistantSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
     setNeofelisGoogleSearchEnabled(enabled)
@@ -1418,8 +1421,10 @@ export default function App(): ReactElement {
             isQuerying={isAssistantQuerying}
             lifecycleBusy={localLifecycleBusy}
             lifecycleActionPending={isLocalModelActionPending}
+            verifyingCloudProfile={verifyingCloudProfile}
             onLoadLocalModel={loadLocalModel}
             onUnloadLocalModel={unloadLocalModel}
+            onVerifyCloudProfile={verifyCloudProfile}
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
