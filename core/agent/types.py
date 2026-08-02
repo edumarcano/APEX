@@ -196,6 +196,13 @@ class AgentQueryRequest(BaseModel):
         default_factory=list,
         description="Recent conversation history for the session.",
     )
+    history_partition: Literal["production", "acinonyx"] = Field(
+        default="production",
+        description=(
+            "Browser-owned history partition. Acinonyx history is accepted only "
+            "when explicitly marked as sandbox history."
+        ),
+    )
     tool_scope: LocalToolScope | None = Field(
         default=None,
         description=(

@@ -125,13 +125,15 @@ Attached context and tool results are separately marked as untrusted model data.
 
 | Profile | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Focused; development-only | Up to 4 turns / 6 calls; no tools or personal context |
+| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Focused; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
 | Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
 | Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 | Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 | Orcinus 2.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
+
+Production cloud profiles receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis additionally receives always-on Google Maps grounding and optional Google Search grounding. Delphinus and Orcinus receive X Search; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
 ### Local profiles and command scopes
 
@@ -144,6 +146,8 @@ Local queries are tool-free unless the user arms one command bundle for that req
 `core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound.
 
 Native capabilities are read-only. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
+
+Provider-hosted Search, Maps, and X activity is normalized separately from APEX tool calls. Successful billable uses carry provider-origin traces, citations where available, attributed latency, and versioned cost estimates.
 
 The MCP manager owns provider connection, discovery, registration, reconciliation, and shutdown. Disabling a provider unregisters its capabilities before closing the transport, preventing new calls from entering a connection being torn down.
 

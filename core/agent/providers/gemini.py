@@ -8,14 +8,14 @@ from google.genai.errors import APIError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderTurnResult
+from core.agent.providers.contract import ProviderToolEvent, ProviderTurnResult
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.retries import (
     call_with_bounded_retries,
     exponential_backoff_seconds,
     fixed_backoff_seconds,
 )
-from core.agent.types import AgentMessage, TokenUsage, ToolCall, ToolResult
+from core.agent.types import AgentMessage, Citation, TokenUsage, ToolCall, ToolResult
 
 def _wrap_untrusted_tool_output(result: ToolResult) -> str:
     return (
@@ -156,6 +156,51 @@ def _parse_gemini_usage(response: Any) -> TokenUsage | None:
     )
 
 
+def _parse_grounding(response: Any) -> tuple[list[Citation], list[ProviderToolEvent]]:
+    """Normalize Gemini Search/Maps grounding without retaining raw payloads."""
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return [], []
+    metadata = getattr(candidates[0], "grounding_metadata", None)
+    if metadata is None:
+        return [], []
+
+    citations: list[Citation] = []
+    saw_web = False
+    saw_maps = False
+    for chunk in getattr(metadata, "grounding_chunks", None) or []:
+        web = getattr(chunk, "web", None)
+        maps = getattr(chunk, "maps", None)
+        source = web or maps
+        if source is None:
+            continue
+        saw_web = saw_web or web is not None
+        saw_maps = saw_maps or maps is not None
+        uri = getattr(source, "uri", None)
+        title = getattr(source, "title", None)
+        citations.append(
+            Citation(
+                title=title if isinstance(title, str) else None,
+                uri=uri if isinstance(uri, str) else None,
+                source="google_search" if web is not None else "google_maps",
+            )
+        )
+
+    if getattr(metadata, "google_maps_widget_context_token", None):
+        saw_maps = True
+
+    events: list[ProviderToolEvent] = []
+    if saw_web:
+        events.append(
+            ProviderToolEvent(name="google_search", status="ok", billable_units=1)
+        )
+    if saw_maps:
+        events.append(
+            ProviderToolEvent(name="google_maps", status="ok", billable_units=1)
+        )
+    return citations, events
+
+
 def _is_retryable_gemini_error(exc: BaseException) -> bool:
     return isinstance(exc, APIError) and exc.code in {429, 500, 502, 503, 504}
 
@@ -194,6 +239,14 @@ class GeminiProvider:
                 types.AutomaticFunctionCallingConfig(disable=True)
             )
 
+        configured_tools = list(config_kwargs.get("tools", []))
+        if "google_search" in profile.hosted_tools:
+            configured_tools.append(types.Tool(google_search=types.GoogleSearch()))
+        if "google_maps" in profile.hosted_tools:
+            configured_tools.append(types.Tool(google_maps=types.GoogleMaps()))
+        if configured_tools:
+            config_kwargs["tools"] = configured_tools
+
         config = types.GenerateContentConfig(**config_kwargs)
 
         def _generate() -> Any:
@@ -228,10 +281,18 @@ class GeminiProvider:
         if not isinstance(resolved_model, str):
             resolved_model = profile.api_model
 
+        citations, provider_tool_events = _parse_grounding(response)
+        if provider_tool_events:
+            share = round(provider_ms / len(provider_tool_events), 2)
+            for event in provider_tool_events:
+                event.duration_ms = share
+
         return ProviderTurnResult(
             message=message,
             resolved_model=resolved_model,
             usage=_parse_gemini_usage(response),
             provider_ms=provider_ms,
+            citations=citations,
+            provider_tool_events=provider_tool_events,
             retry_count=retry_count,
         )

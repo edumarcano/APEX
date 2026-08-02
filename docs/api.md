@@ -223,7 +223,7 @@ Returns the local assistant command bundles, including availability, reason, too
 
 ### GET `/api/v1/agent/profiles`
 
-Returns the visible assistant profiles with provider, profile version, tier, supported effort levels, availability, active/loading state, and local lifecycle diagnostics. Acinonyx appears only in development mode.
+Returns the visible assistant profiles with description, provider, configured model, profile version, tier, supported effort levels, availability, provider-hosted tool state, active/loading state, and local lifecycle diagnostics. Acinonyx appears only in development mode.
 
 The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
@@ -252,15 +252,16 @@ Runs one assistant turn. The browser supplies history on every request; the serv
   "effort": "focused",
   "session_id": "browser-session-id",
   "history": [],
+  "history_partition": "production",
   "snapshot_id": "optional-current-snapshot-id",
   "briefing_id": 42,
   "tool_scope": null
 }
 ```
 
-`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data.
+`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Cloud profiles can receive the approved automatic capability registry. Local profiles receive no tools unless `tool_scope` selects one command bundle. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized tool trace, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has Google Maps grounding and optional Google Search; Delphinus and Orcinus have X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `403` — assistant disabled.
 - `429` — another local generation owns the execution slot.

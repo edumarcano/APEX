@@ -141,8 +141,10 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         profile = AgentProfileStatus(
             key="panthera",
             display_name="Apex Panthera",
+            description="Balanced general-purpose cloud intelligence.",
             provider="openai",
             version="2.0",
+            configured_model="gpt-5.6-luna",
             mode="cloud",
             tier="balanced",
             stability="stable",

@@ -2,8 +2,8 @@
 
 Browser-owned history remains authoritative. Providers always send
 ``store=False`` and never persist provider response IDs across browser turns.
-Custom APEX function tools are supported; native web-search tools are never
-attached by this module.
+Custom APEX function tools are supported. General provider web search remains
+forbidden; xAI profiles may opt into X Search explicitly.
 """
 
 from __future__ import annotations
@@ -56,6 +56,7 @@ class ResponsesModelProfile:
         max_tool_calls: int,
         system_instruction: str,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
+        hosted_tools: frozenset[Literal["x_search"]] = frozenset(),
     ) -> None:
         self.provider = provider
         self.display_name = display_name
@@ -65,6 +66,7 @@ class ResponsesModelProfile:
         self.max_tool_calls = max_tool_calls
         self.system_instruction = system_instruction
         self.reasoning_effort = reasoning_effort
+        self.hosted_tools = hosted_tools
 
     def model_dump(self) -> dict[str, Any]:
         return {
@@ -76,6 +78,7 @@ class ResponsesModelProfile:
             "max_tool_calls": self.max_tool_calls,
             "system_instruction": self.system_instruction,
             "reasoning_effort": self.reasoning_effort,
+            "hosted_tools": sorted(self.hosted_tools),
         }
 
 
@@ -382,6 +385,10 @@ class ResponsesApiProvider:
 
         input_items = _messages_to_responses_input(messages)
         request_tools = [descriptor_to_responses_tool(tool) for tool in tools]
+        if "x_search" in profile.hosted_tools:
+            if self.provider_kind != "xai":
+                raise ValueError("X Search may only be attached to xAI profiles.")
+            request_tools.append({"type": "x_search"})
         assert_no_forbidden_native_tools(request_tools)
 
         request: dict[str, Any] = {

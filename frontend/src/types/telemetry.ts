@@ -133,6 +133,9 @@ export interface LoadedOllamaModelStatus {
 
 export interface AgentProfileStatus {
   key: AssistantProfile
+  description: string
+  configured_model: string
+  native_tools: Record<string, boolean>
   display_name: string
   provider: 'ollama' | 'gemini' | 'openai' | 'xai'
   version: string

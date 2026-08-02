@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 
 from core import brain, database, speaker
+from core.agent.sandbox_context import publish_masked_briefing
 from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.api.models import (
     BriefingResponse,
@@ -228,6 +229,47 @@ def _build_synthesis_input(
     )
 
 
+def _mask_dev_personal_results(
+    results: dict[str, ConnectorResult | None],
+) -> dict[str, ConnectorResult | None]:
+    """Remove personal text before any DEV_MODE synthesis provider sees it."""
+    masked = dict(results)
+    email = results.get("email")
+    if email is not None:
+        count = int(email.data.get("count", 0) or 0)
+        masked["email"] = email.model_copy(
+            update={
+                "display_text": f"Email Telemetry: {count} unread emails (details masked).",
+                "data": {"count": count, "emails": []},
+            }
+        )
+    calendar = results.get("calendar")
+    if calendar is not None:
+        count = int(
+            calendar.data.get("total_count", calendar.data.get("count", 0)) or 0
+        )
+        masked["calendar"] = calendar.model_copy(
+            update={
+                "display_text": f"Calendar Telemetry: {count} upcoming events (details masked).",
+                "data": {
+                    "window_days": calendar.data.get("window_days", 7),
+                    "events": [],
+                    "total_count": count,
+                },
+            }
+        )
+    reminders = results.get("reminders")
+    if reminders is not None:
+        count = int(reminders.data.get("count", 0) or 0)
+        masked["reminders"] = reminders.model_copy(
+            update={
+                "display_text": f"Pending Reminders: {count} (details masked).",
+                "data": {"count": count, "notes": [], "records": []},
+            }
+        )
+    return masked
+
+
 def _display_text(result: ConnectorResult | None) -> str:
     return result.display_text if result is not None else ""
 
@@ -422,6 +464,8 @@ def _synthesize_from_snapshot(
         warmup = synthesis_router.prepare_mode(mode)
 
         results = snapshot.results_map()
+        if dev_mode:
+            results = _mask_dev_personal_results(results)
         health = compute_sync_health(results)
         synthesis_input = _build_synthesis_input(
             results=results,
@@ -490,6 +534,12 @@ def _synthesize_from_snapshot(
             snapshot_id=snapshot.snapshot_id,
             spoken=spoken,
         )
+        if dev_mode:
+            publish_masked_briefing(
+                snapshot_id=snapshot.snapshot_id,
+                briefing=final_briefing,
+                insights=briefing_insights,
+            )
         if not dev_mode:
             try:
                 _LOGGER.info("Persisting briefing run to SQLite ledger")

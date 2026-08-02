@@ -124,10 +124,9 @@ Install and start [Ollama](https://ollama.com), then pull only the profiles you 
 ```powershell
 ollama pull qwen3:1.7b
 ollama pull qwen3:4b-instruct
-ollama pull qwen3:8b
 ```
 
-These map to Lynx, Acinonyx, and Neofelis. Missing tags appear as unavailable in the HUD instead of failing at selection time.
+These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instead of failing at selection time.
 
 ## First-run expectations
 

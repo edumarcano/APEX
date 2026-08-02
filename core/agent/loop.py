@@ -93,6 +93,7 @@ def run_agent_loop(
     system_instruction_override: str | None = None,
     resolved_local_command: ResolvedLocalCommand | None = None,
     disable_cloud_tools: bool = False,
+    cloud_tools: list[CapabilityDescriptor] | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -114,6 +115,16 @@ def run_agent_loop(
     else:
         local_tools = []
     allowed_local_tools = {tool.name for tool in local_tools}
+    resolved_cloud_tools = [] if is_local else (
+        list(cloud_tools)
+        if cloud_tools is not None
+        else list_assistant_capabilities()
+    )
+    allowed_cloud_tools = (
+        set()
+        if disable_cloud_tools
+        else {tool.name for tool in resolved_cloud_tools}
+    )
     estimated_prompt_tokens = 0
     peak_prompt_tokens: int | None = None
     history_messages_dropped = 0
@@ -175,7 +186,11 @@ def run_agent_loop(
             turn_tools: list[CapabilityDescriptor] = (
                 list(local_tools)
                 if is_local
-                else ([] if disable_cloud_tools else list_assistant_capabilities())
+                else (
+                    []
+                    if disable_cloud_tools
+                    else list(resolved_cloud_tools)
+                )
             )
 
             # Withhold tools on the last permitted turn so every provider must
@@ -266,6 +281,11 @@ def run_agent_loop(
                         raise CapabilityError(
                             CapabilityErrorCategory.UNAVAILABLE,
                             "Tool is outside the selected local command scope.",
+                        )
+                    if not is_local and call.name not in allowed_cloud_tools:
+                        raise CapabilityError(
+                            CapabilityErrorCategory.UNAVAILABLE,
+                            "Tool is outside the selected profile policy.",
                         )
                     output = tools_dispatcher(call.name, call.arguments)
                 except CapabilityError as exc:

@@ -16,8 +16,14 @@ from core.agent.profiles import (
     resolve_assistant_selection,
     runtime_profile_order,
 )
+from core.agent.capabilities import CapabilityDescriptor
+from core.agent.tool_policies import (
+    filter_profile_capabilities,
+    hosted_tools_for_profile,
+)
 from core.agent.types import AgentQueryRequest
 from core.api.assistant import query_agent
+from core.api.assistant import build_agent_profile_statuses
 from core.settings.models import AssistantSettings, SETTINGS_SCHEMA_VERSION
 
 
@@ -128,8 +134,8 @@ class LocalEffortRejectionTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
 
-class AcinonyxFailClosedTests(unittest.TestCase):
-    def test_acinonyx_strips_hud_context_and_tools(self) -> None:
+class AcinonyxPolicyTests(unittest.TestCase):
+    def test_acinonyx_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
 
         class Provider:
@@ -181,7 +187,6 @@ class AcinonyxFailClosedTests(unittest.TestCase):
                     prompt="hello",
                     profile="acinonyx",
                     snapshot_id="snap-1",
-                    briefing_id=3,
                     history=[
                         __import__(
                             "core.agent.types", fromlist=["AgentMessage"]
@@ -190,11 +195,64 @@ class AcinonyxFailClosedTests(unittest.TestCase):
                 )
             )
 
-        self.assertIsNone(captured["snapshot_id"])
+        self.assertEqual(captured["snapshot_id"], "snap-1")
         self.assertIsNone(captured["briefing_id"])
         self.assertEqual(captured.get("history"), [])
-        self.assertTrue(captured["disable_tools"])
-        self.assertTrue(captured["disable_hud_context"])
+        self.assertFalse(captured["disable_tools"])
+        self.assertFalse(captured["disable_hud_context"])
+
+    def test_acinonyx_capability_policy_is_an_explicit_allowlist(self) -> None:
+        def descriptor(name: str) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name=name,
+                title=name,
+                description=name,
+                input_schema={"type": "object", "properties": {}},
+                origin="mcp" if "_" in name and name.startswith(("brave", "github", "alphavantage")) else "native",
+                risk="read",
+                expose_to_assistant=True,
+                expose_to_mcp_server=False,
+                expose_to_client_display=True,
+            )
+
+        filtered = filter_profile_capabilities(
+            "acinonyx",
+            [
+                descriptor("get_weather_forecast"),
+                descriptor("get_active_reminders"),
+                descriptor("brave_brave_web_search"),
+                descriptor("alphavantage_quote"),
+                descriptor("github_list_issues"),
+            ],
+        )
+        self.assertEqual(
+            [item.name for item in filtered],
+            [
+                "get_weather_forecast",
+                "brave_brave_web_search",
+                "alphavantage_quote",
+            ],
+        )
+
+    def test_hosted_tool_policy_matches_profiles_and_toggle(self) -> None:
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "neofelis", neofelis_google_search_enabled=True
+            ),
+            frozenset({"google_search", "google_maps"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "neofelis", neofelis_google_search_enabled=False
+            ),
+            frozenset({"google_maps"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_profile(
+                "delphinus", neofelis_google_search_enabled=True
+            ),
+            frozenset({"x_search"}),
+        )
 
 
 class DemoRosterTests(unittest.TestCase):
@@ -213,6 +271,28 @@ class DemoRosterTests(unittest.TestCase):
                     AgentQueryRequest(prompt="status", profile="acinonyx")
                 )
         self.assertEqual(ctx.exception.status_code, 404)
+
+
+class ProfileStatusMetadataTests(unittest.TestCase):
+    def test_neofelis_reports_configured_model_and_effective_native_tools(self) -> None:
+        settings = mock.Mock()
+        settings.assistant.neofelis_google_search_enabled = False
+        with (
+            mock.patch("core.api.assistant.OLLAMA_ENABLED", False),
+            mock.patch("core.api.assistant.is_dev_mode", return_value=False),
+            mock.patch("core.api.assistant.profile_has_credentials", return_value=True),
+            mock.patch("core.api.assistant.get_settings_store") as store,
+        ):
+            store.return_value.get_snapshot.return_value = settings
+            profiles = build_agent_profile_statuses()
+
+        neofelis = next(item for item in profiles if item.key == "neofelis")
+        self.assertEqual(neofelis.configured_model, "gemini-3.6-flash")
+        self.assertTrue(neofelis.description)
+        self.assertEqual(
+            neofelis.native_tools,
+            {"google_search": False, "google_maps": True},
+        )
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
