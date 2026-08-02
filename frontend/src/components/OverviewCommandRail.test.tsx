@@ -64,6 +64,10 @@ function renderRail(overrides: Partial<ComponentProps<typeof OverviewCommandRail
     onRefreshAll: vi.fn(),
     onGenerateBriefing: vi.fn(),
     onRefreshAllAndGenerate: vi.fn(),
+    activeLocalModel: null,
+    loadingLocalProfile: null,
+    localLifecycleBusy: false,
+    onUnloadLocalModel: vi.fn(async () => true),
     ...overrides,
   }
   return { props, ...render(<OverviewCommandRail {...props} />) }
@@ -78,6 +82,8 @@ describe('OverviewCommandRail', () => {
     expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
     expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
+    expect(document.querySelector('[data-slot="overview-standby-controls"]')).toHaveClass('grid')
+    expect(document.querySelector('[data-slot="overview-standby-actions"]')).toHaveClass('col-span-2')
   })
 
   it('uses a compact assistant menu without changing briefing selection', async () => {
@@ -118,5 +124,18 @@ describe('OverviewCommandRail', () => {
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
     expect(onAssistantSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', null)
+  })
+
+  it('uses stable grid tracks and keeps the resident local runtime control inside the rail', async () => {
+    const onUnloadLocalModel = vi.fn(async () => true)
+    const activeMus = { ...profile('mus'), active: true, display_name: 'APEX Mus' }
+    const user = userEvent.setup()
+    renderRail({ activeLocalModel: activeMus, onUnloadLocalModel })
+
+    expect(document.querySelector('[data-slot="overview-active-controls"]')).toHaveClass('overview-command-grid--with-assistant')
+    expect(document.querySelector('[data-slot="refresh-all-trigger"]')).toHaveClass('overview-command-grid__refresh')
+    expect(screen.getByLabelText('Local runtime')).toHaveTextContent('Local runtime: Mus')
+    await user.click(screen.getByRole('button', { name: 'Unload APEX Mus' }))
+    expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })
 })

@@ -16,7 +16,6 @@ import {
 } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
-import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
 import { BriefingDigest } from './components/BriefingDigest'
@@ -1200,12 +1199,10 @@ export default function App(): ReactElement {
                   onRefreshAll={handleRefreshAll}
                   onGenerateBriefing={() => void handleGenerateBriefing()}
                   onRefreshAllAndGenerate={() => void handleRefreshAllAndGenerate()}
-                />
-                <LocalModelControl
-                  profile={activeLocalModel}
-                  loadingProfile={loadingLocalProfile}
-                  busy={localLifecycleBusy}
-                  onUnload={unloadLocalModel}
+                  activeLocalModel={activeLocalModel}
+                  loadingLocalProfile={loadingLocalProfile}
+                  localLifecycleBusy={localLifecycleBusy}
+                  onUnloadLocalModel={unloadLocalModel}
                 />
               </div>
             </div>

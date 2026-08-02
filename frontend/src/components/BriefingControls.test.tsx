@@ -68,7 +68,7 @@ describe('BriefingModeSelector', () => {
 
     expect(screen.getByText('Briefing Synthesis')).toBeVisible()
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
-    expect(screen.getByLabelText('Panthera profile mark')).toBeVisible()
+    expect(screen.getAllByLabelText('Panthera profile mark')).toHaveLength(2)
     expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
     expect(screen.getAllByText('No provider token charge')).toHaveLength(2)
     expect(screen.getByText('No model cost')).toBeVisible()
@@ -110,6 +110,13 @@ describe('BriefingModeSelector', () => {
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('shows the selected mode description rather than pricing while closed', () => {
+    renderSelector()
+
+    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toHaveTextContent(/Full briefing/)
+    expect(screen.getByRole('button', { name: /briefing: panthera/i })).not.toHaveTextContent(/In \$/)
   })
 })
 

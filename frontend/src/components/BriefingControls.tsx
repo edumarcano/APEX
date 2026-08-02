@@ -163,6 +163,7 @@ export interface BriefingModeSelectorProps {
   profiles: AgentProfileStatus[]
   hydrated: boolean
   disabled: boolean
+  className?: string
 }
 
 export function BriefingModeSelector({
@@ -171,6 +172,7 @@ export function BriefingModeSelector({
   profiles,
   hydrated,
   disabled,
+  className = '',
 }: BriefingModeSelectorProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<CSSProperties | null>(null)
@@ -252,7 +254,7 @@ export function BriefingModeSelector({
   }, [focusOption, open, updatePosition, value])
 
   return (
-    <div className="relative shrink-0">
+    <div className={`relative min-w-0 ${className}`}>
       <button
         ref={triggerRef}
         type="button"
@@ -270,11 +272,11 @@ export function BriefingModeSelector({
             close()
           }
         }}
-        className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <BriefingModeMark mode={value} />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
-        <span className="min-w-0"><span className="block whitespace-nowrap uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeCost(value, profiles)}</span></span>
+        <span className="min-w-0"><span className="block whitespace-nowrap uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value)}</span></span>
         <ChevronDown className={`size-3.5 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
@@ -362,6 +364,7 @@ export interface BriefingGenerateControlProps {
   busy: boolean
   onGenerate: () => void
   onRefreshAndGenerate: () => void
+  className?: string
 }
 
 export function BriefingGenerateControl({
@@ -370,6 +373,7 @@ export function BriefingGenerateControl({
   busy,
   onGenerate,
   onRefreshAndGenerate,
+  className = '',
 }: BriefingGenerateControlProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<CSSProperties | null>(null)
@@ -413,12 +417,12 @@ export function BriefingGenerateControl({
   }, [open, updatePosition])
 
   return (
-    <div className="hud-command-surface inline-flex shrink-0 rounded-md border border-white/10 bg-white/5 text-[#C084FC] transition-colors duration-300 hover:border-white/20 hover:bg-white/10">
+    <div className={`hud-command-surface inline-flex min-w-0 rounded-md border border-white/10 bg-white/5 text-[#C084FC] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 ${className}`}>
       <button
         type="button"
         disabled={mainDisabled}
         onClick={onGenerate}
-        className="group inline-flex items-center rounded-l-md px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#C084FC] transition-colors hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
+        className="group inline-flex min-w-0 flex-1 items-center justify-center rounded-l-md px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#C084FC] transition-colors hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
         aria-label="Synthesize briefing from current telemetry"
       >
         {busy ? (

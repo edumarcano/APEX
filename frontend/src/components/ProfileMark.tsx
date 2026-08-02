@@ -1,10 +1,10 @@
 import {
   FlaskConical,
+  Gem,
   Globe2,
   Orbit,
   ScanSearch,
   ShieldCheck,
-  Sparkles,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -14,7 +14,7 @@ import type { AssistantProfile } from '../types/telemetry'
 
 const PROFILE_MARKS: Record<AssistantProfile, { icon: LucideIcon; label: string; className: string }> = {
   acinonyx: { icon: FlaskConical, label: 'Acinonyx profile mark', className: 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200' },
-  panthera: { icon: Sparkles, label: 'Panthera profile mark', className: 'border-purple-300/25 bg-purple-400/10 text-purple-200' },
+  panthera: { icon: Gem, label: 'Panthera profile mark', className: 'border-purple-300/25 bg-purple-400/10 text-purple-200' },
   neofelis: { icon: Globe2, label: 'Neofelis profile mark', className: 'border-blue-300/25 bg-blue-400/10 text-blue-200' },
   delphinus: { icon: ScanSearch, label: 'Delphinus profile mark', className: 'border-teal-300/25 bg-teal-400/10 text-teal-200' },
   orcinus: { icon: Orbit, label: 'Orcinus profile mark', className: 'border-indigo-300/25 bg-indigo-400/10 text-indigo-200' },

@@ -6,6 +6,7 @@ import type { AgentProfileStatus, AssistantProfile } from '../types/telemetry'
 
 import { AskApexBar } from './AskApexBar'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
+import { LocalModelControl } from './LocalModelControl'
 import { ProfileCardSelector } from './ProfileCardSelector'
 import { StandbyActions } from './StandbyActions'
 
@@ -33,6 +34,10 @@ interface OverviewCommandRailProps {
   onRefreshAll: () => void
   onGenerateBriefing: () => void
   onRefreshAllAndGenerate: () => void
+  activeLocalModel: AgentProfileStatus | null
+  loadingLocalProfile: AgentProfileStatus | null
+  localLifecycleBusy: boolean
+  onUnloadLocalModel: () => Promise<boolean>
 }
 
 export function OverviewCommandRail({
@@ -59,7 +64,12 @@ export function OverviewCommandRail({
   onRefreshAll,
   onGenerateBriefing,
   onRefreshAllAndGenerate,
+  activeLocalModel,
+  loadingLocalProfile,
+  localLifecycleBusy,
+  onUnloadLocalModel,
 }: OverviewCommandRailProps): ReactElement {
+  const showAssistantControls = activated && askApexEnabled
   return (
     <section
       aria-label="Overview command rail"
@@ -67,51 +77,63 @@ export function OverviewCommandRail({
       className="relative z-20 mt-3 w-full max-w-[40rem] rounded-xl border border-white/10 bg-zinc-950/55 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl"
     >
       {!activated ? (
-        <div className="flex min-h-10 items-center px-1" data-slot="overview-standby-actions">
+        <div className="grid grid-cols-2 items-center gap-2" data-slot="overview-standby-controls">
+          <div className="col-span-2 flex min-h-10 justify-center" data-slot="overview-standby-actions">
           <StandbyActions
             onStartApex={onStartApex}
             onStartWithBriefing={onStartWithBriefing}
             disabled={startDisabled}
           />
         </div>
-      ) : askApexEnabled ? (
-        <div className="flex flex-col gap-2 border-b border-white/10 pb-2 sm:flex-row sm:items-center" data-slot="overview-assistant-controls">
-          <ProfileCardSelector
-            presentation="overview"
-            activeProfile={activeProfile}
-            onChange={onProfileChange}
-            profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
-            devModeActive={devModeActive}
-            isQuerying={isAssistantQuerying}
-            verifyingProfile={verifyingCloudProfile}
-            onVerify={onVerifyCloudProfile}
-          />
-          <AskApexBar
-            presentation="overview"
-            activeProfile={activeProfile}
-            onSubmit={onAssistantSubmit}
-            profilesStatus={profilesStatus}
-            isSubmitting={isAssistantQuerying}
+          <BriefingModeSelector
+            value={briefingMode}
+            onChange={onBriefingModeChange}
+            profiles={profilesStatus}
+            hydrated={profilesStatusHydrated}
+            disabled={briefingControlsBusy}
+            className="col-span-2 justify-self-center w-full max-w-[20rem]"
           />
         </div>
-      ) : null}
-
-      <div className={`flex flex-wrap items-center gap-2 px-1 ${activated && askApexEnabled ? 'pt-2' : ''}`} data-slot="overview-briefing-controls">
-        <BriefingModeSelector
-          value={briefingMode}
-          onChange={onBriefingModeChange}
-          profiles={profilesStatus}
-          hydrated={profilesStatusHydrated}
-          disabled={briefingControlsBusy}
-        />
-        {activated ? <>
+      ) : (
+        <div className={`overview-command-grid ${showAssistantControls ? 'overview-command-grid--with-assistant' : 'overview-command-grid--briefing-only'}`} data-slot="overview-active-controls">
+          {showAssistantControls ? <>
+            <div className="overview-command-grid__assistant-profile min-w-0" data-slot="overview-assistant-profile">
+              <ProfileCardSelector
+                presentation="overview"
+                activeProfile={activeProfile}
+                onChange={onProfileChange}
+                profilesStatus={profilesStatus}
+                profilesStatusHydrated={profilesStatusHydrated}
+                devModeActive={devModeActive}
+                isQuerying={isAssistantQuerying}
+                verifyingProfile={verifyingCloudProfile}
+                onVerify={onVerifyCloudProfile}
+              />
+            </div>
+            <div className="overview-command-grid__assistant-composer min-w-0" data-slot="overview-assistant-composer">
+              <AskApexBar
+                presentation="overview"
+                activeProfile={activeProfile}
+                onSubmit={onAssistantSubmit}
+                profilesStatus={profilesStatus}
+                isSubmitting={isAssistantQuerying}
+              />
+            </div>
+          </> : null}
+          <BriefingModeSelector
+            value={briefingMode}
+            onChange={onBriefingModeChange}
+            profiles={profilesStatus}
+            hydrated={profilesStatusHydrated}
+            disabled={briefingControlsBusy}
+            className="overview-command-grid__briefing min-w-0"
+          />
           <button
             type="button"
             onClick={onRefreshAll}
             disabled={isRefreshingAll}
             data-slot="refresh-all-trigger"
-            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
+            className="overview-command-grid__refresh inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Refresh all telemetry"
           >
             <RefreshCw className={`size-3.5 ${isRefreshingAll ? 'animate-spin' : ''}`} aria-hidden />
@@ -123,9 +145,17 @@ export function OverviewCommandRail({
             busy={briefingControlsBusy}
             onGenerate={onGenerateBriefing}
             onRefreshAndGenerate={onRefreshAllAndGenerate}
+            className="overview-command-grid__synthesize w-full"
           />
-        </> : null}
-      </div>
+        </div>
+      )}
+      <LocalModelControl
+        profile={activeLocalModel}
+        loadingProfile={loadingLocalProfile}
+        busy={localLifecycleBusy}
+        onUnload={onUnloadLocalModel}
+        presentation="rail"
+      />
     </section>
   )
 }

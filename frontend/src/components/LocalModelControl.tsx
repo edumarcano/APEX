@@ -1,3 +1,4 @@
+import { Loader2, Unplug } from 'lucide-react'
 import { useCallback, useState, type ReactElement } from 'react'
 
 import type { AgentProfileStatus } from '../types/telemetry'
@@ -13,11 +14,13 @@ export function LocalModelControl({
   loadingProfile,
   busy,
   onUnload,
+  presentation = 'default',
 }: {
   profile: AgentProfileStatus | null
   loadingProfile: AgentProfileStatus | null
   busy: boolean
   onUnload: () => Promise<boolean>
+  presentation?: 'default' | 'rail'
 }): ReactElement | null {
   const [unloading, setUnloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,6 +44,34 @@ export function LocalModelControl({
     : busy
       ? 'In use · auto-unload paused'
       : `Auto-unload in ${formatCountdown(profile?.idle_unload_remaining_seconds ?? null)}`
+
+  if (presentation === 'rail') {
+    return (
+      <div
+        className="flex min-w-0 items-center justify-between gap-3 border-t border-white/10 px-1 pt-2"
+        data-slot="overview-local-runtime"
+        aria-label="Local runtime"
+      >
+        <span className="min-w-0">
+          <span className="block truncate font-mono text-[10px] uppercase tracking-[0.14em] text-orange-200">
+            Local runtime: {visibleProfile.display_name.replace(/^APEX\s+/i, '')} · {loading ? 'Loading' : unloading ? 'Unloading' : busy ? 'In use' : 'Loaded'}
+          </span>
+          <span className="block truncate font-mono text-[9px] text-orange-200/60">{stateText}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => void handleUnload()}
+          disabled={disabled}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-orange-500/40 bg-orange-950/20 px-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.12em] text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-300 disabled:cursor-not-allowed disabled:opacity-45"
+          aria-label={`Unload ${visibleProfile.display_name}`}
+        >
+          {loading || unloading ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Unplug className="size-3.5" aria-hidden />}
+          {loading ? 'Loading' : unloading ? 'Unloading' : 'Unload'}
+        </button>
+        {error ? <span className="sr-only" role="alert">{error}</span> : null}
+      </div>
+    )
+  }
 
   return (
     <div className="mt-3 flex flex-col items-center gap-1" data-slot="local-model-control">

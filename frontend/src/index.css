@@ -69,6 +69,35 @@
   height: auto !important;
 }
 
+.overview-command-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    'assistant-profile assistant-profile assistant-profile'
+    'assistant-composer assistant-composer assistant-composer'
+    'briefing refresh synthesize';
+  gap: 0.5rem;
+}
+
+.overview-command-grid--briefing-only {
+  grid-template-areas: 'briefing refresh synthesize';
+}
+
+.overview-command-grid__assistant-profile { grid-area: assistant-profile; }
+.overview-command-grid__assistant-composer { grid-area: assistant-composer; }
+.overview-command-grid__briefing { grid-area: briefing; }
+.overview-command-grid__refresh { grid-area: refresh; }
+.overview-command-grid__synthesize { grid-area: synthesize; }
+
+@media (min-width: 640px) {
+  .overview-command-grid {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'assistant-profile assistant-composer assistant-composer'
+      'briefing refresh synthesize';
+  }
+}
+
 @media (max-width: 1279px), (max-height: 820px) {
   .hud-layout-fullscreen {
     overflow-x: hidden;
