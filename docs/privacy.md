@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Typed bounded input is built locally | Selected synthesis provider receives it | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
+| Briefing synthesis | Typed bounded input is built locally | Panthera's current briefing path sends it to Gemini; Mus and Sorex send it to Ollama | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
 | Assistant conversation | Browser tab owns history | Selected cloud/local model and invoked tools receive required context | No server-side chat store | Local profile with explicit local command scope |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected assistant model | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
