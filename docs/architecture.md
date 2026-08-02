@@ -133,6 +133,8 @@ Attached context and tool results are separately marked as untrusted model data.
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 
+Each non-demo assistant request begins with the selected profile's immutable identity instruction, followed by the configured APEX prompt, scoped context, and security boundary. Profile identity describes the active APEX profile and its model; it does not grant capabilities or override tool and privacy policy.
+
 Production cloud profiles receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis additionally receives always-on Google Maps grounding and optional Google Search grounding. Delphinus and Orcinus receive X Search; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
 ### Local profiles and command scopes

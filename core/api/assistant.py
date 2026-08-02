@@ -20,6 +20,7 @@ from core.agent.profiles import (
     AgentModelProfile,
     build_concrete_profile,
     build_profile_used_metadata,
+    compose_profile_system_instruction,
     credential_missing_error,
     credential_missing_message,
     is_acinonyx_sandbox,
@@ -431,7 +432,11 @@ def _execute_agent_turn(
             base_prompt = config.AGENT_SYSTEM_PROMPT
             scope_instruction = ""
 
-        local_system_instruction = base_prompt + scope_instruction + hud_context
+        local_system_instruction = (
+            compose_profile_system_instruction(profile_key, base_prompt)
+            + scope_instruction
+            + hud_context
+        )
 
         response = run_agent_loop(
             payload,

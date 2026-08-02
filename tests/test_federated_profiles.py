@@ -10,9 +10,12 @@ from fastapi.testclient import TestClient
 
 from core.agent.profiles import (
     PROFILE_SPECS,
+    build_concrete_profile,
+    compose_profile_system_instruction,
     migrate_schema5_ask_apex,
     migrate_schema5_briefing,
     profile_has_credentials,
+    resolve_effort,
     resolve_assistant_selection,
     runtime_profile_order,
 )
@@ -21,8 +24,8 @@ from core.agent.tool_policies import (
     filter_profile_capabilities,
     hosted_tools_for_profile,
 )
-from core.agent.types import AgentQueryRequest
-from core.api.assistant import query_agent
+from core.agent.types import AgentQueryRequest, AgentQueryResponse
+from core.api.assistant import _execute_agent_turn, query_agent
 from core.api.assistant import build_agent_profile_statuses
 from core.settings.models import AssistantSettings, SETTINGS_SCHEMA_VERSION
 
@@ -115,6 +118,90 @@ class CredentialIsolationTests(unittest.TestCase):
         ):
             self.assertTrue(profile_has_credentials("panthera"))
             self.assertFalse(profile_has_credentials("neofelis"))
+
+
+class ProfileIdentityTests(unittest.TestCase):
+    _IDENTITIES = {
+        "acinonyx": (
+            "You are Apex Acinonyx, an Apex Intelligence Profile powered by "
+            "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
+        ),
+        "panthera": (
+            "You are Apex Panthera, an Apex Intelligence Profile powered by "
+            "GPT-5.6 Luna."
+        ),
+        "neofelis": (
+            "You are Apex Neofelis, an Apex Intelligence Profile powered by "
+            "Gemini 3.6 Flash."
+        ),
+        "delphinus": (
+            "You are Apex Delphinus, an Apex Intelligence Profile powered by Grok 4.3."
+        ),
+        "orcinus": (
+            "You are Apex Orcinus, an Apex Intelligence Profile powered by Grok 4.5."
+        ),
+        "sorex": (
+            "You are Apex Sorex, an Apex Intelligence Profile powered by "
+            "Qwen3 1.7B through Ollama."
+        ),
+        "mus": (
+            "You are Apex Mus, an Apex Intelligence Profile powered by "
+            "Qwen3 4B Instruct through Ollama."
+        ),
+    }
+
+    def test_every_profile_has_the_expected_immutable_identity(self) -> None:
+        self.assertEqual(set(PROFILE_SPECS), set(self._IDENTITIES))
+        for key, identity in self._IDENTITIES.items():
+            with self.subTest(profile=key):
+                self.assertEqual(PROFILE_SPECS[key].identity_instruction, identity)
+                _apex_effort, native_effort = resolve_effort(key, None)
+                profile = build_concrete_profile(key, native_effort=native_effort)
+                self.assertTrue(profile.system_instruction.startswith(identity))
+
+    def test_effective_request_prompts_preserve_identity_with_runtime_overrides(self) -> None:
+        captured_instructions: dict[str, str] = {}
+
+        def capture_loop(*_args, **kwargs):
+            profile = _args[2]
+            captured_instructions[profile.display_name] = kwargs[
+                "system_instruction_override"
+            ]
+            return AgentQueryResponse(answer="ok", profile_used={}, session_id=None)
+
+        with (
+            mock.patch("core.api.assistant._create_provider", return_value=mock.Mock()),
+            mock.patch("core.api.assistant.run_agent_loop", side_effect=capture_loop),
+            mock.patch(
+                "core.api.assistant.config.AGENT_SYSTEM_PROMPT", "Cloud runtime prompt."
+            ),
+            mock.patch(
+                "core.api.assistant.config.LOCAL_AGENT_SYSTEM_PROMPT", "Local runtime prompt."
+            ),
+        ):
+            for key, identity in self._IDENTITIES.items():
+                _apex_effort, native_effort = resolve_effort(key, None)
+                profile = build_concrete_profile(key, native_effort=native_effort)
+                _execute_agent_turn(
+                    AgentQueryRequest(prompt="Identify yourself.", profile=key),
+                    profile,
+                    profile_key=key,
+                    api_key="test",
+                    resolved_apex_effort=None,
+                    resolved_native_effort=native_effort,
+                )
+                instruction = captured_instructions[profile.display_name]
+                self.assertTrue(instruction.startswith(identity))
+                expected_runtime_prompt = (
+                    "Local runtime prompt."
+                    if PROFILE_SPECS[key].mode == "local"
+                    else "Cloud runtime prompt."
+                )
+                self.assertIn(expected_runtime_prompt, instruction)
+
+    def test_identity_composition_keeps_identity_when_base_prompt_is_empty(self) -> None:
+        identity = PROFILE_SPECS["panthera"].identity_instruction
+        self.assertEqual(compose_profile_system_instruction("panthera", "  "), identity)
 
 
 class LocalEffortRejectionTests(unittest.TestCase):
