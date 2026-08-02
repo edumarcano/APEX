@@ -874,10 +874,11 @@ export default function App(): ReactElement {
           <SystemDiagnostics
             diagnostics={diagnostics}
             diagnosticsStatus={diagnosticsStatus}
-            status={briefing.status === 'idle' && activated ? (hasSnapshot ? 'success' : isRefreshingAll ? 'loading' : 'idle') : briefing.status}
-            confidenceScore={telemetry.snapshot?.sync_health_score ?? briefing.confidenceScore}
             failedConnectors={telemetry.snapshot?.failed_connectors ?? briefing.failedConnectors}
             connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
+            isCheckingConnectors={isRefreshingAll}
+            refreshingConnectors={telemetry.refreshingConnectors}
+            onRefreshConnectors={handleRefreshAll}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
             onOpenSettings={() => setIsSettingsOpen(true)}
