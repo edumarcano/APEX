@@ -76,7 +76,6 @@ export function usePreflight(): UsePreflightReturn {
   const [error, setError] = useState<string | null>(null)
 
   const acknowledgedWarningsRef = useRef<Set<string>>(new Set())
-  const cloudDisclosureAcknowledgedRef = useRef(false)
   const resolverRef = useRef<((resolution: PreflightResolution) => void) | null>(null)
   const inFlightRef = useRef(false)
 
@@ -98,9 +97,6 @@ export function usePreflight(): UsePreflightReturn {
     if (choice === 'continue_session') {
       for (const warning of warnings) {
         acknowledgedWarningsRef.current.add(warning.code)
-        if (warning.code === 'cloud_data_disclosure') {
-          cloudDisclosureAcknowledgedRef.current = true
-        }
       }
     }
 
@@ -128,7 +124,6 @@ export function usePreflight(): UsePreflightReturn {
             operation,
             ...options,
             acknowledged_warnings: Array.from(acknowledgedWarningsRef.current),
-            cloud_disclosure_acknowledged: cloudDisclosureAcknowledgedRef.current,
           } satisfies PreflightRequest),
         })
 

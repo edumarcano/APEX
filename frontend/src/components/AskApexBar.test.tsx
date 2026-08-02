@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentProfileStatus, LocalCommandStatus } from '../types/telemetry'
@@ -14,6 +14,28 @@ const weatherCommand: LocalCommandStatus = {
 }
 
 describe('AskApexBar local command shortcuts', () => {
+  it('uses Cortex-only active and brief error feedback', () => {
+    vi.useFakeTimers()
+    const { rerender } = render(<AskApexBar activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting={false} integrated />)
+
+    const form = screen.getByLabelText('Ask APEX')
+    expect(form).toHaveClass('min-h-12')
+    expect(screen.getByLabelText('Ask APEX query')).toHaveAttribute('placeholder', 'Ask APEX')
+
+    rerender(<AskApexBar activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting integrated />)
+    expect(form).toHaveClass('cortex-ask-apex-bar--active')
+    expect(screen.getByRole('button', { name: 'Sending query' })).toBeDisabled()
+    expect(document.querySelector('.cortex-query-spinner')).toBeInTheDocument()
+
+    rerender(<AskApexBar activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting={false} error="Model request failed" integrated />)
+    expect(form).toHaveClass('cortex-ask-apex-bar--error')
+    expect(screen.getByRole('status', { name: 'Last query failed: Model request failed' })).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(4_000))
+    expect(screen.queryByRole('status', { name: 'Last query failed: Model request failed' })).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it('submits from the right-side send button only when a query is present', () => {
     const onSubmit = vi.fn()
     render(<AskApexBar activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} isSubmitting={false} integrated />)

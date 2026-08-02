@@ -245,7 +245,6 @@ export type PreflightWarningCode =
   | 'network_trust_unknown'
   | 'running_on_battery'
   | 'rapid_connector_refresh'
-  | 'cloud_data_disclosure'
   | 'high_resource_local_profile'
 
 export type PreflightBlockerCode =
@@ -278,6 +277,7 @@ export interface PreflightRequest {
   force?: boolean
   involves_cloud?: boolean
   acknowledged_warnings?: string[]
+  /** Accepted by older servers; ignored by the current preflight contract. */
   cloud_disclosure_acknowledged?: boolean
 }
 

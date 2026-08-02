@@ -43,7 +43,7 @@ Followed football teams, prompts, Ollama host and resource gates, MCP endpoints 
 
 ### Production
 
-With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors, persists production briefing history, and uses the selected cloud, local, or deterministic briefing mode. Operational preflight can warn about network policy, power, refresh frequency, cloud disclosure, credentials, and local-model resources.
+With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors, persists production briefing history, and uses the selected cloud, local, or deterministic briefing mode. Operational preflight can warn about network policy, power, refresh frequency, and local-model resources; credentials and unavailable runtime resources remain blockers.
 
 ### Development
 

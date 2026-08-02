@@ -27,7 +27,7 @@ describe('CortexWorkspace', () => {
     const inspector = screen.getByLabelText('Cortex inspector')
     expect(workspace.className).not.toContain('max-w-7xl')
     expect(inspector.className).toContain('lg:border-l')
-    expect(inspector.previousElementSibling).toHaveTextContent('Cortex is ready')
+    expect(inspector.previousElementSibling).toHaveTextContent('APEX is ready')
     expect(screen.getByText('Panthera')).not.toHaveAttribute('role', 'button')
   })
 
@@ -104,5 +104,23 @@ describe('CortexWorkspace', () => {
     expect(screen.getByRole('button', { name: 'Load model' })).toBeDisabled()
     rerender(<CortexWorkspace {...workspaceProps()} />)
     expect(screen.queryByLabelText('Local model lifecycle')).not.toBeInTheDocument()
+  })
+
+  it('makes every local lifecycle state explicit and only marks transitions as active', () => {
+    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', profilesStatus: [mus] })} />)
+    expect(screen.getByText('Unloaded')).toBeInTheDocument()
+    expect(document.querySelector('.cortex-lifecycle-status--transitioning')).not.toBeInTheDocument()
+
+    rerender(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', profilesStatus: [{ ...mus, active: true }] })} />)
+    expect(screen.getByText('Loaded')).toBeInTheDocument()
+
+    rerender(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', profilesStatus: [{ ...mus, loading: true }] })} />)
+    expect(screen.getByText('Loading')).toBeInTheDocument()
+    expect(document.querySelector('.cortex-lifecycle-status--transitioning')).toBeInTheDocument()
+    expect(document.querySelector('.cortex-lifecycle-spinner')).toBeInTheDocument()
+
+    rerender(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', profilesStatus: [{ ...mus, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Ollama is offline')).toBeInTheDocument()
   })
 })

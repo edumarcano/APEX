@@ -147,12 +147,11 @@ Evaluates warnings and non-overridable blockers for one intended operation witho
   "briefing_mode": "panthera",
   "connectors": ["weather", "calendar"],
   "force": false,
-  "acknowledged_warnings": [],
-  "cloud_disclosure_acknowledged": false
+  "acknowledged_warnings": []
 }
 ```
 
-Warnings can cover configured-network mismatch, battery use, rapid refresh, cloud disclosure, and elevated local resource use. Blockers are reserved for conditions that prevent the selected work, including missing required credentials, unavailable models, local inference contention, failed resource gates, invalid input, or broken local configuration/database state.
+Warnings can cover configured-network mismatch, battery use, rapid refresh, and elevated local resource use. Blockers are reserved for conditions that prevent the selected work, including missing required credentials, unavailable models, local inference contention, failed resource gates, invalid input, or broken local configuration/database state. The legacy `cloud_disclosure_acknowledged` input remains accepted but has no effect.
 
 Calling an operation endpoint directly skips advisory acknowledgement; operation-specific hard failures still apply.
 

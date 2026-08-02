@@ -117,7 +117,6 @@ PreflightWarningCode = Literal[
     "network_trust_unknown",
     "running_on_battery",
     "rapid_connector_refresh",
-    "cloud_data_disclosure",
     "high_resource_local_profile",
 ]
 
@@ -155,6 +154,7 @@ class PreflightRequest(BaseModel):
     force: bool = False
     involves_cloud: bool = False
     acknowledged_warnings: list[str] = Field(default_factory=list)
+    # Accepted from older clients but no longer changes preflight behavior.
     cloud_disclosure_acknowledged: bool = False
 
 
