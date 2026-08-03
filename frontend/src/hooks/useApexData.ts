@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ActiveReminder,
   ApexDataState,
-  AssistantInitialSelection,
-  AssistantProfile,
+  AgentInitialSelection,
+  AgentKey,
   CloudEffort,
   ConnectorHealthEntry,
   PipelineState,
   SynthesisLiveState,
-  SynthesisProfile,
+  SynthesisAgent,
   SynthesisProvider,
   SynthesisStrategy,
   SystemState,
@@ -37,7 +37,7 @@ export type UseApexDataReturn = ApexDataState & {
   triggerSynthesis: () => Promise<void>
   applyBootSettings: (next: {
     askApexEnabled: boolean
-    assistantInitialSelection: AssistantInitialSelection
+    agentInitialSelection: AgentInitialSelection
     marketEnabled: boolean
   }) => void
 }
@@ -74,7 +74,7 @@ function assembleRemindersTelemetry(records: ReminderRecord[]): string {
 function createStandbyTelemetryPayload(
   activeReminders: ActiveReminder[],
   reminders: string,
-  defaultProfile?: AssistantProfile,
+  defaultAgent?: AgentKey,
 ): TelemetryPayload {
   return {
     briefing: '',
@@ -90,7 +90,7 @@ function createStandbyTelemetryPayload(
     confidenceScore: 100.0,
     failedConnectors: [],
     connectorHealth: [],
-    ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+    ...(defaultAgent !== undefined ? { defaultAgent } : {}),
   }
 }
 
@@ -114,7 +114,7 @@ function getStringField(
 }
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
-const VALID_AGENT_PROFILES: readonly AssistantProfile[] = [
+const VALID_AGENT_PROFILES: readonly AgentKey[] = [
   'panthera',
   'neofelis',
   'delphinus',
@@ -131,7 +131,7 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'raw',
   'demo',
 ]
-const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = [
+const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'panthera',
   'mus',
   'sorex',
@@ -143,17 +143,17 @@ function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | 
   return typeof value === 'string' && values.includes(value as T) ? value as T : null
 }
 
-function parseAssistantInitialSelection(value: unknown): AssistantInitialSelection | undefined {
+function parseAgentInitialSelection(value: unknown): AgentInitialSelection | undefined {
   if (!value || typeof value !== 'object') {
     return undefined
   }
   const record = value as Record<string, unknown>
-  const mode = record.mode
-  const profile = record.profile
-  if (mode !== 'cloud' && mode !== 'local') {
+  const runtime = record.runtime
+  const agent = record.agent
+  if (runtime !== 'cloud' && runtime !== 'local') {
     return undefined
   }
-  if (typeof profile !== 'string' || !VALID_AGENT_PROFILES.includes(profile as AssistantProfile)) {
+  if (typeof agent !== 'string' || !VALID_AGENT_PROFILES.includes(agent as AgentKey)) {
     return undefined
   }
   const effort =
@@ -164,8 +164,8 @@ function parseAssistantInitialSelection(value: unknown): AssistantInitialSelecti
     return undefined
   }
   return {
-    mode,
-    profile: profile as AssistantProfile,
+    runtime,
+    agent: agent as AgentKey,
     effort,
   }
 }
@@ -196,7 +196,7 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
       synthesis = {
         phase: phase as SynthesisLiveState['phase'],
         provider: parseEnum(item.provider, VALID_SYNTHESIS_PROVIDERS),
-        profile: parseEnum(item.profile, VALID_SYNTHESIS_PROFILES),
+        agent: parseEnum(item.agent, VALID_SYNTHESIS_PROFILES),
         loading: item.loading === true,
         fallback_reason: typeof item.fallback_reason === 'string' ? item.fallback_reason : null,
       }
@@ -282,7 +282,7 @@ export function useApexData(): UseApexDataReturn {
     marketEnabled: true,
     synthesisStrategy: 'cloud',
     synthesisProvider: 'openai',
-    synthesisProfile: 'panthera',
+    synthesisAgent: 'panthera',
     synthesisFallbackReason: null,
   })
 
@@ -304,27 +304,27 @@ export function useApexData(): UseApexDataReturn {
             activeReminders,
             reminders,
           }
-        : createStandbyTelemetryPayload(activeReminders, reminders, prev.defaultProfile),
+        : createStandbyTelemetryPayload(activeReminders, reminders, prev.defaultAgent),
     }))
   }, [])
 
   const applyBootSettings = useCallback(
     (next: {
       askApexEnabled: boolean
-      assistantInitialSelection: AssistantInitialSelection
+      agentInitialSelection: AgentInitialSelection
       marketEnabled: boolean
     }): void => {
       setState((prev) => ({
         ...prev,
         askApexEnabled: next.askApexEnabled,
-        defaultProfile: next.assistantInitialSelection.profile,
-        assistantInitialSelection: next.assistantInitialSelection,
+        defaultAgent: next.agentInitialSelection.agent,
+        agentInitialSelection: next.agentInitialSelection,
         marketEnabled: next.marketEnabled,
         data: prev.data
           ? {
               ...prev.data,
               askApexEnabled: next.askApexEnabled,
-              defaultProfile: next.assistantInitialSelection.profile,
+              defaultAgent: next.agentInitialSelection.agent,
             }
           : prev.data,
       }))
@@ -532,7 +532,7 @@ export function useApexData(): UseApexDataReturn {
       const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
       const system_load_throttled = metadata?.system_load_throttled === true
       const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
-      const synthesisProfile = parseEnum(metadata?.synthesis_profile, VALID_SYNTHESIS_PROFILES)
+      const synthesisAgent = parseEnum(metadata?.synthesis_agent, VALID_SYNTHESIS_PROFILES)
       const synthesisFallbackReason =
         typeof metadata?.synthesis_fallback_reason === 'string'
           ? metadata.synthesis_fallback_reason
@@ -599,7 +599,7 @@ export function useApexData(): UseApexDataReturn {
         active_tts_engine,
         system_load_throttled,
         synthesisProvider,
-        synthesisProfile,
+        synthesisAgent,
         synthesisFallbackReason,
       }))
     } catch (err) {
@@ -641,8 +641,8 @@ export function useApexData(): UseApexDataReturn {
           return
         }
 
-        let defaultProfile: AssistantProfile | undefined
-        let assistantInitialSelection: AssistantInitialSelection | undefined
+        let defaultAgent: AgentKey | undefined
+        let agentInitialSelection: AgentInitialSelection | undefined
         let askApexEnabled: boolean | undefined
         let marketEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
@@ -650,14 +650,14 @@ export function useApexData(): UseApexDataReturn {
         let briefingDefaultMode: ApexDataState['briefingDefaultMode']
         let voiceMode: ApexDataState['voiceMode']
         let synthesisStrategy: SynthesisStrategy | undefined
-        let synthesisProfile: SynthesisProfile | null | undefined
+        let synthesisAgent: SynthesisAgent | null | undefined
         if (configResp.ok) {
           try {
             const configBody: unknown = await configResp.json()
             if (configBody && typeof configBody === 'object') {
               const body = configBody as {
-                default_profile?: unknown
-                assistant_initial_selection?: unknown
+                default_agent?: unknown
+                agent_initial_selection?: unknown
                 ask_apex_enabled?: unknown
                 market_enabled?: unknown
                 demo_mode_active?: unknown
@@ -665,18 +665,18 @@ export function useApexData(): UseApexDataReturn {
                 briefing_default_mode?: unknown
                 voice_mode?: unknown
                 synthesis_strategy?: unknown
-                synthesis_profile?: unknown
+                synthesis_agent?: unknown
               }
-              assistantInitialSelection = parseAssistantInitialSelection(
-                body.assistant_initial_selection,
+              agentInitialSelection = parseAgentInitialSelection(
+                body.agent_initial_selection,
               )
-              if (assistantInitialSelection) {
-                defaultProfile = assistantInitialSelection.profile
+              if (agentInitialSelection) {
+                defaultAgent = agentInitialSelection.agent
               } else {
-                defaultProfile =
-                  typeof body.default_profile === 'string' &&
-                  VALID_AGENT_PROFILES.includes(body.default_profile as AssistantProfile)
-                    ? (body.default_profile as AssistantProfile)
+                defaultAgent =
+                  typeof body.default_agent === 'string' &&
+                  VALID_AGENT_PROFILES.includes(body.default_agent as AgentKey)
+                    ? (body.default_agent as AgentKey)
                     : undefined
               }
               if (typeof body.ask_apex_enabled === 'boolean') {
@@ -699,7 +699,7 @@ export function useApexData(): UseApexDataReturn {
               ] as const) ?? undefined
               voiceMode = parseEnum(body.voice_mode, ['off', 'manual', 'automatic'] as const) ?? undefined
               synthesisStrategy = parseEnum(body.synthesis_strategy, VALID_SYNTHESIS_STRATEGIES) ?? undefined
-              synthesisProfile = parseEnum(body.synthesis_profile, VALID_SYNTHESIS_PROFILES)
+              synthesisAgent = parseEnum(body.synthesis_agent, VALID_SYNTHESIS_PROFILES)
             }
           } catch {
             // Config hydration is best-effort; preserve dormant idle state on parse failure.
@@ -713,8 +713,8 @@ export function useApexData(): UseApexDataReturn {
 
         if (!remindersResp.ok) {
           if (
-            defaultProfile !== undefined ||
-            assistantInitialSelection !== undefined ||
+            defaultAgent !== undefined ||
+            agentInitialSelection !== undefined ||
             askApexEnabled !== undefined ||
             marketEnabled !== undefined ||
             demoModeActive !== undefined ||
@@ -728,9 +728,9 @@ export function useApexData(): UseApexDataReturn {
 
               return {
                 ...prev,
-                defaultProfile,
-                ...(assistantInitialSelection !== undefined
-                  ? { assistantInitialSelection }
+                defaultAgent,
+                ...(agentInitialSelection !== undefined
+                  ? { agentInitialSelection }
                   : {}),
                 ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 ...(marketEnabled !== undefined ? { marketEnabled } : {}),
@@ -738,7 +738,7 @@ export function useApexData(): UseApexDataReturn {
                 ...(voiceMode !== undefined ? { voiceMode } : {}),
                 ...modePatch,
                 ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
-                ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),
+                ...(synthesisAgent !== undefined ? { synthesisAgent } : {}),
                 synthesisProvider:
                   synthesisStrategy === 'raw'
                     ? 'raw'
@@ -750,10 +750,10 @@ export function useApexData(): UseApexDataReturn {
                 data: prev.data
                   ? {
                       ...prev.data,
-                      defaultProfile,
+                      defaultAgent,
                       ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                     }
-                  : createStandbyTelemetryPayload([], 'No pending reminders.', defaultProfile),
+                  : createStandbyTelemetryPayload([], 'No pending reminders.', defaultAgent),
               }
             })
           }
@@ -779,9 +779,9 @@ export function useApexData(): UseApexDataReturn {
             ...prev,
             status: 'idle',
             activeReminders,
-            ...(defaultProfile !== undefined ? { defaultProfile } : {}),
-            ...(assistantInitialSelection !== undefined
-              ? { assistantInitialSelection }
+            ...(defaultAgent !== undefined ? { defaultAgent } : {}),
+            ...(agentInitialSelection !== undefined
+              ? { agentInitialSelection }
               : {}),
             ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
             ...(marketEnabled !== undefined ? { marketEnabled } : {}),
@@ -789,7 +789,7 @@ export function useApexData(): UseApexDataReturn {
             ...(voiceMode !== undefined ? { voiceMode } : {}),
             ...modePatch,
             ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
-            ...(synthesisProfile !== undefined ? { synthesisProfile } : {}),
+            ...(synthesisAgent !== undefined ? { synthesisAgent } : {}),
             synthesisProvider:
               synthesisStrategy === 'raw'
                 ? 'raw'
@@ -803,10 +803,10 @@ export function useApexData(): UseApexDataReturn {
                   ...prev.data,
                   activeReminders,
                   reminders,
-                  ...(defaultProfile !== undefined ? { defaultProfile } : {}),
+                  ...(defaultAgent !== undefined ? { defaultAgent } : {}),
                   ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
                 }
-              : createStandbyTelemetryPayload(activeReminders, reminders, defaultProfile),
+              : createStandbyTelemetryPayload(activeReminders, reminders, defaultAgent),
           }
         })
       } catch (err) {

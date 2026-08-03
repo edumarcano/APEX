@@ -174,7 +174,7 @@ class AdversarialSynthesisTests(unittest.TestCase):
 
     def test_oversized_payload_is_bounded(self) -> None:
         source = sample_input(
-            first_pending_reminder=("注入 " * 4000),
+            first_pending_reminder=("Ã¦Â³Â¨Ã¥â€¦Â¥ " * 4000),
             email_recent_subjects=["A" * 2000, "B" * 2000],
             news_headlines=[
                 NewsFact(topic="AI", headline="H" * 2000),
@@ -235,7 +235,7 @@ class AdversarialSynthesisTests(unittest.TestCase):
             panthera.return_value = SynthesisResult(
                 briefing="Ready.",
                 provider="openai",
-                profile="panthera",
+                agent="panthera",
             )
             result = router.synthesize(sample_input(), "cloud", full_telemetry="SECRET SUBJECT")
         self.assertEqual(result.provider, "openai")

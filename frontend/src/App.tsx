@@ -26,12 +26,12 @@ import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderQuickAdd } from './components/ReminderQuickAdd'
 import SettingsPanel from './components/SettingsPanel'
-import { OverviewCommandRail } from './components/OverviewCommandRail'
+import { HomeCommandRail } from './components/HomeCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
 import { useApexData } from './hooks/useApexData'
-import { useApexAssistant } from './hooks/useApexAssistant'
+import { useCortex } from './hooks/useCortex'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useLocalCommands } from './hooks/useLocalCommands'
@@ -47,13 +47,13 @@ import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import {
-  filterAssistantSettingsForDevMode,
+  filterAskApexSettingsForDevMode,
   parseSettingsResponse,
-  resolveAppliedAssistantSelection,
-  resolveInitialAssistantSelection,
+  resolveAppliedAgentSelection,
+  resolveInitialAgentSelection,
 } from './lib/settings'
 import type {
-  AssistantProfile,
+  AgentKey,
   CloudEffort,
   LocalToolScope,
 } from './types/telemetry'
@@ -122,33 +122,33 @@ function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
   return mode === 'panthera'
 }
 
-function synthesisProfileForMode(mode: BriefingMode): string | null {
+function synthesisAgentForMode(mode: BriefingMode): string | null {
   if (mode === 'structured_digest') {
     return null
   }
   return mode
 }
 
-function isCloudAssistantProfile(
-  profile: AssistantProfile,
-  profilesStatus: { key: AssistantProfile; mode: 'cloud' | 'local' }[],
+function isCloudAgentKey(
+  agent: AgentKey,
+  agentsStatus: { key: AgentKey; runtime: 'cloud' | 'local' }[],
 ): boolean {
-  const match = profilesStatus.find((entry) => entry.key === profile)
+  const match = agentsStatus.find((entry) => entry.key === agent)
   if (match) {
-    return match.mode === 'cloud'
+    return match.runtime === 'cloud'
   }
-  return profile !== 'sorex' && profile !== 'mus'
+  return agent !== 'sorex' && agent !== 'mus'
 }
 
 export default function App(): ReactElement {
   const reminderPulseCount = 0
-  const [agentProfile, setAgentProfile] = useState<AssistantProfile>('panthera')
+  const [activeAgent, setAgent] = useState<AgentKey>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
-  const [workspace, setWorkspace] = useState<'overview' | 'cortex'>('overview')
-  const [cloudProfile, setCloudProfile] = useState<Exclude<AssistantProfile, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
+  const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
+  const [cloudAgent, setCloudAgent] = useState<Exclude<AgentKey, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
@@ -166,8 +166,8 @@ export default function App(): ReactElement {
     devModeActive,
     askApexEnabled,
     marketEnabled,
-    defaultProfile,
-    assistantInitialSelection,
+    defaultAgent,
+    agentInitialSelection,
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
     markReminderAsRead,
@@ -182,56 +182,56 @@ export default function App(): ReactElement {
   const voiceDelivery = useVoiceDelivery()
 
   const {
-    assistantHistory,
-    isAssistantQuerying,
-    activeQueryProfile,
-    assistantLatestTrace,
-    assistantError,
-    assistantContextUsage,
-    profilesStatus,
-    profilesStatusHydrated,
-    queryAssistant,
+    cortexHistory,
+    isCortexQuerying,
+    activeQueryAgent,
+    cortexLatestTrace,
+    cortexError,
+    cortexContextUsage,
+    agentsStatus,
+    agentsStatusHydrated,
+    queryAgent,
     isLocalModelActionPending,
-    verifyingCloudProfile,
+    verifyingCloudAgent,
     loadLocalModel,
     unloadLocalModel,
-    verifyCloudProfile,
-    refreshProfilesStatus,
-    clearAssistantChat,
-  } = useApexAssistant(true, agentProfile)
-  const isLocalAgentProfile = agentProfile === 'sorex' || agentProfile === 'mus'
-  const { commands: localCommands } = useLocalCommands(isLocalAgentProfile)
+    verifyCloudAgent,
+    refreshAgentsStatus,
+    clearCortexSession,
+  } = useCortex(true, activeAgent)
+  const isLocalAgent = activeAgent === 'sorex' || activeAgent === 'mus'
+  const { commands: localCommands } = useLocalCommands(isLocalAgent)
 
   useEffect(() => {
     const armedScopeIsUnavailable = armedLocalToolScope && (
-      !isLocalAgentProfile ||
+      !isLocalAgent ||
       !localCommands.some((command) => command.key === armedLocalToolScope && command.available)
     )
     if (!armedScopeIsUnavailable) return
     const timeoutId = window.setTimeout(() => setArmedLocalToolScope(null), 0)
     return () => window.clearTimeout(timeoutId)
-  }, [armedLocalToolScope, isLocalAgentProfile, localCommands])
+  }, [armedLocalToolScope, isLocalAgent, localCommands])
 
-  const assistantSelectionHydratedRef = useRef(false)
+  const agentSelectionHydratedRef = useRef(false)
 
-  // Hydrate backend defaults once; later profile changes belong to the active session.
+  // Hydrate backend defaults once; later agent changes belong to the active session.
   useEffect(() => {
-    const selection = resolveInitialAssistantSelection(
-      assistantSelectionHydratedRef.current,
-      assistantInitialSelection,
-      defaultProfile,
+    const selection = resolveInitialAgentSelection(
+      agentSelectionHydratedRef.current,
+      agentInitialSelection,
+      defaultAgent,
     )
     if (selection) {
-      setAgentProfile(selection.profile)
-      if (selection.profile !== 'sorex' && selection.profile !== 'mus' && selection.profile !== 'acinonyx') {
-        setCloudProfile(selection.profile)
+      setAgent(selection.agent)
+      if (selection.agent !== 'sorex' && selection.agent !== 'mus' && selection.agent !== 'acinonyx') {
+        setCloudAgent(selection.agent)
       }
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
-      assistantSelectionHydratedRef.current = true
+      agentSelectionHydratedRef.current = true
     }
-  }, [assistantInitialSelection, defaultProfile])
+  }, [agentInitialSelection, defaultAgent])
 
   useEffect(() => {
     if (
@@ -248,20 +248,20 @@ export default function App(): ReactElement {
   }, [bootVoiceMode, briefingDefaultMode])
 
   const handleSettingsApplied = useCallback(
-    (response: SettingsResponse, selectedProfile?: AssistantProfile) => {
-      const selection = resolveAppliedAssistantSelection(
+    (response: SettingsResponse, selectedAgent?: AgentKey) => {
+      const selection = resolveAppliedAgentSelection(
         response,
-        selectedProfile ?? agentProfile,
-        assistantSelectionHydratedRef.current || selectedProfile !== undefined,
+        selectedAgent ?? activeAgent,
+        agentSelectionHydratedRef.current || selectedAgent !== undefined,
       )
       applyBootSettings({
-        askApexEnabled: response.settings.assistant.enabled,
-        assistantInitialSelection: selection,
+        askApexEnabled: response.settings.ask_apex.enabled,
+        agentInitialSelection: selection,
         marketEnabled: response.settings.features.market,
       })
-      setAgentProfile(selection.profile)
-      if (selection.profile !== 'sorex' && selection.profile !== 'mus' && selection.profile !== 'acinonyx') {
-        setCloudProfile(selection.profile)
+      setAgent(selection.agent)
+      if (selection.agent !== 'sorex' && selection.agent !== 'mus' && selection.agent !== 'acinonyx') {
+        setCloudAgent(selection.agent)
       }
       if (selection.effort) {
         setCloudEffort(selection.effort)
@@ -271,7 +271,7 @@ export default function App(): ReactElement {
       }
       setVoiceMode(response.settings.voice.mode)
     },
-    [agentProfile, applyBootSettings],
+    [activeAgent, applyBootSettings],
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
@@ -287,14 +287,14 @@ export default function App(): ReactElement {
         const settings = (body as { settings?: unknown }).settings
         if (!settings || typeof settings !== 'object') return
         const settingsValues = settings as Record<string, unknown>
-        const assistant = settingsValues.assistant
-        if (assistant && typeof assistant === 'object') {
-          const values = assistant as Record<string, unknown>
-          if (values.cloud_profile === 'panthera' || values.cloud_profile === 'neofelis' || values.cloud_profile === 'delphinus' || values.cloud_profile === 'orcinus') {
-            setCloudProfile(values.cloud_profile)
+        const askApex = settingsValues.ask_apex
+        if (askApex && typeof askApex === 'object') {
+          const values = askApex as Record<string, unknown>
+          if (values.cloud_agent === 'panthera' || values.cloud_agent === 'neofelis' || values.cloud_agent === 'delphinus' || values.cloud_agent === 'orcinus') {
+            setCloudAgent(values.cloud_agent)
           }
-          if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
-            setCloudEffort(values.cloud_effort)
+          if (values.effort === 'light' || values.effort === 'focused' || values.effort === 'extended') {
+            setCloudEffort(values.effort)
           }
         }
         const briefing = settingsValues.briefing
@@ -327,8 +327,8 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    activeQueryProfile === 'sorex' ||
-    activeQueryProfile === 'mus' ||
+    activeQueryAgent === 'sorex' ||
+    activeQueryAgent === 'mus' ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 
@@ -337,24 +337,24 @@ export default function App(): ReactElement {
   const isCompatibilitySegmentSurging =
     isBriefingRunning && activeStep !== null && activeStep >= 1 && activeStep <= 3
 
-  const loadingLocalProfile = useMemo(
-    () => profilesStatus.find((profile) => profile.loading) ?? null,
-    [profilesStatus],
+  const loadingLocalAgent = useMemo(
+    () => agentsStatus.find((agent) => agent.loading) ?? null,
+    [agentsStatus],
   )
   const activeLocalModel = useMemo(
     () =>
-      profilesStatus.find(
-        (profile) => profile.provider === 'ollama' && profile.active,
+      agentsStatus.find(
+        (agent) => agent.provider === 'ollama' && agent.active,
       ) ?? null,
-    [profilesStatus],
+    [agentsStatus],
   )
   const isLocalModelLoading =
-    loadingLocalProfile !== null ||
+    loadingLocalAgent !== null ||
     (liveSynthesis?.provider === 'ollama' && liveSynthesis.loading)
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
-    loadingLocalProfile?.display_name ??
-    (liveSynthesis?.profile ? `Apex ${liveSynthesis.profile}` : null)
+    loadingLocalAgent?.display_name ??
+    (liveSynthesis?.agent ? `Apex ${liveSynthesis.agent}` : null)
 
   const glowColor = useMemo((): string => {
     if (briefing.status === 'error') {
@@ -363,8 +363,8 @@ export default function App(): ReactElement {
     if (isLocalModelLoading) {
       return '249, 115, 22' // Rust orange (local model loading)
     }
-    if (isAssistantQuerying) {
-      return '168, 85, 247' // Purple (assistant working)
+    if (isCortexQuerying) {
+      return '168, 85, 247' // Purple (Agent working)
     }
     if (activeStep === 4) {
       return '251, 191, 36' // Gold
@@ -382,7 +382,7 @@ export default function App(): ReactElement {
       return '249, 115, 22' // Rust orange (local model loaded)
     }
     if (activated) {
-      return '15, 77, 184' // Calm blue — activated overview, no briefing/error state
+      return '15, 77, 184' // Calm blue — activated home, no briefing/error state
     }
     return '15, 23, 42' // Deep Slate Blue
   }, [
@@ -390,7 +390,7 @@ export default function App(): ReactElement {
     activeStep,
     isSpeaking,
     isLocalModelLoading,
-    isAssistantQuerying,
+    isCortexQuerying,
     isLocalModelLoaded,
     isBriefingRunning,
     activated,
@@ -409,7 +409,7 @@ export default function App(): ReactElement {
   const centerColumnActiveClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
 
   // The logo is always visible and the insights panel stays mounted while the
-  // Overview telemetry columns transition around it.
+  // Home telemetry columns transition around it.
   const showDigest = !isDormant
   const digestWrapperClass = [
     'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
@@ -460,7 +460,7 @@ export default function App(): ReactElement {
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('activate_with_briefing', {
       briefing_mode: briefingMode,
-      synthesis_profile: synthesisProfileForMode(briefingMode),
+      synthesis_agent: synthesisAgentForMode(briefingMode),
       involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
@@ -511,14 +511,14 @@ export default function App(): ReactElement {
   const hasSnapshot = telemetry.snapshot !== null
   const briefingControlsBusy =
     preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
-  const selectedBriefingProfile = synthesisProfileForMode(briefingMode)
+  const selectedBriefingAgent = synthesisAgentForMode(briefingMode)
   const briefingModeAvailable =
-    selectedBriefingProfile === null ||
-    (profilesStatusHydrated &&
-      profilesStatus.some(
-        (profile) =>
-          profile.key === selectedBriefingProfile &&
-          ['available', 'configured', 'verified'].includes(profile.status),
+    selectedBriefingAgent === null ||
+    (agentsStatusHydrated &&
+      agentsStatus.some(
+        (agent) =>
+          agent.key === selectedBriefingAgent &&
+          ['available', 'configured', 'verified'].includes(agent.status),
       ))
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
@@ -635,7 +635,7 @@ export default function App(): ReactElement {
     }
     const resolution = await preflight.requestOperation('generate_briefing', {
       briefing_mode: briefingMode,
-      synthesis_profile: synthesisProfileForMode(briefingMode),
+      synthesis_agent: synthesisAgentForMode(briefingMode),
       involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
@@ -647,7 +647,7 @@ export default function App(): ReactElement {
   const handleRefreshAllAndGenerate = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('generate_briefing', {
       briefing_mode: briefingMode,
-      synthesis_profile: synthesisProfileForMode(briefingMode),
+      synthesis_agent: synthesisAgentForMode(briefingMode),
       involves_cloud: briefingModeInvolvesCloud(briefingMode),
       force: true,
     })
@@ -695,40 +695,40 @@ export default function App(): ReactElement {
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
-  const queryAssistantWithContext = useCallback(
+  const queryAgentWithContext = useCallback(
     async (
       prompt: string,
-      profile: AssistantProfile,
+      agent: AgentKey,
       toolScope?: LocalToolScope | null,
     ): Promise<void> => {
-      const resolution = await preflight.requestOperation('assistant_query', {
-        synthesis_profile: profile,
-        involves_cloud: isCloudAssistantProfile(profile, profilesStatus),
+      const resolution = await preflight.requestOperation('cortex_query', {
+        synthesis_agent: agent,
+        involves_cloud: isCloudAgentKey(agent, agentsStatus),
       })
       if (resolution !== 'proceed') {
         return
       }
-      await queryAssistant(prompt, profile, {
+      await queryAgent(prompt, agent, {
         snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
         toolScope,
-        effort: isCloudAssistantProfile(profile, profilesStatus) ? cloudEffort : null,
+        effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
         sessionId: cortexSessionId,
       })
     },
     [
       preflight,
-      queryAssistant,
+      queryAgent,
       telemetry.snapshot?.snapshot_id,
-      profilesStatus,
+      agentsStatus,
       cloudEffort,
       snapshotAttached,
       cortexSessionId,
     ],
   )
 
-  const persistAssistantSettings = useCallback(
-    async (assistant: Record<string, unknown>, selectedProfile?: AssistantProfile): Promise<void> => {
-      const payload = devModeActive ? filterAssistantSettingsForDevMode(assistant) : assistant
+  const persistAskApexSettings = useCallback(
+    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<void> => {
+      const payload = devModeActive ? filterAskApexSettingsForDevMode(askApex) : askApex
       if (Object.keys(payload).length === 0) {
         return
       }
@@ -736,7 +736,7 @@ export default function App(): ReactElement {
         const response = await fetch(API_ENDPOINTS.settings, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ assistant: payload }),
+          body: JSON.stringify({ ask_apex: payload }),
         })
         if (!response.ok) {
           return
@@ -744,14 +744,14 @@ export default function App(): ReactElement {
         const body: unknown = await response.json()
         const parsed = parseSettingsResponse(body)
         if (parsed) {
-          handleSettingsApplied(parsed, selectedProfile)
-          await refreshProfilesStatus()
+          handleSettingsApplied(parsed, selectedAgent)
+          await refreshAgentsStatus()
         }
       } catch {
         // The session selection remains usable if local preference persistence fails.
       }
     },
-    [devModeActive, handleSettingsApplied, refreshProfilesStatus],
+    [devModeActive, handleSettingsApplied, refreshAgentsStatus],
   )
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
@@ -772,55 +772,55 @@ export default function App(): ReactElement {
     void persistBriefingMode(mode)
   }, [persistBriefingMode])
 
-  const handleProfileChange = useCallback((profile: AssistantProfile): void => {
-    setAgentProfile(profile)
-    if (profile !== 'sorex' && profile !== 'mus') {
+  const handleAgentChange = useCallback((agent: AgentKey): void => {
+    setAgent(agent)
+    if (agent !== 'sorex' && agent !== 'mus') {
       setArmedLocalToolScope(null)
     }
-    if (profile === 'acinonyx') {
-      void persistAssistantSettings({ mode: 'cloud', cloud_effort: cloudEffort }, profile)
+    if (agent === 'acinonyx') {
+      void persistAskApexSettings({ runtime: 'cloud', effort: cloudEffort }, agent)
       return
     }
-    if (profile === 'sorex' || profile === 'mus') {
-      void persistAssistantSettings({ mode: 'local', local_profile: profile }, profile)
+    if (agent === 'sorex' || agent === 'mus') {
+      void persistAskApexSettings({ runtime: 'local', local_agent: agent }, agent)
       return
     }
-    setCloudProfile(profile)
-    void persistAssistantSettings({ mode: 'cloud', cloud_profile: profile, cloud_effort: cloudEffort }, profile)
-  }, [cloudEffort, persistAssistantSettings])
+    setCloudAgent(agent)
+    void persistAskApexSettings({ runtime: 'cloud', cloud_agent: agent, effort: cloudEffort }, agent)
+  }, [cloudEffort, persistAskApexSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
-    void persistAssistantSettings({ mode: 'cloud', cloud_profile: cloudProfile, cloud_effort: effort }, agentProfile)
-  }, [agentProfile, cloudProfile, persistAssistantSettings])
+    void persistAskApexSettings({ runtime: 'cloud', cloud_agent: cloudAgent, effort: effort }, activeAgent)
+  }, [activeAgent, cloudAgent, persistAskApexSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ neofelis_google_search_enabled: enabled }, agentProfile)
-  }, [agentProfile, persistAssistantSettings])
+    void persistAskApexSettings({ neofelis_google_search_enabled: enabled }, activeAgent)
+  }, [activeAgent, persistAskApexSettings])
 
   const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ neofelis_google_maps_enabled: enabled }, agentProfile)
-  }, [agentProfile, persistAssistantSettings])
+    void persistAskApexSettings({ neofelis_google_maps_enabled: enabled }, activeAgent)
+  }, [activeAgent, persistAskApexSettings])
 
   const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ delphinus_x_search_enabled: enabled }, agentProfile)
-  }, [agentProfile, persistAssistantSettings])
+    void persistAskApexSettings({ delphinus_x_search_enabled: enabled }, activeAgent)
+  }, [activeAgent, persistAskApexSettings])
 
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ orcinus_x_search_enabled: enabled }, agentProfile)
-  }, [agentProfile, persistAssistantSettings])
+    void persistAskApexSettings({ orcinus_x_search_enabled: enabled }, activeAgent)
+  }, [activeAgent, persistAskApexSettings])
 
   const handleNewCortexSession = useCallback((): void => {
-    clearAssistantChat(agentProfile)
+    clearCortexSession(activeAgent)
     setSnapshotAttached(false)
     setArmedLocalToolScope(null)
     setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
-  }, [agentProfile, clearAssistantChat])
+  }, [activeAgent, clearCortexSession])
 
-  const handleOverviewSubmit = useCallback((query: string, profile: AssistantProfile, toolScope?: LocalToolScope | null): void => {
+  const handleHomeSubmit = useCallback((query: string, agent: AgentKey, toolScope?: LocalToolScope | null): void => {
     setWorkspace('cortex')
-    void queryAssistantWithContext(query, profile, toolScope)
-  }, [queryAssistantWithContext])
+    void queryAgentWithContext(query, agent, toolScope)
+  }, [queryAgentWithContext])
 
   return (
     <main
@@ -858,7 +858,7 @@ export default function App(): ReactElement {
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
             workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
-            <button type="button" onClick={() => setWorkspace('overview')} aria-pressed={workspace === 'overview'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'overview' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Overview</button>
+            <button type="button" onClick={() => setWorkspace('home')} aria-pressed={workspace === 'home'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'home' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Home</button>
             <button type="button" onClick={() => setWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
           </nav>}
           />
@@ -871,15 +871,15 @@ export default function App(): ReactElement {
           status={briefing.status}
           pipelineStep={activeStep}
           isSpeaking={isSpeaking}
-          isAssistantQuerying={isAssistantQuerying}
-          profilesStatus={profilesStatus}
-          profilesStatusHydrated={profilesStatusHydrated}
+          isCortexQuerying={isCortexQuerying}
+          agentsStatus={agentsStatus}
+          agentsStatusHydrated={agentsStatusHydrated}
           failedConnectors={briefing.failedConnectors}
           hasBriefingEvidence={briefing.status === 'success' || briefing.status === 'error'}
           onApplied={handleSettingsApplied}
         />
 
-        {workspace === 'overview' ? (
+        {workspace === 'home' ? (
           <>
         <div className="hud-body-layout flex w-full flex-col gap-4 overflow-visible xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
@@ -971,7 +971,7 @@ export default function App(): ReactElement {
                   speechError={voiceDelivery.error}
                   synthesisLabel={
                     briefing.synthesisProvider
-                      ? [briefing.synthesisProvider, briefing.synthesisProfile]
+                      ? [briefing.synthesisProvider, briefing.synthesisAgent]
                           .filter(Boolean)
                           .join(' / ')
                       : null
@@ -993,7 +993,7 @@ export default function App(): ReactElement {
                       status={logoStatus}
                       isSpeaking={isSpeaking}
                       reminderPulseCount={reminderPulseCount}
-                      isAssistantQuerying={isAssistantQuerying}
+                      isCortexQuerying={isCortexQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       isLocalModelLoaded={isLocalModelLoaded}
                       isTelemetryCollecting={isTelemetryCollecting}
@@ -1012,7 +1012,7 @@ export default function App(): ReactElement {
                       isSpeaking={isSpeaking}
                       activeTtsEngine={resolvedTtsEngine}
                       systemLoadThrottled={resolvedSystemThrottled}
-                      isAssistantQuerying={isAssistantQuerying}
+                      isCortexQuerying={isCortexQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       loadingDisplayName={loadingDisplayName}
                     />
@@ -1020,17 +1020,17 @@ export default function App(): ReactElement {
                 </div>
               </div>
               <div className="flex w-full flex-col items-center">
-                <OverviewCommandRail
+                <HomeCommandRail
                   activated={activated}
                   askApexEnabled={Boolean(askApexEnabled)}
-                  activeProfile={agentProfile}
-                  profilesStatus={profilesStatus}
-                  profilesStatusHydrated={profilesStatusHydrated}
-                  isAssistantQuerying={isAssistantQuerying}
-                  verifyingCloudProfile={verifyingCloudProfile}
-                  onProfileChange={handleProfileChange}
-                  onVerifyCloudProfile={verifyCloudProfile}
-                  onAssistantSubmit={handleOverviewSubmit}
+                  activeAgent={activeAgent}
+                  agentsStatus={agentsStatus}
+                  agentsStatusHydrated={agentsStatusHydrated}
+                  isCortexQuerying={isCortexQuerying}
+                  verifyingCloudAgent={verifyingCloudAgent}
+                  onAgentChange={handleAgentChange}
+                  onVerifyCloudAgent={verifyCloudAgent}
+                  onAgentSubmit={handleHomeSubmit}
                   onStartApex={() => void handleStartApex()}
                   onStartWithBriefing={() => void handleStartWithBriefing()}
                   startDisabled={preflight.isChecking}
@@ -1044,7 +1044,7 @@ export default function App(): ReactElement {
                   onGenerateBriefing={() => void handleGenerateBriefing()}
                   onRefreshAllAndGenerate={() => void handleRefreshAllAndGenerate()}
                   activeLocalModel={activeLocalModel}
-                  loadingLocalProfile={loadingLocalProfile}
+                  loadingLocalAgent={loadingLocalAgent}
                   localLifecycleBusy={localLifecycleBusy}
                   onUnloadLocalModel={unloadLocalModel}
                 />
@@ -1205,35 +1205,35 @@ export default function App(): ReactElement {
           </>
         ) : (
           <CortexWorkspace
-            activeProfile={agentProfile}
+            activeAgent={activeAgent}
             cloudEffort={cloudEffort}
             askApexEnabled={Boolean(askApexEnabled)}
-            profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
-            history={assistantHistory}
-            latestTrace={assistantLatestTrace}
-            error={assistantError}
-            contextUsage={assistantContextUsage}
+            agentsStatus={agentsStatus}
+            agentsStatusHydrated={agentsStatusHydrated}
+            history={cortexHistory}
+            latestTrace={cortexLatestTrace}
+            error={cortexError}
+            contextUsage={cortexContextUsage}
             commands={localCommands}
             armedToolScope={armedLocalToolScope}
             onArmedToolScopeChange={setArmedLocalToolScope}
-            isQuerying={isAssistantQuerying}
+            isQuerying={isCortexQuerying}
             lifecycleBusy={localLifecycleBusy}
             lifecycleActionPending={isLocalModelActionPending}
-            verifyingCloudProfile={verifyingCloudProfile}
+            verifyingCloudAgent={verifyingCloudAgent}
             onLoadLocalModel={loadLocalModel}
             onUnloadLocalModel={unloadLocalModel}
-            onVerifyCloudProfile={verifyCloudProfile}
+            onVerifyCloudAgent={verifyCloudAgent}
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
-            onProfileChange={handleProfileChange}
+            onAgentChange={handleAgentChange}
             onEffortChange={handleEffortChange}
             onGoogleSearchChange={handleGoogleSearchChange}
             onGoogleMapsChange={handleGoogleMapsChange}
             onDelphinusXSearchChange={handleDelphinusXSearchChange}
             onOrcinusXSearchChange={handleOrcinusXSearchChange}
-            onSubmit={handleOverviewSubmit}
+            onSubmit={handleHomeSubmit}
             onNewSession={handleNewCortexSession}
           />
         )}

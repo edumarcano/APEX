@@ -1,4 +1,4 @@
-"""Provider-neutral capability registry for assistant and future MCP surfaces."""
+"""Provider-neutral capability registry for Apex Agents and future MCP surfaces."""
 
 from __future__ import annotations
 
@@ -64,8 +64,8 @@ class CapabilityDescriptor(BaseModel):
     risk: CapabilityRisk = Field(
         description="Read, write, or destructive risk classification."
     )
-    expose_to_assistant: bool = Field(
-        description="Whether the assistant may discover and invoke this capability."
+    expose_to_agent: bool = Field(
+        description="Whether an Apex Agent may discover and invoke this capability."
     )
     expose_to_mcp_server: bool = Field(
         description="Whether the APEX MCP server may export this capability."
@@ -382,12 +382,12 @@ class CapabilityRegistry:
             entry = self._entries.get(name)
             return entry.descriptor if entry is not None else None
 
-    def list_assistant_capabilities(self) -> list[CapabilityDescriptor]:
+    def list_agent_capabilities(self) -> list[CapabilityDescriptor]:
         with self._lock:
             return [
                 entry.descriptor
                 for entry in self._entries.values()
-                if entry.descriptor.expose_to_assistant
+                if entry.descriptor.expose_to_agent
             ]
 
     def is_client_display_enabled(self, name: str) -> bool:
@@ -482,9 +482,9 @@ def get_capability_descriptor(name: str) -> CapabilityDescriptor | None:
     return _REGISTRY.get_descriptor(name)
 
 
-def list_assistant_capabilities() -> list[CapabilityDescriptor]:
+def list_agent_capabilities() -> list[CapabilityDescriptor]:
     _ensure_native_capabilities_loaded()
-    return _REGISTRY.list_assistant_capabilities()
+    return _REGISTRY.list_agent_capabilities()
 
 
 def is_client_display_enabled(name: str) -> bool:

@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from core.api.assistant import query_agent
+from core.api.cortex import query_agent
 from core.api.briefing import _compute_confidence_and_failures
 from core.agent.types import AgentQueryRequest
 from core.connectors.models import ConnectorResult
@@ -157,7 +157,7 @@ class AssistantGateTests(unittest.TestCase):
         _write_json(
             self.config_path,
             {
-                "ask_apex": {"enabled": True, "mode": "cloud", "cloud_profile": "panthera"},
+                "ask_apex": {"enabled": True, "runtime": "cloud", "cloud_agent": "panthera"},
             },
         )
         reset_settings_store_for_tests()
@@ -166,7 +166,7 @@ class AssistantGateTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
         self._patcher = mock.patch(
-            "core.api.assistant.get_settings_store",
+            "core.api.cortex.get_settings_store",
             return_value=self.store,
         )
         self._patcher.start()
@@ -177,14 +177,14 @@ class AssistantGateTests(unittest.TestCase):
         from fastapi import HTTPException
 
         self.store.apply_patch(
-            SettingsPatch.model_validate({"assistant": {"enabled": False}})
+            SettingsPatch.model_validate({"ask_apex": {"enabled": False}})
         )
         with self.assertRaises(HTTPException) as ctx:
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
                     history=[],
-                    profile="panthera",
+                    agent="panthera",
                 )
             )
         self.assertEqual(ctx.exception.status_code, 403)
@@ -205,7 +205,7 @@ class FrozenImportAuditTests(unittest.TestCase):
             "ASK_APEX_ENABLED",
             "PRIMARY_TTS",
             "VOICE_GENDER",
-            "DEFAULT_CLOUD_PROFILE",
+            "cloud_agent",
         }
     )
 

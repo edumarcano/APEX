@@ -1,8 +1,8 @@
 import type {
-  AssistantMode,
+  AgentRuntime,
   CloudEffort,
-  CloudSettingsProfile,
-  LocalSettingsProfile,
+  CloudSettingsAgent,
+  LocalSettingsAgent,
   TtsEngine,
 } from './telemetry'
 import type { McpProviderId } from '../lib/mcpProviders'
@@ -27,12 +27,12 @@ export interface ModulesSettings {
   f1: boolean
 }
 
-export interface AssistantSettings {
+export interface AskApexSettings {
   enabled: boolean
-  mode: AssistantMode
-  cloud_profile: CloudSettingsProfile
-  cloud_effort: CloudEffort
-  local_profile: LocalSettingsProfile
+  runtime: AgentRuntime
+  cloud_agent: CloudSettingsAgent
+  effort: CloudEffort
+  local_agent: LocalSettingsAgent
   neofelis_google_search_enabled: boolean
   neofelis_google_maps_enabled: boolean
   delphinus_x_search_enabled: boolean
@@ -59,9 +59,10 @@ export interface McpSettings {
 }
 
 export interface RuntimeSettings {
+  user_designation: string
   features: FeaturesSettings
   modules: ModulesSettings
-  assistant: AssistantSettings
+  ask_apex: AskApexSettings
   briefing: BriefingSettings
   voice: VoiceSettings
   mcp: McpSettings
@@ -81,12 +82,12 @@ export interface ModulesPatch {
   f1?: boolean
 }
 
-export interface AssistantPatch {
+export interface AskApexPatch {
   enabled?: boolean
-  mode?: AssistantMode
-  cloud_profile?: CloudSettingsProfile
-  cloud_effort?: CloudEffort
-  local_profile?: LocalSettingsProfile
+  runtime?: AgentRuntime
+  cloud_agent?: CloudSettingsAgent
+  effort?: CloudEffort
+  local_agent?: LocalSettingsAgent
   neofelis_google_search_enabled?: boolean
   neofelis_google_maps_enabled?: boolean
   delphinus_x_search_enabled?: boolean
@@ -113,9 +114,10 @@ export interface McpServerEnablementPatch {
 }
 
 export interface SettingsPatch {
+  user_designation?: string
   features?: FeaturesPatch
   modules?: ModulesPatch
-  assistant?: AssistantPatch
+  ask_apex?: AskApexPatch
   briefing?: BriefingPatch
   voice?: VoicePatch
   mcp?: McpPatch
@@ -142,7 +144,7 @@ export type SettingsTimingFieldGroup =
   | 'features'
   | 'market'
   | 'modules'
-  | 'assistant'
+  | 'ask_apex'
   | 'briefing'
   | 'voice'
   | 'mcp'
@@ -174,5 +176,5 @@ export interface SettingsTimingRuntime {
   briefingActive: boolean
   pipelineStep: number | null
   isSpeaking: boolean
-  isAssistantQuerying: boolean
+  isCortexQuerying: boolean
 }

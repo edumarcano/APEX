@@ -29,7 +29,7 @@ class PipelineState:
         self._synthesis: dict[str, Any] = {
             "phase": "idle",
             "provider": None,
-            "profile": None,
+            "agent": None,
             "loading": False,
             "fallback_reason": None,
         }
@@ -74,7 +74,7 @@ class PipelineState:
         self,
         phase: str,
         provider: str | None,
-        profile: str | None,
+        agent: str | None,
         fallback_reason: str | None,
     ) -> None:
         """Update live synthesis routing state without changing the pipeline step."""
@@ -82,7 +82,7 @@ class PipelineState:
             self._synthesis = {
                 "phase": phase,
                 "provider": provider,
-                "profile": profile,
+                "agent": agent,
                 "loading": phase == "loading",
                 "fallback_reason": fallback_reason,
             }
@@ -100,7 +100,7 @@ class PipelineState:
             self._synthesis = {
                 "phase": "idle",
                 "provider": None,
-                "profile": None,
+                "agent": None,
                 "loading": False,
                 "fallback_reason": None,
             }

@@ -32,7 +32,7 @@ export interface BriefingDigestProps {
   attentionTier?: AttentionTier
   /** Curtain unlock delay in ms. */
   attentionStaggerMs?: number
-  /** Whether the Overview has left standby. */
+  /** Whether the Home has left standby. */
   activated?: boolean
   onSpeakBriefing?: () => void
   speakDisabled?: boolean

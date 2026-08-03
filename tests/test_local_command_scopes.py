@@ -14,8 +14,8 @@ from core.agent.local_commands import (
 )
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
-from core.agent.profiles import build_concrete_profile, resolve_effort
-from core.agent.profiles import build_concrete_profile, resolve_effort
+from core.agent.catalog import build_concrete_agent, resolve_effort
+from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.providers.ollama import (
     OllamaProvider,
     _budget_payload,
@@ -25,9 +25,9 @@ from core.agent.providers.ollama import (
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 
 
-def _cloud_profile(key: str = "neofelis"):
+def _cloud_agent(key: str = "neofelis"):
     _apex, native = resolve_effort(key, None)
-    return build_concrete_profile(key, native_effort=native)
+    return build_concrete_agent(key, native_effort=native)
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 
 
@@ -72,11 +72,11 @@ class LocalCommandScopeTests(unittest.TestCase):
 
     def test_local_query_without_scope_receives_no_tools(self) -> None:
         provider = _CapturingProvider(
-            [AgentMessage(role="model", content="No live lookup performed.")]
+            [AgentMessage(role="agent", content="No live lookup performed.")]
         )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hello", profile="sorex"),
+            AgentQueryRequest(prompt="Hello", agent="sorex"),
             provider,
             OLLAMA_MODEL_PROFILES["sorex"],
         )
@@ -108,7 +108,7 @@ class LocalCommandScopeTests(unittest.TestCase):
             },
             origin="mcp",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
@@ -130,7 +130,7 @@ class LocalCommandScopeTests(unittest.TestCase):
             input_schema={"type": "object", "properties": {}},
             origin="native",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
@@ -141,7 +141,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         provider = _CapturingProvider(
             [
                 AgentMessage(
-                    role="model",
+                    role="agent",
                     tool_calls=[
                         ToolCall(
                             id="bad-call",
@@ -150,7 +150,7 @@ class LocalCommandScopeTests(unittest.TestCase):
                         )
                     ],
                 ),
-                AgentMessage(role="model", content="Done."),
+                AgentMessage(role="agent", content="Done."),
             ]
         )
         dispatched: list[str] = []
@@ -165,7 +165,7 @@ class LocalCommandScopeTests(unittest.TestCase):
                     input_schema={"type": "object", "properties": {}},
                     origin="native",
                     risk="read",
-                    expose_to_assistant=True,
+                    expose_to_agent=True,
                     expose_to_mcp_server=False,
                     expose_to_client_display=True,
                 ),
@@ -176,7 +176,7 @@ class LocalCommandScopeTests(unittest.TestCase):
             response = run_agent_loop(
                 AgentQueryRequest(
                     prompt="Forecast",
-                    profile="sorex",
+                    agent="sorex",
                     tool_scope="weather",
                 ),
                 provider,
@@ -194,12 +194,12 @@ class LocalCommandScopeTests(unittest.TestCase):
         )
 
     def test_cloud_query_retains_automatic_tools(self) -> None:
-        provider = _CapturingProvider([AgentMessage(role="model", content="Done.")])
+        provider = _CapturingProvider([AgentMessage(role="agent", content="Done.")])
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hello", profile="neofelis"),
+            AgentQueryRequest(prompt="Hello", agent="neofelis"),
             provider,
-            _cloud_profile("neofelis"),
+            _cloud_agent("neofelis"),
         )
 
         self.assertGreater(len(provider.tool_names[0]), 0)
@@ -209,7 +209,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         provider = _CapturingProvider(
             [
                 AgentMessage(
-                    role="model",
+                    role="agent",
                     tool_calls=[
                         ToolCall(
                             id="weather-call",
@@ -218,15 +218,15 @@ class LocalCommandScopeTests(unittest.TestCase):
                         )
                     ],
                 ),
-                AgentMessage(role="model", content="Forecast ready."),
+                AgentMessage(role="agent", content="Forecast ready."),
             ]
         )
-        profile = _cloud_profile("neofelis").model_copy(
+        profile = _cloud_agent("neofelis").model_copy(
             update={"max_tool_turns": 2}
         )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Forecast", profile="neofelis"),
+            AgentQueryRequest(prompt="Forecast", agent="neofelis"),
             provider,
             profile,
             tools_dispatcher=lambda _name, _arguments: {"forecast": "clear"},
@@ -245,7 +245,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         )
         history = [
             AgentMessage(role="user", content="old " * 700),
-            AgentMessage(role="model", content="old answer"),
+            AgentMessage(role="agent", content="old answer"),
             AgentMessage(role="user", content="current question"),
         ]
 
@@ -291,7 +291,7 @@ class LocalCommandScopeTests(unittest.TestCase):
             input_schema={"type": "object", "properties": {}},
             origin="native",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
@@ -299,7 +299,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         for word_count in range(100, 1200, 25):
             candidate = [
                 AgentMessage(role="user", content="old " * word_count),
-                AgentMessage(role="model", content="old answer"),
+                AgentMessage(role="agent", content="old answer"),
                 AgentMessage(role="user", content="current question"),
             ]
             try:
@@ -326,12 +326,12 @@ class LocalCommandScopeTests(unittest.TestCase):
 
         responses = [
             {
-                "message": {"role": "assistant", "content": "partial"},
+                "message": {"role": "model", "content": "partial"},
                 "done_reason": "length",
                 "prompt_eval_count": 900,
             },
             {
-                "message": {"role": "assistant", "content": "Final answer."},
+                "message": {"role": "model", "content": "Final answer."},
                 "done_reason": "stop",
                 "prompt_eval_count": 600,
             },

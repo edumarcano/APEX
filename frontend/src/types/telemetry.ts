@@ -11,13 +11,13 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisProfile = 'panthera' | 'mus' | 'sorex'
+export type SynthesisAgent = 'panthera' | 'mus' | 'sorex'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
   phase: 'idle' | 'loading' | 'ready' | 'generating' | 'fallback' | 'complete'
   provider: SynthesisProvider | null
-  profile: SynthesisProfile | null
+  agent: SynthesisAgent | null
   loading: boolean
   fallback_reason: string | null
 }
@@ -57,7 +57,7 @@ export interface ToolOutputItem {
 }
 
 export interface AgentMessage {
-  role: 'user' | 'model' | 'tool'
+  role: 'user' | 'agent' | 'tool'
   content?: string
   tool_outputs?: ToolOutputItem[]
 }
@@ -69,16 +69,16 @@ export type WeatherConditionArchetype =
   | 'rain'
   | 'thunderstorm'
 
-export type AssistantMode = 'cloud' | 'local'
+export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
-export type CloudSettingsProfile = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsProfile = 'sorex' | 'mus'
+export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
+export type LocalSettingsAgent = 'sorex' | 'mus'
 
-export type AgentCloudProfile = CloudSettingsProfile
+export type CloudAgent = CloudSettingsAgent
 
-export type AssistantProfile =
-  | CloudSettingsProfile
-  | LocalSettingsProfile
+export type AgentKey =
+  | CloudSettingsAgent
+  | LocalSettingsAgent
   | 'acinonyx'
 
 export type LocalToolScope =
@@ -109,7 +109,7 @@ export interface LocalContextUsage {
   history_messages_dropped: number
 }
 
-export type ProfileAvailabilityStatus =
+export type AgentAvailabilityStatus =
   | 'available'
   | 'busy'
   | 'configured'
@@ -129,10 +129,10 @@ export type ProfileAvailabilityStatus =
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
-export type ProfileStability = 'stable' | 'preview'
-export type ProfileStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
+export type AgentStability = 'stable' | 'preview'
+export type AgentStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
 
-export interface ProfilePricingMetadata {
+export interface AgentPricingMetadata {
   currency: 'USD'
   pricing_version: string
   billing_basis: 'free_tier' | 'standard' | 'local'
@@ -155,8 +155,8 @@ export interface LoadedOllamaModelStatus {
   expires_at: string | null
 }
 
-export interface AgentProfileStatus {
-  key: AssistantProfile
+export interface AgentStatus {
+  key: AgentKey
   description: string
   configured_model: string
   native_tools: Record<string, boolean>
@@ -165,16 +165,16 @@ export interface AgentProfileStatus {
   version: string
   sort_order: number
   capabilities: string[]
-  mode: AssistantMode
+  runtime: AgentRuntime
   tier: string
-  stability: ProfileStability
+  stability: AgentStability
   effort_options: CloudEffort[] | null
   default_effort: CloudEffort | null
-  status: ProfileAvailabilityStatus
-  status_source: ProfileStatusSource
+  status: AgentAvailabilityStatus
+  status_source: AgentStatusSource
   status_checked_at: string | null
   provider_account_tier: string | null
-  pricing: ProfilePricingMetadata
+  pricing: AgentPricingMetadata
   active: boolean
   loading: boolean
   reason: string | null
@@ -182,9 +182,9 @@ export interface AgentProfileStatus {
   loaded_model: LoadedOllamaModelStatus | null
 }
 
-export interface AssistantInitialSelection {
-  mode: AssistantMode
-  profile: AssistantProfile
+export interface AgentInitialSelection {
+  runtime: AgentRuntime
+  agent: AgentKey
   effort: CloudEffort | null
 }
 
@@ -238,14 +238,14 @@ export type PreflightOperation =
   | 'activate_with_briefing'
   | 'refresh_telemetry'
   | 'generate_briefing'
-  | 'assistant_query'
+  | 'cortex_query'
 
 export type PreflightWarningCode =
   | 'outside_configured_network'
   | 'network_trust_unknown'
   | 'running_on_battery'
   | 'rapid_connector_refresh'
-  | 'high_resource_local_profile'
+  | 'high_resource_local_agent'
 
 export type PreflightBlockerCode =
   | 'missing_credentials'
@@ -273,7 +273,7 @@ export interface PreflightRequest {
   operation: PreflightOperation
   connectors?: string[] | null
   briefing_mode?: BriefingMode | null
-  synthesis_profile?: string | null
+  synthesis_agent?: string | null
   force?: boolean
   involves_cloud?: boolean
   acknowledged_warnings?: string[]
@@ -307,7 +307,7 @@ export interface TelemetryPayload {
   failedConnectors: string[]
   connectorHealth: ConnectorHealthEntry[]
   digest?: DigestPayload
-  defaultProfile?: AssistantProfile
+  defaultAgent?: AgentKey
   askApexEnabled?: boolean
   tool_outputs?: ToolOutputItem[]
 }
@@ -356,14 +356,14 @@ export interface ApexDataState {
   connectorHealth: ConnectorHealthEntry[]
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
-  defaultProfile?: AssistantProfile
-  assistantInitialSelection?: AssistantInitialSelection
+  defaultAgent?: AgentKey
+  agentInitialSelection?: AgentInitialSelection
   briefingDefaultMode?: 'panthera' | 'mus' | 'sorex' | 'structured_digest'
   voiceMode?: 'off' | 'manual' | 'automatic'
   askApexEnabled?: boolean
   marketEnabled: boolean
   synthesisStrategy: SynthesisStrategy
   synthesisProvider: SynthesisProvider | null
-  synthesisProfile: SynthesisProfile | null
+  synthesisAgent: SynthesisAgent | null
   synthesisFallbackReason: string | null
 }

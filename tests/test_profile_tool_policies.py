@@ -1,4 +1,4 @@
-"""Profile tool policy, grounding, and Acinonyx privacy coverage."""
+"""Apex Agent tool policy, grounding, and Acinonyx privacy coverage."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from core.agent.profiles import build_concrete_profile, resolve_effort
+from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.loop import run_agent_loop
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.providers.contract import ProviderTurnResult
@@ -17,7 +17,7 @@ from core.agent.sandbox_context import (
     publish_masked_briefing,
 )
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
-from core.api.assistant import _build_hud_context
+from core.api.cortex import _build_hud_context
 from core.api.briefing import _mask_dev_personal_results
 from core.connectors.models import ConnectorResult
 
@@ -59,7 +59,7 @@ class HostedGroundingTests(unittest.TestCase):
             output=[], model="grok-4.3", usage=None
         )
         _apex, native = resolve_effort("delphinus", None)
-        profile = build_concrete_profile("delphinus", native_effort=native)
+        profile = build_concrete_agent("delphinus", native_effort=native)
 
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="What is happening on X?")],
@@ -86,20 +86,20 @@ class AcinonyxContextTests(unittest.TestCase):
         current = _build_hud_context(
             AgentQueryRequest(
                 prompt="Summarize",
-                profile="acinonyx",
+                agent="acinonyx",
                 snapshot_id="current-snapshot",
                 history_partition="acinonyx",
             ),
-            profile_key="acinonyx",
+            agent_key="acinonyx",
         )
         stale = _build_hud_context(
             AgentQueryRequest(
                 prompt="Summarize",
-                profile="acinonyx",
+                agent="acinonyx",
                 snapshot_id="stale-snapshot",
                 history_partition="acinonyx",
             ),
-            profile_key="acinonyx",
+            agent_key="acinonyx",
         )
 
         self.assertIn("CURRENT MASKED DEV BRIEFING", current)
@@ -149,7 +149,7 @@ class AcinonyxContextTests(unittest.TestCase):
             input_schema={"type": "object", "properties": {}},
             origin="native",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
@@ -163,7 +163,7 @@ class AcinonyxContextTests(unittest.TestCase):
                 if self.calls == 1:
                     return ProviderTurnResult(
                         message=AgentMessage(
-                            role="model",
+                            role="agent",
                             tool_calls=[
                                 ToolCall(
                                     id="forbidden",
@@ -174,18 +174,18 @@ class AcinonyxContextTests(unittest.TestCase):
                         )
                     )
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Cannot access that tool.")
+                    message=AgentMessage(role="agent", content="Cannot access that tool.")
                 )
 
         _apex, native = resolve_effort("acinonyx", None)
         response = run_agent_loop(
             AgentQueryRequest(
                 prompt="Read reminders",
-                profile="acinonyx",
+                agent="acinonyx",
                 history_partition="acinonyx",
             ),
             Provider(),
-            build_concrete_profile("acinonyx", native_effort=native),
+            build_concrete_agent("acinonyx", native_effort=native),
             tools_dispatcher=mock.Mock(side_effect=AssertionError("must not execute")),
             cloud_tools=[weather],
         )

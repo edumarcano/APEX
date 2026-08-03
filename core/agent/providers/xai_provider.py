@@ -17,11 +17,11 @@ XAI_INTERNAL_PROFILES: dict[str, ResponsesModelProfile] = {
     "xai_default": ResponsesModelProfile(
         provider="xai",
         display_name="xAI Default",
-        profile_version="0.1",
+        agent_version="0.1",
         api_model="grok-4",
         max_tool_turns=4,
         max_tool_calls=6,
-        system_instruction="You are an APEX assistant.",
+        system_instruction="",
         # Grok 4 exposes no reasoning-effort control.
         reasoning_effort=None,
     ),

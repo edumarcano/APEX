@@ -524,7 +524,7 @@ def _synthesize_from_snapshot(
             synthesis_strategy=synthesis_strategy,
             briefing_mode=mode,
             synthesis_provider=brain_output.get("provider"),
-            synthesis_profile=brain_output.get("profile"),
+            synthesis_agent=brain_output.get("agent"),
             synthesis_resolved_model=brain_output.get("resolved_model"),
             synthesis_fallback_reason=brain_output.get("fallback_reason"),
             synthesis_fallback_steps=brain_output.get("fallback_steps", []),

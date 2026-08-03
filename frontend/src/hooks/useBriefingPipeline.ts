@@ -4,7 +4,7 @@ import type {
   ConnectorHealthEntry,
   PipelineState,
   SynthesisLiveState,
-  SynthesisProfile,
+  SynthesisAgent,
   SynthesisProvider,
   SystemState,
   TtsEngine,
@@ -37,7 +37,7 @@ export type BriefingPipelineState = {
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
   synthesisProvider: SynthesisProvider | null
-  synthesisProfile: SynthesisProfile | null
+  synthesisAgent: SynthesisAgent | null
   synthesisFallbackReason: string | null
   demoModeActive: boolean
   devModeActive: boolean
@@ -51,7 +51,7 @@ export type UseBriefingPipelineReturn = BriefingPipelineState & {
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = ['gemini', 'ollama', 'openai', 'raw', 'demo']
-const VALID_SYNTHESIS_PROFILES: readonly SynthesisProfile[] = [
+const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'panthera',
   'mus',
   'sorex',
@@ -129,7 +129,7 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
       synthesis = {
         phase: phase as SynthesisLiveState['phase'],
         provider: parseEnum(item.provider, VALID_SYNTHESIS_PROVIDERS),
-        profile: parseEnum(item.profile, VALID_SYNTHESIS_PROFILES),
+        agent: parseEnum(item.agent, VALID_SYNTHESIS_PROFILES),
         loading: item.loading === true,
         fallback_reason: typeof item.fallback_reason === 'string' ? item.fallback_reason : null,
       }
@@ -172,7 +172,7 @@ const INITIAL_STATE: BriefingPipelineState = {
   active_tts_engine: 'google',
   system_load_throttled: false,
   synthesisProvider: null,
-  synthesisProfile: null,
+  synthesisAgent: null,
   synthesisFallbackReason: null,
   demoModeActive: false,
   devModeActive: false,
@@ -221,7 +221,7 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
     const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
     const system_load_throttled = metadata?.system_load_throttled === true
     const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
-    const synthesisProfile = parseEnum(metadata?.synthesis_profile, VALID_SYNTHESIS_PROFILES)
+    const synthesisAgent = parseEnum(metadata?.synthesis_agent, VALID_SYNTHESIS_PROFILES)
     const synthesisFallbackReason =
       typeof metadata?.synthesis_fallback_reason === 'string' ? metadata.synthesis_fallback_reason : null
 
@@ -262,7 +262,7 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
       active_tts_engine,
       system_load_throttled,
       synthesisProvider,
-      synthesisProfile,
+      synthesisAgent,
       synthesisFallbackReason,
     }))
     return true

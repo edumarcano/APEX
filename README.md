@@ -2,19 +2,19 @@
 
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
-Today, it is a local-first personal intelligence HUD that brings weather, schedules, reminders, news, markets, system health, and AI-assisted analysis into one deliberate workspace. It turns those signals into an on-demand overview, a concise briefing, and a conversational assistant while keeping the local machine, not a hosted account, at the center of the system.
+Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Ask APEX while keeping the local machine, not a hosted account, at the center of the system.
 
 <p align="center">
   <img src="docs/assets/apex-hero.png" alt="APEX standby screen with Start APEX and Start with Briefing controls" width="900">
 </p>
 
 <p align="center">
-  <em>Standby keeps the interface quiet until I choose to load the overview or begin with a briefing.</em>
+  <em>Standby keeps the interface quiet until I choose to load Home or begin with a briefing.</em>
 </p>
 
 ## What APEX does
 
-### Builds a live personal overview
+### Builds a live Home workspace
 
 APEX collects enabled weather, calendar, inbox, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
 
@@ -22,30 +22,30 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a deterministic Structured Digest. All routes receive the same sanitized, size-bounded facts; a provider failure ends in a useful model-free result instead of a blank screen.
 
-### Answers follow-up questions
+### Operates Apex Agents
 
-Ask APEX can query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local profiles share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
+Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
 
 ### Keeps runtime control visible
 
-The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, assistant queries, and speech are independent operations rather than one mandatory pipeline.
+The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, interactive Agent requests, and speech are independent operations rather than one mandatory pipeline.
 
 <p align="center">
-  <img src="docs/assets/apex-active-hud.png" alt="Activated APEX overview with demo telemetry and a generated briefing" width="900">
+  <img src="docs/assets/apex-active-hud.png" alt="Activated APEX Home workspace with demo telemetry and a generated briefing" width="900">
 </p>
 
 <p align="center">
-  <em>An activated demo overview using static, non-personal telemetry.</em>
+  <em>An activated Home workspace using static, non-personal telemetry.</em>
 </p>
 
 ## Engineering highlights
 
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
-- **Independent runtime paths** — telemetry, briefing generation, assistant work, and voice delivery can succeed or fail without taking the entire HUD down.
+- **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
 - **Cloud, local, and deterministic execution** — Gemini and Ollama are optional strategies, with Structured Digest as the final model-free fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
-- **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held assistant conversations disappear on reload.
+- **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
 - **Privacy-aware process isolation** — the backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -75,7 +75,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
 | Cloud reasoning | Gemini 3.5 Flash Lite, Gemini 3.5 Flash, Gemini 3.6 Flash |
-| Local reasoning | Ollama with Qwen3 profiles |
+| Local reasoning | Ollama with Qwen3 models |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
 | Validation | unittest, Vitest, ESLint, TypeScript, Vite build |

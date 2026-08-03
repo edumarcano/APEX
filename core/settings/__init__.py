@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from core.settings.models import (
     SETTINGS_SCHEMA_VERSION,
-    AssistantPatch,
-    AssistantSettings,
+    AskApexPatch,
+    AskApexSettings,
     BriefingPatch,
     BriefingSettings,
     FeaturesPatch,
@@ -33,8 +33,8 @@ from core.settings.store import (
 
 __all__ = [
     "SETTINGS_SCHEMA_VERSION",
-    "AssistantPatch",
-    "AssistantSettings",
+    "AskApexPatch",
+    "AskApexSettings",
     "BriefingPatch",
     "BriefingSettings",
     "FeaturesPatch",

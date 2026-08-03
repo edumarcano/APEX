@@ -64,7 +64,7 @@ export default function McpSettingsSection({
     <section className="space-y-2.5" aria-labelledby={sectionId}>
       <SectionHeading id={sectionId} title="External MCP Tools" />
       <p className="text-[11px] leading-relaxed text-zinc-500">
-        Approved external tools become available to the assistant after Save.
+        Approved external tools become available to the selected Agent after Save.
         Credentials remain outside APEX settings.
       </p>
       <div className="space-y-2">

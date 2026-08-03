@@ -22,7 +22,7 @@ describe('SystemDiagnostics', () => {
     expect(screen.getByRole('button', { name: /Connectors · Not checked/i })).toBeVisible()
   })
 
-  it('keeps workspace controls grouped with the stable APEX identity pill', () => {
+  it('keeps workspace controls grouped with the stable Apex identity pill', () => {
     renderDiagnostics({
       workspaceNavigation: <nav aria-label="Workspace"><button type="button">Overview</button><button type="button">Cortex</button></nav>,
     })
@@ -30,7 +30,7 @@ describe('SystemDiagnostics', () => {
     const workspace = screen.getByRole('navigation', { name: 'Workspace' })
     expect(workspace).toBeInTheDocument()
     expect(workspace.closest('[role="button"]')).toBeNull()
-    expect(screen.queryByRole('button', { name: /APEX sync health/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Apex sync health/i })).not.toBeInTheDocument()
   })
 
   it('shows aggregate connector readiness and an accessible health inspector', () => {

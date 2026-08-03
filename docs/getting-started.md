@@ -46,7 +46,7 @@ Then launch APEX:
 uv run python launcher.py
 ```
 
-Demo mode uses static telemetry and deterministic assistant responses, skips live connectors, and does not write briefing history. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
+Demo mode uses static telemetry and deterministic Agent responses, skips live connectors, and does not write briefing history. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
 
 ## Run the full local system
 
@@ -107,7 +107,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 
 | Capability | What to prepare |
 |---|---|
-| Cloud assistant profiles | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the selected profile |
+| Cloud Agents | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the selected Agent |
 | Weather, news, football, and market data | The corresponding key from `.env.example` |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
@@ -115,11 +115,11 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.Read` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
-See [Configuration](configuration.md) for ownership, precedence, modes, profile names, and provider-specific boundaries.
+See [Configuration](configuration.md) for ownership, precedence, modes, Agent names, and provider-specific boundaries.
 
-## Install local Ollama profiles
+## Install local Ollama Agents
 
-Install and start [Ollama](https://ollama.com), then pull only the profiles you want:
+Install and start [Ollama](https://ollama.com), then pull only the models required by the local Agents you want:
 
 ```powershell
 ollama pull qwen3:1.7b
@@ -131,9 +131,9 @@ These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instea
 ## First-run expectations
 
 - Standby does not automatically collect telemetry or run a briefing.
-- **Start APEX** activates the overview and refreshes its data.
-- **Start with Briefing** activates the overview, refreshes telemetry, and synthesizes with the selected briefing mode.
-- Ask APEX becomes available after activation when the assistant is enabled.
+- **Start APEX** activates Home and refreshes its data.
+- **Start with Briefing** activates Home, refreshes telemetry, and synthesizes with the selected briefing mode.
+- Ask APEX becomes available after activation when it is enabled in Settings.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
 - Production briefings and reminders persist to `apex_memory.db`; demo briefings do not.
 
@@ -163,7 +163,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### A local model is unavailable
 
-Confirm Ollama is running at the configured host and that the exact model tag is installed with `ollama list`. Cold loads can also be blocked by the profile's CPU or RAM gate.
+Confirm Ollama is running at the configured host and that the exact model tag is installed with `ollama list`. Cold loads can also be blocked by the Agent's CPU or RAM gate.
 
 ### Live connectors return no data
 

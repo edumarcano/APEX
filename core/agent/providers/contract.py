@@ -81,7 +81,7 @@ class ProviderProfile(Protocol):
     """Shared profile surface required by the agent loop and providers."""
 
     display_name: str
-    profile_version: str
+    agent_version: str
     api_model: str
     max_tool_turns: int
     max_tool_calls: int

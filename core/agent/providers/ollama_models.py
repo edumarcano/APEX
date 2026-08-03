@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from core.config import (
-    DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
+    LOCAL_AGENT_SYSTEM_PROMPT,
     MUS_CPU_LIMIT,
     MUS_RAM_LIMIT,
     SOREX_CPU_LIMIT,
@@ -13,7 +13,7 @@ from core.config import (
 
 class OllamaModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    profile_version: str = Field(description="Internal configuration profile version.")
+    agent_version: str = Field(description="Internal configuration profile version.")
     api_model: str = Field(description="Exact Ollama model tag string.")
     tier: Literal["lightweight", "balanced", "capable"] = Field(
         description="Computational performance classification for local inference."
@@ -58,7 +58,6 @@ class OllamaModelProfile(BaseModel):
         description="Maximum host CPU utilization percentage before load is gated."
     )
     system_instruction: str = Field(
-        default=DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the local agent.",
     )
 
@@ -66,7 +65,7 @@ class OllamaModelProfile(BaseModel):
 OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
     "sorex": OllamaModelProfile(
         display_name="Apex Sorex",
-        profile_version="2.0",
+        agent_version="2.0",
         api_model="qwen3:1.7b",
         tier="lightweight",
         stability="stable",
@@ -81,10 +80,11 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=SOREX_RAM_LIMIT,
         cpu_limit=SOREX_CPU_LIMIT,
+        system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
     ),
     "mus": OllamaModelProfile(
         display_name="Apex Mus",
-        profile_version="2.0",
+        agent_version="2.0",
         api_model="qwen3:4b-instruct",
         tier="balanced",
         stability="stable",
@@ -99,5 +99,6 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=MUS_RAM_LIMIT,
         cpu_limit=MUS_CPU_LIMIT,
+        system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
     ),
 }

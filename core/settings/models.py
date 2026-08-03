@@ -6,19 +6,19 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CloudSettingsProfile = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsProfile = Literal["sorex", "mus"]
-AssistantMode = Literal["cloud", "local"]
+CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
+LocalSettingsAgent = Literal["sorex", "mus"]
+AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
 BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
-VALID_CLOUD_SETTINGS_PROFILES: frozenset[str] = frozenset(
+VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_PROFILES: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "mus", "sorex", "structured_digest"}
@@ -27,7 +27,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 7
+SETTINGS_SCHEMA_VERSION: int = 8
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
@@ -70,16 +70,16 @@ class FootballSettings(BaseModel):
     teams: tuple[FootballTeamSettings, ...] = ()
 
 
-class AssistantSettings(BaseModel):
-    """Ask-APEX assistant enablement, mode, and profile preferences."""
+class AskApexSettings(BaseModel):
+    """Ask APEX enablement, runtime, Agent, and grounding preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     enabled: bool = True
-    mode: AssistantMode = "cloud"
-    cloud_profile: CloudSettingsProfile = "panthera"
-    cloud_effort: CloudEffort = "focused"
-    local_profile: LocalSettingsProfile = "mus"
+    runtime: AgentRuntime = "cloud"
+    cloud_agent: CloudSettingsAgent = "panthera"
+    effort: CloudEffort = "focused"
+    local_agent: LocalSettingsAgent = "mus"
     neofelis_google_search_enabled: bool = True
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
@@ -142,10 +142,15 @@ class RuntimeSettingsSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    user_designation: str = Field(
+        default="",
+        max_length=80,
+        description="Optional local designation used when addressing the user.",
+    )
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
-    assistant: AssistantSettings = Field(default_factory=AssistantSettings)
+    ask_apex: AskApexSettings = Field(default_factory=AskApexSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
@@ -173,16 +178,16 @@ class ModulesPatch(BaseModel):
     f1: bool | None = None
 
 
-class AssistantPatch(BaseModel):
-    """Partial assistant patch; unknown fields are rejected."""
+class AskApexPatch(BaseModel):
+    """Partial Ask APEX patch; unknown fields are rejected."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool | None = None
-    mode: AssistantMode | None = None
-    cloud_profile: CloudSettingsProfile | None = None
-    cloud_effort: CloudEffort | None = None
-    local_profile: LocalSettingsProfile | None = None
+    runtime: AgentRuntime | None = None
+    cloud_agent: CloudSettingsAgent | None = None
+    effort: CloudEffort | None = None
+    local_agent: LocalSettingsAgent | None = None
     neofelis_google_search_enabled: bool | None = None
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
@@ -239,9 +244,10 @@ class SettingsPatch(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    user_designation: str | None = Field(default=None, max_length=80)
     features: FeaturesPatch | None = None
     modules: ModulesPatch | None = None
-    assistant: AssistantPatch | None = None
+    ask_apex: AskApexPatch | None = None
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None

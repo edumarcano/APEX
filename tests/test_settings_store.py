@@ -13,7 +13,7 @@ from unittest import mock
 from pydantic import ValidationError
 
 from core.settings.models import (
-    AssistantPatch,
+    AskApexPatch,
     BriefingPatch,
     FeaturesPatch,
     ModulesPatch,
@@ -49,13 +49,13 @@ class SettingsStoreLoadTests(unittest.TestCase):
             "modules": {"football": False, "f1": True},
             "ask_apex": {
                 "enabled": True,
-                "default_cloud_profile": "comet",
+                "cloud_agent": "comet",
             },
             "tts_settings": {
                 "primary_tts": "google",
                 "voice_gender": "female",
             },
-            "system_prompt": "ignored by settings store",
+            "legacy_prompt": "ignored by settings store",
         }
         _write_json(self.config_path, self.base)
 
@@ -73,11 +73,12 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(snap.features.news)
         self.assertFalse(snap.modules.football)
         self.assertTrue(snap.modules.f1)
-        self.assertTrue(snap.assistant.enabled)
-        self.assertEqual(snap.assistant.mode, "cloud")
-        self.assertEqual(snap.assistant.cloud_profile, "panthera")
-        self.assertEqual(snap.assistant.cloud_effort, "focused")
-        self.assertEqual(snap.assistant.local_profile, "mus")
+        self.assertTrue(snap.ask_apex.enabled)
+        self.assertEqual(snap.ask_apex.runtime, "cloud")
+        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
+        self.assertEqual(snap.ask_apex.effort, "focused")
+        self.assertEqual(snap.ask_apex.local_agent, "mus")
+        self.assertEqual(snap.user_designation, "")
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "female")
         self.assertFalse(store.local_file_present)
@@ -88,6 +89,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         _write_json(
             self.local_path,
             {
+                "user_designation": "  Chief  ",
                 "features": {"news": True},
                 "ask_apex": {"enabled": False, "default_profile": "nova"},
                 "tts_settings": {"primary_tts": "kokoro"},
@@ -97,11 +99,12 @@ class SettingsStoreLoadTests(unittest.TestCase):
         snap = store.get_snapshot()
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.features.news)
-        self.assertFalse(snap.assistant.enabled)
-        self.assertEqual(snap.assistant.mode, "cloud")
-        self.assertEqual(snap.assistant.cloud_profile, "panthera")
+        self.assertFalse(snap.ask_apex.enabled)
+        self.assertEqual(snap.ask_apex.runtime, "cloud")
+        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertEqual(snap.voice.engine, "kokoro")
         self.assertEqual(snap.voice.gender, "female")
+        self.assertEqual(snap.user_designation, "Chief")
         self.assertTrue(store.local_file_present)
         self.assertTrue(store.local_override_active)
 
@@ -126,17 +129,17 @@ class SettingsStoreLoadTests(unittest.TestCase):
             "acinonyx": ("local", "mus"),
             "neofelis": ("local", "mus"),
         }
-        for profile, (mode, local_profile) in expectations.items():
-            with self.subTest(profile=profile):
+        for profile, (mode, local_agent) in expectations.items():
+            with self.subTest(agent=profile):
                 _write_json(
                     self.local_path,
                     {"ask_apex": {"default_profile": profile}},
                 )
                 store = self._store()
-                snap = store.get_snapshot().assistant
-                self.assertEqual(snap.mode, mode)
-                self.assertEqual(snap.local_profile, local_profile)
-                self.assertEqual(snap.cloud_profile, "panthera")
+                snap = store.get_snapshot().ask_apex
+                self.assertEqual(snap.runtime, mode)
+                self.assertEqual(snap.local_agent, local_agent)
+                self.assertEqual(snap.cloud_agent, "panthera")
 
     def test_recursive_precedence(self) -> None:
         base = {"features": {"weather": True, "sports": False}, "modules": {"f1": True}}
@@ -153,10 +156,10 @@ class SettingsStoreLoadTests(unittest.TestCase):
     def test_partial_schema6_assistant_overlay_preserves_base_selection(self) -> None:
         self.base["ask_apex"] = {
             "enabled": True,
-            "mode": "cloud",
-            "cloud_profile": "orcinus",
-            "cloud_effort": "extended",
-            "local_profile": "sorex",
+            "runtime": "cloud",
+            "cloud_agent": "orcinus",
+            "effort": "extended",
+            "local_agent": "sorex",
             "neofelis_google_search_enabled": False,
             "neofelis_google_maps_enabled": False,
             "delphinus_x_search_enabled": False,
@@ -165,12 +168,12 @@ class SettingsStoreLoadTests(unittest.TestCase):
         _write_json(self.config_path, self.base)
         _write_json(self.local_path, {"ask_apex": {"enabled": False}})
 
-        assistant = self._store().get_snapshot().assistant
+        assistant = self._store().get_snapshot().ask_apex
 
         self.assertFalse(assistant.enabled)
-        self.assertEqual(assistant.cloud_profile, "orcinus")
-        self.assertEqual(assistant.cloud_effort, "extended")
-        self.assertEqual(assistant.local_profile, "sorex")
+        self.assertEqual(assistant.cloud_agent, "orcinus")
+        self.assertEqual(assistant.effort, "extended")
+        self.assertEqual(assistant.local_agent, "sorex")
         self.assertFalse(assistant.neofelis_google_search_enabled)
         self.assertFalse(assistant.neofelis_google_maps_enabled)
         self.assertFalse(assistant.delphinus_x_search_enabled)
@@ -197,13 +200,13 @@ class SettingsStoreLoadTests(unittest.TestCase):
         _write_json(
             self.config_path,
             {
-                "ask_apex": {"default_cloud_profile": "pulsar"},
+                "ask_apex": {"cloud_agent": "pulsar"},
                 "tts_settings": {"primary_tts": "piper", "voice_gender": "male"},
             },
         )
         store = self._store()
         snap = store.get_snapshot()
-        self.assertEqual(snap.assistant.cloud_profile, "panthera")
+        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertEqual(snap.voice.engine, "pyttsx3")
         self.assertEqual(snap.voice.gender, "male")
 
@@ -212,24 +215,24 @@ class SettingsStoreLoadTests(unittest.TestCase):
             self.config_path,
             {
                 "ask_apex": {
-                    "default_cloud_profile": "comet",
+                    "cloud_agent": "comet",
                     "default_profile": "nova",
                 }
             },
         )
         store = self._store()
-        self.assertEqual(store.get_snapshot().assistant.cloud_profile, "panthera")
+        self.assertEqual(store.get_snapshot().ask_apex.cloud_agent, "panthera")
 
         normalized = normalize_layer(
             {
                 "ask_apex": {
                     "default_profile": "pulsar",
-                    "default_cloud_profile": "comet",
+                    "cloud_agent": "comet",
                 }
             },
             layer_name="test",
         )
-        self.assertEqual(normalized["ask_apex"]["cloud_profile"], "panthera")
+        self.assertEqual(normalized["ask_apex"]["cloud_agent"], "panthera")
 
     def test_missing_local_file(self) -> None:
         store = self._store()
@@ -242,7 +245,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         store = self._store()
         snap = store.get_snapshot()
         self.assertTrue(snap.features.weather)
-        self.assertEqual(snap.assistant.cloud_profile, "panthera")
+        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
         self.assertFalse(store.local_override_active)
@@ -271,7 +274,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         # One invalid known value rejects every local editable override.
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.modules.f1)
-        self.assertEqual(snap.assistant.cloud_profile, "panthera")
+        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertEqual(snap.voice.engine, "google")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
@@ -310,7 +313,7 @@ class SettingsStorePatchTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "comet"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",
@@ -330,13 +333,13 @@ class SettingsStorePatchTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             SettingsPatch.model_validate({"unknown_root": {"a": 1}})
 
-    def test_local_profiles_are_valid_patch_values(self) -> None:
+    def test_local_agents_are_valid_patch_values(self) -> None:
         for profile in ("sorex", "mus"):
-            with self.subTest(profile=profile):
+            with self.subTest(agent=profile):
                 patch = SettingsPatch.model_validate(
-                    {"assistant": {"local_profile": profile}}
+                    {"ask_apex": {"local_agent": profile}}
                 )
-                self.assertEqual(patch.assistant.local_profile, profile)
+                self.assertEqual(patch.ask_apex.local_agent, profile)
 
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
         store = self._store()
@@ -351,6 +354,19 @@ class SettingsStorePatchTests(unittest.TestCase):
         self.assertTrue(self.local_path.is_file())
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertEqual(written["features"]["sports"], True)
+
+    def test_user_designation_persists_and_can_be_cleared(self) -> None:
+        store = self._store()
+
+        store.apply_patch(SettingsPatch(user_designation="  Chief  "))
+        self.assertEqual(store.get_snapshot().user_designation, "Chief")
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["user_designation"], "Chief")
+
+        store.apply_patch(SettingsPatch(user_designation=""))
+        self.assertEqual(store.get_snapshot().user_designation, "")
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["user_designation"], "")
 
     def test_successful_patch_clears_load_warning(self) -> None:
         self.local_path.write_text("{not-json", encoding="utf-8")
@@ -371,7 +387,7 @@ class SettingsStorePatchTests(unittest.TestCase):
         _write_json(
             self.local_path,
             {
-                "system_prompt": "preserve me",
+                "legacy_prompt": "preserve me",
                 "ask_apex": {"max_session_messages": 12},
                 "future_section": {"enabled": True},
             },
@@ -381,7 +397,7 @@ class SettingsStorePatchTests(unittest.TestCase):
         store.apply_patch(SettingsPatch(features=FeaturesPatch(sports=True)))
 
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(written["system_prompt"], "preserve me")
+        self.assertEqual(written["legacy_prompt"], "preserve me")
         self.assertEqual(written["ask_apex"]["max_session_messages"], 12)
         self.assertEqual(written["future_section"], {"enabled": True})
         self.assertTrue(written["features"]["sports"])
@@ -424,12 +440,12 @@ class SettingsStorePatchTests(unittest.TestCase):
         ):
             with self.assertRaises(SettingsPersistenceError):
                 store.apply_patch(
-                    SettingsPatch(assistant=AssistantPatch(enabled=False))
+                    SettingsPatch(ask_apex=AskApexPatch(enabled=False))
                 )
 
         after = store.get_snapshot()
-        self.assertEqual(after.assistant.enabled, prior.assistant.enabled)
-        self.assertTrue(after.assistant.enabled)
+        self.assertEqual(after.ask_apex.enabled, prior.ask_apex.enabled)
+        self.assertTrue(after.ask_apex.enabled)
         self.assertFalse(self.local_path.is_file())
 
     def test_different_field_patches_preserve_both(self) -> None:
@@ -446,16 +462,16 @@ class SettingsStorePatchTests(unittest.TestCase):
     def test_same_field_last_successful_write_wins(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(assistant=AssistantPatch(cloud_profile="neofelis"))
+            SettingsPatch(ask_apex=AskApexPatch(cloud_agent="neofelis"))
         )
         store.apply_patch(
-            SettingsPatch(assistant=AssistantPatch(cloud_profile="orcinus"))
+            SettingsPatch(ask_apex=AskApexPatch(cloud_agent="orcinus"))
         )
         self.assertEqual(
-            store.get_snapshot().assistant.cloud_profile, "orcinus"
+            store.get_snapshot().ask_apex.cloud_agent, "orcinus"
         )
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(written["ask_apex"]["cloud_profile"], "orcinus")
+        self.assertEqual(written["ask_apex"]["cloud_agent"], "orcinus")
 
 
 class SettingsStoreConcurrencyTests(unittest.TestCase):
@@ -476,7 +492,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "comet"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",
@@ -498,7 +514,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                 for _ in range(40):
                     snap = self.store.get_snapshot()
                     _ = snap.features.weather
-                    _ = snap.assistant.cloud_profile
+                    _ = snap.ask_apex.cloud_agent
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
 
@@ -553,11 +569,11 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
             time.sleep(delay)
             snap = self.store.apply_patch(
                 SettingsPatch(
-                    assistant=AssistantPatch(cloud_profile=profile)  # type: ignore[arg-type]
+                    ask_apex=AskApexPatch(cloud_agent=profile)  # type: ignore[arg-type]
                 )
             )
             with lock:
-                results.append(snap.assistant.cloud_profile)
+                results.append(snap.ask_apex.cloud_agent)
 
         t1 = threading.Thread(target=write_profile, args=("neofelis", 0.0))
         t2 = threading.Thread(target=write_profile, args=("orcinus", 0.05))
@@ -567,7 +583,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
         t2.join(timeout=10)
         self.assertEqual(len(results), 2)
         # Last successful write should be reflected in the published snapshot.
-        self.assertEqual(self.store.get_snapshot().assistant.cloud_profile, "orcinus")
+        self.assertEqual(self.store.get_snapshot().ask_apex.cloud_agent, "orcinus")
 
 
 if __name__ == "__main__":

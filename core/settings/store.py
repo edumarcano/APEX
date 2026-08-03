@@ -30,7 +30,7 @@ _DEFAULT_LOCAL_CONFIG_PATH: Path = _PROJECT_ROOT / "config.local.json"
 _REPLACE_MAX_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
 _EDITABLE_ROOT_KEYS = frozenset(
-    {"features", "modules", "ask_apex", "briefing", "tts_settings"}
+    {"user_designation", "features", "modules", "ask_apex", "briefing", "tts_settings"}
 )
 
 

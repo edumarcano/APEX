@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
-from core.api.routers import assistant, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
+from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import ENV_PATH, OLLAMA_ENABLED
 from core.agent.providers.ollama_lifecycle import check_idle_models_loop
 from core import database
@@ -107,7 +107,7 @@ app.add_middleware(
 app.include_router(system.router)
 app.include_router(briefings.router)
 app.include_router(reminders.router)
-app.include_router(assistant.router)
+app.include_router(cortex.router)
 app.include_router(market.router)
 app.include_router(mcp.router)
 app.include_router(microsoft_todo.router)

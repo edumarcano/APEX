@@ -1390,7 +1390,7 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
   }
 }
 
-export function AssistantToolCards({
+export function CortexToolCards({
   toolOutputs,
 }: {
   toolOutputs: ToolOutputItem[]

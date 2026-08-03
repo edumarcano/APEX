@@ -32,7 +32,7 @@ export default function MicrosoftTodoSettingsSection({
     <section className="space-y-2.5" aria-labelledby={sectionId}>
       <SectionHeading id={sectionId} title="Microsoft To Do — Read Only" />
       <p className="text-[11px] leading-relaxed text-zinc-500">
-        Lets the assistant read task lists and tasks with Tasks.Read. APEX reminders remain in the local SQLite ledger.
+        Lets the selected Agent read task lists and tasks with Tasks.Read. APEX reminders remain in the local SQLite ledger.
       </p>
       <div className="rounded-lg border border-white/5 bg-white/[0.015] p-2.5">
         <StatusRow label="Connection" value={presentation.value} tone={presentation.tone} />

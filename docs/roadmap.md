@@ -320,12 +320,12 @@ This milestone also establishes delegated read-only Microsoft To Do access and n
 
 ---
 
-## v1.19.0 - Federated Intelligence Profiles & Cortex Workspace
+## v1.19.0 - Apex Agents & Cortex Workspace
 
 **Status:** Planned
 
 **Objective:**
-Replace the current profile family with federated cloud and local intelligence profiles, add provider-neutral observability and tool policies, and establish the Cortex workspace as APEX's dedicated assistant surface.
+Replace the former profile family with cloud and local Apex Agents, add provider-neutral observability and tool policies, and establish the Cortex workspace as APEX's dedicated Agent configuration surface.
 
 ---
 

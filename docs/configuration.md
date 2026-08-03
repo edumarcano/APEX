@@ -7,8 +7,8 @@ This is the canonical operator reference for APEX settings, runtime modes, crede
 | Surface | Contains | Version control |
 |---|---|---|
 | `.env` | Secrets, credential paths, machine paths, and environment-only modes | Never committed |
-| `config.json` | Tracked non-secret defaults, prompts, feature flags, model behavior, and provider presets | Committed |
-| `config.local.json` | Machine-local runtime-setting overrides | Gitignored |
+| `config.json` | Tracked non-secret defaults, prompt text, feature flags, model behavior, and provider presets | Committed |
+| `config.local.json` | Machine-local runtime-setting overrides, including the optional user designation | Gitignored |
 | Runtime Settings | Editable subset of resolved settings | Persists to `config.local.json` |
 
 At runtime, APEX loads `config.json`, recursively overlays valid values from `config.local.json`, and publishes an immutable settings snapshot. A malformed local overlay is discarded as a whole and reported through the settings API; it does not partially mutate active settings.
@@ -17,24 +17,25 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `7`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `8`.
 
 | Group | Editable values |
 |---|---|
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
-| Assistant | Global Ask APEX enabled switch; Cortex owns profile, effort, and grounding selection |
-| Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Overview command rail |
+| Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
+| Ask APEX | Global enablement switch; Cortex owns Agent, effort, and grounding selection |
+| Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 
-Followed football teams, prompts, Ollama host and resource gates, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
+Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
 
 ### When changes take effect
 
 - Connector and sports flags are captured when telemetry collection begins.
-- The Overview command rail persists the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
-- Assistant enablement, profile selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
+- The Home command rail persists the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
+- Ask APEX enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
@@ -59,7 +60,7 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 ### Demo
 
-`DEMO_MODE=true` takes priority over the normal trigger path. It uses static telemetry, briefing history, reminders, market data, and deterministic assistant responses. It skips live connectors and production database writes. `DEMO_TTS` selects the optional demo speech engine.
+`DEMO_MODE=true` takes priority over the normal trigger path. It uses static telemetry, briefing history, reminders, market data, and deterministic Agent responses. It skips live connectors and production database writes. `DEMO_TTS` selects the optional demo speech engine.
 
 `DEV_MODE` and `DEMO_MODE` are independent environment flags, but demo behavior wins where their paths overlap.
 
@@ -73,43 +74,43 @@ Disabling a connector prevents its network or authentication attempt and exclude
 | Formula 1 | None | Jolpica/Ergast data with a 24-hour file cache |
 | Football | football-data.org key | One to three configured team IDs; disabled by default |
 | News | GNews key | AI and global-events headlines |
-| Gmail | Google desktop OAuth | Read-only primary inbox and assistant search/read tools |
-| Calendar | Google desktop OAuth | Seven-day telemetry horizon and assistant tools |
+| Gmail | Google desktop OAuth | Read-only primary inbox and Agent search/read tools |
+| Calendar | Google desktop OAuth | Seven-day telemetry horizon and Agent tools |
 | Reminders | SQLite | Always local; independent of Microsoft To Do |
 | Market | Alpha Vantage key plus symbols | End-of-day data; absent configuration returns an empty not-configured state |
 
 Football telemetry keeps each configured team's next fixture. Briefing synthesis receives only the earliest eligible fixture within seven days.
 
-## Briefing and assistant profiles
+## Briefing modes and Agents
 
-### Cloud profiles
+### Cloud Agents
 
-| Profile | Provider and model | Role |
+| Agent | Provider and model | Role |
 |---|---|---|
 | Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud profile |
+| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
 | Neofelis 2.0 | Gemini `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud profile with persisted optional X Search |
-| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud profile with persisted optional X Search |
+| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud Agent with persisted optional X Search |
+| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud Agent with persisted optional X Search |
 
-Cloud profiles run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud profiles support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective profile while preserving the saved cloud effort.
+Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
 
-Brave MCP is the general web-search capability for every cloud profile when connected. Provider-hosted general web search is disabled for OpenAI and xAI. Neofelis's Google Search and Maps controls, and the X Search controls for Delphinus and Orcinus, apply to subsequent requests only.
+Brave MCP is the general web-search capability for every cloud Agent when connected. Provider-hosted general web search is disabled for OpenAI and xAI. Neofelis's Google Search and Maps controls, and the X Search controls for Delphinus and Orcinus, apply to subsequent requests only.
 
-The `acinonyx` profile uses `gemini-3.5-flash-lite` and remains hidden outside development mode. Its dedicated free-tier project means APEX reports zero provider token cost for that profile.
+The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside development mode. Its dedicated free-tier project means APEX reports zero provider token cost for that Agent.
 
-### Local profiles
+### Local Agents
 
-| Profile | Ollama model | Intended use |
+| Agent | Ollama model | Intended use |
 |---|---|---|
-| Sorex 2.0 | `qwen3:1.7b` | Lightweight fixed-effort local profile |
-| Mus 2.0 | `qwen3:4b-instruct` | Balanced fixed-effort local profile |
+| Sorex 2.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
+| Mus 2.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 
-`ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-profile CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
+`ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected assistant profile or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus or Sorex briefing request falls directly to Structured Digest on failure.
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus or Sorex briefing request falls directly to Structured Digest on failure.
 
 ## Voice
 
@@ -162,4 +163,4 @@ FastAPI and the static HUD bind to loopback. `APEX_ALLOWED_ORIGINS` controls whi
 - Use absolute paths for machine-specific credentials.
 - Keep credentials out of `config.json` and `config.local.json`.
 - Review [Privacy and Data Boundaries](privacy.md) before sending personal connector data to a cloud model.
-- Use demo mode, a local briefing profile, or Structured Digest when cloud disclosure is inappropriate.
+- Use demo mode, a local briefing Agent, or Structured Digest when cloud disclosure is inappropriate.

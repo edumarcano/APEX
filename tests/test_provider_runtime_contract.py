@@ -10,7 +10,7 @@ from google.genai.errors import APIError
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
 from core.agent.pricing import PRICING_VERSION, _MODEL_RATES, estimate_inference_cost
-from core.agent.profiles import PROFILE_SPECS, build_concrete_profile, resolve_effort
+from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.contract import (
     ProviderToolEvent,
     ProviderTurnResult,
@@ -34,7 +34,7 @@ from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCa
 
 def _concrete_profile(key: str):
     _apex, native = resolve_effort(key, None)
-    return build_concrete_profile(key, native_effort=native)
+    return build_concrete_agent(key, native_effort=native)
 
 
 class ProviderContractTests(unittest.TestCase):
@@ -86,7 +86,7 @@ class ProviderContractTests(unittest.TestCase):
                 if self.calls == 1:
                     return ProviderTurnResult(
                         message=AgentMessage(
-                            role="model",
+                            role="agent",
                             tool_calls=[
                                 ToolCall(
                                     id="call-1",
@@ -100,14 +100,14 @@ class ProviderContractTests(unittest.TestCase):
                         provider_ms=12.5,
                     )
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Clear skies."),
+                    message=AgentMessage(role="agent", content="Clear skies."),
                     resolved_model="gemini-3.6-flash-rev",
                     usage=TokenUsage(input_tokens=140, output_tokens=30, total_tokens=170),
                     provider_ms=8.0,
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Weather?", profile="neofelis"),
+            AgentQueryRequest(prompt="Weather?", agent="neofelis"),
             Provider(),
             profile,
             tools_dispatcher=lambda _name, _args: {"summary": "clear"},
@@ -126,7 +126,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(response.cost_estimate.completeness, "complete")
         self.assertEqual(response.tool_trace[0]["origin"], "apex")
         gemini_keys = {
-            key for key, spec in PROFILE_SPECS.items() if spec.provider == "gemini"
+            key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"
         }
         self.assertEqual(gemini_keys, {"acinonyx", "neofelis"})
 
@@ -141,7 +141,7 @@ class ProviderContractTests(unittest.TestCase):
             ) -> ProviderTurnResult:
                 del system_instruction_override
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Grounded."),
+                    message=AgentMessage(role="agent", content="Grounded."),
                     provider_tool_events=[
                         ProviderToolEvent(
                             name="google_search",
@@ -153,7 +153,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Search?", profile="neofelis"),
+            AgentQueryRequest(prompt="Search?", agent="neofelis"),
             Provider(),
             _concrete_profile("neofelis"),
         )
@@ -173,7 +173,7 @@ class OllamaContractTests(unittest.TestCase):
             input_schema={"type": "object", "properties": {}},
             origin="native",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
@@ -185,7 +185,7 @@ class OllamaContractTests(unittest.TestCase):
     ) -> None:
         mock_post.return_value = {
             "model": "qwen3:1.7b-q4",
-            "message": {"role": "assistant", "content": "Local answer"},
+            "message": {"role": "model", "content": "Local answer"},
             "prompt_eval_count": 90,
             "eval_count": 15,
         }
@@ -211,7 +211,7 @@ class OllamaContractTests(unittest.TestCase):
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
         mock_post.return_value = {
-            "message": {"role": "assistant", "content": "Local answer"},
+            "message": {"role": "model", "content": "Local answer"},
         }
 
         result = OllamaProvider().generate_turn(
@@ -231,14 +231,14 @@ class OllamaContractTests(unittest.TestCase):
         mock_post.side_effect = [
             {
                 "model": "qwen3:1.7b",
-                "message": {"role": "assistant", "content": "truncated prose"},
+                "message": {"role": "model", "content": "truncated prose"},
                 "done_reason": "length",
                 "prompt_eval_count": 80,
                 "eval_count": 40,
             },
             {
                 "model": "qwen3:1.7b",
-                "message": {"role": "assistant", "content": "Final answer"},
+                "message": {"role": "model", "content": "Final answer"},
                 "prompt_eval_count": 70,
                 "eval_count": 25,
             },
@@ -260,11 +260,11 @@ class OllamaContractTests(unittest.TestCase):
 
 
 class PricingRegistryTests(unittest.TestCase):
-    def test_paid_model_rates_match_the_active_paid_cloud_profiles(self) -> None:
+    def test_paid_model_rates_match_the_active_paid_cloud_agents(self) -> None:
         paid_profile_models = {
             spec.api_model
-            for spec in PROFILE_SPECS.values()
-            if spec.mode == "cloud"
+            for spec in AGENT_SPECS.values()
+            if spec.runtime == "cloud"
         }
 
         self.assertEqual(set(_MODEL_RATES), paid_profile_models)
@@ -338,7 +338,7 @@ class PricingRegistryTests(unittest.TestCase):
             model="gemini-3.5-flash-lite",
             configured_model="gemini-3.5-flash-lite",
             provider="gemini",
-            profile_key="acinonyx",
+            agent_key="acinonyx",
             usage=TokenUsage(input_tokens=1000, output_tokens=200),
         )
         self.assertEqual(estimate.token_cost, 0.0)
@@ -426,7 +426,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         history = [
             AgentMessage(role="user", content="Check weather"),
             AgentMessage(
-                role="model",
+                role="agent",
                 content=None,
                 tool_calls=[
                     ToolCall(id="call_1", name="get_weather_forecast", arguments={"days": 1})
@@ -494,7 +494,7 @@ class ResponsesAdapterTests(unittest.TestCase):
                 input_schema={"type": "object", "properties": {}},
                 origin="native",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=True,
             )
@@ -618,12 +618,12 @@ class ResponsesAdapterTests(unittest.TestCase):
 
 class PublicRosterTests(unittest.TestCase):
     def test_unified_registry_exposes_openai_and_xai_profiles(self) -> None:
-        providers = {PROFILE_SPECS[key].provider for key in PROFILE_SPECS}
+        providers = {AGENT_SPECS[key].provider for key in AGENT_SPECS}
         self.assertIn("openai", providers)
         self.assertIn("xai", providers)
         self.assertEqual(set(OLLAMA_MODEL_PROFILES), {"sorex", "mus"})
         self.assertEqual(
-            {key for key, spec in PROFILE_SPECS.items() if spec.provider == "gemini"},
+            {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},
             {"acinonyx", "neofelis"},
         )
 

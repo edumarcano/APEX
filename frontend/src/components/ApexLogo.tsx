@@ -6,7 +6,7 @@ export interface ApexLogoProps {
   status: SystemState
   isSpeaking?: boolean
   reminderPulseCount?: number
-  isAssistantQuerying?: boolean
+  isCortexQuerying?: boolean
   isLocalModelLoading?: boolean
   isLocalModelLoaded?: boolean
   isTelemetryCollecting?: boolean
@@ -19,7 +19,7 @@ export function ApexLogo({
   status,
   isSpeaking = false,
   reminderPulseCount = 0,
-  isAssistantQuerying = false,
+  isCortexQuerying = false,
   isLocalModelLoading = false,
   isLocalModelLoaded = false,
   isTelemetryCollecting = false,
@@ -39,7 +39,7 @@ export function ApexLogo({
   }, [reminderPulseCount])
 
   const isError = status === 'error'
-  const isDormant = status === 'idle' && !isAssistantQuerying && !isTelemetryCollecting
+  const isDormant = status === 'idle' && !isCortexQuerying && !isTelemetryCollecting
   const activeStep = step ?? 0
   const hasDelivered = status === 'success' || activeStep >= 4
 
@@ -100,7 +100,7 @@ export function ApexLogo({
   })
 
   const getGoldSegmentClass = (): string => {
-    if (isAssistantQuerying) {
+    if (isCortexQuerying) {
       return purpleSurgeCore
     }
 

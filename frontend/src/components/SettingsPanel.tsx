@@ -28,7 +28,7 @@ import {
   resolveEffectiveTiming,
 } from '../lib/settings'
 import type {
-  AgentProfileStatus,
+  AgentStatus,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
@@ -84,9 +84,9 @@ interface SettingsPanelProps {
   status: SystemState
   pipelineStep: number | null
   isSpeaking: boolean
-  isAssistantQuerying: boolean
-  profilesStatus: AgentProfileStatus[]
-  profilesStatusHydrated: boolean
+  isCortexQuerying: boolean
+  agentsStatus: AgentStatus[]
+  agentsStatusHydrated: boolean
   failedConnectors: string[]
   hasBriefingEvidence: boolean
   onApplied: (response: SettingsResponse) => void
@@ -128,9 +128,9 @@ export default function SettingsPanel({
   status,
   pipelineStep,
   isSpeaking,
-  isAssistantQuerying,
-  profilesStatus,
-  profilesStatusHydrated,
+  isCortexQuerying,
+  agentsStatus,
+  agentsStatusHydrated,
   failedConnectors,
   hasBriefingEvidence,
   onApplied,
@@ -160,15 +160,15 @@ export default function SettingsPanel({
         status,
         pipelineStep,
         isSpeaking,
-        isAssistantQuerying,
+        isCortexQuerying,
       }),
-    [status, pipelineStep, isSpeaking, isAssistantQuerying],
+    [status, pipelineStep, isSpeaking, isCortexQuerying],
   )
 
   const featuresTiming = resolveEffectiveTiming('features', timingRuntime)
   const marketTiming = resolveEffectiveTiming('market', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
-  const assistantTiming = resolveEffectiveTiming('assistant', timingRuntime)
+  const askApexTiming = resolveEffectiveTiming('ask_apex', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
 
@@ -210,20 +210,20 @@ export default function SettingsPanel({
   }, [save, mcpRuntime])
 
   const providerRows = useMemo(() => {
-    const cloud = profilesStatus.filter((profile) => profile.mode === 'cloud')
-    const local = profilesStatus.filter((profile) => profile.mode === 'local')
-    const configuredCloud = cloud.filter((profile) => profile.status !== 'disabled').length
-    const verifiedCloud = cloud.filter((profile) => profile.status === 'verified').length
-    const localAvailable = local.some((profile) => profile.status === 'available')
-    const activeLocal = local.find((profile) => profile.active && profile.loaded_model)
+    const cloud = agentsStatus.filter((agent) => agent.runtime === 'cloud')
+    const local = agentsStatus.filter((agent) => agent.runtime === 'local')
+    const configuredCloud = cloud.filter((agent) => agent.status !== 'disabled').length
+    const verifiedCloud = cloud.filter((agent) => agent.status === 'verified').length
+    const localAvailable = local.some((agent) => agent.status === 'available')
+    const activeLocal = local.find((agent) => agent.active && agent.loaded_model)
 
     return {
-      cloud: !profilesStatusHydrated
+      cloud: !agentsStatusHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
         : configuredCloud > 0
           ? { value: `${configuredCloud} configured · ${verifiedCloud} verified`, tone: verifiedCloud > 0 ? 'ok' as const : 'neutral' as const }
           : { value: 'Not configured', tone: 'error' as const },
-      local: !profilesStatusHydrated
+      local: !agentsStatusHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
         : localAvailable
           ? { value: 'Reachable', tone: 'ok' as const }
@@ -235,7 +235,7 @@ export default function SettingsPanel({
             },
       activeModel: activeLocal?.loaded_model?.model ?? activeLocal?.loaded_model?.name ?? 'None',
     }
-  }, [profilesStatus, profilesStatusHydrated])
+  }, [agentsStatus, agentsStatusHydrated])
 
   if (!open) {
     return null
@@ -337,18 +337,51 @@ export default function SettingsPanel({
                 </div>
               </section>
 
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-assistant`}>
-                <SectionHeading id={`${titleId}-assistant`} title="Assistant" />
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-personalization`}>
+                <SectionHeading id={`${titleId}-personalization`} title="Personalization" />
+                <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                  <label
+                    htmlFor="settings-user-designation"
+                    className="text-xs tracking-wide text-[color:var(--hud-text)]"
+                  >
+                    User designation
+                  </label>
+                  <input
+                    id="settings-user-designation"
+                    type="text"
+                    value={draft.user_designation}
+                    maxLength={80}
+                    placeholder="Optional"
+                    aria-describedby={`${titleId}-designation-help`}
+                    onChange={(event) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        user_designation: event.target.value,
+                      }))
+                    }
+                    className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                  />
+                  <p
+                    id={`${titleId}-designation-help`}
+                    className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
+                  >
+                    Optional. APEX uses it when addressing you in future requests and briefings.
+                  </p>
+                </div>
+              </section>
+
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-ask-apex`}>
+                <SectionHeading id={`${titleId}-ask-apex`} title="Ask APEX" />
                 <div className="space-y-2">
                   <SettingsToggle
-                    id="settings-assistant-enabled"
+                    id="settings-ask-apex-enabled"
                     label="Ask APEX enabled"
-                    checked={draft.assistant.enabled}
-                    timing={assistantTiming}
+                    checked={draft.ask_apex.enabled}
+                    timing={askApexTiming}
                     onChange={(next) =>
                       setDraft((prev) => ({
                         ...prev,
-                        assistant: { ...prev.assistant, enabled: next },
+                        ask_apex: { ...prev.ask_apex, enabled: next },
                       }))
                     }
                   />
@@ -428,12 +461,12 @@ export default function SettingsPanel({
                     tone="ok"
                   />
                   <StatusRow
-                    label="Cloud profiles"
+                    label="Cloud agents"
                     value={providerRows.cloud.value}
                     tone={providerRows.cloud.tone}
                   />
                   <StatusRow
-                    label="Local profiles"
+                    label="Local agents"
                     value={providerRows.local.value}
                     tone={providerRows.local.tone}
                   />

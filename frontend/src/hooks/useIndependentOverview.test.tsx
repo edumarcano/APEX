@@ -166,16 +166,16 @@ describe('usePreflight', () => {
     const { result } = renderHook(() => usePreflight())
 
     await act(async () => {
-      await result.current.requestOperation('assistant_query', {
-        synthesis_profile: 'panthera',
+      await result.current.requestOperation('cortex_query', {
+        synthesis_agent: 'panthera',
         involves_cloud: true,
       })
     })
 
     const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body))
     expect(body).toMatchObject({
-      operation: 'assistant_query',
-      synthesis_profile: 'panthera',
+      operation: 'cortex_query',
+      synthesis_agent: 'panthera',
       involves_cloud: true,
     })
   })

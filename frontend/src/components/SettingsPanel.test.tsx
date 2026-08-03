@@ -22,9 +22,9 @@ const DEFAULT_PROPS: ComponentProps<typeof SettingsPanel> = {
   status: 'idle',
   pipelineStep: null,
   isSpeaking: false,
-  isAssistantQuerying: false,
-  profilesStatus: [],
-  profilesStatusHydrated: false,
+  isCortexQuerying: false,
+  agentsStatus: [],
+  agentsStatusHydrated: false,
   failedConnectors: [],
   hasBriefingEvidence: true,
   onApplied: vi.fn(),
@@ -169,11 +169,39 @@ describe('SettingsPanel', () => {
     renderPanel()
 
     expect(await screen.findByRole('switch', { name: 'Ask APEX enabled' })).toBeVisible()
-    expect(screen.queryByLabelText('Assistant mode')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Agent runtime')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Cloud profile')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Local profile')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Cloud effort')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Google Search grounding')).not.toBeInTheDocument()
+  })
+
+  it('edits the optional user designation through local settings', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...buildSettingsResponse(),
+          settings: { ...buildSettingsResponse().settings, user_designation: 'Chief' },
+        }),
+      )
+    const user = userEvent.setup()
+    renderPanel()
+
+    const designation = await screen.findByRole('textbox', { name: 'User designation' })
+    await user.type(designation, 'Chief')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PATCH'),
+      ).toBe(true),
+    )
+    const saveCall = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'PATCH')
+    expect(saveCall?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ user_designation: 'Chief' }),
+    })
   })
 
   it('preserves the dirty controls and reports a failed save', async () => {

@@ -131,7 +131,7 @@ class BrainFallbackShapeTests(unittest.TestCase):
     def test_process_telemetry_defaults_to_cloud_outside_dev_mode(self) -> None:
         from core import brain
 
-        expected = SynthesisResult(briefing="Cloud.", provider="gemini", profile="panthera")
+        expected = SynthesisResult(briefing="Cloud.", provider="gemini", agent="panthera")
         router = mock.Mock()
         router.synthesize_mode.return_value = expected
 

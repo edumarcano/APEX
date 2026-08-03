@@ -43,9 +43,9 @@ class SettingsApiTests(unittest.TestCase):
             "ask_apex": {
                 "enabled": True,
                 "mode": "cloud",
-                "cloud_profile": "panthera",
-                "cloud_effort": "focused",
-                "local_profile": "mus",
+                "cloud_agent": "panthera",
+                "effort": "focused",
+                "local_agent": "mus",
             },
             "tts_settings": {
                 "primary_tts": "google",
@@ -78,17 +78,17 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 7)
+        self.assertEqual(payload["schema_version"], 8)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
-        self.assertEqual(payload["settings"]["assistant"]["cloud_profile"], "panthera")
-        self.assertEqual(payload["settings"]["assistant"]["mode"], "cloud")
-        self.assertTrue(payload["settings"]["assistant"]["neofelis_google_maps_enabled"])
-        self.assertTrue(payload["settings"]["assistant"]["delphinus_x_search_enabled"])
-        self.assertTrue(payload["settings"]["assistant"]["orcinus_x_search_enabled"])
+        self.assertEqual(payload["settings"]["ask_apex"]["cloud_agent"], "panthera")
+        self.assertEqual(payload["settings"]["ask_apex"]["runtime"], "cloud")
+        self.assertTrue(payload["settings"]["ask_apex"]["neofelis_google_maps_enabled"])
+        self.assertTrue(payload["settings"]["ask_apex"]["delphinus_x_search_enabled"])
+        self.assertTrue(payload["settings"]["ask_apex"]["orcinus_x_search_enabled"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
         self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])
@@ -284,7 +284,7 @@ class SettingsApiTests(unittest.TestCase):
     def test_invalid_profile_rejected(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"assistant": {"cloud_profile": "not-a-profile"}},
+            json={"ask_apex": {"cloud_agent": "not-a-profile"}},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -348,16 +348,17 @@ class SettingsApiTests(unittest.TestCase):
         self.assertTrue(snapshot.features.news)
         self.assertEqual(snapshot.voice.gender, "male")
 
-    def test_config_boot_reads_store_including_local_profile(self) -> None:
+    def test_config_boot_reads_store_including_local_agent(self) -> None:
         self.store.apply_patch(
             SettingsPatch.model_validate(
-                {"assistant": {"enabled": False, "mode": "local", "local_profile": "sorex"}}
+                {"ask_apex": {"enabled": False, "runtime": "local", "local_agent": "sorex"}}
             )
         )
-        response = self.client.get("/api/v1/config")
+        with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
+            response = self.client.get("/api/v1/config")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["default_profile"], "sorex")
+        self.assertEqual(payload["default_agent"], "sorex")
         self.assertFalse(payload["ask_apex_enabled"])
         self.assertIn("max_session_messages", payload)
         self.assertIn("dev_mode_active", payload)
@@ -373,15 +374,16 @@ class SettingsApiTests(unittest.TestCase):
     def test_unavailable_profile_remains_valid_default(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"assistant": {"cloud_profile": "neofelis"}},
+            json={"ask_apex": {"cloud_agent": "neofelis"}},
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json()["settings"]["assistant"]["cloud_profile"],
+            response.json()["settings"]["ask_apex"]["cloud_agent"],
             "neofelis",
         )
-        config_payload = self.client.get("/api/v1/config").json()
-        self.assertEqual(config_payload["default_profile"], "neofelis")
+        with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
+            config_payload = self.client.get("/api/v1/config").json()
+        self.assertEqual(config_payload["default_agent"], "neofelis")
 
 
 class SettingsApiVoicePatchSmokeTests(unittest.TestCase):

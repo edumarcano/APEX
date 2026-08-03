@@ -109,7 +109,7 @@ PreflightOperation = Literal[
     "activate_with_briefing",
     "refresh_telemetry",
     "generate_briefing",
-    "assistant_query",
+    "cortex_query",
 ]
 
 PreflightWarningCode = Literal[
@@ -117,7 +117,7 @@ PreflightWarningCode = Literal[
     "network_trust_unknown",
     "running_on_battery",
     "rapid_connector_refresh",
-    "high_resource_local_profile",
+    "high_resource_local_agent",
 ]
 
 PreflightBlockerCode = Literal[
@@ -150,7 +150,7 @@ class PreflightRequest(BaseModel):
     operation: PreflightOperation
     connectors: list[str] | None = None
     briefing_mode: str | None = None
-    synthesis_profile: str | None = None
+    synthesis_agent: str | None = None
     force: bool = False
     involves_cloud: bool = False
     acknowledged_warnings: list[str] = Field(default_factory=list)

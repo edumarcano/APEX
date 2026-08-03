@@ -3,14 +3,14 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentProfileStatus, AssistantProfile, ProfileAvailabilityStatus } from '../types/telemetry'
+import type { AgentStatus, AgentKey, AgentAvailabilityStatus } from '../types/telemetry'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
 
 function profile(
-  key: AssistantProfile,
-  status: ProfileAvailabilityStatus = 'available',
+  key: AgentKey,
+  status: AgentAvailabilityStatus = 'available',
   reason: string | null = null,
-): AgentProfileStatus {
+): AgentStatus {
   const mode = key === 'sorex' || key === 'mus' ? 'local' : 'cloud'
   return {
     key,
@@ -22,7 +22,7 @@ function profile(
     native_tools: {},
     provider: mode === 'cloud' ? 'openai' : 'ollama',
     version: '2.0',
-    mode,
+    runtime: mode,
     tier: 'stable',
     stability: 'stable',
     effort_options: mode === 'cloud' ? ['light', 'focused', 'extended'] : null,
@@ -50,7 +50,7 @@ function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSel
   const props: ComponentProps<typeof BriefingModeSelector> = {
     value: 'panthera',
     onChange: vi.fn(),
-    profiles: AVAILABLE_PROFILES,
+    agents: AVAILABLE_PROFILES,
     hydrated: true,
     disabled: false,
     ...overrides,
@@ -68,7 +68,7 @@ describe('BriefingModeSelector', () => {
 
     expect(screen.getByText('Briefing Synthesis')).toBeVisible()
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
-    expect(screen.getAllByLabelText('Panthera profile mark')).toHaveLength(2)
+    expect(screen.getAllByLabelText('Panthera agent mark')).toHaveLength(2)
     expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
     expect(screen.getAllByText('No provider token charge')).toHaveLength(2)
     expect(screen.getByText('No model cost')).toBeVisible()
@@ -84,7 +84,7 @@ describe('BriefingModeSelector', () => {
     const user = userEvent.setup()
     renderSelector({
       onChange: onModeChange,
-      profiles: [
+      agents: [
         profile('panthera'),
         profile('sorex'),
         profile('mus', 'insufficient_ram', 'Current memory pressure exceeds threshold'),

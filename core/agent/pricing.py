@@ -32,7 +32,7 @@ class ModelTokenRates:
 
 @dataclass(frozen=True, slots=True)
 class ProfilePricing:
-    """Catalog pricing shown and estimated for one APEX profile."""
+    """Catalog pricing shown and estimated for one Apex Agent."""
 
     billing_basis: str
     rates: ModelTokenRates
@@ -99,14 +99,14 @@ def lookup_model_rates(
     return _MODEL_RATES.get(model.strip().lower())
 
 
-def profile_pricing(
-    profile_key: str,
+def agent_pricing(
+    agent_key: str,
     *,
     model: str,
     provider: InferenceProvider,
 ) -> ProfilePricing:
-    """Return the authoritative billing basis for an APEX profile."""
-    if profile_key == "acinonyx":
+    """Return the authoritative billing basis for an Apex Agent."""
+    if agent_key == "acinonyx":
         return ProfilePricing("free_tier", _FREE_TIER_ZERO)
     if provider == "ollama":
         return ProfilePricing("local", _LOCAL_ZERO)
@@ -128,15 +128,15 @@ def estimate_inference_cost(
     hosted_tool_events: list[ProviderToolEvent] | None = None,
     configured_model: str | None = None,
     provider: InferenceProvider | None = None,
-    profile_key: str | None = None,
+    agent_key: str | None = None,
 ) -> CostEstimate:
     """Estimate token and provider-hosted-tool cost for a completed query."""
     rates = lookup_model_rates(model, provider=provider) or lookup_model_rates(
         configured_model, provider=provider
     )
-    if profile_key is not None and provider is not None:
-        rates = profile_pricing(
-            profile_key,
+    if agent_key is not None and provider is not None:
+        rates = agent_pricing(
+            agent_key,
             model=configured_model or model or "",
             provider=provider,
         ).rates

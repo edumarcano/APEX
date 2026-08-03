@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { AssistantToolCards } from './AssistantToolCards'
+import { CortexToolCards } from './CortexToolCards'
 
-describe('AssistantToolCards MCP presentation', () => {
+describe('CortexToolCards MCP presentation', () => {
   it('shows provider, operation, success state, and compact structured output', () => {
     render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[
           {
             name: 'brave_brave_web_search',
@@ -28,7 +28,7 @@ describe('AssistantToolCards MCP presentation', () => {
 
   it('uses the masked error card for a failed MCP operation', () => {
     render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[
           {
             name: 'brave_brave_news_search',
@@ -40,16 +40,16 @@ describe('AssistantToolCards MCP presentation', () => {
       />,
     )
 
-    expect(screen.getByText(/brave brave news search — error/i)).toBeInTheDocument()
+    expect(screen.getByText(/brave brave news search/i)).toBeInTheDocument()
     expect(screen.getByText('Search provider is unavailable.')).toBeInTheDocument()
     expect(screen.queryByText('Success')).not.toBeInTheDocument()
   })
 })
 
-describe('AssistantToolCards calendar presentation', () => {
+describe('CortexToolCards calendar presentation', () => {
   it('presents normalized all-day calendar events without shifting the date', () => {
     render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[
           {
             name: 'get_upcoming_calendar_events',
@@ -77,10 +77,10 @@ describe('AssistantToolCards calendar presentation', () => {
   })
 })
 
-describe('AssistantToolCards Gmail presentation', () => {
+describe('CortexToolCards Gmail presentation', () => {
   it('renders bounded Gmail search metadata in a dedicated result list', () => {
     render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[
           {
             name: 'search_gmail',
@@ -123,7 +123,7 @@ describe('AssistantToolCards Gmail presentation', () => {
 
   it('renders a selected message as inert plain text and marks truncation', () => {
     const { container } = render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[
           {
             name: 'get_gmail_message',

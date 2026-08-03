@@ -12,7 +12,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from core.agent.types import AgentQueryRequest
-from core.api.assistant import _build_hud_context, build_agent_profile_statuses
+from core.api.cortex import _build_hud_context, build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
@@ -57,7 +57,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"f1": True, "football": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
                 "voice": {"engine": "pyttsx3", "gender": "male"},
             },
         )
@@ -67,7 +67,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
         self._store_patch = mock.patch(
-            "core.api.assistant.get_settings_store",
+            "core.api.cortex.get_settings_store",
             return_value=self.store,
         )
         self._store_patch.start()
@@ -75,16 +75,16 @@ class ProfileBusyStatusTests(unittest.TestCase):
         self.addCleanup(reset_settings_store_for_tests)
         self.addCleanup(self._tmp.cleanup)
 
-    def test_local_profiles_busy_when_execution_active(self) -> None:
+    def test_local_agents_busy_when_execution_active(self) -> None:
         vitals = {"cpu": 10.0, "ram": 10.0}
         with (
-            mock.patch("core.api.assistant.OLLAMA_ENABLED", True),
+            mock.patch("core.api.cortex.OLLAMA_ENABLED", True),
             mock.patch(
-                "core.api.assistant.is_local_execution_active",
+                "core.api.cortex.is_local_execution_active",
                 return_value=True,
             ),
             mock.patch(
-                "core.api.assistant.get_status_snapshot",
+                "core.api.cortex.get_status_snapshot",
                 return_value={
                     "reachable": True,
                     "installed_tags": [
@@ -96,15 +96,15 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 },
             ),
             mock.patch(
-                "core.api.assistant.get_active_loaded_model",
+                "core.api.cortex.get_active_loaded_model",
                 return_value=None,
             ),
             mock.patch(
-                "core.api.assistant.get_loading_model",
+                "core.api.cortex.get_loading_model",
                 return_value=None,
             ),
             mock.patch(
-                "core.api.assistant.get_idle_unload_remaining_seconds",
+                "core.api.cortex.get_idle_unload_remaining_seconds",
                 return_value=None,
             ),
             mock.patch.dict(
@@ -112,7 +112,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
             ),
         ):
-            profiles = build_agent_profile_statuses()
+            profiles = build_agent_statuses()
 
         by_key = {entry.key: entry for entry in profiles}
         for key in ("sorex", "mus"):
@@ -126,9 +126,9 @@ class ProfileBusyStatusTests(unittest.TestCase):
 
     def test_cloud_available_during_local_execution(self) -> None:
         with (
-            mock.patch("core.api.assistant.OLLAMA_ENABLED", False),
+            mock.patch("core.api.cortex.OLLAMA_ENABLED", False),
             mock.patch(
-                "core.api.assistant.is_local_execution_active",
+                "core.api.cortex.is_local_execution_active",
                 return_value=True,
             ),
             mock.patch.dict(
@@ -136,7 +136,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
             ),
         ):
-            profiles = build_agent_profile_statuses()
+            profiles = build_agent_statuses()
         cloud = [entry for entry in profiles if entry.provider == "gemini"]
         self.assertTrue(cloud)
         self.assertTrue(all(entry.status == "configured" for entry in cloud))
@@ -149,7 +149,7 @@ class HudContextTests(unittest.TestCase):
 
     def test_absent_identifiers_inject_no_context(self) -> None:
         with mock.patch(
-            "core.api.assistant.database.fetch_briefing_history"
+            "core.api.cortex.database.fetch_briefing_history"
         ) as fetch_history:
             context = _build_hud_context(
                 AgentQueryRequest(prompt="hello", history=[])
@@ -159,7 +159,7 @@ class HudContextTests(unittest.TestCase):
 
     def test_briefing_id_injects_selected_row(self) -> None:
         with mock.patch(
-            "core.api.assistant.database.fetch_briefing_by_id",
+            "core.api.cortex.database.fetch_briefing_by_id",
             return_value={
                 "id": 7,
                 "briefing": "Morning overview.",
@@ -251,7 +251,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"f1": True, "football": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
                 "voice": {"engine": "pyttsx3", "gender": "male"},
             },
         )
@@ -299,7 +299,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
     def test_speak_rejects_empty_after_sanitize(self) -> None:
         response = self.client.post(
             "/api/v1/voice/speak",
-            json={"text": "🚀🚀"},
+            json={"text": "ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬"},
         )
         self.assertEqual(response.status_code, 400)
 

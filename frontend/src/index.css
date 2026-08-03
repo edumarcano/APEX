@@ -59,32 +59,32 @@
   overscroll-behavior: contain;
 }
 
-.overview-command-grid {
+.home-command-grid {
   display: grid;
   min-width: 0;
   gap: 0.5rem;
 }
 
-.overview-command-grid__assistant-row,
-.overview-command-grid__briefing-row {
+.home-command-grid__agent-row,
+.home-command-grid__briefing-row {
   display: grid;
   min-width: 0;
   gap: 0.5rem;
 }
 
-.overview-command-grid__assistant-row {
+.home-command-grid__agent-row {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.overview-command-grid__briefing-row {
+.home-command-grid__briefing-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.overview-command-grid__briefing {
+.home-command-grid__briefing {
   width: min(17.5rem, 100%);
 }
 
-.overview-command-grid__briefing-actions {
+.home-command-grid__briefing-actions {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -92,23 +92,23 @@
 }
 
 @media (min-width: 640px) {
-  .overview-command-grid__assistant-row {
+  .home-command-grid__agent-row {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .overview-command-grid__assistant-profile {
+  .home-command-grid__agent-selector {
     justify-self: start;
   }
 }
 
-.overview-command-grid__synthesize {
+.home-command-grid__synthesize {
   height: 2.5rem;
   width: 12.5rem;
   min-width: 0;
   flex: 0 1 12.5rem;
 }
 
-.overview-command-grid__synthesize > button {
+.home-command-grid__synthesize > button {
   height: 100%;
   white-space: nowrap;
 }

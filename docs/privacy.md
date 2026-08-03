@@ -11,9 +11,9 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
 | Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Mus and Sorex send it to Ollama | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
-| Assistant conversation | Browser tab owns history | Selected cloud/local model and invoked tools receive required context | No server-side chat store | Local profile with explicit local command scope |
+| Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and invoked tools receive required context | No server-side chat store | Local Agent with explicit local command scope |
 | Reminders | SQLite | No | Yes | Default behavior |
-| Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected assistant model | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
+| Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
@@ -29,7 +29,7 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing orchestration selects bounded weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts for `SynthesisInput`. Text is normalized, stripped of control characters and markup, truncated per field, serialized to a fixed bound, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera and Ollama receive the same selected facts. Concatenated display telemetry, assistant tools, and assistant history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
+Panthera and Ollama receive the same selected facts. Concatenated display telemetry, Agent tools, and Agent history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
 
 The markers and validation reduce prompt-injection risk. They do not make model output an authorization boundary, and model prose must never authorize an action.
 
@@ -41,11 +41,11 @@ OpenAI states that API inputs and outputs are not used to train or improve its m
 
 This is provider policy, not a guarantee implemented by APEX. Review the linked current terms before sending sensitive data.
 
-Selecting a local briefing profile or Structured Digest avoids sending briefing synthesis data to OpenAI.
+Selecting a local briefing Agent or Structured Digest avoids sending briefing synthesis data to OpenAI.
 
-## Assistant data
+## Interactive Agent data
 
-The assistant is separate from briefing synthesis. A cloud profile sends the prompt, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed.
+Interactive Agent work is separate from briefing synthesis. A cloud Agent sends the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local Agent sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed. The designation is stored only in gitignored `config.local.json` and is omitted when empty.
 
 An explicit cloud access verification sends only the configured model identifier and credential to the provider's metadata endpoint. It sends no prompt, history, HUD context, provider tool call, or credential value back to the browser. APEX stores only a sanitized availability category and timestamp; it does not expose or log raw provider messages.
 
@@ -53,13 +53,13 @@ HUD context is never implicit. A briefing is attached only through an explicit v
 
 Conversation history exists in the browser tab and is lost on reload. The backend has no chat-session store. Local context budgeting can omit old complete interactions and reports counts, never prompt or tool-result content.
 
-Acinonyx is a development-only Gemini sandbox with a browser history partition separate from production profiles. The backend rejects cross-partition history and saved briefing records. Acinonyx can receive only weather, Formula 1, Brave Search, Alpha Vantage, and the process-current development briefing after the backend has masked email subjects, calendar details, and reminder text. It never receives full telemetry, Gmail, Calendar, reminders, Microsoft To Do, briefing history, GitHub/private MCP, files, images, or production conversation history.
+Acinonyx is a development-only Gemini sandbox with a browser history partition separate from production Agents. The backend rejects cross-partition history and saved briefing records. Acinonyx can receive only weather, Formula 1, Brave Search, Alpha Vantage, and the process-current development briefing after the backend has masked email subjects, calendar details, and reminder text. It never receives full telemetry, Gmail, Calendar, reminders, Microsoft To Do, briefing history, GitHub/private MCP, files, images, or production conversation history.
 
 ### Native personal-data tools
 
 Gmail tools can search bounded metadata and read one selected plain-text message under `gmail.readonly`. They exclude attachments, embedded resources, active HTML, and raw MIME and cannot send, delete, archive, or label mail.
 
-Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected assistant model when invoked. The integration has no mutation methods, and SQLite reminders remain authoritative.
+Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. The integration has no mutation methods, and SQLite reminders remain authoritative.
 
 ## MCP providers
 
@@ -83,7 +83,7 @@ OAuth credential and service-account files remain local and must not be committe
 
 API and launcher logs use module loggers. Briefing `run_id` values correlate pipeline, worker, and persistence events. Operational failures record components, stable categories, and exception types rather than connector payloads, credentials, prompts, or stored briefings.
 
-Public assistant failures use stable messages instead of raw third-party exceptions. New connectors and providers still require a privacy review because external exception objects are not guaranteed to be safe.
+Public Agent failures use stable messages instead of raw third-party exceptions. New connectors and providers still require a privacy review because external exception objects are not guaranteed to be safe.
 
 ## Runtime modes
 
