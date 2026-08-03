@@ -44,6 +44,10 @@ import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
+import {
+  resolveLogoVisualColors,
+  resolveOuterShellActivity,
+} from './lib/logoVisualState'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import {
@@ -334,8 +338,9 @@ export default function App(): ReactElement {
 
   const activeStep = pipelineState?.step ?? null
   const isBriefingRunning = briefing.status === 'loading'
-  const isCompatibilitySegmentSurging =
-    isBriefingRunning && activeStep !== null && activeStep >= 1 && activeStep <= 3
+  const isRefreshingAll = telemetry.isRefreshingAll
+  const isTelemetryCollecting =
+    isRefreshingAll || telemetry.refreshingConnectors.size > 0
 
   const loadingLocalAgent = useMemo(
     () => agentsStatus.find((agent) => agent.loading) ?? null,
@@ -355,46 +360,40 @@ export default function App(): ReactElement {
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??
     (liveSynthesis?.agent ? `Apex ${liveSynthesis.agent}` : null)
-
-  const glowColor = useMemo((): string => {
-    if (briefing.status === 'error') {
-      return '220, 38, 38' // Red
-    }
-    if (isLocalModelLoading) {
-      return '249, 115, 22' // Rust orange (local model loading)
-    }
-    if (isCortexQuerying) {
-      return '168, 85, 247' // Purple (Agent working)
-    }
-    if (activeStep === 4) {
-      return '251, 191, 36' // Gold
-    }
-    if (briefing.status === 'success' && !isSpeaking) {
-      return isLocalModelLoaded ? '249, 115, 22' : '15, 77, 184'
-    }
-    if (activeStep === 3) {
-      return '168, 85, 247' // Purple/magenta (logo accent)
-    }
-    if (isBriefingRunning || activeStep === 1 || activeStep === 2) {
-      return '57, 255, 136' // Green
-    }
-    if (isLocalModelLoaded) {
-      return '249, 115, 22' // Rust orange (local model loaded)
-    }
-    if (activated) {
-      return '15, 77, 184' // Calm blue — activated home, no briefing/error state
-    }
-    return '15, 23, 42' // Deep Slate Blue
-  }, [
-    briefing.status,
+  const outerShellActivity = resolveOuterShellActivity({
     activeStep,
-    isSpeaking,
-    isLocalModelLoading,
-    isCortexQuerying,
-    isLocalModelLoaded,
     isBriefingRunning,
-    activated,
-  ])
+    isLocalModelLoading,
+    isTelemetryCollecting,
+  })
+
+  const visualColors = useMemo(
+    () =>
+      resolveLogoVisualColors({
+        briefingStatus: briefing.status,
+        activeStep,
+        activated,
+        isBriefingRunning,
+        isCortexQuerying,
+        isLocalModelLoading,
+        isLocalModelLoaded,
+        isSpeaking,
+        isTelemetryCollecting,
+      }),
+    [
+      briefing.status,
+      activeStep,
+      activated,
+      isBriefingRunning,
+      isCortexQuerying,
+      isLocalModelLoading,
+      isLocalModelLoaded,
+      isSpeaking,
+      isTelemetryCollecting,
+    ],
+  )
+  const atmosphereGlowColor = visualColors.atmosphere
+  const logoGlowColor = visualColors.logo
 
   const pendingReminderCount = activeReminders.length
   const isDormant = !activated
@@ -506,8 +505,6 @@ export default function App(): ReactElement {
     }
   }, [activated, handleStartApex, preflight.dialogOpen, preflight.isChecking])
 
-  const isRefreshingAll = telemetry.isRefreshingAll
-  const isTelemetryCollecting = isRefreshingAll || telemetry.refreshingConnectors.size > 0
   const hasSnapshot = telemetry.snapshot !== null
   const briefingControlsBusy =
     preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
@@ -825,13 +822,15 @@ export default function App(): ReactElement {
   return (
     <main
       className="hud-app-shell hud-layout-fullscreen relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6"
-      style={{ '--glow-color': glowColor } as CSSProperties}
+      style={{
+        '--atmosphere-glow-color': atmosphereGlowColor,
+        '--logo-glow-color': logoGlowColor,
+      } as CSSProperties}
     >
       <CelestialBackground />
 
       <div
         className="absolute inset-0 z-[var(--z-reactive-glow)] pointer-events-none overflow-hidden"
-        style={{ '--glow-color': glowColor } as CSSProperties}
       >
         {/* Layer 1: Horizontal Drifting Nebula (Clockwise Swirl) */}
         <div className="absolute top-[-30%] left-[-30%] h-[160%] w-[160%] opacity-40 bg-nebula-swirl-1 animate-nebula-spin-clockwise" />
@@ -955,7 +954,7 @@ export default function App(): ReactElement {
               {/* Ambient Logo Glow Projector */}
               <div
                 className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-12 h-[380px] w-[380px] rounded-full blur-[120px] opacity-10 mix-blend-screen"
-                style={{ background: 'rgba(var(--glow-color), 0.15)' }}
+                style={{ background: 'rgba(var(--atmosphere-glow-color), 0.15)' }}
                 aria-hidden
               />
               <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
@@ -986,7 +985,7 @@ export default function App(): ReactElement {
               <div className={`${logoShellClass} ${largeLogoWrapperClass}`}>
                 <div className="relative flex flex-col items-center">
                   <div
-                    className={`filter drop-shadow-[0_0_24px_rgba(var(--glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
+                    className={`filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
                   >
                     <ApexLogo
                       step={activeStep}
@@ -994,10 +993,8 @@ export default function App(): ReactElement {
                       isSpeaking={isSpeaking}
                       reminderPulseCount={reminderPulseCount}
                       isCortexQuerying={isCortexQuerying}
-                      isLocalModelLoading={isLocalModelLoading}
-                      isLocalModelLoaded={isLocalModelLoaded}
                       isTelemetryCollecting={isTelemetryCollecting}
-                      isOuterSegmentSurging={isCompatibilitySegmentSurging}
+                      outerShellActivity={outerShellActivity}
                       className={logoSizeClass}
                     />
                   </div>

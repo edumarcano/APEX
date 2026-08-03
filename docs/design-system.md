@@ -53,6 +53,8 @@ Color meaning depends on the state system in which it appears. Do not assume one
 
 Pair state color with text, icons, shape, motion, or an accessible label. Never rely on color alone.
 
+On Home, the central logo keeps the outer blue shell and core independent: collection uses the blue outer wave with an emerald core, synthesis settles completed blue stages while the core pulses purple, and local-model loading replaces the outer wave with a rust-metal wave over blue segments. Once the local model is resident, its nebula, center halo, and logo-wrapper glow remain rust while the shell returns to its normal blue behavior.
+
 ## Material System
 
 ### Glass surfaces

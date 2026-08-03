@@ -212,7 +212,7 @@ describe('TelemetryCard refresh and module state', () => {
 describe('ApexLogo telemetry collection state', () => {
   it('surges the core and sequences all blue segments while collecting', () => {
     const { container, rerender } = render(
-      <ApexLogo step={null} status="success" isTelemetryCollecting />,
+      <ApexLogo step={null} status="success" isTelemetryCollecting outerShellActivity="collection" />,
     )
 
     expect(container.querySelector('.apex-core-metal--green-surge')).toBeTruthy()
@@ -266,23 +266,28 @@ describe('BriefingDigest briefing actions', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
   })
 
-  it('surges blue segments during compatibility synthesis while retaining the purple core', () => {
+  it('keeps completed blue stages stable during synthesis while retaining the purple core', () => {
     const { container } = render(
-      <ApexLogo step={3} status="loading" isOuterSegmentSurging />,
+      <ApexLogo step={3} status="loading" outerShellActivity="synthesis" />,
     )
 
     expect(container.querySelector('.apex-core-metal--purple-surge')).toBeTruthy()
-    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(7)
+    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(0)
+    expect(container.querySelectorAll('.apex-blue-metal--active')).toHaveLength(6)
+    expect(container.querySelectorAll('.apex-blue-metal--base')).toHaveLength(1)
   })
 
-  it('keeps blue segment fills while local-model activity uses rust glow states', () => {
+  it('uses the rust wave for local loading and restores normal blue segments when loaded', () => {
     const { container, rerender } = render(
-      <ApexLogo step={3} status="loading" isLocalModelLoading />,
+      <ApexLogo step={3} status="loading" outerShellActivity="local_loading" />,
     )
 
+    expect(container.querySelector('.apex-core-metal--purple-surge')).toBeTruthy()
     expect(container.querySelectorAll('.apex-blue-metal--rust-surge')).toHaveLength(7)
+    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(0)
 
-    rerender(<ApexLogo step={null} status="success" isLocalModelLoaded />)
-    expect(container.querySelectorAll('.apex-blue-metal--rust-active')).toHaveLength(7)
+    rerender(<ApexLogo step={null} status="success" outerShellActivity="normal" />)
+    expect(container.querySelectorAll('.apex-blue-metal--rust-surge')).toHaveLength(0)
+    expect(container.querySelectorAll('.apex-blue-metal--active')).toHaveLength(7)
   })
 })
