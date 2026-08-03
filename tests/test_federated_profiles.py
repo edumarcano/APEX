@@ -8,6 +8,7 @@ from unittest import mock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from core import config
 from core.agent.catalog import (
     AGENT_SPECS,
     build_concrete_agent,
@@ -191,9 +192,13 @@ class ProfileIdentityTests(unittest.TestCase):
                     api_key="test",
                     resolved_apex_effort=None,
                     resolved_native_effort=native_effort,
+                    user_designation="Chief",
                 )
                 instruction = captured_instructions[profile.display_name]
                 self.assertTrue(instruction.startswith(identity))
+                self.assertEqual(instruction.count(identity), 1)
+                self.assertNotIn("You are APEX", instruction)
+                self.assertIn('Address the user as "Chief" when natural.', instruction)
                 expected_runtime_prompt = (
                     "Local runtime prompt."
                     if AGENT_SPECS[key].runtime == "local"
@@ -204,6 +209,48 @@ class ProfileIdentityTests(unittest.TestCase):
     def test_identity_composition_keeps_identity_when_base_prompt_is_empty(self) -> None:
         identity = AGENT_SPECS["panthera"].identity_instruction
         self.assertEqual(compose_agent_system_instruction("panthera", "  "), identity)
+
+    def test_user_designation_is_optional_and_added_once(self) -> None:
+        identity = AGENT_SPECS["panthera"].identity_instruction
+        instruction = compose_agent_system_instruction(
+            "panthera",
+            "Behavior instructions.",
+            user_designation="  Chief\n ",
+        )
+        self.assertTrue(instruction.startswith(identity))
+        self.assertIn('Address the user as "Chief" when natural.', instruction)
+        self.assertEqual(instruction.count('Address the user as "Chief"'), 1)
+        self.assertEqual(
+            compose_agent_system_instruction(
+                "panthera", "Behavior instructions.", user_designation=""
+            ),
+            f"{identity}\n\nBehavior instructions.",
+        )
+
+
+class PromptConfigurationTests(unittest.TestCase):
+    def test_primary_prompt_is_canonical_and_prompt_bodies_do_not_claim_identity(self) -> None:
+        synthesis = config._CONFIG_DATA["synthesis"]
+        self.assertNotIn("system_prompt", config._CONFIG_DATA)
+        self.assertIn("primary_system_prompt", synthesis)
+        self.assertEqual(config.PRIMARY_SYNTHESIS_PROMPT, synthesis["primary_system_prompt"])
+        self.assertEqual(config.OLLAMA_SYNTHESIS_PROMPT, synthesis["ollama_system_prompt"])
+        self.assertEqual(config.AGENT_SYSTEM_PROMPT, config._CONFIG_DATA["agent_system_prompt"])
+        self.assertEqual(
+            config.LOCAL_AGENT_SYSTEM_PROMPT,
+            config._CONFIG_DATA["local_agent_system_prompt"],
+        )
+        for prompt in (
+            synthesis["primary_system_prompt"],
+            synthesis["ollama_system_prompt"],
+            config._CONFIG_DATA["agent_system_prompt"],
+            config._CONFIG_DATA["local_agent_system_prompt"],
+        ):
+            self.assertNotIn("You are APEX", prompt)
+
+    def test_missing_prompt_configuration_is_not_replaced_by_embedded_text(self) -> None:
+        with self.assertRaises(RuntimeError):
+            config._required_prompt("", key="agent_system_prompt")
 
 
 class LocalEffortRejectionTests(unittest.TestCase):

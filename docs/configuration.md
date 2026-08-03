@@ -7,8 +7,8 @@ This is the canonical operator reference for APEX settings, runtime modes, crede
 | Surface | Contains | Version control |
 |---|---|---|
 | `.env` | Secrets, credential paths, machine paths, and environment-only modes | Never committed |
-| `config.json` | Tracked non-secret defaults, prompts, feature flags, model behavior, and provider presets | Committed |
-| `config.local.json` | Machine-local runtime-setting overrides | Gitignored |
+| `config.json` | Tracked non-secret defaults, prompt text, feature flags, model behavior, and provider presets | Committed |
+| `config.local.json` | Machine-local runtime-setting overrides, including the optional user designation | Gitignored |
 | Runtime Settings | Editable subset of resolved settings | Persists to `config.local.json` |
 
 At runtime, APEX loads `config.json`, recursively overlays valid values from `config.local.json`, and publishes an immutable settings snapshot. A malformed local overlay is discarded as a whole and reported through the settings API; it does not partially mutate active settings.
@@ -17,18 +17,19 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `7`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `8`.
 
 | Group | Editable values |
 |---|---|
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
-| Assistant | Global Ask APEX enabled switch; Cortex owns profile, effort, and grounding selection |
+| Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
+| Assistant | Global Ask APEX enabled switch; Cortex owns Agent, effort, and grounding selection |
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Overview command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 
-Followed football teams, prompts, Ollama host and resource gates, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
+Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
 
 ### When changes take effect
 

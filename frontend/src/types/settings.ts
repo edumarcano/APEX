@@ -59,6 +59,7 @@ export interface McpSettings {
 }
 
 export interface RuntimeSettings {
+  user_designation: string
   features: FeaturesSettings
   modules: ModulesSettings
   ask_apex: AskApexSettings
@@ -113,6 +114,7 @@ export interface McpServerEnablementPatch {
 }
 
 export interface SettingsPatch {
+  user_designation?: string
   features?: FeaturesPatch
   modules?: ModulesPatch
   ask_apex?: AskApexPatch

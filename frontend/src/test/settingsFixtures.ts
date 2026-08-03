@@ -5,6 +5,7 @@ import type {
 } from '../types/settings'
 
 export const BASE_SETTINGS: RuntimeSettings = {
+  user_designation: '',
   features: {
     weather: true,
     sports: true,
@@ -50,7 +51,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 7,
+    schema_version: 8,
     settings,
     local_file_present: false,
     local_override_active: false,

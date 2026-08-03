@@ -188,7 +188,7 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
         ) as generate, patch(
-            "core.synthesis.router.PANTHERA_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
+            "core.synthesis.router.PRIMARY_SYNTHESIS_PROMPT", "PRIMARY_PROMPT"
         ), patch(
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
@@ -198,10 +198,11 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(tools, [])
         self.assertFalse(profile.think)
         self.assertEqual(profile.final_answer_max_tokens, 512)
-        self.assertEqual(profile.system_instruction, "PANTHERA_PROMPT")
+        self.assertTrue(profile.system_instruction.startswith("You are Apex Mus"))
+        self.assertTrue(profile.system_instruction.endswith("PRIMARY_PROMPT"))
         self.assertEqual(result.agent, "mus")
 
-    def test_sorex_uses_local_prompt_mus_uses_panthera_prompt(self) -> None:
+    def test_sorex_uses_local_prompt_mus_uses_primary_prompt(self) -> None:
         router = SynthesisRouter()
         response = ProviderTurnResult(
             message=AgentMessage(
@@ -214,14 +215,24 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
         ) as generate, patch(
-            "core.synthesis.router.PANTHERA_SYNTHESIS_PROMPT", "PANTHERA_PROMPT"
+            "core.synthesis.router.PRIMARY_SYNTHESIS_PROMPT", "PRIMARY_PROMPT"
         ), patch(
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
             router._ollama(sample_input(), "sorex", None)
-            self.assertEqual(generate.call_args.args[2].system_instruction, "SOREX_PROMPT")
+            self.assertTrue(
+                generate.call_args.args[2].system_instruction.startswith("You are Apex Sorex")
+            )
+            self.assertTrue(
+                generate.call_args.args[2].system_instruction.endswith("SOREX_PROMPT")
+            )
             router._ollama(sample_input(), "mus", None)
-            self.assertEqual(generate.call_args.args[2].system_instruction, "PANTHERA_PROMPT")
+            self.assertTrue(
+                generate.call_args.args[2].system_instruction.startswith("You are Apex Mus")
+            )
+            self.assertTrue(
+                generate.call_args.args[2].system_instruction.endswith("PRIMARY_PROMPT")
+            )
 
     def test_legacy_local_strategy_resolves_to_mus(self) -> None:
         from core.synthesis.models import strategy_to_briefing_mode

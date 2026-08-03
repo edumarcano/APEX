@@ -12,10 +12,10 @@ from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.responses_api import ResponsesModelProfile
 from core.agent.tool_policies import hosted_tools_for_agent
 from core.config import (
-    DEFAULT_AGENT_SYSTEM_PROMPT,
-    DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
+    AGENT_SYSTEM_PROMPT,
     GEMINI_AGENT_MAX_TOOL_CALLS,
     GEMINI_AGENT_MAX_TURNS,
+    LOCAL_AGENT_SYSTEM_PROMPT,
     MUS_CPU_LIMIT,
     MUS_RAM_LIMIT,
     SOREX_CPU_LIMIT,
@@ -285,11 +285,25 @@ def agent_has_credentials(agent_key: str) -> bool:
     return bool(os.getenv(spec.credential_env))
 
 
-def compose_agent_system_instruction(agent_key: str, base_instruction: str) -> str:
-    """Prefix one immutable Agent identity to the effective system prompt."""
+def compose_agent_system_instruction(
+    agent_key: str,
+    base_instruction: str,
+    *,
+    user_designation: str = "",
+) -> str:
+    """Compose identity, behavior, and optional user-addressing instructions."""
     identity = AGENT_SPECS[agent_key].identity_instruction
     normalized_base = base_instruction.strip()
-    return f"{identity}\n\n{normalized_base}" if normalized_base else identity
+    normalized_designation = " ".join(user_designation.split())[:80]
+    designation_instruction = (
+        f'Address the user as "{normalized_designation}" when natural.'
+        if normalized_designation
+        else ""
+    )
+    body = "\n\n".join(
+        part for part in (normalized_base, designation_instruction) if part
+    )
+    return f"{identity}\n\n{body}" if body else identity
 
 
 def credential_missing_message(agent_key: str) -> str:
@@ -331,7 +345,7 @@ def build_concrete_agent(
             max_tool_turns=spec.max_tool_turns,
             max_tool_calls=spec.max_tool_calls,
             system_instruction=compose_agent_system_instruction(
-                agent_key, DEFAULT_AGENT_SYSTEM_PROMPT
+                agent_key, AGENT_SYSTEM_PROMPT
             ),
             hosted_tools=hosted_tools_for_agent(
                 agent_key,
@@ -371,7 +385,7 @@ def build_concrete_agent(
             ram_limit=ram_limit,
             cpu_limit=cpu_limit,
             system_instruction=compose_agent_system_instruction(
-                agent_key, DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
+                agent_key, LOCAL_AGENT_SYSTEM_PROMPT
             ),
         )
     return ResponsesModelProfile(
@@ -382,7 +396,7 @@ def build_concrete_agent(
         max_tool_turns=spec.max_tool_turns,
         max_tool_calls=spec.max_tool_calls,
         system_instruction=compose_agent_system_instruction(
-            agent_key, DEFAULT_AGENT_SYSTEM_PROMPT
+            agent_key, AGENT_SYSTEM_PROMPT
         ),
         reasoning_effort=native_effort,
         hosted_tools=hosted_tools_for_agent(

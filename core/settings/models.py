@@ -142,6 +142,11 @@ class RuntimeSettingsSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    user_designation: str = Field(
+        default="",
+        max_length=80,
+        description="Optional local designation used when addressing the user.",
+    )
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
@@ -239,6 +244,7 @@ class SettingsPatch(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    user_designation: str | None = Field(default=None, max_length=80)
     features: FeaturesPatch | None = None
     modules: ModulesPatch | None = None
     ask_apex: AskApexPatch | None = None

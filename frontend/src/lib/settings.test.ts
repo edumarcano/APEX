@@ -149,6 +149,7 @@ describe('settings editing utilities', () => {
 
   it('generates a patch containing only dirty fields', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.user_designation = 'Chief'
     draft.features.weather = false
     draft.features.market = false
     draft.ask_apex.runtime = 'local'
@@ -160,6 +161,7 @@ describe('settings editing utilities', () => {
     draft.mcp.servers.github.enabled = true
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      user_designation: 'Chief',
       features: { weather: false, market: false },
       ask_apex: { runtime: 'local', local_agent: 'sorex' },
       briefing: { default_mode: 'mus' },

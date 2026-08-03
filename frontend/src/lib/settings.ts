@@ -292,6 +292,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   }
 
   return {
+    user_designation:
+      typeof value.user_designation === 'string' ? value.user_designation : '',
     features,
     modules,
     ask_apex: {
@@ -323,6 +325,7 @@ export function resolveAgentKey(settings: RuntimeSettings['ask_apex']): AgentKey
 
 export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings {
   return {
+    user_designation: settings.user_designation,
     features: { ...settings.features },
     modules: { ...settings.modules },
     ask_apex: { ...settings.ask_apex },
@@ -402,6 +405,10 @@ export function diffSettingsPatch(
 ): SettingsPatch {
   const patch: SettingsPatch = {}
 
+  if (baseline.user_designation !== draft.user_designation) {
+    patch.user_designation = draft.user_designation
+  }
+
   const features = diffSection(baseline.features, draft.features)
   if (features) {
     patch.features = features
@@ -451,6 +458,7 @@ export function diffSettingsPatch(
 
 export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
   return (
+    patch.user_designation === undefined &&
     patch.features === undefined &&
     patch.modules === undefined &&
     patch.ask_apex === undefined &&

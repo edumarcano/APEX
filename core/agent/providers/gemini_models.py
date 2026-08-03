@@ -2,13 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from core.config import (
-    DEFAULT_AGENT_SYSTEM_PROMPT,
-    GEMINI_AGENT_MAX_TOOL_CALLS,
-    GEMINI_AGENT_MAX_TURNS,
-)
-
-
 GeminiThinkingLevel = Literal["low", "medium", "high"]
 
 
@@ -36,7 +29,6 @@ class GeminiModelProfile(BaseModel):
         description="Maximum individual tool executions allowed per session.",
     )
     system_instruction: str = Field(
-        default=DEFAULT_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the cloud agent.",
     )
     hosted_tools: frozenset[Literal["google_search", "google_maps"]] = Field(

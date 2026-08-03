@@ -38,7 +38,16 @@ _FEATURE_KEYS: frozenset[str] = frozenset(
 )
 _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 _EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
-    {"features", "modules", "football", "ask_apex", "briefing", "tts_settings", "mcp"}
+    {
+        "user_designation",
+        "features",
+        "modules",
+        "football",
+        "ask_apex",
+        "briefing",
+        "tts_settings",
+        "mcp",
+    }
 )
 
 
@@ -92,7 +101,6 @@ def normalize_layer(
     for key, value in raw.items():
         if key not in _EDITABLE_ROOT_KEYS:
             if key not in (
-                "system_prompt",
                 "synthesis",
                 "agent_system_prompt",
                 "local_agent_system_prompt",
@@ -106,7 +114,16 @@ def normalize_layer(
                 )
             continue
 
-        if key == "features":
+        if key == "user_designation":
+            if layer_name == "config.json":
+                _LOGGER.warning(
+                    "Ignoring user_designation in tracked config.json; configure it in config.local.json."
+                )
+                continue
+            designation = _normalize_user_designation(value, layer_name, issues)
+            if designation is not None:
+                normalized["user_designation"] = designation
+        elif key == "features":
             normalized["features"] = _normalize_features(
                 value, layer_name, issues
             )
@@ -137,6 +154,28 @@ def normalize_layer(
             if mcp:
                 normalized["mcp"] = mcp
 
+    return normalized
+
+
+def _normalize_user_designation(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> str | None:
+    """Normalize the optional local user designation without exposing its value."""
+    if not isinstance(value, str):
+        _record_error(issues, "user_designation must be a string")
+        _LOGGER.warning(
+            "user_designation in %s must be a string; ignoring.", layer_name
+        )
+        return None
+
+    normalized = " ".join(value.split())
+    if len(normalized) > 80:
+        _record_error(issues, "user_designation must be at most 80 characters")
+        _LOGGER.warning(
+            "user_designation in %s exceeds the maximum length; ignoring.",
+            layer_name,
+        )
+        return None
     return normalized
 
 
@@ -681,6 +720,11 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         ),
     )
     return RuntimeSettingsSnapshot(
+        user_designation=(
+            merged.get("user_designation", "")
+            if isinstance(merged.get("user_designation", ""), str)
+            else ""
+        ),
         features=features,
         modules=modules,
         football=football,
@@ -694,6 +738,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
 def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
     """Serialize a snapshot to on-disk editable section keys."""
     return {
+        "user_designation": snapshot.user_designation,
         "features": snapshot.features.model_dump(),
         "modules": snapshot.modules.model_dump(),
         "ask_apex": {
@@ -730,12 +775,18 @@ def apply_patch_to_snapshot(
     """Merge a strict dirty-field patch onto a snapshot and return a new snapshot."""
     data = snapshot.model_dump()
     patch_data = patch.model_dump(exclude_none=True)
+    if "user_designation" in patch_data:
+        patch_data["user_designation"] = " ".join(
+            patch_data["user_designation"].split()
+        )
     return RuntimeSettingsSnapshot.model_validate(recursive_overlay(data, patch_data))
 
 
 def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
     """Map a logical SettingsPatch onto on-disk key structure (dirty fields only)."""
     ondisk: dict[str, Any] = {}
+    if patch.user_designation is not None:
+        ondisk["user_designation"] = " ".join(patch.user_designation.split())
     if patch.features is not None:
         features = {
             key: value

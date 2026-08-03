@@ -45,7 +45,7 @@ Selecting a local briefing profile or Structured Digest avoids sending briefing 
 
 ## Assistant data
 
-The assistant is separate from briefing synthesis. A cloud profile sends the prompt, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed.
+The assistant is separate from briefing synthesis. A cloud profile sends the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed. The designation is stored only in gitignored `config.local.json` and is omitted when empty.
 
 An explicit cloud access verification sends only the configured model identifier and credential to the provider's metadata endpoint. It sends no prompt, history, HUD context, provider tool call, or credential value back to the browser. APEX stores only a sanitized availability category and timestamp; it does not expose or log raw provider messages.
 

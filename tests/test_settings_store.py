@@ -55,7 +55,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
                 "primary_tts": "google",
                 "voice_gender": "female",
             },
-            "system_prompt": "ignored by settings store",
+            "legacy_prompt": "ignored by settings store",
         }
         _write_json(self.config_path, self.base)
 
@@ -78,6 +78,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertEqual(snap.ask_apex.effort, "focused")
         self.assertEqual(snap.ask_apex.local_agent, "mus")
+        self.assertEqual(snap.user_designation, "")
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "female")
         self.assertFalse(store.local_file_present)
@@ -88,6 +89,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         _write_json(
             self.local_path,
             {
+                "user_designation": "  Chief  ",
                 "features": {"news": True},
                 "ask_apex": {"enabled": False, "default_profile": "nova"},
                 "tts_settings": {"primary_tts": "kokoro"},
@@ -102,6 +104,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertEqual(snap.voice.engine, "kokoro")
         self.assertEqual(snap.voice.gender, "female")
+        self.assertEqual(snap.user_designation, "Chief")
         self.assertTrue(store.local_file_present)
         self.assertTrue(store.local_override_active)
 
@@ -352,6 +355,19 @@ class SettingsStorePatchTests(unittest.TestCase):
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertEqual(written["features"]["sports"], True)
 
+    def test_user_designation_persists_and_can_be_cleared(self) -> None:
+        store = self._store()
+
+        store.apply_patch(SettingsPatch(user_designation="  Chief  "))
+        self.assertEqual(store.get_snapshot().user_designation, "Chief")
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["user_designation"], "Chief")
+
+        store.apply_patch(SettingsPatch(user_designation=""))
+        self.assertEqual(store.get_snapshot().user_designation, "")
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["user_designation"], "")
+
     def test_successful_patch_clears_load_warning(self) -> None:
         self.local_path.write_text("{not-json", encoding="utf-8")
         store = self._store()
@@ -371,7 +387,7 @@ class SettingsStorePatchTests(unittest.TestCase):
         _write_json(
             self.local_path,
             {
-                "system_prompt": "preserve me",
+                "legacy_prompt": "preserve me",
                 "ask_apex": {"max_session_messages": 12},
                 "future_section": {"enabled": True},
             },
@@ -381,7 +397,7 @@ class SettingsStorePatchTests(unittest.TestCase):
         store.apply_patch(SettingsPatch(features=FeaturesPatch(sports=True)))
 
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(written["system_prompt"], "preserve me")
+        self.assertEqual(written["legacy_prompt"], "preserve me")
         self.assertEqual(written["ask_apex"]["max_session_messages"], 12)
         self.assertEqual(written["future_section"], {"enabled": True})
         self.assertTrue(written["features"]["sports"])

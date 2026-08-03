@@ -173,12 +173,13 @@ def load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
 
 def mock_briefing_history() -> list[dict[str, Any]]:
     """Static briefing ledger for DEMO_MODE history responses."""
+    greeting = _demo_greeting()
     return [
         {
             "id": 3,
             "timestamp": "2026-06-08T08:15:00",
             "briefing": (
-                "Greetings Chief. APEX simulation controls are operational. "
+                f"{greeting} APEX simulation controls are operational. "
                 "Atmospheric sensors report seventy-two degrees with clear skies. "
                 "Your inbox has two unread primary messages, and your next calendar item, "
                 "Demo Presentation, begins at three PM."
@@ -242,12 +243,20 @@ def mock_briefing_history() -> list[dict[str, Any]]:
 def build_demo_briefing(telemetry: TelemetryPayload) -> str:
     """Compose a deterministic briefing string from mock telemetry fields."""
     return (
-        "Greetings Chief. APEX simulation controls are operational. "
+        f"{_demo_greeting()} APEX simulation controls are operational. "
         "Atmospheric sensors report seventy-two degrees with clear skies. "
         "The Monaco Grand Prix is scheduled for this week, with the main race running on Sunday. "
         "Your inbox has two unread primary messages, and your next calendar item, "
         "Demo Presentation, begins at three PM. All local databases are fully synchronized."
     )
+
+
+def _demo_greeting() -> str:
+    """Return a demo greeting using the optional local user designation."""
+    from core.settings import get_settings_store
+
+    designation = get_settings_store().get_snapshot().user_designation
+    return f"Greetings {designation}." if designation else "Greetings."
 
 
 def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:

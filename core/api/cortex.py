@@ -581,6 +581,7 @@ def _execute_agent_turn(
     disable_tools: bool = False,
     disable_hud_context: bool = False,
     cloud_tools: list[CapabilityDescriptor] | None = None,
+    user_designation: str = "",
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -608,7 +609,11 @@ def _execute_agent_turn(
             scope_instruction = ""
 
         local_system_instruction = (
-            compose_agent_system_instruction(agent_key, base_prompt)
+            compose_agent_system_instruction(
+                agent_key,
+                base_prompt,
+                user_designation=user_designation,
+            )
             + scope_instruction
             + hud_context
         )
@@ -828,6 +833,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 disable_tools=False,
                 disable_hud_context=False,
                 cloud_tools=cloud_tools,
+                user_designation=settings.user_designation,
             )
         finally:
             end_local_execution()
@@ -848,4 +854,5 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         disable_tools=False,
         disable_hud_context=False,
         cloud_tools=cloud_tools,
+        user_designation=settings.user_designation,
     )

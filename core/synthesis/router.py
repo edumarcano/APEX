@@ -29,7 +29,7 @@ from core.config import (
     LOCAL_PRIMARY_GRACE_SECONDS,
     OLLAMA_ENABLED,
     OLLAMA_SYNTHESIS_PROMPT,
-    PANTHERA_SYNTHESIS_PROMPT,
+    PRIMARY_SYNTHESIS_PROMPT,
 )
 from core.synthesis.formatting import (
     deterministic_fallback,
@@ -43,6 +43,7 @@ from core.synthesis.models import (
     SynthesisResult,
     strategy_to_briefing_mode,
 )
+from core.settings import get_settings_store
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,10 +96,10 @@ def _has_unrecognized_resident_model() -> bool:
 
 
 def _system_prompt_for_agent(agent_key: str) -> str:
-    """Sorex keeps its local prompt; Mus uses the shared briefing contract."""
+    """Sorex keeps its local prompt; Mus uses the primary briefing contract."""
     if agent_key == "sorex":
         return OLLAMA_SYNTHESIS_PROMPT
-    return PANTHERA_SYNTHESIS_PROMPT
+    return PRIMARY_SYNTHESIS_PROMPT
 
 
 class SynthesisRouter:
@@ -220,7 +221,9 @@ class SynthesisRouter:
             [],
             agent,
             system_instruction_override=compose_agent_system_instruction(
-                "panthera", PANTHERA_SYNTHESIS_PROMPT
+                "panthera",
+                PRIMARY_SYNTHESIS_PROMPT,
+                user_designation=get_settings_store().get_snapshot().user_designation,
             ),
         )
         briefing, insights = parse_model_output(turn.message.content or "")
@@ -253,7 +256,13 @@ class SynthesisRouter:
                 update={
                     "final_answer_max_tokens": 512,
                     "think": False,
-                    "system_instruction": _system_prompt_for_agent(agent_key),
+                    "system_instruction": compose_agent_system_instruction(
+                        agent_key,
+                        _system_prompt_for_agent(agent_key),
+                        user_designation=(
+                            get_settings_store().get_snapshot().user_designation
+                        ),
+                    ),
                 }
             )
             self._state("generating", "ollama", agent_key, None)

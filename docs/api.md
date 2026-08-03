@@ -63,12 +63,13 @@ Returns boot-time HUD values such as Ask APEX enablement, the effective Agent an
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `7`.
+Returns the resolved settings envelope. The current contract version is `8`.
 
 ```json
 {
   "schema_version": 8,
   "settings": {
+    "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
     "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
@@ -90,10 +91,11 @@ Returns the resolved settings envelope. The current contract version is `7`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for connectors, sports modules, Ask APEX, briefing, voice, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
 
 ```json
 {
+  "user_designation": "Chief",
   "briefing": { "default_mode": "structured_digest" },
   "voice": { "mode": "manual" },
   "mcp": { "servers": { "github": { "enabled": true } } }
@@ -102,7 +104,7 @@ Accepts a strict partial patch for connectors, sports modules, Ask APEX, briefin
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds.
 
-Environment modes, credentials, prompts, endpoints, commands, allowlists, tool risks, and football teams are not patchable.
+Environment modes, prompt text, credentials, endpoints, commands, allowlists, tool risks, and football teams are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay.
 
 ## Runtime status
 

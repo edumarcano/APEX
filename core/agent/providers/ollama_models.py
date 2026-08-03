@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from core.config import (
-    DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
+    LOCAL_AGENT_SYSTEM_PROMPT,
     MUS_CPU_LIMIT,
     MUS_RAM_LIMIT,
     SOREX_CPU_LIMIT,
@@ -58,7 +58,6 @@ class OllamaModelProfile(BaseModel):
         description="Maximum host CPU utilization percentage before load is gated."
     )
     system_instruction: str = Field(
-        default=DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
         description="Base persona and behavioral instructions for the local agent.",
     )
 
@@ -81,6 +80,7 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=SOREX_RAM_LIMIT,
         cpu_limit=SOREX_CPU_LIMIT,
+        system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
     ),
     "mus": OllamaModelProfile(
         display_name="Apex Mus",
@@ -99,5 +99,6 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=MUS_RAM_LIMIT,
         cpu_limit=MUS_CPU_LIMIT,
+        system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
     ),
 }
