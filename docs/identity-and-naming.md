@@ -152,7 +152,7 @@ Panthera is therefore the broad, everyday generalist of the current Agent family
 
 That relationship is reflected in APEX. Neofelis is adjacent to Panthera, but it is not intended for the same broad general-purpose role.
 
-Apex Neofelis specializes in using the distinctive capabilities of its underlying model. It currently uses Gemini 3.6 Flash and focuses on capabilities such as Google Search, Google Maps, multimodal work, and a one-million-token context window without a separate long-context surcharge in the current pricing configuration.
+Apex Neofelis specializes in using the distinctive capabilities of its underlying model. It currently uses Gemini 3.6 Flash and focuses on Google Search, Google Maps, and a one-million-token context window without a separate long-context surcharge in the current pricing configuration. The underlying model may support multimodal work, but current APEX requests are text- and tool-based.
 
 The name represents a smaller and more specialized relative of the Panthera group. Neofelis may be the better choice when its particular Google integrations or long-context capabilities are useful, even when Panthera remains the default for general everyday work.
 

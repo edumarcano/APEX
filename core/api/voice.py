@@ -32,7 +32,8 @@ def speak_text(payload: VoiceSpeakRequest) -> VoiceSpeakResponse:
         )
 
     try:
-        if not speaker.try_speak(cleaned):
+        resolved_engine = speaker.try_speak(cleaned)
+        if resolved_engine is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Speech delivery is already in progress.",
@@ -44,4 +45,4 @@ def speak_text(payload: VoiceSpeakRequest) -> VoiceSpeakResponse:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Speech delivery failed.",
         ) from None
-    return VoiceSpeakResponse()
+    return VoiceSpeakResponse(resolved_engine=resolved_engine)

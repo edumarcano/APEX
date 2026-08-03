@@ -38,6 +38,7 @@ export interface BriefingDigestProps {
   speakDisabled?: boolean
   showSpeakAction?: boolean
   synthesisLabel?: string | null
+  deliveryLabel?: string | null
   fallbackReason?: string | null
   speechError?: string | null
 }
@@ -57,6 +58,7 @@ export function BriefingDigest({
   speakDisabled = false,
   showSpeakAction = false,
   synthesisLabel = null,
+  deliveryLabel = null,
   fallbackReason = null,
   speechError = null,
 }: BriefingDigestProps): ReactElement {
@@ -72,9 +74,9 @@ export function BriefingDigest({
   const shellClass = attentionShellClass(attentionTier)
 
   const statusMeta =
-    synthesisLabel || fallbackReason || speechError ? (
+    synthesisLabel || deliveryLabel || fallbackReason || speechError ? (
       <p className={`text-[11px] leading-relaxed ${speechError ? 'text-red-300' : 'text-zinc-400'}`} role="status">
-        {[synthesisLabel, fallbackReason ? `Fallback: ${fallbackReason}` : null, speechError]
+        {[synthesisLabel, deliveryLabel, fallbackReason ? `Fallback: ${fallbackReason}` : null, speechError]
           .filter(Boolean)
           .join(' · ')}
       </p>

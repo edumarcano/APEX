@@ -281,7 +281,7 @@ def _build_response(
 
 def _is_simulation_mode() -> bool:
     """Return whether outbound market HTTP should be bypassed."""
-    return DEMO_MODE or _get_api_key() is None
+    return DEMO_MODE
 
 
 def _simulate_sparkline(current_price: float, *, seed_ts: float) -> list[float]:
@@ -341,15 +341,14 @@ def fetch_market_data() -> dict[str, Any]:
         return _fetch_demo_market_data()
 
     symbols = _parse_configured_symbols()
-    if symbols is None:
+    api_key = _get_api_key()
+    if symbols is None or api_key is None:
         return _build_response(
             status="not_configured",
             cooldown_active=False,
             cooldown_remaining_seconds=0,
             tickers=[],
         )
-
-    api_key = _get_api_key()
 
     with _MARKET_LOCK:
         cache = _read_cache()

@@ -266,10 +266,6 @@ It also rejects a competing lifecycle action, and reports a failed post-action v
 - `409` — local generation or lifecycle action is in progress.
 - `503` — the unload request or post-action Ollama verification failed.
 
-### POST `/api/v1/cortex/local-model/unload`
-
-Compatibility alias with identical behavior to `POST /api/v1/cortex/local-model/unload`.
-
 ### POST `/api/v1/cortex/query`
 
 Runs one Cortex Engine turn. The browser supplies history on every request; the server does not persist a session.
@@ -334,7 +330,13 @@ Speaks an existing bounded transcript through the currently resolved engine.
 { "text": "Your briefing is ready." }
 ```
 
-- `200` — delivery was accepted and the resolved engine is reported.
+Successful response after playback completes:
+
+```json
+{ "status": "spoken", "resolved_engine": "pyttsx3" }
+```
+
+- `200` — playback completed and the resolved engine is reported.
 - `409` — speech is already active.
 - `503` — no configured fallback completed delivery.
 

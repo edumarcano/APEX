@@ -81,13 +81,13 @@ Use two terminals from the repository root.
 Terminal 1 — API:
 
 ```powershell
-uv run python -m uvicorn core.api:app --reload
+uv run python -m uvicorn core.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Terminal 2 — compiled frontend:
 
 ```powershell
-uv run python -m http.server 5500 --directory dist
+uv run python -m http.server 5500 --bind 127.0.0.1 --directory dist
 ```
 
 Open `http://127.0.0.1:5500`.

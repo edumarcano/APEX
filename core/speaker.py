@@ -7,7 +7,7 @@ import os
 import threading
 import wave
 
-from typing import Any
+from typing import Any, Literal
 
 try:
     from kokoro_onnx import Kokoro
@@ -36,6 +36,7 @@ _SPEAK_LOCK = threading.Lock()
 _KOKORO_LOCK = threading.Lock()
 _GOOGLE_TTS_CLIENT: Any | None = None
 _KOKORO_CLIENT: Kokoro | None = None
+ResolvedTtsEngine = Literal["google", "kokoro", "pyttsx3"]
 
 
 def _infer_language_code(voice_id: str) -> str:
@@ -303,8 +304,10 @@ def is_speaking() -> bool:
     return False
 
 
-def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> bool:
-    """Route speech through a safe, low-latency fallback chain keyed by ``tts_strategy``."""
+def _route_tts_playback(
+    text: str, tts_strategy: str, *, gender: str
+) -> ResolvedTtsEngine | None:
+    """Route speech and return the engine that completed playback."""
     normalized = tts_strategy.strip().lower()
 
     if normalized == "piper":
@@ -317,15 +320,15 @@ def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> bool:
     if normalized == "google":
         _LOGGER.info("Routing to Google Cloud TTS client API.")
         if _try_google_tts(text, gender=gender):
-            return True
+            return "google"
         _LOGGER.info("Google TTS failed; falling back to pyttsx3.")
-        return _speak_pyttsx3_local(text, gender=gender)
+        return "pyttsx3" if _speak_pyttsx3_local(text, gender=gender) else None
 
     if normalized == "kokoro":
         _LOGGER.info("Routing to local Kokoro ONNX engine.")
         try:
             _speak_kokoro_local(text, gender=gender)
-            return True
+            return "kokoro"
         except Exception as exc:  # noqa: BLE001
             _LOGGER.warning(
                 "Local Kokoro ONNX playback failed (%s); "
@@ -336,7 +339,7 @@ def _route_tts_playback(text: str, tts_strategy: str, *, gender: str) -> bool:
 
     if normalized == "pyttsx3":
         _LOGGER.info("Routing directly to local pyttsx3 execution.")
-        return _speak_pyttsx3_local(text, gender=gender)
+        return "pyttsx3" if _speak_pyttsx3_local(text, gender=gender) else None
 
     _LOGGER.warning(
         "Unrecognized TTS strategy %r; defaulting to local pyttsx3.",
@@ -350,7 +353,7 @@ def _deliver_speech(
     *,
     tts_override: str | None = None,
     voice_gender: str | None = None,
-) -> bool:
+) -> ResolvedTtsEngine | None:
     """Route speech while the caller holds ``_SPEAK_LOCK``."""
     _LOGGER.info("Speak request received (chars=%s).", len(text))
 
@@ -381,7 +384,7 @@ def speak(
     *,
     tts_override: str | None = None,
     voice_gender: str | None = None,
-) -> None:
+) -> ResolvedTtsEngine:
     """Speak text using bound engine/gender for the duration of this call.
 
     Protects and linearizes all executing threads via a universal lock block to guarantee
@@ -394,7 +397,12 @@ def speak(
             runtime settings snapshot captured at speak entry.
     """
     with _SPEAK_LOCK:
-        _deliver_speech(text, tts_override=tts_override, voice_gender=voice_gender)
+        resolved = _deliver_speech(
+            text, tts_override=tts_override, voice_gender=voice_gender
+        )
+        if resolved is None:
+            raise RuntimeError("speech_delivery_failed")
+        return resolved
 
 
 def try_speak(
@@ -402,22 +410,22 @@ def try_speak(
     *,
     tts_override: str | None = None,
     voice_gender: str | None = None,
-) -> bool:
+) -> ResolvedTtsEngine | None:
     """
     Attempt speech without blocking when another delivery holds the lock.
 
     Returns:
-        True when playback was started under the speech lock; False when busy.
+        The engine that completed playback, or ``None`` when speech is busy.
     """
     if not _SPEAK_LOCK.acquire(blocking=False):
-        return False
+        return None
     try:
-        delivered = _deliver_speech(
+        resolved = _deliver_speech(
             text, tts_override=tts_override, voice_gender=voice_gender
         )
-        if not delivered:
+        if resolved is None:
             raise RuntimeError("speech_delivery_failed")
-        return True
+        return resolved
     finally:
         _SPEAK_LOCK.release()
 

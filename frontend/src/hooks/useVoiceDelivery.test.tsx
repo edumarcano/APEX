@@ -18,11 +18,24 @@ describe('useVoiceDelivery', () => {
     expect(result.current.isSpeaking).toBe(true)
 
     await act(async () => {
-      resolveFetch?.(new Response(JSON.stringify({ status: 'spoken' }), { status: 200 }))
+      resolveFetch?.(new Response(JSON.stringify({ status: 'spoken', resolved_engine: 'pyttsx3' }), { status: 200 }))
       expect(await request!).toBe(true)
     })
     expect(result.current.isSpeaking).toBe(false)
     expect(result.current.error).toBeNull()
+    expect(result.current.resolvedEngine).toBe('pyttsx3')
+  })
+
+  it('rejects a success response without a valid resolved engine', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'spoken' }), { status: 200 }),
+    ))
+    const { result } = renderHook(() => useVoiceDelivery())
+
+    await act(async () => {
+      expect(await result.current.speak('Replay this briefing.')).toBe(false)
+    })
+    expect(result.current.error).toBe('Voice delivery returned an invalid engine.')
   })
 
   it('surfaces stable backend delivery failures', async () => {

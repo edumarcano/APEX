@@ -96,7 +96,7 @@ class BriefingDeliveryTests(unittest.TestCase):
                 "core.telemetry.service.get_settings_store", return_value=self.store
             ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
-            mock.patch("core.speaker.try_speak", return_value=True),
+            mock.patch("core.speaker.try_speak", return_value="pyttsx3"),
             mock.patch("core.speaker.speak"),
             mock.patch("core.api.app.OLLAMA_ENABLED", False),
             mock.patch("core.database.DB_NAME", str(self.db_path)),

@@ -43,7 +43,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
-- **Cloud, local, and deterministic execution** — Gemini and Ollama are optional strategies, with Structured Digest as the final model-free fallback.
+- **Cloud, local, and deterministic execution** — OpenAI, Gemini, xAI, and Ollama power distinct Agent paths, with Structured Digest as the final model-free briefing fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
 - **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
@@ -60,7 +60,7 @@ flowchart LR
     HUD --> A["Ask APEX"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["Gemini · Ollama · Structured Digest"]
+    B --> M["OpenAI · Ollama · Structured Digest"]
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```
@@ -74,7 +74,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
-| Cloud reasoning | Gemini 3.5 Flash Lite, Gemini 3.5 Flash, Gemini 3.6 Flash |
+| Cloud reasoning | OpenAI, Gemini, and xAI Apex Agents; see Configuration for current model IDs |
 | Local reasoning | Ollama with Qwen3 models |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |

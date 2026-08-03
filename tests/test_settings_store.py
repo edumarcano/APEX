@@ -383,6 +383,34 @@ class SettingsStorePatchTests(unittest.TestCase):
         self.assertTrue(store.local_file_present)
         self.assertTrue(store.local_override_active)
 
+    def test_patch_repairs_invalid_football_layer_and_survives_reload(self) -> None:
+        _write_json(
+            self.local_path,
+            {
+                "football": {
+                    "teams": [
+                        {"id": 81, "name": "Barcelona"},
+                        {"id": 81, "name": "Duplicate"},
+                    ]
+                },
+                "features": {"news": True},
+            },
+        )
+        store = self._store()
+        self.assertFalse(store.local_override_active)
+
+        published = store.apply_patch(
+            SettingsPatch(features=FeaturesPatch(sports=True))
+        )
+        reloaded = self._store().get_snapshot()
+
+        self.assertEqual(published, reloaded)
+        self.assertTrue(reloaded.features.sports)
+        self.assertFalse(reloaded.features.news)
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertNotIn("football", written)
+        self.assertTrue(written["features"]["sports"])
+
     def test_patch_preserves_noneditable_and_unknown_local_keys(self) -> None:
         _write_json(
             self.local_path,

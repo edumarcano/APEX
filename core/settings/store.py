@@ -13,8 +13,8 @@ from typing import Any
 
 from core.settings.models import RuntimeSettingsSnapshot, SettingsPatch
 from core.settings.normalize import (
+    EDITABLE_ROOT_KEYS,
     NormalizationIssues,
-    apply_patch_to_snapshot,
     normalize_layer,
     patch_to_ondisk,
     recursive_overlay,
@@ -29,9 +29,6 @@ _DEFAULT_LOCAL_CONFIG_PATH: Path = _PROJECT_ROOT / "config.local.json"
 
 _REPLACE_MAX_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
-_EDITABLE_ROOT_KEYS = frozenset(
-    {"user_designation", "features", "modules", "ask_apex", "briefing", "tts_settings"}
-)
 
 
 class SettingsPersistenceError(RuntimeError):
@@ -159,7 +156,6 @@ class RuntimeSettingsStore:
         """
         with self._lock:
             current = self._snapshot
-            merged_snapshot = apply_patch_to_snapshot(current, patch)
 
             patch_ondisk = patch_to_ondisk(patch)
             if not patch_ondisk:
@@ -172,6 +168,14 @@ class RuntimeSettingsStore:
                 next_raw,
                 layer_name="config.local.json",
                 issues=next_issues,
+            )
+            if next_issues.errors:
+                raise SettingsPersistenceError(
+                    "Refusing to persist invalid settings: "
+                    + "; ".join(next_issues.errors)
+                )
+            next_snapshot = snapshot_from_merged(
+                recursive_overlay(self._base_ondisk, next_local)
             )
 
             prior_snapshot = self._snapshot
@@ -201,8 +205,8 @@ class RuntimeSettingsStore:
                 if next_issues.warnings
                 else None
             )
-            self._snapshot = merged_snapshot
-            return merged_snapshot
+            self._snapshot = next_snapshot
+            return next_snapshot
 
     def _load_latest_raw_for_write(self) -> dict[str, Any]:
         """Read the latest local document while preserving only safe invalid content."""
@@ -229,7 +233,7 @@ class RuntimeSettingsStore:
         return {
             key: value
             for key, value in raw.items()
-            if key not in _EDITABLE_ROOT_KEYS
+            if key not in EDITABLE_ROOT_KEYS
         }
 
     def _load_json_file(
