@@ -17,6 +17,8 @@ function profile(
     display_name: `Apex ${key}`,
     description: 'Test profile.',
     configured_model: mode === 'cloud' ? 'test-cloud' : 'test-local',
+    sort_order: 0,
+    capabilities: [],
     native_tools: {},
     provider: mode === 'cloud' ? 'openai' : 'ollama',
     version: '2.0',
@@ -26,6 +28,10 @@ function profile(
     effort_options: mode === 'cloud' ? ['light', 'focused', 'extended'] : null,
     default_effort: mode === 'cloud' ? 'focused' : null,
     status,
+    status_source: mode === 'cloud' ? 'configuration' : 'runtime',
+    status_checked_at: null,
+    provider_account_tier: null,
+    pricing: { currency: 'USD', pricing_version: 'test', billing_basis: mode === 'cloud' ? 'standard' : 'local', input_per_million: 0, output_per_million: 0, cached_input_per_million: 0, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null },
     active: false,
     loading: false,
     reason,
@@ -57,11 +63,15 @@ describe('BriefingModeSelector', () => {
     const user = userEvent.setup()
     renderSelector()
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
     expect(screen.getByText('Briefing Synthesis')).toBeVisible()
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
+    expect(screen.getAllByLabelText('Panthera profile mark')).toHaveLength(2)
+    expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
+    expect(screen.getAllByText('No provider token charge')).toHaveLength(2)
+    expect(screen.getByText('No model cost')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
     expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
@@ -81,7 +91,7 @@ describe('BriefingModeSelector', () => {
       ],
     })
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
     expect(screen.getByRole('option', { name: /mus/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
@@ -92,7 +102,7 @@ describe('BriefingModeSelector', () => {
   it('closes on Escape and restores focus to the selector', async () => {
     const user = userEvent.setup()
     renderSelector()
-    const trigger = screen.getByRole('button', { name: /briefing mode: panthera/i })
+    const trigger = screen.getByRole('button', { name: /briefing: panthera/i })
 
     await user.click(trigger)
     expect(screen.getByRole('listbox')).toBeInTheDocument()
@@ -101,11 +111,19 @@ describe('BriefingModeSelector', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     await waitFor(() => expect(trigger).toHaveFocus())
   })
+
+  it('shows the selected mode description rather than pricing while closed', () => {
+    renderSelector()
+
+    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toHaveTextContent(/Full briefing/)
+    expect(screen.getByRole('button', { name: /briefing: panthera/i })).not.toHaveTextContent(/In \$/)
+  })
 })
 
 describe('BriefingGenerateControl', () => {
   it('keeps refresh-and-synthesize available when current-snapshot synthesis is disabled', async () => {
     const onGenerate = vi.fn()
+    const onRefreshAll = vi.fn()
     const onRefreshAndGenerate = vi.fn()
     const user = userEvent.setup()
     render(
@@ -114,6 +132,7 @@ describe('BriefingGenerateControl', () => {
         refreshDisabled={false}
         busy={false}
         onGenerate={onGenerate}
+        onRefreshAll={onRefreshAll}
         onRefreshAndGenerate={onRefreshAndGenerate}
       />,
     )
@@ -124,6 +143,26 @@ describe('BriefingGenerateControl', () => {
 
     expect(onGenerate).not.toHaveBeenCalled()
     expect(onRefreshAndGenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers refresh-only work from the synthesis menu', async () => {
+    const onRefreshAll = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <BriefingGenerateControl
+        mainDisabled={false}
+        refreshDisabled={false}
+        busy={false}
+        onGenerate={vi.fn()}
+        onRefreshAll={onRefreshAll}
+        onRefreshAndGenerate={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /more briefing synthesis options/i }))
+    await user.click(screen.getAllByRole('menuitem')[0])
+
+    expect(onRefreshAll).toHaveBeenCalledTimes(1)
   })
 
 })

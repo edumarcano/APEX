@@ -8,10 +8,18 @@ from core.agent.types import AgentQueryRequest, AgentQueryResponse, LocalCommand
 from core.api.assistant import (
     build_agent_profile_statuses,
     build_local_command_statuses,
+    load_local_model_endpoint,
     query_agent,
     unload_active_local_model_endpoint,
+    verify_cloud_profile_endpoint,
 )
-from core.api.models import AgentProfileStatus, LocalUnloadResponse
+from core.api.models import (
+    AgentProfileStatus,
+    CloudProfileVerificationResponse,
+    LocalLoadRequest,
+    LocalLoadResponse,
+    LocalUnloadResponse,
+)
 
 router = APIRouter(tags=["assistant"])
 
@@ -38,6 +46,15 @@ def list_agent_profiles() -> list[AgentProfileStatus]:
 
 
 @router.post(
+    "/api/v1/agent/profiles/{profile_key}/verify",
+    response_model=CloudProfileVerificationResponse,
+)
+def verify_agent_profile(profile_key: str) -> CloudProfileVerificationResponse:
+    """Verify configured cloud credentials and model access without inference."""
+    return verify_cloud_profile_endpoint(profile_key)
+
+
+@router.post(
     "/api/v1/agent/local/unload",
     response_model=LocalUnloadResponse,
     operation_id="unload_active_local_model_endpoint_api_v1_agent_local_unload_post",
@@ -56,6 +73,17 @@ def unload_local_model() -> LocalUnloadResponse:
     Returns success when no model is active or the unload completes cleanly.
     """
     return unload_active_local_model_endpoint()
+
+
+@router.post(
+    "/api/v1/local-model/load",
+    response_model=LocalLoadResponse,
+    operation_id="load_local_model_endpoint_api_v1_local_model_load_post",
+    summary="Load Local Model Endpoint",
+)
+def load_local_model(payload: LocalLoadRequest) -> LocalLoadResponse:
+    """Pre-warm a selected local profile and confirm it is resident."""
+    return load_local_model_endpoint(payload.profile)
 
 
 @router.post(

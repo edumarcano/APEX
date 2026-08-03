@@ -4,9 +4,11 @@ import {
   buildSettingsTimingRuntime,
   cloneRuntimeSettings,
   diffSettingsPatch,
+  filterAssistantSettingsForDevMode,
   isSettingsPatchEmpty,
   parseMcpStatusResponse,
   parseSettingsResponse,
+  resolveAppliedAssistantSelection,
   resolveAssistantProfile,
   resolveInitialAssistantSelection,
   resolveEffectiveTiming,
@@ -24,6 +26,41 @@ describe('assistant boot hydration', () => {
 
     expect(resolveInitialAssistantSelection(false, saved, 'panthera')).toEqual(saved)
     expect(resolveInitialAssistantSelection(true, saved, 'panthera')).toBeNull()
+  })
+
+  it('preserves a selected session profile after a DEV_MODE settings response', () => {
+    const response = buildSettingsResponse()
+    response.dev_mode_active = true
+
+    expect(resolveAppliedAssistantSelection(response, 'panthera', true)).toEqual({
+      mode: 'cloud',
+      profile: 'panthera',
+      effort: 'focused',
+    })
+    expect(resolveAppliedAssistantSelection(response, 'acinonyx', false)).toEqual({
+      mode: 'cloud',
+      profile: 'acinonyx',
+      effort: 'focused',
+    })
+  })
+
+  it('keeps effort and native-tool preferences while filtering DEV_MODE profile fields', () => {
+    expect(filterAssistantSettingsForDevMode({
+      mode: 'cloud',
+      cloud_profile: 'neofelis',
+      local_profile: 'mus',
+      cloud_effort: 'extended',
+      neofelis_google_search_enabled: false,
+      neofelis_google_maps_enabled: true,
+      delphinus_x_search_enabled: false,
+      orcinus_x_search_enabled: true,
+    })).toEqual({
+      cloud_effort: 'extended',
+      neofelis_google_search_enabled: false,
+      neofelis_google_maps_enabled: true,
+      delphinus_x_search_enabled: false,
+      orcinus_x_search_enabled: true,
+    })
   })
 })
 
@@ -44,6 +81,9 @@ describe('settings response parsing', () => {
     ['cloud effort', ['settings', 'assistant', 'cloud_effort'], 'invalid'],
     ['local profile', ['settings', 'assistant', 'local_profile'], 'invalid'],
     ['neofelis google search', ['settings', 'assistant', 'neofelis_google_search_enabled'], null],
+    ['neofelis google maps', ['settings', 'assistant', 'neofelis_google_maps_enabled'], null],
+    ['delphinus x search', ['settings', 'assistant', 'delphinus_x_search_enabled'], null],
+    ['orcinus x search', ['settings', 'assistant', 'orcinus_x_search_enabled'], null],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],

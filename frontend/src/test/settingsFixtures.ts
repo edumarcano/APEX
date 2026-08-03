@@ -24,6 +24,9 @@ export const BASE_SETTINGS: RuntimeSettings = {
     cloud_effort: 'focused',
     local_profile: 'mus',
     neofelis_google_search_enabled: true,
+    neofelis_google_maps_enabled: true,
+    delphinus_x_search_enabled: true,
+    orcinus_x_search_enabled: true,
   },
   briefing: {
     default_mode: 'panthera',
@@ -47,7 +50,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 6,
+    schema_version: 7,
     settings,
     local_file_present: false,
     local_override_active: false,

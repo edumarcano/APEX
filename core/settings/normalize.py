@@ -325,6 +325,9 @@ def _normalize_ask_apex(
         "cloud_effort",
         "local_profile",
         "neofelis_google_search_enabled",
+        "neofelis_google_maps_enabled",
+        "delphinus_x_search_enabled",
+        "orcinus_x_search_enabled",
         "max_session_messages",
         "default_profile",
         "default_cloud_profile",
@@ -381,6 +384,18 @@ def _normalize_ask_apex(
             result["neofelis_google_search_enabled"] = google_search
         elif google_search is not None:
             _record_error(errors, "ask_apex.neofelis_google_search_enabled must be a boolean")
+
+    for key in (
+        "neofelis_google_maps_enabled",
+        "delphinus_x_search_enabled",
+        "orcinus_x_search_enabled",
+    ):
+        if key in migrated:
+            enabled = migrated[key]
+            if isinstance(enabled, bool):
+                result[key] = enabled
+            elif enabled is not None:
+                _record_error(errors, f"ask_apex.{key} must be a boolean")
 
     return result
 
@@ -611,6 +626,15 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         neofelis_google_search_enabled=bool(
             ask_apex.get("neofelis_google_search_enabled", True)
         ),
+        neofelis_google_maps_enabled=bool(
+            ask_apex.get("neofelis_google_maps_enabled", True)
+        ),
+        delphinus_x_search_enabled=bool(
+            ask_apex.get("delphinus_x_search_enabled", True)
+        ),
+        orcinus_x_search_enabled=bool(
+            ask_apex.get("orcinus_x_search_enabled", True)
+        ),
     )
     engine = tts.get("primary_tts", "pyttsx3")
     if engine not in VALID_VOICE_ENGINES:
@@ -675,6 +699,11 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "neofelis_google_search_enabled": (
                 snapshot.assistant.neofelis_google_search_enabled
             ),
+            "neofelis_google_maps_enabled": (
+                snapshot.assistant.neofelis_google_maps_enabled
+            ),
+            "delphinus_x_search_enabled": snapshot.assistant.delphinus_x_search_enabled,
+            "orcinus_x_search_enabled": snapshot.assistant.orcinus_x_search_enabled,
         },
         "briefing": {
             "default_mode": snapshot.briefing.default_mode,

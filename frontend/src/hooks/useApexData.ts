@@ -32,6 +32,7 @@ export type { ApexDataState } from '../types/telemetry'
 
 export type UseApexDataReturn = ApexDataState & {
   refreshReminders: () => Promise<void>
+  createReminder: (text: string) => Promise<void>
   markReminderAsRead: (id: number) => Promise<void>
   triggerSynthesis: () => Promise<void>
   applyBootSettings: (next: {
@@ -339,6 +340,23 @@ export function useApexData(): UseApexDataReturn {
       // Reminder refresh is best-effort; preserve existing HUD state on failure.
     }
   }, [applyReminderRecords])
+
+  const createReminder = useCallback(
+    async (text: string): Promise<void> => {
+      const response = await fetch(REMINDERS_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Create reminder failed with status ${response.status}`)
+      }
+
+      await refreshReminders()
+    },
+    [refreshReminders],
+  )
 
   const markReminderAsRead = useCallback(async (id: number): Promise<void> => {
     let removedReminder: ActiveReminder | undefined
@@ -898,5 +916,12 @@ export function useApexData(): UseApexDataReturn {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- The polling transition is keyed to public lifecycle state only.
   }, [state.status, state.pipelineState?.step])
 
-  return { ...state, refreshReminders, markReminderAsRead, triggerSynthesis, applyBootSettings }
+  return {
+    ...state,
+    refreshReminders,
+    createReminder,
+    markReminderAsRead,
+    triggerSynthesis,
+    applyBootSettings,
+  }
 }

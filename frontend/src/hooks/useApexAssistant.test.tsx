@@ -49,4 +49,70 @@ describe('useApexAssistant', () => {
       { role: 'model', content: 'answer 2', tool_outputs: [] },
     ])
   })
+
+  it('captures the session identifier and normalized response observability', async () => {
+    let queryBody: Record<string, unknown> | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        queryBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({
+          answer: 'Observed response.',
+          profile_used: {
+            key: 'panthera',
+            version: '2.0',
+            provider: 'openai',
+            configured_model: 'gpt-5.6-luna',
+            resolved_model: 'gpt-5.6-luna',
+            resolved_effort: 'medium',
+          },
+          usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
+          timing: { total_ms: 120, provider_ms: 110, apex_tool_ms: 10 },
+          cost_estimate: { total_cost: 0.002, currency: 'USD', pricing_version: '2026-08' },
+          citations: [{ title: 'Source', uri: 'https://example.test', source: 'google_search' }],
+          tool_trace: [{ name: 'search', status: 'ok', duration_ms: 10, origin: 'apex' }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+
+    const { result } = renderHook(() => useApexAssistant(false, 'panthera'))
+    await act(async () => {
+      await result.current.queryAssistant('inspect', 'panthera', { sessionId: 'cortex-session-1' })
+    })
+
+    expect(queryBody).toMatchObject({ session_id: 'cortex-session-1' })
+    const response = result.current.assistantHistory[1]
+    expect(response.metadata?.profile?.resolvedModel).toBe('gpt-5.6-luna')
+    expect(response.metadata?.usage?.totalTokens).toBe(20)
+    expect(response.metadata?.citations[0]?.uri).toBe('https://example.test')
+    expect(response.tool_trace?.[0]).toMatchObject({ name: 'search', origin: 'apex' })
+  })
+
+  it('adds the user turn immediately and keeps it when the request fails', async () => {
+    let rejectRequest: ((reason?: unknown) => void) | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      if (init?.method !== 'POST') {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        rejectRequest = reject
+      })
+    })
+    const { result } = renderHook(() => useApexAssistant(false, 'panthera'))
+
+    let pending: Promise<void>
+    act(() => {
+      pending = result.current.queryAssistant('Keep this question', 'panthera')
+    })
+    expect(result.current.assistantHistory).toEqual([{ role: 'user', content: 'Keep this question' }])
+    expect(result.current.isAssistantQuerying).toBe(true)
+
+    await act(async () => {
+      rejectRequest?.(new Error('Network unavailable'))
+      await pending
+    })
+
+    expect(result.current.assistantHistory).toEqual([{ role: 'user', content: 'Keep this question' }])
+    expect(result.current.assistantError).toContain('Network unavailable')
+  })
 })

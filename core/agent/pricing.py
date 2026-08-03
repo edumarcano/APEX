@@ -1,8 +1,8 @@
 """Versioned inference pricing registry and cost estimator.
 
 Estimates cover provider token usage and successful billable provider-hosted
-tool invocations only. MCP connectors (Brave, Alpha Vantage, etc.) and other
-third-party service charges are intentionally excluded.
+tool invocations only. MCP connectors (Brave, Alpha Vantage, and similar
+services) remain outside APEX's provider-cost estimates.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from core.agent.providers.contract import InferenceProvider, ProviderToolEvent
 from core.agent.types import CostCompleteness, CostEstimate, TokenUsage
 
-PRICING_VERSION = "2026.08.01"
+PRICING_VERSION = "2026.08.02"
 _CURRENCY = "USD"
 
 
@@ -24,6 +24,18 @@ class ModelTokenRates:
     output_per_million: float
     cached_input_per_million: float = 0.0
     reasoning_per_million: float | None = None
+    long_context_threshold_tokens: int | None = None
+    long_context_input_per_million: float | None = None
+    long_context_output_per_million: float | None = None
+    long_context_cached_input_per_million: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfilePricing:
+    """Catalog pricing shown and estimated for one APEX profile."""
+
+    billing_basis: str
+    rates: ModelTokenRates
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,24 +45,44 @@ class HostedToolRate:
     usd_per_invocation: float
 
 
-# Rates are point-in-time estimates, not billing figures. They must be
-# reconciled against provider pricing before being changed or surfaced in the UI.
-# Keep keys lowercase.
+# Standard paid rates, reconciled against provider documentation on 2026-08-02.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
-    # Gemini
-    "gemini-3.6-flash": ModelTokenRates(0.50, 3.00, cached_input_per_million=0.125),
-    # OpenAI — Luna rates effective 2026-08-01.
-    "gpt-5.6-luna": ModelTokenRates(0.20, 1.20, cached_input_per_million=0.020),
-    # xAI
-    "grok-4.3": ModelTokenRates(3.00, 15.00),
-    "grok-4.5": ModelTokenRates(3.00, 15.00),
+    "gemini-3.5-flash-lite": ModelTokenRates(0.30, 2.50, 0.03),
+    "gemini-3.6-flash": ModelTokenRates(1.50, 7.50, 0.15),
+    "gpt-5.6-luna": ModelTokenRates(
+        0.20,
+        1.20,
+        0.02,
+        long_context_threshold_tokens=272_000,
+        long_context_input_per_million=0.40,
+        long_context_output_per_million=1.80,
+        long_context_cached_input_per_million=0.04,
+    ),
+    "grok-4.3": ModelTokenRates(
+        1.25,
+        2.50,
+        0.20,
+        long_context_threshold_tokens=200_000,
+        long_context_input_per_million=2.50,
+        long_context_output_per_million=5.00,
+        long_context_cached_input_per_million=0.40,
+    ),
+    "grok-4.5": ModelTokenRates(
+        2.00,
+        6.00,
+        0.30,
+        long_context_threshold_tokens=200_000,
+        long_context_input_per_million=4.00,
+        long_context_output_per_million=12.00,
+        long_context_cached_input_per_million=0.60,
+    ),
 }
 
-# Local Ollama inference is treated as zero provider cost.
-_LOCAL_ZERO = ModelTokenRates(0.0, 0.0, cached_input_per_million=0.0)
+_LOCAL_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
+_FREE_TIER_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
 
 _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
-    "google_search": HostedToolRate(0.035),
+    "google_search": HostedToolRate(0.014),
     "google_maps": HostedToolRate(0.025),
     "x_search": HostedToolRate(0.005),
 }
@@ -59,17 +91,29 @@ _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
 def lookup_model_rates(
     model: str | None, *, provider: InferenceProvider | None = None
 ) -> ModelTokenRates | None:
-    """Return token rates for a model id.
-
-    Local Ollama inference is free regardless of model tag. Unknown cloud
-    models return ``None`` so the estimate reports incomplete rather than
-    guessing a rate.
-    """
+    """Return standard model rates; local inference has no provider token cost."""
     if provider == "ollama":
         return _LOCAL_ZERO
     if not model:
         return None
     return _MODEL_RATES.get(model.strip().lower())
+
+
+def profile_pricing(
+    profile_key: str,
+    *,
+    model: str,
+    provider: InferenceProvider,
+) -> ProfilePricing:
+    """Return the authoritative billing basis for an APEX profile."""
+    if profile_key == "acinonyx":
+        return ProfilePricing("free_tier", _FREE_TIER_ZERO)
+    if provider == "ollama":
+        return ProfilePricing("local", _LOCAL_ZERO)
+    return ProfilePricing(
+        "standard",
+        lookup_model_rates(model, provider=provider) or ModelTokenRates(0.0, 0.0),
+    )
 
 
 def lookup_hosted_tool_rate(tool_name: str) -> HostedToolRate | None:
@@ -84,42 +128,59 @@ def estimate_inference_cost(
     hosted_tool_events: list[ProviderToolEvent] | None = None,
     configured_model: str | None = None,
     provider: InferenceProvider | None = None,
+    profile_key: str | None = None,
 ) -> CostEstimate:
-    """Estimate token + hosted-tool cost for a completed query.
-
-    Follows the ``TokenUsage`` convention: cached tokens are a subset of the
-    input count and reasoning tokens are billed separately from visible output.
-    """
+    """Estimate token and provider-hosted-tool cost for a completed query."""
     rates = lookup_model_rates(model, provider=provider) or lookup_model_rates(
         configured_model, provider=provider
     )
+    if profile_key is not None and provider is not None:
+        rates = profile_pricing(
+            profile_key,
+            model=configured_model or model or "",
+            provider=provider,
+        ).rates
+
     token_cost: float | None = None
     token_complete = False
-
     if rates is not None and usage is not None:
         input_tokens = usage.input_tokens
         output_tokens = usage.output_tokens
         if input_tokens is not None or output_tokens is not None:
             token_cost = 0.0
             token_complete = True
+            use_long_context = bool(
+                rates.long_context_threshold_tokens is not None
+                and (input_tokens or 0) > rates.long_context_threshold_tokens
+            )
+            input_rate = (
+                rates.long_context_input_per_million
+                if use_long_context and rates.long_context_input_per_million is not None
+                else rates.input_per_million
+            )
+            cached_rate = (
+                rates.long_context_cached_input_per_million
+                if use_long_context
+                and rates.long_context_cached_input_per_million is not None
+                else rates.cached_input_per_million
+            )
+            output_rate = (
+                rates.long_context_output_per_million
+                if use_long_context and rates.long_context_output_per_million is not None
+                else rates.output_per_million
+            )
             if input_tokens is not None:
                 cached_tokens = min(usage.cached_input_tokens or 0, input_tokens)
                 uncached_tokens = input_tokens - cached_tokens
-                token_cost += (uncached_tokens / 1_000_000.0) * rates.input_per_million
-                token_cost += (
-                    cached_tokens / 1_000_000.0
-                ) * rates.cached_input_per_million
+                token_cost += (uncached_tokens / 1_000_000.0) * input_rate
+                token_cost += (cached_tokens / 1_000_000.0) * cached_rate
             else:
                 token_complete = False
             if usage.reasoning_tokens is not None:
-                reasoning_rate = (
-                    rates.reasoning_per_million
-                    if rates.reasoning_per_million is not None
-                    else rates.output_per_million
-                )
+                reasoning_rate = rates.reasoning_per_million or output_rate
                 token_cost += (usage.reasoning_tokens / 1_000_000.0) * reasoning_rate
             if output_tokens is not None:
-                token_cost += (output_tokens / 1_000_000.0) * rates.output_per_million
+                token_cost += (output_tokens / 1_000_000.0) * output_rate
             else:
                 token_complete = False
 
@@ -153,11 +214,11 @@ def estimate_inference_cost(
         hosted_complete=hosted_complete,
         saw_hosted=saw_hosted,
     )
-
-    total: float | None = None
-    if token_cost is not None or hosted_cost_value is not None:
-        total = (token_cost or 0.0) + (hosted_cost_value or 0.0)
-
+    total = (
+        (token_cost or 0.0) + (hosted_cost_value or 0.0)
+        if token_cost is not None or hosted_cost_value is not None
+        else None
+    )
     return CostEstimate(
         token_cost=token_cost,
         hosted_tool_cost=hosted_cost_value,

@@ -86,12 +86,13 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ### Briefing and voice controls
 
-- Treat briefing synthesis as a global operation. Keep the mode selector beside system diagnostics, and place the split Synthesize command with Refresh All beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
+- Treat briefing synthesis as a global operation. Keep its selector, Refresh, and split Synthesize command together in the Overview command rail beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
 - Organize briefing modes into Cloud and Local sections. Use the shared profile availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
-- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
+- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Refresh and Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
 - Treat Refresh All & Synthesize as one ordered action: a failed refresh must stop synthesis and leave its error visible.
 - Show Speak / Replay as an icon action only on the Briefing tab when a transcript exists and voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
 - Keep provider, fallback, and delivery feedback with the transcript so the header selector continues to represent the next requested mode.
+- When a local model is resident, show its compact icon-only unload control beside the Overview synthesis action. Expose its model name through a hover-and-focus tooltip; keep lifecycle detail and the auto-unload countdown in Cortex's local-model inspector.
 
 ## Attention and Disclosure
 
@@ -150,7 +151,13 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Local command scope
 
-The expanded Assistant console may show a compact Commands control directly above Ask APEX when a local profile is selected. Keep the collapsed tray free of this control. List every supported slash command by topic, disable unavailable provider-backed commands in place, and refresh provider availability whenever the command panel opens. Show the active command as a one-shot armed state. A bare slash command selects the scope without submitting; the next query consumes and clears it.
+### Cortex profile catalog
+
+The Cortex inspector is the detailed assistant-configuration surface. Show one selected `APEX <Profile>` card; its popover presents catalog-provided names, descriptions, model metadata, ordered tags, availability, and compact pricing. The Overview command rail may expose the same catalog through a compact profile trigger, but it does not duplicate inspector-owned effort, grounding, local-tool, or lifecycle controls. The composer shows only the short profile name and a send control. Profile marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
+
+Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its profile-selection button.
+
+The Cortex inspector owns local tool scopes when a local profile is selected. Show every supported slash command as compact selectable rows with availability, descriptions, tool counts, and schema-token estimates. Show the active command as a one-shot armed state. A bare slash command remains a shortcut that selects the scope without submitting; the next query consumes and clears it. Keep the composer limited to an armed-scope indicator.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 

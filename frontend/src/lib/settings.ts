@@ -1,6 +1,7 @@
 import type {
   AssistantMode,
   AssistantProfile,
+  AssistantInitialSelection,
   CloudEffort,
   CloudSettingsProfile,
   LocalSettingsProfile,
@@ -42,6 +43,65 @@ export function resolveInitialAssistantSelection(
   if (selection) return selection
   if (defaultProfile) return { profile: defaultProfile, effort: null }
   return null
+}
+
+/**
+ * Resolve an assistant selection from a settings response without allowing
+ * the DEV_MODE startup override to clobber an already-selected session
+ * profile. DEV_MODE defaults to Acinonyx only during initial hydration;
+ * subsequent settings responses preserve the active Cortex selection.
+ */
+export function resolveAppliedAssistantSelection(
+  response: SettingsResponse,
+  currentProfile: AssistantProfile,
+  selectionHydrated: boolean,
+): AssistantInitialSelection {
+  if (response.dev_mode_active && !selectionHydrated) {
+    return {
+      mode: 'cloud',
+      profile: 'acinonyx',
+      effort: response.settings.assistant.cloud_effort,
+    }
+  }
+
+  if (response.dev_mode_active) {
+    return {
+      mode: currentProfile === 'mus' || currentProfile === 'sorex' ? 'local' : 'cloud',
+      profile: currentProfile,
+      effort: currentProfile === 'mus' || currentProfile === 'sorex'
+        ? null
+        : response.settings.assistant.cloud_effort,
+    }
+  }
+
+  return {
+    mode: response.settings.assistant.mode,
+    profile: resolveAssistantProfile(response.settings.assistant),
+    effort:
+      response.settings.assistant.mode === 'cloud'
+        ? response.settings.assistant.cloud_effort
+        : null,
+  }
+}
+
+const DEV_MODE_ASSISTANT_SETTINGS_KEYS = new Set([
+  'cloud_effort',
+  'neofelis_google_search_enabled',
+  'neofelis_google_maps_enabled',
+  'delphinus_x_search_enabled',
+  'orcinus_x_search_enabled',
+])
+
+/**
+ * Keep session-only profile selection out of persisted DEV_MODE settings,
+ * while allowing effort and grounding preferences to remain configurable.
+ */
+export function filterAssistantSettingsForDevMode(
+  assistant: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(assistant).filter(([key]) => DEV_MODE_ASSISTANT_SETTINGS_KEYS.has(key)),
+  )
 }
 
 const VALID_ASSISTANT_MODES: readonly AssistantMode[] = ['cloud', 'local']
@@ -211,6 +271,15 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.assistant.neofelis_google_search_enabled !== 'boolean') {
     return null
   }
+  if (typeof value.assistant.neofelis_google_maps_enabled !== 'boolean') {
+    return null
+  }
+  if (typeof value.assistant.delphinus_x_search_enabled !== 'boolean') {
+    return null
+  }
+  if (typeof value.assistant.orcinus_x_search_enabled !== 'boolean') {
+    return null
+  }
   if (!isBriefingMode(value.briefing.default_mode)) {
     return null
   }
@@ -232,6 +301,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       cloud_effort: value.assistant.cloud_effort,
       local_profile: value.assistant.local_profile,
       neofelis_google_search_enabled: value.assistant.neofelis_google_search_enabled,
+      neofelis_google_maps_enabled: value.assistant.neofelis_google_maps_enabled,
+      delphinus_x_search_enabled: value.assistant.delphinus_x_search_enabled,
+      orcinus_x_search_enabled: value.assistant.orcinus_x_search_enabled,
     },
     briefing: {
       default_mode: value.briefing.default_mode,

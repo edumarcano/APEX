@@ -80,6 +80,7 @@ class ProfileSpec:
     max_tool_calls: int
     tier: str
     stability: Literal["stable", "preview"]
+    capability_tags: tuple[str, ...]
     dev_only: bool = False
     supports_effort: bool = True
 
@@ -87,8 +88,8 @@ class ProfileSpec:
 PROFILE_SPECS: dict[str, ProfileSpec] = {
     "acinonyx": ProfileSpec(
         key="acinonyx",
-        display_name="Apex Acinonyx",
-        description="Development sandbox with isolated history and non-personal tools.",
+        display_name="APEX Acinonyx",
+        description="Development-only privacy sandbox for testing Apex with masked personal context.",
         identity_instruction=(
             "You are Apex Acinonyx, an Apex Intelligence Profile powered by "
             "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
@@ -103,14 +104,13 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="fast",
         stability="stable",
+        capability_tags=("Privacy sandbox", "Masked context"),
         dev_only=True,
     ),
     "panthera": ProfileSpec(
         key="panthera",
-        display_name="Apex Panthera",
-        description=(
-            "Balanced general-purpose cloud intelligence powered by GPT-5.6 Luna."
-        ),
+        display_name="APEX Panthera",
+        description="Default generalist for thoughtful answers, planning, and complex everyday work.",
         identity_instruction=(
             "You are Apex Panthera, an Apex Intelligence Profile powered by "
             "GPT-5.6 Luna."
@@ -125,13 +125,12 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="balanced",
         stability="stable",
+        capability_tags=("Generalist", "Planning"),
     ),
     "neofelis": ProfileSpec(
         key="neofelis",
-        display_name="Apex Neofelis",
-        description=(
-            "Fast Gemini profile with optional Google Search and Google Maps grounding."
-        ),
+        display_name="APEX Neofelis",
+        description="Fast research specialist with optional Google Search and Maps grounding.",
         identity_instruction=(
             "You are Apex Neofelis, an Apex Intelligence Profile powered by "
             "Gemini 3.6 Flash."
@@ -146,11 +145,12 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="advanced",
         stability="stable",
+        capability_tags=("Research", "Google Search", "Google Maps"),
     ),
     "delphinus": ProfileSpec(
         key="delphinus",
-        display_name="Apex Delphinus",
-        description="Balanced xAI profile with live X Search grounding.",
+        display_name="APEX Delphinus",
+        description="Balanced live-information profile with optional X Search for current conversations and trends.",
         identity_instruction=(
             "You are Apex Delphinus, an Apex Intelligence Profile powered by Grok 4.3."
         ),
@@ -164,11 +164,12 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="balanced",
         stability="stable",
+        capability_tags=("Balanced", "X Search"),
     ),
     "orcinus": ProfileSpec(
         key="orcinus",
-        display_name="Apex Orcinus",
-        description="Advanced xAI profile for extended reasoning with X Search.",
+        display_name="APEX Orcinus",
+        description="Deep-reasoning profile for difficult analysis, synthesis, and extended investigations.",
         identity_instruction=(
             "You are Apex Orcinus, an Apex Intelligence Profile powered by Grok 4.5."
         ),
@@ -182,11 +183,12 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="advanced",
         stability="stable",
+        capability_tags=("Deep reasoning", "Extended analysis", "X Search"),
     ),
     "sorex": ProfileSpec(
         key="sorex",
-        display_name="Apex Sorex",
-        description="Lightweight local profile for constrained systems.",
+        display_name="APEX Sorex",
+        description="Lightweight on-device fallback for quick tasks on constrained systems.",
         identity_instruction=(
             "You are Apex Sorex, an Apex Intelligence Profile powered by "
             "Qwen3 1.7B through Ollama."
@@ -201,12 +203,13 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=3,
         tier="lightweight",
         stability="stable",
+        capability_tags=("Lightweight", "Fast fallback", "Constrained local"),
         supports_effort=False,
     ),
     "mus": ProfileSpec(
         key="mus",
-        display_name="Apex Mus",
-        description="Balanced local profile for private on-device work.",
+        display_name="APEX Mus",
+        description="Private on-device generalist for capable offline work without cloud processing.",
         identity_instruction=(
             "You are Apex Mus, an Apex Intelligence Profile powered by "
             "Qwen3 4B Instruct through Ollama."
@@ -221,18 +224,19 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         max_tool_calls=4,
         tier="balanced",
         stability="stable",
+        capability_tags=("Larger model", "Primary local"),
         supports_effort=False,
     ),
 }
 
 _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
-    "sorex",
-    "mus",
+    "acinonyx",
     "panthera",
     "neofelis",
     "delphinus",
     "orcinus",
-    "acinonyx",
+    "mus",
+    "sorex",
 )
 
 
@@ -309,6 +313,9 @@ def build_concrete_profile(
     *,
     native_effort: NativeEffort | None,
     neofelis_google_search_enabled: bool = True,
+    neofelis_google_maps_enabled: bool = True,
+    delphinus_x_search_enabled: bool = True,
+    orcinus_x_search_enabled: bool = True,
 ) -> AgentModelProfile:
     """Materialize a provider-specific profile with effort applied."""
     spec = PROFILE_SPECS[profile_key]
@@ -329,6 +336,9 @@ def build_concrete_profile(
             hosted_tools=hosted_tools_for_profile(
                 profile_key,
                 neofelis_google_search_enabled=neofelis_google_search_enabled,
+                neofelis_google_maps_enabled=neofelis_google_maps_enabled,
+                delphinus_x_search_enabled=delphinus_x_search_enabled,
+                orcinus_x_search_enabled=orcinus_x_search_enabled,
             ),
         )
     if spec.provider == "ollama":
@@ -378,6 +388,9 @@ def build_concrete_profile(
         hosted_tools=hosted_tools_for_profile(
             profile_key,
             neofelis_google_search_enabled=neofelis_google_search_enabled,
+            neofelis_google_maps_enabled=neofelis_google_maps_enabled,
+            delphinus_x_search_enabled=delphinus_x_search_enabled,
+            orcinus_x_search_enabled=orcinus_x_search_enabled,
         ),
     )
 
@@ -474,7 +487,7 @@ def resolve_assistant_selection(
     """Resolve effective assistant mode/profile/effort from saved settings."""
     dev_active = is_dev_mode() if dev_mode is None else dev_mode
     if dev_active:
-        return "cloud", "acinonyx", "focused"
+        return "cloud", "acinonyx", getattr(assistant, "cloud_effort", "focused")
 
     mode = getattr(assistant, "mode", "cloud")
     if mode == "local":

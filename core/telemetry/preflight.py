@@ -54,9 +54,6 @@ _WARNING_MESSAGES: dict[PreflightWarningCode, str] = {
     "rapid_connector_refresh": (
         "A forced external connector refresh already ran within the last five minutes."
     ),
-    "cloud_data_disclosure": (
-        "This operation may send sanitized operational context to a cloud provider."
-    ),
     "high_resource_local_profile": (
         "The selected local profile is resource-intensive on this host."
     ),
@@ -357,9 +354,6 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         and get_telemetry_service().had_forced_refresh_within_window()
     ):
         warnings.append(_warning("rapid_connector_refresh"))
-
-    if involves_cloud and not request.cloud_disclosure_acknowledged:
-        warnings.append(_warning("cloud_data_disclosure"))
 
     if profile == "mus":
         warnings.append(_warning("high_resource_local_profile"))

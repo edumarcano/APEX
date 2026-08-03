@@ -25,20 +25,14 @@ import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
 import {
   buildSettingsTimingRuntime,
-  resolveAssistantProfile,
   resolveEffectiveTiming,
 } from '../lib/settings'
 import type {
   AgentProfileStatus,
-  AssistantMode,
-  CloudEffort,
-  CloudSettingsProfile,
-  LocalSettingsProfile,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
 import type {
-  BriefingMode,
   RuntimeSettings,
   SettingsResponse,
   VoiceGender,
@@ -65,28 +59,6 @@ const MODULE_CONTROLS: readonly {
   { key: 'football', label: 'Football' },
 ]
 
-const ASSISTANT_MODE_OPTIONS: readonly { value: AssistantMode; label: string }[] = [
-  { value: 'cloud', label: 'Cloud' },
-  { value: 'local', label: 'Local' },
-]
-
-const CLOUD_PROFILE_OPTIONS: readonly { value: CloudSettingsProfile; label: string }[] = [
-  { value: 'panthera', label: 'Apex Panthera' },
-  { value: 'neofelis', label: 'Apex Neofelis' },
-  { value: 'delphinus', label: 'Apex Delphinus' },
-  { value: 'orcinus', label: 'Apex Orcinus' },
-]
-
-const LOCAL_PROFILE_OPTIONS: readonly { value: LocalSettingsProfile; label: string }[] = [
-  { value: 'sorex', label: 'Apex Sorex' },
-  { value: 'mus', label: 'Apex Mus' },
-]
-
-const CLOUD_EFFORT_OPTIONS: readonly { value: CloudEffort; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'focused', label: 'Focused' },
-  { value: 'extended', label: 'Extended' },
-]
 
 const ENGINE_OPTIONS: readonly { value: TtsEngine; label: string }[] = [
   { value: 'google', label: 'Google' },
@@ -103,19 +75,6 @@ const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
   { value: 'automatic', label: 'Automatic' },
   { value: 'manual', label: 'Manual' },
   { value: 'off', label: 'Off' },
-]
-
-const BRIEFING_MODE_OPTIONS: readonly { value: BriefingMode; label: string }[] = [
-  { value: 'panthera', label: 'Panthera — Full briefing · cloud synthesis' },
-  { value: 'sorex', label: 'Sorex — Quick briefing · limited telemetry' },
-  {
-    value: 'mus',
-    label: 'Mus — Full briefing · balanced local synthesis (Recommended)',
-  },
-  {
-    value: 'structured_digest',
-    label: 'Structured Digest — Structured facts · no model or synthesis',
-  },
 ]
 
 interface SettingsPanelProps {
@@ -210,7 +169,6 @@ export default function SettingsPanel({
   const marketTiming = resolveEffectiveTiming('market', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
   const assistantTiming = resolveEffectiveTiming('assistant', timingRuntime)
-  const briefingTiming = resolveEffectiveTiming('briefing', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
 
@@ -251,40 +209,20 @@ export default function SettingsPanel({
     })
   }, [save, mcpRuntime])
 
-  const defaultProfileStatus = useMemo(() => {
-    if (!draft) {
-      return null
-    }
-    const profileKey = resolveAssistantProfile(draft.assistant)
-    return profilesStatus.find((profile) => profile.key === profileKey) ?? null
-  }, [draft, profilesStatus])
-
-  const profileUnavailableWarning = useMemo(() => {
-    if (!draft || !profilesStatusHydrated || !defaultProfileStatus) {
-      return null
-    }
-    if (defaultProfileStatus.status === 'available') {
-      return null
-    }
-    return (
-      defaultProfileStatus.reason ??
-      `Default profile ${resolveAssistantProfile(draft.assistant)} is currently unavailable.`
-    )
-  }, [draft, profilesStatusHydrated, defaultProfileStatus])
-
   const providerRows = useMemo(() => {
     const cloud = profilesStatus.filter((profile) => profile.mode === 'cloud')
     const local = profilesStatus.filter((profile) => profile.mode === 'local')
-    const cloudAvailable = cloud.some((profile) => profile.status === 'available')
+    const configuredCloud = cloud.filter((profile) => profile.status !== 'disabled').length
+    const verifiedCloud = cloud.filter((profile) => profile.status === 'verified').length
     const localAvailable = local.some((profile) => profile.status === 'available')
     const activeLocal = local.find((profile) => profile.active && profile.loaded_model)
 
     return {
       cloud: !profilesStatusHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
-        : cloudAvailable
-          ? { value: 'Reachable', tone: 'ok' as const }
-          : { value: 'Unavailable', tone: 'error' as const },
+        : configuredCloud > 0
+          ? { value: `${configuredCloud} configured · ${verifiedCloud} verified`, tone: verifiedCloud > 0 ? 'ok' as const : 'neutral' as const }
+          : { value: 'Not configured', tone: 'error' as const },
       local: !profilesStatusHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
         : localAvailable
@@ -414,86 +352,6 @@ export default function SettingsPanel({
                       }))
                     }
                   />
-                  <SettingsSelect
-                    id="settings-assistant-mode"
-                    label="Assistant mode"
-                    value={draft.assistant.mode}
-                    options={ASSISTANT_MODE_OPTIONS}
-                    timing={assistantTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        assistant: { ...prev.assistant, mode: next },
-                      }))
-                    }
-                  />
-                  {draft.assistant.mode === 'cloud' ? (
-                    <>
-                      <SettingsSelect
-                        id="settings-assistant-cloud-profile"
-                        label="Cloud profile"
-                        value={draft.assistant.cloud_profile}
-                        options={CLOUD_PROFILE_OPTIONS}
-                        timing={assistantTiming}
-                        onChange={(next) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            assistant: { ...prev.assistant, cloud_profile: next },
-                          }))
-                        }
-                      />
-                      <SettingsSelect
-                        id="settings-assistant-cloud-effort"
-                        label="Cloud effort"
-                        value={draft.assistant.cloud_effort}
-                        options={CLOUD_EFFORT_OPTIONS}
-                        timing={assistantTiming}
-                        onChange={(next) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            assistant: { ...prev.assistant, cloud_effort: next },
-                          }))
-                        }
-                      />
-                    </>
-                  ) : (
-                    <SettingsSelect
-                      id="settings-assistant-local-profile"
-                      label="Local profile"
-                      value={draft.assistant.local_profile}
-                      options={LOCAL_PROFILE_OPTIONS}
-                      timing={assistantTiming}
-                      onChange={(next) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          assistant: { ...prev.assistant, local_profile: next },
-                        }))
-                      }
-                    />
-                  )}
-                  <SettingsToggle
-                    id="settings-neofelis-google-search"
-                    label="Neofelis Google Search"
-                    checked={draft.assistant.neofelis_google_search_enabled}
-                    timing={assistantTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        assistant: {
-                          ...prev.assistant,
-                          neofelis_google_search_enabled: next,
-                        },
-                      }))
-                    }
-                  />
-                  {profileUnavailableWarning ? (
-                    <p
-                      className="rounded-md border border-amber-400/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100/90"
-                      role="status"
-                    >
-                      {profileUnavailableWarning}
-                    </p>
-                  ) : null}
                 </div>
               </section>
 
@@ -515,25 +373,6 @@ export default function SettingsPanel({
                 sectionId={`${titleId}-microsoft-todo`}
                 runtime={microsoftTodoRuntime}
               />
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-briefing`}>
-                <SectionHeading id={`${titleId}-briefing`} title="Briefing" />
-                <div className="space-y-2">
-                  <SettingsSelect
-                    id="settings-briefing-default-mode"
-                    label="Default mode"
-                    value={draft.briefing.default_mode}
-                    options={BRIEFING_MODE_OPTIONS}
-                    timing={briefingTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        briefing: { ...prev.briefing, default_mode: next },
-                      }))
-                    }
-                  />
-                </div>
-              </section>
 
               <section className="space-y-2.5" aria-labelledby={`${titleId}-voice`}>
                 <SectionHeading id={`${titleId}-voice`} title="Voice" />

@@ -264,12 +264,23 @@ class PricingRegistryTests(unittest.TestCase):
         paid_profile_models = {
             spec.api_model
             for spec in PROFILE_SPECS.values()
-            if spec.mode == "cloud" and spec.key != "acinonyx"
+            if spec.mode == "cloud"
         }
 
         self.assertEqual(set(_MODEL_RATES), paid_profile_models)
 
-    def test_luna_uses_the_configured_august_rates(self) -> None:
+    def test_luna_uses_the_current_standard_rates(self) -> None:
+        standard = _MODEL_RATES["gpt-5.6-luna"]
+        self.assertEqual(standard.input_per_million, 0.20)
+        self.assertEqual(standard.output_per_million, 1.20)
+        self.assertEqual(standard.cached_input_per_million, 0.02)
+
+        standard_estimate = estimate_inference_cost(
+            model="gpt-5.6-luna",
+            usage=TokenUsage(input_tokens=1_000, output_tokens=1_000),
+        )
+        self.assertAlmostEqual(standard_estimate.token_cost or 0.0, 0.0014, places=6)
+
         estimate = estimate_inference_cost(
             model="gpt-5.6-luna",
             usage=TokenUsage(
@@ -279,8 +290,9 @@ class PricingRegistryTests(unittest.TestCase):
             ),
         )
 
-        # 0.6M uncached at $0.20 + 0.4M cached at $0.02 + 1M output at $1.20.
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 1.328, places=4)
+        # Above Luna's long-context threshold: 0.6M uncached at $0.40, 0.4M
+        # cached at $0.04, and 1M output at $1.80.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 2.056, places=4)
 
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(
@@ -291,8 +303,8 @@ class PricingRegistryTests(unittest.TestCase):
                 ProviderToolEvent(name="unknown_hosted", status="ok", billable_units=1),
             ],
         )
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 3.50, places=4)
-        self.assertAlmostEqual(estimate.hosted_tool_cost or 0.0, 0.07, places=4)
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 9.0, places=4)
+        self.assertAlmostEqual(estimate.hosted_tool_cost or 0.0, 0.028, places=4)
         self.assertEqual(estimate.completeness, "partial")
         self.assertEqual(estimate.pricing_version, PRICING_VERSION)
 
@@ -317,9 +329,27 @@ class PricingRegistryTests(unittest.TestCase):
                 output_tokens=1_000_000,
             ),
         )
-        # 0.6M uncached at 0.50 + 0.4M cached at 0.125 + 1M reasoning and 1M
-        # output at the 3.00 output rate.
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 6.35, places=4)
+        # 0.6M uncached at 1.50 + 0.4M cached at 0.15 + 1M reasoning and 1M
+        # output at the 7.50 output rate.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 15.96, places=4)
+
+    def test_acinonyx_free_tier_pricing_overrides_model_list_rates(self) -> None:
+        estimate = estimate_inference_cost(
+            model="gemini-3.5-flash-lite",
+            configured_model="gemini-3.5-flash-lite",
+            provider="gemini",
+            profile_key="acinonyx",
+            usage=TokenUsage(input_tokens=1000, output_tokens=200),
+        )
+        self.assertEqual(estimate.token_cost, 0.0)
+        self.assertEqual(estimate.completeness, "complete")
+
+    def test_long_context_rates_apply_after_the_provider_threshold(self) -> None:
+        estimate = estimate_inference_cost(
+            model="grok-4.5",
+            usage=TokenUsage(input_tokens=200_001, output_tokens=1_000_000),
+        )
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 12.800004, places=6)
 
     def test_unknown_cloud_model_reports_unavailable_instead_of_guessing(self) -> None:
         estimate = estimate_inference_cost(

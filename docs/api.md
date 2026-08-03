@@ -23,7 +23,9 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
 | GET | `/api/v1/agent/commands` | Local assistant command scopes |
-| GET | `/api/v1/agent/profiles` | Cloud/local profile availability |
+| GET | `/api/v1/agent/profiles` | Backend-owned profile catalog and availability |
+| POST | `/api/v1/agent/profiles/{profile}/verify` | Explicit non-generative cloud access check |
+| POST | `/api/v1/local-model/load` | Pre-warm a selected local model |
 | POST | `/api/v1/local-model/unload` | Unload the active local model |
 | POST | `/api/v1/agent/local/unload` | Compatibility alias for local unload |
 | POST | `/api/v1/agent/query` | Run one assistant turn |
@@ -62,15 +64,15 @@ Returns boot-time HUD values such as assistant enablement, the effective profile
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `6`.
+Returns the resolved settings envelope. The current contract version is `7`.
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "settings": {
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
-    "assistant": { "enabled": true, "mode": "cloud", "cloud_profile": "panthera", "cloud_effort": "focused", "local_profile": "mus", "neofelis_google_search_enabled": true },
+    "assistant": { "enabled": true, "mode": "cloud", "cloud_profile": "panthera", "cloud_effort": "focused", "local_profile": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
@@ -84,6 +86,8 @@ Returns the resolved settings envelope. The current contract version is `6`.
 ```
 
 `football.teams` is also returned as read-only file configuration. OpenAPI contains the complete shape.
+
+`settings.briefing.default_mode` remains a persisted compatibility field. The Overview command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 
@@ -145,12 +149,11 @@ Evaluates warnings and non-overridable blockers for one intended operation witho
   "briefing_mode": "panthera",
   "connectors": ["weather", "calendar"],
   "force": false,
-  "acknowledged_warnings": [],
-  "cloud_disclosure_acknowledged": false
+  "acknowledged_warnings": []
 }
 ```
 
-Warnings can cover configured-network mismatch, battery use, rapid refresh, cloud disclosure, and elevated local resource use. Blockers are reserved for conditions that prevent the selected work, including missing required credentials, unavailable models, local inference contention, failed resource gates, invalid input, or broken local configuration/database state.
+Warnings can cover configured-network mismatch, battery use, rapid refresh, and elevated local resource use. Blockers are reserved for conditions that prevent the selected work, including missing required credentials, unavailable models, local inference contention, failed resource gates, invalid input, or broken local configuration/database state. The legacy `cloud_disclosure_acknowledged` input remains accepted but has no effect.
 
 Calling an operation endpoint directly skips advisory acknowledgement; operation-specific hard failures still apply.
 
@@ -223,19 +226,44 @@ Returns the local assistant command bundles, including availability, reason, too
 
 ### GET `/api/v1/agent/profiles`
 
-Returns the visible assistant profiles with description, provider, configured model, profile version, tier, supported effort levels, availability, provider-hosted tool state, active/loading state, and local lifecycle diagnostics. Acinonyx appears only in development mode.
+Returns the visible assistant profiles in stable product order. Each entry supplies its full display name, description, provider and configured model, version, mode, tier, stability, supported effort levels, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
 The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
-Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active resident model.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
+
+### POST `/api/v1/agent/profiles/{profile}/verify`
+
+Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud profile. Gemini uses its model metadata endpoint; OpenAI and xAI use `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+
+- `400` — the profile is local or has no supported verification path.
+- `403` — demo mode disallows provider contact.
+- `404` — the profile is not visible.
+- `409` — credentials are missing or that profile already has a verification in progress.
+
+### POST `/api/v1/local-model/load`
+
+Pre-warms one installed local profile before a request:
+
+```json
+{ "profile": "mus" }
+```
+
+The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after Ollama confirms the selected model through its running-model status. Demo mode rejects pre-warming without contacting Ollama.
+
+- `403` — demo mode disallows model calls.
+- `409` — a local generation or lifecycle action is active.
+- `503` — local inference is disabled, gated, unreachable, or could not be verified.
 
 ### POST `/api/v1/local-model/unload`
 
-Canonical provider-neutral manual unload route. Returns success when no model is active or unload completes.
+Canonical provider-neutral manual unload route. Returns success only when no APEX local model is resident or Ollama confirms the active model is absent after the request.
+
+It also rejects a competing lifecycle action, and reports a failed post-action verification as unavailable.
 
 - `403` — manual unload is disabled.
-- `409` — local generation is in progress.
-- `503` — the Ollama unload request failed.
+- `409` — local generation or lifecycle action is in progress.
+- `503` — the unload request or post-action Ollama verification failed.
 
 ### POST `/api/v1/agent/local/unload`
 
@@ -261,7 +289,7 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has Google Maps grounding and optional Google Search; Delphinus and Orcinus have X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for cloud profiles and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud profile, including Acinonyx, and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `403` — assistant disabled.
 - `429` — another local generation owns the execution slot.

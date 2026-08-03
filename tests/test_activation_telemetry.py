@@ -454,7 +454,7 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertIn("outside_configured_network", codes)
         self.assertIn("running_on_battery", codes)
 
-    def test_preflight_unknown_ssid_and_cloud_disclosure(self) -> None:
+    def test_preflight_unknown_ssid_does_not_emit_cloud_disclosure(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=False), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch(
@@ -474,7 +474,7 @@ class TelemetryApiTests(unittest.TestCase):
             )
         codes = {item["code"] for item in response.json()["warnings"]}
         self.assertIn("network_trust_unknown", codes)
-        self.assertIn("cloud_data_disclosure", codes)
+        self.assertNotIn("cloud_data_disclosure", codes)
 
     def test_structured_digest_preflight_never_classifies_as_cloud(self) -> None:
         with mock.patch(
@@ -519,7 +519,7 @@ class TelemetryApiTests(unittest.TestCase):
             )
 
         payload = response.json()
-        self.assertIn(
+        self.assertNotIn(
             "cloud_data_disclosure",
             {item["code"] for item in payload["warnings"]},
         )
@@ -529,7 +529,7 @@ class TelemetryApiTests(unittest.TestCase):
         )
         self.assertFalse(payload["can_proceed"])
 
-    def test_preflight_acknowledgement_suppresses_warning(self) -> None:
+    def test_preflight_legacy_cloud_acknowledgement_is_accepted_and_ignored(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ):
@@ -538,7 +538,7 @@ class TelemetryApiTests(unittest.TestCase):
                 json={
                     "operation": "assistant_query",
                     "involves_cloud": True,
-                    "acknowledged_warnings": ["cloud_data_disclosure"],
+                    "cloud_disclosure_acknowledged": True,
                 },
             )
         codes = {item["code"] for item in response.json()["warnings"]}
@@ -698,14 +698,12 @@ class TelemetryApiTests(unittest.TestCase):
                     "operation": "generate_briefing",
                     "involves_cloud": True,
                     "acknowledged_warnings": [
-                        "cloud_data_disclosure",
                         "outside_configured_network",
                         "network_trust_unknown",
                         "running_on_battery",
                         "rapid_connector_refresh",
                         "high_resource_local_profile",
                     ],
-                    "cloud_disclosure_acknowledged": True,
                 },
             )
         payload = response.json()

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from core.agent.types import AgentQueryRequest
 from core.api.assistant import _build_hud_context, build_agent_profile_statuses
+from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
@@ -37,6 +38,8 @@ def _result(name: str, display_text: str) -> ConnectorResult:
 
 class ProfileBusyStatusTests(unittest.TestCase):
     def setUp(self) -> None:
+        clear_cloud_status_cache()
+        self.addCleanup(clear_cloud_status_cache)
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
         self.config_path = root / "config.json"
@@ -118,7 +121,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 by_key[key].reason,
                 "Briefing synthesis is using local inference.",
             )
-        self.assertEqual(by_key["panthera"].status, "available")
+        self.assertEqual(by_key["panthera"].status, "configured")
         self.assertIsNone(by_key["panthera"].reason)
 
     def test_cloud_available_during_local_execution(self) -> None:
@@ -136,7 +139,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
             profiles = build_agent_profile_statuses()
         cloud = [entry for entry in profiles if entry.provider == "gemini"]
         self.assertTrue(cloud)
-        self.assertTrue(all(entry.status == "available" for entry in cloud))
+        self.assertTrue(all(entry.status == "configured" for entry in cloud))
 
 
 class HudContextTests(unittest.TestCase):

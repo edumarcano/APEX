@@ -9,6 +9,8 @@ import type {
   LocalContextUsage,
   LocalToolScope,
   ProfileAvailabilityStatus,
+  ProfilePricingMetadata,
+  ProfileStatusSource,
   ProfileStability,
   ToolOutputItem,
 } from '../types/telemetry'
@@ -17,6 +19,7 @@ import { API_ENDPOINTS } from '../lib/api'
 const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.agentQuery
 const AGENT_PROFILES_ENDPOINT = API_ENDPOINTS.agentProfiles
 const AGENT_LOCAL_UNLOAD_ENDPOINT = API_ENDPOINTS.agentLocalUnload
+const AGENT_LOCAL_LOAD_ENDPOINT = API_ENDPOINTS.agentLocalLoad
 const PROFILE_POLL_INTERVAL_MS = 4000
 const PROFILE_POLL_INTERVAL_QUERYING_MS = 1000
 
@@ -38,12 +41,56 @@ export interface ToolResult {
 export interface AgentMessage extends TelemetryAgentMessage {
   tool_calls?: ToolCall[]
   tool_results?: ToolResult[]
+  tool_trace?: ToolTraceItem[]
+  metadata?: AssistantQueryMetadata
 }
 
 export interface ToolTraceItem {
   name: string
   status: string
   duration_ms: number
+  origin?: 'apex' | 'provider'
+  billable_units?: number | null
+}
+
+export interface AssistantCitation {
+  title: string | null
+  uri: string | null
+  snippet: string | null
+  source: string | null
+}
+
+export interface AssistantQueryMetadata {
+  profile: {
+    key: AssistantProfile
+    version: string | null
+    provider: string | null
+    configuredModel: string | null
+    resolvedModel: string | null
+    requestedEffort: CloudEffort | null
+    resolvedEffort: string | null
+  } | null
+  usage: {
+    inputTokens: number | null
+    cachedInputTokens: number | null
+    reasoningTokens: number | null
+    outputTokens: number | null
+    totalTokens: number | null
+  } | null
+  timing: {
+    totalMs: number | null
+    providerMs: number | null
+    apexToolMs: number | null
+  } | null
+  cost: {
+    tokenCost: number | null
+    hostedToolCost: number | null
+    totalCost: number | null
+    currency: string
+    pricingVersion: string | null
+    completeness: string | null
+  } | null
+  citations: AssistantCitation[]
 }
 
 interface AgentQueryResponseBody {
@@ -52,6 +99,7 @@ interface AgentQueryResponseBody {
   tool_outputs?: ToolOutputItem[]
   error?: string | null
   local_context_usage?: LocalContextUsage | null
+  metadata?: AssistantQueryMetadata
 }
 
 const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
@@ -67,6 +115,16 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
 const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
   'available',
   'busy',
+  'configured',
+  'verifying',
+  'verified',
+  'unauthorized',
+  'model_unavailable',
+  'rate_limited',
+  'quota_exhausted',
+  'billing_blocked',
+  'provider_unreachable',
+  'provider_error',
   'unknown',
   'disabled',
   'ollama_unreachable',
@@ -87,6 +145,7 @@ const VALID_PROFILE_MODES: readonly AgentProfileStatus['mode'][] = ['cloud', 'lo
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
 
 const VALID_PROFILE_STABILITY: readonly ProfileStability[] = ['stable', 'preview']
+const VALID_PROFILE_STATUS_SOURCES: readonly ProfileStatusSource[] = ['configuration', 'verification', 'request', 'runtime']
 
 function isAssistantProfile(value: unknown): value is AssistantProfile {
   return (
@@ -176,6 +235,32 @@ function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus |
   }
 }
 
+function parseProfilePricing(value: unknown): ProfilePricingMetadata {
+  const fallback: ProfilePricingMetadata = {
+    currency: 'USD', pricing_version: 'unknown', billing_basis: 'standard',
+    input_per_million: 0, output_per_million: 0, cached_input_per_million: null,
+    long_context_threshold_tokens: null, long_context_input_per_million: null,
+    long_context_output_per_million: null, long_context_cached_input_per_million: null,
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback
+  const record = value as Record<string, unknown>
+  const billingBasis = record.billing_basis
+  if (
+    record.currency !== 'USD' || typeof record.pricing_version !== 'string' ||
+    (billingBasis !== 'free_tier' && billingBasis !== 'standard' && billingBasis !== 'local') ||
+    typeof record.input_per_million !== 'number' || typeof record.output_per_million !== 'number'
+  ) return fallback
+  return {
+    currency: 'USD', pricing_version: record.pricing_version, billing_basis: billingBasis,
+    input_per_million: record.input_per_million, output_per_million: record.output_per_million,
+    cached_input_per_million: parseNullableFiniteNumber(record.cached_input_per_million),
+    long_context_threshold_tokens: parseNullableFiniteNumber(record.long_context_threshold_tokens),
+    long_context_input_per_million: parseNullableFiniteNumber(record.long_context_input_per_million),
+    long_context_output_per_million: parseNullableFiniteNumber(record.long_context_output_per_million),
+    long_context_cached_input_per_million: parseNullableFiniteNumber(record.long_context_cached_input_per_million),
+  }
+}
+
 function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   if (!value || typeof value !== 'object') {
     return null
@@ -256,12 +341,18 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     native_tools: nativeToolsRecord as Record<string, boolean>,
     provider,
     version,
+    sort_order: typeof record.sort_order === 'number' && Number.isInteger(record.sort_order) && record.sort_order >= 0 ? record.sort_order : 0,
+    capabilities: Array.isArray(record.capabilities) && record.capabilities.every((item) => typeof item === 'string') ? record.capabilities : [],
     mode,
     tier,
     stability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
     status,
+    status_source: isProfileStatusSource(record.status_source) ? record.status_source : 'configuration',
+    status_checked_at: parseNullableString(record.status_checked_at),
+    provider_account_tier: parseNullableString(record.provider_account_tier),
+    pricing: parseProfilePricing(record.pricing),
     active: typeof record.active === 'boolean' ? record.active : false,
     loading: typeof record.loading === 'boolean' ? record.loading : false,
     reason: parseNullableString(record.reason),
@@ -297,7 +388,96 @@ function parseToolTraceItem(value: unknown): ToolTraceItem | null {
     return null
   }
 
-  return { name, status, duration_ms: durationMs }
+  return {
+    name,
+    status,
+    duration_ms: durationMs,
+    ...(record.origin === 'apex' || record.origin === 'provider'
+      ? { origin: record.origin }
+      : {}),
+    ...(typeof record.billable_units === 'number' && Number.isFinite(record.billable_units)
+      ? { billable_units: record.billable_units }
+      : {}),
+  }
+}
+
+function isProfileStatusSource(value: unknown): value is ProfileStatusSource {
+  return typeof value === 'string' && (VALID_PROFILE_STATUS_SOURCES as readonly string[]).includes(value)
+}
+
+function parseMetricRecord(value: unknown, keys: readonly string[]): Record<string, number | null> | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  return Object.fromEntries(
+    keys.map((key) => [key, parseNullableFiniteNumber(record[key])]),
+  )
+}
+
+function parseQueryMetadata(record: Record<string, unknown>): AssistantQueryMetadata | undefined {
+  const profileRecord = record.profile_used && typeof record.profile_used === 'object'
+    ? record.profile_used as Record<string, unknown>
+    : null
+  const profile = profileRecord && isAssistantProfile(profileRecord.key)
+    ? {
+        key: profileRecord.key,
+        version: parseNullableString(profileRecord.version),
+        provider: parseNullableString(profileRecord.provider),
+        configuredModel: parseNullableString(profileRecord.configured_model),
+        resolvedModel: parseNullableString(profileRecord.resolved_model),
+        requestedEffort: isCloudEffort(profileRecord.requested_effort)
+          ? profileRecord.requested_effort
+          : null,
+        resolvedEffort: parseNullableString(profileRecord.resolved_effort),
+      }
+    : null
+  const usage = parseMetricRecord(record.usage, [
+    'input_tokens', 'cached_input_tokens', 'reasoning_tokens', 'output_tokens', 'total_tokens',
+  ])
+  const timing = parseMetricRecord(record.timing, ['total_ms', 'provider_ms', 'apex_tool_ms'])
+  const costRecord = record.cost_estimate && typeof record.cost_estimate === 'object'
+    ? record.cost_estimate as Record<string, unknown>
+    : null
+  const citations = Array.isArray(record.citations)
+    ? record.citations.flatMap((citation): AssistantCitation[] => {
+        if (!citation || typeof citation !== 'object') return []
+        const item = citation as Record<string, unknown>
+        return [{
+          title: parseNullableString(item.title),
+          uri: parseNullableString(item.uri),
+          snippet: parseNullableString(item.snippet),
+          source: parseNullableString(item.source),
+        }]
+      })
+    : []
+
+  if (!profile && !usage && !timing && !costRecord && citations.length === 0) {
+    return undefined
+  }
+
+  return {
+    profile,
+    usage: usage ? {
+      inputTokens: usage.input_tokens,
+      cachedInputTokens: usage.cached_input_tokens,
+      reasoningTokens: usage.reasoning_tokens,
+      outputTokens: usage.output_tokens,
+      totalTokens: usage.total_tokens,
+    } : null,
+    timing: timing ? {
+      totalMs: timing.total_ms,
+      providerMs: timing.provider_ms,
+      apexToolMs: timing.apex_tool_ms,
+    } : null,
+    cost: costRecord ? {
+      tokenCost: parseNullableFiniteNumber(costRecord.token_cost),
+      hostedToolCost: parseNullableFiniteNumber(costRecord.hosted_tool_cost),
+      totalCost: parseNullableFiniteNumber(costRecord.total_cost),
+      currency: typeof costRecord.currency === 'string' ? costRecord.currency : 'USD',
+      pricingVersion: parseNullableString(costRecord.pricing_version),
+      completeness: parseNullableString(costRecord.completeness),
+    } : null,
+    citations,
+  }
 }
 
 function parseToolOutputItem(value: unknown): ToolOutputItem | null {
@@ -366,7 +546,14 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
         }
       : null
 
-  return { answer, tool_trace, tool_outputs, error, local_context_usage }
+  return {
+    answer,
+    tool_trace,
+    tool_outputs,
+    error,
+    local_context_usage,
+    metadata: parseQueryMetadata(record),
+  }
 }
 
 function isAcinonyxProfile(profile: AssistantProfile): boolean {
@@ -376,12 +563,15 @@ function isAcinonyxProfile(profile: AssistantProfile): boolean {
 export interface UseApexAssistantResult {
   assistantHistory: AgentMessage[]
   isAssistantQuerying: boolean
-  isAssistantOpen: boolean
+  activeQueryProfile: AssistantProfile | null
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
   assistantContextUsage: LocalContextUsage | null
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
+  isLocalModelActionPending: boolean
+  verifyingCloudProfile: AssistantProfile | null
+  refreshProfilesStatus: () => Promise<void>
   queryAssistant: (
     prompt: string,
     profile: AssistantProfile,
@@ -390,12 +580,14 @@ export interface UseApexAssistantResult {
       briefingId?: number | null
       toolScope?: LocalToolScope | null
       effort?: CloudEffort | null
+      sessionId?: string | null
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
+  loadLocalModel: (profile: Extract<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
+  verifyCloudProfile: (profile: Exclude<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
   clearAssistantChat: (profile?: AssistantProfile) => void
   resetAssistantSession: () => void
-  setAssistantOpen: (open: boolean) => void
 }
 
 export function useApexAssistant(
@@ -405,13 +597,15 @@ export function useApexAssistant(
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
   const [acinonyxHistory, setAcinonyxHistory] = useState<AgentMessage[]>([])
   const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
-  const [isAssistantOpen, setAssistantOpen] = useState(false)
+  const [activeQueryProfile, setActiveQueryProfile] = useState<AssistantProfile | null>(null)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [assistantContextUsage, setAssistantContextUsage] =
     useState<LocalContextUsage | null>(null)
   const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
   const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
+  const [isLocalModelActionPending, setIsLocalModelActionPending] = useState(false)
+  const [verifyingCloudProfile, setVerifyingCloudProfile] = useState<AssistantProfile | null>(null)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
   const acinonyxHistoryRef = useRef<AgentMessage[]>([])
@@ -454,7 +648,7 @@ export function useApexAssistant(
     }
   }, [])
 
-  const shouldPollProfiles = profilesPollingEnabled || isAssistantOpen
+  const shouldPollProfiles = profilesPollingEnabled
 
   useEffect(() => {
     if (!shouldPollProfiles) {
@@ -502,6 +696,8 @@ export function useApexAssistant(
   }, [isAssistantQuerying, shouldPollProfiles, fetchProfilesStatus])
 
   const unloadLocalModel = useCallback(async (): Promise<boolean> => {
+    if (isLocalModelActionPending) return false
+    setIsLocalModelActionPending(true)
     try {
       const response = await fetch(AGENT_LOCAL_UNLOAD_ENDPOINT, {
         method: 'POST',
@@ -521,8 +717,53 @@ export function useApexAssistant(
         fetchError instanceof Error ? fetchError.message : 'Unknown unload error'
       console.warn(`[useApexAssistant] Local model unload error: ${message}`)
       return false
+    } finally {
+      setIsLocalModelActionPending(false)
     }
-  }, [fetchProfilesStatus])
+  }, [fetchProfilesStatus, isLocalModelActionPending])
+
+  const loadLocalModel = useCallback(async (
+    profile: Extract<AssistantProfile, 'mus' | 'sorex'>,
+  ): Promise<boolean> => {
+    if (isLocalModelActionPending) return false
+    setIsLocalModelActionPending(true)
+    try {
+      const response = await fetch(AGENT_LOCAL_LOAD_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile }),
+      })
+      if (!response.ok) {
+        console.warn(`[useApexAssistant] Local model load failed (${response.status}).`)
+        return false
+      }
+      await fetchProfilesStatus()
+      return true
+    } catch (fetchError) {
+      const message = fetchError instanceof Error ? fetchError.message : 'Unknown load error'
+      console.warn(`[useApexAssistant] Local model load error: ${message}`)
+      return false
+    } finally {
+      setIsLocalModelActionPending(false)
+    }
+  }, [fetchProfilesStatus, isLocalModelActionPending])
+
+  const verifyCloudProfile = useCallback(async (
+    profile: Exclude<AssistantProfile, 'mus' | 'sorex'>,
+  ): Promise<boolean> => {
+    if (verifyingCloudProfile) return false
+    setVerifyingCloudProfile(profile)
+    try {
+      const response = await fetch(API_ENDPOINTS.agentProfileVerify(profile), { method: 'POST' })
+      if (!response.ok) return false
+      await fetchProfilesStatus()
+      return true
+    } catch {
+      return false
+    } finally {
+      setVerifyingCloudProfile(null)
+    }
+  }, [fetchProfilesStatus, verifyingCloudProfile])
 
   const queryAssistant = useCallback(
     async (
@@ -533,6 +774,7 @@ export function useApexAssistant(
         briefingId?: number | null
         toolScope?: LocalToolScope | null
         effort?: CloudEffort | null
+        sessionId?: string | null
       },
     ): Promise<void> => {
       const trimmedPrompt = prompt.trim()
@@ -547,10 +789,15 @@ export function useApexAssistant(
 
       isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
-      setAssistantOpen(true)
+      setActiveQueryProfile(profile)
       setAssistantError(null)
 
       const userMsg: AgentMessage = { role: 'user', content: trimmedPrompt }
+      if (useAcinonyxStore) {
+        setAcinonyxHistory((prev) => [...prev, userMsg])
+      } else {
+        setProductionHistory((prev) => [...prev, userMsg])
+      }
 
       try {
         const response = await fetch(AGENT_QUERY_ENDPOINT, {
@@ -567,6 +814,7 @@ export function useApexAssistant(
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
             ...(context?.toolScope ? { tool_scope: context.toolScope } : {}),
+            ...(context?.sessionId ? { session_id: context.sessionId } : {}),
           }),
         })
 
@@ -595,12 +843,16 @@ export function useApexAssistant(
           role: 'model',
           content: answer,
           tool_outputs: body.tool_outputs,
+          ...(body.tool_trace && body.tool_trace.length > 0
+            ? { tool_trace: body.tool_trace }
+            : {}),
+          ...(body.metadata ? { metadata: body.metadata } : {}),
         }
 
         if (useAcinonyxStore) {
-          setAcinonyxHistory((prev) => [...prev, userMsg, modelMsg])
+          setAcinonyxHistory((prev) => [...prev, modelMsg])
         } else {
-          setProductionHistory((prev) => [...prev, userMsg, modelMsg])
+          setProductionHistory((prev) => [...prev, modelMsg])
         }
         setAssistantLatestTrace(body.tool_trace ?? [])
         setAssistantContextUsage(body.local_context_usage ?? null)
@@ -617,6 +869,7 @@ export function useApexAssistant(
       } finally {
         isAssistantQueryingRef.current = false
         setIsAssistantQuerying(false)
+        setActiveQueryProfile(null)
         void fetchProfilesStatus()
       }
     },
@@ -641,22 +894,25 @@ export function useApexAssistant(
     setAssistantLatestTrace([])
     setAssistantError(null)
     setAssistantContextUsage(null)
-    setAssistantOpen(false)
   }, [])
 
   return {
     assistantHistory,
     isAssistantQuerying,
-    isAssistantOpen,
+    activeQueryProfile,
     assistantLatestTrace,
     assistantError,
     assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
+    isLocalModelActionPending,
+    verifyingCloudProfile,
+    refreshProfilesStatus: fetchProfilesStatus,
     queryAssistant,
     unloadLocalModel,
+    loadLocalModel,
+    verifyCloudProfile,
     clearAssistantChat,
     resetAssistantSession,
-    setAssistantOpen,
   }
 }

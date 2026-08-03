@@ -11,24 +11,22 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
   type ReactElement,
 } from 'react'
 
 import { ApexLogo } from './components/ApexLogo'
-import { LocalModelControl } from './components/LocalModelControl'
 import { CelestialBackground } from './components/CelestialBackground'
-import { ConsoleTray } from './components/ConsoleTray'
+import { CortexWorkspace } from './components/CortexWorkspace'
 import { BriefingDigest } from './components/BriefingDigest'
-import { BriefingGenerateControl } from './components/BriefingControls'
 import { CalendarEventList } from './components/CalendarEventList'
 import { FootballFixtureList } from './components/FootballFixtureList'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
+import { ReminderQuickAdd } from './components/ReminderQuickAdd'
 import SettingsPanel from './components/SettingsPanel'
-import { StandbyActions } from './components/StandbyActions'
+import { OverviewCommandRail } from './components/OverviewCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { TelemetryCard } from './components/TelemetryCard'
 import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
@@ -36,6 +34,7 @@ import { useApexData } from './hooks/useApexData'
 import { useApexAssistant } from './hooks/useApexAssistant'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
+import { useLocalCommands } from './hooks/useLocalCommands'
 import { useMarketData } from './hooks/useMarketData'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
@@ -47,7 +46,12 @@ import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
-import { resolveAssistantProfile, resolveInitialAssistantSelection } from './lib/settings'
+import {
+  filterAssistantSettingsForDevMode,
+  parseSettingsResponse,
+  resolveAppliedAssistantSelection,
+  resolveInitialAssistantSelection,
+} from './lib/settings'
 import type {
   AssistantProfile,
   CloudEffort,
@@ -80,38 +84,6 @@ function parseEmailTelemetry(emailText: string): { count: number; items: ParsedE
 interface ParsedNews {
   topic: string
   headline: string
-}
-
-function getMediaQueryMatch(query: string): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return false
-  }
-
-  return window.matchMedia(query).matches
-}
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => getMediaQueryMatch(query))
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return
-    }
-
-    const mediaQueryList = window.matchMedia(query)
-    const updateMatch = (): void => {
-      setMatches(mediaQueryList.matches)
-    }
-
-    updateMatch()
-    mediaQueryList.addEventListener('change', updateMatch)
-
-    return () => {
-      mediaQueryList.removeEventListener('change', updateMatch)
-    }
-  }, [query])
-
-  return matches
 }
 
 function parseNewsTelemetry(newsText: string): ParsedNews[] {
@@ -169,20 +141,27 @@ function isCloudAssistantProfile(
 }
 
 export default function App(): ReactElement {
-  const [reminderPulseCount, setReminderPulseCount] = useState(0)
+  const reminderPulseCount = 0
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
+  const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
-  const [activeTab, setActiveTab] = useState<'assistant' | 'reminders'>('assistant')
+  const [workspace, setWorkspace] = useState<'overview' | 'cortex'>('overview')
+  const [cloudProfile, setCloudProfile] = useState<Exclude<AssistantProfile, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
+  const [snapshotAttached, setSnapshotAttached] = useState(true)
+  const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
+  const [cortexSessionId, setCortexSessionId] = useState(() =>
+    globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
+  )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
-  const isShowcaseDesktop = useMediaQuery('(min-width: 1280px) and (min-height: 821px)')
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
   const {
     activeReminders,
+    createReminder,
     demoModeActive,
     devModeActive,
     askApexEnabled,
@@ -191,7 +170,6 @@ export default function App(): ReactElement {
     assistantInitialSelection,
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
-    refreshReminders,
     markReminderAsRead,
     applyBootSettings,
   } = apexData
@@ -203,22 +181,36 @@ export default function App(): ReactElement {
   const briefing = useBriefingPipeline()
   const voiceDelivery = useVoiceDelivery()
 
-  const showAskApexBar = activated && Boolean(askApexEnabled)
-
   const {
     assistantHistory,
     isAssistantQuerying,
-    isAssistantOpen,
+    activeQueryProfile,
     assistantLatestTrace,
     assistantError,
     assistantContextUsage,
     profilesStatus,
     profilesStatusHydrated,
     queryAssistant,
+    isLocalModelActionPending,
+    verifyingCloudProfile,
+    loadLocalModel,
     unloadLocalModel,
+    verifyCloudProfile,
+    refreshProfilesStatus,
     clearAssistantChat,
-    setAssistantOpen,
   } = useApexAssistant(true, agentProfile)
+  const isLocalAgentProfile = agentProfile === 'sorex' || agentProfile === 'mus'
+  const { commands: localCommands } = useLocalCommands(isLocalAgentProfile)
+
+  useEffect(() => {
+    const armedScopeIsUnavailable = armedLocalToolScope && (
+      !isLocalAgentProfile ||
+      !localCommands.some((command) => command.key === armedLocalToolScope && command.available)
+    )
+    if (!armedScopeIsUnavailable) return
+    const timeoutId = window.setTimeout(() => setArmedLocalToolScope(null), 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [armedLocalToolScope, isLocalAgentProfile, localCommands])
 
   const assistantSelectionHydratedRef = useRef(false)
 
@@ -231,6 +223,9 @@ export default function App(): ReactElement {
     )
     if (selection) {
       setAgentProfile(selection.profile)
+      if (selection.profile !== 'sorex' && selection.profile !== 'mus' && selection.profile !== 'acinonyx') {
+        setCloudProfile(selection.profile)
+      }
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
@@ -239,47 +234,86 @@ export default function App(): ReactElement {
   }, [assistantInitialSelection, defaultProfile])
 
   useEffect(() => {
-    if (briefingDefaultMode && isBriefingMode(briefingDefaultMode)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors asynchronous boot configuration into local controls.
+    if (
+      !briefingModeSelectionTouchedRef.current &&
+      briefingDefaultMode &&
+      isBriefingMode(briefingDefaultMode)
+    ) {
       setBriefingMode(briefingDefaultMode)
     }
     if (bootVoiceMode && isVoiceMode(bootVoiceMode)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Mirrors asynchronous boot configuration into local controls.
       setVoiceMode(bootVoiceMode)
     }
   }, [bootVoiceMode, briefingDefaultMode])
 
   const handleSettingsApplied = useCallback(
-    (response: SettingsResponse) => {
-      // DEV_MODE keeps Acinonyx/Focused as the effective selection without
-      // writing it into saved production preferences.
-      const selection = response.dev_mode_active
-        ? {
-            mode: 'cloud' as const,
-            profile: 'acinonyx' as AssistantProfile,
-            effort: 'focused' as CloudEffort,
-          }
-        : {
-            mode: response.settings.assistant.mode,
-            profile: resolveAssistantProfile(response.settings.assistant),
-            effort:
-              response.settings.assistant.mode === 'cloud'
-                ? response.settings.assistant.cloud_effort
-                : null,
-          }
+    (response: SettingsResponse, selectedProfile?: AssistantProfile) => {
+      const selection = resolveAppliedAssistantSelection(
+        response,
+        selectedProfile ?? agentProfile,
+        assistantSelectionHydratedRef.current || selectedProfile !== undefined,
+      )
       applyBootSettings({
         askApexEnabled: response.settings.assistant.enabled,
         assistantInitialSelection: selection,
         marketEnabled: response.settings.features.market,
       })
       setAgentProfile(selection.profile)
+      if (selection.profile !== 'sorex' && selection.profile !== 'mus' && selection.profile !== 'acinonyx') {
+        setCloudProfile(selection.profile)
+      }
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
-      setBriefingMode(response.settings.briefing.default_mode)
+      if (!briefingModeSelectionTouchedRef.current) {
+        setBriefingMode(response.settings.briefing.default_mode)
+      }
       setVoiceMode(response.settings.voice.mode)
     },
-    [applyBootSettings],
+    [agentProfile, applyBootSettings],
   )
+
+  // Cortex remembers both production runtime choices. This is deliberately
+  // separate from DEV_MODE's Acinonyx startup override, which remains session-only.
+  useEffect(() => {
+    const controller = new AbortController()
+    void (async (): Promise<void> => {
+      try {
+        const response = await fetch(API_ENDPOINTS.settings, { signal: controller.signal })
+        if (!response.ok || controller.signal.aborted) return
+        const body: unknown = await response.json()
+        if (!body || typeof body !== 'object') return
+        const settings = (body as { settings?: unknown }).settings
+        if (!settings || typeof settings !== 'object') return
+        const settingsValues = settings as Record<string, unknown>
+        const assistant = settingsValues.assistant
+        if (assistant && typeof assistant === 'object') {
+          const values = assistant as Record<string, unknown>
+          if (values.cloud_profile === 'panthera' || values.cloud_profile === 'neofelis' || values.cloud_profile === 'delphinus' || values.cloud_profile === 'orcinus') {
+            setCloudProfile(values.cloud_profile)
+          }
+          if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
+            setCloudEffort(values.cloud_effort)
+          }
+        }
+        const briefing = settingsValues.briefing
+        if (
+          !briefingModeSelectionTouchedRef.current &&
+          briefing &&
+          typeof briefing === 'object'
+        ) {
+          const mode = (briefing as Record<string, unknown>).default_mode
+          if (typeof mode === 'string' && isBriefingMode(mode)) {
+            setBriefingMode(mode)
+          }
+        }
+      } catch {
+        // Cortex falls back to boot defaults when settings are temporarily unavailable.
+      }
+    })()
+    return () => controller.abort()
+  }, [])
 
   const {
     pipelineState,
@@ -292,6 +326,11 @@ export default function App(): ReactElement {
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
+  const localLifecycleBusy =
+    activeQueryProfile === 'sorex' ||
+    activeQueryProfile === 'mus' ||
+    liveSynthesis?.phase === 'loading' ||
+    liveSynthesis?.phase === 'generating'
 
   const activeStep = pipelineState?.step ?? null
   const isBriefingRunning = briefing.status === 'loading'
@@ -359,35 +398,18 @@ export default function App(): ReactElement {
 
   const pendingReminderCount = activeReminders.length
   const isDormant = !activated
-  // Expanded assistant sessions become a right rail on desktop. Smaller
-  // and height-constrained viewports keep the existing bottom tray behavior.
-  const useRightRailConsole = isShowcaseDesktop
-  const isConsoleCompact = isAssistantOpen && !isDormant && useRightRailConsole
-
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
-  const wingHeightClass = useRightRailConsole ? 'xl:h-full' : 'h-auto'
-  const leftWingDormantClasses = useRightRailConsole
-    ? 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-    : 'hidden'
-  const leftWingActiveClasses = useRightRailConsole
-    ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-    : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
-  const rightWingDormantClasses = useRightRailConsole
-    ? 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-    : 'hidden'
-  const rightWingActiveClasses = useRightRailConsole
-    ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-    : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
-  const centerColumnDormantClasses = useRightRailConsole
-    ? 'h-full min-h-0 flex flex-col justify-center xl:max-w-full xl:flex-1'
-    : 'h-auto min-h-0 flex flex-col justify-center'
-  const centerColumnActiveClasses = useRightRailConsole
-    ? 'h-full min-h-0 flex flex-col justify-start pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
-    : 'h-auto min-h-0 flex flex-col justify-start pt-0'
+  const wingHeightClass = 'xl:h-full'
+  const leftWingDormantClasses = 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const leftWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+  const rightWingDormantClasses = 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const rightWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+  const centerColumnDormantClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
 
   // The logo is always visible and the insights panel stays mounted while the
-  // desktop console opens in the right column.
+  // Overview telemetry columns transition around it.
   const showDigest = !isDormant
   const digestWrapperClass = [
     'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
@@ -396,14 +418,9 @@ export default function App(): ReactElement {
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
-  const logoShellClass = 'hud-logo-shell shrink-0 py-4 xl:py-0'
+  const logoShellClass = 'hud-logo-shell flex min-h-0 w-full items-center justify-center py-4 xl:py-0'
 
-  const largeLogoWrapperClass = [
-    'hud-logo-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu flex flex-col items-center opacity-100 scale-100',
-    isDormant
-      ? 'h-64 justify-center xl:h-auto xl:flex-1'
-      : 'h-72 justify-center xl:h-80',
-  ].join(' ')
+  const largeLogoWrapperClass = 'hud-logo-wrapper relative flex h-full min-h-0 flex-col items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu opacity-100 scale-100'
 
   const logoSizeClass = 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
 
@@ -499,7 +516,9 @@ export default function App(): ReactElement {
     selectedBriefingProfile === null ||
     (profilesStatusHydrated &&
       profilesStatus.some(
-        (profile) => profile.key === selectedBriefingProfile && profile.status === 'available',
+        (profile) =>
+          profile.key === selectedBriefingProfile &&
+          ['available', 'configured', 'verified'].includes(profile.status),
       ))
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
@@ -523,21 +542,11 @@ export default function App(): ReactElement {
   const footballModule = telemetry.snapshot?.modules.football
   const remindersModule = telemetry.snapshot?.modules.reminders
 
-  const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
-  const weatherPanelLayoutClass = useRightRailConsole
-    ? 'xl:flex-[0.5_1_0] xl:min-h-0'
-    : 'hud-panel-natural min-h-[8rem]'
-  const eventsPanelLayoutClass = useRightRailConsole
-    ? 'xl:flex-[1.5_1_0] xl:min-h-0'
-    : 'hud-panel-natural min-h-[11rem]'
-  const marketPanelLayoutClass = useRightRailConsole
-    ? 'xl:flex-[1_1_0]'
-    : 'hud-panel-natural min-h-[12rem]'
-  const rightTelemetryPanelClass = isConsoleCompact
-    ? 'xl:hidden'
-    : useRightRailConsole
-      ? 'flex-none xl:flex-1 xl:min-h-0'
-      : 'hud-panel-natural min-h-[10rem]'
+  const wingGapClass = 'gap-4'
+  const weatherPanelLayoutClass = 'xl:flex-[0.5_1_0] xl:min-h-0'
+  const eventsPanelLayoutClass = 'xl:flex-[1.5_1_0] xl:min-h-0'
+  const marketPanelLayoutClass = 'xl:flex-[1_1_0]'
+  const rightTelemetryPanelClass = 'flex-none xl:flex-1 xl:min-h-0'
 
   const attentionTiers = useMemo(() => {
     const options = {
@@ -619,10 +628,6 @@ export default function App(): ReactElement {
     void markReminderAsRead(id)
   }
 
-  const handleReminderSaved = (): void => {
-    setReminderPulseCount((prev) => prev + 1)
-  }
-
   const handleGenerateBriefing = useCallback(async (): Promise<void> => {
     const snapshotId = telemetry.snapshot?.snapshot_id
     if (!snapshotId) {
@@ -681,11 +686,6 @@ export default function App(): ReactElement {
 
   const synthesisInsights = briefing.insights
 
-  const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
-  const weatherConditionCompactValue =
-    primaryTemperatureF != null && weatherBody.trim().length > 0
-      ? `${primaryTemperatureF}°, ${weatherBody}`
-      : weatherCompactValue
   const eventsCompactValue = hasSnapshot
     ? [
         calendarInfo.totalCount > 0 ? `${calendarInfo.totalCount} calendar` : null,
@@ -709,40 +709,122 @@ export default function App(): ReactElement {
         return
       }
       await queryAssistant(prompt, profile, {
-        snapshotId: telemetry.snapshot?.snapshot_id ?? null,
+        snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
         toolScope,
         effort: isCloudAssistantProfile(profile, profilesStatus) ? cloudEffort : null,
+        sessionId: cortexSessionId,
       })
     },
-    [preflight, queryAssistant, telemetry.snapshot?.snapshot_id, profilesStatus, cloudEffort],
+    [
+      preflight,
+      queryAssistant,
+      telemetry.snapshot?.snapshot_id,
+      profilesStatus,
+      cloudEffort,
+      snapshotAttached,
+      cortexSessionId,
+    ],
   )
 
-  const consoleTrayProps = {
-    isExpanded: isAssistantOpen,
-    setExpanded: setAssistantOpen,
-    activeTab,
-    setActiveTab,
-    assistantHistory,
-    isAssistantQuerying,
-    assistantLatestTrace,
-    assistantError,
-    assistantContextUsage,
-    profilesStatus,
-    profilesStatusHydrated,
-    queryAssistant: queryAssistantWithContext,
-    clearAssistantChat,
-    activeProfile: agentProfile,
-    setActiveProfile: setAgentProfile,
-    askApexEnabled: Boolean(showAskApexBar),
-    activeReminders,
-    markReminderAsRead: handleMarkReminderRead,
-    refreshReminders,
-    onReminderSaved: handleReminderSaved,
-  } satisfies ComponentProps<typeof ConsoleTray>
+  const persistAssistantSettings = useCallback(
+    async (assistant: Record<string, unknown>, selectedProfile?: AssistantProfile): Promise<void> => {
+      const payload = devModeActive ? filterAssistantSettingsForDevMode(assistant) : assistant
+      if (Object.keys(payload).length === 0) {
+        return
+      }
+      try {
+        const response = await fetch(API_ENDPOINTS.settings, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assistant: payload }),
+        })
+        if (!response.ok) {
+          return
+        }
+        const body: unknown = await response.json()
+        const parsed = parseSettingsResponse(body)
+        if (parsed) {
+          handleSettingsApplied(parsed, selectedProfile)
+          await refreshProfilesStatus()
+        }
+      } catch {
+        // The session selection remains usable if local preference persistence fails.
+      }
+    },
+    [devModeActive, handleSettingsApplied, refreshProfilesStatus],
+  )
+
+  const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
+    try {
+      await fetch(API_ENDPOINTS.settings, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ briefing: { default_mode: mode } }),
+      })
+    } catch {
+      // Keep the selected mode usable for this session if persistence is unavailable.
+    }
+  }, [])
+
+  const handleBriefingModeChange = useCallback((mode: BriefingMode): void => {
+    briefingModeSelectionTouchedRef.current = true
+    setBriefingMode(mode)
+    void persistBriefingMode(mode)
+  }, [persistBriefingMode])
+
+  const handleProfileChange = useCallback((profile: AssistantProfile): void => {
+    setAgentProfile(profile)
+    if (profile !== 'sorex' && profile !== 'mus') {
+      setArmedLocalToolScope(null)
+    }
+    if (profile === 'acinonyx') {
+      void persistAssistantSettings({ mode: 'cloud', cloud_effort: cloudEffort }, profile)
+      return
+    }
+    if (profile === 'sorex' || profile === 'mus') {
+      void persistAssistantSettings({ mode: 'local', local_profile: profile }, profile)
+      return
+    }
+    setCloudProfile(profile)
+    void persistAssistantSettings({ mode: 'cloud', cloud_profile: profile, cloud_effort: cloudEffort }, profile)
+  }, [cloudEffort, persistAssistantSettings])
+
+  const handleEffortChange = useCallback((effort: CloudEffort): void => {
+    setCloudEffort(effort)
+    void persistAssistantSettings({ mode: 'cloud', cloud_profile: cloudProfile, cloud_effort: effort }, agentProfile)
+  }, [agentProfile, cloudProfile, persistAssistantSettings])
+
+  const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
+    void persistAssistantSettings({ neofelis_google_search_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
+
+  const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
+    void persistAssistantSettings({ neofelis_google_maps_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
+
+  const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
+    void persistAssistantSettings({ delphinus_x_search_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
+
+  const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
+    void persistAssistantSettings({ orcinus_x_search_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
+
+  const handleNewCortexSession = useCallback((): void => {
+    clearAssistantChat(agentProfile)
+    setSnapshotAttached(false)
+    setArmedLocalToolScope(null)
+    setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
+  }, [agentProfile, clearAssistantChat])
+
+  const handleOverviewSubmit = useCallback((query: string, profile: AssistantProfile, toolScope?: LocalToolScope | null): void => {
+    setWorkspace('cortex')
+    void queryAssistantWithContext(query, profile, toolScope)
+  }, [queryAssistantWithContext])
 
   return (
     <main
-      className={`hud-app-shell ${useRightRailConsole ? 'hud-layout-fullscreen' : 'hud-layout-compact'} relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6`}
+      className="hud-app-shell hud-layout-fullscreen relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6"
       style={{ '--glow-color': glowColor } as CSSProperties}
     >
       <CelestialBackground />
@@ -762,23 +844,23 @@ export default function App(): ReactElement {
       </div>
 
       <div className="hud-main-shell relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden">
-        <header className="hud-header relative pointer-events-none mb-4 flex h-16 w-full shrink-0 select-none flex-nowrap items-center">
+        <header className="hud-header relative pointer-events-none mb-4 flex h-20 w-full shrink-0 select-none flex-nowrap items-center">
           <SystemDiagnostics
             diagnostics={diagnostics}
             diagnosticsStatus={diagnosticsStatus}
-            status={briefing.status === 'idle' && activated ? (hasSnapshot ? 'success' : isRefreshingAll ? 'loading' : 'idle') : briefing.status}
-            confidenceScore={telemetry.snapshot?.sync_health_score ?? briefing.confidenceScore}
             failedConnectors={telemetry.snapshot?.failed_connectors ?? briefing.failedConnectors}
             connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
+            isCheckingConnectors={isRefreshingAll}
+            refreshingConnectors={telemetry.refreshingConnectors}
+            onRefreshConnectors={handleRefreshAll}
             demoModeActive={demoModeActive}
             devModeActive={devModeActive}
-            briefingMode={briefingMode}
-            onBriefingModeChange={setBriefingMode}
-            profilesStatus={profilesStatus}
-            profilesStatusHydrated={profilesStatusHydrated}
-            briefingControlsBusy={briefingControlsBusy}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
+            workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
+            <button type="button" onClick={() => setWorkspace('overview')} aria-pressed={workspace === 'overview'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'overview' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Overview</button>
+            <button type="button" onClick={() => setWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
+          </nav>}
           />
         </header>
 
@@ -797,138 +879,14 @@ export default function App(): ReactElement {
           onApplied={handleSettingsApplied}
         />
 
-        <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useRightRailConsole ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
+        {workspace === 'overview' ? (
+          <>
+        <div className="hud-body-layout flex w-full flex-col gap-4 overflow-visible xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`hud-wing-column ${useRightRailConsole ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`hud-wing-column order-2 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:order-1 xl:min-h-0 xl:flex xl:flex-col ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex ${useRightRailConsole ? 'xl:flex-1' : ''}`}>
-                {isConsoleCompact ? (
-                  <>
-                    <TelemetryCard
-                      title="Weather"
-                      icon={CloudSun}
-                      primaryTemperatureF={primaryTemperatureF}
-                      weatherCondition={weatherInfo.condition}
-                      ledState={weatherLedState}
-                      onRefresh={() => handleRefreshConnector('weather')}
-                      refreshDisabled={isRefreshingAll}
-                      statusMessage={weatherStatusMessage}
-                      isCompact
-                      compactValue={weatherConditionCompactValue}
-                      attentionTier={attentionTiers.weather}
-                      attentionStaggerMs={attentionStagger.weather}
-                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
-                    >
-                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {weatherBody}
-                      </p>
-                    </TelemetryCard>
-
-                    <TelemetryCard
-                      title="Events"
-                      icon={Calendar}
-                      f1TelemetryText={f1ScheduleTelemetryText}
-                      ledState={calendarLedState}
-                      refreshActions={[
-                        { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
-                        { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
-                        { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
-                      ]}
-                      statusMessage={eventsStatusMessage}
-                      compactValue={eventsCompactValue}
-                      attentionTier={attentionTiers.events}
-                      attentionStaggerMs={attentionStagger.events}
-                      className="hidden min-h-0 xl:flex xl:flex-[2.05_1_0]"
-                    >
-                      {calendarRefreshing && !hasSnapshot ? (
-                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                          Loading schedule…
-                        </p>
-                      ) : (
-                        <>
-                          <CalendarEventList
-                            compact
-                            telemetry={calendarInfo}
-                            hasSnapshot={hasSnapshot}
-                          />
-                          <FootballFixtureList telemetry={footballInfo} module={footballModule} hasSnapshot={hasSnapshot} />
-                        </>
-                      )}
-                    </TelemetryCard>
-
-                    <TelemetryCard
-                      title="Inbox"
-                      icon={Mail}
-                      ledState={emailLedState}
-                      onRefresh={() => handleRefreshConnector('email')}
-                      refreshDisabled={isRefreshingAll}
-                      statusMessage={emailStatusMessage}
-                      compactValue={inboxCompactValue}
-                      attentionTier={attentionTiers.inbox}
-                      attentionStaggerMs={attentionStagger.inbox}
-                      className="hidden min-h-0 xl:flex xl:flex-[1.2_1_0]"
-                    >
-                      {emailRefreshing && !hasSnapshot ? (
-                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                          Loading inbox...
-                        </p>
-                      ) : emailInfo.items.length > 0 ? (
-                        <ul className="list-fade-mask min-h-0 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
-                          {emailInfo.items.slice(0, 3).map((item, index) => (
-                            <li
-                              key={`${item.subject}-${item.time}-${index}`}
-                              className="flex items-start justify-between gap-3"
-                            >
-                              <span className="flex min-w-0 items-start gap-2">
-                                <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                                <span className="truncate text-sm text-zinc-200">
-                                  {item.subject}
-                                </span>
-                              </span>
-                              <span className="shrink-0 font-mono text-xs text-zinc-500">
-                                {item.time}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm text-[color:var(--hud-muted-text)]">
-                          {hasSnapshot ? 'No unread emails.' : 'Inbox unavailable.'}
-                        </p>
-                      )}
-                    </TelemetryCard>
-
-                    <TelemetryCard
-                      title="News Wire"
-                      icon={Newspaper}
-                      ledState={newsLedState}
-                      onRefresh={() => handleRefreshConnector('news')}
-                      refreshDisabled={isRefreshingAll}
-                      statusMessage={newsStatusMessage}
-                      isCompact
-                      compactValue={newsCompactValue}
-                      attentionTier={attentionTiers.news}
-                      attentionStaggerMs={attentionStagger.news}
-                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
-                    >
-                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {newsItems[0]?.headline ?? (hasSnapshot ? 'No news headlines available.' : 'News unavailable.')}
-                      </p>
-                    </TelemetryCard>
-
-                    <MarketTickerCard
-                      data={marketData}
-                      isLoading={isMarketLoading}
-                      enabled={marketEnabled}
-                      isCompact
-                      attentionTier={attentionTiers.market}
-                      attentionStaggerMs={attentionStagger.market}
-                      className="hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
-                    />
-                  </>
-                ) : (
-                  <>
+              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex xl:flex-1`}>
                 <TelemetryCard
                   title="Weather"
                   icon={CloudSun}
@@ -938,7 +896,6 @@ export default function App(): ReactElement {
                   onRefresh={() => handleRefreshConnector('weather')}
                   refreshDisabled={isRefreshingAll}
                   statusMessage={weatherStatusMessage}
-                  isCompact={isConsoleCompact}
                   compactValue={weatherBody}
                   attentionTier={attentionTiers.weather}
                   attentionStaggerMs={attentionStagger.weather}
@@ -960,7 +917,6 @@ export default function App(): ReactElement {
                     { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
                   ]}
                   statusMessage={eventsStatusMessage}
-                  isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
                   attentionTier={attentionTiers.events}
                   attentionStaggerMs={attentionStagger.events}
@@ -989,14 +945,12 @@ export default function App(): ReactElement {
                       attentionStaggerMs={attentionStagger.market}
                       className={`min-h-0 w-full ${marketPanelLayoutClass}`}
                     />
-                  </>
-                )}
               </div>
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
-              className={`hud-center-column ${useRightRailConsole ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+              className={`hud-center-column order-1 relative z-[var(--z-core-logo)] min-w-0 items-stretch justify-items-center gap-4 xl:order-2 xl:gap-6 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               {/* Ambient Logo Glow Projector */}
               <div
@@ -1048,7 +1002,7 @@ export default function App(): ReactElement {
                     />
                   </div>
                   <div
-                    className={`absolute left-1/2 top-full flex -translate-x-1/2 flex-col items-center whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    className={`flex flex-col items-center whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                       isDormant ? 'mt-7 xl:mt-9' : 'mt-2'
                     }`}
                   >
@@ -1062,62 +1016,44 @@ export default function App(): ReactElement {
                       isLocalModelLoading={isLocalModelLoading}
                       loadingDisplayName={loadingDisplayName}
                     />
-                    <LocalModelControl
-                      profile={activeLocalModel}
-                      loadingProfile={loadingLocalProfile}
-                      busy={isAssistantQuerying || liveSynthesis?.phase === 'generating'}
-                      onUnload={unloadLocalModel}
-                    />
-                    <div
-                      className={`mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        isDormant
-                          ? 'pointer-events-auto translate-y-0 opacity-100'
-                          : 'pointer-events-none -translate-y-1 opacity-0'
-                      }`}
-                    >
-                      <StandbyActions
-                        onStartApex={() => void handleStartApex()}
-                        onStartWithBriefing={() => void handleStartWithBriefing()}
-                        disabled={preflight.isChecking}
-                      />
-                    </div>
-                    {activated ? (
-                      <div className="mt-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                        <div className="flex w-max flex-nowrap items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleRefreshAll}
-                            disabled={isRefreshingAll}
-                            data-slot="refresh-all-trigger"
-                            className="group hud-command-surface inline-flex items-center rounded-md border border-white/10 bg-white/5 px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-text)] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
-                          >
-                            {isRefreshingAll ? (
-                              '[ REFRESHING… ]'
-                            ) : (
-                              <>
-                                <span className="group-hover:hidden group-focus-visible:hidden">[ REFRESH ALL ]</span>
-                                <span className="hidden group-hover:inline group-focus-visible:inline">&gt; REFRESH ALL</span>
-                              </>
-                            )}
-                          </button>
-                          <BriefingGenerateControl
-                            mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
-                            refreshDisabled={briefingControlsBusy || !briefingModeAvailable}
-                            busy={briefingControlsBusy}
-                            onGenerate={() => void handleGenerateBriefing()}
-                            onRefreshAndGenerate={() => void handleRefreshAllAndGenerate()}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 </div>
+              </div>
+              <div className="flex w-full flex-col items-center">
+                <OverviewCommandRail
+                  activated={activated}
+                  askApexEnabled={Boolean(askApexEnabled)}
+                  activeProfile={agentProfile}
+                  profilesStatus={profilesStatus}
+                  profilesStatusHydrated={profilesStatusHydrated}
+                  isAssistantQuerying={isAssistantQuerying}
+                  verifyingCloudProfile={verifyingCloudProfile}
+                  onProfileChange={handleProfileChange}
+                  onVerifyCloudProfile={verifyCloudProfile}
+                  onAssistantSubmit={handleOverviewSubmit}
+                  onStartApex={() => void handleStartApex()}
+                  onStartWithBriefing={() => void handleStartWithBriefing()}
+                  startDisabled={preflight.isChecking}
+                  briefingMode={briefingMode}
+                  onBriefingModeChange={handleBriefingModeChange}
+                  briefingControlsBusy={briefingControlsBusy}
+                  briefingModeAvailable={briefingModeAvailable}
+                  hasSnapshot={hasSnapshot}
+                  isRefreshingAll={isRefreshingAll}
+                  onRefreshAll={handleRefreshAll}
+                  onGenerateBriefing={() => void handleGenerateBriefing()}
+                  onRefreshAllAndGenerate={() => void handleRefreshAllAndGenerate()}
+                  activeLocalModel={activeLocalModel}
+                  loadingLocalProfile={loadingLocalProfile}
+                  localLifecycleBusy={localLifecycleBusy}
+                  onUnloadLocalModel={unloadLocalModel}
+                />
               </div>
             </div>
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useRightRailConsole ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Inbox"
@@ -1126,7 +1062,6 @@ export default function App(): ReactElement {
                 onRefresh={() => handleRefreshConnector('email')}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={emailStatusMessage}
-                isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
                 attentionTier={attentionTiers.inbox}
                 attentionStaggerMs={attentionStagger.inbox}
@@ -1182,7 +1117,6 @@ export default function App(): ReactElement {
                 onRefresh={() => handleRefreshConnector('news')}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={newsStatusMessage}
-                isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
                 attentionTier={attentionTiers.news}
                 attentionStaggerMs={attentionStagger.news}
@@ -1234,7 +1168,6 @@ export default function App(): ReactElement {
                 onRefresh={() => handleRefreshConnector('reminders')}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={remindersStatusMessage}
-                isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
                 attentionTier={attentionTiers.reminders}
                 attentionStaggerMs={attentionStagger.reminders}
@@ -1242,6 +1175,7 @@ export default function App(): ReactElement {
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
+                headerAction={<ReminderQuickAdd onSave={createReminder} />}
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (
@@ -1265,23 +1199,45 @@ export default function App(): ReactElement {
                 </div>
               </TelemetryCard>
 
-              <div className={`${useRightRailConsole ? (isAssistantOpen ? 'hidden h-full min-h-0 xl:flex xl:mt-auto' : 'hidden xl:flex xl:mt-auto') : 'hidden'}`}>
-                <ConsoleTray
-                  {...consoleTrayProps}
-                  placement="rail"
-                />
-              </div>
             </div>
         </div>
-      </div>
 
-      {!isDormant && !useRightRailConsole ? (
-        <div className="hud-console-bottom-tray relative z-[var(--z-bento-hud)] mt-4 flex-none shrink-0">
-          <ConsoleTray
-            {...consoleTrayProps}
+          </>
+        ) : (
+          <CortexWorkspace
+            activeProfile={agentProfile}
+            cloudEffort={cloudEffort}
+            askApexEnabled={Boolean(askApexEnabled)}
+            profilesStatus={profilesStatus}
+            profilesStatusHydrated={profilesStatusHydrated}
+            history={assistantHistory}
+            latestTrace={assistantLatestTrace}
+            error={assistantError}
+            contextUsage={assistantContextUsage}
+            commands={localCommands}
+            armedToolScope={armedLocalToolScope}
+            onArmedToolScopeChange={setArmedLocalToolScope}
+            isQuerying={isAssistantQuerying}
+            lifecycleBusy={localLifecycleBusy}
+            lifecycleActionPending={isLocalModelActionPending}
+            verifyingCloudProfile={verifyingCloudProfile}
+            onLoadLocalModel={loadLocalModel}
+            onUnloadLocalModel={unloadLocalModel}
+            onVerifyCloudProfile={verifyCloudProfile}
+            snapshotAttached={snapshotAttached}
+            snapshotAvailable={telemetry.snapshot !== null}
+            onSnapshotAttachedChange={setSnapshotAttached}
+            onProfileChange={handleProfileChange}
+            onEffortChange={handleEffortChange}
+            onGoogleSearchChange={handleGoogleSearchChange}
+            onGoogleMapsChange={handleGoogleMapsChange}
+            onDelphinusXSearchChange={handleDelphinusXSearchChange}
+            onOrcinusXSearchChange={handleOrcinusXSearchChange}
+            onSubmit={handleOverviewSubmit}
+            onNewSession={handleNewCortexSession}
           />
-        </div>
-      ) : null}
+        )}
+      </div>
 
       <PreflightDialog
         open={preflight.dialogOpen}

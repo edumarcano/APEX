@@ -1,23 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FocusEvent, KeyboardEvent, ReactElement, RefObject } from 'react'
+import type { ReactElement, ReactNode, RefObject } from 'react'
 import {
+  Bell,
+  CalendarDays,
   Clock,
   Cpu,
   Database,
   Globe,
   HardDrive,
+  Mail,
+  Newspaper,
+  PlugZap,
+  RefreshCw,
   Settings,
+  Trophy,
   type LucideIcon,
-  RotateCw,
 } from 'lucide-react'
 
 import {
-  type AgentProfileStatus,
   type ConnectorHealthEntry,
   type SystemDiagnostics as SystemDiagnosticsPayload,
 } from '../types/telemetry'
-import type { BriefingMode } from '../types/settings'
-import { BriefingModeSelector } from './BriefingControls'
 
 function clampPercentage(value: number): number {
   return Math.min(100, Math.max(0, value))
@@ -53,34 +56,114 @@ const CONNECTOR_LABELS: Record<string, string> = {
   reminders: 'Reminders',
 }
 
+const CONNECTOR_ICONS: Record<string, LucideIcon> = {
+  weather: Globe,
+  news: Newspaper,
+  email: Mail,
+  calendar: CalendarDays,
+  f1: Trophy,
+  football: Trophy,
+  reminders: Bell,
+}
+
 function formatConnectorLabel(connectorId: string): string {
   const normalized = connectorId.trim().toLowerCase()
   return CONNECTOR_LABELS[normalized] ?? connectorId
 }
 
-function formatHealthSummary(
-  connectorHealth: ConnectorHealthEntry[],
-  failedConnectors: string[],
-): { hasIssues: boolean; text: string } {
-  if (connectorHealth.length > 0) {
-    const degraded = connectorHealth.filter((entry) => entry.status === 'degraded')
-    const unavailable = connectorHealth.filter((entry) => entry.status === 'unavailable')
-    if (unavailable.length === 0 && degraded.length === 0) {
-      return { hasIssues: false, text: 'All connectors clear' }
-    }
-    const parts = [
-      ...unavailable.map((entry) => `${formatConnectorLabel(entry.name)} unavailable`),
-      ...degraded.map((entry) => `${formatConnectorLabel(entry.name)} degraded`),
-    ]
-    return { hasIssues: true, text: parts.join(', ') }
+type ConnectorDisplayState = 'Ready' | 'Checking' | 'Not configured' | 'Unauthorized' | 'Error' | 'Stale'
+
+interface ConnectorDisplayRow {
+  entry: ConnectorHealthEntry
+  state: ConnectorDisplayState
+  errorCategory: string | null
+}
+
+function getSafeErrorCategory(reasonCode: string | undefined): string | null {
+  switch (reasonCode?.trim().toLowerCase()) {
+    case 'missing_credentials':
+    case 'configuration_failure':
+      return 'Configuration required'
+    case 'unauthorized':
+    case 'authentication_error':
+    case 'invalid_credentials':
+    case 'forbidden':
+      return 'Authorization required'
+    case 'timeout':
+    case 'network_error':
+    case 'connection_error':
+      return 'Connection unavailable'
+    case 'throttled':
+      return 'Rate limited'
+    case 'provider_error':
+      return 'Provider error'
+    case 'partial_failure':
+    case 'partial_payload':
+    case 'invalid_payload':
+      return 'Partial data'
+    case 'database_error':
+      return 'Local data error'
+    default:
+      return reasonCode && reasonCode !== 'ok' && reasonCode !== 'disabled'
+        ? 'Connector unavailable'
+        : null
   }
-  if (failedConnectors.length > 0) {
-    return {
-      hasIssues: true,
-      text: failedConnectors.map(formatConnectorLabel).join(', '),
-    }
+}
+
+function getConnectorDisplayState(
+  entry: ConnectorHealthEntry,
+  checking: boolean,
+): ConnectorDisplayState {
+  if (checking) return 'Checking'
+  if (entry.status === 'disabled' || entry.reason_code === 'missing_credentials' || entry.reason_code === 'configuration_failure') {
+    return 'Not configured'
   }
-  return { hasIssues: false, text: 'All connectors clear' }
+  if (['unauthorized', 'authentication_error', 'invalid_credentials', 'forbidden'].includes(entry.reason_code ?? '')) {
+    return 'Unauthorized'
+  }
+  if (entry.freshness === 'stale' || entry.reason_code === 'stale_cache') return 'Stale'
+  if (entry.status === 'healthy') return 'Ready'
+  return 'Error'
+}
+
+function formatCheckedAt(observedAt: string | null | undefined): string {
+  if (!observedAt) return 'Last check unavailable'
+  const checkedAt = Date.parse(observedAt)
+  if (!Number.isFinite(checkedAt)) return 'Last check unavailable'
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - checkedAt) / 1000))
+  if (elapsedSeconds < 60) return 'Checked just now'
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60)
+  if (elapsedMinutes < 60) return `Checked ${elapsedMinutes}m ago`
+  const elapsedHours = Math.floor(elapsedMinutes / 60)
+  if (elapsedHours < 24) return `Checked ${elapsedHours}h ago`
+  return `Checked ${Math.floor(elapsedHours / 24)}d ago`
+}
+
+function getConnectorSummary(rows: ConnectorDisplayRow[]): {
+  text: string
+  ledClass: string
+  hasIssues: boolean
+} {
+  if (rows.some((row) => row.state === 'Checking')) {
+    return { text: 'Connectors · Checking…', ledClass: 'bg-zinc-400', hasIssues: false }
+  }
+  if (rows.length === 0) {
+    return { text: 'Connectors · Not checked', ledClass: 'bg-zinc-500', hasIssues: false }
+  }
+  const configured = rows.filter((row) => row.state !== 'Not configured')
+  if (configured.length === 0) {
+    return { text: 'Connectors · Not configured', ledClass: 'bg-zinc-500', hasIssues: false }
+  }
+  const ready = configured.filter((row) => row.state === 'Ready').length
+  const issues = configured.length - ready
+  if (issues === 0) {
+    return { text: `Connectors · ${ready} ready`, ledClass: 'bg-emerald-400', hasIssues: false }
+  }
+  return {
+    text: `Connectors · ${ready} ready · ${issues} ${issues === 1 ? 'issue' : 'issues'}`,
+    ledClass: 'bg-amber-400',
+    hasIssues: true,
+  }
 }
 
 function getMicroBarColorClass(percentage: number): string {
@@ -93,35 +176,19 @@ function getMicroBarColorClass(percentage: number): string {
   return 'bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
 }
 
-const EQUALIZER_HEIGHTS: readonly string[] = [
-  'h-[6px]',
-  'h-[10px]',
-  'h-[14px]',
-  'h-[18px]',
-  'h-[22px]',
-  'h-[22px]',
-  'h-[18px]',
-  'h-[14px]',
-  'h-[10px]',
-  'h-[6px]',
-]
-
 interface SystemDiagnosticsProps {
   diagnostics: SystemDiagnosticsPayload
   diagnosticsStatus: 'idle' | 'loading' | 'ready' | 'error'
-  status: 'idle' | 'loading' | 'success' | 'error'
-  confidenceScore: number
   failedConnectors?: string[]
   connectorHealth?: ConnectorHealthEntry[]
+  isCheckingConnectors?: boolean
+  refreshingConnectors?: ReadonlySet<string>
+  onRefreshConnectors?: () => void
   demoModeActive?: boolean
   devModeActive?: boolean
-  briefingMode: BriefingMode
-  onBriefingModeChange: (mode: BriefingMode) => void
-  profilesStatus: AgentProfileStatus[]
-  profilesStatusHydrated: boolean
-  briefingControlsBusy: boolean
   onOpenSettings?: () => void
   settingsButtonRef?: RefObject<HTMLButtonElement | null>
+  workspaceNavigation?: ReactNode
 }
 
 function MetricBar({
@@ -222,28 +289,42 @@ function ClockPill({ time }: { time: string }): ReactElement {
 export function SystemDiagnostics({
   diagnostics,
   diagnosticsStatus,
-  status,
-  confidenceScore,
   failedConnectors = [],
   connectorHealth = [],
+  isCheckingConnectors = false,
+  refreshingConnectors = new Set<string>(),
+  onRefreshConnectors,
   demoModeActive = false,
   devModeActive = false,
-  briefingMode,
-  onBriefingModeChange,
-  profilesStatus,
-  profilesStatusHydrated,
-  briefingControlsBusy,
   onOpenSettings,
   settingsButtonRef,
+  workspaceNavigation,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
-  const [isOpen, setIsOpen] = useState(false)
-  const [isPinned, setIsPinned] = useState(false)
+  const [isConnectorInspectorOpen, setIsConnectorInspectorOpen] = useState(false)
+  const [isConnectorInspectorPinned, setIsConnectorInspectorPinned] = useState(false)
   const [liveTime, setLiveTime] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const healthSummary = formatHealthSummary(connectorHealth, failedConnectors)
-  const hasConnectorFailures = healthSummary.hasIssues
+  const connectorEntries = connectorHealth.length > 0
+    ? connectorHealth
+    : failedConnectors.map((name) => ({
+      name,
+      status: 'unavailable' as const,
+      freshness: 'none' as const,
+      reason_code: 'provider_error',
+      observed_at: null,
+    }))
+  const connectorRows = connectorEntries.map((entry) => ({
+    entry,
+    state: getConnectorDisplayState(
+      entry,
+      isCheckingConnectors || refreshingConnectors.has(entry.name),
+    ),
+    errorCategory: getSafeErrorCategory(entry.reason_code),
+  }))
+  const connectorSummary = getConnectorSummary(connectorRows)
+  const isAnyConnectorChecking = isCheckingConnectors || refreshingConnectors.size > 0
   const modeSubtitle = demoModeActive ? 'DEMO' : devModeActive ? 'DEVELOPER' : null
 
   useEffect(() => {
@@ -277,12 +358,12 @@ export function SystemDiagnostics({
   }, [])
 
   useEffect(() => {
-    if (!isPinned) return
+    if (!isConnectorInspectorPinned) return
 
     const handleOutsideClick = (event: MouseEvent): void => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsPinned(false)
-        setIsOpen(false)
+        setIsConnectorInspectorPinned(false)
+        setIsConnectorInspectorOpen(false)
       }
     }
 
@@ -290,78 +371,18 @@ export function SystemDiagnostics({
     return () => {
       window.removeEventListener('mousedown', handleOutsideClick)
     }
-  }, [isPinned])
+  }, [isConnectorInspectorPinned])
 
-  const handleToggleClick = (): void => {
-    setIsPinned((prev) => {
+  const handleConnectorInspectorToggle = (): void => {
+    setIsConnectorInspectorPinned((prev) => {
       const next = !prev
-      setIsOpen(next)
+      setIsConnectorInspectorOpen(next)
       return next
     })
   }
 
-  const handleTriggerKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      handleToggleClick()
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      setIsPinned(false)
-      setIsOpen(false)
-    }
-  }
-
-  const handleBlur = (event: FocusEvent<HTMLDivElement>): void => {
-    const nextTarget = event.relatedTarget
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
-      return
-    }
-    if (!isPinned) {
-      setIsOpen(false)
-    }
-  }
-
   const isInitializing = diagnosticsStatus === 'idle' || diagnosticsStatus === 'loading'
   const isNetworkConnected = isBrowserOnline && diagnosticsStatus !== 'error'
-
-  let syncColorText = 'text-zinc-500'
-  let syncColorBar = 'bg-zinc-700'
-  let syncColorShadow = ''
-
-  if (status === 'success') {
-    if (confidenceScore >= 90) {
-      syncColorText = 'text-emerald-400'
-      syncColorBar = 'bg-emerald-500'
-      syncColorShadow = 'shadow-[0_0_4px_rgba(16,185,129,0.5)]'
-    } else if (confidenceScore >= 50) {
-      syncColorText = 'text-amber-400'
-      syncColorBar = 'bg-amber-500'
-      syncColorShadow = 'shadow-[0_0_4px_rgba(245,158,11,0.5)]'
-    } else {
-      syncColorText = 'text-red-400'
-      syncColorBar = 'bg-red-500'
-      syncColorShadow = 'shadow-[0_0_4px_rgba(239,68,68,0.5)]'
-    }
-  }
-
-  const activeBlocksCount = Math.max(0, Math.min(10, Math.floor((confidenceScore ?? 0) / 10)))
-  const syncBlocks = Array.from({ length: 10 }, (_, i) => {
-    const isSuccess = status === 'success'
-    const isActive = isSuccess && i < activeBlocksCount
-    return (
-      <div
-        key={i}
-        className={`w-1 rounded-sm transition-colors duration-500 ${EQUALIZER_HEIGHTS[i]} ${
-          isSuccess
-            ? isActive
-              ? `${syncColorBar} ${syncColorShadow}`
-              : 'bg-zinc-700'
-            : 'bg-zinc-800/60'
-        }`}
-      />
-    )
-  })
 
   const cpuUnavailable = isMetricUnavailable(diagnostics.cpu, isInitializing)
   const cpuPctClamped = cpuUnavailable ? 0 : clampPercentage(diagnostics.cpu ?? 0)
@@ -374,16 +395,9 @@ export function SystemDiagnostics({
   const ramText = formatPercentage(diagnostics.ram, isInitializing)
   const diskText = formatPercentage(diagnostics.disk, isInitializing)
 
-  const apexPillShellClass = [
-    'hud-corner-brackets hud-interactive-shell hud-glass relative flex h-11 min-w-[5.5rem] cursor-pointer flex-col items-center justify-center rounded-full px-5 transition-all duration-300',
-    hasConnectorFailures
-      ? 'border border-red-500/70 shadow-[0_0_16px_rgba(220,38,38,0.55),0_0_4px_rgba(220,38,38,0.9)] hover:border-red-400'
-      : 'hover-blue-medium',
-  ].join(' ')
-
   return (
-    <div className="pointer-events-auto grid h-16 w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
-      {/* Left flank — hardware */}
+    <div className="pointer-events-auto grid h-full w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
+      {/* Left flank — system and connector health */}
       <div className="flex min-w-0 items-center justify-self-start gap-2 sm:gap-2.5">
         <MetricPill
           label="CPU"
@@ -399,41 +413,86 @@ export function SystemDiagnostics({
           unavailable={ramUnavailable}
           icon={Database}
         />
-        <BriefingModeSelector
-          value={briefingMode}
-          onChange={onBriefingModeChange}
-          profiles={profilesStatus}
-          hydrated={profilesStatusHydrated}
-          disabled={briefingControlsBusy}
-        />
+        <div
+          ref={containerRef}
+          className="relative z-50"
+          onMouseEnter={() => setIsConnectorInspectorOpen(true)}
+          onMouseLeave={() => {
+            if (!isConnectorInspectorPinned) setIsConnectorInspectorOpen(false)
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleConnectorInspectorToggle}
+            onFocus={() => setIsConnectorInspectorOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setIsConnectorInspectorPinned(false)
+                setIsConnectorInspectorOpen(false)
+                event.currentTarget.blur()
+              }
+            }}
+            aria-expanded={isConnectorInspectorOpen}
+            aria-controls="connector-health-inspector"
+            className="hud-interactive-shell hud-glass flex h-11 min-w-0 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+            aria-label={`${connectorSummary.text}. View connector health.`}
+          >
+            <PlugZap className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+            <span className={`size-1.5 shrink-0 rounded-full ${connectorSummary.ledClass}`} aria-hidden />
+            <span className="whitespace-nowrap text-[10px] tracking-[0.04em] text-zinc-300">{connectorSummary.text}</span>
+          </button>
+
+          <div
+            id="connector-health-inspector"
+            role="dialog"
+            aria-label="Connector health"
+            aria-hidden={!isConnectorInspectorOpen}
+            className={`hud-corner-brackets hud-glass hud-glass-solid absolute left-0 top-[calc(100%+0.5rem)] z-50 w-[min(23rem,calc(100vw-2rem))] origin-top rounded-2xl border border-white/10 p-3 shadow-2xl transition-all duration-200 ${isConnectorInspectorOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-1 opacity-0'}`}
+          >
+            <span className="hud-corner-bl" aria-hidden />
+            <span className="hud-corner-br" aria-hidden />
+            <div className="mb-2 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+              <span className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-200">Connector health</span>
+              <span className="font-mono text-[9px] text-zinc-500">{connectorSummary.text.replace('Connectors · ', '')}</span>
+            </div>
+            <ul className="space-y-1.5" aria-label="Connector status list">
+              {connectorRows.map(({ entry, state, errorCategory }) => {
+                const Icon = CONNECTOR_ICONS[entry.name] ?? PlugZap
+                const stateTone = state === 'Ready' ? 'text-emerald-300' : state === 'Stale' ? 'text-amber-300' : state === 'Checking' ? 'text-zinc-300' : state === 'Not configured' ? 'text-zinc-500' : 'text-rose-300'
+                return (
+                  <li key={entry.name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-lg bg-black/20 px-2.5 py-2 font-mono text-[10px]">
+                    <span className="flex min-w-0 items-center gap-2 text-zinc-200"><Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />{formatConnectorLabel(entry.name)}</span>
+                    <span className={`text-right ${stateTone}`}>{state}</span>
+                    <span className="col-start-1 mt-1 text-[9px] text-zinc-500">{formatCheckedAt(entry.observed_at)}</span>
+                    {errorCategory ? <span className="col-start-2 mt-1 text-right text-[9px] text-zinc-500">{errorCategory}</span> : null}
+                  </li>
+                )
+              })}
+              {connectorRows.length === 0 ? <li className="rounded-lg bg-black/20 px-2.5 py-2 font-mono text-[10px] text-zinc-500">No connectors are configured.</li> : null}
+            </ul>
+            {onRefreshConnectors ? (
+              <button
+                type="button"
+                onClick={onRefreshConnectors}
+                disabled={isAnyConnectorChecking}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.12em] text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <RefreshCw className={`size-3 ${isAnyConnectorChecking ? 'animate-spin' : ''}`} aria-hidden />
+                {isAnyConnectorChecking ? 'Checking…' : 'Refresh checks'}
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
 
-      {/* Center — APEX identity + Sync Health popup */}
-      <div
-        ref={containerRef}
-        className="relative z-50 justify-self-center shrink-0"
-        onMouseEnter={() => setIsOpen(true)}
-        onMouseLeave={() => {
-          if (!isPinned) setIsOpen(false)
-        }}
-        onBlur={handleBlur}
-      >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleToggleClick}
-          onKeyDown={handleTriggerKeyDown}
-          className={apexPillShellClass}
-          aria-expanded={isOpen}
-          aria-label={
-            hasConnectorFailures
-              ? 'APEX sync health — connector failures detected'
-              : 'APEX sync health'
-          }
-        >
+      {/* Center — stable APEX identity */}
+      <div className="relative z-40 justify-self-center shrink-0">
+        <div className="hud-corner-brackets hud-interactive-shell hud-glass relative flex min-w-[7rem] flex-col items-center rounded-2xl px-1 py-1 transition-all duration-300 hover-blue-medium" aria-label="APEX identity">
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
-          <span className="hud-inner-lift flex flex-col items-center leading-none">
+          <div
+            className="hud-inner-lift flex h-9 w-full flex-col items-center justify-center rounded-xl px-3 leading-none"
+          >
             <span className="font-orbitron text-sm font-bold uppercase tracking-[0.28em] text-[color:var(--hud-accent)] sm:text-base">
               APEX
             </span>
@@ -453,42 +512,14 @@ export function SystemDiagnostics({
                 DEVELOPER
               </span>
             )}
-          </span>
-        </div>
-
-        <div
-          className={`hud-corner-brackets hud-glass hud-glass-solid absolute left-1/2 top-[calc(100%+0.5rem)] z-50 w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 origin-top rounded-2xl border border-white/10 px-4 py-3 shadow-2xl transition-all duration-300 ${
-            isOpen
-              ? 'pointer-events-auto translate-y-0 opacity-100'
-              : 'pointer-events-none -translate-y-1 opacity-0'
-          }`}
-          role="dialog"
-          aria-label="Sync health"
-          aria-hidden={!isOpen}
-        >
-          <span className="hud-corner-bl" aria-hidden />
-          <span className="hud-corner-br" aria-hidden />
-
-          <div className="flex flex-col gap-2 font-mono">
-            <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-500">
-              <span className="flex items-center gap-1.5">
-                <RotateCw className="size-3.5 animate-[spin_12s_linear_infinite]" aria-hidden />
-                Sync Health
-              </span>
-              <span className={`${syncColorText} font-bold`}>
-                {status === 'success' ? `${confidenceScore}%` : '--%'}
-              </span>
-            </div>
-            <div className="flex items-center justify-center gap-0.5 py-1">{syncBlocks}</div>
-            <p
-              className={`truncate text-[9px] leading-tight ${
-                hasConnectorFailures ? 'text-amber-300/90' : 'text-zinc-500'
-              }`}
-            >
-              {healthSummary.text}
-            </p>
           </div>
+          {workspaceNavigation ? (
+            <div className="hud-inner-lift mt-1 w-full border-t border-white/10 pt-1">
+              {workspaceNavigation}
+            </div>
+          ) : null}
         </div>
+
       </div>
 
       {/* Right flank — disk / net / clock */}

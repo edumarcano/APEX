@@ -112,6 +112,16 @@ export interface LocalContextUsage {
 export type ProfileAvailabilityStatus =
   | 'available'
   | 'busy'
+  | 'configured'
+  | 'verifying'
+  | 'verified'
+  | 'unauthorized'
+  | 'model_unavailable'
+  | 'rate_limited'
+  | 'quota_exhausted'
+  | 'billing_blocked'
+  | 'provider_unreachable'
+  | 'provider_error'
   | 'unknown'
   | 'disabled'
   | 'ollama_unreachable'
@@ -120,6 +130,20 @@ export type ProfileAvailabilityStatus =
   | 'cpu_overloaded'
 
 export type ProfileStability = 'stable' | 'preview'
+export type ProfileStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
+
+export interface ProfilePricingMetadata {
+  currency: 'USD'
+  pricing_version: string
+  billing_basis: 'free_tier' | 'standard' | 'local'
+  input_per_million: number
+  output_per_million: number
+  cached_input_per_million: number | null
+  long_context_threshold_tokens: number | null
+  long_context_input_per_million: number | null
+  long_context_output_per_million: number | null
+  long_context_cached_input_per_million: number | null
+}
 
 export interface LoadedOllamaModelStatus {
   name: string
@@ -139,12 +163,18 @@ export interface AgentProfileStatus {
   display_name: string
   provider: 'ollama' | 'gemini' | 'openai' | 'xai'
   version: string
+  sort_order: number
+  capabilities: string[]
   mode: AssistantMode
   tier: string
   stability: ProfileStability
   effort_options: CloudEffort[] | null
   default_effort: CloudEffort | null
   status: ProfileAvailabilityStatus
+  status_source: ProfileStatusSource
+  status_checked_at: string | null
+  provider_account_tier: string | null
+  pricing: ProfilePricingMetadata
   active: boolean
   loading: boolean
   reason: string | null
@@ -215,7 +245,6 @@ export type PreflightWarningCode =
   | 'network_trust_unknown'
   | 'running_on_battery'
   | 'rapid_connector_refresh'
-  | 'cloud_data_disclosure'
   | 'high_resource_local_profile'
 
 export type PreflightBlockerCode =
@@ -248,6 +277,7 @@ export interface PreflightRequest {
   force?: boolean
   involves_cloud?: boolean
   acknowledged_warnings?: string[]
+  /** Accepted by older servers; ignored by the current preflight contract. */
   cloud_disclosure_acknowledged?: boolean
 }
 

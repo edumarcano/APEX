@@ -1,0 +1,159 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
+import { describe, expect, it, vi } from 'vitest'
+
+import type { AgentProfileStatus, AssistantProfile } from '../types/telemetry'
+
+import { OverviewCommandRail } from './OverviewCommandRail'
+
+function profile(key: AssistantProfile, status: AgentProfileStatus['status'] = 'available'): AgentProfileStatus {
+  const local = key === 'mus' || key === 'sorex'
+  return {
+    key,
+    display_name: `APEX ${key.slice(0, 1).toUpperCase()}${key.slice(1)}`,
+    description: `${key} profile.`,
+    configured_model: local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
+    sort_order: key === 'panthera' ? 1 : 2,
+    capabilities: [],
+    native_tools: {},
+    provider: local ? 'ollama' : 'openai',
+    version: '2.0',
+    mode: local ? 'local' : 'cloud',
+    tier: 'stable',
+    stability: 'stable',
+    effort_options: local ? null : ['light', 'focused', 'extended'],
+    default_effort: local ? null : 'focused',
+    status,
+    status_source: local ? 'runtime' : 'configuration',
+    status_checked_at: null,
+    provider_account_tier: null,
+    pricing: {
+      currency: 'USD', pricing_version: 'test', billing_basis: local ? 'local' : 'standard',
+      input_per_million: local ? 0 : 0.2, output_per_million: local ? 0 : 1.2,
+      cached_input_per_million: null, long_context_threshold_tokens: null,
+      long_context_input_per_million: null, long_context_output_per_million: null,
+      long_context_cached_input_per_million: null,
+    },
+    active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+  }
+}
+
+function renderRail(overrides: Partial<ComponentProps<typeof OverviewCommandRail>> = {}) {
+  const props: ComponentProps<typeof OverviewCommandRail> = {
+    activated: true,
+    askApexEnabled: true,
+    activeProfile: 'panthera',
+    profilesStatus: [profile('panthera'), profile('mus'), profile('sorex')],
+    profilesStatusHydrated: true,
+    isAssistantQuerying: false,
+    verifyingCloudProfile: null,
+    onProfileChange: vi.fn(),
+    onVerifyCloudProfile: vi.fn(async () => true),
+    onAssistantSubmit: vi.fn(),
+    onStartApex: vi.fn(),
+    onStartWithBriefing: vi.fn(),
+    startDisabled: false,
+    briefingMode: 'panthera',
+    onBriefingModeChange: vi.fn(),
+    briefingControlsBusy: false,
+    briefingModeAvailable: true,
+    hasSnapshot: true,
+    isRefreshingAll: false,
+    onRefreshAll: vi.fn(),
+    onGenerateBriefing: vi.fn(),
+    onRefreshAllAndGenerate: vi.fn(),
+    activeLocalModel: null,
+    loadingLocalProfile: null,
+    localLifecycleBusy: false,
+    onUnloadLocalModel: vi.fn(async () => true),
+    ...overrides,
+  }
+  return { props, ...render(<OverviewCommandRail {...props} />) }
+}
+
+describe('OverviewCommandRail', () => {
+  it('keeps standby activation actions with briefing selection while hiding active-only controls', () => {
+    renderRail({ activated: false })
+
+    expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
+    expect(document.querySelector('[data-slot="overview-standby-controls"]')).toHaveClass('grid')
+    expect(document.querySelector('[data-slot="overview-standby-actions"]')).toHaveClass('col-span-2')
+  })
+
+  it('uses a compact assistant menu without changing briefing selection', async () => {
+    const onProfileChange = vi.fn()
+    const onBriefingModeChange = vi.fn()
+    const user = userEvent.setup()
+    renderRail({ onProfileChange, onBriefingModeChange })
+
+    const trigger = screen.getByRole('button', { name: /panthera.*available/i })
+    expect(trigger).not.toHaveClass('bg-[#7E22CE]/10')
+    expect(trigger).toHaveClass('border-white/10')
+    expect(document.querySelector('[data-slot="overview-profile-status-dot"]')).toHaveAttribute('data-status', 'available')
+    await user.click(trigger)
+    expect(screen.getByText('Assistant profile')).toBeVisible()
+    const selector = screen.getByRole('dialog', { name: 'Select assistant profile' })
+    expect(selector).toHaveAttribute('id', 'overview-profile-popover')
+    expect(selector.style.bottom).not.toBe('')
+    expect(selector.style.top).toBe('')
+    expect(screen.queryByText(/powered by/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /verify access/i })).toBeNull()
+    await user.click(within(screen.getByRole('listbox', { name: 'Local assistant profiles' })).getByRole('option', { name: 'Use APEX Mus' }))
+
+    expect(onProfileChange).toHaveBeenCalledWith('mus')
+    expect(onBriefingModeChange).not.toHaveBeenCalled()
+  })
+
+  it('uses the canonical APEX red for unavailable assistant profiles', () => {
+    renderRail({ profilesStatus: [profile('panthera', 'model_unavailable')] })
+
+    const statusDot = document.querySelector('[data-slot="overview-profile-status-dot"]')
+    expect(statusDot).toHaveClass('bg-[#DC2626]')
+    expect(statusDot).toHaveClass('shadow-[0_0_7px_rgba(220,38,38,0.8)]')
+  })
+
+  it('omits only the active assistant row when Ask APEX is disabled', () => {
+    renderRail({ askApexEnabled: false })
+
+    expect(screen.queryByLabelText('Ask APEX')).toBeNull()
+    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
+  })
+
+  it('submits with the active assistant profile while keeping the composer free of a second selector', async () => {
+    const onAssistantSubmit = vi.fn()
+    const user = userEvent.setup()
+    renderRail({ onAssistantSubmit })
+
+    expect(screen.queryByLabelText('Active profile Panthera')).toBeNull()
+    await user.type(screen.getByLabelText('Ask APEX query'), 'Summarize my day')
+    await user.click(screen.getByRole('button', { name: 'Send query' }))
+
+    expect(onAssistantSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', null)
+  })
+
+  it('keeps the resident local unload action beside synthesis without adding a runtime row', async () => {
+    const onUnloadLocalModel = vi.fn(async () => true)
+    const activeMus = { ...profile('mus'), active: true, display_name: 'APEX Mus' }
+    const user = userEvent.setup()
+    renderRail({ activeLocalModel: activeMus, onUnloadLocalModel })
+
+    expect(document.querySelector('[data-slot="overview-active-controls"]')).toHaveClass('overview-command-grid--with-assistant')
+    expect(document.querySelector('[data-slot="overview-assistant-row"]')).toBeVisible()
+    expect(document.querySelector('[data-slot="overview-briefing-row"]')).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing: panthera/i }).querySelector('.ml-auto')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
+    const actions = document.querySelector('[data-slot="overview-briefing-actions"]')
+    expect(actions).toContainElement(document.querySelector('[data-slot="overview-local-runtime"]'))
+    expect(actions).toContainElement(document.querySelector('.overview-command-grid__synthesize'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Unload Mus')
+    await user.click(screen.getByRole('button', { name: 'Unload APEX Mus' }))
+    expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
+  })
+})

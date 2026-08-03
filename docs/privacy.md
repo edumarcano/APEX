@@ -47,6 +47,8 @@ Selecting a local briefing profile or Structured Digest avoids sending briefing 
 
 The assistant is separate from briefing synthesis. A cloud profile sends the prompt, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local profile sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed.
 
+An explicit cloud access verification sends only the configured model identifier and credential to the provider's metadata endpoint. It sends no prompt, history, HUD context, provider tool call, or credential value back to the browser. APEX stores only a sanitized availability category and timestamp; it does not expose or log raw provider messages.
+
 HUD context is never implicit. A briefing is attached only through an explicit valid `briefing_id`; telemetry is attached only through the current matching `snapshot_id`. Omitting both identifiers injects neither. Tool results and HUD context are marked as untrusted model data.
 
 Conversation history exists in the browser tab and is lost on reload. The backend has no chat-session store. Local context budgeting can omit old complete interactions and reports counts, never prompt or tool-result content.
@@ -63,7 +65,7 @@ Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, a
 
 Enabled MCP providers receive arguments selected for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives web or news search; Alpha Vantage receives market-research parameters.
 
-Neofelis can send a query to provider-hosted Google Search when its setting is enabled and to Google Maps grounding. Delphinus and Orcinus can use provider-hosted X Search. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and xAI general web search is not enabled.
+Neofelis can send a query to provider-hosted Google Search or Google Maps grounding when their settings are enabled. Delphinus and Orcinus can use provider-hosted X Search when their respective setting is enabled. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and xAI general web search is not enabled.
 
 Imported results are untrusted and bounded before model and HUD delivery. The presets are disabled by default, must be allowlisted and locally risk-classified, and are never included in scheduled briefing telemetry.
 

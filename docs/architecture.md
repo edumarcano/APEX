@@ -125,7 +125,7 @@ Attached context and tool results are separately marked as untrusted model data.
 
 | Profile | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Focused; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
+| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
 | Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
 | Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 | Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
@@ -135,13 +135,17 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 
 Each non-demo assistant request begins with the selected profile's immutable identity instruction, followed by the configured APEX prompt, scoped context, and security boundary. Profile identity describes the active APEX profile and its model; it does not grant capabilities or override tool and privacy policy.
 
-Production cloud profiles receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis additionally receives always-on Google Maps grounding and optional Google Search grounding. Delphinus and Orcinus receive X Search; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+Production cloud profiles receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+
+`GET /api/v1/agent/profiles` is the backend-owned profile catalog. It publishes product ordering, profile content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; profile polling never performs a provider probe.
+
+The Overview command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
 
 ### Local profiles and command scopes
 
 Local assistant queries use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
-Local queries are tool-free unless the user arms one command bundle for that request. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the profile's 4K context window and reports sanitized usage counts.
+Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the profile's 4K context window and reports sanitized usage counts.
 
 ## Capability and MCP boundary
 
@@ -163,7 +167,9 @@ Ollama profiles share one lifecycle manager:
 - An already resident target model skips the cold-load resource gate.
 - A different target unloads the previous model before warming the new one.
 - Activity resets the idle timer; the lifespan monitor unloads an idle model.
-- Manual unload is rejected while local inference is busy.
+- Manual load and unload are rejected while local inference or another lifecycle action is busy.
+- A manual load is a pre-warm; normal request routing can still load a selected model.
+- Lifecycle success is verified against Ollama's running-model state before the HUD reports it.
 
 This same lifecycle serves briefings and assistant turns, exposing contention immediately rather than hiding it behind an unbounded queue.
 

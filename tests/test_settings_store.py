@@ -158,6 +158,9 @@ class SettingsStoreLoadTests(unittest.TestCase):
             "cloud_effort": "extended",
             "local_profile": "sorex",
             "neofelis_google_search_enabled": False,
+            "neofelis_google_maps_enabled": False,
+            "delphinus_x_search_enabled": False,
+            "orcinus_x_search_enabled": False,
         }
         _write_json(self.config_path, self.base)
         _write_json(self.local_path, {"ask_apex": {"enabled": False}})
@@ -169,6 +172,9 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(assistant.cloud_effort, "extended")
         self.assertEqual(assistant.local_profile, "sorex")
         self.assertFalse(assistant.neofelis_google_search_enabled)
+        self.assertFalse(assistant.neofelis_google_maps_enabled)
+        self.assertFalse(assistant.delphinus_x_search_enabled)
+        self.assertFalse(assistant.orcinus_x_search_enabled)
 
     def test_schema6_briefing_mode_survives_reload(self) -> None:
         store = self._store()
