@@ -4,6 +4,9 @@ This reference explains the current system model: which process owns each respon
 
 ## Canonical taxonomy
 
+For the meanings and design rationale behind these terms, see
+[Identity and Naming](identity-and-naming.md).
+
 - **APEX** is the standalone product and operational entity.
 - **Apex Agents** are specialized workers such as Apex Panthera and Apex Mus.
 - **Cortex Engine** is the backend subsystem that executes, orchestrates, tools, sessions, and manages model lifecycle.

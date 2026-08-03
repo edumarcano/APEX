@@ -2,6 +2,9 @@
 
 This reference defines the durable visual and interaction language for contributors working on the React HUD. It describes design intent and invariants rather than component implementation; runtime ownership belongs in [Architecture](architecture.md), and frontend code conventions live in the [Frontend Guide](../frontend/README.md).
 
+The meaning of the APEX mark and its relationship to the product and
+Agent taxonomy is documented in [Identity and Naming](identity-and-naming.md).
+
 ## Visual Direction
 
 APEX uses a dark intelligence and operations aesthetic built from cinematic atmospheric lighting, metallic state transitions, translucent glass surfaces, and mission-control chrome. Expressive background and identity layers surround comparatively restrained interaction surfaces so telemetry remains legible and operational states remain clear.

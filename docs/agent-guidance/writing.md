@@ -19,6 +19,7 @@ Use first person only where it adds useful context about personal motivation, co
 - Keep onboarding focused on reaching a first successful run. Keep configuration focused on settings and credentials. Keep architecture focused on the current system model and boundaries. Keep API documentation focused on behavior and usage, with generated schemas owning exhaustive contracts.
 - Prefer durable concepts, workflows, and ownership boundaries over source-tree inventories or implementation walkthroughs that quickly become stale.
 - Preserve historical records. The roadmap explains evolution and direction; the changelog records released changes. Do not rewrite their substantive history during an ordinary documentation pass.
+- Keep product identity, canonical terminology, logo meaning, and Apex Agent naming rationale in `docs/identity-and-naming.md`. Other documents should define operational behavior where needed and link to that reference rather than repeating the naming history or symbolism.
 
 ## Documentation Scannability
 
