@@ -47,8 +47,9 @@ import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import {
+  filterAssistantSettingsForDevMode,
   parseSettingsResponse,
-  resolveAssistantProfile,
+  resolveAppliedAssistantSelection,
   resolveInitialAssistantSelection,
 } from './lib/settings'
 import type {
@@ -247,23 +248,12 @@ export default function App(): ReactElement {
   }, [bootVoiceMode, briefingDefaultMode])
 
   const handleSettingsApplied = useCallback(
-    (response: SettingsResponse) => {
-      // DEV_MODE keeps Acinonyx as the effective profile without
-      // writing it into saved production preferences.
-      const selection = response.dev_mode_active
-        ? {
-            mode: 'cloud' as const,
-            profile: 'acinonyx' as AssistantProfile,
-            effort: response.settings.assistant.cloud_effort,
-          }
-        : {
-            mode: response.settings.assistant.mode,
-            profile: resolveAssistantProfile(response.settings.assistant),
-            effort:
-              response.settings.assistant.mode === 'cloud'
-                ? response.settings.assistant.cloud_effort
-                : null,
-          }
+    (response: SettingsResponse, selectedProfile?: AssistantProfile) => {
+      const selection = resolveAppliedAssistantSelection(
+        response,
+        selectedProfile ?? agentProfile,
+        assistantSelectionHydratedRef.current || selectedProfile !== undefined,
+      )
       applyBootSettings({
         askApexEnabled: response.settings.assistant.enabled,
         assistantInitialSelection: selection,
@@ -281,7 +271,7 @@ export default function App(): ReactElement {
       }
       setVoiceMode(response.settings.voice.mode)
     },
-    [applyBootSettings],
+    [agentProfile, applyBootSettings],
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
@@ -737,12 +727,8 @@ export default function App(): ReactElement {
   )
 
   const persistAssistantSettings = useCallback(
-    async (assistant: Record<string, unknown>): Promise<void> => {
-      const payload = devModeActive
-        ? Object.fromEntries(
-            Object.entries(assistant).filter(([key]) => key === 'cloud_effort'),
-          )
-        : assistant
+    async (assistant: Record<string, unknown>, selectedProfile?: AssistantProfile): Promise<void> => {
+      const payload = devModeActive ? filterAssistantSettingsForDevMode(assistant) : assistant
       if (Object.keys(payload).length === 0) {
         return
       }
@@ -758,7 +744,7 @@ export default function App(): ReactElement {
         const body: unknown = await response.json()
         const parsed = parseSettingsResponse(body)
         if (parsed) {
-          handleSettingsApplied(parsed)
+          handleSettingsApplied(parsed, selectedProfile)
           await refreshProfilesStatus()
         }
       } catch {
@@ -792,37 +778,37 @@ export default function App(): ReactElement {
       setArmedLocalToolScope(null)
     }
     if (profile === 'acinonyx') {
-      void persistAssistantSettings({ mode: 'cloud', cloud_effort: cloudEffort })
+      void persistAssistantSettings({ mode: 'cloud', cloud_effort: cloudEffort }, profile)
       return
     }
     if (profile === 'sorex' || profile === 'mus') {
-      void persistAssistantSettings({ mode: 'local', local_profile: profile })
+      void persistAssistantSettings({ mode: 'local', local_profile: profile }, profile)
       return
     }
     setCloudProfile(profile)
-    void persistAssistantSettings({ mode: 'cloud', cloud_profile: profile, cloud_effort: cloudEffort })
+    void persistAssistantSettings({ mode: 'cloud', cloud_profile: profile, cloud_effort: cloudEffort }, profile)
   }, [cloudEffort, persistAssistantSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
-    void persistAssistantSettings({ mode: 'cloud', cloud_profile: cloudProfile, cloud_effort: effort })
-  }, [cloudProfile, persistAssistantSettings])
+    void persistAssistantSettings({ mode: 'cloud', cloud_profile: cloudProfile, cloud_effort: effort }, agentProfile)
+  }, [agentProfile, cloudProfile, persistAssistantSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ neofelis_google_search_enabled: enabled })
-  }, [persistAssistantSettings])
+    void persistAssistantSettings({ neofelis_google_search_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
 
   const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ neofelis_google_maps_enabled: enabled })
-  }, [persistAssistantSettings])
+    void persistAssistantSettings({ neofelis_google_maps_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
 
   const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ delphinus_x_search_enabled: enabled })
-  }, [persistAssistantSettings])
+    void persistAssistantSettings({ delphinus_x_search_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
 
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAssistantSettings({ orcinus_x_search_enabled: enabled })
-  }, [persistAssistantSettings])
+    void persistAssistantSettings({ orcinus_x_search_enabled: enabled }, agentProfile)
+  }, [agentProfile, persistAssistantSettings])
 
   const handleNewCortexSession = useCallback((): void => {
     clearAssistantChat(agentProfile)
