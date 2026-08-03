@@ -8,7 +8,7 @@
     "market": true
   },
   "modules": {
-    "football": false,
+    "football": true,
     "f1": true
   },
   "football": {

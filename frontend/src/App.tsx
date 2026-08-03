@@ -24,6 +24,7 @@ import { FootballFixtureList } from './components/FootballFixtureList'
 import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
+import { ReminderQuickAdd } from './components/ReminderQuickAdd'
 import SettingsPanel from './components/SettingsPanel'
 import { OverviewCommandRail } from './components/OverviewCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -163,6 +164,7 @@ export default function App(): ReactElement {
   const apexData = useApexData()
   const {
     activeReminders,
+    createReminder,
     demoModeActive,
     devModeActive,
     askApexEnabled,
@@ -1374,6 +1376,7 @@ export default function App(): ReactElement {
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
+                headerAction={<ReminderQuickAdd onSave={createReminder} />}
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (

@@ -413,6 +413,8 @@ export type TelemetryCardProps = {
   refreshDisabled?: boolean
   /** Optional connector-specific controls for cards representing multiple modules. */
   refreshActions?: RefreshAction[]
+  /** Optional action rendered beside the card title and refresh control. */
+  headerAction?: ReactNode
   /** Explicit typed module state or failure reason shown with the card content. */
   statusMessage?: string | null
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
@@ -436,6 +438,7 @@ export function TelemetryCard({
   onRefresh,
   refreshDisabled = false,
   refreshActions,
+  headerAction,
   statusMessage,
   isCompact = false,
   compactValue,
@@ -549,6 +552,7 @@ export function TelemetryCard({
               {statusMessage}
             </span>
           ) : null}
+          {headerAction}
           <RefreshControls actions={resolvedRefreshActions} />
           {ledState !== 'none' ? (
             <span
@@ -577,6 +581,7 @@ export function TelemetryCard({
             >
               {title}
             </h2>
+            {headerAction}
             <RefreshControls actions={resolvedRefreshActions} />
             {ledState !== 'none' ? (
               <span
