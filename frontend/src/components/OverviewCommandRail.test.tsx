@@ -46,7 +46,6 @@ function renderRail(overrides: Partial<ComponentProps<typeof OverviewCommandRail
     activeProfile: 'panthera',
     profilesStatus: [profile('panthera'), profile('mus'), profile('sorex')],
     profilesStatusHydrated: true,
-    devModeActive: false,
     isAssistantQuerying: false,
     verifyingCloudProfile: null,
     onProfileChange: vi.fn(),

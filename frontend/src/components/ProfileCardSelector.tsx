@@ -21,7 +21,6 @@ interface ProfileCardSelectorProps {
   onChange: (profile: AssistantProfile) => void
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
-  devModeActive: boolean
   isQuerying: boolean
   verifyingProfile: AssistantProfile | null
   onVerify: (profile: Exclude<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
@@ -93,7 +92,7 @@ function popoverPosition(trigger: HTMLButtonElement): CSSProperties {
 }
 
 export function ProfileCardSelector({
-  activeProfile, onChange, profilesStatus, profilesStatusHydrated, devModeActive,
+  activeProfile, onChange, profilesStatus, profilesStatusHydrated,
   isQuerying, verifyingProfile, onVerify, presentation = 'cortex',
 }: ProfileCardSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -106,11 +105,9 @@ export function ProfileCardSelector({
 
   const profiles = useMemo(() => profilesStatus
     .filter((profile) => profile.mode === browseMode)
-    .filter((profile) => profile.key !== 'acinonyx' || devModeActive)
-    .sort((left, right) => left.sort_order - right.sort_order), [browseMode, devModeActive, profilesStatus])
+    .sort((left, right) => left.sort_order - right.sort_order), [browseMode, profilesStatus])
   const overviewProfiles = useMemo(() => profilesStatus
-    .filter((profile) => profile.key !== 'acinonyx' || devModeActive)
-    .sort((left, right) => left.sort_order - right.sort_order), [devModeActive, profilesStatus])
+    .sort((left, right) => left.sort_order - right.sort_order), [profilesStatus])
 
   useEffect(() => {
     if (!isOpen) return

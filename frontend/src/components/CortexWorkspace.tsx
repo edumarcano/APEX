@@ -7,11 +7,11 @@ import type { AgentProfileStatus, AssistantProfile, CloudEffort, LocalCommandSta
 import { AssistantToolCards } from './AssistantToolCards'
 import { AskApexBar } from './AskApexBar'
 import { ProfileCardSelector } from './ProfileCardSelector'
+import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 
 interface CortexWorkspaceProps {
   activeProfile: AssistantProfile
   cloudEffort: CloudEffort
-  devModeActive: boolean
   askApexEnabled: boolean
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
@@ -35,13 +35,9 @@ interface CortexWorkspaceProps {
   onProfileChange: (profile: AssistantProfile) => void
   onEffortChange: (effort: CloudEffort) => void
   onGoogleSearchChange: (enabled: boolean) => void
-  neofelisGoogleSearchEnabled: boolean
   onGoogleMapsChange: (enabled: boolean) => void
-  neofelisGoogleMapsEnabled: boolean
   onDelphinusXSearchChange: (enabled: boolean) => void
-  delphinusXSearchEnabled: boolean
   onOrcinusXSearchChange: (enabled: boolean) => void
-  orcinusXSearchEnabled: boolean
   onSubmit: (query: string, profile: AssistantProfile, toolScope?: LocalToolScope | null) => void
   onNewSession: () => void
 }
@@ -77,7 +73,7 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   return <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5"><p className="font-mono uppercase tracking-wider text-zinc-500">{label}</p><p className="mt-1 font-mono text-zinc-200">{value}</p><p className="mt-1 text-zinc-500">{detail}</p></div>
 }
 
-function Conversation({ history, latestTrace, error, isQuerying, profilesStatus, activeProfile }: { history: AgentMessage[]; latestTrace: ToolTraceItem[]; error: string | null; isQuerying: boolean; profilesStatus: AgentProfileStatus[]; activeProfile: AssistantProfile }): ReactElement {
+function Conversation({ history, latestTrace, error, isQuerying, profilesStatus, activeProfile, onPromptSelect }: { history: AgentMessage[]; latestTrace: ToolTraceItem[]; error: string | null; isQuerying: boolean; profilesStatus: AgentProfileStatus[]; activeProfile: AssistantProfile; onPromptSelect: ((query: string) => void) | null }): ReactElement {
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const target = endRef.current
@@ -85,7 +81,7 @@ function Conversation({ history, latestTrace, error, isQuerying, profilesStatus,
   }, [history, isQuerying])
   const profileName = profilesStatus.find((profile) => profile.key === activeProfile)?.display_name ?? 'APEX'
   return <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" aria-live="polite">
-    {history.length === 0 && !isQuerying ? <div className="flex min-h-56 items-center justify-center rounded-xl border border-dashed border-white/10 px-6 text-center font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</div> : null}
+    {history.length === 0 && !isQuerying ? <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p>{onPromptSelect ? <div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <button key={chip.label} type="button" onClick={() => onPromptSelect(chip.query)} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</button>)}</div> : null}</div> : null}
     {history.map((message, index) => {
       if (message.role === 'user') return <div key={`user-${index}`} className="flex justify-end"><p className="max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white">{message.content}</p></div>
       if (message.role !== 'model') return null
@@ -168,8 +164,8 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const activeStatus = props.profilesStatus.find((profile) => profile.key === props.activeProfile)
   return <section className="relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl" aria-label="Cortex workspace">
     <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Independent operations workspace</p></div></div><button type="button" onClick={props.onNewSession} disabled={props.isQuerying} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button></header>
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} profilesStatus={props.profilesStatus} activeProfile={props.activeProfile} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar activeProfile={props.activeProfile} onSubmit={props.onSubmit} profilesStatus={props.profilesStatus} commands={local ? props.commands : []} armedToolScope={local ? props.armedToolScope : null} onArmedToolScopeChange={props.onArmedToolScopeChange} isSubmitting={props.isQuerying} error={props.error} integrated /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
-      <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Profile</p><ProfileCardSelector activeProfile={props.activeProfile} onChange={props.onProfileChange} profilesStatus={props.profilesStatus} profilesStatusHydrated={props.profilesStatusHydrated} devModeActive={props.devModeActive} isQuerying={props.isQuerying} verifyingProfile={props.verifyingCloudProfile} onVerify={props.onVerifyCloudProfile} /></section>
+    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} profilesStatus={props.profilesStatus} activeProfile={props.activeProfile} onPromptSelect={props.askApexEnabled ? (query) => props.onSubmit(query, props.activeProfile) : null} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar presentation="cortex" activeProfile={props.activeProfile} onSubmit={props.onSubmit} profilesStatus={props.profilesStatus} commands={local ? props.commands : []} armedToolScope={local ? props.armedToolScope : null} onArmedToolScopeChange={props.onArmedToolScopeChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
+      <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Profile</p><ProfileCardSelector activeProfile={props.activeProfile} onChange={props.onProfileChange} profilesStatus={props.profilesStatus} profilesStatusHydrated={props.profilesStatusHydrated} isQuerying={props.isQuerying} verifyingProfile={props.verifyingCloudProfile} onVerify={props.onVerifyCloudProfile} /></section>
         {!local ? <CloudControls {...props} /> : null}
         {local && activeStatus ? <><LocalModelLifecycle profile={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} /><LocalToolScopes commands={props.commands} armedToolScope={props.armedToolScope} contextUsage={props.contextUsage} onChange={props.onArmedToolScopeChange} /></> : null}
         <ContextControl {...props} />
@@ -179,11 +175,12 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
 }
 
 function CloudControls(props: CortexWorkspaceProps): ReactElement {
-  const effortOptions = props.profilesStatus.find((profile) => profile.key === props.activeProfile)?.effort_options ?? []
+  const activeProfile = props.profilesStatus.find((profile) => profile.key === props.activeProfile)
+  const effortOptions = activeProfile?.effort_options ?? []
   const grounding = props.activeProfile === 'neofelis'
-    ? <GroundingControls label="Neofelis" note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="Google Search" detail="Provider grounding for later requests" checked={props.neofelisGoogleSearchEnabled} onChange={props.onGoogleSearchChange} /><GroundingToggle label="Google Maps" detail="Provider grounding for later requests" checked={props.neofelisGoogleMapsEnabled} onChange={props.onGoogleMapsChange} /></GroundingControls>
+    ? <GroundingControls label="Neofelis" note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="Google Search" detail="Provider grounding for later requests" checked={activeProfile?.native_tools.google_search ?? false} onChange={props.onGoogleSearchChange} /><GroundingToggle label="Google Maps" detail="Provider grounding for later requests" checked={activeProfile?.native_tools.google_maps ?? false} onChange={props.onGoogleMapsChange} /></GroundingControls>
     : props.activeProfile === 'delphinus' || props.activeProfile === 'orcinus'
-      ? <GroundingControls label={props.activeProfile === 'delphinus' ? 'Delphinus' : 'Orcinus'} note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={props.activeProfile === 'delphinus' ? props.delphinusXSearchEnabled : props.orcinusXSearchEnabled} onChange={props.activeProfile === 'delphinus' ? props.onDelphinusXSearchChange : props.onOrcinusXSearchChange} /></GroundingControls>
+      ? <GroundingControls label={props.activeProfile === 'delphinus' ? 'Delphinus' : 'Orcinus'} note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={activeProfile?.native_tools.x_search ?? false} onChange={props.activeProfile === 'delphinus' ? props.onDelphinusXSearchChange : props.onOrcinusXSearchChange} /></GroundingControls>
       : null
   return <>{effortOptions.length > 0 ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{effortOptions.map((effort) => <option key={effort} value={effort}>{effort.slice(0, 1).toUpperCase()}{effort.slice(1)}</option>)}</select></section> : null}{grounding}</>
 }

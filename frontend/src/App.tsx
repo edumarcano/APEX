@@ -140,7 +140,7 @@ function isCloudAssistantProfile(
 }
 
 export default function App(): ReactElement {
-  const [reminderPulseCount] = useState(0)
+  const reminderPulseCount = 0
   const [agentProfile, setAgentProfile] = useState<AssistantProfile>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
@@ -149,10 +149,6 @@ export default function App(): ReactElement {
   const [workspace, setWorkspace] = useState<'overview' | 'cortex'>('overview')
   const [cloudProfile, setCloudProfile] = useState<Exclude<AssistantProfile, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
   const [snapshotAttached, setSnapshotAttached] = useState(true)
-  const [neofelisGoogleSearchEnabled, setNeofelisGoogleSearchEnabled] = useState(true)
-  const [neofelisGoogleMapsEnabled, setNeofelisGoogleMapsEnabled] = useState(true)
-  const [delphinusXSearchEnabled, setDelphinusXSearchEnabled] = useState(true)
-  const [orcinusXSearchEnabled, setOrcinusXSearchEnabled] = useState(true)
   const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
@@ -199,6 +195,7 @@ export default function App(): ReactElement {
     loadLocalModel,
     unloadLocalModel,
     verifyCloudProfile,
+    refreshProfilesStatus,
     clearAssistantChat,
   } = useApexAssistant(true, agentProfile)
   const isLocalAgentProfile = agentProfile === 'sorex' || agentProfile === 'mus'
@@ -279,12 +276,6 @@ export default function App(): ReactElement {
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
-      setNeofelisGoogleSearchEnabled(
-        response.settings.assistant.neofelis_google_search_enabled,
-      )
-      setNeofelisGoogleMapsEnabled(response.settings.assistant.neofelis_google_maps_enabled)
-      setDelphinusXSearchEnabled(response.settings.assistant.delphinus_x_search_enabled)
-      setOrcinusXSearchEnabled(response.settings.assistant.orcinus_x_search_enabled)
       if (!briefingModeSelectionTouchedRef.current) {
         setBriefingMode(response.settings.briefing.default_mode)
       }
@@ -314,18 +305,6 @@ export default function App(): ReactElement {
           }
           if (values.cloud_effort === 'light' || values.cloud_effort === 'focused' || values.cloud_effort === 'extended') {
             setCloudEffort(values.cloud_effort)
-          }
-          if (typeof values.neofelis_google_search_enabled === 'boolean') {
-            setNeofelisGoogleSearchEnabled(values.neofelis_google_search_enabled)
-          }
-          if (typeof values.neofelis_google_maps_enabled === 'boolean') {
-            setNeofelisGoogleMapsEnabled(values.neofelis_google_maps_enabled)
-          }
-          if (typeof values.delphinus_x_search_enabled === 'boolean') {
-            setDelphinusXSearchEnabled(values.delphinus_x_search_enabled)
-          }
-          if (typeof values.orcinus_x_search_enabled === 'boolean') {
-            setOrcinusXSearchEnabled(values.orcinus_x_search_enabled)
           }
         }
         const briefing = settingsValues.briefing
@@ -429,35 +408,18 @@ export default function App(): ReactElement {
 
   const pendingReminderCount = activeReminders.length
   const isDormant = !activated
-  // Overview retains its full desktop HUD. Cortex owns assistant visibility
-  // and never changes polling, request, speech, or briefing lifecycles.
-  const useFullscreenOverviewLayout = true
-  const isConsoleCompact = false
-
   const wingTransition =
     'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
-  const wingHeightClass = useFullscreenOverviewLayout ? 'xl:h-full' : 'h-auto'
-  const leftWingDormantClasses = useFullscreenOverviewLayout
-    ? 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-    : 'hidden'
-  const leftWingActiveClasses = useFullscreenOverviewLayout
-    ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-    : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
-  const rightWingDormantClasses = useFullscreenOverviewLayout
-    ? 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-    : 'hidden'
-  const rightWingActiveClasses = useFullscreenOverviewLayout
-    ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-    : 'opacity-100 translate-x-0 scale-100 pointer-events-auto max-w-full flex-none overflow-visible'
-  const centerColumnDormantClasses = useFullscreenOverviewLayout
-    ? 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] xl:max-w-full xl:flex-1'
-    : 'grid h-auto min-h-0 grid-rows-[auto_minmax(0,auto)_auto]'
-  const centerColumnActiveClasses = useFullscreenOverviewLayout
-    ? 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
-    : 'grid h-auto min-h-0 grid-rows-[auto_minmax(0,auto)_auto] pt-0'
+  const wingHeightClass = 'xl:h-full'
+  const leftWingDormantClasses = 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const leftWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+  const rightWingDormantClasses = 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
+  const rightWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
+  const centerColumnDormantClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] xl:max-w-full xl:flex-1'
+  const centerColumnActiveClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
 
   // The logo is always visible and the insights panel stays mounted while the
-  // desktop console opens in the right column.
+  // Overview telemetry columns transition around it.
   const showDigest = !isDormant
   const digestWrapperClass = [
     'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
@@ -590,21 +552,11 @@ export default function App(): ReactElement {
   const footballModule = telemetry.snapshot?.modules.football
   const remindersModule = telemetry.snapshot?.modules.reminders
 
-  const wingGapClass = isConsoleCompact ? 'gap-3' : 'gap-4'
-  const weatherPanelLayoutClass = useFullscreenOverviewLayout
-    ? 'xl:flex-[0.5_1_0] xl:min-h-0'
-    : 'hud-panel-natural min-h-[8rem]'
-  const eventsPanelLayoutClass = useFullscreenOverviewLayout
-    ? 'xl:flex-[1.5_1_0] xl:min-h-0'
-    : 'hud-panel-natural min-h-[11rem]'
-  const marketPanelLayoutClass = useFullscreenOverviewLayout
-    ? 'xl:flex-[1_1_0]'
-    : 'hud-panel-natural min-h-[12rem]'
-  const rightTelemetryPanelClass = isConsoleCompact
-    ? 'xl:hidden'
-    : useFullscreenOverviewLayout
-      ? 'flex-none xl:flex-1 xl:min-h-0'
-      : 'hud-panel-natural min-h-[10rem]'
+  const wingGapClass = 'gap-4'
+  const weatherPanelLayoutClass = 'xl:flex-[0.5_1_0] xl:min-h-0'
+  const eventsPanelLayoutClass = 'xl:flex-[1.5_1_0] xl:min-h-0'
+  const marketPanelLayoutClass = 'xl:flex-[1_1_0]'
+  const rightTelemetryPanelClass = 'flex-none xl:flex-1 xl:min-h-0'
 
   const attentionTiers = useMemo(() => {
     const options = {
@@ -744,11 +696,6 @@ export default function App(): ReactElement {
 
   const synthesisInsights = briefing.insights
 
-  const weatherCompactValue = primaryTemperatureF != null ? `${primaryTemperatureF}°` : null
-  const weatherConditionCompactValue =
-    primaryTemperatureF != null && weatherBody.trim().length > 0
-      ? `${primaryTemperatureF}°, ${weatherBody}`
-      : weatherCompactValue
   const eventsCompactValue = hasSnapshot
     ? [
         calendarInfo.totalCount > 0 ? `${calendarInfo.totalCount} calendar` : null,
@@ -774,9 +721,7 @@ export default function App(): ReactElement {
       await queryAssistant(prompt, profile, {
         snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
         toolScope,
-        effort: isCloudAssistantProfile(profile, profilesStatus)
-          ? profile === 'acinonyx' ? 'focused' : cloudEffort
-          : null,
+        effort: isCloudAssistantProfile(profile, profilesStatus) ? cloudEffort : null,
         sessionId: cortexSessionId,
       })
     },
@@ -793,14 +738,19 @@ export default function App(): ReactElement {
 
   const persistAssistantSettings = useCallback(
     async (assistant: Record<string, unknown>): Promise<void> => {
-      if (devModeActive) {
+      const payload = devModeActive
+        ? Object.fromEntries(
+            Object.entries(assistant).filter(([key]) => key === 'cloud_effort'),
+          )
+        : assistant
+      if (Object.keys(payload).length === 0) {
         return
       }
       try {
         const response = await fetch(API_ENDPOINTS.settings, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ assistant }),
+          body: JSON.stringify({ assistant: payload }),
         })
         if (!response.ok) {
           return
@@ -809,12 +759,13 @@ export default function App(): ReactElement {
         const parsed = parseSettingsResponse(body)
         if (parsed) {
           handleSettingsApplied(parsed)
+          await refreshProfilesStatus()
         }
       } catch {
         // The session selection remains usable if local preference persistence fails.
       }
     },
-    [devModeActive, handleSettingsApplied],
+    [devModeActive, handleSettingsApplied, refreshProfilesStatus],
   )
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
@@ -858,22 +809,18 @@ export default function App(): ReactElement {
   }, [cloudProfile, persistAssistantSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
-    setNeofelisGoogleSearchEnabled(enabled)
     void persistAssistantSettings({ neofelis_google_search_enabled: enabled })
   }, [persistAssistantSettings])
 
   const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    setNeofelisGoogleMapsEnabled(enabled)
     void persistAssistantSettings({ neofelis_google_maps_enabled: enabled })
   }, [persistAssistantSettings])
 
   const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    setDelphinusXSearchEnabled(enabled)
     void persistAssistantSettings({ delphinus_x_search_enabled: enabled })
   }, [persistAssistantSettings])
 
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    setOrcinusXSearchEnabled(enabled)
     void persistAssistantSettings({ orcinus_x_search_enabled: enabled })
   }, [persistAssistantSettings])
 
@@ -891,7 +838,7 @@ export default function App(): ReactElement {
 
   return (
     <main
-      className={`hud-app-shell ${useFullscreenOverviewLayout ? 'hud-layout-fullscreen' : 'hud-layout-compact'} relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6`}
+      className="hud-app-shell hud-layout-fullscreen relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6"
       style={{ '--glow-color': glowColor } as CSSProperties}
     >
       <CelestialBackground />
@@ -948,138 +895,12 @@ export default function App(): ReactElement {
 
         {workspace === 'overview' ? (
           <>
-        <div className={`hud-body-layout flex w-full flex-col gap-4 overflow-visible ${useFullscreenOverviewLayout ? 'xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6' : 'flex-none'}`}>
+        <div className="hud-body-layout flex w-full flex-col gap-4 overflow-visible xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6">
             {/* COLUMN 1: LEFT WING */}
             <div
-              className={`hud-wing-column ${useFullscreenOverviewLayout ? 'order-2 xl:order-1' : 'order-2'} flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useFullscreenOverviewLayout ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
+              className={`hud-wing-column order-2 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:order-1 xl:min-h-0 xl:flex xl:flex-col ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
             >
-              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex ${useFullscreenOverviewLayout ? 'xl:flex-1' : ''}`}>
-                {isConsoleCompact ? (
-                  <>
-                    <TelemetryCard
-                      title="Weather"
-                      icon={CloudSun}
-                      primaryTemperatureF={primaryTemperatureF}
-                      weatherCondition={weatherInfo.condition}
-                      ledState={weatherLedState}
-                      onRefresh={() => handleRefreshConnector('weather')}
-                      refreshDisabled={isRefreshingAll}
-                      statusMessage={weatherStatusMessage}
-                      isCompact
-                      compactValue={weatherConditionCompactValue}
-                      attentionTier={attentionTiers.weather}
-                      attentionStaggerMs={attentionStagger.weather}
-                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
-                    >
-                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {weatherBody}
-                      </p>
-                    </TelemetryCard>
-
-                    <TelemetryCard
-                      title="Events"
-                      icon={Calendar}
-                      f1TelemetryText={f1ScheduleTelemetryText}
-                      ledState={calendarLedState}
-                      refreshActions={[
-                        { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
-                        { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
-                        { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
-                      ]}
-                      statusMessage={eventsStatusMessage}
-                      compactValue={eventsCompactValue}
-                      attentionTier={attentionTiers.events}
-                      attentionStaggerMs={attentionStagger.events}
-                      className="hidden min-h-0 xl:flex xl:flex-[2.05_1_0]"
-                    >
-                      {calendarRefreshing && !hasSnapshot ? (
-                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                          Loading schedule…
-                        </p>
-                      ) : (
-                        <>
-                          <CalendarEventList
-                            compact
-                            telemetry={calendarInfo}
-                            hasSnapshot={hasSnapshot}
-                          />
-                          <FootballFixtureList telemetry={footballInfo} module={footballModule} hasSnapshot={hasSnapshot} />
-                        </>
-                      )}
-                    </TelemetryCard>
-
-                    <TelemetryCard
-                      title="Inbox"
-                      icon={Mail}
-                      ledState={emailLedState}
-                      onRefresh={() => handleRefreshConnector('email')}
-                      refreshDisabled={isRefreshingAll}
-                      statusMessage={emailStatusMessage}
-                      compactValue={inboxCompactValue}
-                      attentionTier={attentionTiers.inbox}
-                      attentionStaggerMs={attentionStagger.inbox}
-                      className="hidden min-h-0 xl:flex xl:flex-[1.2_1_0]"
-                    >
-                      {emailRefreshing && !hasSnapshot ? (
-                        <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                          Loading inbox...
-                        </p>
-                      ) : emailInfo.items.length > 0 ? (
-                        <ul className="list-fade-mask min-h-0 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
-                          {emailInfo.items.slice(0, 3).map((item, index) => (
-                            <li
-                              key={`${item.subject}-${item.time}-${index}`}
-                              className="flex items-start justify-between gap-3"
-                            >
-                              <span className="flex min-w-0 items-start gap-2">
-                                <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                                <span className="truncate text-sm text-zinc-200">
-                                  {item.subject}
-                                </span>
-                              </span>
-                              <span className="shrink-0 font-mono text-xs text-zinc-500">
-                                {item.time}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm text-[color:var(--hud-muted-text)]">
-                          {hasSnapshot ? 'No unread emails.' : 'Inbox unavailable.'}
-                        </p>
-                      )}
-                    </TelemetryCard>
-
-                    <TelemetryCard
-                      title="News Wire"
-                      icon={Newspaper}
-                      ledState={newsLedState}
-                      onRefresh={() => handleRefreshConnector('news')}
-                      refreshDisabled={isRefreshingAll}
-                      statusMessage={newsStatusMessage}
-                      isCompact
-                      compactValue={newsCompactValue}
-                      attentionTier={attentionTiers.news}
-                      attentionStaggerMs={attentionStagger.news}
-                      className="hidden xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
-                    >
-                      <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                        {newsItems[0]?.headline ?? (hasSnapshot ? 'No news headlines available.' : 'News unavailable.')}
-                      </p>
-                    </TelemetryCard>
-
-                    <MarketTickerCard
-                      data={marketData}
-                      isLoading={isMarketLoading}
-                      enabled={marketEnabled}
-                      isCompact
-                      attentionTier={attentionTiers.market}
-                      attentionStaggerMs={attentionStagger.market}
-                      className="hidden w-full xl:flex xl:min-h-[3.75rem] xl:flex-[0.58_1_0]"
-                    />
-                  </>
-                ) : (
-                  <>
+              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex xl:flex-1`}>
                 <TelemetryCard
                   title="Weather"
                   icon={CloudSun}
@@ -1089,7 +910,6 @@ export default function App(): ReactElement {
                   onRefresh={() => handleRefreshConnector('weather')}
                   refreshDisabled={isRefreshingAll}
                   statusMessage={weatherStatusMessage}
-                  isCompact={isConsoleCompact}
                   compactValue={weatherBody}
                   attentionTier={attentionTiers.weather}
                   attentionStaggerMs={attentionStagger.weather}
@@ -1111,7 +931,6 @@ export default function App(): ReactElement {
                     { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
                   ]}
                   statusMessage={eventsStatusMessage}
-                  isCompact={isConsoleCompact}
                   compactValue={eventsCompactValue}
                   attentionTier={attentionTiers.events}
                   attentionStaggerMs={attentionStagger.events}
@@ -1140,14 +959,12 @@ export default function App(): ReactElement {
                       attentionStaggerMs={attentionStagger.market}
                       className={`min-h-0 w-full ${marketPanelLayoutClass}`}
                     />
-                  </>
-                )}
               </div>
             </div>
 
             {/* COLUMN 2: CENTER REACTOR */}
             <div
-              className={`hud-center-column ${useFullscreenOverviewLayout ? 'order-1 xl:order-2 xl:gap-6' : 'order-1'} relative z-[var(--z-core-logo)] min-w-0 items-stretch justify-items-center gap-4 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
+              className={`hud-center-column order-1 relative z-[var(--z-core-logo)] min-w-0 items-stretch justify-items-center gap-4 xl:order-2 xl:gap-6 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
             >
               {/* Ambient Logo Glow Projector */}
               <div
@@ -1223,7 +1040,6 @@ export default function App(): ReactElement {
                   activeProfile={agentProfile}
                   profilesStatus={profilesStatus}
                   profilesStatusHydrated={profilesStatusHydrated}
-                  devModeActive={devModeActive}
                   isAssistantQuerying={isAssistantQuerying}
                   verifyingCloudProfile={verifyingCloudProfile}
                   onProfileChange={handleProfileChange}
@@ -1251,7 +1067,7 @@ export default function App(): ReactElement {
 
             {/* COLUMN 3: RIGHT WING */}
             <div
-              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} ${useFullscreenOverviewLayout ? 'xl:min-h-0 xl:flex xl:flex-col' : ''} ${isConsoleCompact ? 'xl:overflow-y-auto xl:pr-1 scrollbar-thin' : ''} ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
+              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
             >
               <TelemetryCard
                 title="Inbox"
@@ -1260,7 +1076,6 @@ export default function App(): ReactElement {
                 onRefresh={() => handleRefreshConnector('email')}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={emailStatusMessage}
-                isCompact={isConsoleCompact}
                 compactValue={inboxCompactValue}
                 attentionTier={attentionTiers.inbox}
                 attentionStaggerMs={attentionStagger.inbox}
@@ -1316,7 +1131,6 @@ export default function App(): ReactElement {
                 onRefresh={() => handleRefreshConnector('news')}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={newsStatusMessage}
-                isCompact={isConsoleCompact}
                 compactValue={newsCompactValue}
                 attentionTier={attentionTiers.news}
                 attentionStaggerMs={attentionStagger.news}
@@ -1368,7 +1182,6 @@ export default function App(): ReactElement {
                 onRefresh={() => handleRefreshConnector('reminders')}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={remindersStatusMessage}
-                isCompact={isConsoleCompact}
                 compactValue={remindersCompactValue}
                 attentionTier={attentionTiers.reminders}
                 attentionStaggerMs={attentionStagger.reminders}
@@ -1408,7 +1221,6 @@ export default function App(): ReactElement {
           <CortexWorkspace
             activeProfile={agentProfile}
             cloudEffort={cloudEffort}
-            devModeActive={devModeActive}
             askApexEnabled={Boolean(askApexEnabled)}
             profilesStatus={profilesStatus}
             profilesStatusHydrated={profilesStatusHydrated}
@@ -1432,13 +1244,9 @@ export default function App(): ReactElement {
             onProfileChange={handleProfileChange}
             onEffortChange={handleEffortChange}
             onGoogleSearchChange={handleGoogleSearchChange}
-            neofelisGoogleSearchEnabled={neofelisGoogleSearchEnabled}
             onGoogleMapsChange={handleGoogleMapsChange}
-            neofelisGoogleMapsEnabled={neofelisGoogleMapsEnabled}
             onDelphinusXSearchChange={handleDelphinusXSearchChange}
-            delphinusXSearchEnabled={delphinusXSearchEnabled}
             onOrcinusXSearchChange={handleOrcinusXSearchChange}
-            orcinusXSearchEnabled={orcinusXSearchEnabled}
             onSubmit={handleOverviewSubmit}
             onNewSession={handleNewCortexSession}
           />

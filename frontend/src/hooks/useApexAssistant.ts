@@ -564,7 +564,6 @@ export interface UseApexAssistantResult {
   assistantHistory: AgentMessage[]
   isAssistantQuerying: boolean
   activeQueryProfile: AssistantProfile | null
-  isAssistantOpen: boolean
   assistantLatestTrace: ToolTraceItem[]
   assistantError: string | null
   assistantContextUsage: LocalContextUsage | null
@@ -572,6 +571,7 @@ export interface UseApexAssistantResult {
   profilesStatusHydrated: boolean
   isLocalModelActionPending: boolean
   verifyingCloudProfile: AssistantProfile | null
+  refreshProfilesStatus: () => Promise<void>
   queryAssistant: (
     prompt: string,
     profile: AssistantProfile,
@@ -588,7 +588,6 @@ export interface UseApexAssistantResult {
   verifyCloudProfile: (profile: Exclude<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
   clearAssistantChat: (profile?: AssistantProfile) => void
   resetAssistantSession: () => void
-  setAssistantOpen: (open: boolean) => void
 }
 
 export function useApexAssistant(
@@ -599,7 +598,6 @@ export function useApexAssistant(
   const [acinonyxHistory, setAcinonyxHistory] = useState<AgentMessage[]>([])
   const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
   const [activeQueryProfile, setActiveQueryProfile] = useState<AssistantProfile | null>(null)
-  const [isAssistantOpen, setAssistantOpen] = useState(false)
   const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [assistantContextUsage, setAssistantContextUsage] =
@@ -650,7 +648,7 @@ export function useApexAssistant(
     }
   }, [])
 
-  const shouldPollProfiles = profilesPollingEnabled || isAssistantOpen
+  const shouldPollProfiles = profilesPollingEnabled
 
   useEffect(() => {
     if (!shouldPollProfiles) {
@@ -792,7 +790,6 @@ export function useApexAssistant(
       isAssistantQueryingRef.current = true
       setIsAssistantQuerying(true)
       setActiveQueryProfile(profile)
-      setAssistantOpen(true)
       setAssistantError(null)
 
       const userMsg: AgentMessage = { role: 'user', content: trimmedPrompt }
@@ -897,14 +894,12 @@ export function useApexAssistant(
     setAssistantLatestTrace([])
     setAssistantError(null)
     setAssistantContextUsage(null)
-    setAssistantOpen(false)
   }, [])
 
   return {
     assistantHistory,
     isAssistantQuerying,
     activeQueryProfile,
-    isAssistantOpen,
     assistantLatestTrace,
     assistantError,
     assistantContextUsage,
@@ -912,12 +907,12 @@ export function useApexAssistant(
     profilesStatusHydrated,
     isLocalModelActionPending,
     verifyingCloudProfile,
+    refreshProfilesStatus: fetchProfilesStatus,
     queryAssistant,
     unloadLocalModel,
     loadLocalModel,
     verifyCloudProfile,
     clearAssistantChat,
     resetAssistantSession,
-    setAssistantOpen,
   }
 }

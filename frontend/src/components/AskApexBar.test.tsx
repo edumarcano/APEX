@@ -16,18 +16,18 @@ const weatherCommand: LocalCommandStatus = {
 describe('AskApexBar local command shortcuts', () => {
   it('uses Cortex-only active and brief error feedback', () => {
     vi.useFakeTimers()
-    const { rerender } = render(<AskApexBar activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting={false} integrated />)
+    const { rerender } = render(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting={false} />)
 
     const form = screen.getByLabelText('Ask APEX')
     expect(form).toHaveClass('min-h-12')
     expect(screen.getByLabelText('Ask APEX query')).toHaveAttribute('placeholder', 'Ask APEX')
 
-    rerender(<AskApexBar activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting integrated />)
+    rerender(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting />)
     expect(form).toHaveClass('cortex-ask-apex-bar--active')
     expect(screen.getByRole('button', { name: 'Sending query' })).toBeDisabled()
     expect(document.querySelector('.cortex-query-spinner')).toBeInTheDocument()
 
-    rerender(<AskApexBar activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting={false} error="Model request failed" integrated />)
+    rerender(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={vi.fn()} profilesStatus={[localProfile]} isSubmitting={false} error="Model request failed" />)
     expect(form).toHaveClass('cortex-ask-apex-bar--error')
     expect(screen.getByRole('status', { name: 'Last query failed: Model request failed' })).toBeInTheDocument()
 
@@ -38,7 +38,7 @@ describe('AskApexBar local command shortcuts', () => {
 
   it('submits from the right-side send button only when a query is present', () => {
     const onSubmit = vi.fn()
-    render(<AskApexBar activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} isSubmitting={false} integrated />)
+    render(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} isSubmitting={false} />)
 
     const send = screen.getByRole('button', { name: 'Send query' })
     expect(send).toBeDisabled()
@@ -52,7 +52,7 @@ describe('AskApexBar local command shortcuts', () => {
   it('arms a bare slash command and consumes the provided inspector scope on submit', () => {
     const onSubmit = vi.fn()
     const onArmedToolScopeChange = vi.fn()
-    const { rerender } = render(<AskApexBar activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} commands={[weatherCommand]} armedToolScope={null} onArmedToolScopeChange={onArmedToolScopeChange} isSubmitting={false} integrated />)
+    const { rerender } = render(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} commands={[weatherCommand]} armedToolScope={null} onArmedToolScopeChange={onArmedToolScopeChange} isSubmitting={false} />)
     const input = screen.getByLabelText('Ask APEX query')
 
     fireEvent.change(input, { target: { value: '/weather' } })
@@ -60,7 +60,7 @@ describe('AskApexBar local command shortcuts', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     expect(onArmedToolScopeChange).toHaveBeenCalledWith('weather')
 
-    rerender(<AskApexBar activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} commands={[weatherCommand]} armedToolScope="weather" onArmedToolScopeChange={onArmedToolScopeChange} isSubmitting={false} integrated />)
+    rerender(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} commands={[weatherCommand]} armedToolScope="weather" onArmedToolScopeChange={onArmedToolScopeChange} isSubmitting={false} />)
     expect(screen.getByText('Tool scope: /weather')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Ask APEX query'), { target: { value: 'What is the forecast?' } })
     fireEvent.submit(screen.getByLabelText('Ask APEX'))
@@ -71,7 +71,7 @@ describe('AskApexBar local command shortcuts', () => {
 
   it('lets an available typed slash command override the armed inspector scope', () => {
     const onSubmit = vi.fn()
-    render(<AskApexBar activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} commands={[weatherCommand]} armedToolScope="mail" onArmedToolScopeChange={vi.fn()} isSubmitting={false} integrated />)
+    render(<AskApexBar presentation="cortex" activeProfile="mus" onSubmit={onSubmit} profilesStatus={[localProfile]} commands={[weatherCommand]} armedToolScope="mail" onArmedToolScopeChange={vi.fn()} isSubmitting={false} />)
     fireEvent.change(screen.getByLabelText('Ask APEX query'), { target: { value: '/weather tomorrow' } })
     fireEvent.submit(screen.getByLabelText('Ask APEX'))
     expect(onSubmit).toHaveBeenCalledWith('tomorrow', 'mus', 'weather')

@@ -15,7 +15,6 @@ interface OverviewCommandRailProps {
   activeProfile: AssistantProfile
   profilesStatus: AgentProfileStatus[]
   profilesStatusHydrated: boolean
-  devModeActive: boolean
   isAssistantQuerying: boolean
   verifyingCloudProfile: AssistantProfile | null
   onProfileChange: (profile: AssistantProfile) => void
@@ -45,7 +44,6 @@ export function OverviewCommandRail({
   activeProfile,
   profilesStatus,
   profilesStatusHydrated,
-  devModeActive,
   isAssistantQuerying,
   verifyingCloudProfile,
   onProfileChange,
@@ -104,7 +102,6 @@ export function OverviewCommandRail({
                   onChange={onProfileChange}
                   profilesStatus={profilesStatus}
                   profilesStatusHydrated={profilesStatusHydrated}
-                  devModeActive={devModeActive}
                   isQuerying={isAssistantQuerying}
                   verifyingProfile={verifyingCloudProfile}
                   onVerify={onVerifyCloudProfile}

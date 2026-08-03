@@ -16,7 +16,7 @@ const weather: LocalCommandStatus = { key: 'weather', command: '/weather', label
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeProfile: 'panthera', cloudEffort: 'focused', devModeActive: false, askApexEnabled: true, profilesStatus: [panthera], profilesStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudProfile: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudProfile: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onProfileChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), neofelisGoogleSearchEnabled: true, onGoogleMapsChange: vi.fn(), neofelisGoogleMapsEnabled: true, onDelphinusXSearchChange: vi.fn(), delphinusXSearchEnabled: true, onOrcinusXSearchChange: vi.fn(), orcinusXSearchEnabled: true, onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
+    activeProfile: 'panthera', cloudEffort: 'focused', askApexEnabled: true, profilesStatus: [panthera], profilesStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudProfile: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudProfile: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onProfileChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
   }
 }
 
@@ -33,6 +33,15 @@ describe('CortexWorkspace', () => {
     expect(inspector.className).toContain('lg:border-l')
     expect(inspector.previousElementSibling).toHaveTextContent('APEX is ready')
     expect(screen.getByText('Panthera')).not.toHaveAttribute('role', 'button')
+  })
+
+  it('offers empty-canvas prompt chips through the active profile submission path', async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    render(<CortexWorkspace {...workspaceProps({ onSubmit })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Forecast' }))
+    expect(onSubmit).toHaveBeenCalledWith('What is the 5-day weather forecast?', 'panthera')
   })
 
   it('shows only the selected profile until its anchored selector is opened', async () => {
@@ -55,7 +64,7 @@ describe('CortexWorkspace', () => {
 
   it('keeps Acinonyx first in the development cloud popover and exposes full card names', async () => {
     const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ activeProfile: 'neofelis', devModeActive: true, profilesStatus: [acinonyx, panthera, neofelis] })} />)
+    render(<CortexWorkspace {...workspaceProps({ activeProfile: 'neofelis', profilesStatus: [acinonyx, panthera, neofelis] })} />)
     await user.click(screen.getByRole('button', { name: /APEX Neofelis/ }))
     const cards = screen.getAllByRole('button', { name: /Use APEX (Acinonyx|Panthera|Neofelis)/ })
     expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['Use APEX Acinonyx', 'Use APEX Panthera', 'Use APEX Neofelis'])
@@ -66,7 +75,7 @@ describe('CortexWorkspace', () => {
     const onEffortChange = vi.fn()
     const onVerifyCloudProfile = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ activeProfile: 'acinonyx', devModeActive: true, profilesStatus: [acinonyx, panthera], onEffortChange, onVerifyCloudProfile })} />)
+    render(<CortexWorkspace {...workspaceProps({ activeProfile: 'acinonyx', profilesStatus: [acinonyx, panthera], onEffortChange, onVerifyCloudProfile })} />)
 
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'extended')
