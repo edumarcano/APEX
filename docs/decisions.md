@@ -58,7 +58,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Make operational preflight advisory before it is blocking
 
-**Decision.** Network policy, power state, refresh frequency, cloud disclosure, and elevated resource use normally produce warnings. Hard blockers are reserved for conditions that prevent the selected operation.
+**Decision.** Network policy, power state, refresh frequency, and elevated resource use normally produce warnings. Hard blockers are reserved for conditions that prevent the selected operation.
 
 **Why.** A Wi-Fi name or battery state is useful context, not authorization. The original hard gate made a personal local tool unavailable when the environment differed from expectations.
 
