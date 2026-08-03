@@ -58,7 +58,7 @@ describe('useVoiceDelivery', () => {
     expect(result.current.isSpeaking).toBe(false)
   })
 
-  it('clears the manual result when a new briefing begins or pipeline speech starts', async () => {
+  it('only exposes the manual result for the current non-speaking briefing', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(
       new Response(JSON.stringify({ status: 'spoken', resolved_engine: 'pyttsx3' }), { status: 200 }),
     )))
@@ -87,6 +87,31 @@ describe('useVoiceDelivery', () => {
       expect(await result.current.speak('Second briefing.')).toBe(true)
     })
     rerender({ text: 'Second briefing.', status: 'success', isPipelineSpeaking: true })
+    expect(result.current.lastManualEngine).toBeNull()
+  })
+
+  it('does not expose a delivery that completes after a different briefing starts', async () => {
+    let resolveFetch: ((value: Response) => void) | undefined
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve })))
+    const { result, rerender } = renderHook(
+      ({ text, status, isPipelineSpeaking }: VoiceDeliveryInputs) =>
+        useVoiceDelivery(text, status, isPipelineSpeaking),
+      { initialProps: { text: 'First briefing.', status: 'success', isPipelineSpeaking: false } },
+    )
+
+    let request: Promise<boolean>
+    act(() => {
+      request = result.current.speak('First briefing.')
+    })
+    rerender({ text: 'Second briefing.', status: 'loading', isPipelineSpeaking: false })
+
+    await act(async () => {
+      resolveFetch?.(new Response(JSON.stringify({ status: 'spoken', resolved_engine: 'pyttsx3' }), { status: 200 }))
+      expect(await request!).toBe(true)
+    })
+    expect(result.current.lastManualEngine).toBeNull()
+
+    rerender({ text: 'Second briefing.', status: 'success', isPipelineSpeaking: false })
     expect(result.current.lastManualEngine).toBeNull()
   })
 })
