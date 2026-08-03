@@ -52,8 +52,8 @@ Returns success when the API process can answer. It does not inspect configurati
 
 Loads the runtime settings snapshot and executes a lightweight SQLite query. The launcher uses this route before opening the HUD.
 
-- `200` â€” required local state is ready.
-- `503` â€” settings or database readiness failed.
+- `200` — required local state is ready.
+- `503` — settings or database readiness failed.
 
 Optional external services are deliberately excluded.
 
@@ -134,9 +134,9 @@ Refreshes all enabled connectors or a selected subset.
 
 Omit the body to perform a normal full refresh. A normal refresh may reuse a snapshot younger than five minutes; `force: true` bypasses that reuse.
 
-- `200` â€” complete snapshot, including partial/stale connector outcomes.
-- `400` â€” unknown or invalid connector selection.
-- `409` â€” another refresh owns collection.
+- `200` — complete snapshot, including partial/stale connector outcomes.
+- `400` — unknown or invalid connector selection.
+- `409` — another refresh owns collection.
 
 ### POST `/api/v1/preflight`
 
@@ -168,9 +168,9 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 
 The body is optional. Valid modes are `panthera`, `mus`, `sorex`, and `structured_digest`.
 
-- `200` â€” transcript, compatibility telemetry strings, typed digest, and runtime metadata.
-- `409` â€” another full trigger owns execution.
-- `503` â€” a required operation-specific dependency cannot run and no applicable fallback completes the request.
+- `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
+- `409` — another full trigger owns execution.
+- `503` — a required operation-specific dependency cannot run and no applicable fallback completes the request.
 
 Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/profile/model, ordered fallback steps, token usage, provider timing, estimated provider cost, TTS resolution, `snapshot_id`, and whether automatic speech started.
 
@@ -182,8 +182,8 @@ Generates from the current telemetry snapshot without calling connectors.
 { "snapshot_id": "current-snapshot-uuid", "mode": "structured_digest" }
 ```
 
-- `200` â€” the same `BriefingResponse` envelope used by the full trigger.
-- `409` â€” the snapshot is missing, stale, or no longer process-current.
+- `200` — the same `BriefingResponse` envelope used by the full trigger.
+- `409` — the snapshot is missing, stale, or no longer process-current.
 
 Production generation persists the result. Demo mode uses static behavior and does not write production history.
 
@@ -235,10 +235,10 @@ Cloud status starts as `configured` when a credential exists; it does not imply 
 
 Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud profile. Gemini uses its model metadata endpoint; OpenAI and xAI use `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
-- `400` â€” the profile is local or has no supported verification path.
-- `403` â€” demo mode disallows provider contact.
-- `404` â€” the profile is not visible.
-- `409` â€” credentials are missing or that profile already has a verification in progress.
+- `400` — the profile is local or has no supported verification path.
+- `403` — demo mode disallows provider contact.
+- `404` — the profile is not visible.
+- `409` — credentials are missing or that profile already has a verification in progress.
 
 ### POST `/api/v1/cortex/local-model/load`
 
@@ -250,9 +250,9 @@ Pre-warms one installed local profile before a request:
 
 The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after Ollama confirms the selected model through its running-model status. Demo mode rejects pre-warming without contacting Ollama.
 
-- `403` â€” demo mode disallows model calls.
-- `409` â€” a local generation or lifecycle action is active.
-- `503` â€” local inference is disabled, gated, unreachable, or could not be verified.
+- `403` — demo mode disallows model calls.
+- `409` — a local generation or lifecycle action is active.
+- `503` — local inference is disabled, gated, unreachable, or could not be verified.
 
 ### POST `/api/v1/cortex/local-model/unload`
 
@@ -260,9 +260,9 @@ Canonical provider-neutral manual unload route. Returns success only when no APE
 
 It also rejects a competing lifecycle action, and reports a failed post-action verification as unavailable.
 
-- `403` â€” manual unload is disabled.
-- `409` â€” local generation or lifecycle action is in progress.
-- `503` â€” the unload request or post-action Ollama verification failed.
+- `403` — manual unload is disabled.
+- `409` — local generation or lifecycle action is in progress.
+- `503` — the unload request or post-action Ollama verification failed.
 
 ### POST `/api/v1/cortex/local-model/unload`
 
@@ -290,9 +290,9 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud profile, including Acinonyx, and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
-- `403` â€” assistant disabled.
-- `429` â€” another local generation owns the execution slot.
-- `503` â€” selected provider/model unavailable, cold-load gate failed, or model load failed.
+- `403` — assistant disabled.
+- `429` — another local generation owns the execution slot.
+- `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
 Assistant loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud profiles can use up to 4 turns and 6 calls; Sorex and Mus use up to 2/3 and 3/4 turns/calls respectively. The last model turn is answer-only.
 
@@ -332,9 +332,9 @@ Speaks an existing bounded transcript through the currently resolved engine.
 { "text": "Your briefing is ready." }
 ```
 
-- `200` â€” delivery was accepted and the resolved engine is reported.
-- `409` â€” speech is already active.
-- `503` â€” no configured fallback completed delivery.
+- `200` — delivery was accepted and the resolved engine is reported.
+- `409` — speech is already active.
+- `503` — no configured fallback completed delivery.
 
 The endpoint does not generate or persist a briefing. Voice mode determines whether the HUD offers manual delivery or starts it automatically after generation.
 
