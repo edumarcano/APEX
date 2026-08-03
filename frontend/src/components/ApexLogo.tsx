@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react'
+import type { OuterShellActivity } from '../lib/logoVisualState'
 import type { SystemState } from '../types/telemetry'
 
 export interface ApexLogoProps {
@@ -7,10 +8,8 @@ export interface ApexLogoProps {
   isSpeaking?: boolean
   reminderPulseCount?: number
   isCortexQuerying?: boolean
-  isLocalModelLoading?: boolean
-  isLocalModelLoaded?: boolean
   isTelemetryCollecting?: boolean
-  isOuterSegmentSurging?: boolean
+  outerShellActivity?: OuterShellActivity
   className?: string
 }
 
@@ -20,10 +19,8 @@ export function ApexLogo({
   isSpeaking = false,
   reminderPulseCount = 0,
   isCortexQuerying = false,
-  isLocalModelLoading = false,
-  isLocalModelLoaded = false,
   isTelemetryCollecting = false,
-  isOuterSegmentSurging = false,
+  outerShellActivity = 'normal',
   className = '',
 }: ApexLogoProps): ReactElement {
   const [pulseActive, setPulseActive] = useState(false)
@@ -50,26 +47,20 @@ export function ApexLogo({
   const baseBlue = 'apex-blue-metal apex-blue-metal--base'
   const activeBlue = 'apex-blue-metal apex-blue-metal--active'
   const reminderSurge = 'apex-blue-metal apex-blue-metal--reminder-surge'
-  const rustActive = 'apex-blue-metal apex-blue-metal--rust-active'
-  const rustSurge = 'apex-blue-metal apex-blue-metal--rust-surge'
 
   const STAGE_DELAYS_MS = [0, 150, 300, 450] as const
 
   const getBlueSegmentClass = (segmentStep: number): string => {
+    if (outerShellActivity === 'local_loading') {
+      return 'apex-blue-metal apex-blue-metal--rust-surge'
+    }
+
     if (pulseActive) {
       return `transition-all duration-300 ease-out ${reminderSurge}`
     }
 
-    if (isLocalModelLoading) {
-      return rustSurge
-    }
-
-    if (isTelemetryCollecting || isOuterSegmentSurging) {
+    if (outerShellActivity === 'collection') {
       return 'apex-blue-metal apex-blue-metal--collection-surge'
-    }
-
-    if (isLocalModelLoaded) {
-      return `transition-all duration-700 ease-in-out ${rustActive}`
     }
 
     const blueMetal =
@@ -81,7 +72,10 @@ export function ApexLogo({
   const getBlueStageDelay = (
     segmentStep: number,
   ): { animationDelay: string } | undefined => {
-    if (!isLocalModelLoading && !isTelemetryCollecting && !isOuterSegmentSurging) {
+    if (
+      outerShellActivity !== 'local_loading' &&
+      outerShellActivity !== 'collection'
+    ) {
       return undefined
     }
     return { animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms` }
@@ -317,13 +311,6 @@ export function ApexLogo({
 
             .apex-blue-metal--reminder-surge {
               filter: drop-shadow(0 0 24px rgba(57, 255, 136, 1));
-            }
-
-            .apex-blue-metal--rust-active {
-              fill: url(#apexBlueMetal);
-              opacity: 1;
-              filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.75));
-              transition: all 1000ms ease-in-out;
             }
 
             .apex-core-metal {

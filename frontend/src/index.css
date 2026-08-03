@@ -202,12 +202,12 @@
 
 /* Distorted Gaseous Light Fields */
 .bg-nebula-swirl-1 {
-  background-image: radial-gradient(ellipse at 45% 45%, rgba(var(--glow-color), 0.28) 0%, rgba(var(--glow-color), 0.08) 50%, rgba(0, 0, 0, 0) 80%);
+  background-image: radial-gradient(ellipse at 45% 45%, rgba(var(--atmosphere-glow-color), 0.28) 0%, rgba(var(--atmosphere-glow-color), 0.08) 50%, rgba(0, 0, 0, 0) 80%);
   will-change: transform, background-image;
 }
 
 .bg-nebula-swirl-2 {
-  background-image: radial-gradient(ellipse at 55% 55%, rgba(var(--glow-color), 0.22) 0%, rgba(var(--glow-color), 0.05) 55%, rgba(0, 0, 0, 0) 90%);
+  background-image: radial-gradient(ellipse at 55% 55%, rgba(var(--atmosphere-glow-color), 0.22) 0%, rgba(var(--atmosphere-glow-color), 0.05) 55%, rgba(0, 0, 0, 0) 90%);
   will-change: transform, background-image;
 }
 
@@ -869,28 +869,25 @@
 
 @keyframes rustSurge {
   0%,
-  30%,
+  12%,
+  88%,
   100% {
     opacity: 1;
     fill: url(#apexBlueMetal);
-    filter: drop-shadow(0 0 10px rgba(249, 115, 22, 0.3));
+    filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.25));
   }
-  15% {
+  25%,
+  72% {
     opacity: 1;
-    fill: url(#apexBlueMetal);
-    filter: drop-shadow(0 0 16px rgba(249, 115, 22, 0.9));
+    fill: url(#apexRustMetal);
+    filter: drop-shadow(0 0 20px rgba(249, 115, 22, 0.95));
   }
-}
-
-.apex-blue-metal--rust-active {
-  fill: url(#apexBlueMetal);
-  opacity: 1;
-  filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.75));
-  transition: all 1000ms ease-in-out;
 }
 
 .apex-blue-metal--rust-surge {
   animation: rustSurge 2.5s ease-in-out infinite;
+  fill: url(#apexBlueMetal);
+  opacity: 1;
   will-change: filter;
 }
 
