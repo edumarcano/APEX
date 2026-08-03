@@ -26,7 +26,7 @@ def _stable_tool_result(
     tool_name: str,
     failure_message: str,
 ) -> dict[str, Any]:
-    """Replace provider exception details with a stable assistant-tool error."""
+    """Replace provider exception details with a stable Agent-tool error."""
     if "error" not in result:
         return result
     _LOGGER.warning("Agent tool unavailable: tool=%s", tool_name)
@@ -94,7 +94,7 @@ def get_f1_season_calendar() -> dict[str, Any]:
 
 
 def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
-    """Retrieve upcoming Google Calendar events for assistant queries.
+    """Retrieve upcoming Google Calendar events for Agent requests.
 
     Queries the operator's primary Google Calendar for scheduled events within
     a configurable forward-looking window independent of the HUD's seven-day
@@ -406,7 +406,7 @@ def get_briefing_history(limit: int = 5) -> dict[str, Any]:
 
 
 def register_native_capabilities() -> None:
-    """Register the built-in read-only assistant capabilities when absent."""
+    """Register the built-in read-only Agent capabilities when absent."""
     from core.agent import capabilities as capabilities_module
 
     # Direct registry probe avoids re-entering ensure while registering.
@@ -489,7 +489,7 @@ def register_native_capabilities() -> None:
             name="get_upcoming_calendar_events",
             title="Upcoming Calendar Events",
             description=(
-                "Retrieve upcoming Google Calendar events for assistant queries."
+                "Retrieve upcoming Google Calendar events for Agent requests."
             ),
             input_schema={
                 "type": "object",

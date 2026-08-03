@@ -42,7 +42,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Separate runtime paths without removing the full pipeline
 
-**Decision.** Activation, telemetry collection, briefing synthesis, assistant access, and voice delivery have focused APIs and frontend owners. The full trigger remains supported.
+**Decision.** Activation, telemetry collection, briefing synthesis, Agent requests, and voice delivery have focused APIs and frontend owners. The full trigger remains supported.
 
 **Why.** APEX became less useful when one environmental or provider failure blocked every capability. I want to inspect telemetry, ask a question, regenerate a briefing, or replay speech independently.
 
@@ -130,9 +130,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** Deterministic prose is less flexible, but its behavior is predictable and source-bounded.
 
-### Share one Ollama lifecycle across briefings and assistant turns
+### Share one Ollama lifecycle across briefings and Agent turns
 
-**Decision.** Local briefing and assistant work share profile definitions, resource gates, the execution slot, model switching, and idle unload.
+**Decision.** Local briefing and Agent work share Agent definitions, resource gates, the execution slot, model switching, and idle unload.
 
 **Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. A second manager would hide rather than remove that contention.
 
@@ -144,7 +144,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
 
-**Trade-off.** More profiles require more availability, fallback, configuration, and UI coverage. Legacy `cloud`, `local`, and `raw` values remain compatibility aliases.
+**Trade-off.** More Agents require more availability, fallback, configuration, and UI coverage. Legacy `cloud`, `local`, and `raw` values remain compatibility aliases.
 
 ### Use layered text-to-speech fallback
 
@@ -166,15 +166,15 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ## Local inference
 
-### Use named profiles instead of raw model IDs in the HUD
+### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Assistant controls expose the Apex Profiles 2.0 family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, and Mus.
+**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, and Mus.
 
-**Why.** The names communicate the intended intelligence profile while provider model IDs remain separate implementation details that can be audited in configuration and architecture references. The shared 2.0 version identifies the reworked profile contract; later profile changes can version independently.
+**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details that can be audited in configuration and architecture references. The shared 2.0 version identifies the reworked Agent contract; later Agent changes can version independently.
 
-**Trade-off.** Profile documentation must remain synchronized with current model mappings and stability labels.
+**Trade-off.** Agent documentation must remain synchronized with current model mappings and stability labels.
 
-### Keep assistant sessions stateless on the server
+### Keep Agent sessions stateless on the server
 
 **Decision.** The browser sends bounded conversation history with every query; FastAPI stores no chat session.
 
@@ -186,7 +186,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** APEX keeps one selected Ollama model resident and rejects competing local execution rather than queueing it.
 
-**Why.** Consumer hardware should remain responsive, and a hidden queue behind a slow generation gives poor feedback. Profile-specific CPU/RAM gates prevent unsafe cold loads; a model already resident skips the gate because reselection adds no new model footprint.
+**Why.** Consumer hardware should remain responsive, and a hidden queue behind a slow generation gives poor feedback. Agent-specific CPU/RAM gates prevent unsafe cold loads; a model already resident skips the gate because reselection adds no new model footprint.
 
 **Trade-off.** Users may need to retry a rejected request. Idle auto-unload returns memory without depending on manual cleanup.
 

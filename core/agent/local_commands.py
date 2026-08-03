@@ -1,4 +1,4 @@
-"""Explicit local assistant command bundles and availability resolution."""
+"""Explicit local Agent command bundles and availability resolution."""
 
 from __future__ import annotations
 

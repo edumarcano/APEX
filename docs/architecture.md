@@ -16,7 +16,7 @@ Home/Cortex switching changes only what is visible. It never cancels active Cort
 
 `launcher.py` starts two loopback-bound child processes: FastAPI on port 8000 and a static server for the compiled React HUD on port 5500. The browser owns the interactive session; FastAPI owns connectors, runtime settings, model and tool execution, speech, and SQLite persistence.
 
-The HUD starts in standby. Activation, telemetry refresh, briefing synthesis, assistant queries, and voice delivery are separate operations. The legacy/full-run trigger remains available when one request should refresh telemetry, generate a briefing, persist it, and optionally start speech.
+The HUD starts in standby. Activation, telemetry refresh, briefing synthesis, interactive Agent requests, and voice delivery are separate operations. The legacy/full-run trigger remains available when one request should refresh telemetry, generate a briefing, persist it, and optionally start speech.
 
 ```mermaid
 flowchart TB
@@ -27,12 +27,12 @@ flowchart TB
     Browser --> Activation["Activation + preflight"]
     Browser --> Telemetry["Telemetry refresh"]
     Browser --> Briefing["Briefing generation"]
-    Browser --> Assistant["Ask APEX query"]
+    Browser --> Cortex["Cortex query from Ask APEX"]
     Browser --> Voice["Voice delivery"]
 
     Telemetry --> Connectors["Local + external connectors"]
     Briefing --> Models["OpenAI · Ollama · Structured Digest"]
-    Assistant --> Capabilities["Native + approved MCP capabilities"]
+    Cortex --> Capabilities["Native + approved MCP capabilities"]
     API --> SQLite["SQLite reminders + briefing ledger"]
 ```
 
@@ -41,7 +41,7 @@ flowchart TB
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
 | Briefing | Current snapshot or full trigger | Briefing orchestration | Production briefing ledger | Panthera/OpenAI, selected Ollama mode, or Structured Digest |
-| Assistant | User prompt | Browser history plus backend turn execution | No chat-session store | Selected model and approved capabilities |
+| Cortex query | User prompt | Browser history plus backend turn execution | No chat-session store | Selected Agent and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
 
@@ -74,7 +74,7 @@ FastAPI's lifespan initializes the database and Microsoft To Do services, starts
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
-The browser holds activation state and assistant history for the tab lifetime. Reloading the page returns the UI to standby and clears conversation history, but it does not erase reminders or persisted briefing history.
+The browser holds activation state and Agent history for the tab lifetime. Reloading the page returns the UI to standby and clears conversation history, but it does not erase reminders or persisted briefing history.
 
 ## Telemetry snapshots
 
@@ -96,7 +96,7 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` synthesizes from an existing process-current snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Ollama receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, assistant history, and assistant tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Ollama receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
@@ -107,7 +107,7 @@ The current briefing modes are:
 | Sorex | Ollama | `qwen3:1.7b` |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local profile. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest. Runtime metadata records the requested mode, resolved provider/profile/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local Agent. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
 
 Production generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no production write.
 
@@ -131,9 +131,9 @@ HUD context is explicit:
 
 Attached context and tool results are separately marked as untrusted model data. Unknown or stale identifiers are omitted rather than replaced with another record.
 
-### Cloud profiles
+### Cloud Agents
 
-| Profile | Provider and model | Effort | Maximum tool loop |
+| Agent | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
 | Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
 | Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
@@ -145,17 +145,17 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 
 Each non-demo Agent request begins with the selected Agent's immutable identity instruction, followed by prompt behavior loaded exclusively from `config.json`, an optional user designation from the local runtime settings snapshot, scoped context, and the security boundary. Agent identity describes the active Agent and its model; it does not grant capabilities or override tool and privacy policy.
 
-Production cloud profiles receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+Production cloud Agents receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
-`GET /api/v1/agent/profiles` is the backend-owned profile catalog. It publishes product ordering, profile content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; profile polling never performs a provider probe.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
 
-The Overview command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
+The Home command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
 
-### Local profiles and command scopes
+### Local Agents and command scopes
 
-Local assistant queries use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+Local Agent requests use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
-Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the profile's 4K context window and reports sanitized usage counts.
+Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the Agent's 4K context window and reports sanitized usage counts.
 
 ## Capability and MCP boundary
 
@@ -169,7 +169,7 @@ The MCP manager owns provider connection, discovery, registration, reconciliatio
 
 ## Local model lifecycle
 
-Ollama profiles share one lifecycle manager:
+Local Agents share one Ollama lifecycle manager:
 
 - Only one local generation can run at a time.
 - Only one APEX-selected model remains resident.
@@ -181,7 +181,7 @@ Ollama profiles share one lifecycle manager:
 - A manual load is a pre-warm; normal request routing can still load a selected model.
 - Lifecycle success is verified against Ollama's running-model state before the HUD reports it.
 
-This same lifecycle serves briefings and assistant turns, exposing contention immediately rather than hiding it behind an unbounded queue.
+This same lifecycle serves briefings and Agent turns, exposing contention immediately rather than hiding it behind an unbounded queue.
 
 ## Voice delivery
 
@@ -230,7 +230,7 @@ Optional failures remain local to their path. A connector outage lowers telemetr
 | `core/telemetry/` | Snapshot collection, freshness, preflight, and process-local store |
 | `core/connectors/` and `clients/` | Typed collection and external service adapters |
 | `core/synthesis/` | Bounded briefing input, cloud/local routing, deterministic fallback |
-| `core/agent/` | Profiles, bounded model loop, local scopes, native capabilities |
+| `core/agent/` | Agent catalog, bounded model loop, local scopes, native capabilities |
 | `core/mcp/` | External MCP client configuration and lifecycle |
 | `core/settings/` | Typed overlay, normalization, transactional local persistence |
 | `core/database.py` | SQLite reminders, run records, briefing ledger, readiness query |

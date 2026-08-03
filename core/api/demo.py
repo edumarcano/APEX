@@ -1,4 +1,4 @@
-"""DEMO_MODE mock payload loading and deterministic assistant responses."""
+"""DEMO_MODE mock payload loading and deterministic Agent responses."""
 
 from __future__ import annotations
 
@@ -20,11 +20,11 @@ def _validate_mock_agent_response(
     *,
     require_keywords: bool,
 ) -> dict[str, Any]:
-    """Validate one deterministic demo assistant response."""
+    """Validate one deterministic demo Agent response."""
     if not isinstance(response, dict):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant response must be a JSON object.",
+            detail="Demo Agent response must be a JSON object.",
         )
 
     answer = response.get("answer")
@@ -35,12 +35,12 @@ def _validate_mock_agent_response(
     if not isinstance(answer, str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant response must include string 'answer'.",
+            detail="Demo Agent response must include string 'answer'.",
         )
     if not isinstance(tool_trace, list):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant response must include list 'tool_trace'.",
+            detail="Demo Agent response must include list 'tool_trace'.",
         )
     if require_keywords:
         if not isinstance(keywords, list) or not all(
@@ -49,7 +49,7 @@ def _validate_mock_agent_response(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=(
-                    "Demo assistant response must include list of string "
+                    "Demo Agent response must include list of string "
                     "'keywords'."
                 ),
             )
@@ -61,7 +61,7 @@ def _validate_mock_agent_response(
     if not isinstance(tool_outputs, list):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant response must include list 'tool_outputs'.",
+            detail="Demo Agent response must include list 'tool_outputs'.",
         )
 
     required_tool_output_keys = {"name", "status", "duration_ms", "output"}
@@ -69,14 +69,14 @@ def _validate_mock_agent_response(
         if not isinstance(entry, dict):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Demo assistant tool_outputs[{index}] must be a JSON object.",
+                detail=f"Demo Agent tool_outputs[{index}] must be a JSON object.",
             )
         missing_keys = required_tool_output_keys - entry.keys()
         if missing_keys:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=(
-                    "Demo assistant tool_outputs entries must include "
+                    "Demo Agent tool_outputs entries must include "
                     f"{sorted(required_tool_output_keys)}; "
                     f"entry {index} missing {sorted(missing_keys)}."
                 ),
@@ -88,7 +88,7 @@ def _validate_mock_agent_response(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=(
-                    f"Demo assistant tool_outputs[{index}] must include string 'name' and 'status'."
+                    f"Demo Agent tool_outputs[{index}] must include string 'name' and 'status'."
                 ),
             )
         duration_ms = entry.get("duration_ms")
@@ -96,7 +96,7 @@ def _validate_mock_agent_response(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=(
-                    f"Demo assistant tool_outputs[{index}] must include numeric 'duration_ms'."
+                    f"Demo Agent tool_outputs[{index}] must include numeric 'duration_ms'."
                 ),
             )
     return {
@@ -138,27 +138,27 @@ def load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
 
 
 def load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Load deterministic assistant responses from ``core/mock/assistant.json``."""
+    """Load deterministic Agent responses from ``core/mock/assistant.json``."""
     try:
         with open(_MOCK_ASSISTANT_PATH, encoding="utf-8") as mock_file:
             payload = json.load(mock_file)
     except (OSError, json.JSONDecodeError):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant payload unavailable.",
+            detail="Demo Agent payload unavailable.",
         ) from None
 
     if not isinstance(payload, dict):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant payload must be a JSON object.",
+            detail="Demo Agent payload must be a JSON object.",
         )
 
     responses = payload.get("responses")
     if not isinstance(responses, list):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo assistant payload must include list 'responses'.",
+            detail="Demo Agent payload must include list 'responses'.",
         )
 
     fallback = payload.get("fallback")
@@ -260,7 +260,7 @@ def _demo_greeting() -> str:
 
 
 def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
-    """Return deterministic assistant responses when ``DEMO_MODE`` is active."""
+    """Return deterministic Agent responses when ``DEMO_MODE`` is active."""
     from core.agent.catalog import (
         AGENT_SPECS,
         build_concrete_agent,

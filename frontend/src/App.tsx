@@ -364,7 +364,7 @@ export default function App(): ReactElement {
       return '249, 115, 22' // Rust orange (local model loading)
     }
     if (isCortexQuerying) {
-      return '168, 85, 247' // Purple (assistant working)
+      return '168, 85, 247' // Purple (Agent working)
     }
     if (activeStep === 4) {
       return '251, 191, 36' // Gold

@@ -467,7 +467,7 @@ def _trim_agent_history(
     Bound session history so prompt evaluation cost stays flat over a session.
 
     After the cut, leading non-user messages are dropped so the model never
-    sees orphaned tool output or an assistant reply without its prompt at the
+    sees orphaned tool output or an Agent reply without its prompt at the
     start of the window.
     """
     if len(history) <= max_messages:
@@ -664,7 +664,7 @@ def _execute_agent_turn(
 
 def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     """
-    Execute an APEX assistant turn with optional tool calling.
+    Execute one Cortex Engine Agent turn with optional tool calling.
 
     Runs synchronously so uvicorn can offload blocking provider I/O to a
     worker thread. Local (Ollama) queries pass an admission gate first:

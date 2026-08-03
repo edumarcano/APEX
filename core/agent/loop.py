@@ -69,7 +69,7 @@ def build_agent_failure_details(
     """Return the sanitized provider-specific failure response."""
     if isinstance(profile, OllamaModelProfile):
         answer = (
-            "The APEX assistant encountered an issue reaching the local Ollama "
+            "The Apex Agent encountered an issue reaching the local Ollama "
             "provider or running the requested operations. Please verify that "
             "Ollama is running, the model is installed, and system resources "
             "are sufficient, then try again."
@@ -77,7 +77,7 @@ def build_agent_failure_details(
         error_detail = f"Local provider error ({type(exc).__name__})."
     else:
         answer = (
-            "The APEX assistant encountered an issue reaching the cloud provider "
+            "The Apex Agent encountered an issue reaching the cloud provider "
             "or running the requested operations. Please check your credentials, "
             "network status, or quota allocations, and try again."
         )

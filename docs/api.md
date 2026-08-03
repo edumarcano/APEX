@@ -87,7 +87,7 @@ Returns the resolved settings envelope. The current contract version is `8`.
 
 `football.teams` is also returned as read-only file configuration. OpenAPI contains the complete shape.
 
-`settings.briefing.default_mode` remains a persisted compatibility field. The Overview command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
+`settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 
@@ -110,9 +110,9 @@ Environment modes, prompt text, credentials, endpoints, commands, allowlists, to
 
 ### GET `/api/v1/status`
 
-Returns the active full-run compatibility pipeline snapshot: `run_id`, step, label, UTC timestamp, speech state, active TTS engine, load-throttling state, and optional synthesis phase/provider/profile.
+Returns the active full-run compatibility pipeline snapshot: `run_id`, step, label, UTC timestamp, speech state, active TTS engine, load-throttling state, and optional synthesis phase/provider/Agent.
 
-Returns `404` when no full trigger or delivery is active. Independent telemetry refresh, assistant queries, and snapshot-based briefing generation expose their state through their own responses and frontend owners.
+Returns `404` when no full trigger or delivery is active. Independent telemetry refresh, Cortex queries, and snapshot-based briefing generation expose their state through their own responses and frontend owners.
 
 ### GET `/api/v1/diagnostics`
 
@@ -174,7 +174,7 @@ The body is optional. Valid modes are `panthera`, `mus`, `sorex`, and `structure
 - `409` — another full trigger owns execution.
 - `503` — a required operation-specific dependency cannot run and no applicable fallback completes the request.
 
-Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/profile/model, ordered fallback steps, token usage, provider timing, estimated provider cost, TTS resolution, `snapshot_id`, and whether automatic speech started.
+Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/Agent/model, ordered fallback steps, token usage, provider timing, estimated provider cost, TTS resolution, `snapshot_id`, and whether automatic speech started.
 
 ### POST `/api/v1/briefings/generate`
 
@@ -235,16 +235,16 @@ Cloud status starts as `configured` when a credential exists; it does not imply 
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
-Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud profile. Gemini uses its model metadata endpoint; OpenAI and xAI use `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud Agent. Gemini uses its model metadata endpoint; OpenAI and xAI use `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
-- `400` — the profile is local or has no supported verification path.
+- `400` — the Agent is local or has no supported verification path.
 - `403` — demo mode disallows provider contact.
-- `404` — the profile is not visible.
-- `409` — credentials are missing or that profile already has a verification in progress.
+- `404` — the Agent is not visible.
+- `409` — credentials are missing or that Agent already has a verification in progress.
 
 ### POST `/api/v1/cortex/local-model/load`
 
-Pre-warms one installed local profile before a request:
+Pre-warms one installed local Agent before a request:
 
 ```json
 { "agent": "mus" }
@@ -272,7 +272,7 @@ Compatibility alias with identical behavior to `POST /api/v1/cortex/local-model/
 
 ### POST `/api/v1/cortex/query`
 
-Runs one assistant turn. The browser supplies history on every request; the server does not persist a session.
+Runs one Cortex Engine turn. The browser supplies history on every request; the server does not persist a session.
 
 ```json
 {
@@ -290,13 +290,13 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud profile, including Acinonyx, and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local Agents receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
-- `403` — assistant disabled.
+- `403` — Ask APEX is disabled.
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Assistant loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud profiles can use up to 4 turns and 6 calls; Sorex and Mus use up to 2/3 and 3/4 turns/calls respectively. The last model turn is answer-only.
+Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex and Mus use up to 2/3 and 3/4 turns/calls respectively. The last model turn is answer-only.
 
 ## Markets and MCP
 

@@ -1,4 +1,4 @@
-"""Provider-neutral assistant prompt directives."""
+"""Provider-neutral Agent prompt directives."""
 
 from __future__ import annotations
 

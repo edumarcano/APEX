@@ -16,7 +16,7 @@ APEX uses coordinated color families rather than a single flat accent palette. R
 | --- | --- | --- |
 | Blue | `#082F7A`, `#0F4DB8`, `#1F6FE5`, `#6EA8FF`, `#7EB3FF` | Platform identity, navigation, controls, selected content, and active attention |
 | Emerald | `#047857`, `#10B981`, `#39FF88`, `#6EE7B7` | Processing, data collection, live status, and healthy availability |
-| Purple | `#7E22CE`, `#A855F7`, `#C084FC`, `#D8B4FE` | Synthesis, assistant reasoning, queries, and tool execution |
+| Purple | `#7E22CE`, `#A855F7`, `#C084FC`, `#D8B4FE` | Synthesis, Agent reasoning, queries, and tool execution |
 | Gold | `#D97706`, `#FBBF24`, `#FFD166`, `#FFF3B0` | Delivery, prepared output, important highlights, and stale-data warning |
 | Rust | `#C2410C`, `#F97316`, `#FB923C`, `#FDBA74` | Local-model loading and loaded local-runtime state |
 | Cyan | `#22D3EE`, `#A5F3FC` | Active speech, voice waveform, and developer-mode indication |
@@ -36,7 +36,7 @@ Color meaning depends on the state system in which it appears. Do not assume one
 | --- | --- |
 | Standby | Muted blue shell with dormant bronze core |
 | Processing or collecting | Emerald |
-| Synthesizing or assistant working | Purple |
+| Synthesizing or Agent working | Purple |
 | Delivering or ready output | Gold |
 | Local model loading or loaded | Rust |
 | Speaking | Cyan waveform within the current stage treatment |
@@ -59,7 +59,7 @@ Pair state color with text, icons, shape, motion, or an accessible label. Never 
 
 - Use translucent near-black glass for primary telemetry panels and interactive shells.
 - Use white-alpha borders and catch-lights to communicate material depth; do not paint every panel rim blue.
-- Use the denser solid-glass treatment for overlays, profile menus, diagnostics popovers, and surfaces that require stronger separation.
+- Use the denser solid-glass treatment for overlays, Agent menus, diagnostics popovers, and surfaces that require stronger separation.
 - Use inset near-black command surfaces for inputs, triggers, and operational controls.
 - Preserve text contrast and visual containment when layered above nebula fields or the central logo.
 
@@ -86,13 +86,13 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ### Briefing and voice controls
 
-- Treat briefing synthesis as a global operation. Keep its selector, Refresh, and split Synthesize command together in the Overview command rail beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
-- Organize briefing modes into Cloud and Local sections. Use the shared profile availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
+- Treat briefing synthesis as a global operation. Keep its selector, Refresh, and split Synthesize command together in the Home command rail beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
+- Organize briefing modes into Cloud and Local sections. Use the shared Agent availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
 - Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Refresh and Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
 - Treat Refresh All & Synthesize as one ordered action: a failed refresh must stop synthesis and leave its error visible.
 - Show Speak / Replay as an icon action only on the Briefing tab when a transcript exists and voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
 - Keep provider, fallback, and delivery feedback with the transcript so the header selector continues to represent the next requested mode.
-- When a local model is resident, show its compact icon-only unload control beside the Overview synthesis action. Expose its model name through a hover-and-focus tooltip; keep lifecycle detail and the auto-unload countdown in Cortex's local-model inspector.
+- When a local model is resident, show its compact icon-only unload control beside the Home synthesis action. Expose its model name through a hover-and-focus tooltip; keep lifecycle detail and the auto-unload countdown in Cortex's local-model inspector.
 
 ## Attention and Disclosure
 
@@ -133,7 +133,7 @@ Use three typographic roles:
 
 - **Exo 2:** Default interface copy, readable body content, descriptions, and conversational output.
 - **Orbitron:** Panel titles, state labels, compact controls, identity text, and short operational headings.
-- **Monospace:** Telemetry, timestamps, symbols, diagnostic values, indexes, profile metadata, and machine-oriented labels.
+- **Monospace:** Telemetry, timestamps, symbols, diagnostic values, indexes, Agent metadata, and machine-oriented labels.
 
 Use uppercase text and wide tracking primarily for short operational labels. Avoid long uppercase body copy. Use tabular numerals for values that update or align vertically.
 
@@ -151,13 +151,13 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Local command scope
 
-### Cortex profile catalog
+### Cortex Agent catalog
 
-The Cortex inspector is the detailed assistant-configuration surface. Show one selected `APEX <Profile>` card; its popover presents catalog-provided names, descriptions, model metadata, ordered tags, availability, and compact pricing. The Overview command rail may expose the same catalog through a compact profile trigger, but it does not duplicate inspector-owned effort, grounding, local-tool, or lifecycle controls. The composer shows only the short profile name and a send control. Profile marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
+The Cortex inspector is the detailed Agent-configuration surface. Show one selected `APEX <Agent>` card; its popover presents catalog-provided names, descriptions, model metadata, ordered tags, availability, and compact pricing. The Home command rail may expose the same catalog through a compact Agent trigger, but it does not duplicate inspector-owned effort, grounding, local-tool, or lifecycle controls. The composer shows only the short Agent name and a send control. Agent marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
 
-Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its profile-selection button.
+Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its Agent-selection button.
 
-The Cortex inspector owns local tool scopes when a local profile is selected. Show every supported slash command as compact selectable rows with availability, descriptions, tool counts, and schema-token estimates. Show the active command as a one-shot armed state. A bare slash command remains a shortcut that selects the scope without submitting; the next query consumes and clears it. Keep the composer limited to an armed-scope indicator.
+The Cortex inspector owns local tool scopes when a local Agent is selected. Show every supported slash command as compact selectable rows with availability, descriptions, tool counts, and schema-token estimates. Show the active command as a one-shot armed state. A bare slash command remains a shortcut that selects the scope without submitting; the next query consumes and clears it. Keep the composer limited to an armed-scope indicator.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 

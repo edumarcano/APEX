@@ -564,7 +564,7 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
 
     This is the primary entry point for coordinated model switches. It ensures
     only one local model remains in Ollama memory at any time. The warmup
-    request mirrors the profile's real runtime options so the first assistant
+    request mirrors the Agent's real runtime options so the first Agent
     turn does not pay a second setup cost for context/thread/think settings.
 
     Callers must hold the execution slot (``try_begin_local_execution``) so

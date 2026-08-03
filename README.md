@@ -9,12 +9,12 @@ Today, it is a local-first operational HUD that brings weather, schedules, remin
 </p>
 
 <p align="center">
-  <em>Standby keeps the interface quiet until I choose to load the overview or begin with a briefing.</em>
+  <em>Standby keeps the interface quiet until I choose to load Home or begin with a briefing.</em>
 </p>
 
 ## What APEX does
 
-### Builds a live personal overview
+### Builds a live Home workspace
 
 APEX collects enabled weather, calendar, inbox, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
 
@@ -28,24 +28,24 @@ Ask APEX can direct Apex Agents to query approved read-only capabilities for liv
 
 ### Keeps runtime control visible
 
-The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, assistant queries, and speech are independent operations rather than one mandatory pipeline.
+The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, interactive Agent requests, and speech are independent operations rather than one mandatory pipeline.
 
 <p align="center">
-  <img src="docs/assets/apex-active-hud.png" alt="Activated APEX overview with demo telemetry and a generated briefing" width="900">
+  <img src="docs/assets/apex-active-hud.png" alt="Activated APEX Home workspace with demo telemetry and a generated briefing" width="900">
 </p>
 
 <p align="center">
-  <em>An activated demo overview using static, non-personal telemetry.</em>
+  <em>An activated Home workspace using static, non-personal telemetry.</em>
 </p>
 
 ## Engineering highlights
 
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
-- **Independent runtime paths** — telemetry, briefing generation, assistant work, and voice delivery can succeed or fail without taking the entire HUD down.
+- **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
 - **Cloud, local, and deterministic execution** — Gemini and Ollama are optional strategies, with Structured Digest as the final model-free fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
-- **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held assistant conversations disappear on reload.
+- **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
 - **Privacy-aware process isolation** — the backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -75,7 +75,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
 | Cloud reasoning | Gemini 3.5 Flash Lite, Gemini 3.5 Flash, Gemini 3.6 Flash |
-| Local reasoning | Ollama with Qwen3 profiles |
+| Local reasoning | Ollama with Qwen3 models |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
 | Validation | unittest, Vitest, ESLint, TypeScript, Vite build |
