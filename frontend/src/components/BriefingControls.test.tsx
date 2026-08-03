@@ -123,6 +123,7 @@ describe('BriefingModeSelector', () => {
 describe('BriefingGenerateControl', () => {
   it('keeps refresh-and-synthesize available when current-snapshot synthesis is disabled', async () => {
     const onGenerate = vi.fn()
+    const onRefreshAll = vi.fn()
     const onRefreshAndGenerate = vi.fn()
     const user = userEvent.setup()
     render(
@@ -131,6 +132,7 @@ describe('BriefingGenerateControl', () => {
         refreshDisabled={false}
         busy={false}
         onGenerate={onGenerate}
+        onRefreshAll={onRefreshAll}
         onRefreshAndGenerate={onRefreshAndGenerate}
       />,
     )
@@ -141,6 +143,26 @@ describe('BriefingGenerateControl', () => {
 
     expect(onGenerate).not.toHaveBeenCalled()
     expect(onRefreshAndGenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers refresh-only work from the synthesis menu', async () => {
+    const onRefreshAll = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <BriefingGenerateControl
+        mainDisabled={false}
+        refreshDisabled={false}
+        busy={false}
+        onGenerate={vi.fn()}
+        onRefreshAll={onRefreshAll}
+        onRefreshAndGenerate={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /more briefing synthesis options/i }))
+    await user.click(screen.getAllByRole('menuitem')[0])
+
+    expect(onRefreshAll).toHaveBeenCalledTimes(1)
   })
 
 })

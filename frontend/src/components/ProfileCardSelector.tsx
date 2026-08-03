@@ -67,6 +67,19 @@ function statusClass(status: ProfileAvailabilityStatus): string {
   return 'text-red-300'
 }
 
+function statusDotClass(status: ProfileAvailabilityStatus): string {
+  if (status === 'available' || status === 'configured' || status === 'verified') {
+    return 'bg-emerald-300 shadow-[0_0_7px_rgba(110,231,183,0.8)]'
+  }
+  if (status === 'unknown' || status === 'busy' || status === 'verifying' || status === 'rate_limited') {
+    return 'bg-amber-300 shadow-[0_0_7px_rgba(252,211,77,0.7)]'
+  }
+  if (status === 'disabled') {
+    return 'bg-zinc-500 shadow-[0_0_5px_rgba(161,161,170,0.35)]'
+  }
+  return 'bg-red-300 shadow-[0_0_7px_rgba(252,165,165,0.7)]'
+}
+
 function rate(value: number): string { return `$${value.toFixed(2)}/1M` }
 
 function popoverPosition(trigger: HTMLButtonElement): CSSProperties {
@@ -216,7 +229,7 @@ export function ProfileCardSelector({
     : null
 
   return <section aria-label="Profile selector" className={overview ? 'relative w-full sm:w-auto' : 'relative'}>
-    <button ref={triggerRef} type="button" aria-expanded={isOpen} aria-haspopup="dialog" aria-controls={overview ? 'overview-profile-popover' : 'cortex-profile-popover'} onClick={() => { setBrowseMode(profileMode(activeProfile)); setIsOpen((open) => !open) }} className={overview ? 'flex h-10 w-full items-center gap-2 rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/10 px-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] sm:w-auto sm:min-w-36' : 'w-full rounded-xl border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]'}>{overview ? <><ProfileMark profile={activeProfile} /><span className="min-w-0 flex-1"><span className="block truncate font-mono text-[10px] uppercase tracking-wider text-zinc-200">{activeName.replace(/^APEX\s+/i, '')}</span><span className={`block font-mono text-[8px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></span><ChevronDown className={`size-3.5 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></> : <><span className="flex items-center gap-3"><ProfileMark profile={activeProfile} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{activeName}</span><ChevronDown className={`size-4 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></span>{activeStatus ? <span className="mt-1 block font-mono text-[10px] text-zinc-400">{poweredBy(activeStatus)}</span> : null}</span></span><span className={`mt-2 block font-mono text-[9px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></>}</button>
+    <button ref={triggerRef} type="button" aria-expanded={isOpen} aria-haspopup="dialog" aria-controls={overview ? 'overview-profile-popover' : 'cortex-profile-popover'} aria-label={overview ? `Assistant profile ${activeName.replace(/^APEX\s+/i, '')}, ${STATUS_LABELS[activeAvailability]}` : undefined} title={overview ? `${activeName.replace(/^APEX\s+/i, '')}: ${STATUS_LABELS[activeAvailability]}` : undefined} onClick={() => { setBrowseMode(profileMode(activeProfile)); setIsOpen((open) => !open) }} className={overview ? 'flex h-10 w-full items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] sm:w-auto sm:min-w-36' : 'w-full rounded-xl border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]'}>{overview ? <><ProfileMark profile={activeProfile} /><span data-slot="overview-profile-status-dot" data-status={activeAvailability} className={`size-1.5 shrink-0 rounded-full ${statusDotClass(activeAvailability)}`} aria-hidden /><span className="min-w-0 flex-1"><span className="block truncate font-mono text-[10px] uppercase tracking-wider text-zinc-200">{activeName.replace(/^APEX\s+/i, '')}</span></span><ChevronDown className={`size-3.5 shrink-0 text-zinc-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></> : <><span className="flex items-center gap-3"><ProfileMark profile={activeProfile} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{activeName}</span><ChevronDown className={`size-4 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></span>{activeStatus ? <span className="mt-1 block font-mono text-[10px] text-zinc-400">{poweredBy(activeStatus)}</span> : null}</span></span><span className={`mt-2 block font-mono text-[9px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></>}</button>
     {overview ? popover && position ? createPortal(popover, document.body) : null : popover}
   </section>
 }

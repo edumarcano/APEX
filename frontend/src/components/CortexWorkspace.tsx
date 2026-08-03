@@ -103,12 +103,38 @@ function LocalToolScopes({ commands, armedToolScope, contextUsage, onChange }: {
   return <section className="space-y-2" aria-label="Local tool scopes"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local tool scopes</p>{armedToolScope ? <p className="rounded-md border border-orange-400/20 bg-orange-950/20 px-2 py-1 font-mono text-[10px] text-orange-200">/{armedToolScope} armed for next request</p> : <p className="font-mono text-[10px] text-zinc-500">No scope armed for the next request.</p>}<div className="space-y-1">{commands.length === 0 ? <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-zinc-500">Checking command availability…</p> : commands.map((command) => { const armed = armedToolScope === command.key; return <button key={command.key} type="button" disabled={!command.available} aria-pressed={armed} title={command.unavailable_reason ?? undefined} onClick={() => onChange(armed ? null : command.key)} className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${armed ? 'border-orange-400/45 bg-orange-950/25' : 'border-white/10 bg-white/[0.02] hover:border-white/25'} disabled:cursor-not-allowed disabled:opacity-45`}><span className="w-[4.75rem] shrink-0 font-mono text-[10px] text-[#7EB3FF]">{command.command}</span><span className="min-w-0 flex-1"><span className="block text-[11px] text-zinc-300">{command.description}</span>{!command.available && command.unavailable_reason ? <span className="block text-[10px] text-red-200">{command.unavailable_reason}</span> : null}</span><span className="shrink-0 text-right font-mono text-[9px] text-zinc-500">{command.tool_count} tools<br />~{command.estimated_schema_tokens}</span></button> })}</div>{contextUsage && promptTokens !== null ? <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-400"><div className="flex justify-between"><span>Local context</span><span className={promptTokens / contextUsage.context_window >= 0.8 ? 'text-amber-400' : ''}>{formatNumber(promptTokens)}/{formatNumber(contextUsage.context_window)}</span></div><p className="mt-1 text-zinc-600">{contextUsage.history_messages_dropped} messages trimmed</p></div> : null}</section>
 }
 
+function formatCountdown(seconds: number | null): string {
+  if (seconds === null) return '--:--'
+  const safe = Math.max(0, Math.floor(seconds))
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`
+}
+
+function useIdleUnloadCountdown(seconds: number | null, running: boolean): number | null {
+  const [remaining, setRemaining] = useState(seconds)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Status polling is authoritative and must resynchronize the local display before its next tick.
+    setRemaining(seconds)
+    if (seconds === null || !running) return
+    const intervalId = window.setInterval(() => {
+      setRemaining((current) => current === null ? null : Math.max(0, current - 1))
+    }, 1_000)
+    return () => window.clearInterval(intervalId)
+  }, [running, seconds])
+
+  return remaining
+}
+
 function LocalModelLifecycle({ profile, busy, actionPending, onLoad, onUnload }: { profile: AgentProfileStatus; busy: boolean; actionPending: boolean; onLoad: (profile: Extract<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
   const [error, setError] = useState<string | null>(null)
   const transition = profile.loading || actionPending
   const lifecycleState = profile.loading ? 'Loading' : profile.active ? 'Loaded' : profile.status === 'available' ? 'Unloaded' : 'Unavailable'
   const canUnload = lifecycleState === 'Loaded'
   const disabled = busy || transition || lifecycleState === 'Unavailable'
+  const idleUnloadRemaining = useIdleUnloadCountdown(
+    profile.idle_unload_remaining_seconds,
+    lifecycleState === 'Loaded' && !busy && !transition,
+  )
   const actionLabel = canUnload ? 'Unload model' : 'Load model'
   const stateClassName = lifecycleState === 'Unavailable'
     ? 'border-red-400/35 bg-red-950/20 text-red-200'
@@ -120,6 +146,19 @@ function LocalModelLifecycle({ profile, busy, actionPending, onLoad, onUnload }:
     setError(null)
     const successful = canUnload ? await onUnload() : await onLoad(profile.key as Extract<AssistantProfile, 'mus' | 'sorex'>)
     if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check Ollama status and try again.`)
+  }
+  if (lifecycleState === 'Loaded') {
+    return <section className="space-y-2" aria-label="Local model lifecycle">
+      <p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local model</p>
+      <div className="rounded-lg border border-orange-500/25 bg-orange-950/10 p-3">
+        <div className="flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${stateClassName}`} aria-live="polite"><span className="size-1.5 rounded-full bg-current" aria-hidden />{lifecycleState}</span><span className="font-mono text-[10px] text-zinc-500">{profile.configured_model}</span></div>
+        <button type="button" disabled={disabled} onClick={() => void action()} className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-orange-400/40 bg-orange-950/25 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/45 disabled:cursor-not-allowed disabled:opacity-45">{transition ? <Loader2 className="cortex-lifecycle-spinner mr-1.5 size-3.5" aria-hidden /> : null}{transition ? 'Unloading…' : actionLabel}</button>
+        <p className="mt-2 font-mono text-[10px] text-orange-100/75" aria-live="polite">{busy ? 'In use · auto-unload paused' : `Auto-unload in ${formatCountdown(idleUnloadRemaining)}`}</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">Loading pre-warms this profile; normal requests can still load it when needed. Unloading frees memory without changing the selected profile.</p>
+        {busy ? <p className="mt-1 text-[10px] text-amber-200">Lifecycle actions are unavailable while local inference is active.</p> : null}
+        {error ? <p className="mt-1 text-[10px] text-red-200" role="alert">{error}</p> : null}
+      </div>
+    </section>
   }
   return <section className="space-y-2" aria-label="Local model lifecycle"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local model</p><div className="rounded-lg border border-orange-500/25 bg-orange-950/10 p-3"><div className="flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${stateClassName}`} aria-live="polite"><span className={`size-1.5 rounded-full bg-current ${transition ? 'cortex-lifecycle-status--transitioning' : ''}`} aria-hidden />{lifecycleState}</span><span className="font-mono text-[10px] text-zinc-500">{profile.configured_model}</span></div><button type="button" disabled={disabled} onClick={() => void action()} className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-orange-400/40 bg-orange-950/25 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/45 disabled:cursor-not-allowed disabled:opacity-45">{transition ? <Loader2 className="cortex-lifecycle-spinner mr-1.5 size-3.5" aria-hidden /> : null}{transition ? (canUnload ? 'Unloading…' : 'Loading…') : actionLabel}</button><p className="mt-2 text-[11px] leading-relaxed text-zinc-500">Loading pre-warms this profile; normal requests can still load it when needed. Unloading frees memory without changing the selected profile.</p>{!profile.active && lifecycleState === 'Unloaded' ? <p className="mt-1 text-[10px] text-zinc-600">Loading this profile may replace another resident local model.</p> : null}{busy ? <p className="mt-1 text-[10px] text-amber-200">Lifecycle actions are unavailable while local inference is active.</p> : null}{profile.reason && lifecycleState === 'Unavailable' ? <p className="mt-1 text-[10px] text-red-200">{profile.reason}</p> : null}{error ? <p className="mt-1 text-[10px] text-red-200" role="alert">{error}</p> : null}</div></section>
 }

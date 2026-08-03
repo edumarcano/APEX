@@ -92,7 +92,7 @@ Reuse these established primitives instead of creating competing panel chrome.
 - Treat Refresh All & Synthesize as one ordered action: a failed refresh must stop synthesis and leave its error visible.
 - Show Speak / Replay as an icon action only on the Briefing tab when a transcript exists and voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
 - Keep provider, fallback, and delivery feedback with the transcript so the header selector continues to represent the next requested mode.
-- When a local model is resident or transitioning, show its Overview unload control as a subordinate `Local runtime` strip within the command rail. Keep it independent of assistant and briefing profile selection.
+- When a local model is resident, show its compact icon-only unload control beside the Overview synthesis action. Expose its model name through a hover-and-focus tooltip; keep lifecycle detail and the auto-unload countdown in Cortex's local-model inspector.
 
 ## Attention and Disclosure
 

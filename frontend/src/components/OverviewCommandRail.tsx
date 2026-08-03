@@ -1,4 +1,3 @@
-import { RefreshCw } from 'lucide-react'
 import type { ReactElement } from 'react'
 
 import type { BriefingMode } from '../types/settings'
@@ -97,65 +96,61 @@ export function OverviewCommandRail({
       ) : (
         <div className={`overview-command-grid ${showAssistantControls ? 'overview-command-grid--with-assistant' : 'overview-command-grid--briefing-only'}`} data-slot="overview-active-controls">
           {showAssistantControls ? <>
-            <div className="overview-command-grid__assistant-profile min-w-0" data-slot="overview-assistant-profile">
-              <ProfileCardSelector
-                presentation="overview"
-                activeProfile={activeProfile}
-                onChange={onProfileChange}
-                profilesStatus={profilesStatus}
-                profilesStatusHydrated={profilesStatusHydrated}
-                devModeActive={devModeActive}
-                isQuerying={isAssistantQuerying}
-                verifyingProfile={verifyingCloudProfile}
-                onVerify={onVerifyCloudProfile}
-              />
-            </div>
-            <div className="overview-command-grid__assistant-composer min-w-0" data-slot="overview-assistant-composer">
-              <AskApexBar
-                presentation="overview"
-                activeProfile={activeProfile}
-                onSubmit={onAssistantSubmit}
-                profilesStatus={profilesStatus}
-                isSubmitting={isAssistantQuerying}
-              />
+            <div className="overview-command-grid__assistant-row" data-slot="overview-assistant-row">
+              <div className="overview-command-grid__assistant-profile min-w-0" data-slot="overview-assistant-profile">
+                <ProfileCardSelector
+                  presentation="overview"
+                  activeProfile={activeProfile}
+                  onChange={onProfileChange}
+                  profilesStatus={profilesStatus}
+                  profilesStatusHydrated={profilesStatusHydrated}
+                  devModeActive={devModeActive}
+                  isQuerying={isAssistantQuerying}
+                  verifyingProfile={verifyingCloudProfile}
+                  onVerify={onVerifyCloudProfile}
+                />
+              </div>
+              <div className="overview-command-grid__assistant-composer min-w-0" data-slot="overview-assistant-composer">
+                <AskApexBar
+                  presentation="overview"
+                  activeProfile={activeProfile}
+                  onSubmit={onAssistantSubmit}
+                  profilesStatus={profilesStatus}
+                  isSubmitting={isAssistantQuerying}
+                />
+              </div>
             </div>
           </> : null}
-          <BriefingModeSelector
-            value={briefingMode}
-            onChange={onBriefingModeChange}
-            profiles={profilesStatus}
-            hydrated={profilesStatusHydrated}
-            disabled={briefingControlsBusy}
-            className="overview-command-grid__briefing min-w-0"
-          />
-          <button
-            type="button"
-            onClick={onRefreshAll}
-            disabled={isRefreshingAll}
-            data-slot="refresh-all-trigger"
-            className="overview-command-grid__refresh inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Refresh all telemetry"
-          >
-            <RefreshCw className={`size-3.5 ${isRefreshingAll ? 'animate-spin' : ''}`} aria-hidden />
-            {isRefreshingAll ? 'Refreshing' : 'Refresh'}
-          </button>
-          <BriefingGenerateControl
-            mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
-            refreshDisabled={briefingControlsBusy || !briefingModeAvailable}
-            busy={briefingControlsBusy}
-            onGenerate={onGenerateBriefing}
-            onRefreshAndGenerate={onRefreshAllAndGenerate}
-            className="overview-command-grid__synthesize w-full"
-          />
+          <div className="overview-command-grid__briefing-row" data-slot="overview-briefing-row">
+            <BriefingModeSelector
+              value={briefingMode}
+              onChange={onBriefingModeChange}
+              profiles={profilesStatus}
+              hydrated={profilesStatusHydrated}
+              disabled={briefingControlsBusy}
+              className="overview-command-grid__briefing min-w-0"
+            />
+            <div className="overview-command-grid__briefing-actions" data-slot="overview-briefing-actions">
+              <LocalModelControl
+                profile={activeLocalModel}
+                loadingProfile={loadingLocalProfile}
+                busy={localLifecycleBusy}
+                onUnload={onUnloadLocalModel}
+                presentation="rail"
+              />
+              <BriefingGenerateControl
+                mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
+                refreshDisabled={briefingControlsBusy || !briefingModeAvailable || isRefreshingAll}
+                busy={briefingControlsBusy || isRefreshingAll}
+                onGenerate={onGenerateBriefing}
+                onRefreshAll={onRefreshAll}
+                onRefreshAndGenerate={onRefreshAllAndGenerate}
+                className="overview-command-grid__synthesize"
+              />
+            </div>
+          </div>
         </div>
       )}
-      <LocalModelControl
-        profile={activeLocalModel}
-        loadingProfile={loadingLocalProfile}
-        busy={localLifecycleBusy}
-        onUnload={onUnloadLocalModel}
-        presentation="rail"
-      />
     </section>
   )
 }

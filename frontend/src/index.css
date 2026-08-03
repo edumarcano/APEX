@@ -71,31 +71,56 @@
 
 .overview-command-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-areas:
-    'assistant-profile assistant-profile assistant-profile'
-    'assistant-composer assistant-composer assistant-composer'
-    'briefing refresh synthesize';
+  min-width: 0;
   gap: 0.5rem;
 }
 
-.overview-command-grid--briefing-only {
-  grid-template-areas: 'briefing refresh synthesize';
+.overview-command-grid__assistant-row,
+.overview-command-grid__briefing-row {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
 }
 
-.overview-command-grid__assistant-profile { grid-area: assistant-profile; }
-.overview-command-grid__assistant-composer { grid-area: assistant-composer; }
-.overview-command-grid__briefing { grid-area: briefing; }
-.overview-command-grid__refresh { grid-area: refresh; }
-.overview-command-grid__synthesize { grid-area: synthesize; }
+.overview-command-grid__assistant-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.overview-command-grid__briefing-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.overview-command-grid__briefing {
+  width: min(17.5rem, 100%);
+}
+
+.overview-command-grid__briefing-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
 
 @media (min-width: 640px) {
-  .overview-command-grid {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      'assistant-profile assistant-composer assistant-composer'
-      'briefing refresh synthesize';
+  .overview-command-grid__assistant-row {
+    grid-template-columns: auto minmax(0, 1fr);
   }
+
+  .overview-command-grid__assistant-profile {
+    justify-self: start;
+  }
+}
+
+.overview-command-grid__synthesize {
+  height: 2.5rem;
+  width: 12.5rem;
+  min-width: 0;
+  flex: 0 1 12.5rem;
+}
+
+.overview-command-grid__synthesize > button {
+  height: 100%;
+  white-space: nowrap;
 }
 
 @media (max-width: 1279px), (max-height: 820px) {

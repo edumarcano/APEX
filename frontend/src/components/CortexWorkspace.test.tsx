@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CortexWorkspace } from './CortexWorkspace'
 import type { AgentProfileStatus, LocalCommandStatus } from '../types/telemetry'
@@ -21,6 +21,10 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
 }
 
 describe('CortexWorkspace', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('uses the available shell width and keeps the conversation before the right inspector', () => {
     render(<CortexWorkspace {...workspaceProps()} />)
     const workspace = screen.getByRole('region', { name: 'Cortex workspace' })
@@ -127,5 +131,19 @@ describe('CortexWorkspace', () => {
     rerender(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', profilesStatus: [{ ...mus, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
     expect(screen.getByText('Unavailable')).toBeInTheDocument()
     expect(screen.getByText('Ollama is offline')).toBeInTheDocument()
+  })
+
+  it('shows the active local model auto-unload countdown in the lifecycle card', () => {
+    vi.useFakeTimers()
+    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', profilesStatus: [{ ...mus, active: true, idle_unload_remaining_seconds: 300 }] })} />)
+    expect(screen.getByText('Auto-unload in 05:00')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(1_000)
+    })
+    expect(screen.getByText('Auto-unload in 04:59')).toBeInTheDocument()
+
+    rerender(<CortexWorkspace {...workspaceProps({ activeProfile: 'mus', lifecycleBusy: true, profilesStatus: [{ ...mus, active: true, idle_unload_remaining_seconds: 299 }] })} />)
+    expect(screen.getByText('In use · auto-unload paused')).toBeInTheDocument()
   })
 })

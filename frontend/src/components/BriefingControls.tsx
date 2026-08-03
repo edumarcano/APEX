@@ -276,8 +276,8 @@ export function BriefingModeSelector({
       >
         <BriefingModeMark mode={value} />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
-        <span className="min-w-0"><span className="block whitespace-nowrap uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value)}</span></span>
-        <ChevronDown className={`size-3.5 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+        <span className="min-w-0 flex-1 text-left"><span className="block whitespace-nowrap uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value)}</span></span>
+        <ChevronDown className={`ml-auto size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
       {open && position ? createPortal(
@@ -363,6 +363,7 @@ export interface BriefingGenerateControlProps {
   refreshDisabled: boolean
   busy: boolean
   onGenerate: () => void
+  onRefreshAll: () => void
   onRefreshAndGenerate: () => void
   className?: string
 }
@@ -372,6 +373,7 @@ export function BriefingGenerateControl({
   refreshDisabled,
   busy,
   onGenerate,
+  onRefreshAll,
   onRefreshAndGenerate,
   className = '',
 }: BriefingGenerateControlProps): ReactElement {
@@ -457,6 +459,27 @@ export function BriefingGenerateControl({
         <div ref={menuRef} style={position} role="menu" aria-label="Briefing synthesis options" className="hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] rounded-xl border border-white/10 p-2 shadow-2xl">
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              close(true)
+              onRefreshAll()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                close(true)
+              }
+            }}
+            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-purple-400/10 focus-visible:bg-purple-400/10 focus-visible:outline-none"
+          >
+            <RefreshCw className="mt-0.5 size-4 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
+            <span>
+              <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-100">Refresh All</span>
+              <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Recollect every enabled connector without synthesizing.</span>
+            </span>
+          </button>
           <button
             type="button"
             role="menuitem"

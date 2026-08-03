@@ -92,7 +92,11 @@ describe('OverviewCommandRail', () => {
     const user = userEvent.setup()
     renderRail({ onProfileChange, onBriefingModeChange })
 
-    await user.click(screen.getByRole('button', { name: /panthera.*available/i }))
+    const trigger = screen.getByRole('button', { name: /panthera.*available/i })
+    expect(trigger).not.toHaveClass('bg-[#7E22CE]/10')
+    expect(trigger).toHaveClass('border-white/10')
+    expect(document.querySelector('[data-slot="overview-profile-status-dot"]')).toHaveAttribute('data-status', 'available')
+    await user.click(trigger)
     expect(screen.getByText('Assistant profile')).toBeVisible()
     const selector = screen.getByRole('dialog', { name: 'Select assistant profile' })
     expect(selector).toHaveAttribute('id', 'overview-profile-popover')
@@ -111,7 +115,8 @@ describe('OverviewCommandRail', () => {
 
     expect(screen.queryByLabelText('Ask APEX')).toBeNull()
     expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Refresh all telemetry' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
   })
 
   it('submits with the active assistant profile while keeping the composer free of a second selector', async () => {
@@ -126,15 +131,21 @@ describe('OverviewCommandRail', () => {
     expect(onAssistantSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', null)
   })
 
-  it('uses stable grid tracks and keeps the resident local runtime control inside the rail', async () => {
+  it('keeps the resident local unload action beside synthesis without adding a runtime row', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
     const activeMus = { ...profile('mus'), active: true, display_name: 'APEX Mus' }
     const user = userEvent.setup()
     renderRail({ activeLocalModel: activeMus, onUnloadLocalModel })
 
     expect(document.querySelector('[data-slot="overview-active-controls"]')).toHaveClass('overview-command-grid--with-assistant')
-    expect(document.querySelector('[data-slot="refresh-all-trigger"]')).toHaveClass('overview-command-grid__refresh')
-    expect(screen.getByLabelText('Local runtime')).toHaveTextContent('Local runtime: Mus')
+    expect(document.querySelector('[data-slot="overview-assistant-row"]')).toBeVisible()
+    expect(document.querySelector('[data-slot="overview-briefing-row"]')).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing: panthera/i }).querySelector('.ml-auto')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
+    const actions = document.querySelector('[data-slot="overview-briefing-actions"]')
+    expect(actions).toContainElement(document.querySelector('[data-slot="overview-local-runtime"]'))
+    expect(actions).toContainElement(document.querySelector('.overview-command-grid__synthesize'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Unload Mus')
     await user.click(screen.getByRole('button', { name: 'Unload APEX Mus' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })
