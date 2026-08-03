@@ -19,7 +19,7 @@ describe('SystemDiagnostics', () => {
   it('distinguishes an unchecked connector snapshot from no configured connectors', () => {
     renderDiagnostics()
 
-    expect(screen.getByRole('button', { name: /Connectors Â· Not checked/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Connectors · Not checked/i })).toBeVisible()
   })
 
   it('keeps workspace controls grouped with the stable Apex identity pill', () => {
@@ -44,7 +44,7 @@ describe('SystemDiagnostics', () => {
       onRefreshConnectors,
     })
 
-    const trigger = screen.getByRole('button', { name: /Connectors Â· 1 ready Â· 1 issue/i })
+    const trigger = screen.getByRole('button', { name: /Connectors · 1 ready · 1 issue/i })
     fireEvent.click(trigger)
 
     expect(screen.getByRole('dialog', { name: 'Connector health' })).toBeVisible()

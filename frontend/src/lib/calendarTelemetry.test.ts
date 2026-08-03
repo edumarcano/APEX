@@ -48,7 +48,7 @@ describe('resolveCalendarTelemetry', () => {
     )
     expect(result.items[1].summary).toBe('Day six')
     expect(result.items[1].start).toMatch(
-      /^[A-Za-z]+, [A-Za-z]+ \d{1,2} Â· All day$/,
+      /^[A-Za-z]+, [A-Za-z]+ \d{1,2} · All day$/,
     )
     expect(result.totalCount).toBe(2)
   })

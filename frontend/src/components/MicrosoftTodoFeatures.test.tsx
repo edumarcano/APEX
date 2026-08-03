@@ -93,7 +93,7 @@ describe('Microsoft To Do assistant cards', () => {
       />,
     )
     expect(screen.getByText('Personal')).toBeInTheDocument()
-    expect(screen.getByText(/Microsoft To Do Â· Read only/i)).toBeInTheDocument()
+    expect(screen.getByText(/Microsoft To Do · Read only/i)).toBeInTheDocument()
     expect(screen.queryByText('Active Reminders')).not.toBeInTheDocument()
   })
 

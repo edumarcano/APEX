@@ -11,7 +11,7 @@ const telemetry: FootballTelemetry = { configuredTeamCount: 1, fixtures: [{ fixt
 describe('FootballFixtureList', () => {
   it('renders venue, competition, and kickoff from structured telemetry', () => {
     render(<FootballFixtureList hasSnapshot module={module} telemetry={telemetry} />)
-    expect(screen.getByText(/Barcelona Â· Away vs Real Madrid/)).toBeInTheDocument()
+    expect(screen.getByText(/Barcelona · Away vs Real Madrid/)).toBeInTheDocument()
     expect(screen.getByText('La Liga')).toBeInTheDocument()
     expect(screen.getByText('Friday at 14:00')).toBeInTheDocument()
   })

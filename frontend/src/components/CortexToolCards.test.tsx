@@ -73,7 +73,7 @@ describe('CortexToolCards calendar presentation', () => {
 
     expect(screen.getByText('Next 14 days')).toBeInTheDocument()
     expect(screen.getByText('Conference')).toBeInTheDocument()
-    expect(screen.getByText(/Jul 26 Ãƒâ€šÃ‚Â· All day/)).toBeInTheDocument()
+    expect(screen.getByText(/Jul 26 · All day/)).toBeInTheDocument()
   })
 })
 

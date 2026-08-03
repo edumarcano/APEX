@@ -77,12 +77,12 @@ describe('HomeCommandRail', () => {
     renderRail({ activated: false })
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Start Apex with briefing' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
     expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
     expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
-    expect(document.querySelector('[data-slot="overview-standby-controls"]')).toHaveClass('grid')
-    expect(document.querySelector('[data-slot="overview-standby-actions"]')).toHaveClass('col-span-2')
+    expect(document.querySelector('[data-slot="home-standby-controls"]')).toHaveClass('grid')
+    expect(document.querySelector('[data-slot="home-standby-actions"]')).toHaveClass('col-span-2')
   })
 
   it('uses a compact assistant menu without changing briefing selection', async () => {
@@ -138,22 +138,29 @@ describe('HomeCommandRail', () => {
     expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', null)
   })
 
-  it('keeps the resident local unload action beside synthesis without adding a runtime row', async () => {
+  it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
     const activeMus = { ...profile('mus'), active: true, display_name: 'Apex Mus' }
     const user = userEvent.setup()
     renderRail({ activeLocalModel: activeMus, onUnloadLocalModel })
 
-    expect(document.querySelector('[data-slot="overview-active-controls"]')).toHaveClass('home-command-grid--with-agent')
-    expect(document.querySelector('[data-slot="overview-agent-row"]')).toBeVisible()
-    expect(document.querySelector('[data-slot="overview-briefing-row"]')).toBeVisible()
-    expect(screen.getByRole('button', { name: /briefing: panthera/i }).querySelector('.ml-auto')).not.toBeNull()
+    expect(document.querySelector('[data-slot="home-active-controls"]')).toHaveClass('home-command-grid--with-agent')
+    expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
+    expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
-    const actions = document.querySelector('[data-slot="overview-briefing-actions"]')
-    expect(actions).toContainElement(document.querySelector('[data-slot="overview-local-runtime"]'))
+    const actions = document.querySelector<HTMLElement>('[data-slot="home-briefing-actions"]')
+    const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
+    expect(runtime).toHaveTextContent('Local runtime: Mus · Loaded')
+    expect(actions).not.toContainElement(runtime)
     expect(actions).toContainElement(document.querySelector('.home-command-grid__synthesize'))
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Unload Mus')
     await user.click(screen.getByRole('button', { name: 'Unload Apex Mus' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
+    renderRail({ activeLocalModel: null, loadingLocalAgent: profile('mus') })
+
+    expect(screen.getByText('Local runtime: Mus · Loading')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Unload Apex Mus' })).toBeDisabled()
   })
 })

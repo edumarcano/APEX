@@ -128,13 +128,6 @@ export function HomeCommandRail({
               className="home-command-grid__briefing min-w-0"
             />
             <div className="home-command-grid__briefing-actions" data-slot="home-briefing-actions">
-              <LocalModelControl
-                agent={activeLocalModel}
-                loadingAgent={loadingLocalAgent}
-                busy={localLifecycleBusy}
-                onUnload={onUnloadLocalModel}
-                presentation="rail"
-              />
               <BriefingGenerateControl
                 mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
                 refreshDisabled={briefingControlsBusy || !briefingModeAvailable || isRefreshingAll}
@@ -146,6 +139,13 @@ export function HomeCommandRail({
               />
             </div>
           </div>
+          <LocalModelControl
+            agent={activeLocalModel}
+            loadingAgent={loadingLocalAgent}
+            busy={localLifecycleBusy}
+            onUnload={onUnloadLocalModel}
+            presentation="rail"
+          />
         </div>
       )}
     </section>

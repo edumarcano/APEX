@@ -382,7 +382,7 @@ export default function App(): ReactElement {
       return '249, 115, 22' // Rust orange (local model loaded)
     }
     if (activated) {
-      return '15, 77, 184' // Calm blue Ã¢â‚¬â€ activated home, no briefing/error state
+      return '15, 77, 184' // Calm blue — activated home, no briefing/error state
     }
     return '15, 23, 42' // Deep Slate Blue
   }, [
@@ -606,7 +606,7 @@ export default function App(): ReactElement {
       return reason ? `${label}: ${reason}` : null
     })
     .filter((value): value is string => value !== null)
-    .join(' Ã‚Â· ') || null
+    .join(' · ') || null
 
   const weatherInfo = weatherModule
     ? resolveWeatherFromModule(weatherModule)
@@ -617,7 +617,7 @@ export default function App(): ReactElement {
       return detail
     }
     if (weatherRefreshing) {
-      return 'Loading weatherÃ¢â‚¬Â¦'
+      return 'Loading weather…'
     }
     return 'Weather unavailable.'
   })()
@@ -690,7 +690,7 @@ export default function App(): ReactElement {
     ? [
         calendarInfo.totalCount > 0 ? `${calendarInfo.totalCount} calendar` : null,
         footballInfo.fixtures.length > 0 ? `${footballInfo.fixtures.length} football` : null,
-      ].filter((value): value is string => value !== null).join(' Ã‚Â· ') || 'No events'
+      ].filter((value): value is string => value !== null).join(' · ') || 'No events'
     : null
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
@@ -924,7 +924,7 @@ export default function App(): ReactElement {
                 >
                   {calendarRefreshing && !hasSnapshot ? (
                     <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                      Loading scheduleÃ¢â‚¬Â¦
+                      Loading schedule…
                     </p>
                   ) : (
                     <>
@@ -1069,7 +1069,7 @@ export default function App(): ReactElement {
               >
                 {emailRefreshing && !hasSnapshot ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                    Loading inboxÃ¢â‚¬Â¦
+                    Loading inbox…
                   </p>
                 ) : (
                   <>
@@ -1124,7 +1124,7 @@ export default function App(): ReactElement {
               >
                 {newsRefreshing && !hasSnapshot ? (
                   <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                    Loading newsÃ¢â‚¬Â¦
+                    Loading news…
                   </p>
                 ) : newsItems.length > 0 ? (
                   <ul className="list-fade-mask min-h-0 overflow-y-auto pr-1 scrollbar-thin">

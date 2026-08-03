@@ -74,9 +74,9 @@ describe('BriefingModeSelector', () => {
     expect(screen.getByText('No model cost')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
-    expect(within(listbox).getByText('Full briefing Â· cloud synthesis')).toBeVisible()
-    expect(within(listbox).getByText('Full briefing Â· balanced local synthesis')).toBeVisible()
-    expect(within(listbox).getByText('Structured facts Â· no model or synthesis')).toBeVisible()
+    expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
+    expect(within(listbox).getByText('Full briefing · balanced local synthesis')).toBeVisible()
+    expect(within(listbox).getByText('Structured facts · no model or synthesis')).toBeVisible()
   })
 
   it('blocks unavailable model modes but always allows Structured Digest', async () => {

@@ -56,7 +56,7 @@ describe('CortexWorkspace', () => {
     expect(profileDialog.className).toContain('top-full')
     expect(profileDialog.className).toContain('mt-2')
     expect(profileDialog.className).not.toContain('bottom-full')
-    await user.click(screen.getByRole('tab', { name: 'Local profiles' }))
+    await user.click(screen.getByRole('tab', { name: 'Local agents' }))
     expect(onAgentChange).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Use Apex Mus' }))
     expect(onAgentChange).toHaveBeenCalledWith('mus')
@@ -153,6 +153,6 @@ describe('CortexWorkspace', () => {
     expect(screen.getByText('Auto-unload in 04:59')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', lifecycleBusy: true, agentsStatus: [{ ...mus, active: true, idle_unload_remaining_seconds: 299 }] })} />)
-    expect(screen.getByText('In use Â· auto-unload paused')).toBeInTheDocument()
+    expect(screen.getByText('In use · auto-unload paused')).toBeInTheDocument()
   })
 })
