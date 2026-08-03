@@ -183,7 +183,11 @@ export default function App(): ReactElement {
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const briefing = useBriefingPipeline()
-  const voiceDelivery = useVoiceDelivery()
+  const voiceDelivery = useVoiceDelivery(
+    briefing.briefing,
+    briefing.status,
+    briefing.isSpeaking,
+  )
 
   const {
     cortexHistory,
@@ -326,8 +330,7 @@ export default function App(): ReactElement {
     system_load_throttled,
   } = briefing
   const isSpeaking = isPipelineSpeaking || voiceDelivery.isSpeaking
-  const resolvedTtsEngine =
-    voiceDelivery.resolvedEngine ?? pipelineState?.active_tts_engine ?? active_tts_engine
+  const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
@@ -970,8 +973,8 @@ export default function App(): ReactElement {
                   showSpeakAction={voiceMode !== 'off'}
                   speechError={voiceDelivery.error}
                   deliveryLabel={
-                    voiceDelivery.resolvedEngine
-                      ? `Voice: ${voiceDelivery.resolvedEngine}`
+                    voiceDelivery.lastManualEngine
+                      ? `Last manual delivery: ${voiceDelivery.lastManualEngine}`
                       : null
                   }
                   synthesisLabel={

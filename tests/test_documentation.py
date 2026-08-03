@@ -77,7 +77,7 @@ class DocumentationCheckerTests(unittest.TestCase):
             {"neofelis": "gemini-3.6-flash"},
             {
                 source: (
-                    "neofelis uses gemini-3.6-flash; "
+                    "| `neofelis` | Gemini `gemini-3.6-flash` |\n"
                     "old uses gemini-3.1-flash\n"
                 )
             },
@@ -85,6 +85,38 @@ class DocumentationCheckerTests(unittest.TestCase):
 
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].target, "gemini-3.1-flash")
+
+    def test_reports_swapped_agent_model_mapping(self) -> None:
+        source = Path("virtual-configuration.md")
+        issues = check_agent_profiles(
+            [source],
+            {
+                "panthera": "gpt-5.6-luna",
+                "neofelis": "gemini-3.6-flash",
+            },
+            {
+                source: (
+                    "| `panthera` | Gemini `gemini-3.6-flash` |\n"
+                    "| `neofelis` | OpenAI `gpt-5.6-luna` |\n"
+                )
+            },
+        )
+
+        self.assertEqual({issue.target for issue in issues}, {
+            "panthera -> gpt-5.6-luna",
+            "neofelis -> gemini-3.6-flash",
+        })
+
+    def test_reports_unknown_suffixless_grok_model(self) -> None:
+        source = Path("virtual-readme.md")
+        issues = check_agent_profiles(
+            [source],
+            {"delphinus": "grok-4.3"},
+            {source: "delphinus -> grok-4.3; retired model grok-4.2\n"},
+        )
+
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].target, "grok-4.2")
 
     def test_reports_duplicate_route_detail_heading(self) -> None:
         duplicates = duplicate_route_headings(

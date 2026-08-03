@@ -1,12 +1,12 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
-import type { TtsEngine } from '../types/telemetry'
+import type { SystemState, TtsEngine } from '../types/telemetry'
 
 export interface UseVoiceDeliveryReturn {
   isSpeaking: boolean
   error: string | null
-  resolvedEngine: TtsEngine | null
+  lastManualEngine: TtsEngine | null
   speak: (text: string) => Promise<boolean>
 }
 
@@ -16,18 +16,31 @@ function errorMessageFromBody(body: unknown): string | null {
   return typeof detail === 'string' ? detail : null
 }
 
-export function useVoiceDelivery(): UseVoiceDeliveryReturn {
+export function useVoiceDelivery(
+  briefingText: string,
+  briefingStatus: SystemState,
+  isPipelineSpeaking: boolean,
+): UseVoiceDeliveryReturn {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [resolvedEngine, setResolvedEngine] = useState<TtsEngine | null>(null)
+  const [lastManualEngine, setLastManualEngine] = useState<TtsEngine | null>(null)
   const inFlightRef = useRef(false)
+  const lastBriefingTextRef = useRef(briefingText)
+
+  useEffect(() => {
+    const transcriptChanged = lastBriefingTextRef.current !== briefingText
+    lastBriefingTextRef.current = briefingText
+    if (briefingStatus === 'loading' || isPipelineSpeaking || transcriptChanged) {
+      setLastManualEngine(null)
+    }
+  }, [briefingStatus, isPipelineSpeaking, briefingText])
 
   const speak = useCallback(async (text: string): Promise<boolean> => {
     if (!text.trim() || inFlightRef.current) return false
     inFlightRef.current = true
     setIsSpeaking(true)
     setError(null)
-    setResolvedEngine(null)
+    setLastManualEngine(null)
     try {
       const response = await fetch(API_ENDPOINTS.voiceSpeak, {
         method: 'POST',
@@ -49,7 +62,7 @@ export function useVoiceDelivery(): UseVoiceDeliveryReturn {
           ? (body as { resolved_engine?: unknown }).resolved_engine
           : null
       if (engine === 'google' || engine === 'kokoro' || engine === 'pyttsx3') {
-        setResolvedEngine(engine)
+        setLastManualEngine(engine)
       } else {
         setError('Voice delivery returned an invalid engine.')
         return false
@@ -64,5 +77,5 @@ export function useVoiceDelivery(): UseVoiceDeliveryReturn {
     }
   }, [])
 
-  return { isSpeaking, error, resolvedEngine, speak }
+  return { isSpeaking, error, lastManualEngine, speak }
 }

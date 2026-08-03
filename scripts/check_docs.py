@@ -252,9 +252,18 @@ def check_agent_profiles(
         path: contents.get(path, "") if contents is not None else path.read_text(encoding="utf-8")
         for path in paths
     }
-    combined = "\n".join(texts.values())
     for key, model in sorted(expected_profiles.items()):
-        if key not in combined or model not in combined:
+        mapping_patterns = (
+            re.compile(
+                rf"\b`?{re.escape(key)}`?\s*->\s*`?{re.escape(model)}`?(?=\s|$|[,;])",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                rf"^\|\s*`{re.escape(key)}`[^|]*\|[^|]*`{re.escape(model)}`",
+                re.IGNORECASE | re.MULTILINE,
+            ),
+        )
+        if not any(pattern.search(text) for pattern in mapping_patterns for text in texts.values()):
             issues.append(
                 DocumentationIssue(
                     ROOT / "docs" / "configuration.md",
@@ -266,7 +275,7 @@ def check_agent_profiles(
 
     known_models = set(expected_profiles.values())
     model_pattern = re.compile(
-        r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*-[a-z0-9-]+|qwen\d+(?:\.\d+)?:[a-z0-9.-]+",
+        r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|qwen\d+(?:\.\d+)?:[a-z0-9.-]+",
         re.IGNORECASE,
     )
     for path in paths:

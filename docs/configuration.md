@@ -85,13 +85,13 @@ Football telemetry keeps each configured team's next fixture. Briefing synthesis
 
 ### Cloud Agents
 
-| Agent | Provider and model | Role |
+| Agent key and display name | Provider and model | Role |
 |---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
-| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud Agent with persisted optional X Search |
-| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud Agent with persisted optional X Search |
+| `acinonyx` — Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
+| `panthera` — Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
+| `neofelis` — Neofelis 2.0 | Gemini `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
+| `delphinus` — Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud Agent with persisted optional X Search |
+| `orcinus` — Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud Agent with persisted optional X Search |
 
 Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
 
@@ -101,10 +101,10 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 ### Local Agents
 
-| Agent | Ollama model | Intended use |
+| Agent key and display name | Ollama model | Intended use |
 |---|---|---|
-| Sorex 2.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
-| Mus 2.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
+| `sorex` — Sorex 2.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
+| `mus` — Mus 2.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 
 `ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
 
