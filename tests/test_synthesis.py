@@ -9,6 +9,7 @@ from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
+from core.settings.models import RuntimeSettingsSnapshot
 from core.synthesis.formatting import compact_payload, deterministic_fallback, parse_model_output
 from core.synthesis.models import CalendarFact, F1Fact, NewsFact, SynthesisInput, SynthesisResult
 from core.synthesis.router import SynthesisRouter, WarmupHandle
@@ -199,7 +200,7 @@ class RoutingTests(unittest.TestCase):
         self.assertFalse(profile.think)
         self.assertEqual(profile.final_answer_max_tokens, 512)
         self.assertTrue(profile.system_instruction.startswith("You are Apex Mus"))
-        self.assertTrue(profile.system_instruction.endswith("PRIMARY_PROMPT"))
+        self.assertIn("PRIMARY_PROMPT", profile.system_instruction)
         self.assertEqual(result.agent, "mus")
 
     def test_sorex_uses_local_prompt_mus_uses_primary_prompt(self) -> None:
@@ -223,16 +224,44 @@ class RoutingTests(unittest.TestCase):
             self.assertTrue(
                 generate.call_args.args[2].system_instruction.startswith("You are Apex Sorex")
             )
-            self.assertTrue(
-                generate.call_args.args[2].system_instruction.endswith("SOREX_PROMPT")
+            self.assertIn(
+                "SOREX_PROMPT", generate.call_args.args[2].system_instruction
             )
             router._ollama(sample_input(), "mus", None)
             self.assertTrue(
                 generate.call_args.args[2].system_instruction.startswith("You are Apex Mus")
             )
-            self.assertTrue(
-                generate.call_args.args[2].system_instruction.endswith("PRIMARY_PROMPT")
+            self.assertIn(
+                "PRIMARY_PROMPT", generate.call_args.args[2].system_instruction
             )
+
+    def test_sorex_briefing_requires_the_user_designation_in_speech(self) -> None:
+        router = SynthesisRouter()
+        response = ProviderTurnResult(
+            message=AgentMessage(
+                role="agent",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            )
+        )
+        settings = RuntimeSettingsSnapshot(user_designation="Chief")
+        with patch(
+            "core.synthesis.router.get_settings_store"
+        ) as get_settings_store, patch(
+            "core.synthesis.router.try_begin_local_execution", return_value=True
+        ), patch("core.synthesis.router.end_local_execution"), patch(
+            "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
+        ) as generate, patch(
+            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
+        ):
+            get_settings_store.return_value.get_snapshot.return_value = settings
+            router._ollama(sample_input(), "sorex", None)
+
+        instruction = generate.call_args.args[2].system_instruction
+        self.assertIn(
+            'In the ===SPEECH=== section, address the user as "Chief" exactly once.',
+            instruction,
+        )
+        self.assertIn("Keep the address natural.", instruction)
 
     def test_legacy_local_strategy_resolves_to_mus(self) -> None:
         from core.synthesis.models import strategy_to_briefing_mode

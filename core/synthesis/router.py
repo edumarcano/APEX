@@ -252,17 +252,23 @@ class SynthesisRouter:
             raise RuntimeError("local_busy")
         started = time.monotonic()
         try:
+            user_designation = get_settings_store().get_snapshot().user_designation
+            system_instruction = compose_agent_system_instruction(
+                agent_key,
+                _system_prompt_for_agent(agent_key),
+                user_designation=user_designation,
+            )
+            if agent_key == "sorex" and user_designation:
+                normalized_designation = " ".join(user_designation.split())[:80]
+                system_instruction += (
+                    "\n\nIn the ===SPEECH=== section, address the user as "
+                    f'"{normalized_designation}" exactly once. Keep the address natural.'
+                )
             agent = OLLAMA_MODEL_PROFILES[agent_key].model_copy(
                 update={
                     "final_answer_max_tokens": 512,
                     "think": False,
-                    "system_instruction": compose_agent_system_instruction(
-                        agent_key,
-                        _system_prompt_for_agent(agent_key),
-                        user_designation=(
-                            get_settings_store().get_snapshot().user_designation
-                        ),
-                    ),
+                    "system_instruction": system_instruction,
                 }
             )
             self._state("generating", "ollama", agent_key, None)
