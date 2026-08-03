@@ -68,6 +68,11 @@ def _message(
 
 
 class GmailClientTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch("clients.gmail_client.is_dev_mode", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_search_returns_bounded_metadata_and_snippets(self) -> None:
         messages = [
             _message(

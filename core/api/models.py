@@ -41,7 +41,7 @@ class RuntimeMetadata(BaseModel):
     )
     # Gemini remains accepted here so historical briefing ledger rows parse.
     synthesis_provider: Literal["gemini", "ollama", "raw", "demo", "openai"] | None = None
-    synthesis_profile: Literal["panthera", "mus", "sorex"] | None = None
+    synthesis_agent: Literal["panthera", "mus", "sorex"] | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -299,7 +299,7 @@ class MicrosoftTodoAuthorizationResponse(BaseModel):
     expires_at: datetime
 
 
-ProfileAvailabilityStatus = Literal[
+AgentAvailabilityStatus = Literal[
     "available",
     "busy",
     "configured",
@@ -319,10 +319,10 @@ ProfileAvailabilityStatus = Literal[
     "cpu_overloaded",
 ]
 
-ProfileStatusSource = Literal["configuration", "verification", "request", "runtime"]
+AgentStatusSource = Literal["configuration", "verification", "request", "runtime"]
 
 
-class ProfilePricingMetadata(BaseModel):
+class AgentPricingMetadata(BaseModel):
     currency: Literal["USD"] = "USD"
     pricing_version: str
     billing_basis: Literal["free_tier", "standard", "local"]
@@ -360,43 +360,43 @@ class LocalLoadedModelStatus(BaseModel):
     )
 
 
-class AgentProfileStatus(BaseModel):
-    key: str = Field(description="Stable profile identifier used by the HUD.")
-    display_name: str = Field(description="Human-readable profile label.")
-    description: str = Field(description="Short capability and role summary.")
+class AgentStatus(BaseModel):
+    key: str = Field(description="Stable Agent identifier used by the HUD.")
+    display_name: str = Field(description="Human-readable Apex Agent label.")
+    description: str = Field(description="Short Agent capability and role summary.")
     provider: Literal["ollama", "gemini", "openai", "xai"] = Field(
-        description="Inference backend for this profile.",
+        description="Inference backend for this Agent.",
     )
-    version: str = Field(description="Profile configuration version string.")
+    version: str = Field(description="Agent configuration version string.")
     configured_model: str = Field(description="Configured provider model identifier.")
-    sort_order: int = Field(default=0, ge=0, description="Stable HUD ordering for this profile.")
+    sort_order: int = Field(default=0, ge=0, description="Stable HUD ordering for this Agent.")
     capabilities: list[str] = Field(
         default_factory=list,
-        description="Product capability tags shown by the profile catalog.",
+        description="Product capability tags shown by the Agent catalog.",
     )
     native_tools: dict[str, bool] = Field(
         default_factory=dict,
         description="Provider-hosted tools and their effective enabled state.",
     )
-    mode: Literal["cloud", "local"] = Field(
-        description="Whether this profile runs in the cloud or locally.",
+    runtime: Literal["cloud", "local"] = Field(
+        description="Whether this Agent runs in the cloud or locally.",
     )
-    tier: str = Field(description="Profile performance tier label.")
+    tier: str = Field(description="Agent performance tier label.")
     stability: Literal["stable", "preview"] = Field(
-        description="Release stage classification for this profile.",
+        description="Release stage classification for this Agent.",
     )
     effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
         default=None,
-        description="Selectable APEX effort tiers; null for fixed-effort local profiles.",
+        description="Selectable APEX effort tiers; null for fixed-effort local Agents.",
     )
     default_effort: Literal["light", "focused", "extended"] | None = Field(
         default=None,
-        description="Default APEX effort tier for this profile.",
+        description="Default APEX effort tier for this Agent.",
     )
-    status: ProfileAvailabilityStatus = Field(
-        description="Current availability state for this profile.",
+    status: AgentAvailabilityStatus = Field(
+        description="Current availability state for this Agent.",
     )
-    status_source: ProfileStatusSource = Field(
+    status_source: AgentStatusSource = Field(
         default="configuration",
         description="Whether configuration, verification, request, or runtime established status.",
     )
@@ -408,21 +408,21 @@ class AgentProfileStatus(BaseModel):
         default=None,
         description="Provider-reported billing tier; null when APEX cannot verify it.",
     )
-    pricing: ProfilePricingMetadata = Field(
-        default_factory=lambda: ProfilePricingMetadata(
+    pricing: AgentPricingMetadata = Field(
+        default_factory=lambda: AgentPricingMetadata(
             pricing_version="unknown",
             billing_basis="standard",
             input_per_million=0,
             output_per_million=0,
         ),
-        description="Versioned profile pricing basis and token rates.",
+        description="Versioned Agent pricing basis and token rates.",
     )
     active: bool = Field(
-        description="Whether this profile's model is currently loaded in memory.",
+        description="Whether this Agent's model is currently loaded in memory.",
     )
     loading: bool = Field(
         default=False,
-        description="Whether this profile's model is currently being warmed up.",
+        description="Whether this Agent's model is currently being warmed up.",
     )
     reason: str | None = Field(
         default=None,
@@ -430,7 +430,7 @@ class AgentProfileStatus(BaseModel):
     )
     idle_unload_remaining_seconds: int | None = Field(
         default=None,
-        description="Seconds until auto-unload when this profile is active.",
+        description="Seconds until auto-unload when this Agent is active.",
     )
     loaded_model: LocalLoadedModelStatus | None = Field(
         default=None,
@@ -438,9 +438,9 @@ class AgentProfileStatus(BaseModel):
     )
 
 
-class CloudProfileVerificationResponse(BaseModel):
-    profile: str
-    status: ProfileAvailabilityStatus
+class CloudAgentVerificationResponse(BaseModel):
+    agent: str
+    status: AgentAvailabilityStatus
     reason: str | None = None
     checked_at: datetime
 
@@ -453,8 +453,8 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    profile: Literal["mus", "sorex"] = Field(
-        description="Local APEX profile to pre-warm in Ollama memory."
+    agent: Literal["mus", "sorex"] = Field(
+        description="Local Apex Agent to pre-warm in Ollama memory."
     )
 
 
@@ -463,8 +463,8 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    profile: Literal["mus", "sorex"] = Field(
-        description="Local profile confirmed resident by Ollama.",
+    agent: Literal["mus", "sorex"] = Field(
+        description="Local Agent confirmed resident by Ollama.",
     )
 
 
@@ -486,7 +486,7 @@ class BriefingHistoryRecord(BaseModel):
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
     provider: Literal["ollama", "raw", "demo", "openai"] | None = None
-    profile: Literal["panthera", "mus", "sorex"] | None = None
+    agent: Literal["panthera", "mus", "sorex"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 

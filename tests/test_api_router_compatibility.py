@@ -1,4 +1,4 @@
-"""Compatibility and HTTP smoke coverage for the extracted API routers."""
+"""HTTP smoke coverage for the extracted API routers."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 from core.agent.types import AgentQueryResponse
 from core.api import app
 from core.api.models import (
-    AgentProfileStatus,
-    CloudProfileVerificationResponse,
+    AgentStatus,
+    CloudAgentVerificationResponse,
     LocalLoadResponse,
     LocalUnloadResponse,
 )
@@ -27,11 +27,11 @@ class ApiPackageCompatibilityTests(unittest.TestCase):
 
         main_mock.assert_called_once_with()
 
-    def test_previous_api_defined_names_remain_importable(self) -> None:
+    def test_public_api_defined_names_remain_importable(self) -> None:
         import core.api as api
 
         expected_names = {
-            "AgentProfileStatus",
+            "AgentStatus",
             "BriefingResponse",
             "CreateReminderRequest",
             "MarketResponse",
@@ -50,7 +50,7 @@ class ApiPackageCompatibilityTests(unittest.TestCase):
             set(),
         )
 
-    def test_previous_openapi_operation_ids_are_preserved(self) -> None:
+    def test_canonical_openapi_operation_ids_are_exposed(self) -> None:
         paths = app.openapi()["paths"]
 
         self.assertEqual(
@@ -58,24 +58,20 @@ class ApiPackageCompatibilityTests(unittest.TestCase):
             "trigger_briefing_api_v1_trigger_post",
         )
         self.assertEqual(
-            paths["/api/v1/agent/query"]["post"]["operationId"],
-            "query_agent_api_v1_agent_query_post",
+            paths["/api/v1/cortex/query"]["post"]["operationId"],
+            "cortex_query_api_v1_cortex_query_post",
         )
         self.assertEqual(
-            paths["/api/v1/agent/local/unload"]["post"]["operationId"],
-            "unload_active_local_model_endpoint_api_v1_agent_local_unload_post",
+            paths["/api/v1/cortex/local-model/unload"]["post"]["operationId"],
+            "unload_active_local_model_endpoint_api_v1_cortex_local_model_unload_post",
         )
         self.assertEqual(
-            paths["/api/v1/local-model/unload"]["post"]["operationId"],
-            "unload_active_local_model_endpoint_api_v1_local_model_unload_post",
+            paths["/api/v1/cortex/local-model/load"]["post"]["operationId"],
+            "load_local_model_endpoint_api_v1_cortex_local_model_load_post",
         )
         self.assertEqual(
-            paths["/api/v1/local-model/load"]["post"]["operationId"],
-            "load_local_model_endpoint_api_v1_local_model_load_post",
-        )
-        self.assertEqual(
-            paths["/api/v1/agent/profiles/{profile_key}/verify"]["post"]["operationId"],
-            "verify_agent_profile_api_v1_agent_profiles__profile_key__verify_post",
+            paths["/api/v1/agents/{agent_key}/verify"]["post"]["operationId"],
+            "verify_agent_api_v1_agents__agent_key__verify_post",
         )
 
 
@@ -150,43 +146,43 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.json(), market_payload)
         fetch_market.assert_called_once_with()
 
-    def test_assistant_routes_delegate_and_preserve_payloads(self) -> None:
-        profile = AgentProfileStatus(
+    def test_cortex_routes_delegate_and_preserve_payloads(self) -> None:
+        agent = AgentStatus(
             key="panthera",
             display_name="Apex Panthera",
             description="Balanced general-purpose cloud intelligence.",
             provider="openai",
             version="2.0",
             configured_model="gpt-5.6-luna",
-            mode="cloud",
+            runtime="cloud",
             tier="balanced",
             stability="stable",
             status="available",
             active=False,
         )
         with mock.patch(
-            "core.api.routers.assistant.build_agent_profile_statuses",
-            return_value=[profile],
+            "core.api.routers.cortex.build_agent_statuses",
+            return_value=[agent],
         ):
-            response = self.client.get("/api/v1/agent/profiles")
+            response = self.client.get("/api/v1/agents")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["key"], "panthera")
 
         query_response = AgentQueryResponse(
             answer="Ready.",
-            profile_used={"key": "panthera"},
+            agent_used={"key": "panthera"},
             session_id="session-1",
         )
         with mock.patch(
-            "core.api.routers.assistant.query_agent",
+            "core.api.routers.cortex.query_agent",
             return_value=query_response,
         ) as query_agent:
             response = self.client.post(
-                "/api/v1/agent/query",
+                "/api/v1/cortex/query",
                 json={
                     "prompt": "Status?",
-                    "profile": "panthera",
+                    "agent": "panthera",
                     "session_id": "session-1",
                 },
             )
@@ -196,39 +192,46 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         query_agent.assert_called_once()
 
         with mock.patch(
-            "core.api.routers.assistant.unload_active_local_model_endpoint",
+            "core.api.routers.cortex.unload_active_local_model_endpoint",
             return_value=LocalUnloadResponse(),
         ) as unload:
-            first = self.client.post("/api/v1/agent/local/unload")
-            second = self.client.post("/api/v1/local-model/unload")
+            second = self.client.post("/api/v1/cortex/local-model/unload")
 
-        self.assertEqual(first.json(), {"status": "success"})
         self.assertEqual(second.json(), {"status": "success"})
-        self.assertEqual(unload.call_count, 2)
+        unload.assert_called_once()
 
         with mock.patch(
-            "core.api.routers.assistant.load_local_model_endpoint",
-            return_value=LocalLoadResponse(profile="mus"),
+            "core.api.routers.cortex.load_local_model_endpoint",
+            return_value=LocalLoadResponse(agent="mus"),
         ) as load:
-            response = self.client.post("/api/v1/local-model/load", json={"profile": "mus"})
+            response = self.client.post("/api/v1/cortex/local-model/load", json={"agent": "mus"})
 
-        self.assertEqual(response.json(), {"status": "success", "profile": "mus"})
+        self.assertEqual(response.json(), {"status": "success", "agent": "mus"})
         load.assert_called_once_with("mus")
 
-        verification = CloudProfileVerificationResponse(
-            profile="panthera",
+        verification = CloudAgentVerificationResponse(
+            agent="panthera",
             status="verified",
             checked_at="2026-08-02T12:00:00Z",
         )
         with mock.patch(
-            "core.api.routers.assistant.verify_cloud_profile_endpoint",
+            "core.api.routers.cortex.verify_cloud_agent_endpoint",
             return_value=verification,
         ) as verify:
-            response = self.client.post("/api/v1/agent/profiles/panthera/verify")
+            response = self.client.post("/api/v1/agents/panthera/verify")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "verified")
         verify.assert_called_once_with("panthera")
+
+    def test_removed_agent_routes_and_profile_payload_are_rejected(self) -> None:
+        self.assertEqual(self.client.get("/api/v1/agent/profiles").status_code, 404)
+        self.assertEqual(self.client.post("/api/v1/agent/query").status_code, 404)
+        response = self.client.post(
+            "/api/v1/cortex/query",
+            json={"prompt": "Status?", "profile": "panthera"},
+        )
+        self.assertEqual(response.status_code, 422)
 
 
 if __name__ == "__main__":

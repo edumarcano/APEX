@@ -10,7 +10,7 @@ from unittest import mock
 from core.agent import tools as agent_tools
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
-from core.agent.profiles import build_concrete_profile, resolve_effort
+from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.api.models import RuntimeMetadata
 from core.api.state import PipelineState
@@ -142,7 +142,7 @@ class StableAgentErrorTests(unittest.TestCase):
                 if self.calls == 1:
                     return ProviderTurnResult(
                         message=AgentMessage(
-                            role="model",
+                            role="agent",
                             tool_calls=[
                                 ToolCall(
                                     id="call-1",
@@ -154,7 +154,7 @@ class StableAgentErrorTests(unittest.TestCase):
                     )
                 self.tool_result = messages[-1].tool_results[0].output
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Done.")
+                    message=AgentMessage(role="agent", content="Done.")
                 )
 
         provider = Provider()
@@ -163,9 +163,9 @@ class StableAgentErrorTests(unittest.TestCase):
             raise RuntimeError("private-dispatcher-detail")
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Check weather", profile="neofelis"),
+            AgentQueryRequest(prompt="Check weather", agent="neofelis"),
             provider,
-            build_concrete_profile(
+            build_concrete_agent(
                 "neofelis", native_effort=resolve_effort("neofelis", None)[1]
             ),
             tools_dispatcher=failing_dispatcher,

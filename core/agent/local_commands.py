@@ -147,7 +147,7 @@ def resolve_local_command(
     missing: list[str] = []
     for tool_name in definition.tool_names:
         descriptor = get_capability_descriptor(tool_name)
-        if descriptor is None or not descriptor.expose_to_assistant:
+        if descriptor is None or not descriptor.expose_to_agent:
             missing.append(tool_name)
         else:
             descriptors.append(_project_local_descriptor(scope, descriptor))

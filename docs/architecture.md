@@ -2,6 +2,16 @@
 
 This reference explains the current system model: which process owns each responsibility, how independently triggered operations exchange state, where data crosses trust boundaries, and how APEX degrades when an optional dependency fails. Configuration belongs in [Configuration](configuration.md), HTTP usage in [API](api.md), design rules in the [Design System](design-system.md), and rationale in [Engineering Decisions](decisions.md).
 
+## Canonical taxonomy
+
+- **APEX** is the standalone product and operational entity.
+- **Apex Agents** are specialized workers such as Apex Panthera and Apex Mus.
+- **Cortex Engine** is the backend subsystem that executes, orchestrates, tools, sessions, and manages model lifecycle.
+- **Cortex workspace** is the interface for operating and configuring Apex Agents.
+- **Home workspace** presents telemetry, briefings, connector health, and compact Ask APEX access.
+
+Home/Cortex switching changes only what is visible. It never cancels active Cortex Engine turns, polling, speech, briefings, or local-model lifecycle work.
+
 ## Architecture in 60 seconds
 
 `launcher.py` starts two loopback-bound child processes: FastAPI on port 8000 and a static server for the compiled React HUD on port 5500. The browser owns the interactive session; FastAPI owns connectors, runtime settings, model and tool execution, speech, and SQLite persistence.
@@ -60,7 +70,7 @@ FastAPI's lifespan initializes the database and Microsoft To Do services, starts
 | `useTelemetrySnapshot` | Current process-local telemetry snapshot and refresh state |
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useApexAssistant` | Browser-held conversation, profile status, local command scope, and tool cards |
+| `useCortex` | Browser-held conversation, Agent status, local command scope, and tool cards |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
@@ -109,9 +119,9 @@ This path exposes a four-stage compatibility status (`GATE`, `COLLECTION`, `SYNT
 
 The four-stage path is supported behavior, but it is no longer the only way to use the HUD.
 
-## Assistant execution
+## Cortex Engine execution
 
-`POST /api/v1/agent/query` performs one bounded request-response turn. The browser sends the current prompt and its bounded conversation history. The backend does not look up a default chat session and does not persist the returned conversation.
+`POST /api/v1/cortex/query` performs one bounded Cortex Engine turn. The browser sends the current prompt and its bounded conversation history. The backend does not look up a default chat session and does not persist the returned conversation.
 
 HUD context is explicit:
 

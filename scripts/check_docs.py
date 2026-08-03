@@ -258,11 +258,11 @@ def public_openapi_routes() -> set[tuple[str, str]]:
 
 
 def current_gemini_profiles() -> dict[str, str]:
-    from core.agent.profiles import PROFILE_SPECS
+    from core.agent.catalog import AGENT_SPECS
 
     return {
         key: spec.api_model
-        for key, spec in PROFILE_SPECS.items()
+        for key, spec in AGENT_SPECS.items()
         if spec.provider == "gemini"
     }
 

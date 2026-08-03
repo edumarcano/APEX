@@ -252,25 +252,25 @@ def build_demo_briefing(telemetry: TelemetryPayload) -> str:
 
 def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     """Return deterministic assistant responses when ``DEMO_MODE`` is active."""
-    from core.agent.profiles import (
-        PROFILE_SPECS,
-        build_concrete_profile,
-        build_profile_used_metadata,
-        is_profile_visible,
+    from core.agent.catalog import (
+        AGENT_SPECS,
+        build_concrete_agent,
+        build_agent_used_metadata,
+        is_agent_visible,
         resolve_effort,
     )
 
-    profile_key = payload.profile
-    if profile_key not in PROFILE_SPECS or not is_profile_visible(profile_key):
+    agent_key = payload.agent
+    if agent_key not in AGENT_SPECS or not is_agent_visible(agent_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent profile {profile_key!r} is not available.",
+            detail=f"Agent {agent_key!r} is not available.",
         )
 
     resolved_apex_effort, resolved_native_effort = resolve_effort(
-        profile_key, payload.effort
+        agent_key, payload.effort
     )
-    profile = build_concrete_profile(profile_key, native_effort=resolved_native_effort)
+    agent = build_concrete_agent(agent_key, native_effort=resolved_native_effort)
 
     prompt_lower = payload.prompt.lower()
     responses, fallback = load_mock_agent_responses()
@@ -282,10 +282,10 @@ def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     return AgentQueryResponse(
         answer=selected_response["answer"],
-        profile_used=build_profile_used_metadata(
-            profile_key,
-            configured_model=profile.api_model,
-            resolved_model=profile.api_model,
+        agent_used=build_agent_used_metadata(
+            agent_key,
+            configured_model=agent.api_model,
+            resolved_model=agent.api_model,
             requested_effort=payload.effort,
             resolved_apex_effort=resolved_apex_effort,
             resolved_native_effort=resolved_native_effort,

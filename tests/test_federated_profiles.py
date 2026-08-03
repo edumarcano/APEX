@@ -1,4 +1,4 @@
-"""Focused coverage for federated profile registry and schema-6 settings."""
+"""Focused coverage for the Apex Agent catalog and settings migration."""
 
 from __future__ import annotations
 
@@ -8,49 +8,50 @@ from unittest import mock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from core.agent.profiles import (
-    PROFILE_SPECS,
-    build_concrete_profile,
-    compose_profile_system_instruction,
+from core.agent.catalog import (
+    AGENT_SPECS,
+    build_concrete_agent,
+    compose_agent_system_instruction,
     migrate_schema5_ask_apex,
+    migrate_schema7_ask_apex,
     migrate_schema5_briefing,
-    profile_has_credentials,
+    agent_has_credentials,
     resolve_effort,
-    resolve_assistant_selection,
-    runtime_profile_order,
+    resolve_agent_selection,
+    runtime_agent_order,
 )
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.tool_policies import (
-    filter_profile_capabilities,
-    hosted_tools_for_profile,
+    filter_agent_capabilities,
+    hosted_tools_for_agent,
 )
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
-from core.api.assistant import _execute_agent_turn, query_agent
-from core.api.assistant import build_agent_profile_statuses
+from core.api.cortex import _execute_agent_turn, query_agent
+from core.api.cortex import build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
-from core.settings.models import AssistantSettings, SETTINGS_SCHEMA_VERSION
+from core.settings.models import AskApexSettings, SETTINGS_SCHEMA_VERSION
 
 
 class SchemaMigrationTests(unittest.TestCase):
-    def test_legacy_cloud_profiles_map_to_panthera(self) -> None:
+    def test_legacy_cloud_agents_map_to_panthera(self) -> None:
         for legacy in ("comet", "nova", "pulsar"):
             with self.subTest(legacy=legacy):
-                migrated = migrate_schema5_ask_apex(
+                migrated = migrate_schema7_ask_apex(
                     {"enabled": True, "default_profile": legacy}
                 )
-                self.assertEqual(migrated["mode"], "cloud")
-                self.assertEqual(migrated["cloud_profile"], "panthera")
-                self.assertEqual(migrated["cloud_effort"], "focused")
-                self.assertEqual(migrated["local_profile"], "mus")
+                self.assertEqual(migrated["runtime"], "cloud")
+                self.assertEqual(migrated["cloud_agent"], "panthera")
+                self.assertEqual(migrated["effort"], "focused")
+                self.assertEqual(migrated["local_agent"], "mus")
 
-    def test_legacy_local_profiles_map_to_local_mus(self) -> None:
+    def test_legacy_local_agents_map_to_local_mus(self) -> None:
         for legacy in ("lynx", "acinonyx", "neofelis"):
             with self.subTest(legacy=legacy):
-                migrated = migrate_schema5_ask_apex({"default_profile": legacy})
-                self.assertEqual(migrated["mode"], "local")
-                self.assertEqual(migrated["local_profile"], "mus")
-                self.assertEqual(migrated["cloud_profile"], "panthera")
-                self.assertEqual(migrated["cloud_effort"], "focused")
+                migrated = migrate_schema7_ask_apex({"default_profile": legacy})
+                self.assertEqual(migrated["runtime"], "local")
+                self.assertEqual(migrated["local_agent"], "mus")
+                self.assertEqual(migrated["cloud_agent"], "panthera")
+                self.assertEqual(migrated["effort"], "focused")
 
     def test_legacy_briefing_modes_map_to_panthera(self) -> None:
         for legacy in (
@@ -70,35 +71,35 @@ class SchemaMigrationTests(unittest.TestCase):
 
 class AssistantSelectionTests(unittest.TestCase):
     def test_dev_mode_selects_acinonyx(self) -> None:
-        assistant = AssistantSettings()
-        mode, profile, effort = resolve_assistant_selection(
+        assistant = AskApexSettings()
+        mode, profile, effort = resolve_agent_selection(
             assistant, dev_mode=True
         )
         self.assertEqual((mode, profile, effort), ("cloud", "acinonyx", "focused"))
 
     def test_cloud_settings_resolve_profile_and_effort(self) -> None:
-        assistant = AssistantSettings(
-            mode="cloud",
-            cloud_profile="neofelis",
-            cloud_effort="extended",
+        assistant = AskApexSettings(
+            runtime="cloud",
+            cloud_agent="neofelis",
+            effort="extended",
         )
-        mode, profile, effort = resolve_assistant_selection(
+        mode, profile, effort = resolve_agent_selection(
             assistant, dev_mode=False
         )
         self.assertEqual((mode, profile, effort), ("cloud", "neofelis", "extended"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
-        assistant = AssistantSettings(mode="local", local_profile="sorex")
-        mode, profile, effort = resolve_assistant_selection(
+        assistant = AskApexSettings(runtime="local", local_agent="sorex")
+        mode, profile, effort = resolve_agent_selection(
             assistant, dev_mode=False
         )
         self.assertEqual((mode, profile, effort), ("local", "sorex", None))
 
 
 class CredentialIsolationTests(unittest.TestCase):
-    def test_each_cloud_profile_uses_distinct_env_keys(self) -> None:
+    def test_each_cloud_agent_uses_distinct_env_keys(self) -> None:
         env_keys = {
-            PROFILE_SPECS[key].credential_env
+            AGENT_SPECS[key].credential_env
             for key in ("panthera", "neofelis", "delphinus", "orcinus", "acinonyx")
         }
         self.assertEqual(
@@ -111,53 +112,53 @@ class CredentialIsolationTests(unittest.TestCase):
             },
         )
 
-    def test_profile_has_credentials_is_independent_per_env(self) -> None:
+    def test_agent_has_credentials_is_independent_per_env(self) -> None:
         with mock.patch.dict(
             "os.environ",
             {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": ""},
             clear=False,
         ):
-            self.assertTrue(profile_has_credentials("panthera"))
-            self.assertFalse(profile_has_credentials("neofelis"))
+            self.assertTrue(agent_has_credentials("panthera"))
+            self.assertFalse(agent_has_credentials("neofelis"))
 
 
 class ProfileIdentityTests(unittest.TestCase):
     _IDENTITIES = {
         "acinonyx": (
-            "You are Apex Acinonyx, an Apex Intelligence Profile powered by "
+            "You are Apex Acinonyx, an Apex Agent powered by "
             "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
         ),
         "panthera": (
-            "You are Apex Panthera, an Apex Intelligence Profile powered by "
+            "You are Apex Panthera, an Apex Agent powered by "
             "GPT-5.6 Luna."
         ),
         "neofelis": (
-            "You are Apex Neofelis, an Apex Intelligence Profile powered by "
+            "You are Apex Neofelis, an Apex Agent powered by "
             "Gemini 3.6 Flash."
         ),
         "delphinus": (
-            "You are Apex Delphinus, an Apex Intelligence Profile powered by Grok 4.3."
+            "You are Apex Delphinus, an Apex Agent powered by Grok 4.3."
         ),
         "orcinus": (
-            "You are Apex Orcinus, an Apex Intelligence Profile powered by Grok 4.5."
+            "You are Apex Orcinus, an Apex Agent powered by Grok 4.5."
         ),
         "sorex": (
-            "You are Apex Sorex, an Apex Intelligence Profile powered by "
+            "You are Apex Sorex, an Apex Agent powered by "
             "Qwen3 1.7B through Ollama."
         ),
         "mus": (
-            "You are Apex Mus, an Apex Intelligence Profile powered by "
+            "You are Apex Mus, an Apex Agent powered by "
             "Qwen3 4B Instruct through Ollama."
         ),
     }
 
     def test_every_profile_has_the_expected_immutable_identity(self) -> None:
-        self.assertEqual(set(PROFILE_SPECS), set(self._IDENTITIES))
+        self.assertEqual(set(AGENT_SPECS), set(self._IDENTITIES))
         for key, identity in self._IDENTITIES.items():
-            with self.subTest(profile=key):
-                self.assertEqual(PROFILE_SPECS[key].identity_instruction, identity)
+            with self.subTest(agent=key):
+                self.assertEqual(AGENT_SPECS[key].identity_instruction, identity)
                 _apex_effort, native_effort = resolve_effort(key, None)
-                profile = build_concrete_profile(key, native_effort=native_effort)
+                profile = build_concrete_agent(key, native_effort=native_effort)
                 self.assertTrue(profile.system_instruction.startswith(identity))
 
     def test_effective_request_prompts_preserve_identity_with_runtime_overrides(self) -> None:
@@ -168,25 +169,25 @@ class ProfileIdentityTests(unittest.TestCase):
             captured_instructions[profile.display_name] = kwargs[
                 "system_instruction_override"
             ]
-            return AgentQueryResponse(answer="ok", profile_used={}, session_id=None)
+            return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
 
         with (
-            mock.patch("core.api.assistant._create_provider", return_value=mock.Mock()),
-            mock.patch("core.api.assistant.run_agent_loop", side_effect=capture_loop),
+            mock.patch("core.api.cortex._create_provider", return_value=mock.Mock()),
+            mock.patch("core.api.cortex.run_agent_loop", side_effect=capture_loop),
             mock.patch(
-                "core.api.assistant.config.AGENT_SYSTEM_PROMPT", "Cloud runtime prompt."
+                "core.api.cortex.config.AGENT_SYSTEM_PROMPT", "Cloud runtime prompt."
             ),
             mock.patch(
-                "core.api.assistant.config.LOCAL_AGENT_SYSTEM_PROMPT", "Local runtime prompt."
+                "core.api.cortex.config.LOCAL_AGENT_SYSTEM_PROMPT", "Local runtime prompt."
             ),
         ):
             for key, identity in self._IDENTITIES.items():
                 _apex_effort, native_effort = resolve_effort(key, None)
-                profile = build_concrete_profile(key, native_effort=native_effort)
+                profile = build_concrete_agent(key, native_effort=native_effort)
                 _execute_agent_turn(
-                    AgentQueryRequest(prompt="Identify yourself.", profile=key),
+                    AgentQueryRequest(prompt="Identify yourself.", agent=key),
                     profile,
-                    profile_key=key,
+                    agent_key=key,
                     api_key="test",
                     resolved_apex_effort=None,
                     resolved_native_effort=native_effort,
@@ -195,27 +196,27 @@ class ProfileIdentityTests(unittest.TestCase):
                 self.assertTrue(instruction.startswith(identity))
                 expected_runtime_prompt = (
                     "Local runtime prompt."
-                    if PROFILE_SPECS[key].mode == "local"
+                    if AGENT_SPECS[key].runtime == "local"
                     else "Cloud runtime prompt."
                 )
                 self.assertIn(expected_runtime_prompt, instruction)
 
     def test_identity_composition_keeps_identity_when_base_prompt_is_empty(self) -> None:
-        identity = PROFILE_SPECS["panthera"].identity_instruction
-        self.assertEqual(compose_profile_system_instruction("panthera", "  "), identity)
+        identity = AGENT_SPECS["panthera"].identity_instruction
+        self.assertEqual(compose_agent_system_instruction("panthera", "  "), identity)
 
 
 class LocalEffortRejectionTests(unittest.TestCase):
-    def test_local_profile_rejects_effort_with_400(self) -> None:
-        with mock.patch("core.api.assistant.DEMO_MODE", False), mock.patch(
-            "core.api.assistant.get_settings_store"
+    def test_local_agent_rejects_effort_with_400(self) -> None:
+        with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
+            "core.api.cortex.get_settings_store"
         ) as store_mock:
-            store_mock.return_value.get_snapshot.return_value.assistant.enabled = True
+            store_mock.return_value.get_snapshot.return_value.ask_apex.enabled = True
             with self.assertRaises(HTTPException) as ctx:
                 query_agent(
                     AgentQueryRequest(
                         prompt="hello",
-                        profile="sorex",
+                        agent="sorex",
                         effort="focused",
                     )
                 )
@@ -240,22 +241,22 @@ class AcinonyxPolicyTests(unittest.TestCase):
                 from core.agent.types import AgentMessage
 
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Sandbox."),
+                    message=AgentMessage(role="agent", content="Sandbox."),
                 )
 
         with (
-            mock.patch("core.api.assistant.DEMO_MODE", False),
-            mock.patch("core.api.assistant.is_dev_mode", return_value=True),
-            mock.patch("core.api.assistant.is_profile_visible", return_value=True),
+            mock.patch("core.api.cortex.DEMO_MODE", False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
+            mock.patch("core.api.cortex.is_agent_visible", return_value=True),
             mock.patch(
-                "core.api.assistant.get_settings_store"
+                "core.api.cortex.get_settings_store"
             ) as store_mock,
-            mock.patch("core.api.assistant._execute_agent_turn") as execute,
+            mock.patch("core.api.cortex._execute_agent_turn") as execute,
             mock.patch.dict(
                 "os.environ", {"GEMINI_SANDBOX_API_KEY": "sandbox"}, clear=False
             ),
         ):
-            store_mock.return_value.get_snapshot.return_value.assistant.enabled = True
+            store_mock.return_value.get_snapshot.return_value.ask_apex.enabled = True
             execute.side_effect = (
                 lambda payload, *args, **kwargs: captured.update(
                     {
@@ -268,12 +269,12 @@ class AcinonyxPolicyTests(unittest.TestCase):
                 )
                 or __import__(
                     "core.agent.types", fromlist=["AgentQueryResponse"]
-                ).AgentQueryResponse(answer="ok", profile_used={}, session_id=None)
+                ).AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
             )
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    profile="acinonyx",
+                    agent="acinonyx",
                     snapshot_id="snap-1",
                     history=[
                         __import__(
@@ -298,12 +299,12 @@ class AcinonyxPolicyTests(unittest.TestCase):
                 input_schema={"type": "object", "properties": {}},
                 origin="mcp" if "_" in name and name.startswith(("brave", "github", "alphavantage")) else "native",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=True,
             )
 
-        filtered = filter_profile_capabilities(
+        filtered = filter_agent_capabilities(
             "acinonyx",
             [
                 descriptor("get_weather_forecast"),
@@ -324,19 +325,19 @@ class AcinonyxPolicyTests(unittest.TestCase):
 
     def test_hosted_tool_policy_matches_profiles_and_toggles(self) -> None:
         self.assertEqual(
-            hosted_tools_for_profile(
+            hosted_tools_for_agent(
                 "neofelis", neofelis_google_search_enabled=True
             ),
             frozenset({"google_search", "google_maps"}),
         )
         self.assertEqual(
-            hosted_tools_for_profile(
+            hosted_tools_for_agent(
                 "neofelis", neofelis_google_search_enabled=False
             ),
             frozenset({"google_maps"}),
         )
         self.assertEqual(
-            hosted_tools_for_profile(
+            hosted_tools_for_agent(
                 "neofelis",
                 neofelis_google_search_enabled=False,
                 neofelis_google_maps_enabled=False,
@@ -344,13 +345,13 @@ class AcinonyxPolicyTests(unittest.TestCase):
             frozenset(),
         )
         self.assertEqual(
-            hosted_tools_for_profile(
+            hosted_tools_for_agent(
                 "delphinus", neofelis_google_search_enabled=True
             ),
             frozenset({"x_search"}),
         )
         self.assertEqual(
-            hosted_tools_for_profile(
+            hosted_tools_for_agent(
                 "delphinus",
                 neofelis_google_search_enabled=True,
                 delphinus_x_search_enabled=False,
@@ -358,7 +359,7 @@ class AcinonyxPolicyTests(unittest.TestCase):
             frozenset(),
         )
         self.assertEqual(
-            hosted_tools_for_profile(
+            hosted_tools_for_agent(
                 "orcinus",
                 neofelis_google_search_enabled=True,
                 orcinus_x_search_enabled=False,
@@ -369,7 +370,7 @@ class AcinonyxPolicyTests(unittest.TestCase):
 
 class DemoRosterTests(unittest.TestCase):
     def test_runtime_roster_hides_dev_only_acinonyx_outside_dev(self) -> None:
-        visible = runtime_profile_order(dev_mode=False)
+        visible = runtime_agent_order(dev_mode=False)
         self.assertNotIn("acinonyx", visible)
         self.assertIn("panthera", visible)
         self.assertIn("sorex", visible)
@@ -377,10 +378,10 @@ class DemoRosterTests(unittest.TestCase):
     def test_demo_agent_query_rejects_hidden_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
 
-        with mock.patch("core.agent.profiles.is_profile_visible", return_value=False):
+        with mock.patch("core.agent.catalog.is_agent_visible", return_value=False):
             with self.assertRaises(HTTPException) as ctx:
                 run_demo_agent_query(
-                    AgentQueryRequest(prompt="status", profile="acinonyx")
+                    AgentQueryRequest(prompt="status", agent="acinonyx")
                 )
         self.assertEqual(ctx.exception.status_code, 404)
 
@@ -392,15 +393,15 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
     def test_neofelis_reports_configured_model_and_effective_native_tools(self) -> None:
         settings = mock.Mock()
-        settings.assistant.neofelis_google_search_enabled = False
+        settings.ask_apex.neofelis_google_search_enabled = False
         with (
-            mock.patch("core.api.assistant.OLLAMA_ENABLED", False),
-            mock.patch("core.api.assistant.is_dev_mode", return_value=False),
-            mock.patch("core.api.assistant.profile_has_credentials", return_value=True),
-            mock.patch("core.api.assistant.get_settings_store") as store,
+            mock.patch("core.api.cortex.OLLAMA_ENABLED", False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=False),
+            mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
+            mock.patch("core.api.cortex.get_settings_store") as store,
         ):
             store.return_value.get_snapshot.return_value = settings
-            profiles = build_agent_profile_statuses()
+            profiles = build_agent_statuses()
 
         neofelis = next(item for item in profiles if item.key == "neofelis")
         self.assertEqual(neofelis.configured_model, "gemini-3.6-flash")
@@ -418,8 +419,8 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_seven(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 7)
+    def test_settings_schema_version_is_eight(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 8)
 
 
 if __name__ == "__main__":

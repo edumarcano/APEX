@@ -1,4 +1,4 @@
-"""Profile-specific APEX capability and provider-hosted tool policies."""
+"""Agent-specific APEX capability and provider-hosted tool policies."""
 
 from __future__ import annotations
 
@@ -17,18 +17,18 @@ _ACINONYX_NATIVE_TOOLS = frozenset(
 _ACINONYX_MCP_PREFIXES = ("brave_", "alphavantage_")
 
 
-def filter_profile_capabilities(
-    profile_key: str,
+def filter_agent_capabilities(
+    agent_key: str,
     capabilities: Iterable[CapabilityDescriptor],
 ) -> list[CapabilityDescriptor]:
-    """Return the capabilities that a profile may discover and invoke.
+    """Return the capabilities that a agent may discover and invoke.
 
-    Production cloud profiles retain the complete APEX read-capability surface.
+    Production cloud Agents retain the complete APEX read-capability surface.
     Acinonyx is an explicit allowlist so newly registered personal or private MCP
     capabilities fail closed without requiring policy updates.
     """
     available = list(capabilities)
-    if profile_key != "acinonyx":
+    if agent_key != "acinonyx":
         return available
     return [
         descriptor
@@ -38,8 +38,8 @@ def filter_profile_capabilities(
     ]
 
 
-def hosted_tools_for_profile(
-    profile_key: str,
+def hosted_tools_for_agent(
+    agent_key: str,
     *,
     neofelis_google_search_enabled: bool,
     neofelis_google_maps_enabled: bool = True,
@@ -47,15 +47,15 @@ def hosted_tools_for_profile(
     orcinus_x_search_enabled: bool = True,
 ) -> frozenset[str]:
     """Resolve provider-hosted grounding independently from APEX tools."""
-    if profile_key == "neofelis":
+    if agent_key == "neofelis":
         tools = set()
         if neofelis_google_search_enabled:
             tools.add("google_search")
         if neofelis_google_maps_enabled:
             tools.add("google_maps")
         return frozenset(tools)
-    if profile_key == "delphinus" and delphinus_x_search_enabled:
+    if agent_key == "delphinus" and delphinus_x_search_enabled:
         return frozenset({"x_search"})
-    if profile_key == "orcinus" and orcinus_x_search_enabled:
+    if agent_key == "orcinus" and orcinus_x_search_enabled:
         return frozenset({"x_search"})
     return frozenset()

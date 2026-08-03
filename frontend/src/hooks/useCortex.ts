@@ -2,28 +2,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   AgentMessage as TelemetryAgentMessage,
-  AgentProfileStatus,
-  AssistantProfile,
+  AgentStatus,
+  AgentKey,
   CloudEffort,
   LoadedOllamaModelStatus,
   LocalContextUsage,
   LocalToolScope,
-  ProfileAvailabilityStatus,
-  ProfilePricingMetadata,
-  ProfileStatusSource,
-  ProfileStability,
+  AgentAvailabilityStatus,
+  AgentPricingMetadata,
+  AgentStatusSource,
+  AgentStability,
   ToolOutputItem,
 } from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
 
-const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.agentQuery
-const AGENT_PROFILES_ENDPOINT = API_ENDPOINTS.agentProfiles
-const AGENT_LOCAL_UNLOAD_ENDPOINT = API_ENDPOINTS.agentLocalUnload
-const AGENT_LOCAL_LOAD_ENDPOINT = API_ENDPOINTS.agentLocalLoad
-const PROFILE_POLL_INTERVAL_MS = 4000
-const PROFILE_POLL_INTERVAL_QUERYING_MS = 1000
+const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.cortexQuery
+const AGENT_PROFILES_ENDPOINT = API_ENDPOINTS.agents
+const AGENT_LOCAL_UNLOAD_ENDPOINT = API_ENDPOINTS.cortexLocalModelUnload
+const AGENT_LOCAL_LOAD_ENDPOINT = API_ENDPOINTS.cortexLocalModelLoad
+const AGENT_POLL_INTERVAL_MS = 4000
+const AGENT_POLL_INTERVAL_QUERYING_MS = 1000
 
-export type { AssistantProfile, AgentProfileStatus, ToolOutputItem } from '../types/telemetry'
+export type { AgentKey, AgentStatus, ToolOutputItem } from '../types/telemetry'
 
 export interface ToolCall {
   id: string
@@ -42,7 +42,7 @@ export interface AgentMessage extends TelemetryAgentMessage {
   tool_calls?: ToolCall[]
   tool_results?: ToolResult[]
   tool_trace?: ToolTraceItem[]
-  metadata?: AssistantQueryMetadata
+  metadata?: AgentQueryMetadata
 }
 
 export interface ToolTraceItem {
@@ -53,16 +53,16 @@ export interface ToolTraceItem {
   billable_units?: number | null
 }
 
-export interface AssistantCitation {
+export interface AgentCitation {
   title: string | null
   uri: string | null
   snippet: string | null
   source: string | null
 }
 
-export interface AssistantQueryMetadata {
-  profile: {
-    key: AssistantProfile
+export interface AgentQueryMetadata {
+  agent: {
+    key: AgentKey
     version: string | null
     provider: string | null
     configuredModel: string | null
@@ -90,7 +90,7 @@ export interface AssistantQueryMetadata {
     pricingVersion: string | null
     completeness: string | null
   } | null
-  citations: AssistantCitation[]
+  citations: AgentCitation[]
 }
 
 interface AgentQueryResponseBody {
@@ -99,10 +99,10 @@ interface AgentQueryResponseBody {
   tool_outputs?: ToolOutputItem[]
   error?: string | null
   local_context_usage?: LocalContextUsage | null
-  metadata?: AssistantQueryMetadata
+  metadata?: AgentQueryMetadata
 }
 
-const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
+const VALID_AGENT_KEYS: readonly AgentKey[] = [
   'panthera',
   'neofelis',
   'delphinus',
@@ -112,7 +112,7 @@ const VALID_ASSISTANT_PROFILES: readonly AssistantProfile[] = [
   'acinonyx',
 ]
 
-const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
+const VALID_AGENT_STATUSES: readonly AgentAvailabilityStatus[] = [
   'available',
   'busy',
   'configured',
@@ -133,50 +133,50 @@ const VALID_PROFILE_STATUSES: readonly ProfileAvailabilityStatus[] = [
   'cpu_overloaded',
 ]
 
-const VALID_PROVIDERS: readonly AgentProfileStatus['provider'][] = [
+const VALID_PROVIDERS: readonly AgentStatus['provider'][] = [
   'ollama',
   'gemini',
   'openai',
   'xai',
 ]
 
-const VALID_PROFILE_MODES: readonly AgentProfileStatus['mode'][] = ['cloud', 'local']
+const VALID_AGENT_RUNTIMES: readonly AgentStatus['runtime'][] = ['cloud', 'local']
 
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
 
-const VALID_PROFILE_STABILITY: readonly ProfileStability[] = ['stable', 'preview']
-const VALID_PROFILE_STATUS_SOURCES: readonly ProfileStatusSource[] = ['configuration', 'verification', 'request', 'runtime']
+const VALID_AGENT_STABILITY: readonly AgentStability[] = ['stable', 'preview']
+const VALID_AGENT_STATUS_SOURCES: readonly AgentStatusSource[] = ['configuration', 'verification', 'request', 'runtime']
 
-function isAssistantProfile(value: unknown): value is AssistantProfile {
+function isAgentKey(value: unknown): value is AgentKey {
   return (
     typeof value === 'string' &&
-    (VALID_ASSISTANT_PROFILES as readonly string[]).includes(value)
+    (VALID_AGENT_KEYS as readonly string[]).includes(value)
   )
 }
 
-function isProfileAvailabilityStatus(value: unknown): value is ProfileAvailabilityStatus {
+function isAgentAvailabilityStatus(value: unknown): value is AgentAvailabilityStatus {
   return (
     typeof value === 'string' &&
-    (VALID_PROFILE_STATUSES as readonly string[]).includes(value)
+    (VALID_AGENT_STATUSES as readonly string[]).includes(value)
   )
 }
 
-function isProvider(value: unknown): value is AgentProfileStatus['provider'] {
+function isProvider(value: unknown): value is AgentStatus['provider'] {
   return typeof value === 'string' && (VALID_PROVIDERS as readonly string[]).includes(value)
 }
 
-function isProfileMode(value: unknown): value is AgentProfileStatus['mode'] {
-  return typeof value === 'string' && (VALID_PROFILE_MODES as readonly string[]).includes(value)
+function isAgentRuntime(value: unknown): value is AgentStatus['runtime'] {
+  return typeof value === 'string' && (VALID_AGENT_RUNTIMES as readonly string[]).includes(value)
 }
 
 function isCloudEffort(value: unknown): value is CloudEffort {
   return typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
 }
 
-function isProfileStability(value: unknown): value is ProfileStability {
+function isAgentStability(value: unknown): value is AgentStability {
   return (
     typeof value === 'string' &&
-    (VALID_PROFILE_STABILITY as readonly string[]).includes(value)
+    (VALID_AGENT_STABILITY as readonly string[]).includes(value)
   )
 }
 
@@ -218,7 +218,7 @@ function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus |
 
   const record = value as Record<string, unknown>
   const name = record.name
-  const model = record.model
+  const model = record.runtimel
 
   if (typeof name !== 'string' || typeof model !== 'string') {
     return null
@@ -235,8 +235,8 @@ function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus |
   }
 }
 
-function parseProfilePricing(value: unknown): ProfilePricingMetadata {
-  const fallback: ProfilePricingMetadata = {
+function parseAgentPricing(value: unknown): AgentPricingMetadata {
+  const fallback: AgentPricingMetadata = {
     currency: 'USD', pricing_version: 'unknown', billing_basis: 'standard',
     input_per_million: 0, output_per_million: 0, cached_input_per_million: null,
     long_context_threshold_tokens: null, long_context_input_per_million: null,
@@ -261,7 +261,7 @@ function parseProfilePricing(value: unknown): ProfilePricingMetadata {
   }
 }
 
-function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
+function parseAgentStatus(value: unknown): AgentStatus | null {
   if (!value || typeof value !== 'object') {
     return null
   }
@@ -273,12 +273,12 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   const configuredModel = record.configured_model
   const provider = record.provider
   const version = record.version
-  const mode = record.mode
+  const mode = record.runtime
   const tier = record.tier
   const stability = record.stability
   const status = record.status
 
-  if (!isAssistantProfile(key)) {
+  if (!isAgentKey(key)) {
     return null
   }
   if (typeof displayName !== 'string') {
@@ -302,16 +302,16 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   if (typeof version !== 'string') {
     return null
   }
-  if (!isProfileMode(mode)) {
+  if (!isAgentRuntime(mode)) {
     return null
   }
   if (typeof tier !== 'string') {
     return null
   }
-  if (!isProfileStability(stability)) {
+  if (!isAgentStability(stability)) {
     return null
   }
-  if (!isProfileAvailabilityStatus(status)) {
+  if (!isAgentAvailabilityStatus(status)) {
     return null
   }
 
@@ -343,16 +343,16 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
     version,
     sort_order: typeof record.sort_order === 'number' && Number.isInteger(record.sort_order) && record.sort_order >= 0 ? record.sort_order : 0,
     capabilities: Array.isArray(record.capabilities) && record.capabilities.every((item) => typeof item === 'string') ? record.capabilities : [],
-    mode,
+    runtime: mode,
     tier,
     stability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
     status,
-    status_source: isProfileStatusSource(record.status_source) ? record.status_source : 'configuration',
+    status_source: isAgentStatusSource(record.status_source) ? record.status_source : 'configuration',
     status_checked_at: parseNullableString(record.status_checked_at),
     provider_account_tier: parseNullableString(record.provider_account_tier),
-    pricing: parseProfilePricing(record.pricing),
+    pricing: parseAgentPricing(record.pricing),
     active: typeof record.active === 'boolean' ? record.active : false,
     loading: typeof record.loading === 'boolean' ? record.loading : false,
     reason: parseNullableString(record.reason),
@@ -361,14 +361,14 @@ function parseAgentProfileStatus(value: unknown): AgentProfileStatus | null {
   }
 }
 
-function parseAgentProfileStatusList(body: unknown): AgentProfileStatus[] {
+function parseAgentStatusList(body: unknown): AgentStatus[] {
   if (!Array.isArray(body)) {
     return []
   }
 
   return body
-    .map(parseAgentProfileStatus)
-    .filter((item): item is AgentProfileStatus => item !== null)
+    .map(parseAgentStatus)
+    .filter((item): item is AgentStatus => item !== null)
 }
 
 function parseToolTraceItem(value: unknown): ToolTraceItem | null {
@@ -401,8 +401,8 @@ function parseToolTraceItem(value: unknown): ToolTraceItem | null {
   }
 }
 
-function isProfileStatusSource(value: unknown): value is ProfileStatusSource {
-  return typeof value === 'string' && (VALID_PROFILE_STATUS_SOURCES as readonly string[]).includes(value)
+function isAgentStatusSource(value: unknown): value is AgentStatusSource {
+  return typeof value === 'string' && (VALID_AGENT_STATUS_SOURCES as readonly string[]).includes(value)
 }
 
 function parseMetricRecord(value: unknown, keys: readonly string[]): Record<string, number | null> | null {
@@ -413,21 +413,21 @@ function parseMetricRecord(value: unknown, keys: readonly string[]): Record<stri
   )
 }
 
-function parseQueryMetadata(record: Record<string, unknown>): AssistantQueryMetadata | undefined {
-  const profileRecord = record.profile_used && typeof record.profile_used === 'object'
-    ? record.profile_used as Record<string, unknown>
+function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata | undefined {
+  const agentRecord = record.agent_used && typeof record.agent_used === 'object'
+    ? record.agent_used as Record<string, unknown>
     : null
-  const profile = profileRecord && isAssistantProfile(profileRecord.key)
+  const agent = agentRecord && isAgentKey(agentRecord.key)
     ? {
-        key: profileRecord.key,
-        version: parseNullableString(profileRecord.version),
-        provider: parseNullableString(profileRecord.provider),
-        configuredModel: parseNullableString(profileRecord.configured_model),
-        resolvedModel: parseNullableString(profileRecord.resolved_model),
-        requestedEffort: isCloudEffort(profileRecord.requested_effort)
-          ? profileRecord.requested_effort
+        key: agentRecord.key,
+        version: parseNullableString(agentRecord.version),
+        provider: parseNullableString(agentRecord.provider),
+        configuredModel: parseNullableString(agentRecord.configured_model),
+        resolvedModel: parseNullableString(agentRecord.resolved_model),
+        requestedEffort: isCloudEffort(agentRecord.requested_effort)
+          ? agentRecord.requested_effort
           : null,
-        resolvedEffort: parseNullableString(profileRecord.resolved_effort),
+        resolvedEffort: parseNullableString(agentRecord.resolved_effort),
       }
     : null
   const usage = parseMetricRecord(record.usage, [
@@ -438,7 +438,7 @@ function parseQueryMetadata(record: Record<string, unknown>): AssistantQueryMeta
     ? record.cost_estimate as Record<string, unknown>
     : null
   const citations = Array.isArray(record.citations)
-    ? record.citations.flatMap((citation): AssistantCitation[] => {
+    ? record.citations.flatMap((citation): AgentCitation[] => {
         if (!citation || typeof citation !== 'object') return []
         const item = citation as Record<string, unknown>
         return [{
@@ -450,12 +450,12 @@ function parseQueryMetadata(record: Record<string, unknown>): AssistantQueryMeta
       })
     : []
 
-  if (!profile && !usage && !timing && !costRecord && citations.length === 0) {
+  if (!agent && !usage && !timing && !costRecord && citations.length === 0) {
     return undefined
   }
 
   return {
-    profile,
+    agent,
     usage: usage ? {
       inputTokens: usage.input_tokens,
       cachedInputTokens: usage.cached_input_tokens,
@@ -556,25 +556,25 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   }
 }
 
-function isAcinonyxProfile(profile: AssistantProfile): boolean {
-  return profile === 'acinonyx'
+function isAcinonyxAgent(agent: AgentKey): boolean {
+  return agent === 'acinonyx'
 }
 
-export interface UseApexAssistantResult {
-  assistantHistory: AgentMessage[]
-  isAssistantQuerying: boolean
-  activeQueryProfile: AssistantProfile | null
-  assistantLatestTrace: ToolTraceItem[]
-  assistantError: string | null
-  assistantContextUsage: LocalContextUsage | null
-  profilesStatus: AgentProfileStatus[]
-  profilesStatusHydrated: boolean
+export interface UseCortexResult {
+  cortexHistory: AgentMessage[]
+  isCortexQuerying: boolean
+  activeQueryAgent: AgentKey | null
+  cortexLatestTrace: ToolTraceItem[]
+  cortexError: string | null
+  cortexContextUsage: LocalContextUsage | null
+  agentsStatus: AgentStatus[]
+  agentsStatusHydrated: boolean
   isLocalModelActionPending: boolean
-  verifyingCloudProfile: AssistantProfile | null
-  refreshProfilesStatus: () => Promise<void>
-  queryAssistant: (
+  verifyingCloudAgent: AgentKey | null
+  refreshAgentsStatus: () => Promise<void>
+  queryAgent: (
     prompt: string,
-    profile: AssistantProfile,
+    agent: AgentKey,
     context?: {
       snapshotId?: string | null
       briefingId?: number | null
@@ -584,28 +584,28 @@ export interface UseApexAssistantResult {
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
-  loadLocalModel: (profile: Extract<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
-  verifyCloudProfile: (profile: Exclude<AssistantProfile, 'mus' | 'sorex'>) => Promise<boolean>
-  clearAssistantChat: (profile?: AssistantProfile) => void
-  resetAssistantSession: () => void
+  loadLocalModel: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  verifyCloudAgent: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  clearCortexSession: (agent?: AgentKey) => void
+  resetCortexSession: () => void
 }
 
-export function useApexAssistant(
-  profilesPollingEnabled = false,
-  activeProfile: AssistantProfile = 'panthera',
-): UseApexAssistantResult {
+export function useCortex(
+  agentsPollingEnabled = false,
+  activeAgent: AgentKey = 'panthera',
+): UseCortexResult {
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
   const [acinonyxHistory, setAcinonyxHistory] = useState<AgentMessage[]>([])
-  const [isAssistantQuerying, setIsAssistantQuerying] = useState(false)
-  const [activeQueryProfile, setActiveQueryProfile] = useState<AssistantProfile | null>(null)
-  const [assistantLatestTrace, setAssistantLatestTrace] = useState<ToolTraceItem[]>([])
-  const [assistantError, setAssistantError] = useState<string | null>(null)
-  const [assistantContextUsage, setAssistantContextUsage] =
+  const [isCortexQuerying, setIsCortexQuerying] = useState(false)
+  const [activeQueryAgent, setActiveQueryAgent] = useState<AgentKey | null>(null)
+  const [cortexLatestTrace, setCortexLatestTrace] = useState<ToolTraceItem[]>([])
+  const [cortexError, setCortexError] = useState<string | null>(null)
+  const [cortexContextUsage, setCortexContextUsage] =
     useState<LocalContextUsage | null>(null)
-  const [profilesStatus, setProfilesStatus] = useState<AgentProfileStatus[]>([])
-  const [profilesStatusHydrated, setProfilesStatusHydrated] = useState(false)
+  const [agentsStatus, setAgentsStatus] = useState<AgentStatus[]>([])
+  const [agentsStatusHydrated, setAgentsStatusHydrated] = useState(false)
   const [isLocalModelActionPending, setIsLocalModelActionPending] = useState(false)
-  const [verifyingCloudProfile, setVerifyingCloudProfile] = useState<AssistantProfile | null>(null)
+  const [verifyingCloudAgent, setVerifyingCloudAgent] = useState<AgentKey | null>(null)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
   const acinonyxHistoryRef = useRef<AgentMessage[]>([])
@@ -618,40 +618,40 @@ export function useApexAssistant(
     acinonyxHistoryRef.current = acinonyxHistory
   }, [acinonyxHistory])
 
-  const assistantHistory = useMemo(
-    () => (isAcinonyxProfile(activeProfile) ? acinonyxHistory : productionHistory),
-    [activeProfile, acinonyxHistory, productionHistory],
+  const cortexHistory = useMemo(
+    () => (isAcinonyxAgent(activeAgent) ? acinonyxHistory : productionHistory),
+    [activeAgent, acinonyxHistory, productionHistory],
   )
 
-  // Mirrors isAssistantQuerying for the poll loop without restarting it on
+  // Mirrors isCortexQuerying for the poll loop without restarting it on
   // every query state transition.
-  const isAssistantQueryingRef = useRef(false)
+  const isCortexQueryingRef = useRef(false)
 
-  const fetchProfilesStatus = useCallback(async (): Promise<void> => {
+  const fetchAgentsStatus = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(AGENT_PROFILES_ENDPOINT)
       if (!response.ok) {
         console.warn(
-          `[useApexAssistant] Profile status fetch failed (${response.status}); retaining prior state.`,
+          `[useCortex] Agent status fetch failed (${response.status}); retaining prior state.`,
         )
         return
       }
 
       const body: unknown = await response.json()
-      const parsed = parseAgentProfileStatusList(body)
-      setProfilesStatus(parsed)
-      setProfilesStatusHydrated(true)
+      const parsed = parseAgentStatusList(body)
+      setAgentsStatus(parsed)
+      setAgentsStatusHydrated(true)
     } catch (fetchError) {
       const message =
-        fetchError instanceof Error ? fetchError.message : 'Unknown profile fetch error'
-      console.warn(`[useApexAssistant] Profile status fetch error: ${message}`)
+        fetchError instanceof Error ? fetchError.message : 'Unknown agent fetch error'
+      console.warn(`[useCortex] Agent status fetch error: ${message}`)
     }
   }, [])
 
-  const shouldPollProfiles = profilesPollingEnabled
+  const shouldPollAgents = agentsPollingEnabled
 
   useEffect(() => {
-    if (!shouldPollProfiles) {
+    if (!shouldPollAgents) {
       return
     }
 
@@ -664,13 +664,13 @@ export function useApexAssistant(
       }
 
       if (!document.hidden) {
-        await fetchProfilesStatus()
+        await fetchAgentsStatus()
       }
 
       if (!cancelled) {
-        const intervalMs = isAssistantQueryingRef.current
-          ? PROFILE_POLL_INTERVAL_QUERYING_MS
-          : PROFILE_POLL_INTERVAL_MS
+        const intervalMs = isCortexQueryingRef.current
+          ? AGENT_POLL_INTERVAL_QUERYING_MS
+          : AGENT_POLL_INTERVAL_MS
         timeoutId = window.setTimeout(() => {
           void pollLoop()
         }, intervalMs)
@@ -685,15 +685,15 @@ export function useApexAssistant(
         window.clearTimeout(timeoutId)
       }
     }
-  }, [shouldPollProfiles, fetchProfilesStatus])
+  }, [shouldPollAgents, fetchAgentsStatus])
 
   useEffect(() => {
-    if (!isAssistantQuerying || !shouldPollProfiles) {
+    if (!isCortexQuerying || !shouldPollAgents) {
       return
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Immediate sync keeps local model loading state visible at query start.
-    void fetchProfilesStatus()
-  }, [isAssistantQuerying, shouldPollProfiles, fetchProfilesStatus])
+    void fetchAgentsStatus()
+  }, [isCortexQuerying, shouldPollAgents, fetchAgentsStatus])
 
   const unloadLocalModel = useCallback(async (): Promise<boolean> => {
     if (isLocalModelActionPending) return false
@@ -705,25 +705,25 @@ export function useApexAssistant(
 
       if (!response.ok) {
         console.warn(
-          `[useApexAssistant] Local model unload failed (${response.status}).`,
+          `[useCortex] Local model unload failed (${response.status}).`,
         )
         return false
       }
 
-      await fetchProfilesStatus()
+      await fetchAgentsStatus()
       return true
     } catch (fetchError) {
       const message =
         fetchError instanceof Error ? fetchError.message : 'Unknown unload error'
-      console.warn(`[useApexAssistant] Local model unload error: ${message}`)
+      console.warn(`[useCortex] Local model unload error: ${message}`)
       return false
     } finally {
       setIsLocalModelActionPending(false)
     }
-  }, [fetchProfilesStatus, isLocalModelActionPending])
+  }, [fetchAgentsStatus, isLocalModelActionPending])
 
   const loadLocalModel = useCallback(async (
-    profile: Extract<AssistantProfile, 'mus' | 'sorex'>,
+    agent: Extract<AgentKey, 'mus' | 'sorex'>,
   ): Promise<boolean> => {
     if (isLocalModelActionPending) return false
     setIsLocalModelActionPending(true)
@@ -731,44 +731,44 @@ export function useApexAssistant(
       const response = await fetch(AGENT_LOCAL_LOAD_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile }),
+        body: JSON.stringify({ agent }),
       })
       if (!response.ok) {
-        console.warn(`[useApexAssistant] Local model load failed (${response.status}).`)
+        console.warn(`[useCortex] Local model load failed (${response.status}).`)
         return false
       }
-      await fetchProfilesStatus()
+      await fetchAgentsStatus()
       return true
     } catch (fetchError) {
       const message = fetchError instanceof Error ? fetchError.message : 'Unknown load error'
-      console.warn(`[useApexAssistant] Local model load error: ${message}`)
+      console.warn(`[useCortex] Local model load error: ${message}`)
       return false
     } finally {
       setIsLocalModelActionPending(false)
     }
-  }, [fetchProfilesStatus, isLocalModelActionPending])
+  }, [fetchAgentsStatus, isLocalModelActionPending])
 
-  const verifyCloudProfile = useCallback(async (
-    profile: Exclude<AssistantProfile, 'mus' | 'sorex'>,
+  const verifyCloudAgent = useCallback(async (
+    agent: Exclude<AgentKey, 'mus' | 'sorex'>,
   ): Promise<boolean> => {
-    if (verifyingCloudProfile) return false
-    setVerifyingCloudProfile(profile)
+    if (verifyingCloudAgent) return false
+    setVerifyingCloudAgent(agent)
     try {
-      const response = await fetch(API_ENDPOINTS.agentProfileVerify(profile), { method: 'POST' })
+      const response = await fetch(API_ENDPOINTS.agentVerify(agent), { method: 'POST' })
       if (!response.ok) return false
-      await fetchProfilesStatus()
+      await fetchAgentsStatus()
       return true
     } catch {
       return false
     } finally {
-      setVerifyingCloudProfile(null)
+      setVerifyingCloudAgent(null)
     }
-  }, [fetchProfilesStatus, verifyingCloudProfile])
+  }, [fetchAgentsStatus, verifyingCloudAgent])
 
-  const queryAssistant = useCallback(
+  const queryAgent = useCallback(
     async (
       prompt: string,
-      profile: AssistantProfile,
+      agent: AgentKey,
       context?: {
         snapshotId?: string | null
         briefingId?: number | null
@@ -782,15 +782,15 @@ export function useApexAssistant(
         return
       }
 
-      const useAcinonyxStore = isAcinonyxProfile(profile)
+      const useAcinonyxStore = isAcinonyxAgent(agent)
       const priorHistory = useAcinonyxStore
         ? acinonyxHistoryRef.current
         : productionHistoryRef.current
 
-      isAssistantQueryingRef.current = true
-      setIsAssistantQuerying(true)
-      setActiveQueryProfile(profile)
-      setAssistantError(null)
+      isCortexQueryingRef.current = true
+      setIsCortexQuerying(true)
+      setActiveQueryAgent(agent)
+      setCortexError(null)
 
       const userMsg: AgentMessage = { role: 'user', content: trimmedPrompt }
       if (useAcinonyxStore) {
@@ -805,9 +805,9 @@ export function useApexAssistant(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: trimmedPrompt,
-            profile,
+            agent,
             history: priorHistory,
-            history_partition: isAcinonyxProfile(profile)
+            history_partition: isAcinonyxAgent(agent)
               ? 'acinonyx'
               : 'production',
             ...(context?.effort ? { effort: context.effort } : {}),
@@ -833,14 +833,14 @@ export function useApexAssistant(
           } catch {
             // Keep default message when error body is not JSON.
           }
-          setAssistantError(message)
+          setCortexError(message)
           return
         }
 
         const body = parseAgentQueryResponse(await response.json())
         const answer = body.answer ?? ''
         const modelMsg: AgentMessage = {
-          role: 'model',
+          role: 'agent',
           content: answer,
           tool_outputs: body.tool_outputs,
           ...(body.tool_trace && body.tool_trace.length > 0
@@ -854,65 +854,65 @@ export function useApexAssistant(
         } else {
           setProductionHistory((prev) => [...prev, modelMsg])
         }
-        setAssistantLatestTrace(body.tool_trace ?? [])
-        setAssistantContextUsage(body.local_context_usage ?? null)
+        setCortexLatestTrace(body.tool_trace ?? [])
+        setCortexContextUsage(body.local_context_usage ?? null)
 
         if (body.error) {
-          setAssistantError(body.error)
+          setCortexError(body.error)
         }
       } catch (fetchError) {
         const message =
           fetchError instanceof Error
             ? fetchError.message
             : 'Failed to reach APEX.'
-        setAssistantError(message)
+        setCortexError(message)
       } finally {
-        isAssistantQueryingRef.current = false
-        setIsAssistantQuerying(false)
-        setActiveQueryProfile(null)
-        void fetchProfilesStatus()
+        isCortexQueryingRef.current = false
+        setIsCortexQuerying(false)
+        setActiveQueryAgent(null)
+        void fetchAgentsStatus()
       }
     },
-    [fetchProfilesStatus],
+    [fetchAgentsStatus],
   )
 
-  const clearAssistantChat = useCallback((profile?: AssistantProfile): void => {
-    const target = profile ?? activeProfile
-    if (isAcinonyxProfile(target)) {
+  const clearCortexSession = useCallback((agent?: AgentKey): void => {
+    const target = agent ?? activeAgent
+    if (isAcinonyxAgent(target)) {
       setAcinonyxHistory([])
     } else {
       setProductionHistory([])
     }
-    setAssistantLatestTrace([])
-    setAssistantError(null)
-    setAssistantContextUsage(null)
-  }, [activeProfile])
+    setCortexLatestTrace([])
+    setCortexError(null)
+    setCortexContextUsage(null)
+  }, [activeAgent])
 
-  const resetAssistantSession = useCallback((): void => {
+  const resetCortexSession = useCallback((): void => {
     setProductionHistory([])
     setAcinonyxHistory([])
-    setAssistantLatestTrace([])
-    setAssistantError(null)
-    setAssistantContextUsage(null)
+    setCortexLatestTrace([])
+    setCortexError(null)
+    setCortexContextUsage(null)
   }, [])
 
   return {
-    assistantHistory,
-    isAssistantQuerying,
-    activeQueryProfile,
-    assistantLatestTrace,
-    assistantError,
-    assistantContextUsage,
-    profilesStatus,
-    profilesStatusHydrated,
+    cortexHistory,
+    isCortexQuerying,
+    activeQueryAgent,
+    cortexLatestTrace,
+    cortexError,
+    cortexContextUsage,
+    agentsStatus,
+    agentsStatusHydrated,
     isLocalModelActionPending,
-    verifyingCloudProfile,
-    refreshProfilesStatus: fetchProfilesStatus,
-    queryAssistant,
+    verifyingCloudAgent,
+    refreshAgentsStatus: fetchAgentsStatus,
+    queryAgent,
     unloadLocalModel,
     loadLocalModel,
-    verifyCloudProfile,
-    clearAssistantChat,
-    resetAssistantSession,
+    verifyCloudAgent,
+    clearCortexSession,
+    resetCortexSession,
   }
 }

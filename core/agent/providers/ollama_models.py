@@ -13,7 +13,7 @@ from core.config import (
 
 class OllamaModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    profile_version: str = Field(description="Internal configuration profile version.")
+    agent_version: str = Field(description="Internal configuration profile version.")
     api_model: str = Field(description="Exact Ollama model tag string.")
     tier: Literal["lightweight", "balanced", "capable"] = Field(
         description="Computational performance classification for local inference."
@@ -66,7 +66,7 @@ class OllamaModelProfile(BaseModel):
 OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
     "sorex": OllamaModelProfile(
         display_name="Apex Sorex",
-        profile_version="2.0",
+        agent_version="2.0",
         api_model="qwen3:1.7b",
         tier="lightweight",
         stability="stable",
@@ -84,7 +84,7 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
     ),
     "mus": OllamaModelProfile(
         display_name="Apex Mus",
-        profile_version="2.0",
+        agent_version="2.0",
         api_model="qwen3:4b-instruct",
         tier="balanced",
         stability="stable",

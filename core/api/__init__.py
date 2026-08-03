@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from core.api.app import _app_lifespan, app, get_allowed_origins, main
-from core.api.assistant import (
+from core.api.cortex import (
     _execute_agent_turn,
-    _resolve_cloud_profile_status,
-    _resolve_local_profile_status,
+    _resolve_cloud_agent_status,
+    _resolve_local_agent_status,
     _trim_agent_history,
-    build_agent_profile_statuses as _build_agent_profile_statuses,
+    build_agent_statuses as _build_agent_statuses,
     query_agent,
     unload_active_local_model_endpoint,
 )
@@ -27,7 +27,7 @@ from core.api.demo import (
     run_demo_agent_query as _run_demo_agent_query,
 )
 from core.api.models import (
-    AgentProfileStatus,
+    AgentStatus,
     BriefingHistoryRecord,
     BriefingResponse,
     CreateReminderRequest,
@@ -54,7 +54,7 @@ from core.api.state import (
     global_pipeline_state,
 )
 from core.api.routers.briefings import get_briefing_history
-from core.api.routers.assistant import list_agent_profiles
+from core.api.routers.cortex import list_agents
 from core.api.routers.market import get_market_snapshot
 from core.api.routers.reminders import (
     create_reminder,
@@ -75,7 +75,7 @@ from core.api.routers.system import (
 from core.api.tts import clean_for_tts, resolve_tts_diagnostics as _resolve_tts_diagnostics
 
 __all__ = [
-    "AgentProfileStatus",
+    "AgentStatus",
     "BriefingHistoryRecord",
     "BriefingResponse",
     "CreateReminderRequest",
@@ -96,7 +96,7 @@ __all__ = [
     "_DEMO_STAGE_DELAY_SECONDS",
     "_TRIGGER_LOCK",
     "_app_lifespan",
-    "_build_agent_profile_statuses",
+    "_build_agent_statuses",
     "_build_demo_briefing",
     "_build_settings_response",
     "_compute_confidence_and_failures",
@@ -106,8 +106,8 @@ __all__ = [
     "_mock_briefing_history",
     "_parse_digest_payload",
     "_parse_runtime_metadata",
-    "_resolve_cloud_profile_status",
-    "_resolve_local_profile_status",
+    "_resolve_cloud_agent_status",
+    "_resolve_local_agent_status",
     "_resolve_tts_diagnostics",
     "_run_demo_agent_query",
     "_run_demo_briefing",
@@ -126,7 +126,7 @@ __all__ = [
     "get_system_diagnostics",
     "global_pipeline_state",
     "health_check",
-    "list_agent_profiles",
+    "list_agents",
     "list_unread_reminders",
     "liveness",
     "main",

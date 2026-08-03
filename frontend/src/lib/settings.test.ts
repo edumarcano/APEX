@@ -4,13 +4,13 @@ import {
   buildSettingsTimingRuntime,
   cloneRuntimeSettings,
   diffSettingsPatch,
-  filterAssistantSettingsForDevMode,
+  filterAskApexSettingsForDevMode,
   isSettingsPatchEmpty,
   parseMcpStatusResponse,
   parseSettingsResponse,
-  resolveAppliedAssistantSelection,
-  resolveAssistantProfile,
-  resolveInitialAssistantSelection,
+  resolveAppliedAgentSelection,
+  resolveAgentKey,
+  resolveInitialAgentSelection,
   resolveEffectiveTiming,
   settingsAreEqual,
 } from './settings'
@@ -22,40 +22,40 @@ import {
 
 describe('assistant boot hydration', () => {
   it('does not reapply the saved selection after initial hydration', () => {
-    const saved = { profile: 'panthera' as const, effort: 'focused' as const }
+    const saved = { agent: 'panthera' as const, effort: 'focused' as const }
 
-    expect(resolveInitialAssistantSelection(false, saved, 'panthera')).toEqual(saved)
-    expect(resolveInitialAssistantSelection(true, saved, 'panthera')).toBeNull()
+    expect(resolveInitialAgentSelection(false, saved, 'panthera')).toEqual(saved)
+    expect(resolveInitialAgentSelection(true, saved, 'panthera')).toBeNull()
   })
 
   it('preserves a selected session profile after a DEV_MODE settings response', () => {
     const response = buildSettingsResponse()
     response.dev_mode_active = true
 
-    expect(resolveAppliedAssistantSelection(response, 'panthera', true)).toEqual({
-      mode: 'cloud',
-      profile: 'panthera',
+    expect(resolveAppliedAgentSelection(response, 'panthera', true)).toEqual({
+      runtime: 'cloud',
+      agent: 'panthera',
       effort: 'focused',
     })
-    expect(resolveAppliedAssistantSelection(response, 'acinonyx', false)).toEqual({
-      mode: 'cloud',
-      profile: 'acinonyx',
+    expect(resolveAppliedAgentSelection(response, 'acinonyx', false)).toEqual({
+      runtime: 'cloud',
+      agent: 'acinonyx',
       effort: 'focused',
     })
   })
 
   it('keeps effort and native-tool preferences while filtering DEV_MODE profile fields', () => {
-    expect(filterAssistantSettingsForDevMode({
-      mode: 'cloud',
-      cloud_profile: 'neofelis',
-      local_profile: 'mus',
-      cloud_effort: 'extended',
+    expect(filterAskApexSettingsForDevMode({
+      runtime: 'cloud',
+      cloud_agent: 'neofelis',
+      local_agent: 'mus',
+      effort: 'extended',
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
       orcinus_x_search_enabled: true,
     })).toEqual({
-      cloud_effort: 'extended',
+      effort: 'extended',
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
@@ -75,15 +75,15 @@ describe('settings response parsing', () => {
     ['feature boolean', ['settings', 'features', 'weather'], 'yes'],
     ['market boolean', ['settings', 'features', 'market'], 'yes'],
     ['module boolean', ['settings', 'modules', 'f1'], 1],
-    ['assistant boolean', ['settings', 'assistant', 'enabled'], null],
-    ['assistant mode', ['settings', 'assistant', 'mode'], 'invalid'],
-    ['cloud profile', ['settings', 'assistant', 'cloud_profile'], 'invalid'],
-    ['cloud effort', ['settings', 'assistant', 'cloud_effort'], 'invalid'],
-    ['local profile', ['settings', 'assistant', 'local_profile'], 'invalid'],
-    ['neofelis google search', ['settings', 'assistant', 'neofelis_google_search_enabled'], null],
-    ['neofelis google maps', ['settings', 'assistant', 'neofelis_google_maps_enabled'], null],
-    ['delphinus x search', ['settings', 'assistant', 'delphinus_x_search_enabled'], null],
-    ['orcinus x search', ['settings', 'assistant', 'orcinus_x_search_enabled'], null],
+    ['assistant boolean', ['settings', 'ask_apex', 'enabled'], null],
+    ['Agent runtime', ['settings', 'ask_apex', 'runtime'], 'invalid'],
+    ['cloud profile', ['settings', 'ask_apex', 'cloud_agent'], 'invalid'],
+    ['cloud effort', ['settings', 'ask_apex', 'effort'], 'invalid'],
+    ['local profile', ['settings', 'ask_apex', 'local_agent'], 'invalid'],
+    ['neofelis google search', ['settings', 'ask_apex', 'neofelis_google_search_enabled'], null],
+    ['neofelis google maps', ['settings', 'ask_apex', 'neofelis_google_maps_enabled'], null],
+    ['delphinus x search', ['settings', 'ask_apex', 'delphinus_x_search_enabled'], null],
+    ['orcinus x search', ['settings', 'ask_apex', 'orcinus_x_search_enabled'], null],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
@@ -129,20 +129,20 @@ describe('settings editing utilities', () => {
     expect(clone).not.toBe(BASE_SETTINGS)
     expect(clone.features).not.toBe(BASE_SETTINGS.features)
     expect(clone.modules).not.toBe(BASE_SETTINGS.modules)
-    expect(clone.assistant).not.toBe(BASE_SETTINGS.assistant)
+    expect(clone.ask_apex).not.toBe(BASE_SETTINGS.ask_apex)
     expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
     expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
     expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
   })
 
-  it('resolves the active assistant profile from mode', () => {
-    expect(resolveAssistantProfile(BASE_SETTINGS.assistant)).toBe('panthera')
+  it('resolves the active Agent from mode', () => {
+    expect(resolveAgentKey(BASE_SETTINGS.ask_apex)).toBe('panthera')
     expect(
-      resolveAssistantProfile({
-        ...BASE_SETTINGS.assistant,
-        mode: 'local',
-        local_profile: 'sorex',
+      resolveAgentKey({
+        ...BASE_SETTINGS.ask_apex,
+        runtime: 'local',
+        local_agent: 'sorex',
       }),
     ).toBe('sorex')
   })
@@ -151,8 +151,8 @@ describe('settings editing utilities', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.features.weather = false
     draft.features.market = false
-    draft.assistant.mode = 'local'
-    draft.assistant.local_profile = 'sorex'
+    draft.ask_apex.runtime = 'local'
+    draft.ask_apex.local_agent = 'sorex'
     draft.briefing.default_mode = 'mus'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
@@ -161,7 +161,7 @@ describe('settings editing utilities', () => {
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       features: { weather: false, market: false },
-      assistant: { mode: 'local', local_profile: 'sorex' },
+      ask_apex: { runtime: 'local', local_agent: 'sorex' },
       briefing: { default_mode: 'mus' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
@@ -215,12 +215,12 @@ describe('effective timing', () => {
       status: 'idle',
       pipelineStep: null,
       isSpeaking: false,
-      isAssistantQuerying: false,
+      isCortexQuerying: false,
     })
 
     expect(resolveEffectiveTiming('features', runtime)).toBe('Active')
     expect(resolveEffectiveTiming('modules', runtime)).toBe('Active')
-    expect(resolveEffectiveTiming('assistant', runtime)).toBe('Active')
+    expect(resolveEffectiveTiming('ask_apex', runtime)).toBe('Active')
     expect(resolveEffectiveTiming('voice', runtime)).toBe('Active')
   })
 
@@ -229,7 +229,7 @@ describe('effective timing', () => {
       status: 'loading',
       pipelineStep: 2,
       isSpeaking: false,
-      isAssistantQuerying: false,
+      isCortexQuerying: false,
     })
 
     expect(resolveEffectiveTiming('features', runtime)).toBe(
@@ -246,10 +246,10 @@ describe('effective timing', () => {
       status: 'success',
       pipelineStep: null,
       isSpeaking: false,
-      isAssistantQuerying: true,
+      isCortexQuerying: true,
     })
 
-    expect(resolveEffectiveTiming('assistant', runtime)).toBe(
+    expect(resolveEffectiveTiming('ask_apex', runtime)).toBe(
       'Applies next response',
     )
   })
@@ -259,13 +259,13 @@ describe('effective timing', () => {
       status: 'loading',
       pipelineStep: 3,
       isSpeaking: false,
-      isAssistantQuerying: false,
+      isCortexQuerying: false,
     })
     const speaking = buildSettingsTimingRuntime({
       status: 'success',
       pipelineStep: 4,
       isSpeaking: true,
-      isAssistantQuerying: false,
+      isCortexQuerying: false,
     })
 
     expect(resolveEffectiveTiming('voice', collecting)).toBe(

@@ -1,7 +1,7 @@
 import { Loader2, Unplug } from 'lucide-react'
 import { useCallback, useId, useState, type ReactElement } from 'react'
 
-import type { AgentProfileStatus } from '../types/telemetry'
+import type { AgentStatus } from '../types/telemetry'
 
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'
@@ -10,14 +10,14 @@ function formatCountdown(seconds: number | null): string {
 }
 
 export function LocalModelControl({
-  profile,
-  loadingProfile,
+  agent,
+  loadingAgent,
   busy,
   onUnload,
   presentation = 'default',
 }: {
-  profile: AgentProfileStatus | null
-  loadingProfile: AgentProfileStatus | null
+  agent: AgentStatus | null
+  loadingAgent: AgentStatus | null
   busy: boolean
   onUnload: () => Promise<boolean>
   presentation?: 'default' | 'rail'
@@ -25,42 +25,42 @@ export function LocalModelControl({
   const [unloading, setUnloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const tooltipId = useId()
-  const visibleProfile = loadingProfile ?? profile
-  const loading = loadingProfile !== null
+  const visibleAgent = loadingAgent ?? agent
+  const loading = loadingAgent !== null
 
   const handleUnload = useCallback(async (): Promise<void> => {
-    if (!profile || loading || busy || unloading) return
+    if (!agent || loading || busy || unloading) return
     setUnloading(true)
     setError(null)
     const succeeded = await onUnload()
     if (!succeeded) setError('Unload failed')
     setUnloading(false)
-  }, [profile, loading, busy, unloading, onUnload])
+  }, [agent, loading, busy, unloading, onUnload])
 
-  if (!visibleProfile || (presentation === 'rail' && !profile)) return null
+  if (!visibleAgent || (presentation === 'rail' && !agent)) return null
 
-  const disabled = loading || busy || unloading || profile === null
+  const disabled = loading || busy || unloading || agent === null
   const stateText = loading
-    ? 'Loading local model…'
+    ? 'Loading local modelâ€¦'
     : busy
-      ? 'In use · auto-unload paused'
-      : `Auto-unload in ${formatCountdown(profile?.idle_unload_remaining_seconds ?? null)}`
+      ? 'In use Â· auto-unload paused'
+      : `Auto-unload in ${formatCountdown(agent?.idle_unload_remaining_seconds ?? null)}`
 
   if (presentation === 'rail') {
-    const profileName = visibleProfile.display_name.replace(/^APEX\s+/i, '')
+    const agentName = visibleAgent.display_name.replace(/^Apex\\s+/i, '')
     const tooltipText = loading
-      ? `Loading ${profileName}`
+      ? `Loading ${agentName}`
       : unloading
-        ? `Unloading ${profileName}`
-        : `Unload ${profileName}`
+        ? `Unloading ${agentName}`
+        : `Unload ${agentName}`
     return (
-      <div className="group relative shrink-0" data-slot="overview-local-runtime">
+      <div className="group relative shrink-0" data-slot="home-local-runtime">
         <button
           type="button"
           onClick={() => void handleUnload()}
           disabled={disabled}
           className="inline-flex size-10 items-center justify-center rounded-md border border-orange-500/40 bg-orange-950/20 text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-300 disabled:cursor-not-allowed disabled:opacity-45"
-          aria-label={`Unload ${visibleProfile.display_name}`}
+          aria-label={`Unload ${visibleAgent.display_name}`}
           aria-describedby={tooltipId}
         >
           {loading || unloading ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Unplug className="size-3.5" aria-hidden />}
@@ -84,10 +84,10 @@ export function LocalModelControl({
           'hover:border-orange-400 hover:bg-orange-950/25 hover:shadow-[0_0_20px_rgba(249,115,22,0.4)]',
           disabled ? 'cursor-not-allowed opacity-65' : 'cursor-pointer',
         ].join(' ')}
-        aria-label={`Unload ${visibleProfile.display_name}`}
+        aria-label={`Unload ${visibleAgent.display_name}`}
       >
         <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.9)]" />
-        {visibleProfile.display_name} · {loading ? 'Loading' : unloading ? 'Unloading' : 'Unload'}
+        {visibleAgent.display_name} Â· {loading ? 'Loading' : unloading ? 'Unloading' : 'Unload'}
       </button>
       <span className="font-mono text-[9px] uppercase tracking-wider text-orange-200/60">
         {stateText}

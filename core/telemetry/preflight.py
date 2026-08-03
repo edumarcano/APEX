@@ -15,10 +15,10 @@ from core.agent.providers.ollama_lifecycle import (
     get_status_snapshot,
     is_local_execution_active,
 )
-from core.agent.profiles import (
-    PROFILE_SPECS,
-    profile_has_credentials,
-    resolve_assistant_selection,
+from core.agent.catalog import (
+    AGENT_SPECS,
+    agent_has_credentials,
+    resolve_agent_selection,
 )
 from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.config import ENV_PATH, OLLAMA_ENABLED, is_dev_mode
@@ -54,8 +54,8 @@ _WARNING_MESSAGES: dict[PreflightWarningCode, str] = {
     "rapid_connector_refresh": (
         "A forced external connector refresh already ran within the last five minutes."
     ),
-    "high_resource_local_profile": (
-        "The selected local profile is resource-intensive on this host."
+    "high_resource_local_agent": (
+        "The selected local Agent is resource-intensive on this host."
     ),
 }
 
@@ -64,17 +64,17 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_unreachable": "The local model host is unreachable.",
     "model_not_installed": "The selected local model is not installed.",
     "concurrent_local_execution": "Another local execution is already in progress.",
-    "insufficient_ram": "Host memory pressure exceeds the profile resource gate.",
-    "cpu_overloaded": "Host CPU utilization exceeds the profile resource gate.",
+    "insufficient_ram": "Host memory pressure exceeds the agent resource gate.",
+    "cpu_overloaded": "Host CPU utilization exceeds the agent resource gate.",
     "database_failure": "Local database is unavailable.",
     "configuration_failure": "Runtime configuration is unavailable.",
     "invalid_input": "The preflight request contains invalid input.",
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_LOCAL_PROFILES = frozenset({"sorex", "mus"})
-_CLOUD_PROFILES = frozenset({"panthera", "neofelis", "delphinus", "orcinus", "acinonyx"})
-_VALID_PROFILES = _LOCAL_PROFILES | _CLOUD_PROFILES
+_LOCAL_AGENTS = frozenset({"sorex", "mus"})
+_CLOUD_AGENTS = frozenset({"panthera", "neofelis", "delphinus", "orcinus", "acinonyx"})
+_VALID_AGENTS = _LOCAL_AGENTS | _CLOUD_AGENTS
 _BRIEFING_MODES = frozenset({"panthera", "mus", "sorex", "structured_digest"})
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
@@ -125,14 +125,14 @@ def _loaded_model_matches(loaded_model: object, model_name: str) -> bool:
     )
 
 
-def _evaluate_local_profile_blockers(
-    profile_key: str,
+def _evaluate_local_agent_blockers(
+    agent_key: str,
 ) -> tuple[list[PreflightBlocker], bool]:
     """Return local blockers and whether execution would require a cold load."""
     blockers: list[PreflightBlocker] = []
-    profile = OLLAMA_MODEL_PROFILES.get(profile_key)
-    if profile is None:
-        blockers.append(_blocker("invalid_input", f"Unknown local profile: {profile_key!r}"))
+    agent = OLLAMA_MODEL_PROFILES.get(agent_key)
+    if agent is None:
+        blockers.append(_blocker("invalid_input", f"Unknown local Agent: {agent_key!r}"))
         return blockers, False
 
     if not OLLAMA_ENABLED:
@@ -146,24 +146,24 @@ def _evaluate_local_profile_blockers(
     if not snapshot["reachable"]:
         blockers.append(_blocker("model_unreachable"))
         return blockers, False
-    if profile.api_model not in snapshot["installed_tags"]:
+    if agent.api_model not in snapshot["installed_tags"]:
         blockers.append(
             _blocker(
                 "model_not_installed",
-                f"Local model {profile.api_model!r} is not installed.",
+                f"Local model {agent.api_model!r} is not installed.",
             )
         )
         return blockers, False
 
     cold_load_required = not any(
-        _loaded_model_matches(loaded_model, profile.api_model)
+        _loaded_model_matches(loaded_model, agent.api_model)
         for loaded_model in snapshot["loaded_models"]
     )
 
     if cold_load_required:
         allowed, gate_reason = check_resource_gate(
-            profile.ram_limit,
-            profile.cpu_limit,
+            agent.ram_limit,
+            agent.cpu_limit,
             vitals=snapshot["vitals"],
         )
         if not allowed and gate_reason == "insufficient_ram":
@@ -177,14 +177,14 @@ def _evaluate_local_profile_blockers(
 def _cloud_credential_blockers(
     *,
     involves_cloud: bool,
-    profile: str | None,
+    agent: str | None,
     operation: str,
 ) -> list[PreflightBlocker]:
     if not involves_cloud:
         return []
 
     briefing_ops = {"activate_with_briefing", "generate_briefing"}
-    if profile == "panthera" and operation in briefing_ops:
+    if agent == "panthera" and operation in briefing_ops:
         if os.getenv("OPENAI_API_KEY"):
             return []
         return [
@@ -194,14 +194,14 @@ def _cloud_credential_blockers(
             )
         ]
 
-    if profile and profile in PROFILE_SPECS:
-        if profile_has_credentials(profile):
+    if agent and agent in AGENT_SPECS:
+        if agent_has_credentials(agent):
             return []
-        env_name = PROFILE_SPECS[profile].credential_env or "required credentials"
+        env_name = AGENT_SPECS[agent].credential_env or "required credentials"
         return [
             _blocker(
                 "missing_credentials",
-                f"{env_name} is not configured for profile {profile}.",
+                f"{env_name} is not configured for agent {agent}.",
             )
         ]
 
@@ -306,41 +306,41 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         "activate_with_briefing",
         "generate_briefing",
     }:
-        profile = None if briefing_mode == "structured_digest" else briefing_mode
+        agent = None if briefing_mode == "structured_digest" else briefing_mode
         involves_cloud = briefing_mode == "panthera"
     else:
-        profile = (request.synthesis_profile or "").strip() or None
+        agent = (request.synthesis_agent or "").strip() or None
         if (
-            profile is None
-            and request.operation == "assistant_query"
+            agent is None
+            and request.operation == "cortex_query"
             and settings is not None
         ):
-            _mode, profile, _effort = resolve_assistant_selection(settings.assistant)
-        if profile is None and request.operation in {
+            _mode, agent, _effort = resolve_agent_selection(settings.ask_apex)
+        if agent is None and request.operation in {
             "activate_with_briefing",
             "generate_briefing",
         }:
-            profile = (
+            agent = (
                 settings.briefing.default_mode
                 if settings is not None
                 and settings.briefing.default_mode != "structured_digest"
                 else "panthera"
             )
-        cloud_profile = profile in _CLOUD_PROFILES if profile else False
-        involves_cloud = bool(request.involves_cloud or cloud_profile)
+        cloud_agent = agent in _CLOUD_AGENTS if agent else False
+        involves_cloud = bool(request.involves_cloud or cloud_agent)
 
-    if profile is not None and profile not in _VALID_PROFILES:
+    if agent is not None and agent not in _VALID_AGENTS:
         blockers.append(
-            _blocker("invalid_input", f"Unknown synthesis profile: {profile!r}")
+            _blocker("invalid_input", f"Unknown synthesis agent: {agent!r}")
         )
 
-    local_profile = profile in _LOCAL_PROFILES
+    local_agent = agent in _LOCAL_AGENTS
     if not is_dev_mode():
         warnings.extend(_network_warnings())
 
     cold_local_load = False
-    if local_profile and profile is not None:
-        local_blockers, cold_local_load = _evaluate_local_profile_blockers(profile)
+    if local_agent and agent is not None:
+        local_blockers, cold_local_load = _evaluate_local_agent_blockers(agent)
         blockers.extend(local_blockers)
 
     warnings.extend(_power_warnings(cold_local_load=cold_local_load))
@@ -355,13 +355,13 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     ):
         warnings.append(_warning("rapid_connector_refresh"))
 
-    if profile == "mus":
-        warnings.append(_warning("high_resource_local_profile"))
+    if agent == "mus":
+        warnings.append(_warning("high_resource_local_agent"))
 
     blockers.extend(
         _cloud_credential_blockers(
             involves_cloud=involves_cloud,
-            profile=profile,
+            agent=agent,
             operation=request.operation,
         )
     )

@@ -1,4 +1,4 @@
-"""Unified federated profile registry, effort resolution, and profile factories."""
+"""Apex Agent catalog, effort resolution, and provider model factories."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from core.agent.providers.contract import InferenceProvider
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.responses_api import ResponsesModelProfile
-from core.agent.tool_policies import hosted_tools_for_profile
+from core.agent.tool_policies import hosted_tools_for_agent
 from core.config import (
     DEFAULT_AGENT_SYSTEM_PROMPT,
     DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT,
@@ -23,27 +23,27 @@ from core.config import (
     is_dev_mode,
 )
 
-ProfileKey: TypeAlias = Literal[
+AgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus"
 ]
-CloudProfileKey: TypeAlias = Literal[
+CloudAgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
 ]
-CloudSettingsProfileKey: TypeAlias = Literal[
+CloudSettingsAgentKey: TypeAlias = Literal[
     "panthera", "neofelis", "delphinus", "orcinus"
 ]
-LocalProfileKey: TypeAlias = Literal["sorex", "mus"]
-AssistantMode: TypeAlias = Literal["cloud", "local"]
+LocalAgentKey: TypeAlias = Literal["sorex", "mus"]
+AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
 
-VALID_PROFILE_KEYS: frozenset[str] = frozenset(
+VALID_AGENT_KEYS: frozenset[str] = frozenset(
     {"acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus"}
 )
-VALID_CLOUD_SETTINGS_PROFILES: frozenset[str] = frozenset(
+VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_PROFILES: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
 
@@ -63,16 +63,16 @@ AgentModelProfile = (
 
 
 @dataclass(frozen=True, slots=True)
-class ProfileSpec:
-    """Static metadata for one federated assistant profile."""
+class AgentSpec:
+    """Static metadata for one Apex Agent."""
 
-    key: ProfileKey
+    key: AgentKey
     display_name: str
     description: str
     identity_instruction: str
-    profile_version: str
+    agent_version: str
     provider: InferenceProvider
-    mode: AssistantMode
+    runtime: AgentRuntime
     api_model: str
     default_effort: ApexEffort | None
     credential_env: str | None
@@ -85,18 +85,18 @@ class ProfileSpec:
     supports_effort: bool = True
 
 
-PROFILE_SPECS: dict[str, ProfileSpec] = {
-    "acinonyx": ProfileSpec(
+AGENT_SPECS: dict[str, AgentSpec] = {
+    "acinonyx": AgentSpec(
         key="acinonyx",
-        display_name="APEX Acinonyx",
+        display_name="Apex Acinonyx",
         description="Development-only privacy sandbox for testing Apex with masked personal context.",
         identity_instruction=(
-            "You are Apex Acinonyx, an Apex Intelligence Profile powered by "
+            "You are Apex Acinonyx, an Apex Agent powered by "
             "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="gemini",
-        mode="cloud",
+        runtime="cloud",
         api_model="gemini-3.5-flash-lite",
         default_effort="focused",
         credential_env="GEMINI_SANDBOX_API_KEY",
@@ -107,17 +107,17 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         capability_tags=("Privacy sandbox", "Masked context"),
         dev_only=True,
     ),
-    "panthera": ProfileSpec(
+    "panthera": AgentSpec(
         key="panthera",
-        display_name="APEX Panthera",
+        display_name="Apex Panthera",
         description="Default generalist for thoughtful answers, planning, and complex everyday work.",
         identity_instruction=(
-            "You are Apex Panthera, an Apex Intelligence Profile powered by "
+            "You are Apex Panthera, an Apex Agent powered by "
             "GPT-5.6 Luna."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="openai",
-        mode="cloud",
+        runtime="cloud",
         api_model="gpt-5.6-luna",
         default_effort="focused",
         credential_env="OPENAI_API_KEY",
@@ -127,17 +127,17 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         stability="stable",
         capability_tags=("Generalist", "Planning"),
     ),
-    "neofelis": ProfileSpec(
+    "neofelis": AgentSpec(
         key="neofelis",
-        display_name="APEX Neofelis",
+        display_name="Apex Neofelis",
         description="Fast research specialist with optional Google Search and Maps grounding.",
         identity_instruction=(
-            "You are Apex Neofelis, an Apex Intelligence Profile powered by "
+            "You are Apex Neofelis, an Apex Agent powered by "
             "Gemini 3.6 Flash."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="gemini",
-        mode="cloud",
+        runtime="cloud",
         api_model="gemini-3.6-flash",
         default_effort="focused",
         credential_env="GEMINI_API_KEY",
@@ -147,16 +147,16 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         stability="stable",
         capability_tags=("Research", "Google Search", "Google Maps"),
     ),
-    "delphinus": ProfileSpec(
+    "delphinus": AgentSpec(
         key="delphinus",
-        display_name="APEX Delphinus",
-        description="Balanced live-information profile with optional X Search for current conversations and trends.",
+        display_name="Apex Delphinus",
+        description="Balanced live-information Agent with optional X Search for current conversations and trends.",
         identity_instruction=(
-            "You are Apex Delphinus, an Apex Intelligence Profile powered by Grok 4.3."
+            "You are Apex Delphinus, an Apex Agent powered by Grok 4.3."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="xai",
-        mode="cloud",
+        runtime="cloud",
         api_model="grok-4.3",
         default_effort="focused",
         credential_env="XAI_API_KEY",
@@ -166,16 +166,16 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         stability="stable",
         capability_tags=("Balanced", "X Search"),
     ),
-    "orcinus": ProfileSpec(
+    "orcinus": AgentSpec(
         key="orcinus",
-        display_name="APEX Orcinus",
-        description="Deep-reasoning profile for difficult analysis, synthesis, and extended investigations.",
+        display_name="Apex Orcinus",
+        description="Deep-reasoning Agent for difficult analysis, synthesis, and extended investigations.",
         identity_instruction=(
-            "You are Apex Orcinus, an Apex Intelligence Profile powered by Grok 4.5."
+            "You are Apex Orcinus, an Apex Agent powered by Grok 4.5."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="xai",
-        mode="cloud",
+        runtime="cloud",
         api_model="grok-4.5",
         default_effort="extended",
         credential_env="XAI_API_KEY",
@@ -185,17 +185,17 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         stability="stable",
         capability_tags=("Deep reasoning", "Extended analysis", "X Search"),
     ),
-    "sorex": ProfileSpec(
+    "sorex": AgentSpec(
         key="sorex",
-        display_name="APEX Sorex",
+        display_name="Apex Sorex",
         description="Lightweight on-device fallback for quick tasks on constrained systems.",
         identity_instruction=(
-            "You are Apex Sorex, an Apex Intelligence Profile powered by "
+            "You are Apex Sorex, an Apex Agent powered by "
             "Qwen3 1.7B through Ollama."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="ollama",
-        mode="local",
+        runtime="local",
         api_model="qwen3:1.7b",
         default_effort=None,
         credential_env=None,
@@ -206,17 +206,17 @@ PROFILE_SPECS: dict[str, ProfileSpec] = {
         capability_tags=("Lightweight", "Fast fallback", "Constrained local"),
         supports_effort=False,
     ),
-    "mus": ProfileSpec(
+    "mus": AgentSpec(
         key="mus",
-        display_name="APEX Mus",
+        display_name="Apex Mus",
         description="Private on-device generalist for capable offline work without cloud processing.",
         identity_instruction=(
-            "You are Apex Mus, an Apex Intelligence Profile powered by "
+            "You are Apex Mus, an Apex Agent powered by "
             "Qwen3 4B Instruct through Ollama."
         ),
-        profile_version="2.0",
+        agent_version="2.0",
         provider="ollama",
-        mode="local",
+        runtime="local",
         api_model="qwen3:4b-instruct",
         default_effort=None,
         credential_env=None,
@@ -240,20 +240,20 @@ _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
 )
 
 
-def runtime_profile_order(*, dev_mode: bool | None = None) -> tuple[str, ...]:
-    """Return HUD-visible profile keys in display order."""
+def runtime_agent_order(*, dev_mode: bool | None = None) -> tuple[str, ...]:
+    """Return HUD-visible Agent keys in display order."""
     dev_active = is_dev_mode() if dev_mode is None else dev_mode
     return tuple(
         key
         for key in _RUNTIME_PROFILE_ORDER
-        if not PROFILE_SPECS[key].dev_only or dev_active
+        if not AGENT_SPECS[key].dev_only or dev_active
     )
 
 
-def is_profile_visible(key: str, *, dev_mode: bool | None = None) -> bool:
-    if key not in PROFILE_SPECS:
+def is_agent_visible(key: str, *, dev_mode: bool | None = None) -> bool:
+    if key not in AGENT_SPECS:
         return False
-    spec = PROFILE_SPECS[key]
+    spec = AGENT_SPECS[key]
     if not spec.dev_only:
         return True
     dev_active = is_dev_mode() if dev_mode is None else dev_mode
@@ -265,11 +265,11 @@ def apex_effort_to_native(effort: ApexEffort) -> NativeEffort:
 
 
 def resolve_effort(
-    profile_key: str,
+    agent_key: str,
     requested: ApexEffort | None,
 ) -> tuple[ApexEffort | None, NativeEffort | None]:
-    """Resolve APEX and provider-native effort for a profile."""
-    spec = PROFILE_SPECS[profile_key]
+    """Resolve APEX and provider-native effort for an Agent."""
+    spec = AGENT_SPECS[agent_key]
     if not spec.supports_effort:
         return None, None
     apex_effort = requested or spec.default_effort
@@ -278,22 +278,22 @@ def resolve_effort(
     return apex_effort, apex_effort_to_native(apex_effort)
 
 
-def profile_has_credentials(profile_key: str) -> bool:
-    spec = PROFILE_SPECS[profile_key]
+def agent_has_credentials(agent_key: str) -> bool:
+    spec = AGENT_SPECS[agent_key]
     if spec.credential_env is None:
         return True
     return bool(os.getenv(spec.credential_env))
 
 
-def compose_profile_system_instruction(profile_key: str, base_instruction: str) -> str:
-    """Prefix one immutable profile identity to the effective system prompt."""
-    identity = PROFILE_SPECS[profile_key].identity_instruction
+def compose_agent_system_instruction(agent_key: str, base_instruction: str) -> str:
+    """Prefix one immutable Agent identity to the effective system prompt."""
+    identity = AGENT_SPECS[agent_key].identity_instruction
     normalized_base = base_instruction.strip()
     return f"{identity}\n\n{normalized_base}" if normalized_base else identity
 
 
-def credential_missing_message(profile_key: str) -> str:
-    spec = PROFILE_SPECS[profile_key]
+def credential_missing_message(agent_key: str) -> str:
+    spec = AGENT_SPECS[agent_key]
     env_key = spec.credential_env or "API_KEY"
     provider_label = spec.provider.upper()
     return (
@@ -303,13 +303,13 @@ def credential_missing_message(profile_key: str) -> str:
     )
 
 
-def credential_missing_error(profile_key: str) -> str:
-    spec = PROFILE_SPECS[profile_key]
+def credential_missing_error(agent_key: str) -> str:
+    spec = AGENT_SPECS[agent_key]
     return f"{spec.credential_env} is missing from environment variables."
 
 
-def build_concrete_profile(
-    profile_key: str,
+def build_concrete_agent(
+    agent_key: str,
     *,
     native_effort: NativeEffort | None,
     neofelis_google_search_enabled: bool = True,
@@ -317,24 +317,24 @@ def build_concrete_profile(
     delphinus_x_search_enabled: bool = True,
     orcinus_x_search_enabled: bool = True,
 ) -> AgentModelProfile:
-    """Materialize a provider-specific profile with effort applied."""
-    spec = PROFILE_SPECS[profile_key]
+    """Materialize a provider-specific model configuration for an Agent."""
+    spec = AGENT_SPECS[agent_key]
     if spec.provider == "gemini":
         thinking: GeminiThinkingLevel = native_effort or "medium"
         return GeminiModelProfile(
             display_name=spec.display_name,
-            profile_version=spec.profile_version,
+            agent_version=spec.agent_version,
             api_model=spec.api_model,
             tier=spec.tier,  # type: ignore[arg-type]
             stability=spec.stability,
             thinking_level=thinking,
             max_tool_turns=spec.max_tool_turns,
             max_tool_calls=spec.max_tool_calls,
-            system_instruction=compose_profile_system_instruction(
-                profile_key, DEFAULT_AGENT_SYSTEM_PROMPT
+            system_instruction=compose_agent_system_instruction(
+                agent_key, DEFAULT_AGENT_SYSTEM_PROMPT
             ),
-            hosted_tools=hosted_tools_for_profile(
-                profile_key,
+            hosted_tools=hosted_tools_for_agent(
+                agent_key,
                 neofelis_google_search_enabled=neofelis_google_search_enabled,
                 neofelis_google_maps_enabled=neofelis_google_maps_enabled,
                 delphinus_x_search_enabled=delphinus_x_search_enabled,
@@ -342,10 +342,10 @@ def build_concrete_profile(
             ),
         )
     if spec.provider == "ollama":
-        ram_limit = SOREX_RAM_LIMIT if profile_key == "sorex" else MUS_RAM_LIMIT
-        cpu_limit = SOREX_CPU_LIMIT if profile_key == "sorex" else MUS_CPU_LIMIT
+        ram_limit = SOREX_RAM_LIMIT if agent_key == "sorex" else MUS_RAM_LIMIT
+        cpu_limit = SOREX_CPU_LIMIT if agent_key == "sorex" else MUS_CPU_LIMIT
         context_window = 4096
-        if profile_key == "sorex":
+        if agent_key == "sorex":
             tool_select_max_tokens = 128
             final_answer_max_tokens = 512
             num_thread = 4
@@ -357,7 +357,7 @@ def build_concrete_profile(
             generation_timeout = 150
         return OllamaModelProfile(
             display_name=spec.display_name,
-            profile_version=spec.profile_version,
+            agent_version=spec.agent_version,
             api_model=spec.api_model,
             tier=spec.tier,  # type: ignore[arg-type]
             stability=spec.stability,
@@ -370,23 +370,23 @@ def build_concrete_profile(
             generation_timeout=generation_timeout,
             ram_limit=ram_limit,
             cpu_limit=cpu_limit,
-            system_instruction=compose_profile_system_instruction(
-                profile_key, DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
+            system_instruction=compose_agent_system_instruction(
+                agent_key, DEFAULT_LOCAL_AGENT_SYSTEM_PROMPT
             ),
         )
     return ResponsesModelProfile(
         provider=spec.provider,  # type: ignore[arg-type]
         display_name=spec.display_name,
-        profile_version=spec.profile_version,
+        agent_version=spec.agent_version,
         api_model=spec.api_model,
         max_tool_turns=spec.max_tool_turns,
         max_tool_calls=spec.max_tool_calls,
-        system_instruction=compose_profile_system_instruction(
-            profile_key, DEFAULT_AGENT_SYSTEM_PROMPT
+        system_instruction=compose_agent_system_instruction(
+            agent_key, DEFAULT_AGENT_SYSTEM_PROMPT
         ),
         reasoning_effort=native_effort,
-        hosted_tools=hosted_tools_for_profile(
-            profile_key,
+        hosted_tools=hosted_tools_for_agent(
+            agent_key,
             neofelis_google_search_enabled=neofelis_google_search_enabled,
             neofelis_google_maps_enabled=neofelis_google_maps_enabled,
             delphinus_x_search_enabled=delphinus_x_search_enabled,
@@ -395,8 +395,8 @@ def build_concrete_profile(
     )
 
 
-def build_profile_used_metadata(
-    profile_key: str,
+def build_agent_used_metadata(
+    agent_key: str,
     *,
     configured_model: str,
     resolved_model: str | None,
@@ -404,22 +404,22 @@ def build_profile_used_metadata(
     resolved_apex_effort: ApexEffort | None,
     resolved_native_effort: NativeEffort | None,
 ) -> dict[str, Any]:
-    spec = PROFILE_SPECS[profile_key]
+    spec = AGENT_SPECS[agent_key]
     return {
-        "key": profile_key,
-        "version": spec.profile_version,
+        "key": agent_key,
+        "version": spec.agent_version,
         "provider": spec.provider,
         "configured_model": configured_model,
         "resolved_model": resolved_model or configured_model,
         "requested_effort": requested_effort,
         "resolved_effort": resolved_native_effort,
         "resolved_apex_effort": resolved_apex_effort,
-        "mode": spec.mode,
+        "runtime": spec.runtime,
     }
 
 
-def is_acinonyx_sandbox(profile_key: str) -> bool:
-    return profile_key == "acinonyx"
+def is_acinonyx_agent(agent_key: str) -> bool:
+    return agent_key == "acinonyx"
 
 
 def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
@@ -470,6 +470,20 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def migrate_schema7_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
+    """Convert schema-7 Ask APEX keys to the canonical schema-8 shape."""
+    legacy = migrate_schema5_ask_apex(raw)
+    if "runtime" in legacy:
+        return legacy
+    key_map = {
+        "mode": "runtime",
+        "cloud_profile": "cloud_agent",
+        "cloud_effort": "effort",
+        "local_profile": "local_agent",
+    }
+    return {key_map.get(key, key): value for key, value in legacy.items()}
+
+
 def migrate_schema5_briefing(
     raw: dict[str, Any], *, schema5: bool = True
 ) -> dict[str, Any]:
@@ -479,20 +493,20 @@ def migrate_schema5_briefing(
     return {"default_mode": "panthera"}
 
 
-def resolve_assistant_selection(
-    assistant: Any,
+def resolve_agent_selection(
+    ask_apex: Any,
     *,
     dev_mode: bool | None = None,
-) -> tuple[AssistantMode, str, ApexEffort | None]:
-    """Resolve effective assistant mode/profile/effort from saved settings."""
+) -> tuple[AgentRuntime, str, ApexEffort | None]:
+    """Resolve effective runtime, Agent, and effort from Ask APEX settings."""
     dev_active = is_dev_mode() if dev_mode is None else dev_mode
     if dev_active:
-        return "cloud", "acinonyx", getattr(assistant, "cloud_effort", "focused")
+        return "cloud", "acinonyx", getattr(ask_apex, "effort", "focused")
 
-    mode = getattr(assistant, "mode", "cloud")
-    if mode == "local":
-        profile = getattr(assistant, "local_profile", "mus")
-        return "local", profile, None
-    profile = getattr(assistant, "cloud_profile", "panthera")
-    effort = getattr(assistant, "cloud_effort", "focused")
-    return "cloud", profile, effort
+    runtime = getattr(ask_apex, "runtime", "cloud")
+    if runtime == "local":
+        agent = getattr(ask_apex, "local_agent", "mus")
+        return "local", agent, None
+    agent = getattr(ask_apex, "cloud_agent", "panthera")
+    effort = getattr(ask_apex, "effort", "focused")
+    return "cloud", agent, effort

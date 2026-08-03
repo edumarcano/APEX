@@ -22,9 +22,9 @@ const DEFAULT_PROPS: ComponentProps<typeof SettingsPanel> = {
   status: 'idle',
   pipelineStep: null,
   isSpeaking: false,
-  isAssistantQuerying: false,
-  profilesStatus: [],
-  profilesStatusHydrated: false,
+  isCortexQuerying: false,
+  agentsStatus: [],
+  agentsStatusHydrated: false,
   failedConnectors: [],
   hasBriefingEvidence: true,
   onApplied: vi.fn(),
@@ -169,7 +169,7 @@ describe('SettingsPanel', () => {
     renderPanel()
 
     expect(await screen.findByRole('switch', { name: 'Ask APEX enabled' })).toBeVisible()
-    expect(screen.queryByLabelText('Assistant mode')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Agent runtime')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Cloud profile')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Local profile')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Cloud effort')).not.toBeInTheDocument()

@@ -86,7 +86,7 @@ export function resolveAttentionTier(
 
 /**
  * Attention for Start APEX / telemetry-only collection (no briefing pipeline).
- * Activated overview reveals cards during refresh without briefing stages.
+ * Activated home reveals cards during refresh without briefing stages.
  */
 export function resolveTelemetryAttentionTier(
   surface: AttentionSurfaceId,

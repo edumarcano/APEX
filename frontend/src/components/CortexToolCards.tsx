@@ -203,7 +203,7 @@ function formatDisplayDate(isoDate: string): string {
 
 function formatEventStart(start: string, allDay = false): string {
   if (allDay) {
-    return `${formatDisplayDate(start)} · All day`
+    return `${formatDisplayDate(start)} Â· All day`
   }
   const parsed = new Date(start)
   if (Number.isNaN(parsed.getTime())) {
@@ -235,7 +235,7 @@ function truncateText(text: string, maxLength: number): string {
   if (trimmed.length <= maxLength) {
     return trimmed
   }
-  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`
+  return `${trimmed.slice(0, maxLength - 1).trimEnd()}â€¦`
 }
 
 function parseWeatherForecastPayload(output: unknown): WeatherForecastPayload | null {
@@ -554,7 +554,7 @@ function formatTodoDue(value: MicrosoftTodoDateTime | null): string | null {
 function TodoSourceLabel(): ReactElement {
   return (
     <p className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[#60A5FA]">
-      Microsoft To Do · Read only
+      Microsoft To Do Â· Read only
     </p>
   )
 }
@@ -674,7 +674,7 @@ export function ErrorFallbackCard({
 }): ReactElement {
   return (
     <ToolCardFrame
-      title={`${formatToolLabel(toolName)} — error`}
+      title={`${formatToolLabel(toolName)} â€” error`}
       icon={<AlertCircle className="size-3.5" aria-hidden />}
       durationMs={durationMs}
       accentClass="text-red-400"
@@ -737,8 +737,8 @@ function WeatherForecastCard({
                 </span>
               </div>
               <div className="shrink-0 text-right font-mono text-xs">
-                <p className="text-[#FBBF24]">{Math.round(day.temp_max)}°</p>
-                <p className="text-zinc-500">{Math.round(day.temp_min)}°</p>
+                <p className="text-[#FBBF24]">{Math.round(day.temp_max)}Â°</p>
+                <p className="text-zinc-500">{Math.round(day.temp_min)}Â°</p>
               </div>
             </li>
           ))
@@ -777,8 +777,8 @@ function F1StandingsCard({
       accentClass="text-[#FBBF24]"
     >
       <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-        Season {payload.season ?? '—'}
-        {payload.round ? ` · Round ${payload.round}` : ''}
+        Season {payload.season ?? 'â€”'}
+        {payload.round ? ` Â· Round ${payload.round}` : ''}
       </p>
       <div className={LIST_SCROLL}>
         {standings.length === 0 ? (
@@ -855,7 +855,7 @@ function F1CalendarCard({
       accentClass="text-[#FBBF24]"
     >
       <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-        Season {payload.season ?? '—'}
+        Season {payload.season ?? 'â€”'}
       </p>
       <ol className={LIST_SCROLL}>
         {races.length === 0 ? (
@@ -869,7 +869,7 @@ function F1CalendarCard({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-zinc-100">
-                    R{race.round} · {race.raceName}
+                    R{race.round} Â· {race.raceName}
                   </p>
                   <p className="truncate text-xs text-zinc-500">
                     {race.circuitName}, {race.country}
@@ -1390,7 +1390,7 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
   }
 }
 
-export function AssistantToolCards({
+export function CortexToolCards({
   toolOutputs,
 }: {
   toolOutputs: ToolOutputItem[]

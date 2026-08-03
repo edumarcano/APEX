@@ -136,7 +136,7 @@ class TelemetryApiTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",
@@ -438,14 +438,14 @@ class TelemetryApiTests(unittest.TestCase):
         ), mock.patch(
             "core.scanner.get_power_state", return_value="battery"
         ), mock.patch(
-            "core.telemetry.preflight._evaluate_local_profile_blockers",
+            "core.telemetry.preflight._evaluate_local_agent_blockers",
             return_value=([], True),
         ):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
                     "operation": "activate",
-                    "synthesis_profile": "sorex",
+                    "synthesis_agent": "sorex",
                     "involves_cloud": False,
                 },
             )
@@ -536,7 +536,7 @@ class TelemetryApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
-                    "operation": "assistant_query",
+                    "operation": "cortex_query",
                     "involves_cloud": True,
                     "cloud_disclosure_acknowledged": True,
                 },
@@ -560,7 +560,7 @@ class TelemetryApiTests(unittest.TestCase):
         codes = {item["code"] for item in response.json()["warnings"]}
         self.assertIn("rapid_connector_refresh", codes)
 
-        # Outside window — no warning
+        # Outside window ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no warning
         service.store.mark_forced_refresh(
             datetime.now(timezone.utc) - timedelta(seconds=FRESHNESS_WINDOW_SECONDS + 1)
         )
@@ -637,7 +637,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "assistant_query", "synthesis_profile": "sorex"},
+                json={"operation": "cortex_query", "synthesis_agent": "sorex"},
             )
 
         payload = response.json()
@@ -665,13 +665,13 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertFalse(payload["can_proceed"])
         self.assertIn("missing_credentials", {item["code"] for item in payload["blockers"]})
 
-    def test_preflight_rejects_unknown_synthesis_profile(self) -> None:
+    def test_preflight_rejects_unknown_synthesis_agent(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "assistant_query", "synthesis_profile": "unknown"},
+                json={"operation": "cortex_query", "synthesis_agent": "unknown"},
             )
 
         payload = response.json()
@@ -702,7 +702,7 @@ class TelemetryApiTests(unittest.TestCase):
                         "network_trust_unknown",
                         "running_on_battery",
                         "rapid_connector_refresh",
-                        "high_resource_local_profile",
+                        "high_resource_local_agent",
                     ],
                 },
             )
@@ -755,7 +755,7 @@ class TriggerWithoutGateTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",

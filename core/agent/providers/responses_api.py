@@ -50,7 +50,7 @@ class ResponsesModelProfile:
         *,
         provider: ResponsesProviderKind,
         display_name: str,
-        profile_version: str,
+        agent_version: str,
         api_model: str,
         max_tool_turns: int,
         max_tool_calls: int,
@@ -60,7 +60,7 @@ class ResponsesModelProfile:
     ) -> None:
         self.provider = provider
         self.display_name = display_name
-        self.profile_version = profile_version
+        self.agent_version = agent_version
         self.api_model = api_model
         self.max_tool_turns = max_tool_turns
         self.max_tool_calls = max_tool_calls
@@ -72,7 +72,7 @@ class ResponsesModelProfile:
         return {
             "provider": self.provider,
             "display_name": self.display_name,
-            "profile_version": self.profile_version,
+            "agent_version": self.agent_version,
             "api_model": self.api_model,
             "max_tool_turns": self.max_tool_turns,
             "max_tool_calls": self.max_tool_calls,
@@ -123,7 +123,7 @@ def _messages_to_responses_input(
             )
             continue
 
-        if message.role == "model":
+        if message.role == "agent":
             if message.provider_output_items:
                 items.extend(message.provider_output_items)
                 continue
@@ -420,7 +420,7 @@ class ResponsesApiProvider:
         output = list(getattr(response, "output", None) or [])
         content, tool_calls, serialized_items = _extract_text_and_tools(output)
         message = AgentMessage(
-            role="model",
+            role="agent",
             content=content,
             tool_calls=tool_calls or None,
             provider_output_items=serialized_items or None,

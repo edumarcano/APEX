@@ -13,7 +13,7 @@ from core import config, database, scanner
 from core.api.models import PipelineStatusSnapshot
 from core.api.state import global_pipeline_state
 from core.config import DEMO_MODE, DEV_AI_SYNTHESIS, is_dev_mode
-from core.agent.profiles import resolve_assistant_selection
+from core.agent.catalog import resolve_agent_selection
 from core.settings import (
     SETTINGS_SCHEMA_VERSION,
     SettingsPatch,
@@ -73,10 +73,10 @@ def readiness() -> dict[str, str]:
 def get_global_config() -> dict[str, Any]:
     """Expose global system configurations to the frontend HUD on boot."""
     snapshot = get_settings_store().get_snapshot()
-    mode, profile, effort = resolve_assistant_selection(snapshot.assistant)
+    runtime, agent, effort = resolve_agent_selection(snapshot.ask_apex)
     return {
-        "default_profile": profile,
-        "ask_apex_enabled": snapshot.assistant.enabled,
+        "default_agent": agent,
+        "ask_apex_enabled": snapshot.ask_apex.enabled,
         "market_enabled": snapshot.features.market,
         "max_session_messages": config.MAX_SESSION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
@@ -84,7 +84,7 @@ def get_global_config() -> dict[str, Any]:
         "synthesis_strategy": (
             "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "cloud"
         ),
-        "synthesis_profile": (
+        "synthesis_agent": (
             None
             if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw")
             else "mus"
@@ -93,9 +93,9 @@ def get_global_config() -> dict[str, Any]:
         ),
         "briefing_default_mode": snapshot.briefing.default_mode,
         "voice_mode": snapshot.voice.mode,
-        "assistant_initial_selection": {
-            "mode": mode,
-            "profile": profile,
+        "agent_initial_selection": {
+            "runtime": runtime,
+            "agent": agent,
             "effort": effort,
         },
     }

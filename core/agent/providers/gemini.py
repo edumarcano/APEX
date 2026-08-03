@@ -37,7 +37,7 @@ def _messages_to_contents(messages: list[AgentMessage]) -> list[types.Content]:
             if parts:
                 contents.append(types.Content(role="user", parts=parts))
 
-        elif message.role == "model":
+        elif message.role == "agent":
             if message.content:
                 parts.append(types.Part.from_text(text=message.content))
             if message.tool_calls:
@@ -100,7 +100,7 @@ def _content_to_agent_message(content: types.Content) -> AgentMessage:
 
     combined_content = "".join(text_segments) if text_segments else None
     return AgentMessage(
-        role="model",
+        role="agent",
         content=combined_content,
         tool_calls=tool_calls or None,
     )

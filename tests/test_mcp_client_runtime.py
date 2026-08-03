@@ -23,7 +23,7 @@ from core.agent.capabilities import (
     clear_capability_registry_for_tests,
     get_capability_descriptor,
     invoke_capability,
-    list_assistant_capabilities,
+    list_agent_capabilities,
     unregister_capability,
     unregister_capabilities_by_origin,
 )
@@ -84,7 +84,7 @@ class CapabilityUnregisterTests(unittest.TestCase):
                 input_schema={"type": "object", "properties": {}},
                 origin="native",
                 risk="read",
-                expose_to_assistant=False,
+                expose_to_agent=False,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
             ),
@@ -106,7 +106,7 @@ class CapabilityUnregisterTests(unittest.TestCase):
                 input_schema={"type": "object", "properties": {}},
                 origin="mcp",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
             ),
@@ -125,7 +125,7 @@ class CapabilityUnregisterTests(unittest.TestCase):
 
         def _list_capabilities() -> None:
             started.set()
-            list_assistant_capabilities()
+            list_agent_capabilities()
             finished.set()
 
         with capabilities._REGISTRY._lock:
@@ -335,7 +335,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         manager = MCPClientManager(McpRuntimeConfig(enabled=False, servers={}))
         self._manager = manager
         await manager.start()
-        names = {cap.name for cap in list_assistant_capabilities()}
+        names = {cap.name for cap in list_agent_capabilities()}
         self.assertTrue(names.issuperset({
             "get_weather_forecast",
             "get_f1_driver_standings",
@@ -494,7 +494,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         assert descriptor is not None
         self.assertEqual(descriptor.origin, "mcp")
         self.assertEqual(descriptor.risk, "read")
-        self.assertTrue(descriptor.expose_to_assistant)
+        self.assertTrue(descriptor.expose_to_agent)
         self.assertFalse(descriptor.expose_to_mcp_server)
         self.assertFalse(descriptor.expose_to_client_display)
 

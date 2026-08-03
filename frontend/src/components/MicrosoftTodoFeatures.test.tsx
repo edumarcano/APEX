@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { AssistantToolCards } from './AssistantToolCards'
+import { CortexToolCards } from './CortexToolCards'
 import MicrosoftTodoSettingsSection from './MicrosoftTodoSettingsSection'
 
 describe('Microsoft To Do settings', () => {
@@ -23,7 +23,7 @@ describe('Microsoft To Do settings', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
     expect(connect).toHaveBeenCalledOnce()
-    expect(screen.getByText(/APEX reminders remain in the local SQLite ledger/i)).toBeInTheDocument()
+    expect(screen.getByText(/Apex reminders remain in the local SQLite ledger/i)).toBeInTheDocument()
   })
 
   it('renders only sanitized authorization instructions', () => {
@@ -83,7 +83,7 @@ describe('Microsoft To Do settings', () => {
 describe('Microsoft To Do assistant cards', () => {
   it('renders lists separately from local reminders', () => {
     render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[{
           name: 'list_microsoft_todo_lists',
           status: 'success',
@@ -93,13 +93,13 @@ describe('Microsoft To Do assistant cards', () => {
       />,
     )
     expect(screen.getByText('Personal')).toBeInTheDocument()
-    expect(screen.getByText(/Microsoft To Do · Read only/i)).toBeInTheDocument()
+    expect(screen.getByText(/Microsoft To Do Â· Read only/i)).toBeInTheDocument()
     expect(screen.queryByText('Active Reminders')).not.toBeInTheDocument()
   })
 
   it('renders due, high-importance, and completed task state', () => {
     render(
-      <AssistantToolCards
+      <CortexToolCards
         toolOutputs={[{
           name: 'list_microsoft_todo_tasks',
           status: 'success',

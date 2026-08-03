@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Literal, Optional, TypeAlias
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 LocalToolScope: TypeAlias = Literal[
@@ -14,7 +14,7 @@ LocalToolScope: TypeAlias = Literal[
     "todo",
 ]
 
-ProfileKey: TypeAlias = Literal[
+AgentKey: TypeAlias = Literal[
     "acinonyx",
     "panthera",
     "neofelis",
@@ -154,7 +154,7 @@ class ToolResult(BaseModel):
 
 
 class AgentMessage(BaseModel):
-    role: Literal["user", "model", "tool"] = Field(
+    role: Literal["user", "agent", "tool"] = Field(
         description="Message role in the chat history."
     )
     content: Optional[str] = Field(
@@ -177,16 +177,18 @@ class AgentMessage(BaseModel):
 
 
 class AgentQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     prompt: str = Field(description="The user's direct operations query.")
-    profile: ProfileKey = Field(
+    agent: AgentKey = Field(
         default="panthera",
-        description="The APEX federated profile key (cloud or local).",
+        description="The selected Apex Agent key (cloud or local).",
     )
     effort: ApexEffort | None = Field(
         default=None,
         description=(
             "Optional cloud effort override (light, focused, extended). "
-            "Rejected for local profiles."
+            "Rejected for local Agents."
         ),
     )
     session_id: Optional[str] = Field(
@@ -207,7 +209,7 @@ class AgentQueryRequest(BaseModel):
         default=None,
         description=(
             "Explicit local Ollama command bundle. Omit for tool-free local turns; "
-            "cloud profiles retain their normal automatic capability set."
+            "cloud Agents retain their normal automatic capability set."
         ),
     )
     snapshot_id: Optional[str] = Field(
@@ -231,8 +233,8 @@ class AgentQueryRequest(BaseModel):
 
 class AgentQueryResponse(BaseModel):
     answer: str = Field(description="The final synthesized response from the agent.")
-    profile_used: Dict[str, Any] = Field(
-        description="Display details of the configured profile used."
+    agent_used: Dict[str, Any] = Field(
+        description="Display details of the configured Agent used."
     )
     tool_trace: List[Dict[str, Any]] = Field(
         default_factory=list,
@@ -255,7 +257,7 @@ class AgentQueryResponse(BaseModel):
     )
     local_context_usage: LocalContextUsage | None = Field(
         default=None,
-        description="Local Ollama prompt-window usage; null for cloud profiles.",
+        description="Local Ollama prompt-window usage; null for cloud Agents.",
     )
     resolved_model: Optional[str] = Field(
         default=None,

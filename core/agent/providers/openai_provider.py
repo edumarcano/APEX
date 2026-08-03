@@ -15,7 +15,7 @@ OPENAI_INTERNAL_PROFILES: dict[str, ResponsesModelProfile] = {
     "openai_default": ResponsesModelProfile(
         provider="openai",
         display_name="OpenAI Default",
-        profile_version="0.1",
+        agent_version="0.1",
         api_model="gpt-5.6-luna",
         max_tool_turns=4,
         max_tool_calls=6,

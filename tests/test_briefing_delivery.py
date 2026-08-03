@@ -70,7 +70,7 @@ class BriefingDeliveryTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
                 "briefing": {"default_mode": "comet"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
@@ -169,7 +169,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             briefing="Panthera briefing.",
             insights=["One"],
             provider="openai",
-            profile="panthera",
+            agent="panthera",
             resolved_model="gpt-5.6-luna",
             fallback_steps=["panthera:openai_timeout", "mus:local_model_missing"],
             provider_ms=321.5,
@@ -251,7 +251,7 @@ class BriefingDeliveryTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 7)
+        self.assertEqual(payload["schema_version"], 8)
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
@@ -275,7 +275,7 @@ class BriefingDeliveryTests(unittest.TestCase):
                 briefing="Trigger briefing.",
                 insights=["Insight"],
                 provider="openai",
-                profile="panthera",
+                agent="panthera",
             ).model_dump(),
         ) as process, mock.patch("core.api.briefing.speaker.speak") as speak:
             response = self.client.post("/api/v1/trigger")

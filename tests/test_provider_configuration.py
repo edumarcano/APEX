@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.agent.profiles import PROFILE_SPECS, build_concrete_profile, resolve_effort
+from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
@@ -16,18 +16,18 @@ from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
 
 def _concrete_profile(key: str):
     _apex, native = resolve_effort(key, None)
-    return build_concrete_profile(key, native_effort=native)
+    return build_concrete_agent(key, native_effort=native)
 
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
-    def test_cloud_profiles_apply_quota_aware_loop_caps(self) -> None:
+    def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
         self.assertEqual(
-            {PROFILE_SPECS[key].profile_version for key in ("panthera", "neofelis")},
+            {AGENT_SPECS[key].agent_version for key in ("panthera", "neofelis")},
             {"2.0"},
         )
         self.assertEqual(
             {
-                key: (PROFILE_SPECS[key].max_tool_turns, PROFILE_SPECS[key].max_tool_calls)
+                key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
                 for key in ("panthera", "neofelis", "acinonyx")
             },
             {
@@ -37,7 +37,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
             },
         )
 
-    def test_local_profiles_retain_existing_loop_caps(self) -> None:
+    def test_local_agents_retain_existing_loop_caps(self) -> None:
         self.assertEqual(
             {
                 key: (profile.max_tool_turns, profile.max_tool_calls)
@@ -109,7 +109,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "message": {"role": "assistant", "content": "Local response"}
+            "message": {"role": "model", "content": "Local response"}
         }
         mock_session.post.return_value = mock_response
         mock_get_session.return_value = mock_session

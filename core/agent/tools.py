@@ -416,7 +416,7 @@ def register_native_capabilities() -> None:
     native_common = {
         "origin": "native",
         "risk": "read",
-        "expose_to_assistant": True,
+        "expose_to_agent": True,
         "expose_to_mcp_server": False,
         "expose_to_client_display": True,
         "timeout_seconds": _NATIVE_TIMEOUT_SECONDS,

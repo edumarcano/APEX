@@ -13,14 +13,14 @@ from core.agent.capabilities import (
     clear_capability_registry_for_tests,
     invoke_capability,
     is_client_display_enabled,
-    list_assistant_capabilities,
+    list_agent_capabilities,
     namespaced_capability_name,
     register_capability,
 )
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _descriptors_to_gemini_tools
-from core.agent.profiles import build_concrete_profile, resolve_effort
+from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.providers.ollama import _descriptor_to_openai_schema
 from core.agent.tools import register_native_capabilities
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
@@ -36,7 +36,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         register_native_capabilities()
 
     def test_native_capabilities_are_registered_with_read_risk(self) -> None:
-        capabilities = list_assistant_capabilities()
+        capabilities = list_agent_capabilities()
         names = {capability.name for capability in capabilities}
         self.assertEqual(
             names,
@@ -56,14 +56,14 @@ class CapabilityRegistryTests(unittest.TestCase):
         for capability in capabilities:
             self.assertEqual(capability.origin, "native")
             self.assertEqual(capability.risk, "read")
-            self.assertTrue(capability.expose_to_assistant)
+            self.assertTrue(capability.expose_to_agent)
             self.assertTrue(capability.expose_to_client_display)
             self.assertFalse(capability.expose_to_mcp_server)
 
     def test_calendar_capability_defaults_to_fourteen_days(self) -> None:
         calendar = next(
             capability
-            for capability in list_assistant_capabilities()
+            for capability in list_agent_capabilities()
             if capability.name == "get_upcoming_calendar_events"
         )
         days_schema = calendar.input_schema["properties"]["days"]
@@ -75,7 +75,7 @@ class CapabilityRegistryTests(unittest.TestCase):
     def test_gmail_capabilities_are_bounded_and_read_only(self) -> None:
         capabilities = {
             capability.name: capability
-            for capability in list_assistant_capabilities()
+            for capability in list_agent_capabilities()
         }
         search = capabilities["search_gmail"]
         message = capabilities["get_gmail_message"]
@@ -101,7 +101,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             input_schema={"type": "object", "properties": {}},
             origin="native",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
@@ -127,7 +127,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             namespaced_capability_name("github", "List-Issues")
 
     def test_gemini_and_ollama_schemas_are_equivalent(self) -> None:
-        capabilities = list_assistant_capabilities()
+        capabilities = list_agent_capabilities()
         weather = next(
             capability
             for capability in capabilities
@@ -207,7 +207,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 },
                 origin="native",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
             ),
@@ -235,7 +235,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                     input_schema={"type": "string"},
                     origin="native",
                     risk="read",
-                    expose_to_assistant=True,
+                    expose_to_agent=True,
                     expose_to_mcp_server=False,
                     expose_to_client_display=False,
                 ),
@@ -256,7 +256,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 },
                 origin="native",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
                 timeout_seconds=0.05,
@@ -286,7 +286,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 },
                 origin="native",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
             ),
@@ -316,7 +316,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 },
                 origin="native",
                 risk="read",
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=False,
             ),
@@ -340,7 +340,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 if self.calls == 1:
                     return ProviderTurnResult(
                         message=AgentMessage(
-                            role="model",
+                            role="agent",
                             tool_calls=[
                                 ToolCall(
                                     id="call-1",
@@ -351,13 +351,13 @@ class CapabilityRegistryTests(unittest.TestCase):
                         )
                     )
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Done.")
+                    message=AgentMessage(role="agent", content="Done.")
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hide this", profile="neofelis"),
+            AgentQueryRequest(prompt="Hide this", agent="neofelis"),
             Provider(),
-            build_concrete_profile(
+            build_concrete_agent(
                 "neofelis", native_effort=resolve_effort("neofelis", None)[1]
             ),
         )
@@ -375,7 +375,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             input_schema={"type": "object", "properties": {"value": {"type": "string"}}},
             origin="mcp",
             risk="read",
-            expose_to_assistant=True,
+            expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=False,
         )
@@ -419,7 +419,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 if self.calls == 1:
                     return ProviderTurnResult(
                         message=AgentMessage(
-                            role="model",
+                            role="agent",
                             tool_calls=[
                                 ToolCall(
                                     id="call-1",
@@ -431,13 +431,13 @@ class CapabilityRegistryTests(unittest.TestCase):
                     )
                 self.tool_result = messages[-1].tool_results[0].output
                 return ProviderTurnResult(
-                    message=AgentMessage(role="model", content="Recovered.")
+                    message=AgentMessage(role="agent", content="Recovered.")
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Call missing", profile="neofelis"),
+            AgentQueryRequest(prompt="Call missing", agent="neofelis"),
             Provider(),
-            build_concrete_profile(
+            build_concrete_agent(
                 "neofelis", native_effort=resolve_effort("neofelis", None)[1]
             ),
         )

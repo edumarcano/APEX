@@ -22,7 +22,7 @@ describe('StandbyActions', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Start APEX' }))
-    await user.click(screen.getByRole('button', { name: 'Start APEX with briefing' }))
+    await user.click(screen.getByRole('button', { name: 'Start Apex with briefing' }))
     expect(onStartApex).toHaveBeenCalledTimes(1)
     expect(onStartWithBriefing).toHaveBeenCalledTimes(1)
   })
@@ -135,13 +135,13 @@ describe('TelemetryCard refresh and module state', () => {
         title="Weather"
         icon={CloudSun}
         isCompact
-        compactValue="72°"
+        compactValue="72ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°"
         onRefresh={onRefresh}
-        statusMessage="Stale — connector timeout"
+        statusMessage="Stale ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â connector timeout"
       />,
     )
 
-    expect(screen.getByText('Stale — connector timeout')).toBeTruthy()
+    expect(screen.getByText('Stale ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â connector timeout')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Refresh Weather' }))
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })

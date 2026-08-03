@@ -2,7 +2,7 @@
 
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
-Today, it is a local-first personal intelligence HUD that brings weather, schedules, reminders, news, markets, system health, and AI-assisted analysis into one deliberate workspace. It turns those signals into an on-demand overview, a concise briefing, and a conversational assistant while keeping the local machine, not a hosted account, at the center of the system.
+Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Ask APEX while keeping the local machine, not a hosted account, at the center of the system.
 
 <p align="center">
   <img src="docs/assets/apex-hero.png" alt="APEX standby screen with Start APEX and Start with Briefing controls" width="900">
@@ -22,9 +22,9 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a deterministic Structured Digest. All routes receive the same sanitized, size-bounded facts; a provider failure ends in a useful model-free result instead of a blank screen.
 
-### Answers follow-up questions
+### Operates Apex Agents
 
-Ask APEX can query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local profiles share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
+Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
 
 ### Keeps runtime control visible
 

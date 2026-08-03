@@ -60,7 +60,7 @@ def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
                 }
             )
 
-        elif message.role == "model":
+        elif message.role == "agent":
             payload: dict[str, Any] = {
                 "role": "assistant",
                 "content": message.content if message.content is not None else "",
@@ -141,7 +141,7 @@ def _ollama_message_to_agent_message(message: dict[str, Any]) -> AgentMessage:
         )
 
     return AgentMessage(
-        role="model",
+        role="agent",
         content=content if content else None,
         tool_calls=tool_calls or None,
     )

@@ -41,7 +41,7 @@ class ApiCharacterizationBase(unittest.TestCase):
                     "market": True,
                 },
                 "modules": {"football": False, "f1": True},
-                "ask_apex": {"enabled": True, "default_cloud_profile": "comet"},
+                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",
@@ -63,11 +63,11 @@ class ApiCharacterizationBase(unittest.TestCase):
                 "core.telemetry.service.get_settings_store", return_value=self.store
             ),
             mock.patch(
-                "core.api.assistant.get_settings_store", return_value=self.store
+                "core.api.cortex.get_settings_store", return_value=self.store
             ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
             mock.patch("core.api.app.OLLAMA_ENABLED", False),
-            mock.patch("core.api.assistant.OLLAMA_ENABLED", False),
+            mock.patch("core.api.cortex.OLLAMA_ENABLED", False),
             mock.patch("core.database.DB_NAME", str(self.db_path)),
         ]
         for patcher in self._patches:
@@ -302,13 +302,13 @@ class ParserAndSanitizerTests(unittest.TestCase):
         from core.api.tts import clean_for_tts
 
         cleaned = clean_for_tts(
-            "# Header\n**bold** and *italic*\n- list item\n`code`\n予定 emoji 🙂"
+            "# Header\n**bold** and *italic*\n- list item\n`code`\nÃƒÂ¤Ã‚ÂºÃ‹â€ ÃƒÂ¥Ã‚Â®Ã…Â¡ emoji ÃƒÂ°Ã…Â¸Ã¢â€žÂ¢Ã¢â‚¬Å¡"
         )
         self.assertNotIn("#", cleaned)
         self.assertNotIn("**", cleaned)
         self.assertNotIn("`", cleaned)
-        self.assertNotIn("予定", cleaned)
-        self.assertNotIn("🙂", cleaned)
+        self.assertNotIn("ÃƒÂ¤Ã‚ÂºÃ‹â€ ÃƒÂ¥Ã‚Â®Ã…Â¡", cleaned)
+        self.assertNotIn("ÃƒÂ°Ã…Â¸Ã¢â€žÂ¢Ã¢â‚¬Å¡", cleaned)
         self.assertIn("bold", cleaned)
         self.assertIn("italic", cleaned)
         self.assertIn("list item", cleaned)

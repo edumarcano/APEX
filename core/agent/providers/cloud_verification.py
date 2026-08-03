@@ -1,4 +1,4 @@
-"""Sanitized, non-generative cloud profile verification and runtime health cache."""
+"""Sanitized, non-generative cloud Agent verification and runtime health cache."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Literal
 
 import requests
 
-from core.agent.profiles import PROFILE_SPECS
+from core.agent.catalog import AGENT_SPECS
 
 CloudStatus = Literal[
     "configured",
@@ -43,38 +43,38 @@ class CloudStatusRecord:
     source: StatusSource
 
 
-def cloud_status(profile_key: str) -> CloudStatusRecord:
+def cloud_status(agent_key: str) -> CloudStatusRecord:
     """Return the configured fallback or a non-expired sanitized status."""
     now = _now()
     with _LOCK:
-        cached = _CACHE.get(profile_key)
+        cached = _CACHE.get(agent_key)
         if cached is not None and cached.expires_at > now:
             return cached
         if cached is not None:
-            _CACHE.pop(profile_key, None)
-        if profile_key in _IN_FLIGHT:
+            _CACHE.pop(agent_key, None)
+        if agent_key in _IN_FLIGHT:
             return CloudStatusRecord("verifying", None, now, now + _TRANSIENT_TTL, "verification")
     return CloudStatusRecord("configured", None, now, now, "configuration")
 
 
-def verify_cloud_profile(profile_key: str) -> CloudStatusRecord:
+def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
     """Force a bounded model-metadata probe and cache its sanitized result."""
-    spec = PROFILE_SPECS[profile_key]
-    if spec.mode != "cloud" or spec.credential_env is None:
-        raise ValueError("Cloud verification requires a credential-backed cloud profile.")
+    spec = AGENT_SPECS[agent_key]
+    if spec.runtime != "cloud" or spec.credential_env is None:
+        raise ValueError("Cloud verification requires a credential-backed cloud Agent.")
     api_key = os.getenv(spec.credential_env)
     if not api_key:
         raise ValueError("Cloud verification requires configured credentials.")
 
     with _LOCK:
-        if profile_key in _IN_FLIGHT:
+        if agent_key in _IN_FLIGHT:
             raise RuntimeError("Cloud verification is already in progress.")
-        _IN_FLIGHT.add(profile_key)
+        _IN_FLIGHT.add(agent_key)
     try:
         status, reason = _probe_model(spec.provider, spec.api_model, api_key)
         record = _record(status, reason, "verification")
         with _LOCK:
-            previous = _CACHE.get(profile_key)
+            previous = _CACHE.get(agent_key)
             if (
                 status == "verified"
                 and previous is not None
@@ -84,34 +84,34 @@ def verify_cloud_profile(profile_key: str) -> CloudStatusRecord:
             ):
                 # Metadata access does not prove inference quota or billing health.
                 return previous
-            _CACHE[profile_key] = record
+            _CACHE[agent_key] = record
         return record
     finally:
         with _LOCK:
-            _IN_FLIGHT.discard(profile_key)
+            _IN_FLIGHT.discard(agent_key)
 
 
-def record_cloud_request_success(profile_key: str) -> None:
+def record_cloud_request_success(agent_key: str) -> None:
     """A completed inference is stronger evidence than a metadata probe."""
-    spec = PROFILE_SPECS.get(profile_key)
-    if spec is None or spec.mode != "cloud":
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or spec.runtime != "cloud":
         return
     record = _record("verified", None, "request")
     with _LOCK:
-        _CACHE[profile_key] = record
+        _CACHE[agent_key] = record
 
 
-def record_cloud_request_failure(profile_key: str, exc: BaseException) -> None:
+def record_cloud_request_failure(agent_key: str, exc: BaseException) -> None:
     """Remember only conservative provider failure categories, never raw content."""
-    spec = PROFILE_SPECS.get(profile_key)
-    if spec is None or spec.mode != "cloud":
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or spec.runtime != "cloud":
         return
     status, reason = classify_provider_failure(exc)
     if status is None:
         return
     record = _record(status, reason, "request")
     with _LOCK:
-        _CACHE[profile_key] = record
+        _CACHE[agent_key] = record
 
 
 def clear_cloud_status_cache() -> None:
@@ -134,7 +134,7 @@ def classify_provider_failure(exc: BaseException) -> tuple[CloudStatus | None, s
     if status_code == 401:
         return "unauthorized", "Provider rejected the configured credentials."
     if status_code == 403:
-        return "unauthorized", "Provider denied access to this profile."
+        return "unauthorized", "Provider denied access to this agent."
     if status_code == 404:
         return "model_unavailable", "Configured model is not available to this provider account."
     if "billing" in text or "payment" in text or "failed_precondition" in text:
@@ -161,7 +161,7 @@ def _probe_model(provider: str, model: str, api_key: str) -> tuple[CloudStatus, 
         url = f"https://api.x.ai/v1/models/{model}"
         headers = {"Authorization": f"Bearer {api_key}"}
     else:
-        return "provider_error", "Profile has no supported cloud verification probe."
+        return "provider_error", "Agent has no supported cloud verification probe."
 
     try:
         response = requests.get(url, headers=headers, timeout=5)
@@ -180,7 +180,7 @@ def _classify_http_failure(status_code: int, code: str | None) -> tuple[CloudSta
     if status_code == 401:
         return "unauthorized", "Provider rejected the configured credentials."
     if status_code == 403:
-        return "unauthorized", "Provider denied access to this profile."
+        return "unauthorized", "Provider denied access to this agent."
     if status_code == 404:
         return "model_unavailable", "Configured model is not available to this provider account."
     if "billing" in normalized or "payment" in normalized or "failed_precondition" in normalized:

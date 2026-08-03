@@ -1,10 +1,10 @@
 import type {
-  AssistantMode,
-  AssistantProfile,
-  AssistantInitialSelection,
+  AgentRuntime,
+  AgentKey,
+  AgentInitialSelection,
   CloudEffort,
-  CloudSettingsProfile,
-  LocalSettingsProfile,
+  CloudSettingsAgent,
+  LocalSettingsAgent,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
@@ -25,67 +25,67 @@ import type {
 } from '../types/settings'
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
-const VALID_CLOUD_SETTINGS_PROFILES: readonly CloudSettingsProfile[] = [
+const VALID_CLOUD_SETTINGS_AGENTS: readonly CloudSettingsAgent[] = [
   'panthera',
   'neofelis',
   'delphinus',
   'orcinus',
 ]
 
-const VALID_LOCAL_SETTINGS_PROFILES: readonly LocalSettingsProfile[] = ['sorex', 'mus']
+const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = ['sorex', 'mus']
 
-export function resolveInitialAssistantSelection(
+export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
-  selection: { profile: AssistantProfile; effort: CloudEffort | null } | undefined,
-  defaultProfile: AssistantProfile | undefined,
-): { profile: AssistantProfile; effort: CloudEffort | null } | null {
+  selection: { agent: AgentKey; effort: CloudEffort | null } | undefined,
+  defaultAgent: AgentKey | undefined,
+): { agent: AgentKey; effort: CloudEffort | null } | null {
   if (alreadyHydrated) return null
   if (selection) return selection
-  if (defaultProfile) return { profile: defaultProfile, effort: null }
+  if (defaultAgent) return { agent: defaultAgent, effort: null }
   return null
 }
 
 /**
- * Resolve an assistant selection from a settings response without allowing
+ * Resolve an Agent selection from a settings response without allowing
  * the DEV_MODE startup override to clobber an already-selected session
- * profile. DEV_MODE defaults to Acinonyx only during initial hydration;
+ * agent. DEV_MODE defaults to Acinonyx only during initial hydration;
  * subsequent settings responses preserve the active Cortex selection.
  */
-export function resolveAppliedAssistantSelection(
+export function resolveAppliedAgentSelection(
   response: SettingsResponse,
-  currentProfile: AssistantProfile,
+  currentAgent: AgentKey,
   selectionHydrated: boolean,
-): AssistantInitialSelection {
+): AgentInitialSelection {
   if (response.dev_mode_active && !selectionHydrated) {
     return {
-      mode: 'cloud',
-      profile: 'acinonyx',
-      effort: response.settings.assistant.cloud_effort,
+      runtime: 'cloud',
+      agent: 'acinonyx',
+      effort: response.settings.ask_apex.effort,
     }
   }
 
   if (response.dev_mode_active) {
     return {
-      mode: currentProfile === 'mus' || currentProfile === 'sorex' ? 'local' : 'cloud',
-      profile: currentProfile,
-      effort: currentProfile === 'mus' || currentProfile === 'sorex'
+      runtime: currentAgent === 'mus' || currentAgent === 'sorex' ? 'local' : 'cloud',
+      agent: currentAgent,
+      effort: currentAgent === 'mus' || currentAgent === 'sorex'
         ? null
-        : response.settings.assistant.cloud_effort,
+        : response.settings.ask_apex.effort,
     }
   }
 
   return {
-    mode: response.settings.assistant.mode,
-    profile: resolveAssistantProfile(response.settings.assistant),
+    runtime: response.settings.ask_apex.runtime,
+    agent: resolveAgentKey(response.settings.ask_apex),
     effort:
-      response.settings.assistant.mode === 'cloud'
-        ? response.settings.assistant.cloud_effort
+      response.settings.ask_apex.runtime === 'cloud'
+        ? response.settings.ask_apex.effort
         : null,
   }
 }
 
-const DEV_MODE_ASSISTANT_SETTINGS_KEYS = new Set([
-  'cloud_effort',
+const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
+  'effort',
   'neofelis_google_search_enabled',
   'neofelis_google_maps_enabled',
   'delphinus_x_search_enabled',
@@ -93,18 +93,18 @@ const DEV_MODE_ASSISTANT_SETTINGS_KEYS = new Set([
 ])
 
 /**
- * Keep session-only profile selection out of persisted DEV_MODE settings,
+ * Keep session-only agent selection out of persisted DEV_MODE settings,
  * while allowing effort and grounding preferences to remain configurable.
  */
-export function filterAssistantSettingsForDevMode(
-  assistant: Record<string, unknown>,
+export function filterAskApexSettingsForDevMode(
+  ask_apex: Record<string, unknown>,
 ): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(assistant).filter(([key]) => DEV_MODE_ASSISTANT_SETTINGS_KEYS.has(key)),
+    Object.entries(ask_apex).filter(([key]) => DEV_MODE_AGENT_SETTINGS_KEYS.has(key)),
   )
 }
 
-const VALID_ASSISTANT_MODES: readonly AssistantMode[] = ['cloud', 'local']
+const VALID_ASSISTANT_MODES: readonly AgentRuntime[] = ['cloud', 'local']
 
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
 
@@ -130,21 +130,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isCloudSettingsProfile(value: unknown): value is CloudSettingsProfile {
+function isCloudSettingsAgent(value: unknown): value is CloudSettingsAgent {
   return (
     typeof value === 'string' &&
-    (VALID_CLOUD_SETTINGS_PROFILES as readonly string[]).includes(value)
+    (VALID_CLOUD_SETTINGS_AGENTS as readonly string[]).includes(value)
   )
 }
 
-function isLocalSettingsProfile(value: unknown): value is LocalSettingsProfile {
+function isLocalSettingsAgent(value: unknown): value is LocalSettingsAgent {
   return (
     typeof value === 'string' &&
-    (VALID_LOCAL_SETTINGS_PROFILES as readonly string[]).includes(value)
+    (VALID_LOCAL_SETTINGS_AGENTS as readonly string[]).includes(value)
   )
 }
 
-function isAssistantMode(value: unknown): value is AssistantMode {
+function isAgentRuntime(value: unknown): value is AgentRuntime {
   return (
     typeof value === 'string' && (VALID_ASSISTANT_MODES as readonly string[]).includes(value)
   )
@@ -246,38 +246,38 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     !features ||
     !modules ||
     !mcp ||
-    !isRecord(value.assistant) ||
+    !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
   ) {
     return null
   }
 
-  if (typeof value.assistant.enabled !== 'boolean') {
+  if (typeof value.ask_apex.enabled !== 'boolean') {
     return null
   }
-  if (!isAssistantMode(value.assistant.mode)) {
+  if (!isAgentRuntime(value.ask_apex.runtime)) {
     return null
   }
-  if (!isCloudSettingsProfile(value.assistant.cloud_profile)) {
+  if (!isCloudSettingsAgent(value.ask_apex.cloud_agent)) {
     return null
   }
-  if (!isCloudEffort(value.assistant.cloud_effort)) {
+  if (!isCloudEffort(value.ask_apex.effort)) {
     return null
   }
-  if (!isLocalSettingsProfile(value.assistant.local_profile)) {
+  if (!isLocalSettingsAgent(value.ask_apex.local_agent)) {
     return null
   }
-  if (typeof value.assistant.neofelis_google_search_enabled !== 'boolean') {
+  if (typeof value.ask_apex.neofelis_google_search_enabled !== 'boolean') {
     return null
   }
-  if (typeof value.assistant.neofelis_google_maps_enabled !== 'boolean') {
+  if (typeof value.ask_apex.neofelis_google_maps_enabled !== 'boolean') {
     return null
   }
-  if (typeof value.assistant.delphinus_x_search_enabled !== 'boolean') {
+  if (typeof value.ask_apex.delphinus_x_search_enabled !== 'boolean') {
     return null
   }
-  if (typeof value.assistant.orcinus_x_search_enabled !== 'boolean') {
+  if (typeof value.ask_apex.orcinus_x_search_enabled !== 'boolean') {
     return null
   }
   if (!isBriefingMode(value.briefing.default_mode)) {
@@ -294,16 +294,16 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   return {
     features,
     modules,
-    assistant: {
-      enabled: value.assistant.enabled,
-      mode: value.assistant.mode,
-      cloud_profile: value.assistant.cloud_profile,
-      cloud_effort: value.assistant.cloud_effort,
-      local_profile: value.assistant.local_profile,
-      neofelis_google_search_enabled: value.assistant.neofelis_google_search_enabled,
-      neofelis_google_maps_enabled: value.assistant.neofelis_google_maps_enabled,
-      delphinus_x_search_enabled: value.assistant.delphinus_x_search_enabled,
-      orcinus_x_search_enabled: value.assistant.orcinus_x_search_enabled,
+    ask_apex: {
+      enabled: value.ask_apex.enabled,
+      runtime: value.ask_apex.runtime,
+      cloud_agent: value.ask_apex.cloud_agent,
+      effort: value.ask_apex.effort,
+      local_agent: value.ask_apex.local_agent,
+      neofelis_google_search_enabled: value.ask_apex.neofelis_google_search_enabled,
+      neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
+      delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
+      orcinus_x_search_enabled: value.ask_apex.orcinus_x_search_enabled,
     },
     briefing: {
       default_mode: value.briefing.default_mode,
@@ -317,15 +317,15 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   }
 }
 
-export function resolveAssistantProfile(settings: RuntimeSettings['assistant']): AssistantProfile {
-  return settings.mode === 'local' ? settings.local_profile : settings.cloud_profile
+export function resolveAgentKey(settings: RuntimeSettings['ask_apex']): AgentKey {
+  return settings.runtime === 'local' ? settings.local_agent : settings.cloud_agent
 }
 
 export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings {
   return {
     features: { ...settings.features },
     modules: { ...settings.modules },
-    assistant: { ...settings.assistant },
+    ask_apex: { ...settings.ask_apex },
     briefing: { ...settings.briefing },
     voice: { ...settings.voice },
     mcp: {
@@ -412,9 +412,9 @@ export function diffSettingsPatch(
     patch.modules = modules
   }
 
-  const assistant = diffSection(baseline.assistant, draft.assistant)
-  if (assistant) {
-    patch.assistant = assistant
+  const askApex = diffSection(baseline.ask_apex, draft.ask_apex)
+  if (askApex) {
+    patch.ask_apex = askApex
   }
 
   const briefing = diffSection(baseline.briefing, draft.briefing)
@@ -453,7 +453,7 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
   return (
     patch.features === undefined &&
     patch.modules === undefined &&
-    patch.assistant === undefined &&
+    patch.ask_apex === undefined &&
     patch.briefing === undefined &&
     patch.voice === undefined &&
     patch.mcp === undefined
@@ -468,7 +468,7 @@ export function buildSettingsTimingRuntime(input: {
   status: SystemState
   pipelineStep: number | null
   isSpeaking: boolean
-  isAssistantQuerying: boolean
+  isCortexQuerying: boolean
 }): SettingsTimingRuntime {
   const step = input.pipelineStep
   const briefingActive =
@@ -478,7 +478,7 @@ export function buildSettingsTimingRuntime(input: {
     briefingActive,
     pipelineStep: step,
     isSpeaking: input.isSpeaking,
-    isAssistantQuerying: input.isAssistantQuerying,
+    isCortexQuerying: input.isCortexQuerying,
   }
 }
 
@@ -494,8 +494,8 @@ export function resolveEffectiveTiming(
     return 'Active'
   }
 
-  if (group === 'assistant') {
-    return runtime.isAssistantQuerying ? 'Applies next response' : 'Active'
+  if (group === 'ask_apex') {
+    return runtime.isCortexQuerying ? 'Applies next response' : 'Active'
   }
 
   if (group === 'briefing') {

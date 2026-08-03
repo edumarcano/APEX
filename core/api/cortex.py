@@ -1,4 +1,4 @@
-"""Assistant profile status, local unload, and agent query orchestration."""
+"""Cortex Engine status, local runtime, and Agent query orchestration."""
 
 from __future__ import annotations
 
@@ -15,32 +15,32 @@ from core.agent.local_commands import (
     resolve_local_command,
 )
 from core.agent.loop import build_agent_failure_details, run_agent_loop
-from core.agent.capabilities import CapabilityDescriptor, list_assistant_capabilities
-from core.agent.profiles import (
-    PROFILE_SPECS,
+from core.agent.capabilities import CapabilityDescriptor, list_agent_capabilities
+from core.agent.catalog import (
+    AGENT_SPECS,
     AgentModelProfile,
-    build_concrete_profile,
-    build_profile_used_metadata,
-    compose_profile_system_instruction,
+    build_concrete_agent,
+    build_agent_used_metadata,
+    compose_agent_system_instruction,
     credential_missing_error,
     credential_missing_message,
-    is_acinonyx_sandbox,
-    is_profile_visible,
-    profile_has_credentials,
+    is_acinonyx_agent,
+    is_agent_visible,
+    agent_has_credentials,
     resolve_effort,
-    runtime_profile_order,
+    runtime_agent_order,
 )
 from core.agent.sandbox_context import get_masked_briefing
 from core.agent.tool_policies import (
-    filter_profile_capabilities,
-    hosted_tools_for_profile,
+    filter_agent_capabilities,
+    hosted_tools_for_agent,
 )
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
     cloud_status,
     record_cloud_request_failure,
     record_cloud_request_success,
-    verify_cloud_profile,
+    verify_cloud_agent,
 )
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
@@ -61,7 +61,7 @@ from core.agent.providers.ollama_lifecycle import (
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.providers.xai_provider import XAIProvider
-from core.agent.pricing import PRICING_VERSION, profile_pricing
+from core.agent.pricing import PRICING_VERSION, agent_pricing
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -70,14 +70,14 @@ from core.agent.types import (
 )
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
-    AgentProfileStatus,
-    CloudProfileVerificationResponse,
+    AgentStatus,
+    CloudAgentVerificationResponse,
     LocalLoadResponse,
     LocalLoadedModelStatus,
     LocalUnloadResponse,
-    ProfilePricingMetadata,
-    ProfileAvailabilityStatus,
-    ProfileStatusSource,
+    AgentPricingMetadata,
+    AgentAvailabilityStatus,
+    AgentStatusSource,
 )
 from core.config import DEMO_MODE, OLLAMA_ENABLED, OLLAMA_MANUAL_UNLOAD_ENABLED, is_dev_mode
 from core.settings import get_settings_store
@@ -95,7 +95,7 @@ _LOCAL_TOOL_FREE_INSTRUCTION = (
     "only and do not claim to have queried live data."
 )
 
-_PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
+_PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
     "disabled": "Ollama local inference is disabled in system settings",
     "ollama_unreachable": "Ollama daemon is unreachable",
@@ -105,15 +105,15 @@ _PROFILE_STATUS_REASONS: dict[ProfileAvailabilityStatus, str] = {
 }
 
 
-def _profile_pricing_metadata(profile_key: str) -> ProfilePricingMetadata:
-    spec = PROFILE_SPECS[profile_key]
-    pricing = profile_pricing(
-        profile_key,
+def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
+    spec = AGENT_SPECS[agent_key]
+    pricing = agent_pricing(
+        agent_key,
         model=spec.api_model,
         provider=spec.provider,
     )
     rates = pricing.rates
-    return ProfilePricingMetadata(
+    return AgentPricingMetadata(
         pricing_version=PRICING_VERSION,
         billing_basis=pricing.billing_basis,  # type: ignore[arg-type]
         input_per_million=rates.input_per_million,
@@ -126,15 +126,15 @@ def _profile_pricing_metadata(profile_key: str) -> ProfilePricingMetadata:
     )
 
 
-def _resolve_local_profile_status(
+def _resolve_local_agent_status(
     profile: OllamaModelProfile,
     *,
     is_active: bool,
     ollama_reachable: bool,
     installed_tags: list[str],
     vitals: SystemVitals | None,
-) -> tuple[ProfileAvailabilityStatus, str | None]:
-    """Evaluate a local Ollama profile using cached snapshot signals."""
+) -> tuple[AgentAvailabilityStatus, str | None]:
+    """Evaluate a local Ollama model configuration using cached snapshot signals."""
     if not OLLAMA_ENABLED:
         return "disabled", _PROFILE_STATUS_REASONS["disabled"]
 
@@ -156,14 +156,14 @@ def _resolve_local_profile_status(
     return "available", None
 
 
-def _resolve_cloud_profile_status(
-    profile_key: str,
-) -> tuple[ProfileAvailabilityStatus, str | None, ProfileStatusSource, datetime | None]:
+def _resolve_cloud_agent_status(
+    agent_key: str,
+) -> tuple[AgentAvailabilityStatus, str | None, AgentStatusSource, datetime | None]:
     """Return configured or cached cloud verification state without probing."""
-    if profile_has_credentials(profile_key):
-        result = cloud_status(profile_key)
+    if agent_has_credentials(agent_key):
+        result = cloud_status(agent_key)
         return result.status, result.reason, result.source, result.checked_at
-    spec = PROFILE_SPECS[profile_key]
+    spec = AGENT_SPECS[agent_key]
     env_key = spec.credential_env or "API_KEY"
     return (
         "disabled",
@@ -173,13 +173,13 @@ def _resolve_cloud_profile_status(
     )
 
 
-def build_agent_profile_statuses() -> list[AgentProfileStatus]:
-    """Build the full profile availability matrix for the HUD."""
+def build_agent_statuses() -> list[AgentStatus]:
+    """Build the full Agent availability matrix for the HUD."""
     tracked_active_model = get_active_loaded_model()
     loading_model = get_loading_model()
     idle_remaining = get_idle_unload_remaining_seconds()
     dev_mode = is_dev_mode()
-    assistant_settings = get_settings_store().get_snapshot().assistant
+    assistant_settings = get_settings_store().get_snapshot().ask_apex
 
     ollama_reachable = False
     installed_tags: list[str] = []
@@ -192,16 +192,16 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
         loaded_models = snapshot["loaded_models"]
         vitals = snapshot["vitals"]
 
-    profiles: list[AgentProfileStatus] = []
+    agents: list[AgentStatus] = []
 
-    for sort_order, key in enumerate(runtime_profile_order(dev_mode=dev_mode)):
-        spec = PROFILE_SPECS[key]
+    for sort_order, key in enumerate(runtime_agent_order(dev_mode=dev_mode)):
+        spec = AGENT_SPECS[key]
         effort_options = (
             ["light", "focused", "extended"] if spec.supports_effort else None
         )
 
         if spec.provider == "ollama":
-            profile = build_concrete_profile(key, native_effort=None)
+            profile = build_concrete_agent(key, native_effort=None)
             assert isinstance(profile, OllamaModelProfile)
             loaded_model = next(
                 (
@@ -215,34 +215,34 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             is_tracked_active = tracked_active_model == profile.api_model
             is_active = loaded_model is not None
             is_loading = loading_model == profile.api_model
-            profile_status, reason = _resolve_local_profile_status(
+            agent_status, reason = _resolve_local_agent_status(
                 profile,
                 is_active=is_active,
                 ollama_reachable=ollama_reachable,
                 installed_tags=installed_tags,
                 vitals=vitals,
             )
-            if profile_status == "available" and is_local_execution_active():
-                profile_status, reason = "busy", _BUSY_REASON
-            profiles.append(
-                AgentProfileStatus(
+            if agent_status == "available" and is_local_execution_active():
+                agent_status, reason = "busy", _BUSY_REASON
+            agents.append(
+                AgentStatus(
                     key=key,
                     display_name=spec.display_name,
                     description=spec.description,
                     provider="ollama",
-                    version=spec.profile_version,
+                    version=spec.agent_version,
                     configured_model=spec.api_model,
                     sort_order=sort_order,
                     capabilities=list(spec.capability_tags),
                     native_tools={},
-                    mode=spec.mode,
+                    runtime=spec.runtime,
                     tier=spec.tier,
                     stability=spec.stability,
                     effort_options=effort_options,
                     default_effort=spec.default_effort,
-                    status=profile_status,
+                    status=agent_status,
                     status_source="runtime",
-                    pricing=_profile_pricing_metadata(key),
+                    pricing=_agent_pricing_metadata(key),
                     active=is_active,
                     loading=is_loading,
                     reason=reason,
@@ -258,8 +258,8 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             )
             continue
 
-        profile_status, cloud_reason, status_source, checked_at = _resolve_cloud_profile_status(key)
-        hosted_tools = hosted_tools_for_profile(
+        agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(key)
+        hosted_tools = hosted_tools_for_agent(
             key,
             neofelis_google_search_enabled=(
                 assistant_settings.neofelis_google_search_enabled
@@ -279,13 +279,13 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
             "delphinus": ("x_search",),
             "orcinus": ("x_search",),
         }.get(key, ())
-        profiles.append(
-            AgentProfileStatus(
+        agents.append(
+            AgentStatus(
                 key=key,
                 display_name=spec.display_name,
                 description=spec.description,
                 provider=spec.provider,
-                version=spec.profile_version,
+                version=spec.agent_version,
                 configured_model=spec.api_model,
                 sort_order=sort_order,
                 capabilities=list(spec.capability_tags),
@@ -293,49 +293,49 @@ def build_agent_profile_statuses() -> list[AgentProfileStatus]:
                     tool_name: tool_name in hosted_tools
                     for tool_name in known_native_tools
                 },
-                mode=spec.mode,
+                runtime=spec.runtime,
                 tier=spec.tier,
                 stability=spec.stability,
                 effort_options=effort_options,
                 default_effort=spec.default_effort,
-                status=profile_status,
+                status=agent_status,
                 status_source=status_source,
                 status_checked_at=checked_at,
-                pricing=_profile_pricing_metadata(key),
+                pricing=_agent_pricing_metadata(key),
                 active=False,
                 loading=False,
                 reason=cloud_reason,
             )
         )
 
-    return profiles
+    return agents
 
 
-def verify_cloud_profile_endpoint(profile_key: str) -> CloudProfileVerificationResponse:
-    """Force one non-generative model-access check for a cloud profile."""
+def verify_cloud_agent_endpoint(agent_key: str) -> CloudAgentVerificationResponse:
+    """Force one non-generative model-access check for a cloud Agent."""
     if DEMO_MODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cloud verification is unavailable in demo mode.",
         )
-    spec = PROFILE_SPECS.get(profile_key)
-    if spec is None or not is_profile_visible(profile_key):
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or not is_agent_visible(agent_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Requested profile is not available.",
+            detail="Requested Agent is not available.",
         )
-    if spec.mode != "cloud":
+    if spec.runtime != "cloud":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only cloud profiles support provider verification.",
+            detail="Only cloud Agents support provider verification.",
         )
-    if not profile_has_credentials(profile_key):
+    if not agent_has_credentials(agent_key):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Configure this profile's provider credentials before verification.",
+            detail="Configure this Agent's provider credentials before verification.",
         )
     try:
-        result = verify_cloud_profile(profile_key)
+        result = verify_cloud_agent(agent_key)
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -344,10 +344,10 @@ def verify_cloud_profile_endpoint(profile_key: str) -> CloudProfileVerificationR
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cloud verification cannot run for this profile.",
+            detail="Cloud verification cannot run for this Agent.",
         ) from exc
-    return CloudProfileVerificationResponse(
-        profile=profile_key,
+    return CloudAgentVerificationResponse(
+        agent=agent_key,
         status=result.status,
         reason=result.reason,
         checked_at=result.checked_at,
@@ -396,8 +396,8 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     return LocalUnloadResponse()
 
 
-def load_local_model_endpoint(profile_key: str) -> LocalLoadResponse:
-    """Pre-warm one configured local profile and verify Ollama residency."""
+def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
+    """Pre-warm one configured local Agent and verify Ollama residency."""
     if DEMO_MODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -410,14 +410,14 @@ def load_local_model_endpoint(profile_key: str) -> LocalLoadResponse:
             detail="Local Ollama inference is disabled in system settings.",
         )
 
-    spec = PROFILE_SPECS.get(profile_key)
+    spec = AGENT_SPECS.get(agent_key)
     if spec is None or spec.provider != "ollama":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only configured local profiles can be pre-warmed.",
+            detail="Only configured local Agents can be pre-warmed.",
         )
 
-    profile = build_concrete_profile(profile_key, native_effort=None)
+    profile = build_concrete_agent(agent_key, native_effort=None)
     assert isinstance(profile, OllamaModelProfile)
 
     if not try_begin_local_execution():
@@ -438,7 +438,7 @@ def load_local_model_endpoint(profile_key: str) -> LocalLoadResponse:
             if not gate_open and gate_reason is not None:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Local profile blocked: {_PROFILE_STATUS_REASONS[gate_reason]}.",
+                    detail=f"Local Agent blocked: {_PROFILE_STATUS_REASONS[gate_reason]}.",
                 )
 
         if not switch_local_model(profile) or not is_local_model_resident(
@@ -454,10 +454,10 @@ def load_local_model_endpoint(profile_key: str) -> LocalLoadResponse:
     finally:
         end_local_execution()
 
-    # Force a post-transition snapshot so the next profile response reflects
+    # Force a post-transition snapshot so the next Agent response reflects
     # the daemon rather than a prior polling cache.
     get_status_snapshot(force_refresh=True)
-    return LocalLoadResponse(profile=profile_key)
+    return LocalLoadResponse(agent=agent_key)
 
 
 def _trim_agent_history(
@@ -480,7 +480,7 @@ def _trim_agent_history(
 
 
 def _build_hud_context(
-    payload: AgentQueryRequest, *, profile_key: str = "panthera"
+    payload: AgentQueryRequest, *, agent_key: str = "panthera"
 ) -> str:
     """
     Build optional HUD context from explicit identifiers only.
@@ -490,7 +490,7 @@ def _build_hud_context(
     """
     sections: list[str] = []
 
-    if profile_key == "acinonyx":
+    if agent_key == "acinonyx":
         if payload.snapshot_id is None:
             return ""
         masked = get_masked_briefing(payload.snapshot_id)
@@ -507,7 +507,7 @@ def _build_hud_context(
             f"- Active Summary Insights: {insight_text if insight_text else 'None'}"
         )
 
-    if profile_key != "acinonyx" and payload.briefing_id is not None:
+    if agent_key != "acinonyx" and payload.briefing_id is not None:
         record = database.fetch_briefing_by_id(payload.briefing_id)
         if record is not None:
             insights_list = record["digest"].get("insights", [])
@@ -525,7 +525,7 @@ def _build_hud_context(
                 f"{insight_text if insight_text else 'None'}"
             )
 
-    if profile_key != "acinonyx" and payload.snapshot_id is not None:
+    if agent_key != "acinonyx" and payload.snapshot_id is not None:
         from core.telemetry.service import get_telemetry_service
 
         snapshot = get_telemetry_service().latest()
@@ -558,8 +558,8 @@ def _build_hud_context(
     )
 
 
-def _create_provider(profile_key: str, api_key: str):
-    spec = PROFILE_SPECS[profile_key]
+def _create_provider(agent_key: str, api_key: str):
+    spec = AGENT_SPECS[agent_key]
     if spec.provider == "gemini":
         return GeminiProvider(api_key=api_key)
     if spec.provider == "openai":
@@ -573,7 +573,7 @@ def _execute_agent_turn(
     payload: AgentQueryRequest,
     profile: AgentModelProfile,
     *,
-    profile_key: str,
+    agent_key: str,
     api_key: str | None,
     resolved_apex_effort,
     resolved_native_effort,
@@ -587,7 +587,7 @@ def _execute_agent_turn(
         hud_context = (
             ""
             if disable_hud_context
-            else _build_hud_context(payload, profile_key=profile_key)
+            else _build_hud_context(payload, agent_key=agent_key)
         )
 
         if isinstance(profile, OllamaModelProfile):
@@ -603,12 +603,12 @@ def _execute_agent_turn(
                     "results from those tools for live data."
                 )
         else:
-            provider = _create_provider(profile_key, api_key or "")
+            provider = _create_provider(agent_key, api_key or "")
             base_prompt = config.AGENT_SYSTEM_PROMPT
             scope_instruction = ""
 
         local_system_instruction = (
-            compose_profile_system_instruction(profile_key, base_prompt)
+            compose_agent_system_instruction(agent_key, base_prompt)
             + scope_instruction
             + hud_context
         )
@@ -621,12 +621,12 @@ def _execute_agent_turn(
             resolved_local_command=resolved_local_command,
             disable_cloud_tools=disable_tools,
             cloud_tools=cloud_tools,
-            profile_key=profile_key,
+            agent_key=agent_key,
         )
         if not isinstance(profile, OllamaModelProfile):
-            record_cloud_request_success(profile_key)
-        response.profile_used = build_profile_used_metadata(
-            profile_key,
+            record_cloud_request_success(agent_key)
+        response.agent_used = build_agent_used_metadata(
+            agent_key,
             configured_model=profile.api_model,
             resolved_model=response.resolved_model,
             requested_effort=payload.effort,
@@ -636,16 +636,16 @@ def _execute_agent_turn(
         return response
     except Exception as exc:
         if not isinstance(profile, OllamaModelProfile):
-            record_cloud_request_failure(profile_key, exc)
+            record_cloud_request_failure(agent_key, exc)
         _LOGGER.exception(
-            "Agent turn failed for profile %s",
-            profile_key,
+            "Agent turn failed for model configuration %s",
+            agent_key,
         )
         answer, error_detail = build_agent_failure_details(profile, exc)
         return AgentQueryResponse(
             answer=answer,
-            profile_used=build_profile_used_metadata(
-                profile_key,
+            agent_used=build_agent_used_metadata(
+                agent_key,
                 configured_model=profile.api_model,
                 resolved_model=None,
                 requested_effort=payload.effort,
@@ -668,58 +668,58 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     switch (503 on load failure). Already-loaded target models bypass the
     resource gate because their memory footprint is already present.
     """
-    if not get_settings_store().get_snapshot().assistant.enabled:
+    if not get_settings_store().get_snapshot().ask_apex.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="APEX is currently disabled in system settings.",
         )
 
-    profile_key = payload.profile
-    if profile_key not in PROFILE_SPECS:
+    agent_key = payload.agent
+    if agent_key not in AGENT_SPECS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown agent profile: {profile_key!r}",
+            detail=f"Unknown Agent: {agent_key!r}",
         )
 
-    if not is_profile_visible(profile_key):
+    if not is_agent_visible(agent_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent profile {profile_key!r} is not available.",
+            detail=f"Agent {agent_key!r} is not available.",
         )
 
     if DEMO_MODE:
         return run_demo_agent_query(payload)
 
-    spec = PROFILE_SPECS[profile_key]
+    spec = AGENT_SPECS[agent_key]
     if spec.provider == "ollama" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Effort cannot be set for local profiles.",
+            detail="Effort cannot be set for local Agents.",
         )
 
     if spec.provider != "ollama" and payload.tool_scope is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Command scopes are available only for local profiles.",
+            detail="Command scopes are available only for local Agents.",
         )
 
     resolved_apex_effort, resolved_native_effort = resolve_effort(
-        profile_key, payload.effort
+        agent_key, payload.effort
     )
     settings = get_settings_store().get_snapshot()
-    profile = build_concrete_profile(
-        profile_key,
+    profile = build_concrete_agent(
+        agent_key,
         native_effort=resolved_native_effort,
         neofelis_google_search_enabled=(
-            settings.assistant.neofelis_google_search_enabled
+            settings.ask_apex.neofelis_google_search_enabled
         ),
         neofelis_google_maps_enabled=(
-            settings.assistant.neofelis_google_maps_enabled
+            settings.ask_apex.neofelis_google_maps_enabled
         ),
-        delphinus_x_search_enabled=settings.assistant.delphinus_x_search_enabled,
-        orcinus_x_search_enabled=settings.assistant.orcinus_x_search_enabled,
+        delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
+        orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
     )
-    acinonyx_sandbox = is_acinonyx_sandbox(profile_key)
+    acinonyx_sandbox = is_acinonyx_agent(agent_key)
 
     resolved_local_command: ResolvedLocalCommand | None = None
     if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
@@ -733,11 +733,11 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 ),
             )
 
-    if spec.credential_env and not profile_has_credentials(profile_key):
+    if spec.credential_env and not agent_has_credentials(agent_key):
         return AgentQueryResponse(
-            answer=credential_missing_message(profile_key),
-            profile_used=build_profile_used_metadata(
-                profile_key,
+            answer=credential_missing_message(agent_key),
+            agent_used=build_agent_used_metadata(
+                agent_key,
                 configured_model=profile.api_model,
                 resolved_model=None,
                 requested_effort=payload.effort,
@@ -745,7 +745,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 resolved_native_effort=resolved_native_effort,
             ),
             session_id=payload.session_id,
-            error=credential_missing_error(profile_key),
+            error=credential_missing_error(agent_key),
         )
 
     payload.history = _trim_agent_history(
@@ -773,8 +773,8 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     elif payload.history_partition != "production":
         payload = payload.model_copy(update={"history": []})
 
-    cloud_tools = filter_profile_capabilities(
-        profile_key, list_assistant_capabilities()
+    cloud_tools = filter_agent_capabilities(
+        agent_key, list_agent_capabilities()
     )
 
     if isinstance(profile, OllamaModelProfile):
@@ -803,7 +803,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                     raise HTTPException(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         detail=(
-                            f"Local profile blocked: "
+                            f"Local Agent blocked: "
                             f"{_PROFILE_STATUS_REASONS[gate_reason]}."
                         ),
                     )
@@ -820,7 +820,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             return _execute_agent_turn(
                 payload,
                 profile,
-                profile_key=profile_key,
+                agent_key=agent_key,
                 api_key=None,
                 resolved_apex_effort=resolved_apex_effort,
                 resolved_native_effort=resolved_native_effort,
@@ -841,7 +841,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     return _execute_agent_turn(
         payload,
         profile,
-        profile_key=profile_key,
+        agent_key=agent_key,
         api_key=api_key,
         resolved_apex_effort=resolved_apex_effort,
         resolved_native_effort=resolved_native_effort,

@@ -96,15 +96,15 @@ describe('useSettingsEditor', () => {
     act(() => {
       result.current.setDraft((previous) => ({
         ...previous,
-        assistant: { ...previous.assistant, enabled: false },
+        ask_apex: { ...previous.ask_apex, enabled: false },
       }))
     })
     await act(async () => {
       expect(await result.current.save()).toBe(false)
     })
 
-    expect(result.current.draft?.assistant.enabled).toBe(false)
-    expect(result.current.baseline?.assistant.enabled).toBe(true)
+    expect(result.current.draft?.ask_apex.enabled).toBe(false)
+    expect(result.current.baseline?.ask_apex.enabled).toBe(true)
     expect(result.current.isDirty).toBe(true)
     expect(result.current.saveError).toBe('Unable to persist settings.')
   })

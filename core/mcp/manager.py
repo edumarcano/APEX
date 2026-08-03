@@ -524,7 +524,7 @@ class MCPClientManager:
                 input_schema=input_schema,
                 origin="mcp",
                 risk=risk,
-                expose_to_assistant=True,
+                expose_to_agent=True,
                 expose_to_mcp_server=False,
                 expose_to_client_display=config.expose_to_client_display,
                 timeout_seconds=config.timeout_seconds,

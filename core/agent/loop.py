@@ -8,7 +8,7 @@ from core.agent.capabilities import (
     CapabilityErrorCategory,
     invoke_capability,
     is_client_display_enabled,
-    list_assistant_capabilities,
+    list_agent_capabilities,
 )
 from core.agent.local_commands import ResolvedLocalCommand, resolve_local_command
 from core.agent.pricing import estimate_inference_cost
@@ -94,7 +94,7 @@ def run_agent_loop(
     resolved_local_command: ResolvedLocalCommand | None = None,
     disable_cloud_tools: bool = False,
     cloud_tools: list[CapabilityDescriptor] | None = None,
-    profile_key: str | None = None,
+    agent_key: str | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -119,7 +119,7 @@ def run_agent_loop(
     resolved_cloud_tools = [] if is_local else (
         list(cloud_tools)
         if cloud_tools is not None
-        else list_assistant_capabilities()
+        else list_agent_capabilities()
     )
     allowed_cloud_tools = (
         set()
@@ -165,11 +165,11 @@ def run_agent_loop(
             usage=aggregated_usage,
             hosted_tool_events=provider_tool_events,
             provider=inference_provider,
-            profile_key=profile_key,
+            agent_key=agent_key,
         )
         return AgentQueryResponse(
             answer=answer,
-            profile_used=profile.model_dump(),
+            agent_used=profile.model_dump(),
             tool_trace=tool_trace,
             tool_outputs=tool_outputs,
             session_id=request.session_id,
@@ -287,7 +287,7 @@ def run_agent_loop(
                     if not is_local and call.name not in allowed_cloud_tools:
                         raise CapabilityError(
                             CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the selected profile policy.",
+                            "Tool is outside the selected Agent policy.",
                         )
                     output = tools_dispatcher(call.name, call.arguments)
                 except CapabilityError as exc:
@@ -359,7 +359,7 @@ def run_agent_loop(
         )
     except Exception as exc:
         _LOGGER.exception(
-            "Bounded agent loop failed for profile %s",
+            "Bounded Agent loop failed for model configuration %s",
             profile.api_model,
         )
         answer, error_detail = build_agent_failure_details(profile, exc)

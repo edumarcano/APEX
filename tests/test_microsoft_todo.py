@@ -291,7 +291,7 @@ class MicrosoftTodoCapabilityTests(unittest.TestCase):
             descriptor = get_capability_descriptor(name)
             self.assertIsNotNone(descriptor)
             self.assertEqual(descriptor.risk, "read")
-            self.assertTrue(descriptor.expose_to_assistant)
+            self.assertTrue(descriptor.expose_to_agent)
             self.assertFalse(descriptor.expose_to_mcp_server)
 
     def test_tools_delegate_with_clamped_reads(self) -> None:

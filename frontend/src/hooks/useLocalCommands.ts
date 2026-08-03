@@ -72,7 +72,7 @@ export function useLocalCommands(enabled: boolean): UseLocalCommandsResult {
   const refreshCommands = useCallback(async (): Promise<void> => {
     const requestId = ++requestSequence.current
     try {
-      const response = await fetch(API_ENDPOINTS.agentCommands)
+      const response = await fetch(API_ENDPOINTS.cortexToolScopes)
       const parsed = response.ok
         ? parseLocalCommandStatuses(await response.json())
         : []

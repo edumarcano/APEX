@@ -22,13 +22,12 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | GET | `/api/v1/reminders` | Active reminders |
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
-| GET | `/api/v1/agent/commands` | Local assistant command scopes |
-| GET | `/api/v1/agent/profiles` | Backend-owned profile catalog and availability |
-| POST | `/api/v1/agent/profiles/{profile}/verify` | Explicit non-generative cloud access check |
-| POST | `/api/v1/local-model/load` | Pre-warm a selected local model |
-| POST | `/api/v1/local-model/unload` | Unload the active local model |
-| POST | `/api/v1/agent/local/unload` | Compatibility alias for local unload |
-| POST | `/api/v1/agent/query` | Run one assistant turn |
+| GET | `/api/v1/cortex/tool-scopes` | Local Agent tool scopes |
+| GET | `/api/v1/agents` | Backend-owned Agent catalog and availability |
+| POST | `/api/v1/agents/{agent_key}/verify` | Explicit non-generative cloud access check |
+| POST | `/api/v1/cortex/local-model/load` | Pre-warm a selected local model |
+| POST | `/api/v1/cortex/local-model/unload` | Unload the active local model |
+| POST | `/api/v1/cortex/query` | Run one Cortex Engine turn |
 | GET | `/api/v1/market` | Independent EOD market data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
 | GET | `/api/v1/microsoft-todo/status` | Microsoft To Do authorization status |
@@ -53,14 +52,14 @@ Returns success when the API process can answer. It does not inspect configurati
 
 Loads the runtime settings snapshot and executes a lightweight SQLite query. The launcher uses this route before opening the HUD.
 
-- `200` — required local state is ready.
-- `503` — settings or database readiness failed.
+- `200` â€” required local state is ready.
+- `503` â€” settings or database readiness failed.
 
 Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as assistant enablement, the effective profile and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `assistant_initial_selection` is the effective selection; in development mode it can be Acinonyx without changing saved production preferences.
+Returns boot-time HUD values such as Ask APEX enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective selection; in development mode it can be Acinonyx without changing saved production preferences.
 
 ### GET `/api/v1/settings`
 
@@ -68,11 +67,11 @@ Returns the resolved settings envelope. The current contract version is `7`.
 
 ```json
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "settings": {
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
-    "assistant": { "enabled": true, "mode": "cloud", "cloud_profile": "panthera", "cloud_effort": "focused", "local_profile": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
@@ -91,7 +90,7 @@ Returns the resolved settings envelope. The current contract version is `7`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for connectors, sports modules, assistant, briefing, voice, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for connectors, sports modules, Ask APEX, briefing, voice, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
 
 ```json
 {
@@ -135,9 +134,9 @@ Refreshes all enabled connectors or a selected subset.
 
 Omit the body to perform a normal full refresh. A normal refresh may reuse a snapshot younger than five minutes; `force: true` bypasses that reuse.
 
-- `200` — complete snapshot, including partial/stale connector outcomes.
-- `400` — unknown or invalid connector selection.
-- `409` — another refresh owns collection.
+- `200` â€” complete snapshot, including partial/stale connector outcomes.
+- `400` â€” unknown or invalid connector selection.
+- `409` â€” another refresh owns collection.
 
 ### POST `/api/v1/preflight`
 
@@ -169,9 +168,9 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 
 The body is optional. Valid modes are `panthera`, `mus`, `sorex`, and `structured_digest`.
 
-- `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
-- `409` — another full trigger owns execution.
-- `503` — a required operation-specific dependency cannot run and no applicable fallback completes the request.
+- `200` â€” transcript, compatibility telemetry strings, typed digest, and runtime metadata.
+- `409` â€” another full trigger owns execution.
+- `503` â€” a required operation-specific dependency cannot run and no applicable fallback completes the request.
 
 Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/profile/model, ordered fallback steps, token usage, provider timing, estimated provider cost, TTS resolution, `snapshot_id`, and whether automatic speech started.
 
@@ -183,8 +182,8 @@ Generates from the current telemetry snapshot without calling connectors.
 { "snapshot_id": "current-snapshot-uuid", "mode": "structured_digest" }
 ```
 
-- `200` — the same `BriefingResponse` envelope used by the full trigger.
-- `409` — the snapshot is missing, stale, or no longer process-current.
+- `200` â€” the same `BriefingResponse` envelope used by the full trigger.
+- `409` â€” the snapshot is missing, stale, or no longer process-current.
 
 Production generation persists the result. Demo mode uses static behavior and does not write production history.
 
@@ -218,65 +217,65 @@ Dismisses one or more local reminders.
 
 The operation is explicit and is not changed by development mode.
 
-## Assistant and local models
+## Apex Agents and local models
 
-### GET `/api/v1/agent/commands`
+### GET `/api/v1/cortex/tool-scopes`
 
-Returns the local assistant command bundles, including availability, reason, tool count, and estimated schema-token cost. Local profiles are tool-free unless one returned scope is selected for the next query.
+Returns local Agent tool scopes, including availability, reason, tool count, and estimated schema-token cost. Local Agents are tool-free unless one returned scope is selected for the next query.
 
-### GET `/api/v1/agent/profiles`
+### GET `/api/v1/agents`
 
-Returns the visible assistant profiles in stable product order. Each entry supplies its full display name, description, provider and configured model, version, mode, tier, stability, supported effort levels, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
+Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
-The profile registry currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
+The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
 
-### POST `/api/v1/agent/profiles/{profile}/verify`
+### POST `/api/v1/agents/{agent_key}/verify`
 
 Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud profile. Gemini uses its model metadata endpoint; OpenAI and xAI use `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
-- `400` — the profile is local or has no supported verification path.
-- `403` — demo mode disallows provider contact.
-- `404` — the profile is not visible.
-- `409` — credentials are missing or that profile already has a verification in progress.
+- `400` â€” the profile is local or has no supported verification path.
+- `403` â€” demo mode disallows provider contact.
+- `404` â€” the profile is not visible.
+- `409` â€” credentials are missing or that profile already has a verification in progress.
 
-### POST `/api/v1/local-model/load`
+### POST `/api/v1/cortex/local-model/load`
 
 Pre-warms one installed local profile before a request:
 
 ```json
-{ "profile": "mus" }
+{ "agent": "mus" }
 ```
 
 The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after Ollama confirms the selected model through its running-model status. Demo mode rejects pre-warming without contacting Ollama.
 
-- `403` — demo mode disallows model calls.
-- `409` — a local generation or lifecycle action is active.
-- `503` — local inference is disabled, gated, unreachable, or could not be verified.
+- `403` â€” demo mode disallows model calls.
+- `409` â€” a local generation or lifecycle action is active.
+- `503` â€” local inference is disabled, gated, unreachable, or could not be verified.
 
-### POST `/api/v1/local-model/unload`
+### POST `/api/v1/cortex/local-model/unload`
 
 Canonical provider-neutral manual unload route. Returns success only when no APEX local model is resident or Ollama confirms the active model is absent after the request.
 
 It also rejects a competing lifecycle action, and reports a failed post-action verification as unavailable.
 
-- `403` — manual unload is disabled.
-- `409` — local generation or lifecycle action is in progress.
-- `503` — the unload request or post-action Ollama verification failed.
+- `403` â€” manual unload is disabled.
+- `409` â€” local generation or lifecycle action is in progress.
+- `503` â€” the unload request or post-action Ollama verification failed.
 
-### POST `/api/v1/agent/local/unload`
+### POST `/api/v1/cortex/local-model/unload`
 
-Compatibility alias with identical behavior to `POST /api/v1/local-model/unload`.
+Compatibility alias with identical behavior to `POST /api/v1/cortex/local-model/unload`.
 
-### POST `/api/v1/agent/query`
+### POST `/api/v1/cortex/query`
 
 Runs one assistant turn. The browser supplies history on every request; the server does not persist a session.
 
 ```json
 {
   "prompt": "What should I prioritize this afternoon?",
-  "profile": "panthera",
+  "agent": "panthera",
   "effort": "focused",
   "session_id": "browser-session-id",
   "history": [],
@@ -291,9 +290,9 @@ Runs one assistant turn. The browser supplies history on every request; the serv
 
 Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local profiles receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud profile, including Acinonyx, and rejected for local profiles. Responses contain synthesized text, resolved profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
-- `403` — assistant disabled.
-- `429` — another local generation owns the execution slot.
-- `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
+- `403` â€” assistant disabled.
+- `429` â€” another local generation owns the execution slot.
+- `503` â€” selected provider/model unavailable, cold-load gate failed, or model load failed.
 
 Assistant loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud profiles can use up to 4 turns and 6 calls; Sorex and Mus use up to 2/3 and 3/4 turns/calls respectively. The last model turn is answer-only.
 
@@ -333,9 +332,9 @@ Speaks an existing bounded transcript through the currently resolved engine.
 { "text": "Your briefing is ready." }
 ```
 
-- `200` — delivery was accepted and the resolved engine is reported.
-- `409` — speech is already active.
-- `503` — no configured fallback completed delivery.
+- `200` â€” delivery was accepted and the resolved engine is reported.
+- `409` â€” speech is already active.
+- `503` â€” no configured fallback completed delivery.
 
 The endpoint does not generate or persist a briefing. Voice mode determines whether the HUD offers manual delivery or starts it automatically after generation.
 
