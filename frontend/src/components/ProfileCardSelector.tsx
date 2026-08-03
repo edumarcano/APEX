@@ -64,7 +64,7 @@ function poweredBy(profile: AgentProfileStatus): string {
 function statusClass(status: ProfileAvailabilityStatus): string {
   if (status === 'available' || status === 'configured' || status === 'verified') return 'text-emerald-300'
   if (status === 'unknown' || status === 'busy' || status === 'verifying' || status === 'rate_limited') return 'text-amber-200'
-  return 'text-red-300'
+  return 'text-[#DC2626]'
 }
 
 function statusDotClass(status: ProfileAvailabilityStatus): string {
@@ -77,7 +77,7 @@ function statusDotClass(status: ProfileAvailabilityStatus): string {
   if (status === 'disabled') {
     return 'bg-zinc-500 shadow-[0_0_5px_rgba(161,161,170,0.35)]'
   }
-  return 'bg-red-300 shadow-[0_0_7px_rgba(252,165,165,0.7)]'
+  return 'bg-[#DC2626] shadow-[0_0_7px_rgba(220,38,38,0.8)]'
 }
 
 function rate(value: number): string { return `$${value.toFixed(2)}/1M` }

@@ -147,6 +147,9 @@ function getConnectorSummary(rows: ConnectorDisplayRow[]): {
   if (rows.some((row) => row.state === 'Checking')) {
     return { text: 'Connectors · Checking…', ledClass: 'bg-zinc-400', hasIssues: false }
   }
+  if (rows.length === 0) {
+    return { text: 'Connectors · Not checked', ledClass: 'bg-zinc-500', hasIssues: false }
+  }
   const configured = rows.filter((row) => row.state !== 'Not configured')
   if (configured.length === 0) {
     return { text: 'Connectors · Not configured', ledClass: 'bg-zinc-500', hasIssues: false }

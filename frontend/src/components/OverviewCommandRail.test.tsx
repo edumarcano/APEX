@@ -110,6 +110,14 @@ describe('OverviewCommandRail', () => {
     expect(onBriefingModeChange).not.toHaveBeenCalled()
   })
 
+  it('uses the canonical APEX red for unavailable assistant profiles', () => {
+    renderRail({ profilesStatus: [profile('panthera', 'model_unavailable')] })
+
+    const statusDot = document.querySelector('[data-slot="overview-profile-status-dot"]')
+    expect(statusDot).toHaveClass('bg-[#DC2626]')
+    expect(statusDot).toHaveClass('shadow-[0_0_7px_rgba(220,38,38,0.8)]')
+  })
+
   it('omits only the active assistant row when Ask APEX is disabled', () => {
     renderRail({ askApexEnabled: false })
 

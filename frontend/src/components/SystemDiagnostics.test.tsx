@@ -16,6 +16,12 @@ function renderDiagnostics(overrides: Partial<ComponentProps<typeof SystemDiagno
 }
 
 describe('SystemDiagnostics', () => {
+  it('distinguishes an unchecked connector snapshot from no configured connectors', () => {
+    renderDiagnostics()
+
+    expect(screen.getByRole('button', { name: /Connectors · Not checked/i })).toBeVisible()
+  })
+
   it('keeps workspace controls grouped with the stable APEX identity pill', () => {
     renderDiagnostics({
       workspaceNavigation: <nav aria-label="Workspace"><button type="button">Overview</button><button type="button">Cortex</button></nav>,
