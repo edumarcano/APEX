@@ -22,10 +22,6 @@ def _concrete_profile(key: str):
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
         self.assertEqual(
-            {AGENT_SPECS[key].agent_version for key in ("panthera", "neofelis")},
-            {"2.0"},
-        )
-        self.assertEqual(
             {
                 key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
                 for key in ("panthera", "neofelis", "acinonyx")
@@ -34,6 +30,24 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
                 "panthera": (min(6, GEMINI_AGENT_MAX_TURNS), min(10, GEMINI_AGENT_MAX_TOOL_CALLS)),
                 "neofelis": (min(4, GEMINI_AGENT_MAX_TURNS), min(6, GEMINI_AGENT_MAX_TOOL_CALLS)),
                 "acinonyx": (min(4, GEMINI_AGENT_MAX_TURNS), min(6, GEMINI_AGENT_MAX_TOOL_CALLS)),
+            },
+        )
+
+    def test_agent_versions_use_product_version_format(self) -> None:
+        for spec in AGENT_SPECS.values():
+            self.assertRegex(spec.agent_version, r"^[1-9]\d*\.\d+(?:\.\d+)?$")
+
+    def test_initial_agent_versions(self) -> None:
+        self.assertEqual(
+            {key: spec.agent_version for key, spec in AGENT_SPECS.items()},
+            {
+                "acinonyx": "1.0",
+                "panthera": "1.0",
+                "neofelis": "1.0",
+                "delphinus": "1.0",
+                "orcinus": "1.0",
+                "sorex": "1.0",
+                "mus": "1.0",
             },
         )
 

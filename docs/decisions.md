@@ -170,7 +170,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, and Mus.
 
-**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details that can be audited in configuration and architecture references. The shared 2.0 version identifies the reworked Agent contract; later Agent changes can version independently.
+**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
 
 **Trade-off.** Agent documentation must remain synchronized with current model mappings and stability labels.
 

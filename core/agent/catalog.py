@@ -94,7 +94,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Acinonyx, an Apex Agent powered by "
             "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="gemini",
         runtime="cloud",
         api_model="gemini-3.5-flash-lite",
@@ -115,7 +115,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Panthera, an Apex Agent powered by "
             "GPT-5.6 Luna."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="openai",
         runtime="cloud",
         api_model="gpt-5.6-luna",
@@ -135,7 +135,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Neofelis, an Apex Agent powered by "
             "Gemini 3.6 Flash."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="gemini",
         runtime="cloud",
         api_model="gemini-3.6-flash",
@@ -154,7 +154,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         identity_instruction=(
             "You are Apex Delphinus, an Apex Agent powered by Grok 4.3."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="xai",
         runtime="cloud",
         api_model="grok-4.3",
@@ -173,7 +173,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         identity_instruction=(
             "You are Apex Orcinus, an Apex Agent powered by Grok 4.5."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="xai",
         runtime="cloud",
         api_model="grok-4.5",
@@ -193,7 +193,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Sorex, an Apex Agent powered by "
             "Qwen3 1.7B through Ollama."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="ollama",
         runtime="local",
         api_model="qwen3:1.7b",
@@ -214,7 +214,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Mus, an Apex Agent powered by "
             "Qwen3 4B Instruct through Ollama."
         ),
-        agent_version="2.0",
+        agent_version="1.0",
         provider="ollama",
         runtime="local",
         api_model="qwen3:4b-instruct",

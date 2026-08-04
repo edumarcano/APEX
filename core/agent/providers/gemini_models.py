@@ -7,7 +7,9 @@ GeminiThinkingLevel = Literal["low", "medium", "high"]
 
 class GeminiModelProfile(BaseModel):
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    agent_version: str = Field(description="Internal configuration profile version.")
+    agent_version: str = Field(
+        description="Version of the named Apex Agent product identity."
+    )
     api_model: str = Field(description="Exact Gemini API model identifier string.")
     tier: Literal["fast", "balanced", "advanced"] = Field(
         description="Computational performance classification."

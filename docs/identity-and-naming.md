@@ -114,24 +114,43 @@ An Apex Agent can eventually include:
 
 The model is therefore one part of an Agent’s implementation, not necessarily its permanent identity.
 
+## Agent versioning
+
+The version attached to an Apex Agent belongs to that named Agent identity. It is not the APEX application version, a shared Cortex contract version, or the version of the underlying provider model.
+
+Each current Agent begins at `1.0` because this is the first stable version of its current product identity. A newly introduced Agent also begins at `1.0`.
+
+Agent versions evolve independently:
+
+- A meaningful model upgrade, compatible capability expansion, or substantial change to execution behavior normally increases the minor version, such as `1.0` to `1.1`.
+- A provider migration, major role change, or substantial change to the Agent's capability, privacy, or operating contract normally increases the major version, such as `1.1` to `2.0`.
+
+The version is intended as a concise indicator of meaningful Agent evolution rather than strict semantic versioning.
+
 ## The current Agent family
 
-The current family shares one Cortex operating layer while each Agent occupies a distinct product role.
+The current family shares one Cortex operating layer across cloud-hosted and local Agents, while each Agent occupies a distinct product role.
 
 ```mermaid
 flowchart LR
-    ENGINE["Cortex Engine<br>Shared execution, tools, context, and observability"]
-    FAMILY["Apex Agents<br>One cohesive family of specialized workers"]
+    ENGINE["Cortex Engine<br/>Shared execution, tools, context, and observability"]
+    FAMILY["Apex Agents<br/>One cohesive family of specialized workers"]
+
+    CLOUD["Cloud Agents<br/>Provider-hosted execution"]
+    LOCAL["Local Agents<br/>Ollama execution"]
 
     ENGINE --> FAMILY
+    FAMILY --> CLOUD
+    FAMILY --> LOCAL
 
-    FAMILY --> ACINONYX["Acinonyx 2.0<br>Fast development sandbox<br>Gemini"]
-    FAMILY --> PANTHERA["Panthera 2.0<br>Everyday generalist<br>OpenAI"]
-    FAMILY --> NEOFELIS["Neofelis 2.0<br>Google-specialized Agent<br>Gemini"]
-    FAMILY --> DELPHINUS["Delphinus 2.0<br>Live-information specialist<br>xAI"]
-    FAMILY --> ORCINUS["Orcinus 2.0<br>Extended reasoning specialist<br>xAI"]
-    FAMILY --> SOREX["Sorex 2.0<br>Lightweight local Agent<br>Ollama"]
-    FAMILY --> MUS["Mus 2.0<br>Local generalist<br>Ollama"]
+    CLOUD --> ACINONYX["Acinonyx 1.0<br/>Fast development sandbox<br/>Gemini"]
+    CLOUD --> PANTHERA["Panthera 1.0<br/>Everyday generalist<br/>OpenAI"]
+    CLOUD --> NEOFELIS["Neofelis 1.0<br/>Google-specialized Agent<br/>Gemini"]
+    CLOUD --> DELPHINUS["Delphinus 1.0<br/>Live-information specialist<br/>xAI"]
+    CLOUD --> ORCINUS["Orcinus 1.0<br/>Extended reasoning specialist<br/>xAI"]
+
+    LOCAL --> SOREX["Sorex 1.0<br/>Lightweight local Agent<br/>Ollama"]
+    LOCAL --> MUS["Mus 1.0<br/>Local generalist<br/>Ollama"]
 ```
 
 Every Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role.

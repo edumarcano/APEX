@@ -169,11 +169,11 @@ Attached context and tool results are separately marked as untrusted model data.
 
 | Agent | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
-| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Orcinus 2.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Acinonyx 1.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
+| Panthera 1.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
+| Neofelis 1.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Delphinus 1.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Orcinus 1.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 

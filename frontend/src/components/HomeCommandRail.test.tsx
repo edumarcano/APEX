@@ -18,7 +18,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     capabilities: [],
     native_tools: {},
     provider: local ? 'ollama' : 'openai',
-    version: '2.0',
+    version: '1.0',
     runtime: local ? 'local' : 'cloud',
     tier: 'stable',
     stability: 'stable',
