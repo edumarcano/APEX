@@ -13,23 +13,22 @@ This is the canonical operator reference for APEX settings, runtime modes, crede
 
 ```mermaid
 flowchart TD
-    ENV[".env<br/>Secrets, credentials, and machine paths"]
+    ENV[".env<br/>Secrets, credentials, machine paths, and environment modes"]
     DEFAULTS["config.json<br/>Tracked non-secret defaults"]
     LOCAL["config.local.json<br/>Machine-local overrides"]
     HUD["Runtime Settings"]
-    LOADER["Settings loader and validation"]
+    LOADER["Runtime settings loader and validation"]
     SNAPSHOT["Immutable runtime settings snapshot"]
-    OPERATIONS["Telemetry, Agents, briefings, voice, and MCP"]
+    OPERATIONS["Backend operations"]
 
     HUD -->|"writes editable preferences"| LOCAL
 
-    ENV --> LOADER
     DEFAULTS --> LOADER
     LOCAL -->|"overlays tracked defaults"| LOADER
-
     LOADER --> SNAPSHOT
     SNAPSHOT --> OPERATIONS
-    
+
+    ENV -->|"process environment only"| OPERATIONS
 ```
 
 Runtime Settings writes only to the gitignored local overlay. APEX validates the resolved configuration before publishing a new immutable runtime snapshot.

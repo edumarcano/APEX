@@ -48,7 +48,17 @@ uv run python launcher.py
 
 Demo mode uses static telemetry and deterministic Agent responses, skips live connectors, and does not write briefing history. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
 
-<p align="center"> <img src="assets/apex-standby.png" alt="APEX standby screen with Start APEX, Start with Briefing, and the briefing mode selector" width="900" > </p> <p align="center"> <em>APEX opens in standby and waits for the operator to start Home or begin with a briefing.</em> </p>
+<p align="center">
+  <img
+    src="assets/apex-standby.png"
+    alt="APEX standby screen with Start APEX, Start with Briefing, and the briefing mode selector"
+    width="900"
+  >
+</p>
+
+<p align="center">
+  <em>APEX opens in standby and waits for the operator to start Home or begin with a briefing.</em>
+</p>
 
 ## Run the full local system
 

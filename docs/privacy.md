@@ -17,14 +17,15 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
-````mermaid
+```mermaid
 flowchart LR
     subgraph LOCAL["Local machine"]
         BROWSER["Browser-held Agent history"]
         API["FastAPI"]
         SNAPSHOT["Telemetry snapshot<br/>memory only"]
         DB[("SQLite")]
-        OLLAMA["Ollama"]
+        OLLAMA["Ollama host
+loopback by default"]
         LOCAL_TTS["pyttsx3 / Kokoro"]
 
         BROWSER --> API
@@ -45,8 +46,11 @@ flowchart LR
     API -->|"selected prompt and context"| CLOUD_AGENTS
     API -->|"transcript text"| CLOUD_TTS
     API -->|"approved tool arguments"| MCP
-````
+```
+
 External paths exist only when the corresponding connector, provider, speech engine, or MCP integration is enabled.
+
+APEX treats Ollama as local by default; configuring a remote Ollama host moves that model traffic outside the machine boundary.
 
 ## Local service boundary
 

@@ -116,10 +116,10 @@ The model is therefore one part of an Agent’s implementation, not necessarily 
 
 ## The current Agent family
 
-The current family has three main naming relationships:
+The current family shares one Cortex operating layer while each Agent occupies a distinct product role.
 
 ```mermaid
-flowchart TB
+flowchart LR
     ENGINE["Cortex Engine<br>Shared execution, tools, context, and observability"]
     FAMILY["Apex Agents<br>One cohesive family of specialized workers"]
 
@@ -133,9 +133,10 @@ flowchart TB
     FAMILY --> SOREX["Sorex 2.0<br>Lightweight local Agent<br>Ollama"]
     FAMILY --> MUS["Mus 2.0<br>Local generalist<br>Ollama"]
 ```
+
 Every Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role.
 
-These relationships describe the intended product roles. They should not be read as a precise biological family tree.
+These roles describe current product intent. They should not be read as a precise biological hierarchy or permanent capability ranking.
 
 ## Apex Acinonyx
 

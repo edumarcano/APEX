@@ -13,7 +13,11 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Ask APEX while keeping the local machine, not a hosted account, at the center of the system.
 
 <p align="center">
-  <img src="docs/assets/apex-home.png" alt="APEX standby screen with Start APEX and Start with Briefing controls" width="900">
+  <img
+  src="docs/assets/apex-home.png"
+  alt="APEX Home workspace delivering a briefing with static, non-personal demo telemetry"
+  width="900"
+>
 </p>
 
 <p align="center">
@@ -35,7 +39,11 @@ A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a de
 Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
 
 <p align="center">
-  <img src="docs/assets/apex-cortex.png" alt="Activated APEX Home workspace with demo telemetry and a generated briefing" width="900">
+  <img
+  src="docs/assets/apex-cortex.png"
+  alt="APEX Cortex workspace showing an Agent response, tool trace, structured reminder results, effort selection, and context controls"
+  width="900"
+>
 </p>
 
 <p align="center">

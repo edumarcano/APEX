@@ -48,7 +48,7 @@ flowchart TB
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
 
-````mermaid
+```mermaid
 flowchart LR
     USER["Operator"]
 
@@ -77,7 +77,7 @@ flowchart LR
     FULL -.-> REFRESH
     FULL -.-> BRIEF
     FULL -.-> SPEAK
-````
+```
 
 ## Process model and startup
 
