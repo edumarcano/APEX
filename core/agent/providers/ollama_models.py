@@ -64,16 +64,47 @@ class OllamaModelProfile(BaseModel):
     )
 
 
-OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
-    "sorex": OllamaModelProfile(
-        display_name="Apex Sorex",
-        agent_version="1.0",
-        api_model="qwen3:1.7b",
-        tier="lightweight",
-        stability="stable",
+class OllamaRuntimeConfig(BaseModel):
+    """Runtime execution, context, and resource tuning for a local model."""
+
+    default_temperature: float = Field(
+        default=0.2,
+        description="Lower temperature values minimize tool-calling hallucinations.",
+    )
+    context_window: int = Field(
+        description="Maximum input token context window for the local model."
+    )
+    tool_select_max_tokens: int = Field(
+        description="Token ceiling when the model is selecting a tool."
+    )
+    final_answer_max_tokens: int = Field(
+        description="Token ceiling for the final text response."
+    )
+    num_thread: int = Field(
+        description="Maximum CPU threads allocated to local inference."
+    )
+    generation_timeout: int = Field(
+        description="Hard timeout in seconds for a single model generation call."
+    )
+    think: bool = Field(
+        default=False,
+        description="Whether to enable Ollama's local reasoning and chain-of-thought phase.",
+    )
+    ram_limit: float = Field(
+        description="Maximum host RAM utilization percentage before load is gated."
+    )
+    cpu_limit: float = Field(
+        description="Maximum host CPU utilization percentage before load is gated."
+    )
+    system_instruction: str = Field(
+        default=LOCAL_AGENT_SYSTEM_PROMPT,
+        description="Base persona and behavioral instructions for the local agent.",
+    )
+
+
+OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
+    "sorex": OllamaRuntimeConfig(
         default_temperature=0.2,
-        max_tool_turns=2,
-        max_tool_calls=3,
         context_window=4096,
         tool_select_max_tokens=128,
         final_answer_max_tokens=512,
@@ -82,17 +113,9 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=SOREX_RAM_LIMIT,
         cpu_limit=SOREX_CPU_LIMIT,
-        system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
     ),
-    "mus": OllamaModelProfile(
-        display_name="Apex Mus",
-        agent_version="1.0",
-        api_model="qwen3:4b-instruct",
-        tier="balanced",
-        stability="stable",
+    "mus": OllamaRuntimeConfig(
         default_temperature=0.2,
-        max_tool_turns=3,
-        max_tool_calls=4,
         context_window=4096,
         tool_select_max_tokens=128,
         final_answer_max_tokens=768,
@@ -101,6 +124,5 @@ OLLAMA_MODEL_PROFILES: dict[str, OllamaModelProfile] = {
         think=False,
         ram_limit=MUS_RAM_LIMIT,
         cpu_limit=MUS_CPU_LIMIT,
-        system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
     ),
 }

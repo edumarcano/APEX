@@ -8,6 +8,7 @@ from typing import Callable
 
 from core.agent.pricing import estimate_inference_cost
 from core.agent.catalog import (
+    AGENT_SPECS,
     build_concrete_agent,
     compose_agent_system_instruction,
 )
@@ -21,7 +22,6 @@ from core.agent.providers.ollama_lifecycle import (
     switch_local_model,
     try_begin_local_execution,
 )
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.types import AgentMessage
 from core.config import (
@@ -67,8 +67,8 @@ class WarmupHandle:
 
 
 def _agent_key_for_model(model_name: str | None) -> str | None:
-    for key, agent in OLLAMA_MODEL_PROFILES.items():
-        if agent.api_model == model_name:
+    for key, spec in AGENT_SPECS.items():
+        if spec.runtime == "local" and spec.api_model == model_name:
             return key
     return None
 
@@ -142,7 +142,7 @@ class SynthesisRouter:
 
         def worker() -> None:
             try:
-                agent = OLLAMA_MODEL_PROFILES[agent_key]
+                agent = build_concrete_agent(agent_key, native_effort=None)
                 snapshot = get_status_snapshot()
                 if not snapshot["reachable"]:
                     handle.reason = "local_unreachable"
@@ -264,7 +264,7 @@ class SynthesisRouter:
                     "\n\nIn the ===SPEECH=== section, address the user as "
                     f'"{normalized_designation}" exactly once. Keep the address natural.'
                 )
-            agent = OLLAMA_MODEL_PROFILES[agent_key].model_copy(
+            agent = build_concrete_agent(agent_key, native_effort=None).model_copy(
                 update={
                     "final_answer_max_tokens": 512,
                     "think": False,

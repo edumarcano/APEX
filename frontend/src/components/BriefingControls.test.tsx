@@ -21,7 +21,7 @@ function profile(
     capabilities: [],
     native_tools: {},
     provider: mode === 'cloud' ? 'openai' : 'ollama',
-    version: '1.0',
+    version: '7.4',
     runtime: mode,
     tier: 'stable',
     stability: 'stable',

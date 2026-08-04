@@ -446,6 +446,60 @@ def current_agent_profiles() -> dict[str, str]:
     return {key: spec.api_model.lower() for key, spec in AGENT_SPECS.items()}
 
 
+def current_agent_versions() -> dict[str, str]:
+    from core.agent.catalog import AGENT_SPECS
+
+    return {
+        spec.display_name.removeprefix("Apex "): spec.agent_version
+        for spec in AGENT_SPECS.values()
+    }
+
+
+def check_agent_versions(
+    paths: Iterable[Path],
+    expected_versions: Mapping[str, str],
+    contents: Mapping[Path, str] | None = None,
+) -> list[DocumentationIssue]:
+    """Validate current Apex Agent display names and version numbers in docs."""
+    issues: list[DocumentationIssue] = []
+    texts = {
+        path: contents.get(path, "") if contents is not None else path.read_text(encoding="utf-8")
+        for path in paths
+    }
+    agent_version_pattern = re.compile(
+        r"\b(Acinonyx|Panthera|Neofelis|Delphinus|Orcinus|Sorex|Mus)\s+(\d+\.\d+)\b"
+    )
+
+    for display_name, expected_ver in sorted(expected_versions.items()):
+        expected_label = f"{display_name} {expected_ver}"
+        if not any(expected_label in text for text in texts.values()):
+            issues.append(
+                DocumentationIssue(
+                    ROOT / "docs" / "identity-and-naming.md",
+                    1,
+                    expected_label,
+                    "current Agent product version label is missing from docs",
+                )
+            )
+
+    for path in paths:
+        for line_number, line in enumerate(texts[path].splitlines(), start=1):
+            for match in agent_version_pattern.finditer(line):
+                name, found_ver = match.group(1), match.group(2)
+                expected_ver = expected_versions.get(name)
+                if expected_ver is not None and found_ver != expected_ver:
+                    issues.append(
+                        DocumentationIssue(
+                            path,
+                            line_number,
+                            f"{name} {found_ver}",
+                            f"stale/conflicting Agent version label (expected {name} {expected_ver})",
+                        )
+                    )
+
+    return issues
+
+
 def run(root: Path = ROOT) -> list[DocumentationIssue]:
     from core.settings.models import SETTINGS_SCHEMA_VERSION
 
@@ -464,6 +518,7 @@ def run(root: Path = ROOT) -> list[DocumentationIssue]:
     issues.extend(check_routes(api_path, public_openapi_routes()))
     issues.extend(check_schema_versions(contract_paths, SETTINGS_SCHEMA_VERSION))
     issues.extend(check_agent_profiles(contract_paths, current_agent_profiles()))
+    issues.extend(check_agent_versions(contract_paths, current_agent_versions()))
     issues.extend(check_cors_example(root))
     issues.extend(check_release_version(root))
     issues.extend(check_frontend_owner_names(root))

@@ -17,7 +17,7 @@ from core.agent.providers.ollama_lifecycle import (
     switch_local_model,
     try_begin_local_execution,
 )
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
+from core.agent.catalog import AGENT_SPECS, build_concrete_agent
 from core.synthesis import CalendarFact, F1Fact, SynthesisInput, SynthesisRouter
 
 
@@ -38,7 +38,10 @@ def main() -> int:
     )
     installed = set(snapshot["installed_tags"])
     failures = 0
-    for key, profile in OLLAMA_MODEL_PROFILES.items():
+    for key, spec in AGENT_SPECS.items():
+        if spec.runtime != "local":
+            continue
+        profile = build_concrete_agent(key, native_effort=None)
         if profile.api_model not in installed:
             print(f"[SMOKE][SKIP] {key}: {profile.api_model} is not installed.")
             continue

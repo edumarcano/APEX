@@ -8,7 +8,7 @@ from typing import Any, Literal, TypeAlias
 
 from core.agent.providers.contract import InferenceProvider
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
-from core.agent.providers.ollama_models import OllamaModelProfile
+from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS, OllamaModelProfile
 from core.agent.providers.responses_api import ResponsesModelProfile
 from core.agent.tool_policies import hosted_tools_for_agent
 from core.config import (
@@ -356,36 +356,26 @@ def build_concrete_agent(
             ),
         )
     if spec.provider == "ollama":
-        ram_limit = SOREX_RAM_LIMIT if agent_key == "sorex" else MUS_RAM_LIMIT
-        cpu_limit = SOREX_CPU_LIMIT if agent_key == "sorex" else MUS_CPU_LIMIT
-        context_window = 4096
-        if agent_key == "sorex":
-            tool_select_max_tokens = 128
-            final_answer_max_tokens = 512
-            num_thread = 4
-            generation_timeout = 120
-        else:
-            tool_select_max_tokens = 128
-            final_answer_max_tokens = 768
-            num_thread = 6
-            generation_timeout = 150
+        runtime = OLLAMA_RUNTIME_CONFIGS[agent_key]
         return OllamaModelProfile(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
             api_model=spec.api_model,
             tier=spec.tier,  # type: ignore[arg-type]
             stability=spec.stability,
+            default_temperature=runtime.default_temperature,
             max_tool_turns=spec.max_tool_turns,
             max_tool_calls=spec.max_tool_calls,
-            context_window=context_window,
-            tool_select_max_tokens=tool_select_max_tokens,
-            final_answer_max_tokens=final_answer_max_tokens,
-            num_thread=num_thread,
-            generation_timeout=generation_timeout,
-            ram_limit=ram_limit,
-            cpu_limit=cpu_limit,
+            context_window=runtime.context_window,
+            tool_select_max_tokens=runtime.tool_select_max_tokens,
+            final_answer_max_tokens=runtime.final_answer_max_tokens,
+            num_thread=runtime.num_thread,
+            generation_timeout=runtime.generation_timeout,
+            think=runtime.think,
+            ram_limit=runtime.ram_limit,
+            cpu_limit=runtime.cpu_limit,
             system_instruction=compose_agent_system_instruction(
-                agent_key, LOCAL_AGENT_SYSTEM_PROMPT
+                agent_key, runtime.system_instruction
             ),
         )
     return ResponsesModelProfile(

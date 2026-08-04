@@ -59,7 +59,7 @@ describe('useCortex', () => {
           answer: 'Observed response.',
           agent_used: {
             key: 'panthera',
-            version: '1.0',
+            version: '7.4',
             provider: 'openai',
             configured_model: 'gpt-5.6-luna',
             resolved_model: 'gpt-5.6-luna',

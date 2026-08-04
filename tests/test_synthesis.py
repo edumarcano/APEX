@@ -6,7 +6,6 @@ import unittest
 from unittest.mock import patch
 
 from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.settings.models import RuntimeSettingsSnapshot
@@ -329,7 +328,7 @@ class ProfileAndPersistenceTests(unittest.TestCase):
         )
 
     def test_mus_local_agent_specs(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["mus"]
+        profile = build_concrete_agent("mus", native_effort=None)
         self.assertEqual((profile.tier, profile.stability), ("balanced", "stable"))
         self.assertEqual((profile.api_model, profile.context_window), ("qwen3:4b-instruct", 4096))
         self.assertEqual((profile.final_answer_max_tokens, profile.generation_timeout), (768, 150))

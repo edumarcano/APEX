@@ -12,7 +12,8 @@ from requests.exceptions import (
     Timeout as RequestsTimeout,
 )
 
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
+from core.agent.catalog import AGENT_SPECS
+from core.agent.providers.ollama_models import OllamaModelProfile
 from core.config import OLLAMA_HOST, OLLAMA_IDLE_UNLOAD_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
@@ -395,7 +396,7 @@ def unload_active_local_model() -> bool:
 
     if model_name is None:
         profile_model_names = {
-            profile.api_model for profile in OLLAMA_MODEL_PROFILES.values()
+            spec.api_model for spec in AGENT_SPECS.values() if spec.runtime == "local"
         }
         loaded_profile_names: list[str] = []
         for loaded_model in _probe_ollama_loaded_models():
@@ -598,8 +599,9 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
     try:
         if previous_model is None:
             configured_models = {
-                configured.api_model
-                for configured in OLLAMA_MODEL_PROFILES.values()
+                spec.api_model
+                for spec in AGENT_SPECS.values()
+                if spec.runtime == "local"
             }
             previous_model = next(
                 (

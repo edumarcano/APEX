@@ -19,7 +19,6 @@ from core.agent.providers.contract import (
 )
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.agent.providers.openai_provider import OPENAI_INTERNAL_PROFILES, OpenAIProvider
 from core.agent.providers.responses_api import (
     assert_no_forbidden_native_tools,
@@ -46,7 +45,7 @@ class ProviderContractTests(unittest.TestCase):
             resolve_inference_provider(_concrete_profile("panthera")), "openai"
         )
         self.assertEqual(
-            resolve_inference_provider(OLLAMA_MODEL_PROFILES["sorex"]), "ollama"
+            resolve_inference_provider(_concrete_profile("sorex")), "ollama"
         )
         self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
@@ -193,7 +192,7 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            OLLAMA_MODEL_PROFILES["sorex"],
+            _concrete_profile("sorex"),
         )
 
         self.assertEqual(result.message.content, "Local answer")
@@ -217,10 +216,10 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            OLLAMA_MODEL_PROFILES["sorex"],
+            _concrete_profile("sorex"),
         )
 
-        self.assertEqual(result.resolved_model, OLLAMA_MODEL_PROFILES["sorex"].api_model)
+        self.assertEqual(result.resolved_model, _concrete_profile("sorex").api_model)
         self.assertIsNone(result.usage)
 
     @patch("core.agent.providers.ollama.register_activity", return_value=None)
@@ -247,7 +246,7 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [self._descriptor()],
-            OLLAMA_MODEL_PROFILES["sorex"],
+            _concrete_profile("sorex"),
         )
 
         self.assertEqual(mock_post.call_count, 2)
@@ -621,7 +620,7 @@ class PublicRosterTests(unittest.TestCase):
         providers = {AGENT_SPECS[key].provider for key in AGENT_SPECS}
         self.assertIn("openai", providers)
         self.assertIn("xai", providers)
-        self.assertEqual(set(OLLAMA_MODEL_PROFILES), {"sorex", "mus"})
+        self.assertEqual({key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"}, {"sorex", "mus"})
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},
             {"acinonyx", "neofelis"},
