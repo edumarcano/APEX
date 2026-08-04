@@ -466,8 +466,9 @@ def check_agent_versions(
         path: contents.get(path, "") if contents is not None else path.read_text(encoding="utf-8")
         for path in paths
     }
+    names_alternation = "|".join(re.escape(name) for name in sorted(expected_versions.keys()))
     agent_version_pattern = re.compile(
-        r"\b(Acinonyx|Panthera|Neofelis|Delphinus|Orcinus|Sorex|Mus)\s+(\d+\.\d+)\b"
+        rf"\b({names_alternation})\s+(\d+\.\d+)\b"
     )
 
     for display_name, expected_ver in sorted(expected_versions.items()):

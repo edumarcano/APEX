@@ -35,21 +35,12 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
 
     def test_agent_versions_use_product_version_format(self) -> None:
         for spec in AGENT_SPECS.values():
-            self.assertRegex(spec.agent_version, r"^[1-9]\d*\.\d+(?:\.\d+)?$")
+            self.assertRegex(spec.agent_version, r"^[1-9]\d*\.\d+$")
 
-    def test_initial_agent_versions(self) -> None:
-        self.assertEqual(
-            {key: spec.agent_version for key, spec in AGENT_SPECS.items()},
-            {
-                "acinonyx": "1.0",
-                "panthera": "1.0",
-                "neofelis": "1.0",
-                "delphinus": "1.0",
-                "orcinus": "1.0",
-                "sorex": "1.0",
-                "mus": "1.0",
-            },
-        )
+    def test_concrete_profiles_inherit_catalog_versions(self) -> None:
+        for key, spec in AGENT_SPECS.items():
+            profile = _concrete_profile(key)
+            self.assertEqual(profile.agent_version, spec.agent_version)
 
     def test_local_agents_retain_existing_loop_caps(self) -> None:
         self.assertEqual(
