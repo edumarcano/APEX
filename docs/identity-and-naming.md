@@ -35,6 +35,14 @@ The logo therefore combines:
 
 The logo is not only a monogram. It is a visual summary of the project name and the way APEX is intended to operate.
 
+<p align="center">
+  <img
+    src="assets/apex-logo.png"
+    alt="The APEX logo, combining an angular A-shaped outer structure with a central upward xylem channel"
+    width="420"
+  >
+</p>
+
 ## Product vocabulary
 
 The main APEX terms describe different parts of the product rather than interchangeable names for the same system.

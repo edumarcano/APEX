@@ -1,5 +1,13 @@
 # APEX: Automated Personal Environment Xylem
 
+<p align="center">
+  <img
+    src="docs/assets/apex-logo.png"
+    alt="The APEX logo"
+    width="180"
+  >
+</p>
+
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Ask APEX while keeping the local machine, not a hosted account, at the center of the system.
