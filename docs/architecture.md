@@ -48,6 +48,37 @@ flowchart TB
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
 
+````mermaid
+flowchart LR
+    USER["Operator"]
+
+    USER --> ACTIVATE["Activate Home"]
+    USER --> REFRESH["Refresh telemetry"]
+    USER --> BRIEF["Generate briefing"]
+    USER --> ASK["Ask an Apex Agent"]
+    USER --> SPEAK["Speak transcript"]
+
+    ACTIVATE --> PREFLIGHT["Advisory preflight"]
+    ACTIVATE --> REFRESH
+
+    REFRESH --> CONNECTORS["Enabled connectors"]
+    CONNECTORS --> SNAPSHOT["Process-current telemetry snapshot"]
+
+    SNAPSHOT --> BRIEF
+    BRIEF --> SYNTHESIS["Panthera, Ollama, or Structured Digest"]
+    SYNTHESIS --> LEDGER[("SQLite briefing ledger")]
+
+    ASK --> CORTEX["Cortex Engine"]
+    CORTEX --> TOOLS["Approved native and MCP capabilities"]
+
+    SPEAK --> VOICE["Selected speech engine"]
+
+    FULL["Compatibility full trigger"]
+    FULL -.-> REFRESH
+    FULL -.-> BRIEF
+    FULL -.-> SPEAK
+````
+
 ## Process model and startup
 
 The launcher gives each child a different environment:

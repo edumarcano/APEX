@@ -11,6 +11,29 @@ This is the canonical operator reference for APEX settings, runtime modes, crede
 | `config.local.json` | Machine-local runtime-setting overrides, including the optional user designation | Gitignored |
 | Runtime Settings | Editable subset of resolved settings | Persists to `config.local.json` |
 
+```mermaid
+flowchart TD
+    ENV[".env<br/>Secrets, credentials, and machine paths"]
+    DEFAULTS["config.json<br/>Tracked non-secret defaults"]
+    LOCAL["config.local.json<br/>Machine-local overrides"]
+    HUD["Runtime Settings"]
+    LOADER["Settings loader and validation"]
+    SNAPSHOT["Immutable runtime settings snapshot"]
+    OPERATIONS["Telemetry, Agents, briefings, voice, and MCP"]
+
+    HUD -->|"writes editable preferences"| LOCAL
+
+    ENV --> LOADER
+    DEFAULTS --> LOADER
+    LOCAL -->|"overlays tracked defaults"| LOADER
+
+    LOADER --> SNAPSHOT
+    SNAPSHOT --> OPERATIONS
+    
+```
+
+Runtime Settings writes only to the gitignored local overlay. APEX validates the resolved configuration before publishing a new immutable runtime snapshot.
+
 At runtime, APEX loads `config.json`, recursively overlays valid values from `config.local.json`, and publishes an immutable settings snapshot. Errors in a local editable layer discard that layer as a whole and are reported through the settings API; a later valid patch repairs the file before the new snapshot is published. Invalid MCP shapes are warning-only: the affected field or provider fails closed while other valid local values remain active.
 
 Arrays replace their tracked counterparts rather than merging item by item. This matters for `football.teams` and custom file-level MCP configuration.

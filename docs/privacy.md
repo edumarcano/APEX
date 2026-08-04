@@ -17,6 +17,37 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
+````mermaid
+flowchart LR
+    subgraph LOCAL["Local machine"]
+        BROWSER["Browser-held Agent history"]
+        API["FastAPI"]
+        SNAPSHOT["Telemetry snapshot<br/>memory only"]
+        DB[("SQLite")]
+        OLLAMA["Ollama"]
+        LOCAL_TTS["pyttsx3 / Kokoro"]
+
+        BROWSER --> API
+        API --> SNAPSHOT
+        API --> DB
+        API --> OLLAMA
+        API --> LOCAL_TTS
+    end
+
+    subgraph EXTERNAL["External services when enabled"]
+        CONNECTORS["Weather, news, mail,<br/>calendar, markets, tasks"]
+        CLOUD_AGENTS["OpenAI, Gemini, xAI"]
+        CLOUD_TTS["Google Cloud TTS"]
+        MCP["MCP providers"]
+    end
+
+    API -->|"connector requests"| CONNECTORS
+    API -->|"selected prompt and context"| CLOUD_AGENTS
+    API -->|"transcript text"| CLOUD_TTS
+    API -->|"approved tool arguments"| MCP
+````
+External paths exist only when the corresponding connector, provider, speech engine, or MCP integration is enabled.
+
 ## Local service boundary
 
 `launcher.py` binds FastAPI to `127.0.0.1:8000` and the compiled HUD to `127.0.0.1:5500`. The API has no authentication, so loopback binding is part of the security model. LAN and public access are unsupported; adding either requires authentication, authorization, and transport security first.

@@ -118,17 +118,22 @@ The model is therefore one part of an Agent’s implementation, not necessarily 
 
 The current family has three main naming relationships:
 
-```text
-Felid group
-Acinonyx ──> Panthera
-                  └── Neofelis as a specialized adjacent branch
+```mermaid
+flowchart TB
+    ENGINE["Cortex Engine<br>Shared execution, tools, context, and observability"]
+    FAMILY["Apex Agents<br>One cohesive family of specialized workers"]
 
-Dolphin group
-Delphinus ──> Orcinus
+    ENGINE --> FAMILY
 
-Local small-mammal group
-Sorex ──> Mus
+    FAMILY --> ACINONYX["Acinonyx 2.0<br>Fast development sandbox<br>Gemini"]
+    FAMILY --> PANTHERA["Panthera 2.0<br>Everyday generalist<br>OpenAI"]
+    FAMILY --> NEOFELIS["Neofelis 2.0<br>Google-specialized Agent<br>Gemini"]
+    FAMILY --> DELPHINUS["Delphinus 2.0<br>Live-information specialist<br>xAI"]
+    FAMILY --> ORCINUS["Orcinus 2.0<br>Extended reasoning specialist<br>xAI"]
+    FAMILY --> SOREX["Sorex 2.0<br>Lightweight local Agent<br>Ollama"]
+    FAMILY --> MUS["Mus 2.0<br>Local generalist<br>Ollama"]
 ```
+Every Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role.
 
 These relationships describe the intended product roles. They should not be read as a precise biological family tree.
 
