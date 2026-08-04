@@ -18,9 +18,9 @@ from core.agent.providers.ollama_lifecycle import (
 from core.agent.catalog import (
     AGENT_SPECS,
     agent_has_credentials,
+    build_concrete_agent,
     resolve_agent_selection,
 )
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
 from core.config import ENV_PATH, OLLAMA_ENABLED, is_dev_mode
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
 from core.settings import RuntimeSettingsSnapshot, get_settings_store
@@ -130,10 +130,11 @@ def _evaluate_local_agent_blockers(
 ) -> tuple[list[PreflightBlocker], bool]:
     """Return local blockers and whether execution would require a cold load."""
     blockers: list[PreflightBlocker] = []
-    agent = OLLAMA_MODEL_PROFILES.get(agent_key)
-    if agent is None:
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or spec.runtime != "local":
         blockers.append(_blocker("invalid_input", f"Unknown local Agent: {agent_key!r}"))
         return blockers, False
+    agent = build_concrete_agent(agent_key, native_effort=None)
 
     if not OLLAMA_ENABLED:
         blockers.append(_blocker("model_unreachable", "Local Ollama runtime is disabled."))

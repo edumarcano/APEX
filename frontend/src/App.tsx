@@ -183,7 +183,11 @@ export default function App(): ReactElement {
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const briefing = useBriefingPipeline()
-  const voiceDelivery = useVoiceDelivery()
+  const voiceDelivery = useVoiceDelivery(
+    briefing.briefing,
+    briefing.status,
+    briefing.isSpeaking,
+  )
 
   const {
     cortexHistory,
@@ -405,15 +409,15 @@ export default function App(): ReactElement {
   const rightWingDormantClasses = 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
   const rightWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
   const centerColumnDormantClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0'
+  const centerColumnActiveClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0 min-w-0'
 
   // The logo is always visible and the insights panel stays mounted while the
   // Home telemetry columns transition around it.
   const showDigest = !isDormant
   const digestWrapperClass = [
-    'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full',
+    'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full min-w-0 max-w-full',
     showDigest
-      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-3 xl:mb-4 overflow-visible'
+      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-3 xl:mb-4 overflow-hidden'
       : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
   ].join(' ')
 
@@ -968,6 +972,11 @@ export default function App(): ReactElement {
                   speakDisabled={isSpeaking}
                   showSpeakAction={voiceMode !== 'off'}
                   speechError={voiceDelivery.error}
+                  deliveryLabel={
+                    voiceDelivery.lastManualEngine
+                      ? `Last manual delivery: ${voiceDelivery.lastManualEngine}`
+                      : null
+                  }
                   synthesisLabel={
                     briefing.synthesisProvider
                       ? [briefing.synthesisProvider, briefing.synthesisAgent]
@@ -1016,7 +1025,7 @@ export default function App(): ReactElement {
                   </div>
                 </div>
               </div>
-              <div className="flex w-full flex-col items-center">
+              <div className="flex w-full min-w-0 max-w-full flex-col items-center">
                 <HomeCommandRail
                   activated={activated}
                   askApexEnabled={Boolean(askApexEnabled)}

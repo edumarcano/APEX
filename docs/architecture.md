@@ -4,6 +4,9 @@ This reference explains the current system model: which process owns each respon
 
 ## Canonical taxonomy
 
+For the meanings and design rationale behind these terms, see
+[Identity and Naming](identity-and-naming.md).
+
 - **APEX** is the standalone product and operational entity.
 - **Apex Agents** are specialized workers such as Apex Panthera and Apex Mus.
 - **Cortex Engine** is the backend subsystem that executes, orchestrates, tools, sessions, and manages model lifecycle.
@@ -44,6 +47,37 @@ flowchart TB
 | Cortex query | User prompt | Browser history plus backend turn execution | No chat-session store | Selected Agent and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
+
+```mermaid
+flowchart LR
+    USER["Operator"]
+
+    USER --> ACTIVATE["Activate Home"]
+    USER --> REFRESH["Refresh telemetry"]
+    USER --> BRIEF["Generate briefing"]
+    USER --> ASK["Ask an Apex Agent"]
+    USER --> SPEAK["Speak transcript"]
+
+    ACTIVATE --> PREFLIGHT["Advisory preflight"]
+    ACTIVATE --> REFRESH
+
+    REFRESH --> CONNECTORS["Enabled connectors"]
+    CONNECTORS --> SNAPSHOT["Process-current telemetry snapshot"]
+
+    SNAPSHOT --> BRIEF
+    BRIEF --> SYNTHESIS["Panthera, Ollama, or Structured Digest"]
+    SYNTHESIS --> LEDGER[("SQLite briefing ledger")]
+
+    ASK --> CORTEX["Cortex Engine"]
+    CORTEX --> TOOLS["Approved native and MCP capabilities"]
+
+    SPEAK --> VOICE["Selected speech engine"]
+
+    FULL["Compatibility full trigger"]
+    FULL -.-> REFRESH
+    FULL -.-> BRIEF
+    FULL -.-> SPEAK
+```
 
 ## Process model and startup
 
@@ -135,11 +169,11 @@ Attached context and tool results are separately marked as untrusted model data.
 
 | Agent | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
-| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Delphinus 2.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Orcinus 2.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Acinonyx 1.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
+| Panthera 1.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
+| Neofelis 1.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Delphinus 1.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Orcinus 1.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 

@@ -577,6 +577,9 @@ class VoiceSpeakResponse(BaseModel):
         default="spoken",
         description="Outcome label when speech delivery completed.",
     )
+    resolved_engine: Literal["google", "kokoro", "pyttsx3"] = Field(
+        description="TTS engine that completed playback after fallback resolution.",
+    )
 
 
 class BriefingTriggerRequest(BaseModel):

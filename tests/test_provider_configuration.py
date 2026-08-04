@@ -9,7 +9,7 @@ from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES, OllamaModelProfile
+from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.types import AgentMessage
 from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
 
@@ -22,10 +22,6 @@ def _concrete_profile(key: str):
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
         self.assertEqual(
-            {AGENT_SPECS[key].agent_version for key in ("panthera", "neofelis")},
-            {"2.0"},
-        )
-        self.assertEqual(
             {
                 key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
                 for key in ("panthera", "neofelis", "acinonyx")
@@ -37,11 +33,20 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
             },
         )
 
+    def test_agent_versions_use_product_version_format(self) -> None:
+        for spec in AGENT_SPECS.values():
+            self.assertRegex(spec.agent_version, r"^[1-9]\d*\.\d+$")
+
+    def test_concrete_profiles_inherit_catalog_versions(self) -> None:
+        for key, spec in AGENT_SPECS.items():
+            profile = _concrete_profile(key)
+            self.assertEqual(profile.agent_version, spec.agent_version)
+
     def test_local_agents_retain_existing_loop_caps(self) -> None:
         self.assertEqual(
             {
-                key: (profile.max_tool_turns, profile.max_tool_calls)
-                for key, profile in OLLAMA_MODEL_PROFILES.items()
+                key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
+                for key in ("sorex", "mus")
             },
             {
                 "sorex": (2, 3),
@@ -63,7 +68,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         self,
     ) -> None:
         """Verify OllamaModelProfile schema retains default_temperature and omits description."""
-        profile = OLLAMA_MODEL_PROFILES["sorex"]
+        profile = _concrete_profile("sorex")
         self.assertTrue(hasattr(profile, "default_temperature"))
         self.assertFalse(hasattr(profile, "description"))
         self.assertIn("default_temperature", profile.model_dump())
@@ -115,7 +120,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_get_session.return_value = mock_session
 
         provider = OllamaProvider()
-        profile = OLLAMA_MODEL_PROFILES["mus"]
+        profile = _concrete_profile("mus")
         messages = [AgentMessage(role="user", content="Hello")]
 
         provider.generate_turn(messages=messages, tools=[], profile=profile)

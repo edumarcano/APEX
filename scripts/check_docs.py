@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
@@ -24,7 +25,12 @@ ROUTE_ROW_PATTERN = re.compile(
     r"^\|\s*(GET|POST|PATCH|PUT|DELETE)\s*\|\s*`([^`]+)`\s*\|",
     re.IGNORECASE,
 )
+ROUTE_HEADING_PATTERN = re.compile(
+    r"^#{2,6}\s+(GET|POST|PATCH|PUT|DELETE)\s+`([^`]+)`\s*$",
+    re.IGNORECASE,
+)
 SCHEMA_VERSION_PATTERN = re.compile(r'"schema_version"\s*:\s*(\d+)')
+RELEASE_HEADING_PATTERN = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -43,8 +49,13 @@ class DocumentationIssue:
 
 
 def public_document_paths(root: Path) -> list[Path]:
-    paths = [root / "README.md", root / "frontend" / "README.md"]
-    paths.extend(sorted((root / "docs").glob("*.md")))
+    paths = [
+        root / "README.md",
+        root / "CHANGELOG.md",
+        root / ".env.example",
+        root / "frontend" / "README.md",
+    ]
+    paths.extend(sorted((root / "docs").rglob("*.md")))
     return [path for path in paths if path.is_file()]
 
 
@@ -164,11 +175,27 @@ def documented_routes(api_text: str) -> set[tuple[str, str]]:
     return routes
 
 
+def duplicate_route_headings(api_text: str) -> list[tuple[str, str, int]]:
+    """Return duplicate route-detail headings with their first duplicate line."""
+    seen: set[tuple[str, str]] = set()
+    duplicates: list[tuple[str, str, int]] = []
+    for line_number, line in lines_outside_fences(api_text):
+        match = ROUTE_HEADING_PATTERN.match(line)
+        if match is not None:
+            route = (match.group(1).upper(), match.group(2))
+            if route in seen:
+                duplicates.append((*route, line_number))
+            else:
+                seen.add(route)
+    return duplicates
+
+
 def check_routes(
     api_path: Path,
     expected: set[tuple[str, str]],
 ) -> list[DocumentationIssue]:
-    actual = documented_routes(api_path.read_text(encoding="utf-8"))
+    api_text = api_path.read_text(encoding="utf-8")
+    actual = documented_routes(api_text)
     issues: list[DocumentationIssue] = []
     for method, path in sorted(expected - actual):
         issues.append(
@@ -177,6 +204,15 @@ def check_routes(
     for method, path in sorted(actual - expected):
         issues.append(
             DocumentationIssue(api_path, 1, f"{method} {path}", "documented route is not public")
+        )
+    for method, path, line in duplicate_route_headings(api_text):
+        issues.append(
+            DocumentationIssue(
+                api_path,
+                line,
+                f"{method} {path}",
+                "route detail heading is duplicated",
+            )
         )
     return issues
 
@@ -206,7 +242,7 @@ def check_schema_versions(
     return issues
 
 
-def check_gemini_profiles(
+def check_agent_profiles(
     paths: Iterable[Path],
     expected_profiles: Mapping[str, str],
     contents: Mapping[Path, str] | None = None,
@@ -216,35 +252,182 @@ def check_gemini_profiles(
         path: contents.get(path, "") if contents is not None else path.read_text(encoding="utf-8")
         for path in paths
     }
-    combined = "\n".join(texts.values())
     for key, model in sorted(expected_profiles.items()):
-        if key not in combined or model not in combined:
+        mapping_patterns = (
+            re.compile(
+                rf"\b`?{re.escape(key)}`?\s*->\s*`?{re.escape(model)}`?(?=\s|$|[,;])",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                rf"^\|\s*`{re.escape(key)}`[^|]*\|[^|]*`{re.escape(model)}`",
+                re.IGNORECASE | re.MULTILINE,
+            ),
+        )
+        if not any(pattern.search(text) for pattern in mapping_patterns for text in texts.values()):
             issues.append(
                 DocumentationIssue(
                     ROOT / "docs" / "configuration.md",
                     1,
                     f"{key} -> {model}",
-                    "current Gemini profile mapping is missing",
+                    "current Agent model mapping is missing",
                 )
             )
 
     known_models = set(expected_profiles.values())
-    model_pattern = re.compile(r"gemini-\d+(?:\.\d+)*-[a-z0-9-]+(?![a-z0-9-])")
+    model_pattern = re.compile(
+        r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|qwen\d+(?:\.\d+)?:[a-z0-9.-]+",
+        re.IGNORECASE,
+    )
     for path in paths:
         for line_number, line in enumerate(
             texts[path].splitlines(), start=1
         ):
             for model in model_pattern.findall(line):
+                model = model.lower()
                 if model not in known_models:
                     issues.append(
                         DocumentationIssue(
                             path,
                             line_number,
                             model,
-                            "Gemini model ID is not used by a current profile",
+                            "model ID is not used by a current Agent",
                         )
                     )
     return issues
+
+
+def check_gemini_profiles(
+    paths: Iterable[Path],
+    expected_profiles: Mapping[str, str],
+    contents: Mapping[Path, str] | None = None,
+) -> list[DocumentationIssue]:
+    """Compatibility wrapper for callers of the former Gemini-only check."""
+    return check_agent_profiles(paths, expected_profiles, contents)
+
+
+def check_cors_example(root: Path) -> list[DocumentationIssue]:
+    """Prevent .env.example from narrowing the tested localhost defaults."""
+    from core.api.app import DEFAULT_ALLOWED_ORIGINS
+
+    env_path = root / ".env.example"
+    text = env_path.read_text(encoding="utf-8")
+    assignments = re.findall(r"^APEX_ALLOWED_ORIGINS=(.+)$", text, re.MULTILINE)
+    issues: list[DocumentationIssue] = []
+    if assignments:
+        configured = {
+            item.strip() for item in assignments[-1].split(",") if item.strip()
+        }
+        if configured != set(DEFAULT_ALLOWED_ORIGINS):
+            issues.append(
+                DocumentationIssue(
+                    env_path,
+                    1,
+                    assignments[-1],
+                    "active CORS example must match all tested defaults",
+                )
+            )
+    for required in ("http://127.0.0.1:5173", "http://localhost:5173"):
+        if required not in DEFAULT_ALLOWED_ORIGINS:
+            issues.append(
+                DocumentationIssue(
+                    root / "core" / "api" / "app.py",
+                    1,
+                    required,
+                    "Vite workflow origin is missing from CORS defaults",
+                )
+            )
+    return issues
+
+
+def check_release_version(root: Path) -> list[DocumentationIssue]:
+    """Require Python metadata to match the latest released changelog entry."""
+    pyproject_path = root / "pyproject.toml"
+    changelog_path = root / "CHANGELOG.md"
+    project_version = tomllib.loads(
+        pyproject_path.read_text(encoding="utf-8")
+    )["project"]["version"]
+    match = RELEASE_HEADING_PATTERN.search(changelog_path.read_text(encoding="utf-8"))
+    if match is None:
+        return [
+            DocumentationIssue(
+                changelog_path,
+                1,
+                "latest release heading",
+                "released changelog version could not be determined",
+            )
+        ]
+    if project_version == match.group(1):
+        return []
+    return [
+        DocumentationIssue(
+            pyproject_path,
+            1,
+            project_version,
+            f"project version should match latest release {match.group(1)}",
+        )
+    ]
+
+
+def check_frontend_owner_names(root: Path) -> list[DocumentationIssue]:
+    """Keep the frontend state-ownership table on current hook names."""
+    frontend_readme = root / "frontend" / "README.md"
+    text = frontend_readme.read_text(encoding="utf-8")
+    issues: list[DocumentationIssue] = []
+    if "useApexAssistant" in text:
+        issues.append(
+            DocumentationIssue(
+                frontend_readme,
+                1,
+                "useApexAssistant",
+                "removed frontend owner is still documented",
+            )
+        )
+    if "useCortex" not in text:
+        issues.append(
+            DocumentationIssue(
+                frontend_readme,
+                1,
+                "useCortex",
+                "current Cortex owner is missing",
+            )
+        )
+    return issues
+
+
+def check_default_briefing_provider(root: Path) -> list[DocumentationIssue]:
+    """Keep the README briefing diagram aligned with the configured default."""
+    import json
+
+    from core.agent.catalog import AGENT_SPECS
+
+    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+    default_mode = config.get("briefing", {}).get("default_mode", "panthera")
+    if default_mode in AGENT_SPECS:
+        provider = AGENT_SPECS[default_mode].provider
+        expected = {
+            "openai": "OpenAI",
+            "gemini": "Gemini",
+            "xai": "xAI",
+            "ollama": "Ollama",
+        }[provider]
+    else:
+        expected = "Structured Digest"
+
+    readme_path = root / "README.md"
+    readme = readme_path.read_text(encoding="utf-8")
+    diagram = re.search(
+        r'^\s*B\s+-->\s+M\["([^"]+)"\]\s*$', readme, re.MULTILINE
+    )
+    if diagram is not None and expected in diagram.group(1):
+        return []
+    return [
+        DocumentationIssue(
+            readme_path,
+            1,
+            expected,
+            "briefing diagram omits the configured default provider",
+        )
+    ]
 
 
 def public_openapi_routes() -> set[tuple[str, str]]:
@@ -257,26 +440,90 @@ def public_openapi_routes() -> set[tuple[str, str]]:
     return routes
 
 
-def current_gemini_profiles() -> dict[str, str]:
+def current_agent_profiles() -> dict[str, str]:
+    from core.agent.catalog import AGENT_SPECS
+
+    return {key: spec.api_model.lower() for key, spec in AGENT_SPECS.items()}
+
+
+def current_agent_versions() -> dict[str, str]:
     from core.agent.catalog import AGENT_SPECS
 
     return {
-        key: spec.api_model
-        for key, spec in AGENT_SPECS.items()
-        if spec.provider == "gemini"
+        spec.display_name.removeprefix("Apex "): spec.agent_version
+        for spec in AGENT_SPECS.values()
     }
+
+
+def check_agent_versions(
+    paths: Iterable[Path],
+    expected_versions: Mapping[str, str],
+    contents: Mapping[Path, str] | None = None,
+) -> list[DocumentationIssue]:
+    """Validate current Apex Agent display names and version numbers in docs."""
+    issues: list[DocumentationIssue] = []
+    texts = {
+        path: contents.get(path, "") if contents is not None else path.read_text(encoding="utf-8")
+        for path in paths
+    }
+    names_alternation = "|".join(re.escape(name) for name in sorted(expected_versions.keys()))
+    agent_version_pattern = re.compile(
+        rf"\b({names_alternation})\s+(\d+\.\d+)\b"
+    )
+
+    for display_name, expected_ver in sorted(expected_versions.items()):
+        expected_label = f"{display_name} {expected_ver}"
+        if not any(expected_label in text for text in texts.values()):
+            issues.append(
+                DocumentationIssue(
+                    ROOT / "docs" / "identity-and-naming.md",
+                    1,
+                    expected_label,
+                    "current Agent product version label is missing from docs",
+                )
+            )
+
+    for path in paths:
+        for line_number, line in enumerate(texts[path].splitlines(), start=1):
+            for match in agent_version_pattern.finditer(line):
+                name, found_ver = match.group(1), match.group(2)
+                expected_ver = expected_versions.get(name)
+                if expected_ver is not None and found_ver != expected_ver:
+                    issues.append(
+                        DocumentationIssue(
+                            path,
+                            line_number,
+                            f"{name} {found_ver}",
+                            f"stale/conflicting Agent version label (expected {name} {expected_ver})",
+                        )
+                    )
+
+    return issues
 
 
 def run(root: Path = ROOT) -> list[DocumentationIssue]:
     from core.settings.models import SETTINGS_SCHEMA_VERSION
 
     paths = public_document_paths(root)
+    contract_paths = [
+        root / "README.md",
+        root / "frontend" / "README.md",
+        root / "docs" / "api.md",
+        root / "docs" / "architecture.md",
+        root / "docs" / "configuration.md",
+        root / "docs" / "identity-and-naming.md",
+    ]
     api_path = root / "docs" / "api.md"
     issues: list[DocumentationIssue] = []
     issues.extend(check_links(paths, root))
     issues.extend(check_routes(api_path, public_openapi_routes()))
-    issues.extend(check_schema_versions(paths, SETTINGS_SCHEMA_VERSION))
-    issues.extend(check_gemini_profiles(paths, current_gemini_profiles()))
+    issues.extend(check_schema_versions(contract_paths, SETTINGS_SCHEMA_VERSION))
+    issues.extend(check_agent_profiles(contract_paths, current_agent_profiles()))
+    issues.extend(check_agent_versions(contract_paths, current_agent_versions()))
+    issues.extend(check_cors_example(root))
+    issues.extend(check_release_version(root))
+    issues.extend(check_frontend_owner_names(root))
+    issues.extend(check_default_briefing_provider(root))
     return issues
 
 

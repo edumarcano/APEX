@@ -48,7 +48,7 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 | `useTelemetrySnapshot` | Process-current telemetry snapshot and refresh |
 | `useBriefingPipeline` | Briefing generation, status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useApexAssistant` | Browser-held conversation, profile status, command scope, and tool output |
+| `useCortex` | Browser-held conversation, Agent/catalog status, command scope, tool traces and outputs, and inspector state |
 | `useMarketData` | Independent market polling with stale fallback |
 | `useSystemDiagnostics` | Independent host diagnostics polling |
 

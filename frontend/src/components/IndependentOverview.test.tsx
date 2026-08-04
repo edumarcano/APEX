@@ -266,6 +266,24 @@ describe('BriefingDigest briefing actions', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
   })
 
+  it('shows the last manual-delivery engine on the Briefing tab', async () => {
+    const user = userEvent.setup()
+    render(
+      <BriefingDigest
+        insights={['Ready']}
+        briefingText="Current briefing."
+        status="success"
+        isLoading={false}
+        activated
+        deliveryLabel="Last manual delivery: pyttsx3"
+      />,
+    )
+
+    expect(screen.queryByText('Last manual delivery: pyttsx3')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Briefing' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Last manual delivery: pyttsx3')
+  })
+
   it('keeps completed blue stages stable during synthesis while retaining the purple core', () => {
     const { container } = render(
       <ApexLogo step={3} status="loading" outerShellActivity="synthesis" />,

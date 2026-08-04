@@ -37,7 +37,7 @@ _FEATURE_KEYS: frozenset[str] = frozenset(
     {"weather", "sports", "news", "email", "calendar", "market"}
 )
 _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
-_EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
+EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
     {
         "user_designation",
         "features",
@@ -99,7 +99,7 @@ def normalize_layer(
     )
 
     for key, value in raw.items():
-        if key not in _EDITABLE_ROOT_KEYS:
+        if key not in EDITABLE_ROOT_KEYS:
             if key not in (
                 "synthesis",
                 "agent_system_prompt",

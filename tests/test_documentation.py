@@ -4,9 +4,16 @@ import unittest
 from pathlib import Path
 
 from scripts.check_docs import (
-    check_gemini_profiles,
+    ROOT,
+    check_agent_profiles,
+    check_cors_example,
+    check_default_briefing_provider,
+    check_frontend_owner_names,
     check_links,
+    check_release_version,
     check_schema_versions,
+    duplicate_route_headings,
+    run,
 )
 
 
@@ -65,12 +72,12 @@ class DocumentationCheckerTests(unittest.TestCase):
 
     def test_reports_unknown_gemini_model(self) -> None:
         source = Path("virtual-readme.md")
-        issues = check_gemini_profiles(
+        issues = check_agent_profiles(
             [source],
             {"neofelis": "gemini-3.6-flash"},
             {
                 source: (
-                    "neofelis uses gemini-3.6-flash; "
+                    "| `neofelis` | Gemini `gemini-3.6-flash` |\n"
                     "old uses gemini-3.1-flash\n"
                 )
             },
@@ -78,6 +85,60 @@ class DocumentationCheckerTests(unittest.TestCase):
 
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].target, "gemini-3.1-flash")
+
+    def test_reports_swapped_agent_model_mapping(self) -> None:
+        source = Path("virtual-configuration.md")
+        issues = check_agent_profiles(
+            [source],
+            {
+                "panthera": "gpt-5.6-luna",
+                "neofelis": "gemini-3.6-flash",
+            },
+            {
+                source: (
+                    "| `panthera` | Gemini `gemini-3.6-flash` |\n"
+                    "| `neofelis` | OpenAI `gpt-5.6-luna` |\n"
+                )
+            },
+        )
+
+        self.assertEqual({issue.target for issue in issues}, {
+            "panthera -> gpt-5.6-luna",
+            "neofelis -> gemini-3.6-flash",
+        })
+
+    def test_reports_unknown_suffixless_grok_model(self) -> None:
+        source = Path("virtual-readme.md")
+        issues = check_agent_profiles(
+            [source],
+            {"delphinus": "grok-4.3"},
+            {source: "delphinus -> grok-4.3; retired model grok-4.2\n"},
+        )
+
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].target, "grok-4.2")
+
+    def test_reports_duplicate_route_detail_heading(self) -> None:
+        duplicates = duplicate_route_headings(
+            "### POST `/api/v1/example`\n\n### POST `/api/v1/example`\n"
+        )
+
+        self.assertEqual(duplicates, [("POST", "/api/v1/example", 3)])
+
+    def test_repository_cors_example_preserves_defaults(self) -> None:
+        self.assertEqual(check_cors_example(ROOT), [])
+
+    def test_repository_release_version_matches_changelog(self) -> None:
+        self.assertEqual(check_release_version(ROOT), [])
+
+    def test_frontend_state_owners_use_current_names(self) -> None:
+        self.assertEqual(check_frontend_owner_names(ROOT), [])
+
+    def test_readme_names_the_default_briefing_provider(self) -> None:
+        self.assertEqual(check_default_briefing_provider(ROOT), [])
+
+    def test_complete_documentation_contract(self) -> None:
+        self.assertEqual(run(ROOT), [])
 
 
 if __name__ == "__main__":

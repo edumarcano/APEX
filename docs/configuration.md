@@ -11,7 +11,29 @@ This is the canonical operator reference for APEX settings, runtime modes, crede
 | `config.local.json` | Machine-local runtime-setting overrides, including the optional user designation | Gitignored |
 | Runtime Settings | Editable subset of resolved settings | Persists to `config.local.json` |
 
-At runtime, APEX loads `config.json`, recursively overlays valid values from `config.local.json`, and publishes an immutable settings snapshot. A malformed local overlay is discarded as a whole and reported through the settings API; it does not partially mutate active settings.
+```mermaid
+flowchart TD
+    ENV[".env<br/>Secrets, credentials, machine paths, and environment modes"]
+    DEFAULTS["config.json<br/>Tracked non-secret defaults"]
+    LOCAL["config.local.json<br/>Machine-local overrides"]
+    HUD["Runtime Settings"]
+    LOADER["Runtime settings loader and validation"]
+    SNAPSHOT["Immutable runtime settings snapshot"]
+    OPERATIONS["Backend operations"]
+
+    HUD -->|"writes editable preferences"| LOCAL
+
+    DEFAULTS --> LOADER
+    LOCAL -->|"overlays tracked defaults"| LOADER
+    LOADER --> SNAPSHOT
+    SNAPSHOT --> OPERATIONS
+
+    ENV -->|"process environment only"| OPERATIONS
+```
+
+Runtime Settings writes only to the gitignored local overlay. APEX validates the resolved configuration before publishing a new immutable runtime snapshot.
+
+At runtime, APEX loads `config.json`, recursively overlays valid values from `config.local.json`, and publishes an immutable settings snapshot. Errors in a local editable layer discard that layer as a whole and are reported through the settings API; a later valid patch repairs the file before the new snapshot is published. Invalid MCP shapes are warning-only: the affected field or provider fails closed while other valid local values remain active.
 
 Arrays replace their tracked counterparts rather than merging item by item. This matters for `football.teams` and custom file-level MCP configuration.
 
@@ -85,13 +107,13 @@ Football telemetry keeps each configured team's next fixture. Briefing synthesis
 
 ### Cloud Agents
 
-| Agent | Provider and model | Role |
+| Agent key and display name | Provider and model | Role |
 |---|---|---|
-| Acinonyx 2.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
-| Neofelis 2.0 | Gemini `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| Delphinus 2.0 | xAI `grok-4.3` | Focused xAI cloud Agent with persisted optional X Search |
-| Orcinus 2.0 | xAI `grok-4.5` | Extended xAI cloud Agent with persisted optional X Search |
+| `acinonyx` — Acinonyx 1.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
+| `panthera` — Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
+| `neofelis` — Neofelis 1.0 | Gemini `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
+| `delphinus` — Delphinus 1.0 | xAI `grok-4.3` | Focused xAI cloud Agent with persisted optional X Search |
+| `orcinus` — Orcinus 1.0 | xAI `grok-4.5` | Extended xAI cloud Agent with persisted optional X Search |
 
 Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
 
@@ -101,10 +123,10 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 ### Local Agents
 
-| Agent | Ollama model | Intended use |
+| Agent key and display name | Ollama model | Intended use |
 |---|---|---|
-| Sorex 2.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
-| Mus 2.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
+| `sorex` — Sorex 1.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
+| `mus` — Mus 1.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 
 `ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
 

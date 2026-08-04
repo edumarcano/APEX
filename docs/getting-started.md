@@ -48,6 +48,18 @@ uv run python launcher.py
 
 Demo mode uses static telemetry and deterministic Agent responses, skips live connectors, and does not write briefing history. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
 
+<p align="center">
+  <img
+    src="assets/apex-standby.png"
+    alt="APEX standby screen with Start APEX, Start with Briefing, and the briefing mode selector"
+    width="900"
+  >
+</p>
+
+<p align="center">
+  <em>APEX opens in standby and waits for the operator to start Home or begin with a briefing.</em>
+</p>
+
 ## Run the full local system
 
 After configuring the features you intend to use, run:
@@ -81,13 +93,13 @@ Use two terminals from the repository root.
 Terminal 1 — API:
 
 ```powershell
-uv run python -m uvicorn core.api:app --reload
+uv run python -m uvicorn core.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Terminal 2 — compiled frontend:
 
 ```powershell
-uv run python -m http.server 5500 --directory dist
+uv run python -m http.server 5500 --bind 127.0.0.1 --directory dist
 ```
 
 Open `http://127.0.0.1:5500`.

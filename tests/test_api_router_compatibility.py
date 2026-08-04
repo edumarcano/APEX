@@ -152,7 +152,7 @@ class ExtractedRouterHttpTests(unittest.TestCase):
             display_name="Apex Panthera",
             description="Balanced general-purpose cloud intelligence.",
             provider="openai",
-            version="2.0",
+            version="1.0",
             configured_model="gpt-5.6-luna",
             runtime="cloud",
             tier="balanced",

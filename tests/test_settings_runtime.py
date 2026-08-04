@@ -112,8 +112,9 @@ class SpeakBindingTests(unittest.TestCase):
     def test_explicit_gender_bound_for_call(self) -> None:
         seen: list[str] = []
 
-        def fake_route(text: str, tts_strategy: str, *, gender: str) -> None:
+        def fake_route(text: str, tts_strategy: str, *, gender: str) -> str:
             seen.append(gender)
+            return "pyttsx3"
 
         with mock.patch.object(speaker, "_route_tts_playback", side_effect=fake_route):
             with mock.patch.object(speaker.config, "is_dev_mode", return_value=False):
@@ -125,10 +126,11 @@ class SpeakBindingTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def fake_route(text: str, tts_strategy: str, *, gender: str) -> None:
+        def fake_route(text: str, tts_strategy: str, *, gender: str) -> str:
             seen.append(gender)
             started.set()
             release.wait(timeout=2.0)
+            return "pyttsx3"
 
         def mutate() -> None:
             started.wait(timeout=2.0)

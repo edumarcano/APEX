@@ -19,6 +19,7 @@ Compare documented claims with repository evidence, including:
 - commands, paths, ports, dependencies, environment variables, defaults, and secrets;
 - supported features, workflows, modes, integrations, limitations, and failure behavior;
 - API routes, payloads, persistence, configuration, and frontend behavior;
+- product terminology, workspace and subsystem names, Agent identities, naming relationships, and logo or identity explanations;
 - architecture, ownership boundaries, screenshots, examples, links, and version references.
 
 Use the selected change range to find affected documentation, then inspect the current files rather than relying only on changed lines. For repository-scoped audits, inventory documentation and map important claims to their owning implementation surfaces.
@@ -32,6 +33,7 @@ In addition to factual drift, assess whether the documentation remains easy to n
 - check screenshots, captions, examples, and diagrams against the current behavior without overstating what is live, automatic, or guaranteed;
 - distinguish an editorial preference from a documentation problem. Report unclear audience, duplicate ownership, missing orientation, or misleading framing only when it makes the documentation harder to use or maintain;
 - preserve roadmap and changelog history unless the requested scope explicitly includes that history;
+- verify that product naming and identity explanations remain consistent with `docs/identity-and-naming.md`, while technical documents retain ownership of runtime behavior and implementation details;
 - when a provider, route, setting, persistence boundary, or integration changes, trace the related configuration, API, architecture, privacy, and fallback documentation as applicable;
 - when a second model provider is added, verify that provider-profile documentation checks are generalized rather than duplicated as provider-specific rules.
 

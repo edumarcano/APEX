@@ -118,7 +118,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Decision.** Connectors normalize into typed results, and briefing models receive a sanitized, bounded `SynthesisInput` marked as untrusted data.
 
-**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Gemini, Ollama, and deterministic output.
+**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, Ollama, and deterministic output.
 
 **Trade-off.** Every new synthesis-relevant fact requires deliberate schema work. That maintenance is preferable to silently expanding model disclosure.
 
@@ -170,7 +170,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, and Mus.
 
-**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details that can be audited in configuration and architecture references. The shared 2.0 version identifies the reworked Agent contract; later Agent changes can version independently.
+**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
 
 **Trade-off.** Agent documentation must remain synchronized with current model mappings and stability labels.
 

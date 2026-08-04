@@ -1,15 +1,27 @@
 # APEX: Automated Personal Environment Xylem
 
+<p align="center">
+  <img
+    src="docs/assets/apex-logo.png"
+    alt="The APEX logo"
+    width="180"
+  >
+</p>
+
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Ask APEX while keeping the local machine, not a hosted account, at the center of the system.
 
 <p align="center">
-  <img src="docs/assets/apex-hero.png" alt="APEX standby screen with Start APEX and Start with Briefing controls" width="900">
+  <img
+  src="docs/assets/apex-home.png"
+  alt="APEX Home workspace delivering a briefing with static, non-personal demo telemetry"
+  width="900"
+>
 </p>
 
 <p align="center">
-  <em>Standby keeps the interface quiet until I choose to load Home or begin with a briefing.</em>
+  <em>The Home workspace delivering a briefing with static, non-personal demo telemetry.</em>
 </p>
 
 ## What APEX does
@@ -26,24 +38,28 @@ A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a de
 
 Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
 
+<p align="center">
+  <img
+  src="docs/assets/apex-cortex.png"
+  alt="APEX Cortex workspace showing an Agent response, tool trace, structured reminder results, effort selection, and context controls"
+  width="900"
+>
+</p>
+
+<p align="center">
+  <em>The Cortex workspace using an Apex Agent to query approved reminder data and return a structured result.</em>
+</p>
+
 ### Keeps runtime control visible
 
 The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, interactive Agent requests, and speech are independent operations rather than one mandatory pipeline.
-
-<p align="center">
-  <img src="docs/assets/apex-active-hud.png" alt="Activated APEX Home workspace with demo telemetry and a generated briefing" width="900">
-</p>
-
-<p align="center">
-  <em>An activated Home workspace using static, non-personal telemetry.</em>
-</p>
 
 ## Engineering highlights
 
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
-- **Cloud, local, and deterministic execution** — Gemini and Ollama are optional strategies, with Structured Digest as the final model-free fallback.
+- **Cloud, local, and deterministic execution** — OpenAI, Gemini, xAI, and Ollama power distinct Agent paths, with Structured Digest as the final model-free briefing fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
 - **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
@@ -60,7 +76,7 @@ flowchart LR
     HUD --> A["Ask APEX"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["Gemini · Ollama · Structured Digest"]
+    B --> M["OpenAI · Ollama · Structured Digest"]
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```
@@ -74,7 +90,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
-| Cloud reasoning | Gemini 3.5 Flash Lite, Gemini 3.5 Flash, Gemini 3.6 Flash |
+| Cloud reasoning | OpenAI, Gemini, and xAI Apex Agents; see Configuration for current model IDs |
 | Local reasoning | Ollama with Qwen3 models |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
@@ -113,6 +129,7 @@ Use a local Ollama briefing mode or Structured Digest to avoid OpenAI disclosure
 | [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
 | [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
 | [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
+| [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and Apex Agent taxonomy |
 | [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |
 | [Design System](docs/design-system.md) | Preserve the HUD's visual language, state semantics, responsiveness, and accessibility |
 | [Roadmap](docs/roadmap.md) | Follow APEX's product and architectural evolution and its planned direction |

@@ -22,12 +22,16 @@ from core.agent.providers.ollama import (
     _build_payload,
     _estimate_payload_tokens,
 )
-from core.agent.providers.ollama_models import OLLAMA_MODEL_PROFILES
+
 
 
 def _cloud_agent(key: str = "neofelis"):
     _apex, native = resolve_effort(key, None)
     return build_concrete_agent(key, native_effort=native)
+
+
+def _local_agent(key: str = "sorex"):
+    return build_concrete_agent(key, native_effort=None)
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 
 
@@ -78,7 +82,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Hello", agent="sorex"),
             provider,
-            OLLAMA_MODEL_PROFILES["sorex"],
+            _local_agent("sorex"),
         )
 
         self.assertEqual(provider.tool_names, [[]])
@@ -180,7 +184,7 @@ class LocalCommandScopeTests(unittest.TestCase):
                     tool_scope="weather",
                 ),
                 provider,
-                OLLAMA_MODEL_PROFILES["sorex"],
+                _local_agent("sorex"),
                 tools_dispatcher=lambda name, _arguments: dispatched.append(name),
                 resolved_local_command=resolution,
             )
@@ -240,7 +244,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertIsNone(response.error)
 
     def test_budget_trims_oldest_complete_interaction(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["sorex"].model_copy(
+        profile = _local_agent("sorex").model_copy(
             update={"context_window": 1400, "final_answer_max_tokens": 128}
         )
         history = [
@@ -263,7 +267,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertIn("current question", contents)
 
     def test_security_directive_does_not_claim_tools_are_available(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["sorex"]
+        profile = _local_agent("sorex")
         payload = _build_payload(
             [AgentMessage(role="user", content="Hello")],
             [],
@@ -277,7 +281,7 @@ class LocalCommandScopeTests(unittest.TestCase):
         self.assertNotIn("You have access to external tools", system_content)
 
     def test_truncated_tool_turn_rebudgets_for_larger_final_answer(self) -> None:
-        profile = OLLAMA_MODEL_PROFILES["mus"].model_copy(
+        profile = _local_agent("mus").model_copy(
             update={
                 "context_window": 2200,
                 "tool_select_max_tokens": 64,
