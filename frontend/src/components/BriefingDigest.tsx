@@ -117,16 +117,16 @@ export function BriefingDigest({
       <span className="hud-corner-bl" aria-hidden />
       <span className="hud-corner-br" aria-hidden />
       <header className="hud-inner-lift mb-3 shrink-0">
-        <div className="flex min-h-9 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-h-9 items-center justify-between gap-2 sm:gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <span className="hud-icon-badge size-7 shrink-0">
             <FileText className="size-4 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
           </span>
-          <h2 id={labelId} className="min-w-0 truncate font-orbitron text-sm font-semibold leading-none tracking-[0.12em] text-[color:var(--hud-text)]">
+          <h2 id={labelId} className="min-w-0 truncate font-orbitron text-xs sm:text-sm font-semibold leading-none tracking-[0.12em] text-[color:var(--hud-text)]">
             Briefing Highlights
           </h2>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <div className="flex rounded-lg border border-white/10 bg-zinc-950/30 p-0.5">
             <button
               type="button"
@@ -172,10 +172,11 @@ export function BriefingDigest({
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-[color:var(--hud-text)] transition-colors hover:border-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+              className="inline-flex size-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[color:var(--hud-text)] transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+              aria-label="Briefing history"
+              title="Briefing history"
             >
-              <Clock className="size-3 text-[color:var(--hud-accent)]" strokeWidth={2.25} />
-              <span>History</span>
+              <Clock className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={2} aria-hidden />
             </button>
           ) : null}
         </div>

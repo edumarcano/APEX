@@ -77,11 +77,12 @@
 }
 
 .home-command-grid__briefing-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
 }
 
 .home-command-grid__briefing {
-  width: min(17.5rem, 100%);
+  width: 100%;
+  min-width: 0;
 }
 
 .home-command-grid__briefing-actions {
@@ -103,7 +104,7 @@
 
 .home-command-grid__synthesize {
   height: 2.5rem;
-  width: 12.5rem;
+  width: min(12.5rem, 100%);
   min-width: 0;
   flex: 0 1 12.5rem;
 }
@@ -113,7 +114,7 @@
   white-space: nowrap;
 }
 
-@media (max-width: 1279px), (max-height: 820px) {
+@media (max-width: 1279px) {
   .hud-layout-fullscreen {
     overflow-x: hidden;
     overflow-y: auto;
@@ -145,6 +146,12 @@
     max-width: none !important;
     min-height: 0;
   }
+}
+
+@media (max-height: 820px) {
+  .hud-app-shell {
+    --hud-panel-pad: 1rem;
+  }
 
   .hud-digest-wrapper {
     max-height: 13.5rem !important;
@@ -169,7 +176,6 @@
   .hud-corner-brackets {
     max-width: 100%;
   }
-
 }
 
 @media (max-width: 767px) {
