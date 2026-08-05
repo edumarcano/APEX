@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from core.agent.capabilities import CapabilityDescriptor
+from core.agent.local_runtime import LOCAL_RUNTIME
+from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
 from core.agent.local_context import wrap_untrusted_tool_output
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
 from core.agent.providers.contract import ProviderTurnResult
@@ -80,9 +82,16 @@ def normalize_litert_response(
     return _text_from_response(response), calls
 
 
-def _native_message(message: AgentMessage) -> dict[str, Any]:
+def _native_message(
+    message: AgentMessage,
+    *,
+    appended_instruction: str | None = None,
+) -> dict[str, Any]:
     if message.role == "user":
-        return {"role": "user", "content": message.content or ""}
+        content = message.content or ""
+        if appended_instruction:
+            content = f"{content}\n\n{appended_instruction}"
+        return {"role": "user", "content": content}
     if message.role == "agent":
         payload: dict[str, Any] = {
             "role": "model",
@@ -105,19 +114,26 @@ def _native_message(message: AgentMessage) -> dict[str, Any]:
     raise LiteRTProviderError("LiteRT received an unsupported APEX message role.")
 
 
-def _native_tool_result_message(results: Sequence[ToolResult]) -> dict[str, Any]:
+def _native_tool_result_message(
+    results: Sequence[ToolResult],
+    *,
+    appended_instruction: str | None = None,
+) -> dict[str, Any]:
     if not results:
         raise LiteRTProviderError("LiteRT tool-result message cannot be empty.")
+    content: list[dict[str, Any]] = [
+        {
+            "type": "tool_response",
+            "name": result.name,
+            "response": wrap_untrusted_tool_output(result),
+        }
+        for result in results
+    ]
+    if appended_instruction:
+        content.append({"type": "text", "text": appended_instruction})
     return {
         "role": "tool",
-        "content": [
-            {
-                "type": "tool_response",
-                "name": result.name,
-                "response": wrap_untrusted_tool_output(result),
-            }
-            for result in results
-        ],
+        "content": content,
     }
 
 
@@ -182,7 +198,12 @@ class LiteRTProviderSession:
             raise LiteRTProviderError("LiteRT provider sessions accept one new message per turn.")
         return tail[0]
 
-    def _tool_message(self, message: AgentMessage) -> dict[str, Any]:
+    def _tool_message(
+        self,
+        message: AgentMessage,
+        *,
+        appended_instruction: str | None = None,
+    ) -> dict[str, Any]:
         if message.role != "tool" or not message.tool_results:
             raise LiteRTProviderError("LiteRT expected one structured tool-result message.")
         results = message.tool_results
@@ -196,7 +217,10 @@ class LiteRTProviderSession:
             seen.add(result.id)
         if seen != set(self._outstanding_calls):
             raise LiteRTProviderError("LiteRT tool results did not cover all outstanding calls.")
-        return _native_tool_result_message(results)
+        return _native_tool_result_message(
+            results,
+            appended_instruction=appended_instruction,
+        )
 
     def generate_turn(
         self,
@@ -205,17 +229,29 @@ class LiteRTProviderSession:
         profile: LiteRTModelProfile,
         system_instruction_override: str | None = None,
     ) -> ProviderTurnResult:
-        del tools, profile, system_instruction_override
+        del tools, profile
         if not self.is_usable:
             raise LiteRTProviderError("LiteRT provider session is no longer usable.")
+        final_instruction = (
+            FINAL_ANSWER_INSTRUCTION
+            if system_instruction_override
+            and FINAL_ANSWER_INSTRUCTION in system_instruction_override
+            else None
+        )
         if not self._opened:
             self._open(messages)
             current = messages[-1]
-            native_message: Mapping[str, Any] | str = _native_message(current)
+            native_message: Mapping[str, Any] | str = _native_message(
+                current,
+                appended_instruction=final_instruction,
+            )
             self._history.append(current)
         else:
             current = self._validate_history_prefix(messages)
-            native_message = self._tool_message(current)
+            native_message = self._tool_message(
+                current,
+                appended_instruction=final_instruction,
+            )
             self._history.append(current)
             self._outstanding_calls.clear()
 
@@ -244,6 +280,7 @@ class LiteRTProviderSession:
         self._outstanding_calls = {
             call.id: (call.name, index) for index, call in enumerate(calls)
         }
+        LOCAL_RUNTIME.register_activity("litert", self.profile.api_model)
         return ProviderTurnResult(
             message=model_message,
             resolved_model=self.profile.api_model,

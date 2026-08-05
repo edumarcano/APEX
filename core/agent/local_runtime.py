@@ -17,8 +17,9 @@ import asyncio
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,6 +62,15 @@ class LocalRuntimeBackend(Protocol):
 
     def check_idle(self) -> None:
         """Perform one bounded idle-unload check for the provider."""
+
+    def shutdown(self) -> bool:
+        """Release provider-owned runtime resources during application shutdown."""
+
+    def reconcile_state(self) -> None:
+        """Reconcile provider state after a failed lifecycle operation."""
+
+    def reset_state(self) -> None:
+        """Clear provider state after an aborted model switch."""
 
 
 class LocalRuntimeCoordinator:
@@ -114,8 +124,78 @@ class LocalRuntimeCoordinator:
         return self._require_backend(provider).is_model_resident(model_name)
 
     def switch_model(self, provider: str, profile: object) -> bool:
-        """Delegate one provider-specific model switch."""
-        return self._require_backend(provider).switch_model(profile)
+        """Switch providers under the shared lease and enforce exclusion.
+
+        Every non-target backend is asked to unload, even when the coordinator
+        has no tracked active identity.  This allows a provider to detect
+        residency that predates the current process or was observed externally.
+        """
+        target = self._require_backend(provider)
+        owner = self.execution_provider()
+        acquired = False
+        if owner is None:
+            if not self.try_begin_execution(provider):
+                return False
+            acquired = True
+        elif owner != provider:
+            _LOGGER.warning(
+                "Refusing %s model switch while %s owns the local execution lease.",
+                provider,
+                owner,
+            )
+            return False
+
+        try:
+            for backend in self.backend_snapshot():
+                if backend.provider == provider:
+                    continue
+                try:
+                    if not backend.unload_active_model():
+                        try:
+                            target.reset_state()
+                        except Exception:
+                            pass
+                        _LOGGER.warning(
+                            "Refusing %s model switch because %s could not unload.",
+                            provider,
+                            backend.provider,
+                        )
+                        return False
+                except Exception as exc:
+                    try:
+                        target.reset_state()
+                    except Exception:
+                        pass
+                    _LOGGER.warning(
+                        "Refusing %s model switch after %s unload error: %s",
+                        provider,
+                        backend.provider,
+                        type(exc).__name__,
+                    )
+                    return False
+
+            try:
+                switched = bool(target.switch_model(profile))
+            except Exception as exc:
+                _LOGGER.warning(
+                    "Local provider %s model switch failed: %s",
+                    provider,
+                    type(exc).__name__,
+                )
+                switched = False
+            if not switched:
+                try:
+                    target.reset_state()
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "Local provider %s state reconciliation failed: %s",
+                        provider,
+                        type(exc).__name__,
+                    )
+            return switched
+        finally:
+            if acquired:
+                self.end_execution(provider)
 
     def unload_active_model(self, provider: str) -> bool:
         """Delegate active-model unload to a registered provider backend."""
@@ -137,11 +217,28 @@ class LocalRuntimeCoordinator:
             self._execution_provider = provider
         return True
 
-    def end_execution(self) -> None:
-        """Release the local execution slot claimed by this coordinator."""
+    def end_execution(self, provider: str | None = None) -> None:
+        """Release the lease, rejecting releases by the wrong provider."""
         with self._state_lock:
+            owner = self._execution_provider
+            if owner is None:
+                raise RuntimeError("Local execution lease is not held.")
+            if provider is not None and owner != provider:
+                raise RuntimeError(
+                    f"Local execution lease belongs to {owner}, not {provider}."
+                )
             self._execution_provider = None
         self._execution_lock.release()
+
+    @contextmanager
+    def execution_lease(self, provider: str) -> Iterator[bool]:
+        """Attempt a provider-validated non-blocking execution lease."""
+        acquired = self.try_begin_execution(provider)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                self.end_execution(provider)
 
     def is_execution_active(self) -> bool:
         """Return whether any local provider currently owns the slot."""
@@ -269,6 +366,31 @@ class LocalRuntimeCoordinator:
         with self._state_lock:
             return tuple(self._backends.values())
 
+    def shutdown(self) -> bool:
+        """Shut down every registered backend and clear shared identities."""
+        success = True
+        for backend in self.backend_snapshot():
+            try:
+                if not backend.shutdown():
+                    success = False
+            except Exception as exc:
+                success = False
+                _LOGGER.warning(
+                    "Local provider %s shutdown failed: %s",
+                    backend.provider,
+                    type(exc).__name__,
+                )
+        with self._state_lock:
+            self._active = None
+            self._loading = None
+            self._execution_provider = None
+        if self._execution_lock.locked():
+            try:
+                self._execution_lock.release()
+            except RuntimeError:
+                pass
+        return success
+
 
 LOCAL_RUNTIME = LocalRuntimeCoordinator()
 
@@ -278,9 +400,9 @@ def try_begin_local_execution(provider: str = "local") -> bool:
     return LOCAL_RUNTIME.try_begin_execution(provider)
 
 
-def end_local_execution() -> None:
+def end_local_execution(provider: str | None = None) -> None:
     """Compatibility facade for releasing the shared local slot."""
-    LOCAL_RUNTIME.end_execution()
+    LOCAL_RUNTIME.end_execution(provider)
 
 
 def is_local_execution_active() -> bool:

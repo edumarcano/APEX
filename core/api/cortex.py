@@ -458,10 +458,10 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
                     detail="Active LiteRT model failed to unload.",
                 )
         finally:
-            end_local_execution()
+            end_local_execution("litert")
         return LocalUnloadResponse()
 
-    if not OLLAMA_MANUAL_UNLOAD_ENABLED:
+    if not LOCAL_RUNTIME_MANUAL_UNLOAD_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Manual local model unload is disabled in system settings.",
@@ -488,7 +488,7 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
                 detail="Active local model failed to unload from Ollama.",
             )
     finally:
-        end_local_execution()
+        end_local_execution("ollama")
     return LocalUnloadResponse()
 
 
@@ -559,7 +559,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
                     ),
                 )
         finally:
-            end_local_execution()
+            end_local_execution("litert")
         return LocalLoadResponse(agent=agent_key)
 
     if not OLLAMA_ENABLED:
@@ -603,7 +603,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
                 ),
             )
     finally:
-        end_local_execution()
+        end_local_execution("ollama")
 
     # Force a post-transition snapshot so the next Agent response reflects
     # the daemon rather than a prior polling cache.
@@ -849,10 +849,26 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             detail=f"Agent {agent_key!r} is not available.",
         )
 
+    spec = AGENT_SPECS[agent_key]
+    # Demo mode may short-circuit execution for ordinary Agents, but an
+    # explicitly selected LiteRT Agent must still report truthful provider
+    # availability rather than returning a mock success.
+    if spec.provider == "litert":
+        demo_profile = build_concrete_agent(agent_key, native_effort=None)
+        assert isinstance(demo_profile, LiteRTModelProfile)
+        litert_status, litert_reason, _active, loading, _idle_remaining = (
+            resolve_litert_agent_status(demo_profile, agent_key=agent_key)
+        )
+        if litert_status != "available" or loading:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=litert_reason
+                or "The requested LiteRT Agent is currently unavailable.",
+            )
+
     if DEMO_MODE:
         return run_demo_agent_query(payload)
 
-    spec = AGENT_SPECS[agent_key]
     if spec.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -999,7 +1015,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 user_designation=settings.user_designation,
             )
         finally:
-            end_local_execution()
+            end_local_execution("litert")
 
     if isinstance(profile, OllamaModelProfile):
         if not OLLAMA_ENABLED:
@@ -1055,7 +1071,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 user_designation=settings.user_designation,
             )
         finally:
-            end_local_execution()
+            end_local_execution("ollama")
 
     api_key = None
     if spec.credential_env:

@@ -1,5 +1,6 @@
 venv/
 .venv/
+.venv-litert/
 .env
 config.local.json
 __pycache__/
@@ -25,6 +26,8 @@ digest.txt
 repomix-output.xml
 bin/
 weights/
+models/litert/
+*.litertlm
 *.raw
 *.wav
 *.mp3

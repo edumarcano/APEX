@@ -44,6 +44,10 @@ __all__ = [
     "LITERT_MUSTELA_TIMEOUT",
     "LITERT_MIN_FREE_RAM_MICROTUS_MB",
     "LITERT_MIN_FREE_RAM_MUSTELA_MB",
+    "LITERT_RAM_LIMIT_MICROTUS",
+    "LITERT_CPU_LIMIT_MICROTUS",
+    "LITERT_RAM_LIMIT_MUSTELA",
+    "LITERT_CPU_LIMIT_MUSTELA",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -462,6 +466,30 @@ def _parse_resource_gate(
     return ram, cpu
 
 
+def _parse_litert_resource_gate(
+    gates: Any,
+    *,
+    profile: str,
+    default_ram: float,
+    default_cpu: float,
+) -> tuple[float, float]:
+    """Parse LiteRT percentage gates while keeping minimum-free-RAM separate."""
+    if not isinstance(gates, dict):
+        return default_ram, default_cpu
+    return (
+        _parse_config_float(
+            gates.get("ram_limit", default_ram),
+            key=f"litert.resource_gates.{profile}.ram_limit",
+            default=default_ram,
+        ),
+        _parse_config_float(
+            gates.get("cpu_limit", default_cpu),
+            key=f"litert.resource_gates.{profile}.cpu_limit",
+            default=default_cpu,
+        ),
+    )
+
+
 def _parse_cloud_agent(raw: Any, *, key: str, default: str) -> str:
     """Validate a cloud Agent identifier against the supported roster."""
     if not isinstance(raw, str):
@@ -725,6 +753,22 @@ try:
         min_value=0,
         max_value=1_000_000,
     )
+    _microtus_ram, _microtus_cpu = _parse_litert_resource_gate(
+        _litert_gates.get("microtus"),
+        profile="microtus",
+        default_ram=88.0,
+        default_cpu=95.0,
+    )
+    LITERT_RAM_LIMIT_MICROTUS: Final[float] = _microtus_ram
+    LITERT_CPU_LIMIT_MICROTUS: Final[float] = _microtus_cpu
+    _mustela_ram, _mustela_cpu = _parse_litert_resource_gate(
+        _litert_gates.get("mustela"),
+        profile="mustela",
+        default_ram=78.0,
+        default_cpu=90.0,
+    )
+    LITERT_RAM_LIMIT_MUSTELA: Final[float] = _mustela_ram
+    LITERT_CPU_LIMIT_MUSTELA: Final[float] = _mustela_cpu
 except Exception as exc:
     _LOGGER.warning("Unable to parse local runtime/LiteRT config: %s; using defaults.", exc)
     LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES = 5
@@ -742,3 +786,7 @@ except Exception as exc:
     LITERT_MUSTELA_TIMEOUT = 240
     LITERT_MIN_FREE_RAM_MICROTUS_MB = 2300
     LITERT_MIN_FREE_RAM_MUSTELA_MB = 5400
+    LITERT_RAM_LIMIT_MICROTUS = 88.0
+    LITERT_CPU_LIMIT_MICROTUS = 95.0
+    LITERT_RAM_LIMIT_MUSTELA = 78.0
+    LITERT_CPU_LIMIT_MUSTELA = 90.0

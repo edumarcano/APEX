@@ -17,7 +17,10 @@ from core.agent.local_runtime import (
     check_idle_models_loop as _check_idle_models_loop,
 )
 from core.agent.providers.ollama_models import OllamaModelProfile
-from core.config import OLLAMA_HOST, OLLAMA_IDLE_UNLOAD_MINUTES
+from core.config import (
+    LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES,
+    OLLAMA_HOST,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,11 +79,11 @@ def get_keep_alive_duration() -> str:
     """
     Return the daemon-side keep_alive window derived from the idle config.
 
-    One minute is added on top of ``OLLAMA_IDLE_UNLOAD_MINUTES`` so the
+    One minute is added on top of the shared local-runtime idle timeout so the
     Python-side idle unloader is always the deciding authority; Ollama's own
     eviction acts only as a fail-safe backstop.
     """
-    return f"{OLLAMA_IDLE_UNLOAD_MINUTES + 1}m"
+    return f"{LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES + 1}m"
 
 
 def try_begin_local_execution() -> bool:
@@ -95,7 +98,7 @@ def try_begin_local_execution() -> bool:
 
 def end_local_execution() -> None:
     """Release the local execution slot claimed by try_begin_local_execution."""
-    LOCAL_RUNTIME.end_execution()
+    LOCAL_RUNTIME.end_execution("ollama")
 
 
 def is_local_execution_active() -> bool:
@@ -365,7 +368,7 @@ def get_idle_unload_remaining_seconds() -> int | None:
     Returns None when no model is currently tracked as loaded.
     """
     return LOCAL_RUNTIME.idle_remaining_seconds(
-        "ollama", OLLAMA_IDLE_UNLOAD_MINUTES
+        "ollama", LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES
     )
 
 
@@ -474,27 +477,27 @@ def _maybe_unload_idle_model() -> None:
     so concurrent activity or model switches are not clobbered by a stale
     idle decision.
     """
-    if is_local_execution_active():
-        return
-
-    candidate = LOCAL_RUNTIME.idle_candidate(
-        "ollama", OLLAMA_IDLE_UNLOAD_MINUTES
-    )
-    if candidate is None:
-        return
-    model_to_unload, activity_snapshot = candidate
-
-    if not _post_unload_request(model_to_unload):
-        return
-
-    if LOCAL_RUNTIME.clear_active_if_unchanged(
-        "ollama", model_to_unload, activity_snapshot
-    ):
-        _LOGGER.info(
-            "Idle unload triggered for %s after %.0fs of inactivity",
-            model_to_unload,
-            time.monotonic() - activity_snapshot,
+    with LOCAL_RUNTIME.execution_lease("ollama") as acquired:
+        if not acquired:
+            return
+        candidate = LOCAL_RUNTIME.idle_candidate(
+            "ollama", LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES
         )
+        if candidate is None:
+            return
+        model_to_unload, activity_snapshot = candidate
+
+        if not _post_unload_request(model_to_unload):
+            return
+
+        if LOCAL_RUNTIME.clear_active_if_unchanged(
+            "ollama", model_to_unload, activity_snapshot
+        ):
+            _LOGGER.info(
+                "Idle unload triggered for %s after %.0fs of inactivity",
+                model_to_unload,
+                time.monotonic() - activity_snapshot,
+            )
 
 
 class _OllamaRuntimeBackend:
@@ -535,6 +538,24 @@ class _OllamaRuntimeBackend:
     @staticmethod
     def check_idle() -> None:
         _maybe_unload_idle_model()
+
+    @staticmethod
+    def shutdown() -> bool:
+        """Ollama owns no child process; preserve its existing daemon lifecycle."""
+        return True
+
+    @staticmethod
+    def reconcile_state() -> None:
+        """Reconcile only the coordinator identity; daemon probing stays lazy."""
+        active = LOCAL_RUNTIME.get_active_model("ollama")
+        if active is not None and not is_local_model_resident(active):
+            LOCAL_RUNTIME.clear_active("ollama", active)
+
+    @staticmethod
+    def reset_state() -> None:
+        """Clear coordinator state after an aborted cross-provider switch."""
+        LOCAL_RUNTIME.clear_active("ollama")
+        LOCAL_RUNTIME.clear_loading("ollama")
 
 
 LOCAL_RUNTIME.register_backend(_OllamaRuntimeBackend())

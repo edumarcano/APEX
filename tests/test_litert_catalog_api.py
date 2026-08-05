@@ -47,6 +47,21 @@ class LiteRTCatalogAndApiTests(unittest.TestCase):
         execute.assert_not_called()
         ollama.assert_not_called()
 
+    def test_demo_mode_explicit_unavailable_litert_is_truthful(self) -> None:
+        with (
+            mock.patch("core.api.cortex.DEMO_MODE", True),
+            mock.patch("core.api.cortex.LITERT_ENABLED", False),
+            mock.patch("core.agent.providers.litert_lifecycle.LITERT_ENABLED", False),
+            mock.patch("core.api.cortex.run_demo_agent_query") as demo,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                query_agent(
+                    AgentQueryRequest(agent="mustela", prompt="Summarize my day")
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+        demo.assert_not_called()
+
     def test_catalog_uses_provider_specific_profile_for_artifact_metadata(self) -> None:
         microtus = AGENT_SPECS["microtus"]
         mustela = AGENT_SPECS["mustela"]

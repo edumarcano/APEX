@@ -94,6 +94,7 @@ def normalize_layer(
         return {}
 
     normalized: dict[str, Any] = {}
+    legacy_local_runtime = _normalize_legacy_local_runtime(raw.get("ollama"), layer_name)
     ask_apex_raw = raw.get("ask_apex")
     schema5_layer = raw.get("schema_version") == 5 or (
         isinstance(ask_apex_raw, dict)
@@ -145,6 +146,7 @@ def normalize_layer(
                 normalized["ask_apex"] = ask_apex
         elif key == "local_runtime":
             local_runtime = _normalize_local_runtime(value, layer_name, issues)
+            local_runtime = {**legacy_local_runtime, **local_runtime}
             if local_runtime:
                 normalized["local_runtime"] = local_runtime
         elif key == "briefing":
@@ -162,6 +164,8 @@ def normalize_layer(
             if mcp:
                 normalized["mcp"] = mcp
 
+    if legacy_local_runtime and "local_runtime" not in normalized:
+        normalized["local_runtime"] = legacy_local_runtime
     return normalized
 
 
@@ -478,6 +482,38 @@ def _normalize_local_runtime(
                 )
         else:
             _LOGGER.warning("Ignoring unknown local_runtime key %r in %s.", key, layer_name)
+    return result
+
+
+def _normalize_legacy_local_runtime(value: Any, layer_name: str) -> dict[str, Any]:
+    """Read legacy Ollama lifecycle keys only when shared keys are absent."""
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, Any] = {}
+    for key in ("single_loaded_model", "manual_unload_enabled"):
+        raw = value.get(key)
+        if isinstance(raw, bool):
+            result[key] = raw
+        elif raw is not None:
+            _LOGGER.warning(
+                "Ignoring invalid legacy ollama.%s in %s; use local_runtime.%s.",
+                key,
+                layer_name,
+                key,
+            )
+    raw_timeout = value.get("idle_unload_timeout_minutes")
+    if (
+        isinstance(raw_timeout, int)
+        and not isinstance(raw_timeout, bool)
+        and 1 <= raw_timeout <= 60
+    ):
+        result["idle_unload_timeout_minutes"] = raw_timeout
+    elif raw_timeout is not None:
+        _LOGGER.warning(
+            "Ignoring invalid legacy ollama.idle_unload_timeout_minutes in %s; "
+            "use local_runtime.idle_unload_timeout_minutes.",
+            layer_name,
+        )
     return result
 
 

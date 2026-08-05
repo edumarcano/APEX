@@ -15,11 +15,15 @@ from pydantic import BaseModel, Field
 
 from core.config import (
     LITERT_ENGINE_LOAD_TIMEOUT,
+    LITERT_CPU_LIMIT_MICROTUS,
+    LITERT_CPU_LIMIT_MUSTELA,
     LITERT_MIN_FREE_RAM_MICROTUS_MB,
     LITERT_MIN_FREE_RAM_MUSTELA_MB,
     LITERT_MODEL_DIR,
     LITERT_MICROTUS_TIMEOUT,
     LITERT_MUSTELA_TIMEOUT,
+    LITERT_RAM_LIMIT_MICROTUS,
+    LITERT_RAM_LIMIT_MUSTELA,
 )
 
 
@@ -37,6 +41,8 @@ class LiteRTModelConfig:
     max_tool_calls: int
     generation_timeout: int
     minimum_free_ram_mb: int
+    ram_limit: float
+    cpu_limit: float
 
 
 LITERT_MODEL_CONFIGS: dict[str, LiteRTModelConfig] = {
@@ -51,6 +57,8 @@ LITERT_MODEL_CONFIGS: dict[str, LiteRTModelConfig] = {
         max_tool_calls=4,
         generation_timeout=LITERT_MICROTUS_TIMEOUT,
         minimum_free_ram_mb=LITERT_MIN_FREE_RAM_MICROTUS_MB,
+        ram_limit=LITERT_RAM_LIMIT_MICROTUS,
+        cpu_limit=LITERT_CPU_LIMIT_MICROTUS,
     ),
     "mustela": LiteRTModelConfig(
         agent_key="mustela",
@@ -63,6 +71,8 @@ LITERT_MODEL_CONFIGS: dict[str, LiteRTModelConfig] = {
         max_tool_calls=6,
         generation_timeout=LITERT_MUSTELA_TIMEOUT,
         minimum_free_ram_mb=LITERT_MIN_FREE_RAM_MUSTELA_MB,
+        ram_limit=LITERT_RAM_LIMIT_MUSTELA,
+        cpu_limit=LITERT_CPU_LIMIT_MUSTELA,
     ),
 }
 
@@ -113,3 +123,5 @@ class LiteRTModelProfile(BaseModel):
     )
     cpu_backend: Literal["cpu"] = "cpu"
     minimum_free_ram_mb: int | None = Field(default=None, ge=0)
+    ram_limit: float = Field(default=88.0, ge=0, le=100)
+    cpu_limit: float = Field(default=95.0, ge=0, le=100)

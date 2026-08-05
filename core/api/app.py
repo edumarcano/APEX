@@ -15,8 +15,8 @@ from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_tod
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
-from core.config import ENV_PATH, OLLAMA_ENABLED
-from core.agent.local_runtime import check_idle_models_loop
+from core.config import ENV_PATH, LITERT_ENABLED, OLLAMA_ENABLED
+from core.agent.local_runtime import LOCAL_RUNTIME, check_idle_models_loop
 from core import database
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
@@ -25,6 +25,11 @@ from core.runtime_logging import configure_logging
 load_dotenv(dotenv_path=ENV_PATH)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def local_idle_monitor_enabled() -> bool:
+    """Return whether any configured local provider needs idle monitoring."""
+    return OLLAMA_ENABLED or LITERT_ENABLED
 
 
 @asynccontextmanager
@@ -39,9 +44,9 @@ async def _app_lifespan(_app: FastAPI):
     set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db()
 
-    if OLLAMA_ENABLED:
+    if local_idle_monitor_enabled():
         idle_model_task = asyncio.create_task(check_idle_models_loop())
-        _LOGGER.info("Started Ollama idle model monitor")
+        _LOGGER.info("Started provider-neutral local idle model monitor")
 
     mcp_config = load_mcp_config()
     mcp_manager = MCPClientManager(mcp_config)
@@ -52,6 +57,20 @@ async def _app_lifespan(_app: FastAPI):
 
     yield
 
+    # Stop lifecycle polling before any provider teardown so no idle operation
+    # can race engine or daemon cleanup.
+    if idle_model_task is not None:
+        idle_model_task.cancel()
+        try:
+            await idle_model_task
+        except asyncio.CancelledError:
+            pass
+
+    # Every registered backend owns its own cleanup contract.  LiteRT closes
+    # conversations and engines before terminating its worker; Ollama remains a
+    # daemon-owned no-op as before.
+    await asyncio.to_thread(LOCAL_RUNTIME.shutdown)
+
     if mcp_manager is not None:
         await mcp_manager.shutdown()
         set_mcp_manager(None)
@@ -61,14 +80,6 @@ async def _app_lifespan(_app: FastAPI):
     microsoft_todo_client.close()
     set_microsoft_todo_client(None)
     set_microsoft_auth_service(None)
-
-    if idle_model_task is not None:
-        idle_model_task.cancel()
-        try:
-            await idle_model_task
-        except asyncio.CancelledError:
-            pass
-
 
 app = FastAPI(title="APEX API", lifespan=_app_lifespan)
 

@@ -166,7 +166,7 @@ class SynthesisRouter:
                 handle.reason = "local_warmup_failed"
             finally:
                 handle.finished_at = time.monotonic()
-                end_local_execution()
+                end_local_execution("ollama")
                 handle.event.set()
 
         threading.Thread(target=worker, daemon=True, name="apex-synthesis-warmup").start()
@@ -299,7 +299,7 @@ class SynthesisRouter:
                 ),
             )
         finally:
-            end_local_execution()
+            end_local_execution("ollama")
 
     def _synthesize_explicit_local(
         self,

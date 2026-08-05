@@ -67,8 +67,16 @@
     "microtus_timeout_seconds": 120,
     "mustela_timeout_seconds": 240,
     "resource_gates": {
-      "microtus": { "minimum_free_ram_mb": 2300 },
-      "mustela": { "minimum_free_ram_mb": 5400 }
+      "microtus": {
+        "minimum_free_ram_mb": 2300,
+        "ram_limit": 88.0,
+        "cpu_limit": 95.0
+      },
+      "mustela": {
+        "minimum_free_ram_mb": 5400,
+        "ram_limit": 78.0,
+        "cpu_limit": 90.0
+      }
     }
   },
   "mcp": {

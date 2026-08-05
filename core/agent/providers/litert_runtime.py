@@ -103,6 +103,7 @@ class LiteRTRuntimeManager:
         inference_timeout: float = _DEFAULT_INFERENCE_TIMEOUT,
         shutdown_timeout: float = _DEFAULT_SHUTDOWN_TIMEOUT,
         max_frame_bytes: int | None = None,
+        state_callback: Callable[[str], None] | None = None,
     ) -> None:
         root = Path(project_root) if project_root is not None else Path(__file__).resolve().parents[3]
         self.interpreter = str(interpreter or (root / ".venv-litert" / "Scripts" / "python.exe"))
@@ -115,6 +116,7 @@ class LiteRTRuntimeManager:
         self.inference_timeout = max(0.1, float(inference_timeout))
         self.shutdown_timeout = max(0.1, float(shutdown_timeout))
         self.max_frame_bytes = max_frame_bytes
+        self._state_callback = state_callback
         self._lock = threading.RLock()
         self._process: subprocess.Popen[bytes] | None = None
         self._stdout_thread: threading.Thread | None = None
@@ -125,6 +127,19 @@ class LiteRTRuntimeManager:
         self._protocol_ready = False
         self._engine_model: str | None = None
         self._last_status: dict[str, Any] = {"state": "unavailable", "loaded_model": None}
+
+    def _notify_state_change(self, reason: str) -> None:
+        callback = self._state_callback
+        if callback is None:
+            return
+        try:
+            callback(reason)
+        except Exception as exc:
+            _LOGGER.warning(
+                "LiteRT lifecycle state callback failed (%s): %s",
+                reason,
+                type(exc).__name__,
+            )
 
     @property
     def process(self) -> subprocess.Popen[bytes] | None:
@@ -210,6 +225,12 @@ class LiteRTRuntimeManager:
                     pending.event.set()
         finally:
             self._fail_pending(LiteRTWorkerCrashedError("LiteRT worker exited before responding."))
+            with self._lock:
+                if self._process is process:
+                    self._protocol_ready = False
+                    self._engine_model = None
+                    self._last_status = {"state": "unavailable", "loaded_model": None}
+            self._notify_state_change("worker_exit")
 
     def _read_stderr(self, process: subprocess.Popen[bytes]) -> None:
         stream = process.stderr
@@ -248,6 +269,7 @@ class LiteRTRuntimeManager:
         self._protocol_ready = False
         self._engine_model = None
         self._last_status = {"state": "unavailable", "loaded_model": None}
+        self._notify_state_change("process_finalized")
 
     def _terminate_process(self) -> None:
         with self._lock:
@@ -278,7 +300,11 @@ class LiteRTRuntimeManager:
         if ready:
             return
         self._spawn()
-        response = self._request_once("hello", {}, timeout=self.handshake_timeout)
+        try:
+            response = self._request_once("hello", {}, timeout=self.handshake_timeout)
+        except Exception:
+            self._poison_transport()
+            raise
         dependency = response.get("dependency")
         if not isinstance(dependency, Mapping) or not dependency.get("available"):
             code = "dependency_unavailable"
@@ -371,14 +397,22 @@ class LiteRTRuntimeManager:
     def load_engine(self, model_path: str | os.PathLike[str], *, backend: str = "cpu") -> dict[str, Any]:
         """Load one engine explicitly; no ambiguous result is replayed."""
         path = str(model_path)
-        result = self._request(
-            "load_engine",
-            {"model_path": path, "backend": backend},
-            timeout=self.load_timeout,
-        )
+        try:
+            result = self._request(
+                "load_engine",
+                {"model_path": path, "backend": backend},
+                timeout=self.load_timeout,
+            )
+        except Exception:
+            with self._lock:
+                self._engine_model = None
+                self._last_status = {"state": "error", "loaded_model": None}
+            self._notify_state_change("engine_load_failed")
+            raise
         with self._lock:
             self._engine_model = path
             self._last_status = dict(result)
+        self._notify_state_change("engine_loaded")
         return result
 
     def open_conversation(
@@ -427,10 +461,18 @@ class LiteRTRuntimeManager:
 
     def unload_engine(self) -> dict[str, Any]:
         """Explicitly unload conversations and the current engine."""
-        result = self._request("unload_engine", {}, timeout=self.shutdown_timeout)
+        try:
+            result = self._request("unload_engine", {}, timeout=self.shutdown_timeout)
+        except Exception:
+            with self._lock:
+                self._engine_model = None
+                self._last_status = {"state": "error", "loaded_model": None}
+            self._notify_state_change("engine_unload_failed")
+            raise
         with self._lock:
             self._engine_model = None
             self._last_status = dict(result)
+        self._notify_state_change("engine_unloaded")
         return result
 
     def shutdown(self) -> bool:
@@ -439,6 +481,11 @@ class LiteRTRuntimeManager:
             running = self._process is not None and self._process.poll() is None
         if not running:
             self._terminate_process()
+            with self._lock:
+                self._engine_model = None
+                self._protocol_ready = False
+                self._last_status = {"state": "unavailable", "loaded_model": None}
+            self._notify_state_change("shutdown")
             return True
         success = True
         try:
@@ -447,6 +494,11 @@ class LiteRTRuntimeManager:
             success = False
         finally:
             self._terminate_process()
+            with self._lock:
+                self._engine_model = None
+                self._protocol_ready = False
+                self._last_status = {"state": "unavailable", "loaded_model": None}
+            self._notify_state_change("shutdown")
         return success
 
     def close(self) -> bool:

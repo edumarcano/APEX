@@ -196,15 +196,25 @@ class Worker:
             content = raw.get("content")
             if not isinstance(content, list) or not content:
                 raise ValueError("LiteRT tool message requires content.")
-            responses = []
+            contents = []
             for item in content:
-                if not isinstance(item, Mapping) or item.get("type") != "tool_response":
+                if not isinstance(item, Mapping):
+                    raise ValueError("LiteRT tool message contains an invalid response.")
+                if item.get("type") == "text":
+                    text = item.get("text")
+                    if not isinstance(text, str):
+                        raise ValueError("LiteRT tool message text is invalid.")
+                    contents.append(Content.Text(text))
+                    continue
+                if item.get("type") != "tool_response":
                     raise ValueError("LiteRT tool message contains an invalid response.")
                 name = item.get("name")
                 if not isinstance(name, str) or not name:
                     raise ValueError("LiteRT tool response requires a name.")
-                responses.append(Content.ToolResponse(name=name, response=item.get("response")))
-            return Message.tool(Contents.of(*responses))
+                contents.append(
+                    Content.ToolResponse(name=name, response=item.get("response"))
+                )
+            return Message.tool(Contents.of(*contents))
         if role == "model":
             from litert_lm import Content, Contents, Message, ToolCall
 

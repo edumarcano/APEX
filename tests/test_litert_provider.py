@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
+from unittest import mock
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
@@ -194,6 +195,18 @@ class LiteRTSessionTests(unittest.TestCase):
         self.assertEqual(len(runtime.opened), 2)
         self.assertEqual(len(runtime.closed), 2)
 
+    def test_successful_turn_refreshes_shared_litert_activity(self) -> None:
+        runtime = FakeRuntime([{"content": [{"type": "text", "text": "Ready."}]}])
+        session = LiteRTProvider(runtime).create_session(_profile(), [])  # type: ignore[arg-type]
+        with mock.patch(
+            "core.agent.providers.litert.LOCAL_RUNTIME.register_activity"
+        ) as register_activity:
+            session.generate_turn(
+                [AgentMessage(role="user", content="Hello")], [], _profile()
+            )
+        register_activity.assert_called_once_with("litert", "litert-test/model")
+        session.close()
+
 
 class LiteRTLoopIntegrationTests(unittest.TestCase):
     def test_existing_loop_dispatches_litert_tools_and_keeps_usage_null_cost_zero(self) -> None:
@@ -216,6 +229,28 @@ class LiteRTLoopIntegrationTests(unittest.TestCase):
         self.assertEqual(response.cost_estimate.total_cost, 0.0)
         self.assertEqual(response.tool_trace[0]["name"], "get_current_date_time")
         self.assertIsNotNone(response.local_context_usage)
+
+    def test_final_turn_instruction_reaches_litert_without_dispatching_excess_calls(self) -> None:
+        runtime = FakeRuntime(
+            [
+                {"tool_calls": [{"function": {"name": "get_current_date_time", "arguments": {}}}]},
+                {"tool_calls": [{"function": {"name": "get_current_date_time", "arguments": {}}}]},
+            ]
+        )
+        profile = _profile().model_copy(update={"max_tool_turns": 2})
+        dispatched: list[str] = []
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="What time is it?", agent="microtus", tool_scope="schedule"),
+            LiteRTProvider(runtime),  # type: ignore[arg-type]
+            profile,
+            tools_dispatcher=lambda name, _args: dispatched.append(name) or {"tool": name},
+        )
+
+        self.assertEqual(dispatched, ["get_current_date_time"])
+        self.assertEqual(response.tool_outputs[0]["status"], "ok")
+        self.assertIn("final answer phase", runtime.sent[-1][1]["content"][-1]["text"].lower())
+        self.assertEqual(len(runtime.sent), 2)
+        self.assertIsNotNone(response.error)
 
 
 if __name__ == "__main__":
