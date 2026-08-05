@@ -467,6 +467,10 @@ class LiteRTRuntimeManager:
             with self._lock:
                 self._engine_model = None
                 self._last_status = {"state": "error", "loaded_model": None}
+            # Any failed unload has an uncertain native residency outcome.
+            # Poison the transport so a structured worker error or protocol
+            # failure cannot leave an untracked engine in a live worker.
+            self._poison_transport()
             self._notify_state_change("engine_unload_failed")
             raise
         with self._lock:

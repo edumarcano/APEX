@@ -16,6 +16,9 @@ from core.agent.providers.litert_protocol import (
     encode_frame,
     operation_is_retryable,
 )
+from core.agent.local_runtime import LOCAL_RUNTIME
+from core.agent.providers.litert_lifecycle import LiteRTLifecycleBackend
+from core.agent.providers.litert_models import LiteRTModelProfile
 from core.agent.providers.litert_runtime import LiteRTRuntimeManager, restricted_worker_environment
 from scripts.litert_worker import REQUIRED_VERSION, Worker
 
@@ -51,6 +54,18 @@ FAKE_WORKER = textwrap.dedent(
             payload.update({"protocol": "APEX_LITERT/1", "pid": os.getpid()})
         elif op == "send_message":
             payload = {"content": [{"type": "text", "text": "ok"}]}
+        elif op == "load_engine":
+            payload = {
+                "state": "ready",
+                "loaded_model": request["payload"]["model_path"],
+            }
+        elif op == "unload_engine" and mode == "error_unload":
+            payload = {
+                "error": {
+                    "code": "engine_error",
+                    "message": "simulated unload failure",
+                }
+            }
         elif op == "shutdown":
             payload = {"shutdown": True, "state": "stopped"}
         response = {"id": request["id"], "op": op, "payload": payload}
@@ -157,6 +172,49 @@ class TestLiteRTRuntimeManager(unittest.TestCase):
         self.assertIsNone(manager.process)
         operations = self.count_file.read_text(encoding="utf-8").splitlines()
         self.assertEqual(operations.count("send_message"), 1)
+
+    def test_failed_unload_poison_terminates_worker_and_forces_fresh_reload(self) -> None:
+        manager = self.manager("error_unload")
+        backend = object.__new__(LiteRTLifecycleBackend)
+        backend._loaded_model = None
+        backend._loaded_artifact = None
+        backend.runtime = manager
+        manager._state_callback = backend._runtime_state_changed
+
+        with tempfile.TemporaryDirectory(prefix="apex_litert_unload_") as temp:
+            artifact = Path(temp) / "model.litertlm"
+            artifact.write_bytes(b"model")
+            profile = LiteRTModelProfile(
+                display_name="Test LiteRT",
+                agent_version="1",
+                api_model="model-a",
+                tier="lightweight",
+                stability="preview",
+                system_instruction="test",
+                artifact_path=str(artifact),
+            )
+            self.assertTrue(backend.switch_model(profile))
+            first_process = manager.process
+            self.assertIsNotNone(first_process)
+            self.assertFalse(backend.unload_active_model())
+
+            self.assertIsNotNone(first_process)
+            self.assertIsNotNone(first_process.poll())
+            self.assertIsNone(manager.process)
+            self.assertIsNone(manager.engine_model)
+            self.assertIsNone(backend._loaded_model)
+            self.assertIsNone(backend._loaded_artifact)
+            self.assertIsNone(LOCAL_RUNTIME.get_active_model("litert"))
+            self.assertIsNone(LOCAL_RUNTIME.get_loading_model("litert"))
+
+            self.assertTrue(backend.switch_model(profile))
+            second_process = manager.process
+            self.assertIsNotNone(second_process)
+            self.assertIsNot(first_process, second_process)
+            operations = self.count_file.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(operations.count("load_engine"), 2)
+
+        manager.shutdown()
 
 
 class _FakeConversation:

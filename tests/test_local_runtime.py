@@ -27,12 +27,12 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertTrue(coordinator.is_execution_active())
         self.assertEqual(coordinator.execution_provider(), "ollama")
 
-        coordinator.end_execution()
+        coordinator.end_execution("ollama")
 
         self.assertFalse(coordinator.is_execution_active())
         self.assertIsNone(coordinator.execution_provider())
         self.assertTrue(coordinator.try_begin_execution("litert"))
-        coordinator.end_execution()
+        coordinator.end_execution("litert")
 
     def test_active_and_loading_identity_are_provider_scoped(self) -> None:
         coordinator = LocalRuntimeCoordinator()

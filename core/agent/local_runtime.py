@@ -217,13 +217,13 @@ class LocalRuntimeCoordinator:
             self._execution_provider = provider
         return True
 
-    def end_execution(self, provider: str | None = None) -> None:
+    def end_execution(self, provider: str) -> None:
         """Release the lease, rejecting releases by the wrong provider."""
         with self._state_lock:
             owner = self._execution_provider
             if owner is None:
                 raise RuntimeError("Local execution lease is not held.")
-            if provider is not None and owner != provider:
+            if owner != provider:
                 raise RuntimeError(
                     f"Local execution lease belongs to {owner}, not {provider}."
                 )
