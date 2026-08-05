@@ -15,6 +15,8 @@ from core.agent.providers.ollama_lifecycle import (
     get_status_snapshot,
     is_local_execution_active,
 )
+from core.agent.providers.litert_lifecycle import resolve_litert_agent_status
+from core.agent.providers.litert_models import LiteRTModelProfile
 from core.agent.catalog import (
     AGENT_SPECS,
     agent_has_credentials,
@@ -72,9 +74,11 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_LOCAL_AGENTS = frozenset({"sorex", "mus"})
+_LOCAL_AGENTS = frozenset(
+    key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"
+)
 _CLOUD_AGENTS = frozenset({"panthera", "neofelis", "delphinus", "orcinus", "acinonyx"})
-_VALID_AGENTS = _LOCAL_AGENTS | _CLOUD_AGENTS
+_VALID_AGENTS = frozenset(AGENT_SPECS)
 _BRIEFING_MODES = frozenset({"panthera", "mus", "sorex", "structured_digest"})
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
@@ -135,6 +139,54 @@ def _evaluate_local_agent_blockers(
         blockers.append(_blocker("invalid_input", f"Unknown local Agent: {agent_key!r}"))
         return blockers, False
     agent = build_concrete_agent(agent_key, native_effort=None)
+
+    if spec.provider == "litert":
+        if not isinstance(agent, LiteRTModelProfile):
+            blockers.append(_blocker("configuration_failure"))
+            return blockers, False
+        status, reason, active, loading, _idle_remaining = resolve_litert_agent_status(
+            agent,
+            agent_key=agent_key,
+        )
+        if status == "model_not_installed":
+            blockers.append(_blocker("model_not_installed", reason))
+            return blockers, False
+        if status in {"busy", "configured"} or loading:
+            blockers.append(
+                _blocker(
+                    "concurrent_local_execution"
+                    if status == "busy"
+                    else "model_load_failure",
+                    reason
+                    or (
+                        "The requested LiteRT model is currently loading."
+                        if loading
+                        else None
+                    ),
+                )
+            )
+            return blockers, False
+        if status == "insufficient_ram":
+            blockers.append(_blocker("insufficient_ram", reason))
+            return blockers, False
+        if status == "cpu_overloaded":
+            blockers.append(_blocker("cpu_overloaded", reason))
+            return blockers, False
+        if status in {"disabled", "provider_unreachable", "provider_error"}:
+            blockers.append(
+                _blocker(
+                    "model_load_failure" if status == "provider_error" else "model_unreachable",
+                    reason,
+                )
+            )
+            return blockers, False
+        if status != "available":
+            blockers.append(_blocker("model_unreachable", reason))
+            return blockers, False
+        if is_local_execution_active():
+            blockers.append(_blocker("concurrent_local_execution"))
+            return blockers, False
+        return blockers, not active
 
     if not OLLAMA_ENABLED:
         blockers.append(_blocker("model_unreachable", "Local Ollama runtime is disabled."))

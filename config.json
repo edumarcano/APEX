@@ -61,7 +61,7 @@
     "idle_unload_timeout_minutes": 5
   },
   "litert": {
-    "enabled": false,
+    "enabled": true,
     "backend": "cpu",
     "engine_load_timeout_seconds": 300,
     "microtus_timeout_seconds": 120,
@@ -73,8 +73,8 @@
         "cpu_limit": 95.0
       },
       "mustela": {
-        "minimum_free_ram_mb": 5400,
-        "ram_limit": 78.0,
+        "minimum_free_ram_mb": 3400,
+        "ram_limit": 80.0,
         "cpu_limit": 90.0
       }
     }
