@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import threading
 import time
@@ -13,6 +12,10 @@ from requests.exceptions import (
 )
 
 from core.agent.catalog import AGENT_SPECS
+from core.agent.local_runtime import (
+    LOCAL_RUNTIME,
+    check_idle_models_loop as _check_idle_models_loop,
+)
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.config import OLLAMA_HOST, OLLAMA_IDLE_UNLOAD_MINUTES
 
@@ -21,17 +24,6 @@ _LOGGER = logging.getLogger(__name__)
 # Shared HTTP session so lifecycle probes and provider calls reuse pooled TCP
 # connections instead of opening a new socket per request.
 _SESSION = requests.Session()
-
-_model_lock = threading.Lock()
-_active_loaded_model: str | None = None
-_loading_model: str | None = None
-_last_activity_time: float = time.monotonic()
-_IDLE_CHECK_INTERVAL_SECONDS = 30
-
-# Serializes local generations end-to-end. Held for the full duration of a
-# query so the idle unloader and manual unload can detect in-flight work and
-# stand down instead of evicting a model mid-inference.
-_execution_lock = threading.Lock()
 
 _STATUS_CACHE_TTL_SECONDS = 10.0
 _STATUS_PROBE_TIMEOUT_SECONDS = 2.0
@@ -98,17 +90,17 @@ def try_begin_local_execution() -> bool:
     Returns False when another local generation is already running, allowing
     the caller to reject the request instead of parking a worker thread.
     """
-    return _execution_lock.acquire(blocking=False)
+    return LOCAL_RUNTIME.try_begin_execution("ollama")
 
 
 def end_local_execution() -> None:
     """Release the local execution slot claimed by try_begin_local_execution."""
-    _execution_lock.release()
+    LOCAL_RUNTIME.end_execution()
 
 
 def is_local_execution_active() -> bool:
     """Return whether a local generation currently holds the execution slot."""
-    return _execution_lock.locked()
+    return LOCAL_RUNTIME.is_execution_active()
 
 
 def get_system_vitals() -> SystemVitals:
@@ -285,9 +277,8 @@ def is_local_model_loaded(model_name: str) -> bool:
     Checks the fast in-process tracker first, then falls back to /api/ps so the
     API can recognize models that survived an APEX server restart.
     """
-    with _model_lock:
-        if _active_loaded_model == model_name:
-            return True
+    if LOCAL_RUNTIME.get_active_model("ollama") == model_name:
+        return True
 
     return any(
         _loaded_model_matches(loaded_model, model_name)
@@ -359,14 +350,12 @@ def get_status_snapshot(force_refresh: bool = False) -> OllamaStatusSnapshot:
 
 def get_active_loaded_model() -> str | None:
     """Return the Ollama model tag currently tracked as loaded in memory."""
-    with _model_lock:
-        return _active_loaded_model
+    return LOCAL_RUNTIME.get_active_model("ollama")
 
 
 def get_loading_model() -> str | None:
     """Return the Ollama model tag currently being warmed up, or None."""
-    with _model_lock:
-        return _loading_model
+    return LOCAL_RUNTIME.get_loading_model("ollama")
 
 
 def get_idle_unload_remaining_seconds() -> int | None:
@@ -375,12 +364,9 @@ def get_idle_unload_remaining_seconds() -> int | None:
 
     Returns None when no model is currently tracked as loaded.
     """
-    with _model_lock:
-        if _active_loaded_model is None:
-            return None
-        elapsed = time.monotonic() - _last_activity_time
-        remaining = (OLLAMA_IDLE_UNLOAD_MINUTES * 60) - elapsed
-        return max(0, int(remaining))
+    return LOCAL_RUNTIME.idle_remaining_seconds(
+        "ollama", OLLAMA_IDLE_UNLOAD_MINUTES
+    )
 
 
 def unload_active_local_model() -> bool:
@@ -391,8 +377,7 @@ def unload_active_local_model() -> bool:
     still works after an API restart. Returns True when no APEX local model is
     active or every unload request succeeds.
     """
-    with _model_lock:
-        model_name = _active_loaded_model
+    model_name = LOCAL_RUNTIME.get_active_model("ollama")
 
     if model_name is None:
         profile_model_names = {
@@ -445,15 +430,10 @@ def register_activity(model_name: str) -> None:
     Record model usage so the idle auto-unload timer resets.
 
     Called once per completed generation turn so long tool-calling sessions
-    keep refreshing the idle clock. Sets ``_active_loaded_model`` only when
-    no model is currently tracked.
+    keep refreshing the coordinator's idle clock. Initializes active identity
+    only when no local model is currently tracked.
     """
-    global _active_loaded_model, _last_activity_time
-
-    with _model_lock:
-        _last_activity_time = time.monotonic()
-        if _active_loaded_model is None:
-            _active_loaded_model = model_name
+    LOCAL_RUNTIME.register_activity("ollama", model_name)
 
 
 def unload_local_model(model_name: str) -> bool:
@@ -461,8 +441,8 @@ def unload_local_model(model_name: str) -> bool:
     Unload a model from Ollama by sending a keep_alive=0 signal.
 
     This forces Ollama to immediately release the model from memory.
-    Clears the _active_loaded_model tracker on success, even if Ollama
-    is unreachable (fail-safe for consistency).
+    Clears the shared active identity on successful verification, even if the
+    daemon's prior in-process tracker was stale (fail-safe for consistency).
 
     Args:
         model_name: Name of the model to unload.
@@ -471,8 +451,6 @@ def unload_local_model(model_name: str) -> bool:
         True if the unload request succeeded or was safely cleared.
         False if an unexpected error occurred.
     """
-    global _active_loaded_model
-
     if not _post_unload_request(model_name):
         return False
 
@@ -480,9 +458,7 @@ def unload_local_model(model_name: str) -> bool:
         _LOGGER.warning("Ollama still reports %s as resident after unload", model_name)
         return False
 
-    with _model_lock:
-        if _active_loaded_model == model_name:
-            _active_loaded_model = None
+    LOCAL_RUNTIME.clear_active("ollama", model_name)
 
     _invalidate_status_snapshot()
 
@@ -498,55 +474,75 @@ def _maybe_unload_idle_model() -> None:
     so concurrent activity or model switches are not clobbered by a stale
     idle decision.
     """
-    global _active_loaded_model
-
     if is_local_execution_active():
         return
 
-    with _model_lock:
-        if _active_loaded_model is None:
-            return
-
-        idle_seconds = time.monotonic() - _last_activity_time
-        idle_threshold_seconds = OLLAMA_IDLE_UNLOAD_MINUTES * 60
-        if idle_seconds < idle_threshold_seconds:
-            return
-
-        model_to_unload = _active_loaded_model
-        activity_snapshot = _last_activity_time
+    candidate = LOCAL_RUNTIME.idle_candidate(
+        "ollama", OLLAMA_IDLE_UNLOAD_MINUTES
+    )
+    if candidate is None:
+        return
+    model_to_unload, activity_snapshot = candidate
 
     if not _post_unload_request(model_to_unload):
         return
 
-    with _model_lock:
-        if (
-            _active_loaded_model == model_to_unload
-            and _last_activity_time == activity_snapshot
-        ):
-            _active_loaded_model = None
-            _LOGGER.info(
-                "Idle unload triggered for %s after %.0fs of inactivity",
-                model_to_unload,
-                time.monotonic() - activity_snapshot,
-            )
+    if LOCAL_RUNTIME.clear_active_if_unchanged(
+        "ollama", model_to_unload, activity_snapshot
+    ):
+        _LOGGER.info(
+            "Idle unload triggered for %s after %.0fs of inactivity",
+            model_to_unload,
+            time.monotonic() - activity_snapshot,
+        )
+
+
+class _OllamaRuntimeBackend:
+    """Provider-specific idle hook registered with the shared coordinator."""
+
+    provider = "ollama"
+
+    @staticmethod
+    def get_status_snapshot(*, force_refresh: bool = False) -> OllamaStatusSnapshot:
+        return get_status_snapshot(force_refresh=force_refresh)
+
+    @staticmethod
+    def is_model_loaded(model_name: str) -> bool:
+        return is_local_model_loaded(model_name)
+
+    @staticmethod
+    def is_model_resident(model_name: str) -> bool:
+        return is_local_model_resident(model_name)
+
+    @staticmethod
+    def switch_model(profile: object) -> bool:
+        if not isinstance(profile, OllamaModelProfile):
+            raise TypeError("Ollama runtime requires an OllamaModelProfile.")
+        return switch_local_model(profile)
+
+    @staticmethod
+    def unload_active_model() -> bool:
+        return unload_active_local_model()
+
+    @staticmethod
+    def unload_model(model_name: str) -> bool:
+        return unload_local_model(model_name)
+
+    @staticmethod
+    def get_idle_unload_remaining_seconds() -> int | None:
+        return get_idle_unload_remaining_seconds()
+
+    @staticmethod
+    def check_idle() -> None:
+        _maybe_unload_idle_model()
+
+
+LOCAL_RUNTIME.register_backend(_OllamaRuntimeBackend())
 
 
 async def check_idle_models_loop() -> None:
-    """
-    Background worker that periodically unloads idle local models.
-
-    Polls every 30 seconds and compares monotonic elapsed time against
-    ``OLLAMA_IDLE_UNLOAD_MINUTES``, so wall-clock jumps (NTP corrections,
-    manual clock changes) cannot trigger premature unloads.
-    """
-    while True:
-        try:
-            await asyncio.sleep(_IDLE_CHECK_INTERVAL_SECONDS)
-            await asyncio.to_thread(_maybe_unload_idle_model)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            _LOGGER.warning("Idle model check failed: %s", exc)
+    """Backward-compatible alias for the provider-neutral idle monitor."""
+    await _check_idle_models_loop()
 
 
 def _build_warmup_options(profile: OllamaModelProfile) -> dict[str, float | int]:
@@ -569,8 +565,8 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
     turn does not pay a second setup cost for context/thread/think settings.
 
     Callers must hold the execution slot (``try_begin_local_execution``) so
-    concurrent switches cannot occur. ``_model_lock`` guards only state reads
-    and writes and is never held across HTTP I/O, so status readers stay
+    concurrent switches cannot occur. The coordinator guards shared identity
+    reads and writes and is never held across HTTP I/O, so status readers stay
     responsive during long warmups.
 
     While a switch is in progress, ``get_loading_model()`` returns the target
@@ -583,18 +579,17 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
         True if the switch succeeded or was already satisfied.
         False if the warmup/load failed or an unrecoverable error occurred.
     """
-    global _active_loaded_model, _loading_model, _last_activity_time
-
     target_model_name = profile.api_model
 
-    with _model_lock:
-        if _active_loaded_model == target_model_name:
-            _LOGGER.debug("Model %s already loaded; skipping switch", target_model_name)
-            _last_activity_time = time.monotonic()
-            return True
-        previous_model = _active_loaded_model
-        _active_loaded_model = None
-        _loading_model = target_model_name
+    active_model = LOCAL_RUNTIME.get_active_model("ollama")
+    if active_model == target_model_name:
+        _LOGGER.debug("Model %s already loaded; skipping switch", target_model_name)
+        LOCAL_RUNTIME.register_activity("ollama", target_model_name)
+        return True
+
+    previous_model = active_model
+    LOCAL_RUNTIME.clear_active("ollama", previous_model)
+    LOCAL_RUNTIME.mark_loading("ollama", target_model_name)
 
     try:
         if previous_model is None:
@@ -620,14 +615,11 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
             )
             if not unload_local_model(previous_model):
                 _LOGGER.error("Failed to unload %s; aborting switch", previous_model)
-                with _model_lock:
-                    _active_loaded_model = previous_model
+                LOCAL_RUNTIME.mark_active("ollama", previous_model)
                 return False
 
         if is_local_model_resident(target_model_name):
-            with _model_lock:
-                _active_loaded_model = target_model_name
-                _last_activity_time = time.monotonic()
+            LOCAL_RUNTIME.mark_active("ollama", target_model_name)
             _invalidate_status_snapshot()
             _LOGGER.info("Model %s already resident in Ollama", target_model_name)
             return True
@@ -670,14 +662,10 @@ def switch_local_model(profile: OllamaModelProfile) -> bool:
             )
             return False
 
-        with _model_lock:
-            _active_loaded_model = target_model_name
-            _last_activity_time = time.monotonic()
+        LOCAL_RUNTIME.mark_active("ollama", target_model_name)
 
         _invalidate_status_snapshot()
 
         return True
     finally:
-        with _model_lock:
-            if _loading_model == target_model_name:
-                _loading_model = None
+        LOCAL_RUNTIME.clear_loading("ollama", target_model_name)

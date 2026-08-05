@@ -7,6 +7,14 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from core.agent.pricing import estimate_inference_cost
+from core.agent.local_runtime import (
+    end_local_execution,
+    get_active_loaded_model,
+    get_status_snapshot,
+    is_local_model_loaded,
+    switch_local_model,
+    try_begin_local_execution,
+)
 from core.agent.catalog import (
     AGENT_SPECS,
     build_concrete_agent,
@@ -15,12 +23,6 @@ from core.agent.catalog import (
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     check_resource_gate,
-    end_local_execution,
-    get_active_loaded_model,
-    get_status_snapshot,
-    is_local_model_loaded,
-    switch_local_model,
-    try_begin_local_execution,
 )
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.types import AgentMessage

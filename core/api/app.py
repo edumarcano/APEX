@@ -16,7 +16,7 @@ from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_tod
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import ENV_PATH, OLLAMA_ENABLED
-from core.agent.providers.ollama_lifecycle import check_idle_models_loop
+from core.agent.local_runtime import check_idle_models_loop
 from core import database
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager

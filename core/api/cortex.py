@@ -9,6 +9,19 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from core import config, database
+from core.agent.local_runtime import (
+    end_local_execution,
+    get_active_loaded_model,
+    get_idle_unload_remaining_seconds,
+    get_loading_model,
+    get_status_snapshot,
+    is_local_execution_active,
+    is_local_model_loaded,
+    is_local_model_resident,
+    switch_local_model,
+    try_begin_local_execution,
+    unload_active_local_model,
+)
 from core.agent.local_commands import (
     ResolvedLocalCommand,
     list_local_command_statuses,
@@ -46,17 +59,6 @@ from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.ollama_lifecycle import (
     SystemVitals,
     check_resource_gate,
-    end_local_execution,
-    get_active_loaded_model,
-    get_idle_unload_remaining_seconds,
-    get_loading_model,
-    get_status_snapshot,
-    is_local_execution_active,
-    is_local_model_loaded,
-    is_local_model_resident,
-    switch_local_model,
-    try_begin_local_execution,
-    unload_active_local_model,
 )
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.openai_provider import OpenAIProvider
