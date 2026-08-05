@@ -34,6 +34,11 @@ export function isCloudSettingsAgentKey(value: unknown): value is CloudSettingsA
   return (CLOUD_SETTINGS_AGENT_KEYS as readonly string[]).includes(String(value))
 }
 
+/** True for any selectable Cortex Agent key, including DEV_MODE Acinonyx. */
+export function isAgentKey(value: unknown): value is AgentKey {
+  return isLocalAgentKey(value) || isCloudAgentKey(value)
+}
+
 export function isLocalAgentStatus(agent: Pick<AgentStatus, 'runtime'>): boolean {
   return agent.runtime === 'local'
 }

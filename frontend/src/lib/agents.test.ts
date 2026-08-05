@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   formatContextWindowLabel,
+  isAgentKey,
   isLocalAgentKey,
   LOCAL_AGENT_KEYS,
   providerDisplayName,
@@ -12,6 +13,14 @@ describe('agents helpers', () => {
     expect(LOCAL_AGENT_KEYS).toEqual(['sorex', 'mus', 'apodemus'])
     expect(isLocalAgentKey('apodemus')).toBe(true)
     expect(isLocalAgentKey('panthera')).toBe(false)
+  })
+
+  it('accepts Apodemus as a boot-time Agent selection key', () => {
+    expect(isAgentKey('apodemus')).toBe(true)
+    expect(isAgentKey('mus')).toBe(true)
+    expect(isAgentKey('panthera')).toBe(true)
+    expect(isAgentKey('acinonyx')).toBe(true)
+    expect(isAgentKey('unknown')).toBe(false)
   })
 
   it('labels llama.cpp providers for display', () => {
