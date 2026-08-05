@@ -8,6 +8,11 @@ from typing import Any, Literal, TypeAlias
 
 from core.agent.providers.contract import InferenceProvider
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
+from core.agent.providers.litert_models import (
+    LITERT_MODEL_CONFIGS,
+    LiteRTModelProfile,
+    resolve_litert_artifact,
+)
 from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS, OllamaModelProfile
 from core.agent.providers.responses_api import ResponsesModelProfile
 from core.agent.tool_policies import hosted_tools_for_agent
@@ -24,7 +29,8 @@ from core.config import (
 )
 
 AgentKey: TypeAlias = Literal[
-    "acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus"
+    "acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus",
+    "microtus", "mustela"
 ]
 CloudAgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
@@ -32,18 +38,23 @@ CloudAgentKey: TypeAlias = Literal[
 CloudSettingsAgentKey: TypeAlias = Literal[
     "panthera", "neofelis", "delphinus", "orcinus"
 ]
-LocalAgentKey: TypeAlias = Literal["sorex", "mus"]
+LocalAgentKey: TypeAlias = Literal["sorex", "mus", "microtus", "mustela"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset(
-    {"acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus"}
+    {
+        "acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus",
+        "microtus", "mustela",
+    }
 )
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
+    {"sorex", "mus", "microtus", "mustela"}
+)
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
 
@@ -58,7 +69,7 @@ _APEX_TO_NATIVE_EFFORT: dict[str, NativeEffort] = {
 }
 
 AgentModelProfile = (
-    GeminiModelProfile | OllamaModelProfile | ResponsesModelProfile
+    GeminiModelProfile | OllamaModelProfile | LiteRTModelProfile | ResponsesModelProfile
 )
 
 
@@ -227,6 +238,50 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         capability_tags=("Larger model", "Primary local"),
         supports_effort=False,
     ),
+    "microtus": AgentSpec(
+        key="microtus",
+        display_name="Apex Microtus",
+        description="Lightweight on-device LiteRT agent for fast, bounded local tasks.",
+        identity_instruction=(
+            "You are Apex Microtus, an Apex Agent powered by Gemma 4 E2B "
+            "through LiteRT. You are a fast, lightweight local Agent for "
+            "bounded and read-oriented tasks."
+        ),
+        agent_version="1.0",
+        provider="litert",
+        runtime="local",
+        api_model="litert-community/gemma-4-E2B-it-litert-lm",
+        default_effort=None,
+        credential_env=None,
+        max_tool_turns=3,
+        max_tool_calls=4,
+        tier="lightweight",
+        stability="preview",
+        capability_tags=("Lightweight", "Fast local", "LiteRT", "Constrained workflows"),
+        supports_effort=False,
+    ),
+    "mustela": AgentSpec(
+        key="mustela",
+        display_name="Apex Mustela",
+        description="Balanced on-device LiteRT agent for deeper reasoning and more demanding local workflows.",
+        identity_instruction=(
+            "You are Apex Mustela, an Apex Agent powered by Gemma 4 E4B "
+            "through LiteRT. You are a balanced local Agent for deeper "
+            "reasoning, synthesis, and demanding tool workflows."
+        ),
+        agent_version="1.0",
+        provider="litert",
+        runtime="local",
+        api_model="litert-community/gemma-4-E4B-it-litert-lm",
+        default_effort=None,
+        credential_env=None,
+        max_tool_turns=4,
+        max_tool_calls=6,
+        tier="balanced",
+        stability="preview",
+        capability_tags=("Balanced local", "Deeper reasoning", "LiteRT", "Tool workflows"),
+        supports_effort=False,
+    ),
 }
 
 _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
@@ -237,6 +292,8 @@ _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
     "orcinus",
     "mus",
     "sorex",
+    "microtus",
+    "mustela",
 )
 
 
@@ -377,6 +434,25 @@ def build_concrete_agent(
             system_instruction=compose_agent_system_instruction(
                 agent_key, runtime.system_instruction
             ),
+        )
+    if spec.provider == "litert":
+        runtime = LITERT_MODEL_CONFIGS[agent_key]
+        return LiteRTModelProfile(
+            display_name=spec.display_name,
+            agent_version=spec.agent_version,
+            api_model=spec.api_model,
+            tier=runtime.tier,
+            stability=spec.stability,
+            max_tool_turns=runtime.max_tool_turns,
+            max_tool_calls=runtime.max_tool_calls,
+            system_instruction=compose_agent_system_instruction(
+                agent_key, LOCAL_AGENT_SYSTEM_PROMPT
+            ),
+            context_window=runtime.context_window,
+            final_answer_max_tokens=runtime.final_answer_max_tokens,
+            generation_timeout=runtime.generation_timeout,
+            artifact_path=str(resolve_litert_artifact(agent_key)),
+            minimum_free_ram_mb=runtime.minimum_free_ram_mb,
         )
     return ResponsesModelProfile(
         provider=spec.provider,  # type: ignore[arg-type]

@@ -334,7 +334,7 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch.model_validate({"unknown_root": {"a": 1}})
 
     def test_local_agents_are_valid_patch_values(self) -> None:
-        for profile in ("sorex", "mus"):
+        for profile in ("sorex", "mus", "microtus", "mustela"):
             with self.subTest(agent=profile):
                 patch = SettingsPatch.model_validate(
                     {"ask_apex": {"local_agent": profile}}

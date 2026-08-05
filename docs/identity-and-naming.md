@@ -250,6 +250,18 @@ The Sorex–Mus relationship is therefore:
 
 Mice and shrews are not especially close taxonomic counterparts. Their relationship in APEX is based primarily on their shared small scale and the operational progression between the two local models.
 
+## Apex Microtus
+
+*Microtus* is the vole genus used for the lightweight preview LiteRT Agent.
+
+Apex Microtus is powered by Gemma 4 E2B through LiteRT. It is intended for fast, bounded, and read-oriented local work with lower resource use than the balanced LiteRT tier. The Agent remains visible in the catalog when LiteRT is disabled or unavailable so the operator can see the corrective status and configure the optional provider.
+
+## Apex Mustela
+
+*Mustela* is the weasel genus used for the balanced preview LiteRT Agent.
+
+Apex Mustela is powered by Gemma 4 E4B through LiteRT. It is intended for deeper local reasoning, synthesis, and demanding read-only tool workflows, with higher latency and memory requirements than Microtus. Mustela remains a distinct preview choice and does not replace Apex Mus or Apex Sorex.
+
 ## The Agent family is not permanent
 
 The current Agent family is an experimental product structure, not a permanent roster.

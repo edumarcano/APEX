@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal["sorex", "mus"]
+LocalSettingsAgent = Literal["sorex", "mus", "microtus", "mustela"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
 BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
@@ -18,7 +18,9 @@ VoiceMode = Literal["off", "manual", "automatic"]
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
+    {"sorex", "mus", "microtus", "mustela"}
+)
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "mus", "sorex", "structured_digest"}
@@ -27,7 +29,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 8
+SETTINGS_SCHEMA_VERSION: int = 9
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
@@ -84,6 +86,16 @@ class AskApexSettings(BaseModel):
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
     orcinus_x_search_enabled: bool = True
+
+
+class LocalRuntimeSettings(BaseModel):
+    """Provider-neutral local residency and lifecycle preferences."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    single_loaded_model: bool = True
+    manual_unload_enabled: bool = True
+    idle_unload_timeout_minutes: int = Field(default=5, ge=1, le=60)
 
 
 class BriefingSettings(BaseModel):
@@ -151,6 +163,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
     ask_apex: AskApexSettings = Field(default_factory=AskApexSettings)
+    local_runtime: LocalRuntimeSettings = Field(default_factory=LocalRuntimeSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
@@ -192,6 +205,16 @@ class AskApexPatch(BaseModel):
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
     orcinus_x_search_enabled: bool | None = None
+
+
+class LocalRuntimePatch(BaseModel):
+    """Partial provider-neutral local lifecycle patch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    single_loaded_model: bool | None = None
+    manual_unload_enabled: bool | None = None
+    idle_unload_timeout_minutes: int | None = Field(default=None, ge=1, le=60)
 
 
 class BriefingPatch(BaseModel):
@@ -248,6 +271,7 @@ class SettingsPatch(BaseModel):
     features: FeaturesPatch | None = None
     modules: ModulesPatch | None = None
     ask_apex: AskApexPatch | None = None
+    local_runtime: LocalRuntimePatch | None = None
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None

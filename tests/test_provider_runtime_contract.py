@@ -620,7 +620,10 @@ class PublicRosterTests(unittest.TestCase):
         providers = {AGENT_SPECS[key].provider for key in AGENT_SPECS}
         self.assertIn("openai", providers)
         self.assertIn("xai", providers)
-        self.assertEqual({key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"}, {"sorex", "mus"})
+        self.assertEqual(
+            {key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"},
+            {"sorex", "mus", "microtus", "mustela"},
+        )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},
             {"acinonyx", "neofelis"},

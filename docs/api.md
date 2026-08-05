@@ -63,16 +63,17 @@ Returns boot-time HUD values such as Ask APEX enablement, the effective Agent an
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `8`.
+Returns the resolved settings envelope. The current contract version is `9`.
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
     "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "local_runtime": { "single_loaded_model": true, "manual_unload_enabled": true, "idle_unload_timeout_minutes": 5 },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
@@ -229,7 +230,7 @@ Returns local Agent tool scopes, including availability, reason, tool count, and
 
 Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
-The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
+The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), Microtus (`litert-community/gemma-4-E2B-it-litert-lm`), and Mustela (`litert-community/gemma-4-E4B-it-litert-lm`). LiteRT entries remain visible with sanitized unavailable reasons when the optional provider or expected artifact is unavailable; explicit LiteRT requests return a truthful provider-unavailable response rather than falling back to Mus.
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
 

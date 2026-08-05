@@ -26,6 +26,7 @@ from core.settings.models import (
     McpSettings,
     MCP_PROVIDER_IDS,
     ModulesSettings,
+    LocalRuntimeSettings,
     RuntimeSettingsSnapshot,
     SettingsPatch,
     VoiceSettings,
@@ -44,6 +45,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "modules",
         "football",
         "ask_apex",
+        "local_runtime",
         "briefing",
         "tts_settings",
         "mcp",
@@ -106,6 +108,8 @@ def normalize_layer(
                 "local_agent_system_prompt",
                 "gemini",
                 "ollama",
+                "local_runtime",
+                "litert",
             ):
                 _LOGGER.warning(
                     "Ignoring unknown config key %r in %s.",
@@ -139,6 +143,10 @@ def normalize_layer(
             ask_apex = _normalize_ask_apex(value, layer_name, issues)
             if ask_apex:
                 normalized["ask_apex"] = ask_apex
+        elif key == "local_runtime":
+            local_runtime = _normalize_local_runtime(value, layer_name, issues)
+            if local_runtime:
+                normalized["local_runtime"] = local_runtime
         elif key == "briefing":
             briefing = _normalize_briefing(
                 value, layer_name, issues, schema5=schema5_layer
@@ -445,6 +453,34 @@ def _normalize_ask_apex(
     return result
 
 
+def _normalize_local_runtime(
+    value: Any, layer_name: str, errors: NormalizationIssues | None
+) -> dict[str, Any]:
+    """Normalize provider-neutral lifecycle keys with Ollama-compatible legacy values."""
+    if not isinstance(value, dict):
+        if value is not None:
+            _record_error(errors, "local_runtime must be a JSON object")
+        return {}
+    result: dict[str, Any] = {}
+    for key, raw in value.items():
+        if key in {"single_loaded_model", "manual_unload_enabled"}:
+            if isinstance(raw, bool):
+                result[key] = raw
+            else:
+                _record_error(errors, f"local_runtime.{key} must be a boolean")
+        elif key == "idle_unload_timeout_minutes":
+            if isinstance(raw, int) and not isinstance(raw, bool) and 1 <= raw <= 60:
+                result[key] = raw
+            else:
+                _record_error(
+                    errors,
+                    "local_runtime.idle_unload_timeout_minutes must be an integer from 1 to 60",
+                )
+        else:
+            _LOGGER.warning("Ignoring unknown local_runtime key %r in %s.", key, layer_name)
+    return result
+
+
 def _normalize_tts_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
@@ -625,6 +661,11 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     ask_apex = migrate_schema7_ask_apex(ask_apex_raw)
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
     mcp_raw = merged.get("mcp") if isinstance(merged.get("mcp"), dict) else {}
+    local_runtime_raw = (
+        merged.get("local_runtime")
+        if isinstance(merged.get("local_runtime"), dict)
+        else {}
+    )
     mcp_servers_raw = (
         mcp_raw.get("servers") if isinstance(mcp_raw.get("servers"), dict) else {}
     )
@@ -681,6 +722,17 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             ask_apex.get("orcinus_x_search_enabled", True)
         ),
     )
+    local_runtime = LocalRuntimeSettings(
+        single_loaded_model=bool(local_runtime_raw.get("single_loaded_model", True)),
+        manual_unload_enabled=bool(local_runtime_raw.get("manual_unload_enabled", True)),
+        idle_unload_timeout_minutes=(
+            local_runtime_raw.get("idle_unload_timeout_minutes", 5)
+            if isinstance(local_runtime_raw.get("idle_unload_timeout_minutes", 5), int)
+            and not isinstance(local_runtime_raw.get("idle_unload_timeout_minutes", 5), bool)
+            and 1 <= local_runtime_raw.get("idle_unload_timeout_minutes", 5) <= 60
+            else 5
+        ),
+    )
     engine = tts.get("primary_tts", "pyttsx3")
     if engine not in VALID_VOICE_ENGINES:
         engine = "pyttsx3"
@@ -729,6 +781,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         modules=modules,
         football=football,
         ask_apex=ask_apex_settings,
+        local_runtime=local_runtime,
         briefing=briefing,
         voice=voice,
         mcp=mcp,
@@ -756,6 +809,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "delphinus_x_search_enabled": snapshot.ask_apex.delphinus_x_search_enabled,
             "orcinus_x_search_enabled": snapshot.ask_apex.orcinus_x_search_enabled,
         },
+        "local_runtime": snapshot.local_runtime.model_dump(),
         "briefing": {
             "default_mode": snapshot.briefing.default_mode,
         },

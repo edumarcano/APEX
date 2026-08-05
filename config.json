@@ -55,6 +55,22 @@
       "mus": { "ram_limit": 78.0, "cpu_limit": 90.0 }
     }
   },
+  "local_runtime": {
+    "single_loaded_model": true,
+    "manual_unload_enabled": true,
+    "idle_unload_timeout_minutes": 5
+  },
+  "litert": {
+    "enabled": false,
+    "backend": "cpu",
+    "engine_load_timeout_seconds": 300,
+    "microtus_timeout_seconds": 120,
+    "mustela_timeout_seconds": 240,
+    "resource_gates": {
+      "microtus": { "minimum_free_ram_mb": 2300 },
+      "mustela": { "minimum_free_ram_mb": 5400 }
+    }
+  },
   "mcp": {
     "enabled": false,
     "servers": {

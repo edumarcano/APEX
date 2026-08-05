@@ -151,6 +151,16 @@ class ProfileIdentityTests(unittest.TestCase):
             "You are Apex Mus, an Apex Agent powered by "
             "Qwen3 4B Instruct through Ollama."
         ),
+        "microtus": (
+            "You are Apex Microtus, an Apex Agent powered by Gemma 4 E2B "
+            "through LiteRT. You are a fast, lightweight local Agent for "
+            "bounded and read-oriented tasks."
+        ),
+        "mustela": (
+            "You are Apex Mustela, an Apex Agent powered by Gemma 4 E4B "
+            "through LiteRT. You are a balanced local Agent for deeper "
+            "reasoning, synthesis, and demanding tool workflows."
+        ),
     }
 
     def test_every_profile_has_the_expected_immutable_identity(self) -> None:
@@ -466,8 +476,8 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_eight(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 8)
+    def test_settings_schema_version_is_nine(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 9)
 
 
 if __name__ == "__main__":

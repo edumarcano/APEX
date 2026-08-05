@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 
 from core import config, database
 from core.agent.local_runtime import (
+    LOCAL_RUNTIME,
     end_local_execution,
     get_active_loaded_model,
     get_idle_unload_remaining_seconds,
@@ -27,6 +28,7 @@ from core.agent.local_commands import (
     list_local_command_statuses,
     resolve_local_command,
 )
+from core.agent.local_context import is_local_profile
 from core.agent.loop import build_agent_failure_details, run_agent_loop
 from core.agent.capabilities import CapabilityDescriptor, list_agent_capabilities
 from core.agent.catalog import (
@@ -56,6 +58,14 @@ from core.agent.providers.cloud_verification import (
     verify_cloud_agent,
 )
 from core.agent.providers.ollama import OllamaProvider
+from core.agent.providers.litert import LiteRTProvider
+from core.agent.providers.litert_lifecycle import (
+    LITERT_LIFECYCLE,
+    LITERT_BUSY_REASON,
+    check_litert_resource_gate,
+    resolve_litert_agent_status,
+)
+from core.agent.providers.litert_models import LiteRTModelProfile
 from core.agent.providers.ollama_lifecycle import (
     SystemVitals,
     check_resource_gate,
@@ -81,7 +91,14 @@ from core.api.models import (
     AgentAvailabilityStatus,
     AgentStatusSource,
 )
-from core.config import DEMO_MODE, OLLAMA_ENABLED, OLLAMA_MANUAL_UNLOAD_ENABLED, is_dev_mode
+from core.config import (
+    DEMO_MODE,
+    LITERT_ENABLED,
+    LOCAL_RUNTIME_MANUAL_UNLOAD_ENABLED,
+    OLLAMA_ENABLED,
+    OLLAMA_MANUAL_UNLOAD_ENABLED,
+    is_dev_mode,
+)
 from core.settings import get_settings_store
 from core.synthesis.formatting import sanitize_fact
 
@@ -104,6 +121,8 @@ _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "model_not_installed": "Model tag is not installed locally",
     "insufficient_ram": "Current memory pressure exceeds threshold",
     "cpu_overloaded": "Current CPU utilization exceeds threshold",
+    "provider_unreachable": "LiteRT worker interpreter or dependency is unavailable",
+    "provider_error": "LiteRT local provider reported an error",
 }
 
 
@@ -260,6 +279,56 @@ def build_agent_statuses() -> list[AgentStatus]:
             )
             continue
 
+        if spec.provider == "litert":
+            profile = build_concrete_agent(key, native_effort=None)
+            assert isinstance(profile, LiteRTModelProfile)
+            (
+                agent_status,
+                reason,
+                is_active,
+                is_loading,
+                litert_idle_remaining,
+            ) = resolve_litert_agent_status(profile, agent_key=key)
+            if agent_status == "available" and is_local_execution_active():
+                execution_provider = LOCAL_RUNTIME.execution_provider()
+                if execution_provider != "litert":
+                    agent_status, reason = "busy", LITERT_BUSY_REASON
+            loaded_model = (
+                LocalLoadedModelStatus(
+                    name=profile.api_model,
+                    model=profile.api_model,
+                )
+                if is_active
+                else None
+            )
+            agents.append(
+                AgentStatus(
+                    key=key,
+                    display_name=spec.display_name,
+                    description=spec.description,
+                    provider="litert",
+                    version=spec.agent_version,
+                    configured_model=spec.api_model,
+                    sort_order=sort_order,
+                    capabilities=list(spec.capability_tags),
+                    native_tools={},
+                    runtime=spec.runtime,
+                    tier=spec.tier,
+                    stability=spec.stability,
+                    effort_options=effort_options,
+                    default_effort=spec.default_effort,
+                    status=agent_status,
+                    status_source="runtime",
+                    pricing=_agent_pricing_metadata(key),
+                    active=is_active,
+                    loading=is_loading,
+                    reason=reason,
+                    idle_unload_remaining_seconds=litert_idle_remaining,
+                    loaded_model=loaded_model,
+                )
+            )
+            continue
+
         agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(key)
         hosted_tools = hosted_tools_for_agent(
             key,
@@ -367,6 +436,31 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
 
     Returns success when no model is active or the unload completes cleanly.
     """
+    litert_active = get_active_loaded_model("litert") is not None
+    if litert_active:
+        if not LOCAL_RUNTIME_MANUAL_UNLOAD_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual local model unload is disabled in system settings.",
+            )
+        if not try_begin_local_execution("litert"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "A local model generation or lifecycle action is in progress. "
+                    "Wait for it to finish before unloading."
+                ),
+            )
+        try:
+            if not unload_active_local_model(provider="litert"):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Active LiteRT model failed to unload.",
+                )
+        finally:
+            end_local_execution()
+        return LocalUnloadResponse()
+
     if not OLLAMA_MANUAL_UNLOAD_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -399,24 +493,79 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
 
 
 def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
-    """Pre-warm one configured local Agent and verify Ollama residency."""
+    """Pre-warm one configured local Agent and verify provider residency."""
     if DEMO_MODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Local model pre-warming is unavailable in demo mode.",
         )
 
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or spec.runtime != "local":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only configured local Agents can be pre-warmed.",
+        )
+
+    if spec.provider == "litert":
+        if not LITERT_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LiteRT local inference is disabled. Set LITERT_ENABLED=true to enable it.",
+            )
+        profile = build_concrete_agent(agent_key, native_effort=None)
+        assert isinstance(profile, LiteRTModelProfile)
+        litert_status, litert_reason, _active, loading, _idle_remaining = (
+            resolve_litert_agent_status(profile, agent_key=agent_key)
+        )
+        if litert_status != "available" or loading:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=litert_reason
+                or "The requested LiteRT Agent is currently unavailable.",
+            )
+
+        if not try_begin_local_execution("litert"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "A local model generation or lifecycle action is in progress. "
+                    "Wait for it to finish before loading another model."
+                ),
+            )
+        try:
+            already_resident = is_local_model_resident(
+                profile.api_model, provider="litert"
+            )
+            if not already_resident:
+                gate_open, gate_reason = check_litert_resource_gate(profile)
+                if not gate_open:
+                    reason = (
+                        "Current local resources are below the LiteRT model threshold."
+                        if gate_reason in {"insufficient_ram", "cpu_overloaded"}
+                        else "LiteRT local resource status is unavailable."
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=reason,
+                    )
+            if not switch_local_model(profile, provider="litert") or not is_local_model_resident(
+                profile.api_model, provider="litert"
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "The requested LiteRT Agent could not be verified as resident."
+                    ),
+                )
+        finally:
+            end_local_execution()
+        return LocalLoadResponse(agent=agent_key)
+
     if not OLLAMA_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Local Ollama inference is disabled in system settings.",
-        )
-
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.provider != "ollama":
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only configured local Agents can be pre-warmed.",
         )
 
     profile = build_concrete_agent(agent_key, native_effort=None)
@@ -568,6 +717,8 @@ def _create_provider(agent_key: str, api_key: str):
         return OpenAIProvider(api_key=api_key)
     if spec.provider == "xai":
         return XAIProvider(api_key=api_key)
+    if spec.provider == "litert":
+        return LiteRTProvider(runtime=LITERT_LIFECYCLE.runtime)
     return OllamaProvider()
 
 
@@ -593,8 +744,12 @@ def _execute_agent_turn(
             else _build_hud_context(payload, agent_key=agent_key)
         )
 
-        if isinstance(profile, OllamaModelProfile):
-            provider = OllamaProvider()
+        if is_local_profile(profile):
+            provider = (
+                LiteRTProvider(runtime=LITERT_LIFECYCLE.runtime)
+                if isinstance(profile, LiteRTModelProfile)
+                else OllamaProvider()
+            )
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
             if payload.tool_scope is None:
                 scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
@@ -630,7 +785,7 @@ def _execute_agent_turn(
             cloud_tools=cloud_tools,
             agent_key=agent_key,
         )
-        if not isinstance(profile, OllamaModelProfile):
+        if not is_local_profile(profile):
             record_cloud_request_success(agent_key)
         response.agent_used = build_agent_used_metadata(
             agent_key,
@@ -642,7 +797,7 @@ def _execute_agent_turn(
         )
         return response
     except Exception as exc:
-        if not isinstance(profile, OllamaModelProfile):
+        if not is_local_profile(profile):
             record_cloud_request_failure(agent_key, exc)
         _LOGGER.exception(
             "Agent turn failed for model configuration %s",
@@ -698,13 +853,13 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         return run_demo_agent_query(payload)
 
     spec = AGENT_SPECS[agent_key]
-    if spec.provider == "ollama" and payload.effort is not None:
+    if spec.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Effort cannot be set for local Agents.",
         )
 
-    if spec.provider != "ollama" and payload.tool_scope is not None:
+    if spec.runtime != "local" and payload.tool_scope is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Command scopes are available only for local Agents.",
@@ -729,7 +884,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     acinonyx_sandbox = is_acinonyx_agent(agent_key)
 
     resolved_local_command: ResolvedLocalCommand | None = None
-    if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
+    if is_local_profile(profile) and payload.tool_scope is not None:
         resolved_local_command = resolve_local_command(payload.tool_scope)
         if resolved_local_command.missing_tool_names:
             raise HTTPException(
@@ -783,6 +938,68 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     cloud_tools = filter_agent_capabilities(
         agent_key, list_agent_capabilities()
     )
+
+    if isinstance(profile, LiteRTModelProfile):
+        litert_status, litert_reason, _active, loading, _idle_remaining = (
+            resolve_litert_agent_status(profile, agent_key=agent_key)
+        )
+        if litert_status != "available" or loading:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=litert_reason
+                or "The requested LiteRT Agent is currently unavailable.",
+            )
+
+        if not try_begin_local_execution("litert"):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    "A local model generation is already in progress. "
+                    "Wait for it to finish and try again."
+                ),
+            )
+
+        try:
+            already_loaded = is_local_model_loaded(
+                profile.api_model, provider="litert"
+            )
+            if not already_loaded:
+                gate_open, gate_reason = check_litert_resource_gate(profile)
+                if not gate_open:
+                    reason = (
+                        "Current local resources are below the LiteRT model threshold."
+                        if gate_reason in {"insufficient_ram", "cpu_overloaded"}
+                        else "LiteRT local resource status is unavailable."
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=reason,
+                    )
+
+            if not switch_local_model(profile, provider="litert"):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "The requested LiteRT Agent could not load its configured "
+                        "local model artifact."
+                    ),
+                )
+
+            return _execute_agent_turn(
+                payload,
+                profile,
+                agent_key=agent_key,
+                api_key=None,
+                resolved_apex_effort=resolved_apex_effort,
+                resolved_native_effort=resolved_native_effort,
+                resolved_local_command=resolved_local_command,
+                disable_tools=False,
+                disable_hud_context=False,
+                cloud_tools=cloud_tools,
+                user_designation=settings.user_designation,
+            )
+        finally:
+            end_local_execution()
 
     if isinstance(profile, OllamaModelProfile):
         if not OLLAMA_ENABLED:

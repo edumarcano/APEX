@@ -336,27 +336,27 @@ class AgentPricingMetadata(BaseModel):
 
 
 class LocalLoadedModelStatus(BaseModel):
-    name: str = Field(description="Loaded model tag reported by Ollama.")
-    model: str = Field(description="Canonical loaded model name reported by Ollama.")
+    name: str = Field(description="Provider-reported loaded model name.")
+    model: str = Field(description="Canonical loaded model identifier.")
     size_bytes: int | None = Field(
         default=None,
-        description="Total loaded model size in bytes, when reported by Ollama.",
+        description="Total loaded model size in bytes, when reported by the provider.",
     )
     size_vram_bytes: int | None = Field(
         default=None,
-        description="Loaded model bytes resident in VRAM, when reported by Ollama.",
+        description="Loaded model bytes resident in VRAM, when reported by the provider.",
     )
     processor: str | None = Field(
         default=None,
-        description="Processor/offload split reported by Ollama.",
+        description="Processor/offload split reported by the provider.",
     )
     context: str | None = Field(
         default=None,
-        description="Runtime context length reported by Ollama.",
+        description="Runtime context length reported by the provider.",
     )
     expires_at: str | None = Field(
         default=None,
-        description="Ollama expiration timestamp for the loaded model.",
+        description="Provider expiration timestamp for the loaded model.",
     )
 
 
@@ -364,7 +364,7 @@ class AgentStatus(BaseModel):
     key: str = Field(description="Stable Agent identifier used by the HUD.")
     display_name: str = Field(description="Human-readable Apex Agent label.")
     description: str = Field(description="Short Agent capability and role summary.")
-    provider: Literal["ollama", "gemini", "openai", "xai"] = Field(
+    provider: Literal["ollama", "litert", "gemini", "openai", "xai"] = Field(
         description="Inference backend for this Agent.",
     )
     version: str = Field(description="Agent configuration version string.")
@@ -453,8 +453,8 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["mus", "sorex"] = Field(
-        description="Local Apex Agent to pre-warm in Ollama memory."
+    agent: Literal["mus", "sorex", "microtus", "mustela"] = Field(
+        description="Local Apex Agent to pre-warm in provider memory."
     )
 
 
@@ -463,8 +463,8 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["mus", "sorex"] = Field(
-        description="Local Agent confirmed resident by Ollama.",
+    agent: Literal["mus", "sorex", "microtus", "mustela"] = Field(
+        description="Local Agent confirmed resident by its provider.",
     )
 
 

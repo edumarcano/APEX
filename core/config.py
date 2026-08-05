@@ -31,6 +31,19 @@ __all__ = [
     "OLLAMA_IDLE_UNLOAD_MINUTES",
     "OLLAMA_MANUAL_UNLOAD_ENABLED",
     "OLLAMA_SINGLE_LOADED_MODEL",
+    "LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES",
+    "LOCAL_RUNTIME_MANUAL_UNLOAD_ENABLED",
+    "LOCAL_RUNTIME_SINGLE_LOADED_MODEL",
+    "LITERT_ENABLED",
+    "LITERT_PYTHON_EXECUTABLE",
+    "LITERT_MODEL_DIR",
+    "LITERT_PACKAGE_VERSION",
+    "LITERT_BACKEND",
+    "LITERT_ENGINE_LOAD_TIMEOUT",
+    "LITERT_MICROTUS_TIMEOUT",
+    "LITERT_MUSTELA_TIMEOUT",
+    "LITERT_MIN_FREE_RAM_MICROTUS_MB",
+    "LITERT_MIN_FREE_RAM_MUSTELA_MB",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -606,3 +619,126 @@ except Exception as exc:
     SOREX_CPU_LIMIT = _DEFAULT_SOREX_CPU
     MUS_RAM_LIMIT = _DEFAULT_MUS_RAM
     MUS_CPU_LIMIT = _DEFAULT_MUS_CPU
+
+
+try:
+    _local_runtime_cfg = _CONFIG_DATA.get("local_runtime", {})
+    if not isinstance(_local_runtime_cfg, dict):
+        _LOGGER.warning('Config key "local_runtime" must be a JSON object; using legacy Ollama values.')
+        _local_runtime_cfg = {}
+    _legacy_ollama_cfg = _CONFIG_DATA.get("ollama", {})
+    if not isinstance(_legacy_ollama_cfg, dict):
+        _legacy_ollama_cfg = {}
+
+    LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES: Final[int] = _parse_config_int(
+        _local_runtime_cfg.get(
+            "idle_unload_timeout_minutes",
+            _legacy_ollama_cfg.get("idle_unload_timeout_minutes"),
+        ),
+        key="local_runtime.idle_unload_timeout_minutes",
+        default=5,
+        min_value=1,
+        max_value=60,
+    )
+    LOCAL_RUNTIME_MANUAL_UNLOAD_ENABLED: Final[bool] = _parse_config_bool(
+        _local_runtime_cfg.get(
+            "manual_unload_enabled",
+            _legacy_ollama_cfg.get("manual_unload_enabled"),
+        ),
+        key="local_runtime.manual_unload_enabled",
+        default=True,
+    )
+    LOCAL_RUNTIME_SINGLE_LOADED_MODEL: Final[bool] = _parse_config_bool(
+        _local_runtime_cfg.get(
+            "single_loaded_model",
+            _legacy_ollama_cfg.get("single_loaded_model"),
+        ),
+        key="local_runtime.single_loaded_model",
+        default=True,
+    )
+
+    _litert_cfg = _CONFIG_DATA.get("litert", {})
+    if not isinstance(_litert_cfg, dict):
+        _LOGGER.warning('Config key "litert" must be a JSON object; using defaults.')
+        _litert_cfg = {}
+    _litert_config_enabled = _parse_config_bool(
+        _litert_cfg.get("enabled"), key="litert.enabled", default=False
+    )
+    LITERT_ENABLED: Final[bool] = _parse_env_bool(
+        os.getenv("LITERT_ENABLED"), key="LITERT_ENABLED", default=_litert_config_enabled
+    )
+    _configured_interpreter = os.getenv("LITERT_PYTHON_EXECUTABLE") or _litert_cfg.get(
+        "python_executable"
+    )
+    LITERT_PYTHON_EXECUTABLE: Final[str] = str(
+        _configured_interpreter
+        or PROJECT_ROOT / ".venv-litert" / "Scripts" / "python.exe"
+    )
+    _configured_model_dir = os.getenv("LITERT_MODEL_DIR") or _litert_cfg.get(
+        "model_dir"
+    )
+    LITERT_MODEL_DIR: Final[str] = str(
+        _configured_model_dir or PROJECT_ROOT / "models" / "litert"
+    )
+    _backend = str(_litert_cfg.get("backend", "cpu")).strip().lower()
+    LITERT_BACKEND: Final[str] = _backend if _backend == "cpu" else "cpu"
+    LITERT_PACKAGE_VERSION: Final[str] = "0.15.0"
+    LITERT_ENGINE_LOAD_TIMEOUT: Final[int] = _parse_config_int(
+        _litert_cfg.get("engine_load_timeout_seconds"),
+        key="litert.engine_load_timeout_seconds",
+        default=300,
+        min_value=1,
+        max_value=900,
+    )
+    LITERT_MICROTUS_TIMEOUT: Final[int] = _parse_config_int(
+        _litert_cfg.get("microtus_timeout_seconds"),
+        key="litert.microtus_timeout_seconds",
+        default=120,
+        min_value=1,
+        max_value=900,
+    )
+    LITERT_MUSTELA_TIMEOUT: Final[int] = _parse_config_int(
+        _litert_cfg.get("mustela_timeout_seconds"),
+        key="litert.mustela_timeout_seconds",
+        default=240,
+        min_value=1,
+        max_value=900,
+    )
+    _litert_gates = _litert_cfg.get("resource_gates", {})
+    if not isinstance(_litert_gates, dict):
+        _litert_gates = {}
+    LITERT_MIN_FREE_RAM_MICROTUS_MB: Final[int] = _parse_config_int(
+        (_litert_gates.get("microtus") or {}).get("minimum_free_ram_mb")
+        if isinstance(_litert_gates.get("microtus"), dict)
+        else None,
+        key="litert.resource_gates.microtus.minimum_free_ram_mb",
+        default=2300,
+        min_value=0,
+        max_value=1_000_000,
+    )
+    LITERT_MIN_FREE_RAM_MUSTELA_MB: Final[int] = _parse_config_int(
+        (_litert_gates.get("mustela") or {}).get("minimum_free_ram_mb")
+        if isinstance(_litert_gates.get("mustela"), dict)
+        else None,
+        key="litert.resource_gates.mustela.minimum_free_ram_mb",
+        default=5400,
+        min_value=0,
+        max_value=1_000_000,
+    )
+except Exception as exc:
+    _LOGGER.warning("Unable to parse local runtime/LiteRT config: %s; using defaults.", exc)
+    LOCAL_RUNTIME_IDLE_UNLOAD_MINUTES = 5
+    LOCAL_RUNTIME_MANUAL_UNLOAD_ENABLED = True
+    LOCAL_RUNTIME_SINGLE_LOADED_MODEL = True
+    LITERT_ENABLED = _parse_env_bool(
+        os.getenv("LITERT_ENABLED"), key="LITERT_ENABLED", default=False
+    )
+    LITERT_PYTHON_EXECUTABLE = str(PROJECT_ROOT / ".venv-litert" / "Scripts" / "python.exe")
+    LITERT_MODEL_DIR = str(PROJECT_ROOT / "models" / "litert")
+    LITERT_PACKAGE_VERSION = "0.15.0"
+    LITERT_BACKEND = "cpu"
+    LITERT_ENGINE_LOAD_TIMEOUT = 300
+    LITERT_MICROTUS_TIMEOUT = 120
+    LITERT_MUSTELA_TIMEOUT = 240
+    LITERT_MIN_FREE_RAM_MICROTUS_MB = 2300
+    LITERT_MIN_FREE_RAM_MUSTELA_MB = 5400

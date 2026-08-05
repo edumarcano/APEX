@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `8`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `9`.
 
 | Group | Editable values |
 |---|---|
@@ -49,6 +49,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Ask APEX | Global enablement switch; Cortex owns Agent, effort, and grounding selection |
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
+| Local runtime | Single loaded-model policy, manual unload, and idle-unload timeout |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 
 Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
@@ -123,12 +124,14 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 ### Local Agents
 
-| Agent key and display name | Ollama model | Intended use |
+| Agent key and display name | Provider and model | Intended use |
 |---|---|---|
+| `microtus` — Microtus 1.0 | LiteRT `litert-community/gemma-4-E2B-it-litert-lm` | Preview lightweight local Agent; requires `gemma-4-E2B-it.litertlm` |
+| `mustela` — Mustela 1.0 | LiteRT `litert-community/gemma-4-E4B-it-litert-lm` | Preview balanced local Agent; requires `gemma-4-E4B-it.litertlm` |
 | `sorex` — Sorex 1.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
 | `mus` — Mus 1.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 
-`ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
+`ollama.host` defaults to `http://localhost:11434`. LiteRT is optional and disabled by default. When enabled, APEX uses the configured Python 3.11 worker interpreter and `litert-lm-api==0.15.0`; it does not download model artifacts automatically. APEX enforces one active local generation and one resident model across Ollama and LiteRT, applies provider-specific resource gates before cold load, and unloads idle models after the configured timeout. LiteRT agents remain visible as preview entries when disabled or unavailable, with a corrective status reason; an explicit unavailable LiteRT request is not rerouted to Mus.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
