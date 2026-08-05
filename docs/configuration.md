@@ -123,12 +123,45 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 ### Local Agents
 
-| Agent key and display name | Ollama model | Intended use |
+| Agent key and display name | Provider and model | Intended use |
 |---|---|---|
-| `sorex` — Sorex 1.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
-| `mus` — Mus 1.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
+| `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
+| `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
+| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama remains the configured local provider for Mus and Sorex.
+`ollama.host` defaults to `http://localhost:11434`. `llama_cpp.host` defaults to `http://127.0.0.1:8080` and is disabled until enabled in configuration. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus.
+
+#### llama.cpp configuration
+
+| Key | Default | Notes |
+|---|---|---|
+| `llama_cpp.enabled` | `false` | Optional second local backend |
+| `llama_cpp.host` | `http://127.0.0.1:8080` | External router base URL |
+| `llama_cpp.idle_unload_timeout_minutes` | `5` | Same idle range as Ollama |
+| `llama_cpp.manual_unload_enabled` | `true` | Allows HUD unload |
+| `llama_cpp.request_timeout_seconds` | `180` | Generation and load wait budget |
+| `llama_cpp.resource_gates.apodemus` | RAM/CPU limits | Cold-load gates for Apodemus |
+
+Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
+
+Machine-local overrides may enable the backend without committing host details:
+
+```json
+{
+  "llama_cpp": {
+    "enabled": true,
+    "host": "http://127.0.0.1:8080"
+  }
+}
+```
+
+Preset aliases such as `apodemus-4k` through `apodemus-32k` are configured on the external router to load `gemma-4-E2B-Q4_K_M.gguf` with the matching context size. Do not commit absolute model paths.
+
+#### Apodemus context preference
+
+`ask_apex.apodemus_context_window` selects one of `4096`, `8192`, `16384`, or `32768`. The default is `8192`. The value `131072` is model maximum metadata only and is not an exposed preset. `32768` is marked experimental in the HUD. Reasoning stays off for Apodemus (`reasoning_effort: "none"` on every request).
+
+Current Agent mapping used by documentation checks: `apodemus -> gemma-4-E2B-Q4_K_M.gguf`.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 

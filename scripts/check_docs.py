@@ -275,7 +275,9 @@ def check_agent_profiles(
 
     known_models = set(expected_profiles.values())
     model_pattern = re.compile(
-        r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|qwen\d+(?:\.\d+)?:[a-z0-9.-]+",
+        r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|"
+        r"qwen\d+(?:\.\d+)?:[a-z0-9.-]+|"
+        r"[a-z0-9][a-z0-9._-]*\.gguf",
         re.IGNORECASE,
     )
     for path in paths:
@@ -399,6 +401,7 @@ PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "gemini": "Gemini",
     "xai": "xAI",
     "ollama": "Ollama",
+    "llama_cpp": "llama.cpp",
 }
 
 

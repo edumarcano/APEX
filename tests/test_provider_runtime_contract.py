@@ -58,6 +58,9 @@ class ProviderContractTests(unittest.TestCase):
             resolve_inference_provider(_concrete_profile("sorex")), "ollama"
         )
         self.assertEqual(
+            resolve_inference_provider(_concrete_profile("apodemus")), "llama_cpp"
+        )
+        self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
             "openai",
         )
@@ -68,18 +71,25 @@ class ProviderContractTests(unittest.TestCase):
     def test_local_profile_markers_and_runtime_ids(self) -> None:
         sorex = _concrete_profile("sorex")
         mus = _concrete_profile("mus")
+        apodemus = _concrete_profile("apodemus")
         self.assertTrue(isinstance(sorex, LocalModelProfile))
         self.assertTrue(isinstance(mus, LocalModelProfile))
+        self.assertTrue(isinstance(apodemus, LocalModelProfile))
         self.assertEqual(resolve_inference_provider(sorex), "ollama")
+        self.assertEqual(resolve_inference_provider(apodemus), "llama_cpp")
         self.assertEqual(sorex.runtime_model_id, sorex.api_model)
         self.assertEqual(mus.runtime_model_id, mus.api_model)
+        self.assertEqual(apodemus.runtime_model_id, "apodemus-8k")
+        self.assertEqual(apodemus.api_model, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
+        self.assertFalse(apodemus.high_resource)
         self.assertTrue(is_local_inference_provider("ollama"))
+        self.assertTrue(is_local_inference_provider("llama_cpp"))
         self.assertFalse(is_local_inference_provider("openai"))
 
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
-        for agent_key in ("sorex", "mus"):
+        for agent_key in ("sorex", "mus", "apodemus"):
             profile = build_concrete_agent(agent_key, native_effort=None)
             self.assertTrue(is_local_profile(profile))
             selected = local_model_ref_for_agent(agent_key)
@@ -89,15 +99,11 @@ class ProviderContractTests(unittest.TestCase):
             self.assertEqual(agent_key_for_local_model_ref(selected), agent_key)
 
         known = known_local_model_refs()
-        self.assertEqual(
-            known,
-            frozenset(
-                {
-                    local_model_ref_for_agent("sorex"),
-                    local_model_ref_for_agent("mus"),
-                }
-            ),
-        )
+        expected = set()
+        for agent_key in ("sorex", "mus", "apodemus"):
+            expected.update(local_model_refs_for_agent(agent_key))
+        self.assertEqual(known, frozenset(expected))
+        self.assertEqual(len(local_model_refs_for_agent("apodemus")), 4)
         self.assertIsNone(
             agent_key_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")
@@ -410,6 +416,17 @@ class PricingRegistryTests(unittest.TestCase):
         self.assertEqual(estimate.total_cost, 0.0)
         self.assertEqual(estimate.completeness, "complete")
 
+    def test_local_llama_cpp_models_are_zero_cost(self) -> None:
+        estimate = estimate_inference_cost(
+            model="gemma-4-E2B-Q4_K_M.gguf",
+            usage=TokenUsage(input_tokens=1000, output_tokens=200, total_tokens=1200),
+            provider="llama_cpp",
+        )
+        self.assertEqual(estimate.token_cost, 0.0)
+        self.assertEqual(estimate.hosted_tool_cost, 0.0)
+        self.assertEqual(estimate.total_cost, 0.0)
+        self.assertEqual(estimate.completeness, "complete")
+
     def test_cached_and_reasoning_tokens_are_not_charged_twice(self) -> None:
         estimate = estimate_inference_cost(
             model="gemini-3.6-flash",
@@ -712,7 +729,14 @@ class PublicRosterTests(unittest.TestCase):
         providers = {AGENT_SPECS[key].provider for key in AGENT_SPECS}
         self.assertIn("openai", providers)
         self.assertIn("xai", providers)
-        self.assertEqual({key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"}, {"sorex", "mus"})
+        self.assertEqual(
+            {key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"},
+            {"sorex", "mus", "apodemus"},
+        )
+        self.assertEqual(
+            {key for key, spec in AGENT_SPECS.items() if spec.provider == "llama_cpp"},
+            {"apodemus"},
+        )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},
             {"acinonyx", "neofelis"},

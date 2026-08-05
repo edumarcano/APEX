@@ -151,6 +151,7 @@ flowchart LR
 
     LOCAL --> SOREX["Sorex 1.0<br/>Lightweight local Agent<br/>Ollama"]
     LOCAL --> MUS["Mus 1.0<br/>Local generalist<br/>Ollama"]
+    LOCAL --> APODEMUS["Apodemus 1.0<br/>Efficient local preview<br/>llama.cpp"]
 ```
 
 Every Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role.
@@ -239,7 +240,7 @@ Sorex is not intended to imitate the full capability of the cloud Agents. Its va
 
 *Mus* is a genus of mice.
 
-Apex Mus is the larger of the two current local Agents. It provides an improvement in intelligence and general usefulness over Sorex while requiring more local hardware resources.
+Apex Mus is a larger local Agent than Sorex. It provides an improvement in intelligence and general usefulness over Sorex while requiring more local hardware resources.
 
 Mus remains intentionally smaller in scale than the cloud Agent groups. Its role is to provide a practical on-device generalist for work that benefits from greater capability than Sorex can provide but should remain local.
 
@@ -249,6 +250,16 @@ The Sorex–Mus relationship is therefore:
 - **Mus:** a more capable local generalist with higher hardware requirements.
 
 Mice and shrews are not especially close taxonomic counterparts. Their relationship in APEX is based primarily on their shared small scale and the operational progression between the two local models.
+
+## Apex Apodemus
+
+*Apodemus* is a genus of field mice.
+
+Apodemus belongs to the same small-mammal local group as Sorex and Mus. The name positions it as an efficient local relative rather than a cloud-scale Agent.
+
+Apex Apodemus is a preview local Agent that runs through an external llama.cpp router. It is intended for private, on-device work that benefits from structured tool use, with a selectable context window of 4K, 8K, 16K, or experimental 32K tokens. Its configured model is Gemma 4 E2B (`gemma-4-E2B-Q4_K_M.gguf`). Reasoning remains disabled for this Agent.
+
+Apodemus is not a briefing mode in the initial release. Its role is interactive Ask APEX and Cortex local execution alongside Mus and Sorex.
 
 ## The Agent family is not permanent
 

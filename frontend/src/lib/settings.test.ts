@@ -80,6 +80,7 @@ describe('settings response parsing', () => {
     ['cloud profile', ['settings', 'ask_apex', 'cloud_agent'], 'invalid'],
     ['cloud effort', ['settings', 'ask_apex', 'effort'], 'invalid'],
     ['local profile', ['settings', 'ask_apex', 'local_agent'], 'invalid'],
+    ['apodemus context window', ['settings', 'ask_apex', 'apodemus_context_window'], 131072],
     ['neofelis google search', ['settings', 'ask_apex', 'neofelis_google_search_enabled'], null],
     ['neofelis google maps', ['settings', 'ask_apex', 'neofelis_google_maps_enabled'], null],
     ['delphinus x search', ['settings', 'ask_apex', 'delphinus_x_search_enabled'], null],
@@ -154,6 +155,7 @@ describe('settings editing utilities', () => {
     draft.features.market = false
     draft.ask_apex.runtime = 'local'
     draft.ask_apex.local_agent = 'sorex'
+    draft.ask_apex.apodemus_context_window = 16384
     draft.briefing.default_mode = 'mus'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
@@ -163,7 +165,11 @@ describe('settings editing utilities', () => {
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       user_designation: 'Chief',
       features: { weather: false, market: false },
-      ask_apex: { runtime: 'local', local_agent: 'sorex' },
+      ask_apex: {
+        runtime: 'local',
+        local_agent: 'sorex',
+        apodemus_context_window: 16384,
+      },
       briefing: { default_mode: 'mus' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
@@ -171,6 +177,25 @@ describe('settings editing utilities', () => {
         servers: { github: { enabled: true } },
       },
     })
+  })
+
+  it('patches Apodemus context without touching other Ask APEX fields', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.ask_apex.apodemus_context_window = 32768
+
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      ask_apex: { apodemus_context_window: 32768 },
+    })
+  })
+
+  it('accepts apodemus as a local Agent key', () => {
+    expect(
+      resolveAgentKey({
+        ...BASE_SETTINGS.ask_apex,
+        runtime: 'local',
+        local_agent: 'apodemus',
+      }),
+    ).toBe('apodemus')
   })
 
   it('recognizes empty patches and equal settings', () => {

@@ -46,11 +46,12 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         self.assertEqual(
             {
                 key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
-                for key in ("sorex", "mus")
+                for key in ("sorex", "mus", "apodemus")
             },
             {
                 "sorex": (2, 3),
                 "mus": (3, 4),
+                "apodemus": (3, 4),
             },
         )
 

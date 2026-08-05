@@ -1,0 +1,32 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "apodemus-8k",
+      "object": "model",
+      "owned_by": "llamacpp",
+      "status": "loaded",
+      "n_ctx": 8192,
+      "size": 2147483648
+    },
+    {
+      "id": "apodemus-4k",
+      "object": "model",
+      "owned_by": "llamacpp",
+      "status": "unloaded"
+    },
+    {
+      "id": "apodemus-16k",
+      "object": "model",
+      "owned_by": "llamacpp",
+      "status": "sleeping",
+      "n_ctx": 16384
+    },
+    {
+      "id": "apodemus-32k",
+      "object": "model",
+      "owned_by": "llamacpp",
+      "status": "loading"
+    }
+  ]
+}

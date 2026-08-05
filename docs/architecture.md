@@ -187,7 +187,7 @@ The Home command rail owns the visible briefing-mode selector. It persists `brie
 
 ### Local Agents and command scopes
 
-Local Agent requests use Sorex or Mus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+Local Agent requests use Sorex, Mus, or Apodemus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
 Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the Agent's 4K context window and reports sanitized usage counts.
 
@@ -203,11 +203,26 @@ The MCP manager owns provider connection, discovery, registration, reconciliatio
 
 ## Local model lifecycle
 
-Local Agents share one provider-neutral local runtime coordinator. Ollama is
-currently the only registered local backend:
+Local Agents share one provider-neutral local runtime coordinator over Ollama
+and llama.cpp:
 
-- Only one local generation can run at a time.
-- Only one APEX-selected model remains resident across local backends.
+```mermaid
+flowchart TB
+    APP["Cortex / preflight / synthesis"]
+    COORD["Local runtime coordinator<br/>one execution slot · one resident model"]
+    REG["Backend registry"]
+    OLLAMA["Ollama backend"]
+    LLAMA["llama.cpp backend"]
+
+    APP --> COORD
+    COORD --> REG
+    REG --> OLLAMA
+    REG --> LLAMA
+```
+
+- Only one local generation can run at a time across both backends.
+- Only one APEX-selected model remains resident; identity is provider-qualified
+  (`ollama`/`qwen3:…` or `llama_cpp`/`apodemus-8k`).
 - CPU and RAM percentage gates apply before a cold load.
 - An already resident target model skips the cold-load resource gate.
 - A different target unloads other known APEX local models before warming the new one.
@@ -217,10 +232,14 @@ currently the only registered local backend:
 - A manual load is a pre-warm; normal request routing can still load a selected model.
 - Lifecycle success is verified against the provider backend before the HUD reports it.
 
+APEX does not embed llama.cpp. The router is an external process owned outside
+the Python package. Inference and property probes pass `autoload=false` so the
+server cannot bypass APEX admission, resource gates, or explicit load.
+
 Application orchestration routes through the coordinator and backend registry.
 Provider-specific discovery, warmup, unload, and residency probes remain inside
-the Ollama backend. This same lifecycle serves briefings and Agent turns,
-exposing contention immediately rather than hiding it behind an unbounded queue.
+each backend. This same lifecycle serves briefings and Agent turns, exposing
+contention immediately rather than hiding it behind an unbounded queue.
 
 ## Voice delivery
 

@@ -151,6 +151,10 @@ class ProfileIdentityTests(unittest.TestCase):
             "You are Apex Mus, an Apex Agent powered by "
             "Qwen3 4B Instruct through Ollama."
         ),
+        "apodemus": (
+            "You are Apex Apodemus, an Apex Agent powered by "
+            "Gemma 4 E2B through llama.cpp."
+        ),
     }
 
     def test_every_profile_has_the_expected_immutable_identity(self) -> None:
@@ -481,8 +485,8 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_eight(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 8)
+    def test_settings_schema_version_is_nine(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 9)
 
 
 if __name__ == "__main__":

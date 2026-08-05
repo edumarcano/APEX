@@ -336,7 +336,7 @@ class AgentPricingMetadata(BaseModel):
 
 
 class LocalLoadedModelStatus(BaseModel):
-    provider: Literal["ollama"] = Field(
+    provider: Literal["ollama", "llama_cpp"] = Field(
         default="ollama",
         description="Local inference provider that reported this loaded model.",
     )
@@ -383,7 +383,7 @@ class AgentStatus(BaseModel):
     key: str = Field(description="Stable Agent identifier used by the HUD.")
     display_name: str = Field(description="Human-readable Apex Agent label.")
     description: str = Field(description="Short Agent capability and role summary.")
-    provider: Literal["ollama", "gemini", "openai", "xai"] = Field(
+    provider: Literal["ollama", "llama_cpp", "gemini", "openai", "xai"] = Field(
         description="Inference backend for this Agent.",
     )
     version: str = Field(description="Agent configuration version string.")
@@ -472,7 +472,7 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["mus", "sorex"] = Field(
+    agent: Literal["mus", "sorex", "apodemus"] = Field(
         description="Local Apex Agent to pre-warm in local runtime memory."
     )
 
@@ -482,7 +482,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["mus", "sorex"] = Field(
+    agent: Literal["mus", "sorex", "apodemus"] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 

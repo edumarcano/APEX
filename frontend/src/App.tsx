@@ -878,6 +878,7 @@ export default function App(): ReactElement {
           pipelineStep={activeStep}
           isSpeaking={isSpeaking}
           isCortexQuerying={isCortexQuerying}
+          localLifecycleBusy={localLifecycleBusy || isLocalModelActionPending}
           agentsStatus={agentsStatus}
           agentsStatusHydrated={agentsStatusHydrated}
           failedConnectors={briefing.failedConnectors}

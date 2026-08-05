@@ -47,6 +47,14 @@ function fallbackName(agent: AgentKey): string {
 }
 
 function formatModel(model: string): string {
+  if (/\.gguf$/i.test(model)) {
+    return model
+      .replace(/\.gguf$/i, '')
+      .split('-')
+      .filter(Boolean)
+      .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
   return model
     .replace(/^gpt-(\d+\.\d+)-(.+)$/i, (_, version: string, variant: string) => `GPT-${version} ${variant}`)
     .replace(/^gemini-(\d+\.\d+)-(.+)$/i, (_, version: string, variant: string) => `Gemini ${version} ${variant}`)

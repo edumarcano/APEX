@@ -9,6 +9,7 @@ from typing import Any
 
 from core.agent.catalog import migrate_schema5_briefing, migrate_schema7_ask_apex
 from core.settings.models import (
+    VALID_APODEMUS_CONTEXT_WINDOWS,
     VALID_BRIEFING_MODES,
     VALID_CLOUD_EFFORTS,
     VALID_CLOUD_SETTINGS_AGENTS,
@@ -106,6 +107,7 @@ def normalize_layer(
                 "local_agent_system_prompt",
                 "gemini",
                 "ollama",
+                "llama_cpp",
             ):
                 _LOGGER.warning(
                     "Ignoring unknown config key %r in %s.",
@@ -363,6 +365,7 @@ def _normalize_ask_apex(
         "cloud_agent",
         "effort",
         "local_agent",
+        "apodemus_context_window",
         "neofelis_google_search_enabled",
         "neofelis_google_maps_enabled",
         "delphinus_x_search_enabled",
@@ -422,6 +425,21 @@ def _normalize_ask_apex(
                 result["local_agent"] = normalized
             else:
                 _record_error(errors, "ask_apex.local_agent is not valid")
+
+    if "apodemus_context_window" in migrated:
+        context_window = migrated["apodemus_context_window"]
+        if isinstance(context_window, bool):
+            _record_error(
+                errors, "ask_apex.apodemus_context_window must be an integer"
+            )
+        elif isinstance(context_window, int) and context_window in (
+            VALID_APODEMUS_CONTEXT_WINDOWS
+        ):
+            result["apodemus_context_window"] = context_window
+        elif context_window is not None:
+            _record_error(
+                errors, "ask_apex.apodemus_context_window is not a supported preset"
+            )
 
     if "neofelis_google_search_enabled" in migrated:
         google_search = migrated["neofelis_google_search_enabled"]
@@ -660,6 +678,9 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     local_agent = ask_apex.get("local_agent", "mus")
     if local_agent not in VALID_LOCAL_SETTINGS_AGENTS:
         local_agent = "mus"
+    apodemus_context_window = ask_apex.get("apodemus_context_window", 8192)
+    if apodemus_context_window not in VALID_APODEMUS_CONTEXT_WINDOWS:
+        apodemus_context_window = 8192
     ask_apex_settings = AskApexSettings(
         enabled=bool(ask_apex.get("enabled", True))
         if "enabled" in ask_apex
@@ -668,6 +689,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         cloud_agent=cloud_agent,  # type: ignore[arg-type]
         effort=effort,  # type: ignore[arg-type]
         local_agent=local_agent,  # type: ignore[arg-type]
+        apodemus_context_window=apodemus_context_window,  # type: ignore[arg-type]
         neofelis_google_search_enabled=bool(
             ask_apex.get("neofelis_google_search_enabled", True)
         ),
@@ -747,6 +769,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "cloud_agent": snapshot.ask_apex.cloud_agent,
             "effort": snapshot.ask_apex.effort,
             "local_agent": snapshot.ask_apex.local_agent,
+            "apodemus_context_window": snapshot.ask_apex.apodemus_context_window,
             "neofelis_google_search_enabled": (
                 snapshot.ask_apex.neofelis_google_search_enabled
             ),

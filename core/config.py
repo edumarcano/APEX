@@ -31,6 +31,13 @@ __all__ = [
     "OLLAMA_IDLE_UNLOAD_MINUTES",
     "OLLAMA_MANUAL_UNLOAD_ENABLED",
     "OLLAMA_SINGLE_LOADED_MODEL",
+    "LLAMA_CPP_ENABLED",
+    "LLAMA_CPP_HOST",
+    "LLAMA_CPP_IDLE_UNLOAD_MINUTES",
+    "LLAMA_CPP_MANUAL_UNLOAD_ENABLED",
+    "LLAMA_CPP_REQUEST_TIMEOUT_SECONDS",
+    "APODEMUS_RAM_LIMIT",
+    "APODEMUS_CPU_LIMIT",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -606,3 +613,76 @@ except Exception as exc:
     SOREX_CPU_LIMIT = _DEFAULT_SOREX_CPU
     MUS_RAM_LIMIT = _DEFAULT_MUS_RAM
     MUS_CPU_LIMIT = _DEFAULT_MUS_CPU
+
+_DEFAULT_APODEMUS_RAM: Final[float] = 82.0
+_DEFAULT_APODEMUS_CPU: Final[float] = 92.0
+
+try:
+    _llama_cpp_cfg = _CONFIG_DATA.get("llama_cpp", {})
+    if not isinstance(_llama_cpp_cfg, dict):
+        _LOGGER.warning(
+            'Config key "llama_cpp" must be a JSON object; using defaults.'
+        )
+        _llama_cpp_cfg = {}
+
+    LLAMA_CPP_ENABLED: Final[bool] = _parse_config_bool(
+        _llama_cpp_cfg.get("enabled"),
+        key="llama_cpp.enabled",
+        default=False,
+    )
+    _llama_configured_host = _llama_cpp_cfg.get("host", "http://127.0.0.1:8080")
+    if isinstance(_llama_configured_host, str) and _llama_configured_host.strip():
+        LLAMA_CPP_HOST: Final[str] = _llama_configured_host.strip()
+    else:
+        if _llama_configured_host is not None:
+            _LOGGER.warning(
+                'Config key "llama_cpp.host" must be a non-empty string; using default.'
+            )
+        LLAMA_CPP_HOST = "http://127.0.0.1:8080"
+
+    LLAMA_CPP_IDLE_UNLOAD_MINUTES: Final[int] = _parse_config_int(
+        _llama_cpp_cfg.get("idle_unload_timeout_minutes"),
+        key="llama_cpp.idle_unload_timeout_minutes",
+        default=5,
+        min_value=1,
+        max_value=60,
+    )
+    LLAMA_CPP_MANUAL_UNLOAD_ENABLED: Final[bool] = _parse_config_bool(
+        _llama_cpp_cfg.get("manual_unload_enabled"),
+        key="llama_cpp.manual_unload_enabled",
+        default=True,
+    )
+    LLAMA_CPP_REQUEST_TIMEOUT_SECONDS: Final[int] = _parse_config_int(
+        _llama_cpp_cfg.get("request_timeout_seconds"),
+        key="llama_cpp.request_timeout_seconds",
+        default=180,
+        min_value=10,
+        max_value=600,
+    )
+
+    _llama_resource_gates = _llama_cpp_cfg.get("resource_gates", {})
+    if not isinstance(_llama_resource_gates, dict):
+        if _llama_resource_gates is not None:
+            _LOGGER.warning(
+                'Config key "llama_cpp.resource_gates" must be a JSON object; '
+                "using defaults."
+            )
+        _llama_resource_gates = {}
+
+    _apodemus_ram, _apodemus_cpu = _parse_resource_gate(
+        _llama_resource_gates.get("apodemus"),
+        profile="apodemus",
+        default_ram=_DEFAULT_APODEMUS_RAM,
+        default_cpu=_DEFAULT_APODEMUS_CPU,
+    )
+    APODEMUS_RAM_LIMIT: Final[float] = _apodemus_ram
+    APODEMUS_CPU_LIMIT: Final[float] = _apodemus_cpu
+except Exception as exc:
+    _LOGGER.warning("Unable to parse llama_cpp config: %s; using defaults.", exc)
+    LLAMA_CPP_ENABLED = False
+    LLAMA_CPP_HOST = "http://127.0.0.1:8080"
+    LLAMA_CPP_IDLE_UNLOAD_MINUTES = 5
+    LLAMA_CPP_MANUAL_UNLOAD_ENABLED = True
+    LLAMA_CPP_REQUEST_TIMEOUT_SECONDS = 180
+    APODEMUS_RAM_LIMIT = _DEFAULT_APODEMUS_RAM
+    APODEMUS_CPU_LIMIT = _DEFAULT_APODEMUS_CPU

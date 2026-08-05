@@ -7,7 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal["sorex", "mus"]
+LocalSettingsAgent = Literal["sorex", "mus", "apodemus"]
+ApodemusContextWindow = Literal[4096, 8192, 16384, 32768]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
 BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
@@ -18,7 +19,10 @@ VoiceMode = Literal["off", "manual", "automatic"]
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus", "apodemus"})
+VALID_APODEMUS_CONTEXT_WINDOWS: frozenset[int] = frozenset(
+    {4096, 8192, 16384, 32768}
+)
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "mus", "sorex", "structured_digest"}
@@ -27,7 +31,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 8
+SETTINGS_SCHEMA_VERSION: int = 9
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 
@@ -80,6 +84,7 @@ class AskApexSettings(BaseModel):
     cloud_agent: CloudSettingsAgent = "panthera"
     effort: CloudEffort = "focused"
     local_agent: LocalSettingsAgent = "mus"
+    apodemus_context_window: ApodemusContextWindow = 8192
     neofelis_google_search_enabled: bool = True
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
@@ -188,6 +193,7 @@ class AskApexPatch(BaseModel):
     cloud_agent: CloudSettingsAgent | None = None
     effort: CloudEffort | None = None
     local_agent: LocalSettingsAgent | None = None
+    apodemus_context_window: ApodemusContextWindow | None = None
     neofelis_google_search_enabled: bool | None = None
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None

@@ -10,6 +10,7 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
+  ApodemusContextWindow,
   BriefingMode,
   FeaturesSettings,
   ModulesSettings,
@@ -33,7 +34,18 @@ const VALID_CLOUD_SETTINGS_AGENTS: readonly CloudSettingsAgent[] = [
   'orcinus',
 ]
 
-const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = ['sorex', 'mus']
+const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = [
+  'sorex',
+  'mus',
+  'apodemus',
+]
+
+const VALID_APODEMUS_CONTEXT_WINDOWS: readonly ApodemusContextWindow[] = [
+  4096,
+  8192,
+  16384,
+  32768,
+]
 
 export { isLocalAgentKey } from './agents'
 
@@ -144,6 +156,13 @@ function isLocalSettingsAgent(value: unknown): value is LocalSettingsAgent {
   return (
     typeof value === 'string' &&
     (VALID_LOCAL_SETTINGS_AGENTS as readonly string[]).includes(value)
+  )
+}
+
+function isApodemusContextWindow(value: unknown): value is ApodemusContextWindow {
+  return (
+    typeof value === 'number' &&
+    (VALID_APODEMUS_CONTEXT_WINDOWS as readonly number[]).includes(value)
   )
 }
 
@@ -271,6 +290,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!isLocalSettingsAgent(value.ask_apex.local_agent)) {
     return null
   }
+  if (!isApodemusContextWindow(value.ask_apex.apodemus_context_window)) {
+    return null
+  }
   if (typeof value.ask_apex.neofelis_google_search_enabled !== 'boolean') {
     return null
   }
@@ -305,6 +327,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       cloud_agent: value.ask_apex.cloud_agent,
       effort: value.ask_apex.effort,
       local_agent: value.ask_apex.local_agent,
+      apodemus_context_window: value.ask_apex.apodemus_context_window,
       neofelis_google_search_enabled: value.ask_apex.neofelis_google_search_enabled,
       neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
       delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,

@@ -123,7 +123,8 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Weather, news, football, and market data | The corresponding key from `.env.example` |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
-| Local inference | Ollama plus the desired Qwen3 model tags |
+| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags |
+| Local inference (llama.cpp) | Optional external llama.cpp router with Apodemus aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.Read` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
@@ -139,6 +140,21 @@ ollama pull qwen3:4b-instruct
 ```
 
 These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instead of failing at selection time.
+
+## Optional llama.cpp path
+
+llama.cpp is not required to start APEX. When you want Apex Apodemus:
+
+1. Run an external llama.cpp router separately from APEX (the Python process does not embed the server).
+2. Configure router aliases such as `apodemus-8k` for `gemma-4-E2B-Q4_K_M.gguf` with reasoning disabled.
+3. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
+4. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
+
+A manual smoke script is available when a router is running:
+
+```powershell
+uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-8k --load --unload
+```
 
 ## First-run expectations
 
@@ -175,7 +191,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### A local model is unavailable
 
-Confirm Ollama is running at the configured host and that the exact model tag is installed with `ollama list`. Cold loads can also be blocked by the Agent's CPU or RAM gate.
+Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For Apodemus, confirm the llama.cpp router lists the selected runtime alias. Cold loads can also be blocked by the Agent's CPU or RAM gate.
 
 ### Live connectors return no data
 

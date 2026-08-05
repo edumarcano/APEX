@@ -44,7 +44,8 @@ from core.agent.providers.cloud_verification import (
     verify_cloud_agent,
 )
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.local_runtime.contract import LocalModelRef, SystemVitals
+from core.agent.providers.llama_cpp import LlamaCppProvider
+from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef, SystemVitals
 from core.agent.local_runtime.coordinator import (
     check_resource_gate,
     end_local_execution,
@@ -63,7 +64,6 @@ from core.agent.local_runtime.registry import (
     get_local_runtime_backend,
     iter_local_runtime_backends,
 )
-from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.providers.xai_provider import XAIProvider
 from core.agent.pricing import PRICING_VERSION, agent_pricing
@@ -102,12 +102,23 @@ _LOCAL_TOOL_FREE_INSTRUCTION = (
 
 _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
-    "disabled": "Ollama local inference is disabled in system settings",
+    "disabled": "Local inference is disabled in system settings",
     "ollama_unreachable": "Ollama daemon is unreachable",
-    "model_not_installed": "Model tag is not installed locally",
+    "provider_unreachable": "Local runtime provider is unreachable",
+    "model_not_installed": "Model is not installed or configured locally",
     "insufficient_ram": "Current memory pressure exceeds threshold",
     "cpu_overloaded": "Current CPU utilization exceeds threshold",
 }
+
+
+def _local_context_window_for_agent(agent_key: str) -> int | None:
+    """Return the stored Apodemus context preference for local profile builds."""
+    if agent_key != "apodemus":
+        return None
+    value = get_settings_store().get_snapshot().ask_apex.apodemus_context_window
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 8192
 
 
 def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
@@ -132,7 +143,7 @@ def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
 
 
 def _resolve_local_agent_status(
-    profile: OllamaModelProfile,
+    profile: LocalModelProfile,
     *,
     is_active: bool,
     provider_reachable: bool,
@@ -142,10 +153,19 @@ def _resolve_local_agent_status(
 ) -> tuple[AgentAvailabilityStatus, str | None]:
     """Evaluate a local model configuration using cached snapshot signals."""
     if not backend_enabled:
-        return "disabled", _PROFILE_STATUS_REASONS["disabled"]
+        if profile.provider == "llama_cpp":
+            return (
+                "disabled",
+                "llama.cpp local inference is disabled in system settings",
+            )
+        return "disabled", "Ollama local inference is disabled in system settings"
 
     if not provider_reachable:
-        return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
+        if profile.provider == "ollama":
+            return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
+        return "provider_unreachable", (
+            "llama.cpp router is unreachable at the configured loopback host"
+        )
 
     if is_active:
         return "available", None
@@ -217,7 +237,11 @@ def build_agent_statuses() -> list[AgentStatus]:
         )
 
         if spec.runtime == "local":
-            profile = build_concrete_agent(key, native_effort=None)
+            profile = build_concrete_agent(
+                key,
+                native_effort=None,
+                local_context_window=_local_context_window_for_agent(key),
+            )
             assert is_local_profile(profile)
             backend = get_local_runtime_backend(profile.provider)
             snapshot = snapshots.get(profile.provider)
@@ -236,8 +260,11 @@ def build_agent_statuses() -> list[AgentStatus]:
                 (
                     model
                     for model in loaded_models
-                    if model["name"] == profile.runtime_model_id
-                    or model["model"] == profile.runtime_model_id
+                    if (
+                        model["name"] == profile.runtime_model_id
+                        or model["model"] == profile.runtime_model_id
+                    )
+                    and model.get("state", "loaded") == "loaded"
                 ),
                 None,
             )
@@ -245,7 +272,7 @@ def build_agent_statuses() -> list[AgentStatus]:
             is_active = loaded_model is not None
             is_loading = loading == model_ref
             agent_status, reason = _resolve_local_agent_status(
-                profile,  # type: ignore[arg-type]
+                profile,
                 is_active=is_active,
                 provider_reachable=provider_reachable,
                 installed_models=installed_models,
@@ -470,13 +497,18 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
             detail="Only configured local Agents can be pre-warmed.",
         )
 
-    profile = build_concrete_agent(agent_key, native_effort=None)
+    profile = build_concrete_agent(
+        agent_key,
+        native_effort=None,
+        local_context_window=_local_context_window_for_agent(agent_key),
+    )
     assert is_local_profile(profile)
     backend = get_local_runtime_backend(profile.provider)
     if not backend.enabled:
+        provider_label = "llama.cpp" if profile.provider == "llama_cpp" else "Ollama"
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Local Ollama inference is disabled in system settings.",
+            detail=f"Local {provider_label} inference is disabled in system settings.",
         )
 
     model_ref = LocalModelRef(
@@ -507,11 +539,13 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         if not switch_local_model(profile) or not backend.is_model_resident(
             profile.runtime_model_id
         ):
+            provider_label = "llama.cpp" if profile.provider == "llama_cpp" else "Ollama"
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
                     f"Local model {profile.runtime_model_id} could not be verified "
-                    "in Ollama. Ensure Ollama is reachable and configured."
+                    f"in {provider_label}. Ensure the local runtime is reachable "
+                    "and configured."
                 ),
             )
     finally:
@@ -631,6 +665,8 @@ def _create_provider(agent_key: str, api_key: str):
         return XAIProvider(api_key=api_key)
     if spec.provider == "ollama":
         return OllamaProvider()
+    if spec.provider == "llama_cpp":
+        return LlamaCppProvider()
     raise ValueError(f"Unsupported inference provider: {spec.provider!r}")
 
 
@@ -659,6 +695,8 @@ def _execute_agent_turn(
         if is_local_profile(profile):
             if AGENT_SPECS[agent_key].provider == "ollama":
                 provider = OllamaProvider()
+            elif AGENT_SPECS[agent_key].provider == "llama_cpp":
+                provider = LlamaCppProvider()
             else:
                 raise ValueError(
                     f"Unsupported local provider: {AGENT_SPECS[agent_key].provider!r}"
@@ -785,6 +823,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     profile = build_concrete_agent(
         agent_key,
         native_effort=resolved_native_effort,
+        local_context_window=_local_context_window_for_agent(agent_key),
         neofelis_google_search_enabled=(
             settings.ask_apex.neofelis_google_search_enabled
         ),

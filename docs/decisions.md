@@ -132,9 +132,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Share one local runtime lifecycle across briefings and Agent turns
 
-**Decision.** Local briefing and Agent work share Agent definitions, resource gates, the execution slot, model switching, and idle unload through one provider-neutral coordinator. Ollama is currently the only local backend.
+**Decision.** Local briefing and Agent work share Agent definitions, resource gates, the execution slot, model switching, and idle unload through one provider-neutral coordinator spanning Ollama and llama.cpp.
 
-**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. A second manager would hide rather than remove that contention. Separating Ollama transport from global policy keeps a second local provider from copying orchestration throughout the application.
+**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. A second manager would hide rather than remove that contention. Separating provider transport from global policy keeps each backend from copying orchestration throughout the application.
 
 **Trade-off.** One local operation can reject another instead of queuing. Prompts and context remain separate even though lifecycle ownership is shared.
 
@@ -168,7 +168,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, and Mus.
+**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, and Apodemus.
 
 **Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
 
@@ -184,11 +184,43 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Enforce one resident model and non-blocking admission
 
-**Decision.** APEX keeps one selected Ollama model resident and rejects competing local execution rather than queueing it.
+**Decision.** APEX keeps one selected local model resident across Ollama and llama.cpp and rejects competing local execution rather than queueing it.
 
 **Why.** Consumer hardware should remain responsive, and a hidden queue behind a slow generation gives poor feedback. Agent-specific CPU/RAM gates prevent unsafe cold loads; a model already resident skips the gate because reselection adds no new model footprint.
 
 **Trade-off.** Users may need to retry a rejected request. Idle auto-unload returns memory without depending on manual cleanup.
+
+### Run llama.cpp as an external router
+
+**Decision.** APEX talks to llama.cpp over HTTP as an external process rather than embedding a Python binding.
+
+**Why.** Process isolation, independent upgrades, and existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD.
+
+**Trade-off.** Operators must start and configure the router separately. APEX never commits binaries, weights, or machine-local model paths.
+
+### Use stable runtime aliases for Apodemus context presets
+
+**Decision.** Apodemus loads through aliases such as `apodemus-8k` instead of exposing raw GGUF paths or an arbitrary context slider.
+
+**Why.** Discrete, tested contexts keep admission, residency, and documentation predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
+
+**Trade-off.** Adding a new context requires a router preset and settings migration work. The model maximum of 131072 tokens stays metadata only.
+
+### Keep Apodemus reasoning off
+
+**Decision.** Server presets and every Apodemus request disable reasoning (`reasoning_effort: "none"`), and hidden reasoning fields or think-style tags are discarded.
+
+**Why.** The Agent is positioned for efficient tool-driven local work, not extended hidden deliberation.
+
+**Trade-off.** Some model behaviors that rely on internal reasoning traces are unavailable.
+
+### Exclude Apodemus from briefing modes initially
+
+**Decision.** The first Apodemus release supports interactive local Agents only; briefing modes remain Panthera, Mus, Sorex, and Structured Digest.
+
+**Why.** Briefing fallback and synthesis contracts should stay stable until llama.cpp behavior is proven for that path.
+
+**Trade-off.** Operators who want Gemma-backed briefings must wait for a later integration.
 
 ## Security
 

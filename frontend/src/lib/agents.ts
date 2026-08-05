@@ -5,7 +5,7 @@ import type {
   LocalSettingsAgent,
 } from '../types/telemetry'
 
-export const LOCAL_AGENT_KEYS = ['sorex', 'mus'] as const
+export const LOCAL_AGENT_KEYS = ['sorex', 'mus', 'apodemus'] as const
 
 const CLOUD_SETTINGS_AGENT_KEYS = [
   'panthera',
@@ -15,7 +15,7 @@ const CLOUD_SETTINGS_AGENT_KEYS = [
 ] as const satisfies readonly CloudSettingsAgent[]
 
 export function isLocalAgentKey(value: unknown): value is LocalSettingsAgent {
-  return value === 'sorex' || value === 'mus'
+  return value === 'sorex' || value === 'mus' || value === 'apodemus'
 }
 
 export function isCloudAgentKey(
@@ -42,6 +42,9 @@ export function providerDisplayName(provider: AgentStatus['provider']): string {
   if (provider === 'ollama') {
     return 'Ollama'
   }
+  if (provider === 'llama_cpp') {
+    return 'llama.cpp'
+  }
   if (provider === 'openai') {
     return 'OpenAI'
   }
@@ -49,6 +52,19 @@ export function providerDisplayName(provider: AgentStatus['provider']): string {
     return 'xAI'
   }
   return 'Gemini'
+}
+
+/** Compact label for known context-window sizes (e.g. 8192 → 8K). */
+export function formatContextWindowLabel(
+  tokens: number | null | undefined,
+): string | null {
+  if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens <= 0) {
+    return null
+  }
+  if (tokens % 1024 === 0) {
+    return `${tokens / 1024}K`
+  }
+  return String(tokens)
 }
 
 export function runtimeForAgentKey(agent: AgentKey): 'local' | 'cloud' {

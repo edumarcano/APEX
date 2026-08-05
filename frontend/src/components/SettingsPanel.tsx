@@ -33,6 +33,7 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
+  ApodemusContextWindow,
   RuntimeSettings,
   SettingsResponse,
   VoiceGender,
@@ -77,6 +78,16 @@ const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
   { value: 'off', label: 'Off' },
 ]
 
+const APODEMUS_CONTEXT_OPTIONS: readonly {
+  value: `${ApodemusContextWindow}`
+  label: string
+}[] = [
+  { value: '4096', label: '4K' },
+  { value: '8192', label: '8K (default)' },
+  { value: '16384', label: '16K' },
+  { value: '32768', label: '32K (experimental)' },
+]
+
 interface SettingsPanelProps {
   open: boolean
   onClose: () => void
@@ -85,6 +96,7 @@ interface SettingsPanelProps {
   pipelineStep: number | null
   isSpeaking: boolean
   isCortexQuerying: boolean
+  localLifecycleBusy?: boolean
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
   failedConnectors: string[]
@@ -129,6 +141,7 @@ export default function SettingsPanel({
   pipelineStep,
   isSpeaking,
   isCortexQuerying,
+  localLifecycleBusy = false,
   agentsStatus,
   agentsStatusHydrated,
   failedConnectors,
@@ -228,7 +241,11 @@ export default function SettingsPanel({
         : localAvailable
           ? { value: 'Reachable', tone: 'ok' as const }
           : {
-              value: local.some((p) => p.status === 'ollama_unreachable')
+              value: local.some(
+                (p) =>
+                  p.status === 'ollama_unreachable' ||
+                  p.status === 'provider_unreachable',
+              )
                 ? 'Unreachable'
                 : 'Unavailable',
               tone: 'error' as const,
@@ -236,6 +253,20 @@ export default function SettingsPanel({
       activeModel: activeLocal?.loaded_model?.model ?? activeLocal?.loaded_model?.name ?? 'None',
     }
   }, [agentsStatus, agentsStatusHydrated])
+
+  const apodemusContextLocked = useMemo(() => {
+    const apodemus = agentsStatus.find((agent) => agent.key === 'apodemus')
+    const apodemusActiveOrLoading = Boolean(apodemus?.active || apodemus?.loading)
+    const localLifecycleActive = agentsStatus.some(
+      (agent) => agent.runtime === 'local' && agent.loading,
+    )
+    return (
+      apodemusActiveOrLoading ||
+      localLifecycleActive ||
+      localLifecycleBusy ||
+      isCortexQuerying
+    )
+  }, [agentsStatus, localLifecycleBusy, isCortexQuerying])
 
   if (!open) {
     return null
@@ -385,6 +416,30 @@ export default function SettingsPanel({
                       }))
                     }
                   />
+                </div>
+                <div className="space-y-2" aria-labelledby={`${titleId}-local-runtime`}>
+                  <SectionHeading id={`${titleId}-local-runtime`} title="Local Runtime" />
+                  <SettingsSelect
+                    id="settings-apodemus-context-window"
+                    label="Apodemus context"
+                    value={String(draft.ask_apex.apodemus_context_window) as `${ApodemusContextWindow}`}
+                    options={APODEMUS_CONTEXT_OPTIONS}
+                    timing={askApexTiming}
+                    disabled={apodemusContextLocked}
+                    onChange={(next) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        ask_apex: {
+                          ...prev.ask_apex,
+                          apodemus_context_window: Number(next) as ApodemusContextWindow,
+                        },
+                      }))
+                    }
+                  />
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
+                    Applies the next time Apex Apodemus loads. To change the context of an
+                    already loaded Apodemus, unload it first.
+                  </p>
                 </div>
               </section>
 

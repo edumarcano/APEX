@@ -3,12 +3,27 @@ import { useCallback, useState, type ReactElement } from 'react'
 
 import type { AgentStatus } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
-import { providerDisplayName } from '../lib/agents'
+import { formatContextWindowLabel, providerDisplayName } from '../lib/agents'
 
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'
   const safe = Math.max(0, Math.floor(seconds))
   return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`
+}
+
+function localRuntimeLabel(agent: AgentStatus, runtimeState: string): string {
+  const parts = [
+    agentShortName(agent.display_name),
+    providerDisplayName(agent.provider),
+  ]
+  const contextLabel = formatContextWindowLabel(
+    agent.loaded_model?.context_window ?? null,
+  )
+  if (contextLabel) {
+    parts.push(contextLabel)
+  }
+  parts.push(runtimeState)
+  return parts.join(' · ')
 }
 
 export function LocalModelControl({
@@ -48,12 +63,11 @@ export function LocalModelControl({
       : `Auto-unload in ${formatCountdown(agent?.idle_unload_remaining_seconds ?? null)}`
 
   if (presentation === 'rail') {
-    const agentName = agentShortName(visibleAgent.display_name)
     const runtimeState = loading ? 'Loading' : busy ? 'In use' : unloading ? 'Unloading' : 'Loaded'
     return (
       <div className="home-local-runtime flex min-w-0 items-center gap-3 rounded-lg border border-orange-500/25 bg-orange-950/10 px-3 py-2" data-slot="home-local-runtime">
         <span className="min-w-0 flex-1 font-mono text-[10px] text-orange-100">
-          Local runtime ({providerDisplayName(visibleAgent.provider)}): {agentName} · {runtimeState}
+          {localRuntimeLabel(visibleAgent, runtimeState)}
         </span>
         <button
           type="button"

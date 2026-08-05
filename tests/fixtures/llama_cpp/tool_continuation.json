@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-tool-continuation",
+  "object": "chat.completion",
+  "created": 1710000003,
+  "model": "apodemus-8k",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Boston is clear and about 68 F."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 14,
+    "total_tokens": 224
+  }
+}
