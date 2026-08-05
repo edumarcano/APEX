@@ -113,7 +113,7 @@ class LocalContextUsage(BaseModel):
         description="Largest prompt_eval_count returned across local model turns.",
     )
     context_window: int = Field(
-        ge=1, description="Configured Ollama context window for the Agent."
+        ge=1, description="Configured local Agent context window."
     )
     history_messages_dropped: int = Field(
         default=0,
@@ -208,7 +208,7 @@ class AgentQueryRequest(BaseModel):
     tool_scope: LocalToolScope | None = Field(
         default=None,
         description=(
-            "Explicit local Ollama command bundle. Omit for tool-free local turns; "
+            "Explicit local Agent command bundle. Omit for tool-free local turns; "
             "cloud Agents retain their normal automatic capability set."
         ),
     )
@@ -257,7 +257,7 @@ class AgentQueryResponse(BaseModel):
     )
     local_context_usage: LocalContextUsage | None = Field(
         default=None,
-        description="Local Ollama prompt-window usage; null for cloud Agents.",
+        description="Local Agent prompt-window usage; null for cloud Agents.",
     )
     resolved_model: Optional[str] = Field(
         default=None,

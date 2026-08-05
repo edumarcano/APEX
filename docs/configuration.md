@@ -128,7 +128,7 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `sorex` — Sorex 1.0 | `qwen3:1.7b` | Lightweight fixed-effort local Agent |
 | `mus` — Mus 1.0 | `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 
-`ollama.host` defaults to `http://localhost:11434`. APEX enforces one active local generation and one resident model, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout.
+`ollama.host` defaults to `http://localhost:11434`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama remains the configured local provider for Mus and Sorex.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 

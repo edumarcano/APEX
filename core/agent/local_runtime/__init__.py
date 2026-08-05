@@ -1,0 +1,61 @@
+"""Provider-neutral local runtime coordinator and backend registry."""
+
+from core.agent.local_runtime.contract import (
+    LocalModelProfile,
+    LocalModelRef,
+    LocalModelState,
+    LocalRuntimeBackend,
+    LocalRuntimeModel,
+    LocalRuntimeSnapshot,
+    ResourceGateReason,
+    SystemVitals,
+)
+from core.agent.local_runtime.coordinator import (
+    check_idle_local_models_loop,
+    check_resource_gate,
+    end_local_execution,
+    get_active_local_model,
+    get_idle_unload_remaining_seconds,
+    get_loading_local_model,
+    get_provider_snapshot,
+    get_system_vitals,
+    is_local_execution_active,
+    is_local_model_ready,
+    register_local_activity,
+    switch_local_model,
+    try_begin_local_execution,
+    unload_active_local_model,
+)
+from core.agent.local_runtime.registry import (
+    any_local_runtime_enabled,
+    get_local_runtime_backend,
+    iter_local_runtime_backends,
+)
+
+__all__ = [
+    "LocalModelProfile",
+    "LocalModelRef",
+    "LocalModelState",
+    "LocalRuntimeBackend",
+    "LocalRuntimeModel",
+    "LocalRuntimeSnapshot",
+    "ResourceGateReason",
+    "SystemVitals",
+    "any_local_runtime_enabled",
+    "check_idle_local_models_loop",
+    "check_resource_gate",
+    "end_local_execution",
+    "get_active_local_model",
+    "get_idle_unload_remaining_seconds",
+    "get_loading_local_model",
+    "get_local_runtime_backend",
+    "get_provider_snapshot",
+    "get_system_vitals",
+    "is_local_execution_active",
+    "is_local_model_ready",
+    "iter_local_runtime_backends",
+    "register_local_activity",
+    "switch_local_model",
+    "try_begin_local_execution",
+    "unload_active_local_model",
+]

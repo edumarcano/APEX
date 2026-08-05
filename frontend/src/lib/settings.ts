@@ -1,3 +1,4 @@
+import { isLocalAgentKey, runtimeForAgentKey } from './agents'
 import type {
   AgentRuntime,
   AgentKey,
@@ -34,6 +35,8 @@ const VALID_CLOUD_SETTINGS_AGENTS: readonly CloudSettingsAgent[] = [
 
 const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = ['sorex', 'mus']
 
+export { isLocalAgentKey } from './agents'
+
 export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
   selection: { agent: AgentKey; effort: CloudEffort | null } | undefined,
@@ -66,9 +69,9 @@ export function resolveAppliedAgentSelection(
 
   if (response.dev_mode_active) {
     return {
-      runtime: currentAgent === 'mus' || currentAgent === 'sorex' ? 'local' : 'cloud',
+      runtime: runtimeForAgentKey(currentAgent),
       agent: currentAgent,
-      effort: currentAgent === 'mus' || currentAgent === 'sorex'
+      effort: isLocalAgentKey(currentAgent)
         ? null
         : response.settings.ask_apex.effort,
     }

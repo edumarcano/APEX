@@ -76,31 +76,40 @@ class ProfileBusyStatusTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
 
     def test_local_agents_busy_when_execution_active(self) -> None:
-        vitals = {"cpu": 10.0, "ram": 10.0}
+        snapshot = {
+            "provider": "ollama",
+            "reachable": True,
+            "installed_models": [
+                "qwen3:1.7b",
+                "qwen3:4b-instruct",
+            ],
+            "loaded_models": [],
+            "sampled_at": 0.0,
+        }
+        backend = mock.Mock()
+        backend.provider = "ollama"
+        backend.enabled = True
+        backend.get_status_snapshot.return_value = snapshot
         with (
-            mock.patch("core.api.cortex.OLLAMA_ENABLED", True),
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(backend,),
+            ),
+            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
+            mock.patch(
+                "core.api.cortex.get_system_vitals",
+                return_value={"cpu": 10.0, "ram": 10.0},
+            ),
             mock.patch(
                 "core.api.cortex.is_local_execution_active",
                 return_value=True,
             ),
             mock.patch(
-                "core.api.cortex.get_status_snapshot",
-                return_value={
-                    "reachable": True,
-                    "installed_tags": [
-                        "qwen3:1.7b",
-                        "qwen3:4b-instruct",
-                    ],
-                    "loaded_models": [],
-                    "vitals": vitals,
-                },
-            ),
-            mock.patch(
-                "core.api.cortex.get_active_loaded_model",
+                "core.api.cortex.get_active_local_model",
                 return_value=None,
             ),
             mock.patch(
-                "core.api.cortex.get_loading_model",
+                "core.api.cortex.get_loading_local_model",
                 return_value=None,
             ),
             mock.patch(
@@ -125,11 +134,34 @@ class ProfileBusyStatusTests(unittest.TestCase):
         self.assertIsNone(by_key["panthera"].reason)
 
     def test_cloud_available_during_local_execution(self) -> None:
+        backend = mock.Mock()
+        backend.provider = "ollama"
+        backend.enabled = False
         with (
-            mock.patch("core.api.cortex.OLLAMA_ENABLED", False),
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(),
+            ),
+            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
+            mock.patch(
+                "core.api.cortex.get_system_vitals",
+                return_value={"cpu": 10.0, "ram": 10.0},
+            ),
             mock.patch(
                 "core.api.cortex.is_local_execution_active",
                 return_value=True,
+            ),
+            mock.patch(
+                "core.api.cortex.get_active_local_model",
+                return_value=None,
+            ),
+            mock.patch(
+                "core.api.cortex.get_loading_local_model",
+                return_value=None,
+            ),
+            mock.patch(
+                "core.api.cortex.get_idle_unload_remaining_seconds",
+                return_value=None,
             ),
             mock.patch.dict(
                 "os.environ",

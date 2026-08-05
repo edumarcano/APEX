@@ -1,4 +1,4 @@
-"""Live Ollama briefing-synthesis smoke matrix for Lynx, Acinonyx, and Neofelis."""
+"""Live Ollama briefing-synthesis smoke matrix for local Agents."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.agent.providers.ollama_lifecycle import (
+from core.agent.local_runtime.coordinator import (
     end_local_execution,
-    get_status_snapshot,
+    get_provider_snapshot,
     switch_local_model,
     try_begin_local_execution,
 )
@@ -22,7 +22,7 @@ from core.synthesis import CalendarFact, F1Fact, SynthesisInput, SynthesisRouter
 
 
 def main() -> int:
-    snapshot = get_status_snapshot(force_refresh=True)
+    snapshot = get_provider_snapshot("ollama", force_refresh=True)
     if not snapshot["reachable"]:
         print("[SMOKE][SKIP] Ollama is unreachable.")
         return 2
@@ -36,14 +36,14 @@ def main() -> int:
         f1_this_week=F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
-    installed = set(snapshot["installed_tags"])
+    installed = set(snapshot["installed_models"])
     failures = 0
     for key, spec in AGENT_SPECS.items():
         if spec.runtime != "local":
             continue
         profile = build_concrete_agent(key, native_effort=None)
-        if profile.api_model not in installed:
-            print(f"[SMOKE][SKIP] {key}: {profile.api_model} is not installed.")
+        if profile.runtime_model_id not in installed:
+            print(f"[SMOKE][SKIP] {key}: {profile.runtime_model_id} is not installed.")
             continue
         if not try_begin_local_execution():
             print(f"[SMOKE][FAIL] {key}: local execution slot is busy.")

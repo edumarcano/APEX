@@ -2,7 +2,8 @@ import { BrainCircuit, ExternalLink, Loader2, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
-import type { AgentStatus, AgentKey, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalToolScope, ToolOutputItem } from '../types/telemetry'
+import type { AgentStatus, AgentKey, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalSettingsAgent, LocalToolScope, ToolOutputItem } from '../types/telemetry'
+import { isLocalAgentKey } from '../lib/agents'
 
 import { CortexToolCards } from './CortexToolCards'
 import { AskApexBar } from './AskApexBar'
@@ -26,9 +27,9 @@ interface CortexWorkspaceProps {
   lifecycleBusy: boolean
   lifecycleActionPending: boolean
   verifyingCloudAgent: AgentKey | null
-  onLoadLocalModel: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onLoadLocalModel: (agent: LocalSettingsAgent) => Promise<boolean>
   onUnloadLocalModel: () => Promise<boolean>
-  onVerifyCloudAgent: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onVerifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
   snapshotAttached: boolean
   snapshotAvailable: boolean
   onSnapshotAttachedChange: (attached: boolean) => void
@@ -42,8 +43,8 @@ interface CortexWorkspaceProps {
   onNewSession: () => void
 }
 
-function isLocalAgent(agent: AgentKey): agent is Extract<AgentKey, 'mus' | 'sorex'> {
-  return agent === 'mus' || agent === 'sorex'
+function isLocalAgent(agent: AgentKey): agent is LocalSettingsAgent {
+  return isLocalAgentKey(agent)
 }
 
 function formatNumber(value: number | null | undefined): string { return value == null ? '—' : value.toLocaleString() }
@@ -121,7 +122,7 @@ function useIdleUnloadCountdown(seconds: number | null, running: boolean): numbe
   return remaining
 }
 
-function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: { agent: AgentStatus; busy: boolean; actionPending: boolean; onLoad: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
+function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: { agent: AgentStatus; busy: boolean; actionPending: boolean; onLoad: (agent: LocalSettingsAgent) => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
   const [error, setError] = useState<string | null>(null)
   const transition = agent.loading || actionPending
   const lifecycleState = agent.loading ? 'Loading' : agent.active ? 'Loaded' : agent.status === 'available' ? 'Unloaded' : 'Unavailable'
@@ -140,7 +141,7 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
   const action = async (): Promise<void> => {
     if (disabled) return
     setError(null)
-    const successful = canUnload ? await onUnload() : await onLoad(agent.key as Extract<AgentKey, 'mus' | 'sorex'>)
+    const successful = canUnload ? await onUnload() : await onLoad(agent.key as LocalSettingsAgent)
     if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check Ollama status and try again.`)
   }
   if (lifecycleState === 'Loaded') {

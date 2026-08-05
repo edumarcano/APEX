@@ -5,7 +5,8 @@ import type {
   AgentStatus,
   AgentKey,
   CloudEffort,
-  LoadedOllamaModelStatus,
+  LocalLoadedModelStatus,
+  LocalSettingsAgent,
   LocalContextUsage,
   LocalToolScope,
   AgentAvailabilityStatus,
@@ -211,22 +212,40 @@ function parseCloudEffortList(value: unknown): CloudEffort[] | null {
   return parsed.length === value.length ? parsed : null
 }
 
-function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus | null {
+function parseLocalLoadedModelStatus(value: unknown): LocalLoadedModelStatus | null {
   if (!value || typeof value !== 'object') {
     return null
   }
 
   const record = value as Record<string, unknown>
   const name = record.name
-  const model = record.runtimel
+  const model = record.model
+  const provider = record.provider === undefined ? 'ollama' : record.provider
+  const state = record.state === undefined ? 'loaded' : record.state
 
   if (typeof name !== 'string' || typeof model !== 'string') {
     return null
   }
+  if (provider !== 'ollama') {
+    return null
+  }
+  if (
+    state !== 'unloaded' &&
+    state !== 'loading' &&
+    state !== 'loaded' &&
+    state !== 'sleeping' &&
+    state !== 'failed' &&
+    state !== 'unknown'
+  ) {
+    return null
+  }
 
   return {
+    provider,
     name,
     model,
+    state,
+    context_window: parseNullableFiniteNumber(record.context_window),
     size_bytes: parseNullableFiniteNumber(record.size_bytes),
     size_vram_bytes: parseNullableFiniteNumber(record.size_vram_bytes),
     processor: parseNullableString(record.processor),
@@ -357,7 +376,7 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     loading: typeof record.loading === 'boolean' ? record.loading : false,
     reason: parseNullableString(record.reason),
     idle_unload_remaining_seconds: parseNullableFiniteNumber(record.idle_unload_remaining_seconds),
-    loaded_model: parseLoadedOllamaModelStatus(record.loaded_model),
+    loaded_model: parseLocalLoadedModelStatus(record.loaded_model),
   }
 }
 
@@ -584,8 +603,8 @@ export interface UseCortexResult {
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
-  loadLocalModel: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
-  verifyCloudAgent: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  loadLocalModel: (agent: LocalSettingsAgent) => Promise<boolean>
+  verifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
   clearCortexSession: (agent?: AgentKey) => void
   resetCortexSession: () => void
 }
@@ -723,7 +742,7 @@ export function useCortex(
   }, [fetchAgentsStatus, isLocalModelActionPending])
 
   const loadLocalModel = useCallback(async (
-    agent: Extract<AgentKey, 'mus' | 'sorex'>,
+    agent: LocalSettingsAgent,
   ): Promise<boolean> => {
     if (isLocalModelActionPending) return false
     setIsLocalModelActionPending(true)
@@ -749,7 +768,7 @@ export function useCortex(
   }, [fetchAgentsStatus, isLocalModelActionPending])
 
   const verifyCloudAgent = useCallback(async (
-    agent: Exclude<AgentKey, 'mus' | 'sorex'>,
+    agent: Exclude<AgentKey, LocalSettingsAgent>,
   ): Promise<boolean> => {
     if (verifyingCloudAgent) return false
     setVerifyingCloudAgent(agent)

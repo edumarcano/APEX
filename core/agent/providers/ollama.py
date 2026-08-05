@@ -10,10 +10,11 @@ from requests.exceptions import RequestException
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
 from core.agent.providers.contract import ProviderTurnResult, merge_token_usage
+from core.agent.local_runtime.contract import LocalModelRef
+from core.agent.local_runtime.coordinator import register_local_activity
 from core.agent.providers.ollama_lifecycle import (
     get_http_session,
     get_keep_alive_duration,
-    register_activity,
 )
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
@@ -461,7 +462,9 @@ class OllamaProvider:
             retry_count += 1
             data = _post_chat(payload, profile)
 
-        register_activity(profile.api_model)
+        register_local_activity(
+            LocalModelRef(provider="ollama", model=profile.runtime_model_id)
+        )
         peak_prompt_tokens = (
             data.get("prompt_eval_count")
             if isinstance(data.get("prompt_eval_count"), int)
@@ -504,7 +507,9 @@ class OllamaProvider:
             )
 
             data = _post_chat(retry_payload, profile)
-            register_activity(profile.api_model)
+            register_local_activity(
+            LocalModelRef(provider="ollama", model=profile.runtime_model_id)
+        )
             retry_count += 1
             if isinstance(data.get("prompt_eval_count"), int):
                 peak_prompt_tokens = max(

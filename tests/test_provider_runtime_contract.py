@@ -8,12 +8,22 @@ from unittest.mock import MagicMock, patch
 from google.genai.errors import APIError
 
 from core.agent.capabilities import CapabilityDescriptor
-from core.agent.loop import run_agent_loop
+from core.agent.catalog import (
+    AGENT_SPECS,
+    agent_key_for_local_model_ref,
+    build_concrete_agent,
+    known_local_model_refs,
+    local_model_ref_for_agent,
+    local_model_refs_for_agent,
+    resolve_effort,
+)
+from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef
+from core.agent.loop import is_local_profile, run_agent_loop
 from core.agent.pricing import PRICING_VERSION, _MODEL_RATES, estimate_inference_cost
-from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.contract import (
     ProviderToolEvent,
     ProviderTurnResult,
+    is_local_inference_provider,
     merge_token_usage,
     resolve_inference_provider,
 )
@@ -54,6 +64,88 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(
             resolve_inference_provider(XAI_INTERNAL_PROFILES["xai_default"]), "xai"
         )
+
+    def test_local_profile_markers_and_runtime_ids(self) -> None:
+        sorex = _concrete_profile("sorex")
+        mus = _concrete_profile("mus")
+        self.assertTrue(isinstance(sorex, LocalModelProfile))
+        self.assertTrue(isinstance(mus, LocalModelProfile))
+        self.assertEqual(resolve_inference_provider(sorex), "ollama")
+        self.assertEqual(sorex.runtime_model_id, sorex.api_model)
+        self.assertEqual(mus.runtime_model_id, mus.api_model)
+        self.assertFalse(sorex.high_resource)
+        self.assertTrue(mus.high_resource)
+        self.assertTrue(is_local_inference_provider("ollama"))
+        self.assertFalse(is_local_inference_provider("openai"))
+
+    def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
+        for agent_key in ("sorex", "mus"):
+            profile = build_concrete_agent(agent_key, native_effort=None)
+            self.assertTrue(is_local_profile(profile))
+            selected = local_model_ref_for_agent(agent_key)
+            self.assertEqual(selected.provider, profile.provider)
+            self.assertEqual(selected.model, profile.runtime_model_id)
+            self.assertIn(selected, local_model_refs_for_agent(agent_key))
+            self.assertEqual(agent_key_for_local_model_ref(selected), agent_key)
+
+        known = known_local_model_refs()
+        self.assertEqual(
+            known,
+            frozenset(
+                {
+                    local_model_ref_for_agent("sorex"),
+                    local_model_ref_for_agent("mus"),
+                }
+            ),
+        )
+        self.assertIsNone(
+            agent_key_for_local_model_ref(
+                LocalModelRef(provider="ollama", model="unknown-model")
+            )
+        )
+
+    def test_agent_loop_follows_local_policy_for_non_ollama_local_profile(self) -> None:
+        class FakeLocalProfile:
+            provider = "ollama"
+            runtime = "local"
+            display_name = "Fake Local"
+            agent_version = "1.0"
+            api_model = "fake-local"
+            runtime_model_id = "fake-local"
+            max_tool_turns = 1
+            max_tool_calls = 1
+            context_window = 1024
+            generation_timeout = 10
+            ram_limit = 90.0
+            cpu_limit = 90.0
+            high_resource = False
+            system_instruction = "test"
+
+            def model_dump(self, *args: object, **kwargs: object) -> dict[str, object]:
+                return {"api_model": self.api_model}
+
+        profile = FakeLocalProfile()
+        self.assertTrue(is_local_profile(profile))
+
+        class Provider:
+            def generate_turn(self, messages, tools, _profile, system_instruction_override=None):
+                self.tools = tools
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="ok"),
+                    usage=TokenUsage(input_tokens=1, output_tokens=1),
+                    provider_ms=1.0,
+                )
+
+        provider = Provider()
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="hello", agent="sorex"),
+            provider,
+            profile,  # type: ignore[arg-type]
+        )
+        self.assertEqual(provider.tools, [])
+        self.assertEqual(response.answer, "ok")
+        self.assertIsNone(response.error)
+        self.assertIsNotNone(response.local_context_usage)
 
     def test_merge_token_usage_sums_nullable_fields(self) -> None:
         merged = merge_token_usage(
@@ -177,7 +269,7 @@ class OllamaContractTests(unittest.TestCase):
             expose_to_client_display=True,
         )
 
-    @patch("core.agent.providers.ollama.register_activity", return_value=None)
+    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
     @patch("core.agent.providers.ollama._post_chat")
     def test_usage_and_resolved_model_come_from_response_body(
         self, mock_post: MagicMock, _activity: MagicMock
@@ -204,7 +296,7 @@ class OllamaContractTests(unittest.TestCase):
         self.assertEqual(result.retry_count, 0)
         self.assertIsNotNone(result.provider_ms)
 
-    @patch("core.agent.providers.ollama.register_activity", return_value=None)
+    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
     @patch("core.agent.providers.ollama._post_chat")
     def test_resolved_model_falls_back_to_configured_tag(
         self, mock_post: MagicMock, _activity: MagicMock
@@ -222,7 +314,7 @@ class OllamaContractTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, _concrete_profile("sorex").api_model)
         self.assertIsNone(result.usage)
 
-    @patch("core.agent.providers.ollama.register_activity", return_value=None)
+    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
     @patch("core.agent.providers.ollama._post_chat")
     def test_truncated_tool_turn_regenerates_and_sums_usage(
         self, mock_post: MagicMock, _activity: MagicMock

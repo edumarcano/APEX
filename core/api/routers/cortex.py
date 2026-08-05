@@ -38,9 +38,9 @@ def list_agents() -> list[AgentStatus]:
     """
     Return visible Apex Agent status for cloud and local runtimes.
 
-    Ollama reachability, installed tags, and host vitals come from a shared
-    TTL snapshot (single /api/tags probe at most once per 10 seconds), so
-    frequent HUD polling never floods the daemon while a model is generating.
+    Local provider reachability, installed models, and host vitals come from
+    cached backend snapshots and the global coordinator, so frequent HUD
+    polling never floods a local daemon while a model is generating.
     """
     return build_agent_statuses()
 
@@ -62,7 +62,7 @@ def verify_agent(agent_key: str) -> CloudAgentVerificationResponse:
 )
 def unload_local_model() -> LocalUnloadResponse:
     """
-    Manually unload the currently active local Ollama model from memory.
+    Manually unload the currently active local model from memory.
 
     Returns success when no model is active or the unload completes cleanly.
     """
@@ -91,7 +91,7 @@ def cortex_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     Execute one Cortex Engine turn for the selected Apex Agent.
 
     Runs synchronously so uvicorn can offload blocking provider I/O to a
-    worker thread. Local (Ollama) queries pass an admission gate first:
+    worker thread. Local Agent queries pass an admission gate first:
     a non-blocking execution slot (429 when busy), a host resource gate for
     cold loads/switches (503 with the gate reason), and a coordinated model
     switch (503 on load failure). Already-loaded target models bypass the

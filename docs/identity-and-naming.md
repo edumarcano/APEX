@@ -137,7 +137,7 @@ flowchart LR
     FAMILY["Apex Agents<br/>One cohesive family of specialized workers"]
 
     CLOUD["Cloud Agents<br/>Provider-hosted execution"]
-    LOCAL["Local Agents<br/>Ollama execution"]
+    LOCAL["Local Agents<br/>Local runtime execution"]
 
     ENGINE --> FAMILY
     FAMILY --> CLOUD

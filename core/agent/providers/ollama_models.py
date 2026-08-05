@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,8 @@ from core.config import (
 
 
 class OllamaModelProfile(BaseModel):
+    provider: ClassVar[Literal["ollama"]] = "ollama"
+    runtime: ClassVar[Literal["local"]] = "local"
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
     agent_version: str = Field(
         description="Version of the named Apex Agent product identity."
@@ -59,9 +61,19 @@ class OllamaModelProfile(BaseModel):
     cpu_limit: float = Field(
         description="Maximum host CPU utilization percentage before load is gated."
     )
+    high_resource: bool = Field(
+        default=False,
+        description="Whether cold loads of this Agent warrant a high-resource warning.",
+    )
     system_instruction: str = Field(
         description="Base persona and behavioral instructions for the local agent.",
     )
+
+    @property
+    def runtime_model_id(self) -> str:
+        """Provider runtime identifier used for load, unload, and residency checks."""
+        return self.api_model
+
 
 
 class OllamaRuntimeConfig(BaseModel):
@@ -126,3 +138,5 @@ OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
         cpu_limit=MUS_CPU_LIMIT,
     ),
 }
+
+OLLAMA_HIGH_RESOURCE_AGENTS: frozenset[str] = frozenset({"mus"})

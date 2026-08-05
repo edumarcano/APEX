@@ -9,25 +9,27 @@ from typing import Callable
 from core.agent.pricing import estimate_inference_cost
 from core.agent.catalog import (
     AGENT_SPECS,
+    agent_key_for_local_model_ref,
     build_concrete_agent,
     compose_agent_system_instruction,
 )
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.ollama_lifecycle import (
+from core.agent.providers.openai_provider import OpenAIProvider
+from core.agent.local_runtime.contract import LocalModelRef
+from core.agent.local_runtime.coordinator import (
     check_resource_gate,
     end_local_execution,
-    get_active_loaded_model,
-    get_status_snapshot,
-    is_local_model_loaded,
+    get_active_local_model,
+    get_provider_snapshot,
+    is_local_model_ready,
     switch_local_model,
     try_begin_local_execution,
 )
-from core.agent.providers.openai_provider import OpenAIProvider
+from core.agent.local_runtime.registry import get_local_runtime_backend
 from core.agent.types import AgentMessage
 from core.config import (
     LOCAL_FALLBACK_GRACE_SECONDS,
     LOCAL_PRIMARY_GRACE_SECONDS,
-    OLLAMA_ENABLED,
     OLLAMA_SYNTHESIS_PROMPT,
     PRIMARY_SYNTHESIS_PROMPT,
 )
@@ -74,12 +76,15 @@ def _agent_key_for_model(model_name: str | None) -> str | None:
 
 
 def resident_agent_key() -> str | None:
-    tracked = _agent_key_for_model(get_active_loaded_model())
-    if tracked:
-        return tracked
-    if not OLLAMA_ENABLED:
+    tracked = get_active_local_model()
+    if tracked is not None:
+        key = agent_key_for_local_model_ref(tracked)
+        if key:
+            return key
+    ollama = get_local_runtime_backend("ollama")
+    if not ollama.enabled:
         return None
-    snapshot = get_status_snapshot()
+    snapshot = get_provider_snapshot("ollama")
     for model in snapshot["loaded_models"]:
         for value in (model["model"], model["name"]):
             key = _agent_key_for_model(value)
@@ -89,9 +94,10 @@ def resident_agent_key() -> str | None:
 
 
 def _has_unrecognized_resident_model() -> bool:
-    if not OLLAMA_ENABLED:
+    ollama = get_local_runtime_backend("ollama")
+    if not ollama.enabled:
         return False
-    snapshot = get_status_snapshot()
+    snapshot = get_provider_snapshot("ollama")
     return bool(snapshot["loaded_models"]) and resident_agent_key() is None
 
 
@@ -122,7 +128,7 @@ class SynthesisRouter:
             handle.finished_at = time.monotonic()
             handle.event.set()
             return handle
-        if not OLLAMA_ENABLED:
+        if not get_local_runtime_backend("ollama").enabled:
             handle.reason = "local_disabled"
             handle.finished_at = time.monotonic()
             handle.event.set()
@@ -143,14 +149,17 @@ class SynthesisRouter:
         def worker() -> None:
             try:
                 agent = build_concrete_agent(agent_key, native_effort=None)
-                snapshot = get_status_snapshot()
+                snapshot = get_provider_snapshot("ollama")
                 if not snapshot["reachable"]:
                     handle.reason = "local_unreachable"
                     return
-                if agent.api_model not in snapshot["installed_tags"]:
+                if agent.runtime_model_id not in snapshot["installed_models"]:
                     handle.reason = "local_model_missing"
                     return
-                if not is_local_model_loaded(agent.api_model):
+                model_ref = LocalModelRef(
+                    provider=agent.provider, model=agent.runtime_model_id
+                )
+                if not is_local_model_ready(model_ref):
                     allowed, gate_reason = check_resource_gate(
                         agent.ram_limit, agent.cpu_limit
                     )

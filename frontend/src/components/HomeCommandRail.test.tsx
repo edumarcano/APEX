@@ -150,7 +150,7 @@ describe('HomeCommandRail', () => {
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
     const actions = document.querySelector<HTMLElement>('[data-slot="home-briefing-actions"]')
     const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
-    expect(runtime).toHaveTextContent('Local runtime: Mus · Loaded')
+    expect(runtime).toHaveTextContent('Local runtime (Ollama): Mus · Loaded')
     expect(actions).not.toContainElement(runtime)
     expect(actions).toContainElement(document.querySelector('.home-command-grid__synthesize'))
     await user.click(screen.getByRole('button', { name: 'Unload Apex Mus' }))
@@ -160,7 +160,7 @@ describe('HomeCommandRail', () => {
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
     renderRail({ activeLocalModel: null, loadingLocalAgent: profile('mus') })
 
-    expect(screen.getByText('Local runtime: Mus · Loading')).toBeVisible()
+    expect(screen.getByText('Local runtime (Ollama): Mus · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload Apex Mus' })).toBeDisabled()
   })
 })

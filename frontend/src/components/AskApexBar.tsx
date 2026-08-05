@@ -15,6 +15,7 @@ import type {
   LocalToolScope,
 } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
+import { isLocalAgentKey } from '../lib/agents'
 
 import { AgentMark } from './AgentMark'
 
@@ -57,7 +58,9 @@ export function AskApexBar({
 }: AskApexBarProps): ReactElement {
   const [query, setQuery] = useState('')
   const isInputDisabled = disabled || isSubmitting
-  const isLocalAgent = agentsStatus.some((agent) => agent.key === activeAgent && agent.provider === 'ollama')
+  const isLocalAgent = agentsStatus.some(
+    (agent) => agent.key === activeAgent && agent.runtime === 'local',
+  ) || isLocalAgentKey(activeAgent)
   const activeAgentName = agentShortName(
     agentsStatus.find((agent) => agent.key === activeAgent)?.display_name ?? activeAgent,
   )

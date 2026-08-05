@@ -231,7 +231,7 @@ Returns visible Apex Agents in stable product order. Each entry supplies its ful
 
 The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
 
-Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable daemon, missing model tag, loading model, busy execution slot, and active model reported by Ollama. The `active` flag reflects daemon residency rather than APEX's in-process lifecycle tracker.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
@@ -250,7 +250,7 @@ Pre-warms one installed local Agent before a request:
 { "agent": "mus" }
 ```
 
-The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after Ollama confirms the selected model through its running-model status. Demo mode rejects pre-warming without contacting Ollama.
+The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
 
 - `403` — demo mode disallows model calls.
 - `409` — a local generation or lifecycle action is active.
@@ -258,13 +258,13 @@ The route uses the same execution lock, resource gates, model-switch policy, and
 
 ### POST `/api/v1/cortex/local-model/unload`
 
-Canonical provider-neutral manual unload route. Returns success only when no APEX local model is resident or Ollama confirms the active model is absent after the request.
+Canonical provider-neutral manual unload route. Returns success only when no APEX local model is resident or the active model's backend confirms it is absent after the request.
 
 It also rejects a competing lifecycle action, and reports a failed post-action verification as unavailable.
 
 - `403` — manual unload is disabled.
 - `409` — local generation or lifecycle action is in progress.
-- `503` — the unload request or post-action Ollama verification failed.
+- `503` — the unload request or post-action residency verification failed.
 
 ### POST `/api/v1/cortex/query`
 

@@ -741,7 +741,7 @@ class McpStatusRouteTests(unittest.TestCase):
     def test_status_route_returns_disabled_without_manager(self) -> None:
         from core.api.app import app
 
-        with patch("core.api.app.OLLAMA_ENABLED", False), patch(
+        with patch("core.api.app.any_local_runtime_enabled", return_value=False), patch(
             "core.api.app.load_mcp_config",
             return_value=McpRuntimeConfig(enabled=False, servers={}),
         ):
@@ -757,7 +757,7 @@ class McpStatusRouteTests(unittest.TestCase):
     def test_ready_probe_does_not_require_mcp(self) -> None:
         from core.api.app import app
 
-        with patch("core.api.app.OLLAMA_ENABLED", False), patch(
+        with patch("core.api.app.any_local_runtime_enabled", return_value=False), patch(
             "core.api.app.load_mcp_config",
             return_value=McpRuntimeConfig(enabled=False, servers={}),
         ):
