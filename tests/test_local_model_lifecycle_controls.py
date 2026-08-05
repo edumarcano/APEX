@@ -332,6 +332,82 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         self.assertEqual(profiles["apodemus"].status, "model_not_installed")
         self.assertIn("not installed or configured", profiles["apodemus"].reason or "")
 
+    def test_apodemus_status_reports_router_load_failure(self) -> None:
+        snapshot = {
+            "provider": "llama_cpp",
+            "reachable": True,
+            "installed_models": ["apodemus-8k"],
+            "loaded_models": [
+                {
+                    "provider": "llama_cpp",
+                    "name": "apodemus-8k",
+                    "model": "apodemus-8k",
+                    "state": "failed",
+                    "context_window": None,
+                    "size_bytes": None,
+                    "size_vram_bytes": None,
+                    "processor": None,
+                    "context": None,
+                    "expires_at": None,
+                }
+            ],
+            "sampled_at": 0.0,
+        }
+        ollama_backend = mock.Mock()
+        ollama_backend.provider = "ollama"
+        ollama_backend.enabled = False
+        llama_backend = mock.Mock()
+        llama_backend.provider = "llama_cpp"
+        llama_backend.enabled = True
+        llama_backend.get_status_snapshot.return_value = snapshot
+
+        settings = mock.Mock()
+        settings.ask_apex.apodemus_context_window = 8192
+
+        with (
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(llama_backend,),
+            ),
+            mock.patch(
+                "core.api.cortex.get_local_runtime_backend",
+                side_effect=lambda provider: (
+                    llama_backend if provider == "llama_cpp" else ollama_backend
+                ),
+            ),
+            mock.patch(
+                "core.api.cortex.get_system_vitals",
+                return_value={"cpu": 10.0, "ram": 10.0},
+            ),
+            mock.patch("core.api.cortex.get_active_local_model", return_value=None),
+            mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
+            mock.patch(
+                "core.api.cortex.get_idle_unload_remaining_seconds", return_value=None
+            ),
+            mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
+            mock.patch(
+                "core.api.cortex.get_settings_store",
+                return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
+            ),
+            mock.patch.dict(
+                "os.environ",
+                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
+            ),
+        ):
+            profiles = {profile.key: profile for profile in build_agent_statuses()}
+
+        apodemus = profiles["apodemus"]
+        self.assertNotEqual(apodemus.status, "available")
+        self.assertEqual(apodemus.status, "provider_error")
+        self.assertFalse(apodemus.active)
+        self.assertEqual(
+            apodemus.reason,
+            "llama.cpp reported that the selected model preset failed to load.",
+        )
+        self.assertIsNotNone(apodemus.loaded_model)
+        assert apodemus.loaded_model is not None
+        self.assertEqual(apodemus.loaded_model.state, "failed")
+
     def test_query_rejects_missing_local_alias_with_provider_label(self) -> None:
         from core.agent.types import AgentQueryRequest
         from core.api.cortex import query_agent

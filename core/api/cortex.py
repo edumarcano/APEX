@@ -186,6 +186,7 @@ def _resolve_local_agent_status(
     installed_models: list[str],
     vitals: SystemVitals | None,
     backend_enabled: bool,
+    load_failed: bool = False,
 ) -> tuple[AgentAvailabilityStatus, str | None]:
     """Evaluate a local model configuration using cached snapshot signals."""
     if not backend_enabled:
@@ -203,6 +204,13 @@ def _resolve_local_agent_status(
             "llama.cpp router is unreachable at the configured loopback host"
         )
 
+    if load_failed:
+        provider_label = _local_provider_label(profile.provider)
+        return (
+            "provider_error",
+            f"{provider_label} reported that the selected model preset failed to load.",
+        )
+
     if is_active:
         return "available", None
 
@@ -216,6 +224,22 @@ def _resolve_local_agent_status(
         return gate_reason, _PROFILE_STATUS_REASONS[gate_reason]
 
     return "available", None
+
+
+def _matching_runtime_model_row(
+    loaded_models: list[dict[str, Any]],
+    runtime_model_id: str,
+    *,
+    state: str | None = None,
+) -> dict[str, Any] | None:
+    """Return the first loaded-model row matching a runtime alias and optional state."""
+    for model in loaded_models:
+        if model.get("name") != runtime_model_id and model.get("model") != runtime_model_id:
+            continue
+        if state is not None and model.get("state", "loaded") != state:
+            continue
+        return model
+    return None
 
 
 def _resolve_cloud_agent_status(
@@ -292,17 +316,15 @@ def build_agent_statuses() -> list[AgentStatus]:
             model_ref = LocalModelRef(
                 provider=profile.provider, model=profile.runtime_model_id
             )
-            loaded_model = next(
-                (
-                    model
-                    for model in loaded_models
-                    if (
-                        model["name"] == profile.runtime_model_id
-                        or model["model"] == profile.runtime_model_id
-                    )
-                    and model.get("state", "loaded") == "loaded"
-                ),
-                None,
+            loaded_model = _matching_runtime_model_row(
+                loaded_models,
+                profile.runtime_model_id,
+                state="loaded",
+            )
+            failed_model = _matching_runtime_model_row(
+                loaded_models,
+                profile.runtime_model_id,
+                state="failed",
             )
             is_tracked_active = tracked_active == model_ref
             is_active = loaded_model is not None
@@ -314,9 +336,11 @@ def build_agent_statuses() -> list[AgentStatus]:
                 installed_models=installed_models,
                 vitals=vitals,
                 backend_enabled=backend.enabled,
+                load_failed=failed_model is not None,
             )
             if agent_status == "available" and is_local_execution_active():
                 agent_status, reason = "busy", _BUSY_REASON
+            status_model = loaded_model if loaded_model is not None else failed_model
             agents.append(
                 AgentStatus(
                     key=key,
@@ -343,8 +367,8 @@ def build_agent_statuses() -> list[AgentStatus]:
                         idle_remaining if is_active and is_tracked_active else None
                     ),
                     loaded_model=(
-                        _loaded_model_status(loaded_model)
-                        if loaded_model is not None
+                        _loaded_model_status(status_model)
+                        if status_model is not None
                         else None
                     ),
                 )

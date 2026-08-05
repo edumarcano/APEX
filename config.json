@@ -57,7 +57,7 @@
     }
   },
   "llama_cpp": {
-    "enabled": true,
+    "enabled": false,
     "host": "http://127.0.0.1:8080",
     "idle_unload_timeout_minutes": 5,
     "manual_unload_enabled": true,
