@@ -121,11 +121,14 @@ const VALID_AGENT_PROFILES: readonly AgentKey[] = [
   'orcinus',
   'sorex',
   'mus',
+  'microtus',
+  'mustela',
   'acinonyx',
 ]
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'gemini',
   'ollama',
+  'litert',
   'openai',
   'xai',
   'raw',

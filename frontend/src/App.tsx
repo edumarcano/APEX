@@ -58,7 +58,9 @@ import {
 } from './lib/settings'
 import type {
   AgentKey,
+  CloudAgentKey,
   CloudEffort,
+  LocalAgentKey,
   LocalToolScope,
 } from './types/telemetry'
 import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
@@ -141,7 +143,13 @@ function isCloudAgentKey(
   if (match) {
     return match.runtime === 'cloud'
   }
-  return agent !== 'sorex' && agent !== 'mus'
+  return agent !== 'sorex' && agent !== 'mus' && agent !== 'microtus' && agent !== 'mustela'
+}
+
+const LOCAL_AGENT_KEYS: readonly LocalAgentKey[] = ['sorex', 'mus', 'microtus', 'mustela']
+
+function isLocalAgentKey(agent: AgentKey): agent is LocalAgentKey {
+  return (LOCAL_AGENT_KEYS as readonly string[]).includes(agent)
 }
 
 export default function App(): ReactElement {
@@ -152,7 +160,7 @@ export default function App(): ReactElement {
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
-  const [cloudAgent, setCloudAgent] = useState<Exclude<AgentKey, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
+  const [cloudAgent, setCloudAgent] = useState<CloudAgentKey>('panthera')
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
@@ -207,7 +215,8 @@ export default function App(): ReactElement {
     refreshAgentsStatus,
     clearCortexSession,
   } = useCortex(true, activeAgent)
-  const isLocalAgent = activeAgent === 'sorex' || activeAgent === 'mus'
+  const isLocalAgent = isLocalAgentKey(activeAgent)
+  const [availabilityFallbackNotice, setAvailabilityFallbackNotice] = useState<string | null>(null)
   const { commands: localCommands } = useLocalCommands(isLocalAgent)
 
   useEffect(() => {
@@ -221,6 +230,9 @@ export default function App(): ReactElement {
   }, [armedLocalToolScope, isLocalAgent, localCommands])
 
   const agentSelectionHydratedRef = useRef(false)
+  const savedInitialAgentRef = useRef<AgentKey | null>(null)
+  const availabilityFallbackAppliedRef = useRef(false)
+  const explicitAgentSelectionRef = useRef(false)
 
   // Hydrate backend defaults once; later agent changes belong to the active session.
   useEffect(() => {
@@ -230,16 +242,33 @@ export default function App(): ReactElement {
       defaultAgent,
     )
     if (selection) {
-      setAgent(selection.agent)
-      if (selection.agent !== 'sorex' && selection.agent !== 'mus' && selection.agent !== 'acinonyx') {
-        setCloudAgent(selection.agent)
-      }
-      if (selection.effort) {
-        setCloudEffort(selection.effort)
+      if (!explicitAgentSelectionRef.current) {
+        setAgent(selection.agent)
+        if (!isLocalAgentKey(selection.agent) && selection.agent !== 'acinonyx') {
+          setCloudAgent(selection.agent)
+        }
+        if (selection.effort) {
+          setCloudEffort(selection.effort)
+        }
+        savedInitialAgentRef.current = selection.agent
       }
       agentSelectionHydratedRef.current = true
     }
   }, [agentInitialSelection, defaultAgent])
+
+  useEffect(() => {
+    if (!agentsStatusHydrated || availabilityFallbackAppliedRef.current || explicitAgentSelectionRef.current) return
+    const savedAgent = savedInitialAgentRef.current
+    if (savedAgent !== 'microtus' && savedAgent !== 'mustela') return
+    const status = agentsStatus.find((entry) => entry.key === savedAgent)
+    if (!status || status.status === 'available') return
+    availabilityFallbackAppliedRef.current = true
+    setAgent('mus')
+    setArmedLocalToolScope(null)
+    setAvailabilityFallbackNotice(
+      `Saved default ${status.display_name} is unavailable${status.reason ? ` (${status.reason})` : ''}. Temporarily using Apex Mus for this session. Your saved setting was not changed.`,
+    )
+  }, [agentsStatus, agentsStatusHydrated])
 
   useEffect(() => {
     if (
@@ -268,7 +297,7 @@ export default function App(): ReactElement {
         marketEnabled: response.settings.features.market,
       })
       setAgent(selection.agent)
-      if (selection.agent !== 'sorex' && selection.agent !== 'mus' && selection.agent !== 'acinonyx') {
+      if (!isLocalAgentKey(selection.agent) && selection.agent !== 'acinonyx') {
         setCloudAgent(selection.agent)
       }
       if (selection.effort) {
@@ -335,8 +364,7 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    activeQueryAgent === 'sorex' ||
-    activeQueryAgent === 'mus' ||
+    (activeQueryAgent !== null && isLocalAgentKey(activeQueryAgent)) ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 
@@ -353,13 +381,13 @@ export default function App(): ReactElement {
   const activeLocalModel = useMemo(
     () =>
       agentsStatus.find(
-        (agent) => agent.provider === 'ollama' && agent.active,
+        (agent) => agent.runtime === 'local' && agent.active,
       ) ?? null,
     [agentsStatus],
   )
   const isLocalModelLoading =
     loadingLocalAgent !== null ||
-    (liveSynthesis?.provider === 'ollama' && liveSynthesis.loading)
+    ((liveSynthesis?.provider === 'ollama' || liveSynthesis?.provider === 'litert') && liveSynthesis.loading)
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??
@@ -774,15 +802,16 @@ export default function App(): ReactElement {
   }, [persistBriefingMode])
 
   const handleAgentChange = useCallback((agent: AgentKey): void => {
+    explicitAgentSelectionRef.current = true
     setAgent(agent)
-    if (agent !== 'sorex' && agent !== 'mus') {
+    if (!isLocalAgentKey(agent)) {
       setArmedLocalToolScope(null)
     }
     if (agent === 'acinonyx') {
       void persistAskApexSettings({ runtime: 'cloud', effort: cloudEffort }, agent)
       return
     }
-    if (agent === 'sorex' || agent === 'mus') {
+    if (isLocalAgentKey(agent)) {
       void persistAskApexSettings({ runtime: 'local', local_agent: agent }, agent)
       return
     }
@@ -866,6 +895,8 @@ export default function App(): ReactElement {
           </nav>}
           />
         </header>
+
+        {availabilityFallbackNotice ? <p className="mb-3 rounded-lg border border-amber-300/25 bg-amber-950/25 px-3 py-2 font-mono text-[11px] leading-relaxed text-amber-100" role="status" aria-live="polite">{availabilityFallbackNotice}</p> : null}
 
         <SettingsPanel
           open={isSettingsOpen}

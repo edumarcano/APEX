@@ -45,13 +45,18 @@ export const BASE_SETTINGS: RuntimeSettings = {
       alphavantage: { enabled: false },
     },
   },
+  local_runtime: {
+    single_loaded_model: true,
+    manual_unload_enabled: true,
+    idle_unload_timeout_minutes: 5,
+  },
 }
 
 export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 8,
+    schema_version: 9,
     settings,
     local_file_present: false,
     local_override_active: false,

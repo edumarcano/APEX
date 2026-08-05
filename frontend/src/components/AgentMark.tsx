@@ -1,4 +1,6 @@
 import {
+  BrainCircuit,
+  Cpu,
   FlaskConical,
   Gem,
   Globe2,
@@ -20,6 +22,8 @@ const AGENT_MARKS: Record<AgentKey, { icon: LucideIcon; label: string; className
   orcinus: { icon: Orbit, label: 'Orcinus agent mark', className: 'border-indigo-300/25 bg-indigo-400/10 text-indigo-200' },
   mus: { icon: ShieldCheck, label: 'Mus agent mark', className: 'border-orange-300/25 bg-orange-400/10 text-orange-200' },
   sorex: { icon: Zap, label: 'Sorex agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
+  microtus: { icon: Cpu, label: 'Microtus agent mark', className: 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200' },
+  mustela: { icon: BrainCircuit, label: 'Mustela agent mark', className: 'border-violet-300/25 bg-violet-400/10 text-violet-200' },
 }
 
 interface AgentMarkProps {

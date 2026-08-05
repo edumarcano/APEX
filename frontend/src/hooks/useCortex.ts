@@ -4,8 +4,10 @@ import type {
   AgentMessage as TelemetryAgentMessage,
   AgentStatus,
   AgentKey,
+  CloudAgentKey,
   CloudEffort,
   LoadedOllamaModelStatus,
+  LocalAgentKey,
   LocalContextUsage,
   LocalToolScope,
   AgentAvailabilityStatus,
@@ -109,6 +111,8 @@ const VALID_AGENT_KEYS: readonly AgentKey[] = [
   'orcinus',
   'sorex',
   'mus',
+  'microtus',
+  'mustela',
   'acinonyx',
 ]
 
@@ -135,6 +139,7 @@ const VALID_AGENT_STATUSES: readonly AgentAvailabilityStatus[] = [
 
 const VALID_PROVIDERS: readonly AgentStatus['provider'][] = [
   'ollama',
+  'litert',
   'gemini',
   'openai',
   'xai',
@@ -218,7 +223,7 @@ function parseLoadedOllamaModelStatus(value: unknown): LoadedOllamaModelStatus |
 
   const record = value as Record<string, unknown>
   const name = record.name
-  const model = record.runtimel
+  const model = record.model
 
   if (typeof name !== 'string' || typeof model !== 'string') {
     return null
@@ -584,8 +589,8 @@ export interface UseCortexResult {
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
-  loadLocalModel: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
-  verifyCloudAgent: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  loadLocalModel: (agent: LocalAgentKey) => Promise<boolean>
+  verifyCloudAgent: (agent: CloudAgentKey | 'acinonyx') => Promise<boolean>
   clearCortexSession: (agent?: AgentKey) => void
   resetCortexSession: () => void
 }
@@ -723,7 +728,7 @@ export function useCortex(
   }, [fetchAgentsStatus, isLocalModelActionPending])
 
   const loadLocalModel = useCallback(async (
-    agent: Extract<AgentKey, 'mus' | 'sorex'>,
+    agent: LocalAgentKey,
   ): Promise<boolean> => {
     if (isLocalModelActionPending) return false
     setIsLocalModelActionPending(true)
@@ -749,7 +754,7 @@ export function useCortex(
   }, [fetchAgentsStatus, isLocalModelActionPending])
 
   const verifyCloudAgent = useCallback(async (
-    agent: Exclude<AgentKey, 'mus' | 'sorex'>,
+    agent: CloudAgentKey | 'acinonyx',
   ): Promise<boolean> => {
     if (verifyingCloudAgent) return false
     setVerifyingCloudAgent(agent)

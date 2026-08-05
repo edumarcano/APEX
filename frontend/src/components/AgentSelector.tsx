@@ -12,7 +12,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
-import type { AgentStatus, AgentRuntime, AgentKey, AgentAvailabilityStatus } from '../types/telemetry'
+import type { AgentStatus, AgentRuntime, AgentKey, AgentAvailabilityStatus, CloudAgentKey, LocalAgentKey } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
 
 import { AgentMark } from './AgentMark'
@@ -24,7 +24,7 @@ interface AgentSelectorProps {
   agentsStatusHydrated: boolean
   isQuerying: boolean
   verifyingAgent: AgentKey | null
-  onVerify: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onVerify: (agent: CloudAgentKey | 'acinonyx') => Promise<boolean>
   presentation?: 'cortex' | 'home'
 }
 
@@ -37,8 +37,14 @@ const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
   insufficient_ram: 'Insufficient memory', cpu_overloaded: 'CPU busy',
 }
 
+const LOCAL_AGENT_KEYS: readonly LocalAgentKey[] = ['sorex', 'mus', 'microtus', 'mustela']
+
+function isLocalAgent(agent: AgentKey): agent is LocalAgentKey {
+  return (LOCAL_AGENT_KEYS as readonly string[]).includes(agent)
+}
+
 function agentRuntime(agent: AgentKey): AgentRuntime {
-  return agent === 'mus' || agent === 'sorex' ? 'local' : 'cloud'
+  return isLocalAgent(agent) ? 'local' : 'cloud'
 }
 
 function fallbackName(agent: AgentKey): string {
@@ -57,7 +63,11 @@ function formatModel(model: string): string {
 }
 
 function poweredBy(agent: AgentStatus): string {
-  const suffix = agent.provider === 'ollama' ? ' · Runs locally through Ollama' : ''
+  const suffix = agent.provider === 'ollama'
+    ? ' · Runs locally through Ollama'
+    : agent.provider === 'litert'
+      ? ' · Runs locally through LiteRT'
+      : ''
   return `Powered by ${formatModel(agent.configured_model)}${suffix}`
 }
 
@@ -107,7 +117,7 @@ export function AgentSelector({
   const agents = useMemo(() => agentsStatus
     .filter((agent) => agent.runtime === browseMode)
     .sort((left, right) => left.sort_order - right.sort_order), [browseMode, agentsStatus])
-  const homeAgents = useMemo(() => agentsStatus
+  const homeAgents = useMemo(() => [...agentsStatus]
     .sort((left, right) => left.sort_order - right.sort_order), [agentsStatus])
 
   useEffect(() => {
@@ -170,9 +180,9 @@ export function AgentSelector({
       <button type="button" disabled={!selectable} aria-pressed={selected} aria-label={`Use ${agent.display_name}`} onClick={() => selectAgent(agent.key)} className={`w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] ${!selectable ? 'cursor-not-allowed opacity-55' : ''}`}>
         <span className="flex items-start gap-3"><AgentMark agent={agent.key} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{agent.display_name}</span>{selected ? <Check className="size-4 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}</span><span className="mt-1 block text-xs leading-relaxed text-zinc-400">{agent.description}</span></span></span>
         <span className="mt-3 block border-t border-white/10 pt-2 font-mono text-[10px] text-zinc-400">{poweredBy(agent)}</span>
-        <span className="mt-2 flex flex-wrap items-center gap-1.5">{agent.capabilities.map((capability) => <span key={capability} className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400">{capability}</span>)}<span className={`ml-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{agent.status === 'unknown' || verifyPending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}{STATUS_LABELS[agent.status]}</span></span>
+        <span className="mt-2 flex flex-wrap items-center gap-1.5">{agent.capabilities.map((capability) => <span key={capability} className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400">{capability}</span>)}{agent.stability === 'preview' ? <span className="rounded border border-violet-300/25 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-violet-200">Preview</span> : null}<span className={`ml-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{agent.status === 'unknown' || verifyPending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}{STATUS_LABELS[agent.status]}</span></span>
       </button>
-      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2"><span className="font-mono text-[9px] text-zinc-500">{agent.pricing.billing_basis === 'free_tier' ? 'Free tier' : agent.pricing.billing_basis === 'local' ? 'No provider token charge' : `In ${rate(agent.pricing.input_per_million)} · Out ${rate(agent.pricing.output_per_million)}`}</span>{agent.pricing.long_context_threshold_tokens ? <span className="font-mono text-[9px] text-zinc-600">Higher long-context rates may apply</span> : null}{isCloud ? <button type="button" disabled={!selectable || Boolean(verifyingAgent) || isQuerying} onClick={() => void onVerify(agent.key as Exclude<AgentKey, 'mus' | 'sorex'>)} className="ml-auto inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/55 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"><ShieldCheck className="size-3" aria-hidden />{verifyPending ? 'Verifying' : 'Verify access'}</button> : null}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2"><span className="font-mono text-[9px] text-zinc-500">{agent.pricing.billing_basis === 'free_tier' ? 'Free tier' : agent.pricing.billing_basis === 'local' ? 'No provider token charge' : `In ${rate(agent.pricing.input_per_million)} · Out ${rate(agent.pricing.output_per_million)}`}</span>{agent.pricing.long_context_threshold_tokens ? <span className="font-mono text-[9px] text-zinc-600">Higher long-context rates may apply</span> : null}{isCloud ? <button type="button" disabled={!selectable || Boolean(verifyingAgent) || isQuerying} onClick={() => void onVerify(agent.key as CloudAgentKey | 'acinonyx')} className="ml-auto inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/55 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"><ShieldCheck className="size-3" aria-hidden />{verifyPending ? 'Verifying' : 'Verify access'}</button> : null}</div>
       {agent.reason ? <p className="mt-2 text-[10px] text-red-200">{agent.reason}</p> : null}
     </article>
   }
@@ -195,7 +205,7 @@ export function AgentSelector({
           <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{agentShortName(agent.display_name)}</span>
           <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{agent.description}</span>
         </span>
-        <span className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{STATUS_LABELS[agent.status]}</span>
+        <span className="flex shrink-0 flex-col items-end gap-0.5"><span className={`font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{STATUS_LABELS[agent.status]}</span>{agent.stability === 'preview' ? <span className="font-mono text-[8px] uppercase tracking-wider text-violet-200">Preview</span> : null}</span>
         {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}
       </button>
       {!selectable && agent.reason ? <p className="px-2.5 pb-2 font-mono text-[9px] text-red-200">{agent.reason}</p> : null}

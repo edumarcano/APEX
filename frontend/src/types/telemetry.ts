@@ -10,7 +10,7 @@ export interface PipelineState {
   synthesis?: SynthesisLiveState | null
 }
 
-export type SynthesisProvider = 'gemini' | 'ollama' | 'openai' | 'xai' | 'raw' | 'demo'
+export type SynthesisProvider = 'gemini' | 'ollama' | 'litert' | 'openai' | 'xai' | 'raw' | 'demo'
 export type SynthesisAgent = 'panthera' | 'mus' | 'sorex'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
@@ -72,7 +72,9 @@ export type WeatherConditionArchetype =
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent = 'sorex' | 'mus'
+export type LocalSettingsAgent = 'sorex' | 'mus' | 'microtus' | 'mustela'
+export type LocalAgentKey = LocalSettingsAgent
+export type CloudAgentKey = CloudSettingsAgent
 
 export type CloudAgent = CloudSettingsAgent
 
@@ -161,7 +163,7 @@ export interface AgentStatus {
   configured_model: string
   native_tools: Record<string, boolean>
   display_name: string
-  provider: 'ollama' | 'gemini' | 'openai' | 'xai'
+  provider: 'ollama' | 'litert' | 'gemini' | 'openai' | 'xai'
   version: string
   sort_order: number
   capabilities: string[]

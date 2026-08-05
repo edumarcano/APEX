@@ -12,6 +12,8 @@ const panthera: AgentStatus = {
 const neofelis: AgentStatus = { ...panthera, key: 'neofelis', display_name: 'Apex Neofelis', configured_model: 'gemini-3.6-flash', provider: 'gemini', sort_order: 2, capabilities: ['Research', 'Google Search', 'Google Maps'], native_tools: { google_search: true, google_maps: true } }
 const acinonyx: AgentStatus = { ...neofelis, key: 'acinonyx', display_name: 'Apex Acinonyx', configured_model: 'gemini-3.5-flash-lite', sort_order: 0, capabilities: ['Privacy sandbox', 'Masked context'], pricing: { ...neofelis.pricing, billing_basis: 'free_tier', input_per_million: 0, output_per_million: 0 } }
 const mus: AgentStatus = { ...panthera, key: 'mus', display_name: 'Apex Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', runtime: 'local', sort_order: 5, capabilities: ['Larger model', 'Primary local'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', active: false, pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
+const microtus: AgentStatus = { ...mus, key: 'microtus', display_name: 'Apex Microtus', configured_model: 'litert-community/gemma-4-E2B-it-litert-lm', provider: 'litert', sort_order: 6, stability: 'preview', status: 'disabled', reason: 'LiteRT is disabled in configuration.', capabilities: ['Lightweight', 'Fast local', 'LiteRT', 'Constrained workflows'] }
+const mustela: AgentStatus = { ...microtus, key: 'mustela', display_name: 'Apex Mustela', configured_model: 'litert-community/gemma-4-E4B-it-litert-lm', sort_order: 7, reason: 'LiteRT model is not installed.', capabilities: ['Balanced local', 'Deeper reasoning', 'LiteRT', 'Tool workflows'] }
 const weather: LocalCommandStatus = { key: 'weather', command: '/weather', label: 'Weather', description: 'Configured-location forecast.', tool_count: 1, estimated_schema_tokens: 120, available: true, unavailable_reason: null }
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
@@ -122,6 +124,22 @@ describe('CortexWorkspace', () => {
     expect(screen.getByRole('button', { name: 'Load model' })).toBeDisabled()
     rerender(<CortexWorkspace {...workspaceProps()} />)
     expect(screen.queryByLabelText('Local model lifecycle')).not.toBeInTheDocument()
+  })
+
+  it('keeps unavailable LiteRT preview agents visible without making them selectable', async () => {
+    const onAgentChange = vi.fn()
+    const user = userEvent.setup()
+    render(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [mus, microtus, mustela], onAgentChange })} />)
+
+    await user.click(screen.getByRole('button', { name: /Apex Mus/ }))
+    await user.click(screen.getByRole('tab', { name: 'Local agents' }))
+    expect(screen.getByRole('button', { name: 'Use Apex Microtus' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use Apex Mustela' })).toBeDisabled()
+    expect(screen.getAllByText('Preview')).toHaveLength(2)
+    expect(screen.getByText('LiteRT is disabled in configuration.')).toBeInTheDocument()
+    expect(screen.getByText('LiteRT model is not installed.')).toBeInTheDocument()
+    expect(screen.getAllByText(/Runs locally through LiteRT/)).toHaveLength(2)
+    expect(onAgentChange).not.toHaveBeenCalled()
   })
 
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {

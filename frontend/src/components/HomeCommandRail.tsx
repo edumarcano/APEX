@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import type { BriefingMode } from '../types/settings'
-import type { AgentStatus, AgentKey } from '../types/telemetry'
+import type { AgentStatus, AgentKey, CloudAgentKey } from '../types/telemetry'
 
 import { AskApexBar } from './AskApexBar'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
@@ -18,7 +18,7 @@ interface HomeCommandRailProps {
   isCortexQuerying: boolean
   verifyingCloudAgent: AgentKey | null
   onAgentChange: (agent: AgentKey) => void
-  onVerifyCloudAgent: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onVerifyCloudAgent: (agent: CloudAgentKey | 'acinonyx') => Promise<boolean>
   onAgentSubmit: (query: string, agent: AgentKey) => void
   onStartApex: () => void
   onStartWithBriefing: () => void

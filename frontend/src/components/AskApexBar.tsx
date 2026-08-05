@@ -57,7 +57,7 @@ export function AskApexBar({
 }: AskApexBarProps): ReactElement {
   const [query, setQuery] = useState('')
   const isInputDisabled = disabled || isSubmitting
-  const isLocalAgent = agentsStatus.some((agent) => agent.key === activeAgent && agent.provider === 'ollama')
+  const isLocalAgent = agentsStatus.some((agent) => agent.key === activeAgent && agent.runtime === 'local')
   const activeAgentName = agentShortName(
     agentsStatus.find((agent) => agent.key === activeAgent)?.display_name ?? activeAgent,
   )

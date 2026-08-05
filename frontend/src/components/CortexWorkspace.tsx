@@ -2,7 +2,7 @@ import { BrainCircuit, ExternalLink, Loader2, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
-import type { AgentStatus, AgentKey, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalToolScope, ToolOutputItem } from '../types/telemetry'
+import type { AgentStatus, AgentKey, CloudAgentKey, CloudEffort, LocalAgentKey, LocalCommandStatus, LocalContextUsage, LocalToolScope, ToolOutputItem } from '../types/telemetry'
 
 import { CortexToolCards } from './CortexToolCards'
 import { AskApexBar } from './AskApexBar'
@@ -26,9 +26,9 @@ interface CortexWorkspaceProps {
   lifecycleBusy: boolean
   lifecycleActionPending: boolean
   verifyingCloudAgent: AgentKey | null
-  onLoadLocalModel: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onLoadLocalModel: (agent: LocalAgentKey) => Promise<boolean>
   onUnloadLocalModel: () => Promise<boolean>
-  onVerifyCloudAgent: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onVerifyCloudAgent: (agent: CloudAgentKey | 'acinonyx') => Promise<boolean>
   snapshotAttached: boolean
   snapshotAvailable: boolean
   onSnapshotAttachedChange: (attached: boolean) => void
@@ -42,8 +42,8 @@ interface CortexWorkspaceProps {
   onNewSession: () => void
 }
 
-function isLocalAgent(agent: AgentKey): agent is Extract<AgentKey, 'mus' | 'sorex'> {
-  return agent === 'mus' || agent === 'sorex'
+function isLocalAgent(agent: AgentKey): agent is LocalAgentKey {
+  return agent === 'mus' || agent === 'sorex' || agent === 'microtus' || agent === 'mustela'
 }
 
 function formatNumber(value: number | null | undefined): string { return value == null ? '—' : value.toLocaleString() }
@@ -121,7 +121,7 @@ function useIdleUnloadCountdown(seconds: number | null, running: boolean): numbe
   return remaining
 }
 
-function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: { agent: AgentStatus; busy: boolean; actionPending: boolean; onLoad: (agent: Extract<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
+function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: { agent: AgentStatus; busy: boolean; actionPending: boolean; onLoad: (agent: LocalAgentKey) => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
   const [error, setError] = useState<string | null>(null)
   const transition = agent.loading || actionPending
   const lifecycleState = agent.loading ? 'Loading' : agent.active ? 'Loaded' : agent.status === 'available' ? 'Unloaded' : 'Unavailable'
@@ -140,12 +140,12 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
   const action = async (): Promise<void> => {
     if (disabled) return
     setError(null)
-    const successful = canUnload ? await onUnload() : await onLoad(agent.key as Extract<AgentKey, 'mus' | 'sorex'>)
-    if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check Ollama status and try again.`)
+    const successful = canUnload ? await onUnload() : await onLoad(agent.key as LocalAgentKey)
+    if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check ${agent.provider === 'litert' ? 'LiteRT configuration and model availability' : 'Ollama status'} and try again.`)
   }
   if (lifecycleState === 'Loaded') {
     return <section className="space-y-2" aria-label="Local model lifecycle">
-      <p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local model</p>
+      <p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local model · {agent.provider === 'litert' ? 'LiteRT' : 'Ollama'}{agent.stability === 'preview' ? ' · Preview' : ''}</p>
       <div className="rounded-lg border border-orange-500/25 bg-orange-950/10 p-3">
         <div className="flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${stateClassName}`} aria-live="polite"><span className="size-1.5 rounded-full bg-current" aria-hidden />{lifecycleState}</span><span className="font-mono text-[10px] text-zinc-500">{agent.configured_model}</span></div>
         <button type="button" disabled={disabled} onClick={() => void action()} className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-orange-400/40 bg-orange-950/25 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/45 disabled:cursor-not-allowed disabled:opacity-45">{transition ? <Loader2 className="cortex-lifecycle-spinner mr-1.5 size-3.5" aria-hidden /> : null}{transition ? 'Unloading…' : actionLabel}</button>
@@ -156,7 +156,7 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
       </div>
     </section>
   }
-  return <section className="space-y-2" aria-label="Local model lifecycle"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local model</p><div className="rounded-lg border border-orange-500/25 bg-orange-950/10 p-3"><div className="flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${stateClassName}`} aria-live="polite"><span className={`size-1.5 rounded-full bg-current ${transition ? 'cortex-lifecycle-status--transitioning' : ''}`} aria-hidden />{lifecycleState}</span><span className="font-mono text-[10px] text-zinc-500">{agent.configured_model}</span></div><button type="button" disabled={disabled} onClick={() => void action()} className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-orange-400/40 bg-orange-950/25 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/45 disabled:cursor-not-allowed disabled:opacity-45">{transition ? <Loader2 className="cortex-lifecycle-spinner mr-1.5 size-3.5" aria-hidden /> : null}{transition ? (canUnload ? 'Unloading…' : 'Loading…') : actionLabel}</button><p className="mt-2 text-[11px] leading-relaxed text-zinc-500">Loading pre-warms this agent; normal requests can still load it when needed. Unloading frees memory without changing the selected agent.</p>{!agent.active && lifecycleState === 'Unloaded' ? <p className="mt-1 text-[10px] text-zinc-600">Loading this agent may replace another resident local model.</p> : null}{busy ? <p className="mt-1 text-[10px] text-amber-200">Lifecycle actions are unavailable while local inference is active.</p> : null}{agent.reason && lifecycleState === 'Unavailable' ? <p className="mt-1 text-[10px] text-red-200">{agent.reason}</p> : null}{error ? <p className="mt-1 text-[10px] text-red-200" role="alert">{error}</p> : null}</div></section>
+  return <section className="space-y-2" aria-label="Local model lifecycle"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local model · {agent.provider === 'litert' ? 'LiteRT' : 'Ollama'}{agent.stability === 'preview' ? ' · Preview' : ''}</p><div className="rounded-lg border border-orange-500/25 bg-orange-950/10 p-3"><div className="flex items-center justify-between gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${stateClassName}`} aria-live="polite"><span className={`size-1.5 rounded-full bg-current ${transition ? 'cortex-lifecycle-status--transitioning' : ''}`} aria-hidden />{lifecycleState}</span><span className="font-mono text-[10px] text-zinc-500">{agent.configured_model}</span></div><button type="button" disabled={disabled} onClick={() => void action()} className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-orange-400/40 bg-orange-950/25 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-orange-100 transition-colors hover:border-orange-300 hover:bg-orange-950/45 disabled:cursor-not-allowed disabled:opacity-45">{transition ? <Loader2 className="cortex-lifecycle-spinner mr-1.5 size-3.5" aria-hidden /> : null}{transition ? (canUnload ? 'Unloading…' : 'Loading…') : actionLabel}</button><p className="mt-2 text-[11px] leading-relaxed text-zinc-500">Loading pre-warms this agent; normal requests can still load it when needed. Unloading frees memory without changing the selected agent.</p>{!agent.active && lifecycleState === 'Unloaded' ? <p className="mt-1 text-[10px] text-zinc-600">Loading this agent may replace another resident local model.</p> : null}{busy ? <p className="mt-1 text-[10px] text-amber-200">Lifecycle actions are unavailable while local inference is active.</p> : null}{agent.reason && lifecycleState === 'Unavailable' ? <p className="mt-1 text-[10px] text-red-200">{agent.reason}</p> : null}{error ? <p className="mt-1 text-[10px] text-red-200" role="alert">{error}</p> : null}</div></section>
 }
 
 export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {

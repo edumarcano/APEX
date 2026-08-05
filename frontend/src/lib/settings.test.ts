@@ -71,6 +71,21 @@ describe('settings response parsing', () => {
     )
   })
 
+  it('accepts LiteRT local agents and validates local runtime settings', () => {
+    const body = structuredClone(buildSettingsResponse())
+    body.settings.ask_apex.runtime = 'local'
+    body.settings.ask_apex.local_agent = 'microtus'
+    expect(parseSettingsResponse(body)?.settings.ask_apex.local_agent).toBe('microtus')
+
+    const malformed = structuredClone(buildSettingsResponse()) as unknown as Record<string, unknown>
+    ;(malformed.settings as Record<string, unknown>).local_runtime = {
+      single_loaded_model: true,
+      manual_unload_enabled: true,
+      idle_unload_timeout_minutes: 0,
+    }
+    expect(parseSettingsResponse(malformed)).toBeNull()
+  })
+
   it.each([
     ['feature boolean', ['settings', 'features', 'weather'], 'yes'],
     ['market boolean', ['settings', 'features', 'market'], 'yes'],
@@ -134,6 +149,7 @@ describe('settings editing utilities', () => {
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
     expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
     expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
+    expect(clone.local_runtime).not.toBe(BASE_SETTINGS.local_runtime)
   })
 
   it('resolves the active Agent from mode', () => {
@@ -145,6 +161,7 @@ describe('settings editing utilities', () => {
         local_agent: 'sorex',
       }),
     ).toBe('sorex')
+    expect(resolveAgentKey({ ...BASE_SETTINGS.ask_apex, runtime: 'local', local_agent: 'mustela' })).toBe('mustela')
   })
 
   it('generates a patch containing only dirty fields', () => {
@@ -159,6 +176,7 @@ describe('settings editing utilities', () => {
     draft.voice.mode = 'manual'
     draft.mcp.enabled = true
     draft.mcp.servers.github.enabled = true
+    draft.local_runtime.idle_unload_timeout_minutes = 10
 
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       user_designation: 'Chief',
@@ -170,6 +188,7 @@ describe('settings editing utilities', () => {
         enabled: true,
         servers: { github: { enabled: true } },
       },
+      local_runtime: { idle_unload_timeout_minutes: 10 },
     })
   })
 

@@ -58,6 +58,12 @@ export interface McpSettings {
   servers: Record<McpProviderId, McpServerEnablementSettings>
 }
 
+export interface LocalRuntimeSettings {
+  single_loaded_model: boolean
+  manual_unload_enabled: boolean
+  idle_unload_timeout_minutes: number
+}
+
 export interface RuntimeSettings {
   user_designation: string
   features: FeaturesSettings
@@ -66,6 +72,7 @@ export interface RuntimeSettings {
   briefing: BriefingSettings
   voice: VoiceSettings
   mcp: McpSettings
+  local_runtime: LocalRuntimeSettings
 }
 
 export interface FeaturesPatch {
@@ -109,6 +116,12 @@ export interface McpPatch {
   servers?: Partial<Record<McpProviderId, McpServerEnablementPatch>>
 }
 
+export interface LocalRuntimePatch {
+  single_loaded_model?: boolean
+  manual_unload_enabled?: boolean
+  idle_unload_timeout_minutes?: number
+}
+
 export interface McpServerEnablementPatch {
   enabled?: boolean
 }
@@ -121,6 +134,7 @@ export interface SettingsPatch {
   briefing?: BriefingPatch
   voice?: VoicePatch
   mcp?: McpPatch
+  local_runtime?: LocalRuntimePatch
 }
 
 export interface SettingsResponse {
@@ -148,6 +162,7 @@ export type SettingsTimingFieldGroup =
   | 'briefing'
   | 'voice'
   | 'mcp'
+  | 'local_runtime'
 
 export type McpRuntimeStatus =
   | 'configured'

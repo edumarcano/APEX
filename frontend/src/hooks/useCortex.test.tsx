@@ -88,6 +88,43 @@ describe('useCortex', () => {
     expect(response.tool_trace?.[0]).toMatchObject({ name: 'search', origin: 'apex' })
   })
 
+  it('parses LiteRT status and the generic loaded-model payload', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([
+      {
+        key: 'microtus',
+        display_name: 'Apex Microtus',
+        description: 'Lightweight local agent.',
+        configured_model: 'litert-community/gemma-4-E2B-it-litert-lm',
+        native_tools: {},
+        provider: 'litert',
+        version: '1.19.0',
+        sort_order: 6,
+        capabilities: ['LiteRT'],
+        runtime: 'local',
+        tier: 'lightweight',
+        stability: 'preview',
+        effort_options: null,
+        default_effort: null,
+        status: 'available',
+        status_source: 'runtime',
+        active: true,
+        loading: false,
+        reason: null,
+        idle_unload_remaining_seconds: null,
+        loaded_model: { name: 'gemma-4-E2B-it.litertlm', model: 'gemma-4-E2B-it.litertlm' },
+        pricing: { currency: 'USD', pricing_version: 'local-v1', billing_basis: 'local', input_per_million: 0, output_per_million: 0 },
+      },
+    ]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const { result } = renderHook(() => useCortex(false, 'microtus'))
+    await act(async () => {
+      await result.current.refreshAgentsStatus()
+    })
+
+    expect(result.current.agentsStatus[0]?.provider).toBe('litert')
+    expect(result.current.agentsStatus[0]?.loaded_model?.model).toBe('gemma-4-E2B-it.litertlm')
+  })
+
   it('adds the user turn immediately and keeps it when the request fails', async () => {
     let rejectRequest: ((reason?: unknown) => void) | null = null
     vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {

@@ -14,6 +14,7 @@ import type {
   ModulesSettings,
   McpSettings,
   McpStatusResponse,
+  LocalRuntimeSettings,
   RuntimeSettings,
   SettingsEffectiveTiming,
   SettingsPatch,
@@ -32,7 +33,7 @@ const VALID_CLOUD_SETTINGS_AGENTS: readonly CloudSettingsAgent[] = [
   'orcinus',
 ]
 
-const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = ['sorex', 'mus']
+const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = ['sorex', 'mus', 'microtus', 'mustela']
 
 export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
@@ -66,9 +67,9 @@ export function resolveAppliedAgentSelection(
 
   if (response.dev_mode_active) {
     return {
-      runtime: currentAgent === 'mus' || currentAgent === 'sorex' ? 'local' : 'cloud',
+      runtime: VALID_LOCAL_SETTINGS_AGENTS.includes(currentAgent as LocalSettingsAgent) ? 'local' : 'cloud',
       agent: currentAgent,
-      effort: currentAgent === 'mus' || currentAgent === 'sorex'
+      effort: VALID_LOCAL_SETTINGS_AGENTS.includes(currentAgent as LocalSettingsAgent)
         ? null
         : response.settings.ask_apex.effort,
     }
@@ -234,6 +235,25 @@ function parseMcpSettings(value: unknown): McpSettings | null {
   }
 }
 
+function parseLocalRuntimeSettings(value: unknown): LocalRuntimeSettings | null {
+  if (!isRecord(value)) return null
+  if (
+    typeof value.single_loaded_model !== 'boolean' ||
+    typeof value.manual_unload_enabled !== 'boolean' ||
+    typeof value.idle_unload_timeout_minutes !== 'number' ||
+    !Number.isInteger(value.idle_unload_timeout_minutes) ||
+    value.idle_unload_timeout_minutes < 1 ||
+    value.idle_unload_timeout_minutes > 60
+  ) {
+    return null
+  }
+  return {
+    single_loaded_model: value.single_loaded_model,
+    manual_unload_enabled: value.manual_unload_enabled,
+    idle_unload_timeout_minutes: value.idle_unload_timeout_minutes,
+  }
+}
+
 function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!isRecord(value)) {
     return null
@@ -242,10 +262,12 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const features = parseFeatures(value.features)
   const modules = parseModules(value.modules)
   const mcp = parseMcpSettings(value.mcp)
+  const localRuntime = parseLocalRuntimeSettings(value.local_runtime)
   if (
     !features ||
     !modules ||
     !mcp ||
+    !localRuntime ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -316,6 +338,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       mode: value.voice.mode,
     },
     mcp,
+    local_runtime: localRuntime,
   }
 }
 
@@ -339,6 +362,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
         alphavantage: { ...settings.mcp.servers.alphavantage },
       },
     },
+    local_runtime: { ...settings.local_runtime },
   }
 }
 
@@ -453,6 +477,11 @@ export function diffSettingsPatch(
     }
   }
 
+  const localRuntime = diffSection(baseline.local_runtime, draft.local_runtime)
+  if (localRuntime) {
+    patch.local_runtime = localRuntime
+  }
+
   return patch
 }
 
@@ -465,6 +494,7 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.briefing === undefined &&
     patch.voice === undefined &&
     patch.mcp === undefined
+    && patch.local_runtime === undefined
   )
 }
 
@@ -511,6 +541,10 @@ export function resolveEffectiveTiming(
   }
 
   if (group === 'mcp') {
+    return 'Active'
+  }
+
+  if (group === 'local_runtime') {
     return 'Active'
   }
 
