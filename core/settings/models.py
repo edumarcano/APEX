@@ -142,6 +142,15 @@ class McpSettings(BaseModel):
     servers: McpServersSettings = Field(default_factory=McpServersSettings)
 
 
+class LlamaCppSettings(BaseModel):
+    """Editable llama.cpp router enablement and loopback host."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    host: str = "http://127.0.0.1:8080"
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -159,6 +168,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
+    llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -245,6 +255,15 @@ class McpPatch(BaseModel):
     servers: McpServersPatch | None = None
 
 
+class LlamaCppPatch(BaseModel):
+    """Partial llama.cpp runtime patch; unknown fields are rejected."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    host: str | None = None
+
+
 class SettingsPatch(BaseModel):
     """Strict dirty-field patch for transactional settings updates."""
 
@@ -257,6 +276,7 @@ class SettingsPatch(BaseModel):
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None
+    llama_cpp: LlamaCppPatch | None = None
 
 
 class SettingsResponse(BaseModel):

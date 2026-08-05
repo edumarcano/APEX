@@ -33,7 +33,6 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
-  ApodemusContextWindow,
   RuntimeSettings,
   SettingsResponse,
   VoiceGender,
@@ -78,16 +77,6 @@ const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
   { value: 'off', label: 'Off' },
 ]
 
-const APODEMUS_CONTEXT_OPTIONS: readonly {
-  value: `${ApodemusContextWindow}`
-  label: string
-}[] = [
-  { value: '4096', label: '4K' },
-  { value: '8192', label: '8K (default)' },
-  { value: '16384', label: '16K' },
-  { value: '32768', label: '32K (experimental)' },
-]
-
 interface SettingsPanelProps {
   open: boolean
   onClose: () => void
@@ -96,7 +85,6 @@ interface SettingsPanelProps {
   pipelineStep: number | null
   isSpeaking: boolean
   isCortexQuerying: boolean
-  localLifecycleBusy?: boolean
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
   failedConnectors: string[]
@@ -141,7 +129,6 @@ export default function SettingsPanel({
   pipelineStep,
   isSpeaking,
   isCortexQuerying,
-  localLifecycleBusy = false,
   agentsStatus,
   agentsStatusHydrated,
   failedConnectors,
@@ -184,6 +171,7 @@ export default function SettingsPanel({
   const askApexTiming = resolveEffectiveTiming('ask_apex', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
+  const llamaCppTiming = resolveEffectiveTiming('llama_cpp', timingRuntime)
 
   const requestClose = useCallback(() => {
     if (isDirty || saving) {
@@ -253,20 +241,6 @@ export default function SettingsPanel({
       activeModel: activeLocal?.loaded_model?.model ?? activeLocal?.loaded_model?.name ?? 'None',
     }
   }, [agentsStatus, agentsStatusHydrated])
-
-  const apodemusContextLocked = useMemo(() => {
-    const apodemus = agentsStatus.find((agent) => agent.key === 'apodemus')
-    const apodemusActiveOrLoading = Boolean(apodemus?.active || apodemus?.loading)
-    const localLifecycleActive = agentsStatus.some(
-      (agent) => agent.runtime === 'local' && agent.loading,
-    )
-    return (
-      apodemusActiveOrLoading ||
-      localLifecycleActive ||
-      localLifecycleBusy ||
-      isCortexQuerying
-    )
-  }, [agentsStatus, localLifecycleBusy, isCortexQuerying])
 
   if (!open) {
     return null
@@ -417,29 +391,53 @@ export default function SettingsPanel({
                     }
                   />
                 </div>
-                <div className="space-y-2" aria-labelledby={`${titleId}-local-runtime`}>
-                  <SectionHeading id={`${titleId}-local-runtime`} title="Local Runtime" />
-                  <SettingsSelect
-                    id="settings-apodemus-context-window"
-                    label="Apodemus context"
-                    value={String(draft.ask_apex.apodemus_context_window) as `${ApodemusContextWindow}`}
-                    options={APODEMUS_CONTEXT_OPTIONS}
-                    timing={askApexTiming}
-                    disabled={apodemusContextLocked}
+              </section>
+
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-llama-cpp`}>
+                <SectionHeading id={`${titleId}-llama-cpp`} title="llama.cpp" />
+                <div className="space-y-2">
+                  <SettingsToggle
+                    id="settings-llama-cpp-enabled"
+                    label="Enable llama.cpp"
+                    checked={draft.llama_cpp.enabled}
+                    timing={llamaCppTiming}
                     onChange={(next) =>
                       setDraft((prev) => ({
                         ...prev,
-                        ask_apex: {
-                          ...prev.ask_apex,
-                          apodemus_context_window: Number(next) as ApodemusContextWindow,
-                        },
+                        llama_cpp: { ...prev.llama_cpp, enabled: next },
                       }))
                     }
                   />
-                  <p className="text-[11px] leading-relaxed text-zinc-500">
-                    Applies the next time Apex Apodemus loads. To change the context of an
-                    already loaded Apodemus, unload it first.
-                  </p>
+                  <div>
+                    <label
+                      htmlFor="settings-llama-cpp-host"
+                      className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500"
+                    >
+                      Router URL
+                    </label>
+                    <input
+                      id="settings-llama-cpp-host"
+                      type="url"
+                      inputMode="url"
+                      value={draft.llama_cpp.host}
+                      placeholder="http://127.0.0.1:8080"
+                      aria-describedby={`${titleId}-llama-cpp-help`}
+                      onChange={(event) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          llama_cpp: { ...prev.llama_cpp, host: event.target.value },
+                        }))
+                      }
+                      className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                    />
+                    <p
+                      id={`${titleId}-llama-cpp-help`}
+                      className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
+                    >
+                      llama.cpp runs as an external local server. Use a loopback HTTP URL
+                      such as http://127.0.0.1:8080 or http://localhost:8080.
+                    </p>
+                  </div>
                 </div>
               </section>
 

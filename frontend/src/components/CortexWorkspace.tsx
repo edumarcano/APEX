@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
 import type { AgentStatus, AgentKey, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalSettingsAgent, LocalToolScope, ToolOutputItem } from '../types/telemetry'
+import type { ApodemusContextWindow } from '../types/settings'
 import { isLocalAgentKey } from '../lib/agents'
 
 import { CortexToolCards } from './CortexToolCards'
@@ -39,12 +40,59 @@ interface CortexWorkspaceProps {
   onGoogleMapsChange: (enabled: boolean) => void
   onDelphinusXSearchChange: (enabled: boolean) => void
   onOrcinusXSearchChange: (enabled: boolean) => void
+  apodemusContextWindow: ApodemusContextWindow
+  onApodemusContextChange: (contextWindow: ApodemusContextWindow) => void
   onSubmit: (query: string, agent: AgentKey, toolScope?: LocalToolScope | null) => void
   onNewSession: () => void
 }
 
 function isLocalAgent(agent: AgentKey): agent is LocalSettingsAgent {
   return isLocalAgentKey(agent)
+}
+
+const APODEMUS_CONTEXT_OPTIONS: readonly {
+  value: `${ApodemusContextWindow}`
+  label: string
+}[] = [
+  { value: '4096', label: '4K' },
+  { value: '8192', label: '8K' },
+  { value: '16384', label: '16K' },
+  { value: '32768', label: '32K Experimental' },
+]
+
+function ApodemusContextControl({
+  contextWindow,
+  disabled,
+  onChange,
+}: {
+  contextWindow: ApodemusContextWindow
+  disabled: boolean
+  onChange: (contextWindow: ApodemusContextWindow) => void
+}): ReactElement {
+  return (
+    <section className="space-y-2" aria-label="Apodemus context window">
+      <label htmlFor="cortex-apodemus-context" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+        Context window
+      </label>
+      <select
+        id="cortex-apodemus-context"
+        value={String(contextWindow)}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value) as ApodemusContextWindow)}
+        className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {APODEMUS_CONTEXT_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] leading-relaxed text-zinc-500">
+        Applies the next time Apex Apodemus loads. Unload Apodemus first to switch context on a
+        resident model.
+      </p>
+    </section>
+  )
 }
 
 function formatNumber(value: number | null | undefined): string { return value == null ? '—' : value.toLocaleString() }
@@ -163,12 +211,17 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
 export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const local = isLocalAgent(props.activeAgent)
   const activeStatus = props.agentsStatus.find((agent) => agent.key === props.activeAgent)
+  const apodemusContextLocked =
+    props.lifecycleBusy ||
+    props.lifecycleActionPending ||
+    props.isQuerying ||
+    Boolean(activeStatus?.active || activeStatus?.loading)
   return <section className="relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl" aria-label="Cortex workspace">
     <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div><button type="button" onClick={props.onNewSession} disabled={props.isQuerying} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button></header>
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={props.askApexEnabled ? (query) => props.onSubmit(query, props.activeAgent) : null} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} commands={local ? props.commands : []} armedToolScope={local ? props.armedToolScope : null} onArmedToolScopeChange={props.onArmedToolScopeChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
         {!local ? <CloudControls {...props} /> : null}
-        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} /><LocalToolScopes commands={props.commands} armedToolScope={props.armedToolScope} contextUsage={props.contextUsage} onChange={props.onArmedToolScopeChange} /></> : null}
+        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{props.activeAgent === 'apodemus' ? <ApodemusContextControl contextWindow={props.apodemusContextWindow} disabled={apodemusContextLocked} onChange={props.onApodemusContextChange} /> : null}<LocalToolScopes commands={props.commands} armedToolScope={props.armedToolScope} contextUsage={props.contextUsage} onChange={props.onArmedToolScopeChange} /></> : null}
         <ContextControl {...props} />
       </aside>
     </div>

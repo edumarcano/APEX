@@ -176,150 +176,32 @@ describe('SettingsPanel', () => {
     expect(screen.queryByLabelText('Google Search grounding')).not.toBeInTheDocument()
   })
 
-  it('exposes Apodemus context under Local Runtime with experimental 32K only', async () => {
+  it('exposes llama.cpp enablement and router URL in Runtime Settings', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     const user = userEvent.setup()
     renderPanel({ agentsStatusHydrated: true })
 
-    expect(await screen.findByRole('heading', { name: 'Local Runtime' })).toBeVisible()
-    const contextSelect = screen.getByLabelText('Apodemus context')
-    expect(contextSelect).toBeEnabled()
-    expect(contextSelect).toHaveValue('8192')
-    expect(screen.getByRole('option', { name: '4K' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '8K (default)' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '16K' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '32K (experimental)' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /131072|128K/i })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'llama.cpp' })).toBeVisible()
+    expect(screen.getByRole('switch', { name: 'Enable llama.cpp' })).toBeVisible()
+    const hostInput = screen.getByLabelText('Router URL')
+    expect(hostInput).toHaveValue('http://127.0.0.1:8080')
     expect(
-      screen.getByText(
-        'Applies the next time Apex Apodemus loads. To change the context of an already loaded Apodemus, unload it first.',
-      ),
+      screen.getByText(/llama\.cpp runs as an external local server/i),
     ).toBeVisible()
+    expect(screen.queryByLabelText('Apodemus context')).not.toBeInTheDocument()
 
-    await user.selectOptions(contextSelect, '16384')
-    expect(contextSelect).toHaveValue('16384')
+    await user.clear(hostInput)
+    await user.type(hostInput, 'http://localhost:9090')
+    expect(hostInput).toHaveValue('http://localhost:9090')
   })
 
-  it('locks Apodemus context while Apodemus is active or loading', async () => {
-    const apodemusLoaded = {
-      key: 'apodemus' as const,
-      display_name: 'Apex Apodemus',
-      description: 'Local llama.cpp agent.',
-      configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
-      sort_order: 6,
-      capabilities: [],
-      native_tools: {},
-      provider: 'llama_cpp' as const,
-      version: '1.0',
-      runtime: 'local' as const,
-      tier: 'balanced',
-      stability: 'preview' as const,
-      effort_options: null,
-      default_effort: null,
-      status: 'available' as const,
-      status_source: 'runtime' as const,
-      status_checked_at: null,
-      provider_account_tier: null,
-      pricing: {
-        currency: 'USD' as const,
-        pricing_version: 'test',
-        billing_basis: 'local' as const,
-        input_per_million: 0,
-        output_per_million: 0,
-        cached_input_per_million: null,
-        long_context_threshold_tokens: null,
-        long_context_input_per_million: null,
-        long_context_output_per_million: null,
-        long_context_cached_input_per_million: null,
-      },
-      active: true,
-      loading: false,
-      reason: null,
-      idle_unload_remaining_seconds: 120,
-      loaded_model: {
-        provider: 'llama_cpp' as const,
-        name: 'apodemus-8k',
-        model: 'apodemus-8k',
-        state: 'loaded' as const,
-        context_window: 8192,
-        size_bytes: null,
-        size_vram_bytes: null,
-        processor: null,
-        context: null,
-        expires_at: null,
-      },
-    }
+  it('does not render Apodemus context in Runtime Settings', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
-    renderPanel({ agentsStatus: [apodemusLoaded], agentsStatusHydrated: true })
+    renderPanel({ agentsStatusHydrated: true })
 
-    expect(await screen.findByLabelText('Apodemus context')).toBeDisabled()
-  })
-
-  it('keeps Apodemus context editable while an idle Mus model is merely resident', async () => {
-    const idleMus = {
-      key: 'mus' as const,
-      display_name: 'Apex Mus',
-      description: 'Balanced local profile.',
-      configured_model: 'qwen3:4b-instruct',
-      sort_order: 5,
-      capabilities: [],
-      native_tools: {},
-      provider: 'ollama' as const,
-      version: '7.4',
-      runtime: 'local' as const,
-      tier: 'balanced',
-      stability: 'stable' as const,
-      effort_options: null,
-      default_effort: null,
-      status: 'available' as const,
-      status_source: 'runtime' as const,
-      status_checked_at: null,
-      provider_account_tier: null,
-      pricing: {
-        currency: 'USD' as const,
-        pricing_version: 'test',
-        billing_basis: 'local' as const,
-        input_per_million: 0,
-        output_per_million: 0,
-        cached_input_per_million: null,
-        long_context_threshold_tokens: null,
-        long_context_input_per_million: null,
-        long_context_output_per_million: null,
-        long_context_cached_input_per_million: null,
-      },
-      active: true,
-      loading: false,
-      reason: null,
-      idle_unload_remaining_seconds: 90,
-      loaded_model: {
-        provider: 'ollama' as const,
-        name: 'qwen3:4b-instruct',
-        model: 'qwen3:4b-instruct',
-        state: 'loaded' as const,
-        context_window: 4096,
-        size_bytes: null,
-        size_vram_bytes: null,
-        processor: null,
-        context: null,
-        expires_at: null,
-      },
-    }
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
-    renderPanel({
-      agentsStatus: [idleMus],
-      agentsStatusHydrated: true,
-      isCortexQuerying: false,
-      localLifecycleBusy: false,
-    })
-
-    expect(await screen.findByLabelText('Apodemus context')).toBeEnabled()
-  })
-
-  it('locks Apodemus context while local lifecycle or Cortex generation is busy', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
-    renderPanel({ localLifecycleBusy: true })
-
-    expect(await screen.findByLabelText('Apodemus context')).toBeDisabled()
+    await screen.findByRole('switch', { name: 'Ask APEX enabled' })
+    expect(screen.queryByLabelText('Apodemus context')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Local Runtime' })).not.toBeInTheDocument()
   })
 
 

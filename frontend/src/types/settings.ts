@@ -14,6 +14,11 @@ export type VoiceMode = 'off' | 'manual' | 'automatic'
 export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
 export type ApodemusContextWindow = 4096 | 8192 | 16384 | 32768
 
+export interface LlamaCppSettings {
+  enabled: boolean
+  host: string
+}
+
 export interface FeaturesSettings {
   weather: boolean
   sports: boolean
@@ -68,6 +73,7 @@ export interface RuntimeSettings {
   briefing: BriefingSettings
   voice: VoiceSettings
   mcp: McpSettings
+  llama_cpp: LlamaCppSettings
 }
 
 export interface FeaturesPatch {
@@ -116,6 +122,11 @@ export interface McpServerEnablementPatch {
   enabled?: boolean
 }
 
+export interface LlamaCppPatch {
+  enabled?: boolean
+  host?: string
+}
+
 export interface SettingsPatch {
   user_designation?: string
   features?: FeaturesPatch
@@ -124,6 +135,7 @@ export interface SettingsPatch {
   briefing?: BriefingPatch
   voice?: VoicePatch
   mcp?: McpPatch
+  llama_cpp?: LlamaCppPatch
 }
 
 export interface SettingsResponse {
@@ -151,6 +163,7 @@ export type SettingsTimingFieldGroup =
   | 'briefing'
   | 'voice'
   | 'mcp'
+  | 'llama_cpp'
 
 export type McpRuntimeStatus =
   | 'configured'

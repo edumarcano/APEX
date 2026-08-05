@@ -238,6 +238,22 @@ function parseModules(value: unknown): ModulesSettings | null {
   }
 }
 
+function parseLlamaCppSettings(value: unknown): RuntimeSettings['llama_cpp'] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  if (typeof value.enabled !== 'boolean' || typeof value.host !== 'string') {
+    return null
+  }
+  if (!value.host.trim()) {
+    return null
+  }
+  return {
+    enabled: value.enabled,
+    host: value.host.trim().replace(/\/$/, ''),
+  }
+}
+
 function parseMcpSettings(value: unknown): McpSettings | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' || !isRecord(value.servers)) {
     return null
@@ -264,10 +280,12 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const features = parseFeatures(value.features)
   const modules = parseModules(value.modules)
   const mcp = parseMcpSettings(value.mcp)
+  const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   if (
     !features ||
     !modules ||
     !mcp ||
+    !llama_cpp ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -342,6 +360,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       mode: value.voice.mode,
     },
     mcp,
+    llama_cpp,
   }
 }
 
@@ -365,6 +384,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
         alphavantage: { ...settings.mcp.servers.alphavantage },
       },
     },
+    llama_cpp: { ...settings.llama_cpp },
   }
 }
 
@@ -479,6 +499,11 @@ export function diffSettingsPatch(
     }
   }
 
+  const llamaCpp = diffSection(baseline.llama_cpp, draft.llama_cpp)
+  if (llamaCpp) {
+    patch.llama_cpp = llamaCpp
+  }
+
   return patch
 }
 
@@ -490,7 +515,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.ask_apex === undefined &&
     patch.briefing === undefined &&
     patch.voice === undefined &&
-    patch.mcp === undefined
+    patch.mcp === undefined &&
+    patch.llama_cpp === undefined
   )
 }
 
@@ -536,7 +562,7 @@ export function resolveEffectiveTiming(
     return runtime.briefingActive ? 'Applies next briefing' : 'Active'
   }
 
-  if (group === 'mcp') {
+  if (group === 'mcp' || group === 'llama_cpp') {
     return 'Active'
   }
 

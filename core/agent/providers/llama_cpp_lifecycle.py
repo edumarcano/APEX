@@ -22,11 +22,13 @@ from core.agent.local_runtime.contract import (
     LocalRuntimeSnapshot,
 )
 from core.config import (
-    LLAMA_CPP_ENABLED,
-    LLAMA_CPP_HOST,
     LLAMA_CPP_IDLE_UNLOAD_MINUTES,
     LLAMA_CPP_MANUAL_UNLOAD_ENABLED,
     LLAMA_CPP_REQUEST_TIMEOUT_SECONDS,
+)
+from core.agent.providers.llama_cpp_runtime import (
+    get_llama_cpp_host,
+    is_llama_cpp_enabled,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -171,7 +173,8 @@ def _parse_row_status(row: dict[str, Any]) -> tuple[LocalModelState, int | None]
 
 def _probe_models() -> tuple[bool, list[str], list[LocalRuntimeModel]]:
     """Probe GET /models for reachability, router-reported IDs, and residency."""
-    url = f"{LLAMA_CPP_HOST.rstrip('/')}/models"
+    host = get_llama_cpp_host()
+    url = f"{host.rstrip('/')}/models"
     try:
         response = _SESSION.get(
             url,
@@ -241,7 +244,8 @@ def _probe_models() -> tuple[bool, list[str], list[LocalRuntimeModel]]:
 
 def _probe_props(model: str) -> dict[str, Any] | None:
     """Optionally fetch /props without triggering autoload."""
-    url = f"{LLAMA_CPP_HOST.rstrip('/')}/props"
+    host = get_llama_cpp_host()
+    url = f"{host.rstrip('/')}/props"
     try:
         response = _SESSION.get(
             url,
@@ -276,7 +280,7 @@ class LlamaCppRuntimeBackend:
 
     @property
     def enabled(self) -> bool:
-        return bool(LLAMA_CPP_ENABLED)
+        return is_llama_cpp_enabled()
 
     @property
     def idle_unload_seconds(self) -> int:
@@ -391,7 +395,7 @@ class LlamaCppRuntimeBackend:
             _LOGGER.info("Model %s already resident in llama.cpp", target)
             return True
 
-        url = f"{LLAMA_CPP_HOST.rstrip('/')}/models/load"
+        url = f"{get_llama_cpp_host().rstrip('/')}/models/load"
         try:
             response = _SESSION.post(
                 url,
@@ -438,7 +442,7 @@ class LlamaCppRuntimeBackend:
 
     def unload_model(self, model: str) -> bool:
         """Explicitly unload a runtime alias and verify it is not resident."""
-        url = f"{LLAMA_CPP_HOST.rstrip('/')}/models/unload"
+        url = f"{get_llama_cpp_host().rstrip('/')}/models/unload"
         try:
             response = _SESSION.post(
                 url,

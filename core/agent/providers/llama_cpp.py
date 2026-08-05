@@ -20,7 +20,7 @@ from core.agent.providers.llama_cpp_lifecycle import get_auth_headers, get_http_
 from core.agent.providers.llama_cpp_models import LlamaCppModelProfile
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.types import AgentMessage, TokenUsage, ToolCall, ToolResult
-from core.config import LLAMA_CPP_HOST
+from core.agent.providers.llama_cpp_runtime import get_llama_cpp_host
 
 _LOGGER = logging.getLogger(__name__)
 _PROMPT_BYTES_PER_TOKEN = 3
@@ -228,7 +228,8 @@ def _post_chat(
     payload: dict[str, Any],
     profile: LlamaCppModelProfile,
 ) -> dict[str, Any]:
-    url = f"{LLAMA_CPP_HOST.rstrip('/')}/v1/chat/completions"
+    host = get_llama_cpp_host()
+    url = f"{host.rstrip('/')}/v1/chat/completions"
     try:
         response = get_http_session().post(
             url,
@@ -245,7 +246,7 @@ def _post_chat(
         ) from exc
     except requests.ConnectionError as exc:
         raise RuntimeError(
-            f"Failed to connect to llama.cpp at {LLAMA_CPP_HOST}. "
+            f"Failed to connect to llama.cpp at {host}. "
             "Ensure the local llama.cpp router is running."
         ) from exc
     except RequestException as exc:

@@ -46,6 +46,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
       alphavantage: { enabled: false },
     },
   },
+  llama_cpp: {
+    enabled: false,
+    host: 'http://127.0.0.1:8080',
+  },
 }
 
 export function buildSettingsResponse(

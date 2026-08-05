@@ -21,6 +21,7 @@ from core.settings import (
     SettingsResponse,
     get_settings_store,
 )
+from core.agent.local_runtime.registry import get_local_runtime_backend
 from core.mcp import get_mcp_manager, load_mcp_config
 
 router = APIRouter(tags=["system"])
@@ -136,8 +137,14 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
         return _build_settings_response()
     try:
         await asyncio.to_thread(store.apply_patch, payload)
-    except SettingsPersistenceError:
+    except SettingsPersistenceError as exc:
         _LOGGER.exception("Settings persistence failed")
+        detail = str(exc)
+        if "Refusing to persist invalid settings" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=detail,
+            ) from None
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
@@ -145,6 +152,13 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                 "Active settings were not changed."
             ),
         ) from None
+    if payload.llama_cpp is not None:
+        try:
+            backend = get_local_runtime_backend("llama_cpp")
+        except KeyError:
+            backend = None
+        if backend is not None:
+            backend.invalidate_status_snapshot()
     if payload.mcp is not None:
         manager = get_mcp_manager()
         if manager is not None:

@@ -50,8 +50,9 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
+| llama.cpp | Enablement and loopback router URL |
 
-Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
+Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, llama.cpp resource gates and timeouts, router presets, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
 
 ### When changes take effect
 
@@ -61,6 +62,7 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
+- llama.cpp enablement and router URL apply immediately after a successful settings write; APEX invalidates the provider status cache without loading a model.
 
 ## Runtime modes
 
@@ -129,18 +131,18 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 | `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. `llama_cpp.host` defaults to `http://127.0.0.1:8080` and is disabled until enabled in configuration. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus.
+`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` defaults to `false` and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus.
 
 #### llama.cpp configuration
 
-| Key | Default | Notes |
-|---|---|---|
-| `llama_cpp.enabled` | `false` | Optional second local backend |
-| `llama_cpp.host` | `http://127.0.0.1:8080` | External router base URL |
-| `llama_cpp.idle_unload_timeout_minutes` | `5` | Same idle range as Ollama |
-| `llama_cpp.manual_unload_enabled` | `true` | Allows HUD unload |
-| `llama_cpp.request_timeout_seconds` | `180` | Generation and load wait budget |
-| `llama_cpp.resource_gates.apodemus` | RAM/CPU limits | Cold-load gates for Apodemus |
+| Key | Default | Runtime Settings | Notes |
+|---|---|---|---|
+| `llama_cpp.enabled` | `false` | Yes | Optional second local backend |
+| `llama_cpp.host` | `http://127.0.0.1:8080` | Yes | Loopback HTTP router URL only |
+| `llama_cpp.idle_unload_timeout_minutes` | `5` | No | Same idle range as Ollama |
+| `llama_cpp.manual_unload_enabled` | `true` | No | Allows HUD unload |
+| `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
+| `llama_cpp.resource_gates.apodemus` | RAM/CPU limits | No | Cold-load gates for Apodemus |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 
@@ -201,7 +203,7 @@ Installed aliases come only from the router's `/models` list. A missing `apodemu
 
 #### Apodemus context preference
 
-`ask_apex.apodemus_context_window` selects one of `4096`, `8192`, `16384`, or `32768`. The default is `8192`. The value `131072` is model maximum metadata only and is not an exposed preset. `32768` is marked experimental in the HUD. Reasoning stays off for Apodemus (`reasoning_effort: "none"` on every request).
+`ask_apex.apodemus_context_window` selects one of `4096`, `8192`, `16384`, or `32768`. The default is `8192`. The Cortex inspector exposes this control when Apodemus is selected; changes persist to `config.local.json` and apply the next time Apodemus loads without triggering an automatic model load. The value `131072` is model maximum metadata only and is not an exposed preset. `32768` is marked experimental in the HUD. Reasoning stays off for Apodemus (`reasoning_effort: "none"` on every request).
 
 Current Agent mapping used by documentation checks: `apodemus -> gemma-4-E2B-Q4_K_M.gguf`.
 

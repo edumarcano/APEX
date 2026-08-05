@@ -179,12 +179,31 @@ describe('settings editing utilities', () => {
     })
   })
 
-  it('patches Apodemus context without touching other Ask APEX fields', () => {
+  it('includes llama_cpp changes in settings patches', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.llama_cpp.enabled = true
+    draft.llama_cpp.host = 'http://localhost:8181'
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      llama_cpp: { enabled: true, host: 'http://localhost:8181' },
+    })
+    expect(isSettingsPatchEmpty(diffSettingsPatch(BASE_SETTINGS, draft))).toBe(false)
+  })
+
+  it('persists apodemus context through ask_apex patch', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.ask_apex.apodemus_context_window = 32768
-
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: { apodemus_context_window: 32768 },
+    })
+  })
+
+  it('keeps apodemus context patch isolated from llama_cpp settings', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.ask_apex.apodemus_context_window = 32768
+    draft.llama_cpp.enabled = true
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      ask_apex: { apodemus_context_window: 32768 },
+      llama_cpp: { enabled: true },
     })
   })
 

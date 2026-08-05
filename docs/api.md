@@ -75,7 +75,8 @@ Returns the resolved settings envelope. The current contract version is `9`.
     "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true, "apodemus_context_window": 8192 },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
-    "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
+    "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
+    "llama_cpp": { "enabled": false, "host": "http://127.0.0.1:8080" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -91,7 +92,7 @@ Returns the resolved settings envelope. The current contract version is `9`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, llama.cpp enablement and loopback host, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
 
 ```json
 {

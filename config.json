@@ -64,8 +64,8 @@
     "request_timeout_seconds": 180,
     "resource_gates": {
       "apodemus": {
-        "ram_limit": 82.0,
-        "cpu_limit": 92.0
+        "ram_limit": 88.0,
+        "cpu_limit": 95.0
       }
     }
   },

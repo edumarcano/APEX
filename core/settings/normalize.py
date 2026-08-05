@@ -6,6 +6,7 @@ import copy
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from core.agent.catalog import migrate_schema5_briefing, migrate_schema7_ask_apex
 from core.settings.models import (
@@ -22,6 +23,7 @@ from core.settings.models import (
     FeaturesSettings,
     FootballSettings,
     FootballTeamSettings,
+    LlamaCppSettings,
     McpServerEnablementSettings,
     McpServersSettings,
     McpSettings,
@@ -48,8 +50,11 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "briefing",
         "tts_settings",
         "mcp",
+        "llama_cpp",
     }
 )
+_DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
+_LOOPBACK_HOSTNAMES: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 @dataclass
@@ -155,6 +160,10 @@ def normalize_layer(
             mcp = _normalize_mcp_settings(value, layer_name, issues)
             if mcp:
                 normalized["mcp"] = mcp
+        elif key == "llama_cpp":
+            llama_cpp = _normalize_llama_cpp(value, layer_name, issues)
+            if llama_cpp:
+                normalized["llama_cpp"] = llama_cpp
 
     return normalized
 
@@ -212,6 +221,92 @@ def _normalize_football(
         team_ids.add(team_id)
         normalized_teams.append({"id": team_id, "name": clean_name})
     return {"teams": normalized_teams}
+
+
+def _normalize_llama_cpp_host(
+    value: Any,
+    *,
+    layer_name: str,
+    issues: NormalizationIssues | None,
+) -> str | None:
+    """Validate and normalize a loopback llama.cpp router URL."""
+    if not isinstance(value, str):
+        _record_error(issues, "llama_cpp.host must be a string")
+        _LOGGER.warning("llama_cpp.host in %s must be a string; ignoring.", layer_name)
+        return None
+
+    candidate = value.strip().rstrip("/")
+    if not candidate:
+        _record_error(issues, "llama_cpp.host must be a non-empty loopback HTTP URL")
+        return None
+
+    parsed = urlparse(candidate)
+    if parsed.scheme != "http":
+        _record_error(issues, "llama_cpp.host must use HTTP")
+        return None
+    if parsed.username or parsed.password:
+        _record_error(issues, "llama_cpp.host must not include credentials")
+        return None
+    if parsed.query or parsed.fragment:
+        _record_error(issues, "llama_cpp.host must not include query strings or fragments")
+        return None
+    if parsed.path not in {"", "/"}:
+        _record_error(issues, "llama_cpp.host must not include a path")
+        return None
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in _LOOPBACK_HOSTNAMES:
+        _record_error(
+            issues,
+            "llama_cpp.host must target a loopback address (127.0.0.1, localhost, or [::1])",
+        )
+        return None
+
+    port = parsed.port
+    if port is None or port < 1 or port > 65535:
+        _record_error(issues, "llama_cpp.host must include a valid port")
+        return None
+
+    if hostname == "::1":
+        return f"http://[::1]:{port}"
+    return f"http://{hostname}:{port}"
+
+
+def _normalize_llama_cpp(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any]:
+    """Extract editable llama.cpp fields while leaving advanced config file-only."""
+    result: dict[str, Any] = {}
+    if not isinstance(value, dict):
+        if value is not None:
+            _record_error(issues, "llama_cpp must be a JSON object")
+            _LOGGER.warning('Config key "llama_cpp" in %s must be a JSON object.', layer_name)
+        return result
+
+    for key in value:
+        if key not in {"enabled", "host"}:
+            _LOGGER.warning(
+                "Ignoring non-editable llama_cpp key %r in %s.",
+                key,
+                layer_name,
+            )
+
+    enabled = value.get("enabled")
+    if isinstance(enabled, bool):
+        result["enabled"] = enabled
+    elif enabled is not None:
+        _record_error(issues, "llama_cpp.enabled must be a boolean")
+
+    if "host" in value:
+        host = _normalize_llama_cpp_host(
+            value.get("host"),
+            layer_name=layer_name,
+            issues=issues,
+        )
+        if host is not None:
+            result["host"] = host
+
+    return result
 
 
 def _normalize_mcp_settings(
@@ -741,6 +836,18 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             }
         ),
     )
+    llama_cpp_raw = (
+        merged.get("llama_cpp") if isinstance(merged.get("llama_cpp"), dict) else {}
+    )
+    llama_host = llama_cpp_raw.get("host", _DEFAULT_LLAMA_CPP_HOST)
+    if not isinstance(llama_host, str) or not llama_host.strip():
+        llama_host = _DEFAULT_LLAMA_CPP_HOST
+    else:
+        llama_host = llama_host.strip().rstrip("/")
+    llama_cpp = LlamaCppSettings(
+        enabled=bool(llama_cpp_raw.get("enabled", False)),
+        host=llama_host,
+    )
     return RuntimeSettingsSnapshot(
         user_designation=(
             merged.get("user_designation", "")
@@ -754,6 +861,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         briefing=briefing,
         voice=voice,
         mcp=mcp,
+        llama_cpp=llama_cpp,
     )
 
 
@@ -788,6 +896,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "voice_mode": snapshot.voice.mode,
         },
         "mcp": snapshot.mcp.model_dump(),
+        "llama_cpp": snapshot.llama_cpp.model_dump(),
     }
 
 
@@ -859,4 +968,12 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
                 mcp["servers"] = servers
         if mcp:
             ondisk["mcp"] = mcp
+    if patch.llama_cpp is not None:
+        llama_cpp: dict[str, Any] = {}
+        if patch.llama_cpp.enabled is not None:
+            llama_cpp["enabled"] = patch.llama_cpp.enabled
+        if patch.llama_cpp.host is not None:
+            llama_cpp["host"] = patch.llama_cpp.host
+        if llama_cpp:
+            ondisk["llama_cpp"] = llama_cpp
     return ondisk
