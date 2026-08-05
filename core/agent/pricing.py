@@ -92,7 +92,7 @@ def lookup_model_rates(
     model: str | None, *, provider: InferenceProvider | None = None
 ) -> ModelTokenRates | None:
     """Return standard model rates; local inference has no provider token cost."""
-    if provider == "ollama":
+    if provider in {"ollama", "litert"}:
         return _LOCAL_ZERO
     if not model:
         return None
@@ -108,7 +108,7 @@ def agent_pricing(
     """Return the authoritative billing basis for an Apex Agent."""
     if agent_key == "acinonyx":
         return ProfilePricing("free_tier", _FREE_TIER_ZERO)
-    if provider == "ollama":
+    if provider in {"ollama", "litert"}:
         return ProfilePricing("local", _LOCAL_ZERO)
     return ProfilePricing(
         "standard",
@@ -143,6 +143,11 @@ def estimate_inference_cost(
 
     token_cost: float | None = None
     token_complete = False
+    if provider in {"ollama", "litert"} and usage is None:
+        # Local resource cost is explicitly zero even when the provider does
+        # not expose cloud-style token accounting.
+        token_cost = 0.0
+        token_complete = True
     if rates is not None and usage is not None:
         input_tokens = usage.input_tokens
         output_tokens = usage.output_tokens

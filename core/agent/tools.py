@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any, NoReturn
 
 from clients.sports_client import fetch_f1_driver_standings, fetch_f1_season_calendar
@@ -18,6 +19,15 @@ _NATIVE_MAX_OUTPUT_CHARS = 50_000
 _GMAIL_SEARCH_MAX_RESULTS = 20
 _MICROSOFT_TODO_MAX_RESULTS = 50
 _GMAIL_OUTPUT_MAX_CHARS = 50_000
+
+
+def get_current_date_time() -> dict[str, str]:
+    """Return the host's timezone-aware current local date and time."""
+    now = datetime.now().astimezone()
+    return {
+        "date_time": now.isoformat(),
+        "time_zone": now.tzname() or "local",
+    }
 
 
 def _stable_tool_result(
@@ -423,6 +433,21 @@ def register_native_capabilities() -> None:
         "max_output_chars": _NATIVE_MAX_OUTPUT_CHARS,
     }
 
+    register_capability(
+        CapabilityDescriptor(
+            name="get_current_date_time",
+            title="Current Date and Time",
+            description="Return the host's timezone-aware current local date and time.",
+            input_schema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+            **native_common,
+        ),
+        get_current_date_time,
+    )
     register_capability(
         CapabilityDescriptor(
             name="get_weather_forecast",

@@ -8,6 +8,11 @@ import requests
 from requests.exceptions import RequestException
 
 from core.agent.capabilities import CapabilityDescriptor
+from core.agent.local_context import (
+    current_turn_start,
+    serialize_tool_output,
+    wrap_untrusted_tool_output,
+)
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
 from core.agent.providers.contract import ProviderTurnResult, merge_token_usage
 from core.agent.providers.ollama_lifecycle import (
@@ -30,21 +35,10 @@ def _descriptor_to_openai_schema(descriptor: CapabilityDescriptor) -> dict[str, 
     return descriptor_to_openai_schema(descriptor)
 
 
-def _serialize_tool_output(output: Any) -> str:
-    """Serialize tool output as stable JSON when possible."""
-    try:
-        return json.dumps(output, default=str)
-    except (TypeError, ValueError):
-        return str(output)
+_serialize_tool_output = serialize_tool_output
 
 
-def _wrap_untrusted_tool_output(result: ToolResult) -> str:
-    """Wrap local tool output in the same untrusted boundary used by Gemini."""
-    return (
-        f"<untrusted_tool_output name='{result.name}'>\n"
-        f"{_serialize_tool_output(result.output)}\n"
-        f"</untrusted_tool_output>"
-    )
+_wrap_untrusted_tool_output = wrap_untrusted_tool_output
 
 
 def _messages_to_ollama(messages: list[AgentMessage]) -> list[dict[str, Any]]:
@@ -277,12 +271,7 @@ def _estimate_payload_tokens(payload: dict[str, Any]) -> int:
     )
 
 
-def _current_turn_start(messages: list[AgentMessage]) -> int:
-    """Return the user-message index that starts the current interaction."""
-    for index in range(len(messages) - 1, -1, -1):
-        if messages[index].role == "user":
-            return index
-    return 0
+_current_turn_start = current_turn_start
 
 
 def _build_payload(

@@ -22,6 +22,8 @@ AgentKey: TypeAlias = Literal[
     "orcinus",
     "sorex",
     "mus",
+    "microtus",
+    "mustela",
 ]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 
@@ -78,6 +80,11 @@ class QueryTiming(BaseModel):
     apex_tool_ms: float | None = Field(
         default=None, ge=0, description="Time spent executing APEX-managed tools."
     )
+    engine_load_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description="Nullable local-engine load duration when measured.",
+    )
 
 
 class Citation(BaseModel):
@@ -113,7 +120,7 @@ class LocalContextUsage(BaseModel):
         description="Largest prompt_eval_count returned across local model turns.",
     )
     context_window: int = Field(
-        ge=1, description="Configured Ollama context window for the Agent."
+        ge=1, description="Configured local-provider context window for the Agent."
     )
     history_messages_dropped: int = Field(
         default=0,
@@ -208,7 +215,7 @@ class AgentQueryRequest(BaseModel):
     tool_scope: LocalToolScope | None = Field(
         default=None,
         description=(
-            "Explicit local Ollama command bundle. Omit for tool-free local turns; "
+            "Explicit local command bundle. Omit for tool-free local turns; "
             "cloud Agents retain their normal automatic capability set."
         ),
     )

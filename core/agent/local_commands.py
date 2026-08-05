@@ -37,8 +37,12 @@ LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
     LocalCommandDefinition(
         key="schedule",
         label="Schedule",
-        description="Calendar events and pending reminders.",
-        tool_names=("get_upcoming_calendar_events", "get_active_reminders"),
+        description="Current time, calendar events, and pending reminders.",
+        tool_names=(
+            "get_current_date_time",
+            "get_upcoming_calendar_events",
+            "get_active_reminders",
+        ),
     ),
     LocalCommandDefinition(
         key="weather",

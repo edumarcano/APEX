@@ -10,6 +10,7 @@ from core.agent.capabilities import (
     is_client_display_enabled,
     list_agent_capabilities,
 )
+from core.agent.local_context import is_local_profile
 from core.agent.local_commands import ResolvedLocalCommand, resolve_local_command
 from core.agent.pricing import estimate_inference_cost
 from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
@@ -23,6 +24,7 @@ from core.agent.providers.contract import (
 )
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
+from core.agent.providers.litert_models import LiteRTModelProfile
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -37,7 +39,7 @@ from core.agent.types import (
 # Import native handlers so capability registration runs at process start.
 import core.agent.tools as _native_agent_tools  # noqa: F401
 
-AgentModelProfile = GeminiModelProfile | OllamaModelProfile | ProviderProfile
+AgentModelProfile = GeminiModelProfile | OllamaModelProfile | LiteRTModelProfile | ProviderProfile
 P = TypeVar("P", bound=AgentModelProfile, contravariant=True)
 
 ToolsDispatcher = Callable[[str, dict[str, Any]], Any]
@@ -67,7 +69,14 @@ def build_agent_failure_details(
     exc: Exception,
 ) -> tuple[str, str]:
     """Return the sanitized provider-specific failure response."""
-    if isinstance(profile, OllamaModelProfile):
+    if isinstance(profile, LiteRTModelProfile):
+        answer = (
+            "The Apex Agent could not complete the request through the LiteRT "
+            "local provider. Verify the configured LiteRT worker, model artifact, "
+            "and local resources, then try again."
+        )
+        error_detail = f"LiteRT provider error ({type(exc).__name__})."
+    elif isinstance(profile, OllamaModelProfile):
         answer = (
             "The Apex Agent encountered an issue reaching the local Ollama "
             "provider or running the requested operations. Please verify that "
@@ -105,7 +114,7 @@ def run_agent_loop(
     provider_tool_events: list[ProviderToolEvent] = []
     total_tool_executions = 0
     last_model_content: str | None = None
-    is_local = isinstance(profile, OllamaModelProfile)
+    is_local = is_local_profile(profile)
     if is_local and request.tool_scope is not None:
         local_command = resolved_local_command or resolve_local_command(
             request.tool_scope
@@ -183,7 +192,22 @@ def run_agent_loop(
             citations=citations,
         )
 
+    provider_session: Any | None = None
+    session_generate_turn = provider.generate_turn
     try:
+        create_session = getattr(provider, "create_session", None)
+        if callable(create_session):
+            session_tools = (
+                list(local_tools)
+                if is_local
+                else ([] if disable_cloud_tools else list(resolved_cloud_tools))
+            )
+            provider_session = create_session(
+                profile,
+                session_tools,
+                system_instruction=system_instruction_override,
+            )
+            session_generate_turn = provider_session.generate_turn
         for _turn in range(profile.max_tool_turns):
             turn_tools: list[CapabilityDescriptor] = (
                 list(local_tools)
@@ -206,7 +230,7 @@ def run_agent_loop(
                     system_instruction_override or profile.system_instruction
                 ) + FINAL_ANSWER_INSTRUCTION
 
-            turn_result = provider.generate_turn(
+            turn_result = session_generate_turn(
                 history,
                 turn_tools,
                 profile,
@@ -261,6 +285,19 @@ def run_agent_loop(
 
             if not model_message.tool_calls:
                 return response(answer=model_message.content or "")
+
+            if is_final_turn:
+                # The final permitted model turn is deliberately answer-only.
+                # A provider may still return a structured call despite the
+                # withheld tool list, but no capability is ever dispatched
+                # after the APEX turn budget is exhausted.
+                return response(
+                    answer=last_model_content or "",
+                    error=(
+                        f"Tool execution limit reached ({profile.max_tool_turns} turns); "
+                        "the final response could not request another capability."
+                    ),
+                )
 
             tool_results: list[ToolResult] = []
 
@@ -367,3 +404,12 @@ def run_agent_loop(
             answer=answer,
             error=error_detail,
         )
+    finally:
+        if provider_session is not None:
+            try:
+                provider_session.close()
+            except Exception as cleanup_exc:
+                _LOGGER.warning(
+                    "Provider session cleanup failed: %s",
+                    type(cleanup_exc).__name__,
+                )

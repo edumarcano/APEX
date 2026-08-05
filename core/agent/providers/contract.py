@@ -12,7 +12,7 @@ from core.agent.types import (
     TokenUsage,
 )
 
-InferenceProvider = Literal["gemini", "ollama", "openai", "xai"]
+InferenceProvider = Literal["gemini", "ollama", "litert", "openai", "xai"]
 ToolTraceOrigin = Literal["apex", "provider"]
 
 
@@ -132,13 +132,15 @@ def merge_token_usage(
 def resolve_inference_provider(profile: object) -> InferenceProvider:
     """Map a concrete profile instance to its inference provider kind."""
     provider_attr = getattr(profile, "provider", None)
-    if provider_attr in {"gemini", "ollama", "openai", "xai"}:
+    if provider_attr in {"gemini", "ollama", "litert", "openai", "xai"}:
         return provider_attr  # type: ignore[return-value]
 
     module = type(profile).__module__
     name = type(profile).__name__
     if "ollama" in module or name.startswith("Ollama"):
         return "ollama"
+    if "litert" in module or name.startswith("LiteRT"):
+        return "litert"
     if "gemini" in module or name.startswith("Gemini"):
         return "gemini"
     if "xai" in module or name.startswith("XAI") or name.startswith("Xai"):

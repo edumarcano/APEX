@@ -205,6 +205,28 @@ class Worker:
                     raise ValueError("LiteRT tool response requires a name.")
                 responses.append(Content.ToolResponse(name=name, response=item.get("response")))
             return Message.tool(Contents.of(*responses))
+        if role == "model":
+            from litert_lm import Content, Contents, Message, ToolCall
+
+            content = raw.get("content", "")
+            text = content if isinstance(content, str) else ""
+            raw_calls = raw.get("tool_calls", [])
+            if not isinstance(raw_calls, list):
+                raise ValueError("LiteRT model tool calls must be a list.")
+            calls = []
+            for item in raw_calls:
+                if not isinstance(item, Mapping):
+                    raise ValueError("LiteRT model tool call is invalid.")
+                function = item.get("function")
+                if not isinstance(function, Mapping):
+                    raise ValueError("LiteRT model tool call is invalid.")
+                name = function.get("name")
+                arguments = function.get("arguments", {})
+                if not isinstance(name, str) or not isinstance(arguments, Mapping):
+                    raise ValueError("LiteRT model tool call is invalid.")
+                calls.append(ToolCall(name=name, arguments=dict(arguments)))
+            contents = Contents.of(Content.Text(text)) if text else None
+            return Message.model(contents, tool_calls=calls)
         raise ValueError("Unsupported LiteRT message role.")
 
     def open_conversation(self, payload: Mapping[str, Any]) -> dict[str, Any]:

@@ -41,6 +41,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.assertEqual(
             names,
             {
+                "get_current_date_time",
                 "get_weather_forecast",
                 "get_f1_driver_standings",
                 "get_f1_season_calendar",
