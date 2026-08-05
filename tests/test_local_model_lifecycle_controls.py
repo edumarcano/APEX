@@ -120,7 +120,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         self.assertEqual(response.status, "success")
         end_execution.assert_called_once()
 
-    def test_unload_noop_without_active_model_skips_provider_probe(self) -> None:
+    def test_unload_noop_without_active_model_claims_slot_and_skips_probe(self) -> None:
         backend = mock.Mock()
         backend.manual_unload_enabled = True
         with (
@@ -129,14 +129,61 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 "core.api.cortex.iter_local_runtime_backends",
                 return_value=(backend,),
             ),
-            mock.patch("core.api.cortex.try_begin_local_execution") as begin,
+            mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
+            mock.patch("core.api.cortex.end_local_execution") as end_execution,
             mock.patch("core.api.cortex.get_provider_snapshot") as snapshot,
             mock.patch("core.api.cortex.unload_active_local_model") as unload,
         ):
             response = unload_active_local_model_endpoint()
 
         self.assertEqual(response.status, "success")
-        begin.assert_not_called()
+        end_execution.assert_called_once()
+        snapshot.assert_not_called()
+        unload.assert_not_called()
+
+    def test_unload_noop_rejects_when_cold_load_holds_slot(self) -> None:
+        backend = mock.Mock()
+        backend.manual_unload_enabled = True
+        with (
+            mock.patch("core.api.cortex.get_active_local_model", return_value=None),
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(backend,),
+            ),
+            mock.patch("core.api.cortex.try_begin_local_execution", return_value=False),
+            mock.patch("core.api.cortex.get_provider_snapshot") as snapshot,
+            mock.patch("core.api.cortex.unload_active_local_model") as unload,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                unload_active_local_model_endpoint()
+
+        self.assertEqual(raised.exception.status_code, 409)
+        snapshot.assert_not_called()
+        unload.assert_not_called()
+
+    def test_unload_noop_rejects_when_switch_is_loading(self) -> None:
+        backend = mock.Mock()
+        backend.manual_unload_enabled = True
+        with (
+            mock.patch("core.api.cortex.get_active_local_model", return_value=None),
+            mock.patch(
+                "core.api.cortex.get_loading_local_model",
+                return_value=LocalModelRef(provider="ollama", model="qwen3:4b-instruct"),
+            ),
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(backend,),
+            ),
+            mock.patch("core.api.cortex.try_begin_local_execution", return_value=False),
+            mock.patch("core.api.cortex.end_local_execution") as end_execution,
+            mock.patch("core.api.cortex.get_provider_snapshot") as snapshot,
+            mock.patch("core.api.cortex.unload_active_local_model") as unload,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                unload_active_local_model_endpoint()
+
+        self.assertEqual(raised.exception.status_code, 409)
+        end_execution.assert_not_called()
         snapshot.assert_not_called()
         unload.assert_not_called()
 

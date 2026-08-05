@@ -394,6 +394,9 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     Manually unload the currently active local model from memory.
 
     Returns success when no model is active or the unload completes cleanly.
+    Always claims the execution slot first so a cold load, pre-warm, or switch
+    that has not yet established an active model cannot be reported as a no-op
+    success.
     """
     active = get_active_local_model()
     if active is None:
@@ -403,16 +406,13 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Manual local model unload is disabled in system settings.",
             )
-        # No known model is tracked: succeed as a no-op without selecting an
-        # arbitrary provider to probe for reachability.
-        return LocalUnloadResponse()
-
-    backend = get_local_runtime_backend(active.provider)
-    if not backend.manual_unload_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manual local model unload is disabled in system settings.",
-        )
+    else:
+        backend = get_local_runtime_backend(active.provider)
+        if not backend.manual_unload_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual local model unload is disabled in system settings.",
+            )
 
     if not try_begin_local_execution():
         raise HTTPException(
@@ -424,6 +424,19 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
         )
 
     try:
+        active = get_active_local_model()
+        if active is None:
+            # No known model is tracked: succeed as a no-op without selecting an
+            # arbitrary provider to probe for reachability.
+            return LocalUnloadResponse()
+
+        backend = get_local_runtime_backend(active.provider)
+        if not backend.manual_unload_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual local model unload is disabled in system settings.",
+            )
+
         snapshot = get_provider_snapshot(active.provider, force_refresh=True)
         if not snapshot["reachable"]:
             raise HTTPException(

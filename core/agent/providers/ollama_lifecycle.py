@@ -191,6 +191,7 @@ class OllamaRuntimeBackend:
         self._status_lock = threading.Lock()
         self._probe_lock = threading.Lock()
         self._status_snapshot: LocalRuntimeSnapshot | None = None
+        self._status_epoch = 0
 
     @property
     def enabled(self) -> bool:
@@ -208,6 +209,7 @@ class OllamaRuntimeBackend:
         """Discard cached daemon state after a verified lifecycle transition."""
         with self._status_lock:
             self._status_snapshot = None
+            self._status_epoch += 1
 
     def _cached_snapshot_if_fresh(
         self,
@@ -239,7 +241,9 @@ class OllamaRuntimeBackend:
         Host vitals are owned by the global coordinator. Cache reads and
         publishes use ``_status_lock`` only; network probes run outside that
         lock so invalidation and competing readers are not blocked by timeouts.
-        ``_probe_lock`` collapses concurrent probes.
+        ``_probe_lock`` collapses concurrent probes. An invalidation epoch
+        prevents an in-flight probe from publishing a snapshot observed before
+        a load/unload cleared the cache.
         """
         with self._status_lock:
             cached = self._cached_snapshot_if_fresh(force_refresh=force_refresh)
@@ -247,23 +251,29 @@ class OllamaRuntimeBackend:
                 return cached
 
         with self._probe_lock:
-            with self._status_lock:
-                cached = self._cached_snapshot_if_fresh(force_refresh=force_refresh)
-                if cached is not None:
-                    return cached
+            while True:
+                with self._status_lock:
+                    cached = self._cached_snapshot_if_fresh(force_refresh=force_refresh)
+                    if cached is not None:
+                        return cached
+                    epoch = self._status_epoch
 
-            reachable, tags = _probe_ollama_tags()
-            loaded_models = _probe_ollama_loaded_models() if reachable else []
-            fresh: LocalRuntimeSnapshot = {
-                "provider": "ollama",
-                "reachable": reachable,
-                "installed_models": tags,
-                "loaded_models": loaded_models,
-                "sampled_at": time.monotonic(),
-            }
-            with self._status_lock:
-                self._status_snapshot = fresh
-                return fresh
+                reachable, tags = _probe_ollama_tags()
+                loaded_models = _probe_ollama_loaded_models() if reachable else []
+                fresh: LocalRuntimeSnapshot = {
+                    "provider": "ollama",
+                    "reachable": reachable,
+                    "installed_models": tags,
+                    "loaded_models": loaded_models,
+                    "sampled_at": time.monotonic(),
+                }
+                with self._status_lock:
+                    if self._status_epoch == epoch:
+                        self._status_snapshot = fresh
+                        return fresh
+                    # Invalidated while probing: discard the stale observation
+                    # and retry against the post-invalidation daemon state.
+                    force_refresh = False
 
     def is_model_resident(self, model: str) -> bool:
         """Return whether Ollama currently reports a model resident in memory."""

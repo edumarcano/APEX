@@ -69,6 +69,50 @@ class OllamaRuntimeBackendLockTests(unittest.TestCase):
         worker.join(timeout=2.0)
         self.assertFalse(worker.is_alive())
 
+    def test_invalidated_in_flight_probe_does_not_repopulate_cache(self) -> None:
+        backend = OllamaRuntimeBackend()
+        entered = threading.Event()
+        release = threading.Event()
+        probe_calls = 0
+
+        def probe_tags() -> tuple[bool, list[str]]:
+            nonlocal probe_calls
+            probe_calls += 1
+            if probe_calls == 1:
+                entered.set()
+                self.assertTrue(release.wait(timeout=2.0))
+                return True, ["stale-model"]
+            return True, ["fresh-model"]
+
+        def run_probe() -> None:
+            with (
+                mock.patch(
+                    "core.agent.providers.ollama_lifecycle._probe_ollama_tags",
+                    side_effect=probe_tags,
+                ),
+                mock.patch(
+                    "core.agent.providers.ollama_lifecycle._probe_ollama_loaded_models",
+                    return_value=[],
+                ),
+            ):
+                backend.get_status_snapshot(force_refresh=True)
+
+        worker = threading.Thread(target=run_probe)
+        worker.start()
+        self.assertTrue(entered.wait(timeout=2.0))
+        backend.invalidate_status_snapshot()
+        release.set()
+        worker.join(timeout=2.0)
+        self.assertFalse(worker.is_alive())
+
+        with backend._status_lock:
+            cached = backend._status_snapshot
+        self.assertIsNotNone(cached)
+        assert cached is not None
+        self.assertEqual(cached["installed_models"], ["fresh-model"])
+        self.assertNotIn("stale-model", cached["installed_models"])
+        self.assertGreaterEqual(probe_calls, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
