@@ -337,8 +337,7 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    activeQueryAgent === 'sorex' ||
-    activeQueryAgent === 'mus' ||
+    isLocalAgentKey(activeQueryAgent) ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 

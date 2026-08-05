@@ -8,10 +8,18 @@ from unittest.mock import MagicMock, patch
 from google.genai.errors import APIError
 
 from core.agent.capabilities import CapabilityDescriptor
-from core.agent.local_runtime.contract import LocalModelProfile
+from core.agent.catalog import (
+    AGENT_SPECS,
+    agent_key_for_local_model_ref,
+    build_concrete_agent,
+    known_local_model_refs,
+    local_model_ref_for_agent,
+    local_model_refs_for_agent,
+    resolve_effort,
+)
+from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef
 from core.agent.loop import is_local_profile, run_agent_loop
 from core.agent.pricing import PRICING_VERSION, _MODEL_RATES, estimate_inference_cost
-from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.contract import (
     ProviderToolEvent,
     ProviderTurnResult,
@@ -70,6 +78,32 @@ class ProviderContractTests(unittest.TestCase):
         self.assertTrue(is_local_inference_provider("ollama"))
         self.assertFalse(is_local_inference_provider("openai"))
 
+    def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
+        for agent_key in ("sorex", "mus"):
+            profile = build_concrete_agent(agent_key, native_effort=None)
+            self.assertTrue(is_local_profile(profile))
+            selected = local_model_ref_for_agent(agent_key)
+            self.assertEqual(selected.provider, profile.provider)
+            self.assertEqual(selected.model, profile.runtime_model_id)
+            self.assertIn(selected, local_model_refs_for_agent(agent_key))
+            self.assertEqual(agent_key_for_local_model_ref(selected), agent_key)
+
+        known = known_local_model_refs()
+        self.assertEqual(
+            known,
+            frozenset(
+                {
+                    local_model_ref_for_agent("sorex"),
+                    local_model_ref_for_agent("mus"),
+                }
+            ),
+        )
+        self.assertIsNone(
+            agent_key_for_local_model_ref(
+                LocalModelRef(provider="ollama", model="unknown-model")
+            )
+        )
+
     def test_agent_loop_follows_local_policy_for_non_ollama_local_profile(self) -> None:
         class FakeLocalProfile:
             provider = "ollama"
@@ -97,7 +131,7 @@ class ProviderContractTests(unittest.TestCase):
             def generate_turn(self, messages, tools, _profile, system_instruction_override=None):
                 self.tools = tools
                 return ProviderTurnResult(
-                    message=AgentMessage(role="assistant", content="ok"),
+                    message=AgentMessage(role="agent", content="ok"),
                     usage=TokenUsage(input_tokens=1, output_tokens=1),
                     provider_ms=1.0,
                 )
@@ -109,6 +143,8 @@ class ProviderContractTests(unittest.TestCase):
             profile,  # type: ignore[arg-type]
         )
         self.assertEqual(provider.tools, [])
+        self.assertEqual(response.answer, "ok")
+        self.assertIsNone(response.error)
         self.assertIsNotNone(response.local_context_usage)
 
     def test_merge_token_usage_sums_nullable_fields(self) -> None:

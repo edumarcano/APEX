@@ -189,6 +189,7 @@ class OllamaRuntimeBackend:
 
     def __init__(self) -> None:
         self._status_lock = threading.Lock()
+        self._probe_lock = threading.Lock()
         self._status_snapshot: LocalRuntimeSnapshot | None = None
 
     @property
@@ -208,6 +209,25 @@ class OllamaRuntimeBackend:
         with self._status_lock:
             self._status_snapshot = None
 
+    def _cached_snapshot_if_fresh(
+        self,
+        *,
+        force_refresh: bool,
+    ) -> LocalRuntimeSnapshot | None:
+        """Return a usable cached snapshot, or None when a probe is required."""
+        snapshot = self._status_snapshot
+        if snapshot is None or force_refresh:
+            return None
+
+        from core.agent.local_runtime.coordinator import is_local_execution_active
+
+        if is_local_execution_active():
+            return snapshot
+        age = time.monotonic() - snapshot["sampled_at"]
+        if age < _STATUS_CACHE_TTL_SECONDS:
+            return snapshot
+        return None
+
     def get_status_snapshot(
         self,
         *,
@@ -216,22 +236,21 @@ class OllamaRuntimeBackend:
         """
         Return daemon reachability, installed models, and loaded models.
 
-        Host vitals are owned by the global coordinator. While a local
-        generation holds the execution slot the last snapshot is returned
-        without probing when a cache entry exists.
+        Host vitals are owned by the global coordinator. Cache reads and
+        publishes use ``_status_lock`` only; network probes run outside that
+        lock so invalidation and competing readers are not blocked by timeouts.
+        ``_probe_lock`` collapses concurrent probes.
         """
         with self._status_lock:
-            snapshot = self._status_snapshot
-            if snapshot is not None and not force_refresh:
-                from core.agent.local_runtime.coordinator import (
-                    is_local_execution_active,
-                )
+            cached = self._cached_snapshot_if_fresh(force_refresh=force_refresh)
+            if cached is not None:
+                return cached
 
-                if is_local_execution_active():
-                    return snapshot
-                age = time.monotonic() - snapshot["sampled_at"]
-                if age < _STATUS_CACHE_TTL_SECONDS:
-                    return snapshot
+        with self._probe_lock:
+            with self._status_lock:
+                cached = self._cached_snapshot_if_fresh(force_refresh=force_refresh)
+                if cached is not None:
+                    return cached
 
             reachable, tags = _probe_ollama_tags()
             loaded_models = _probe_ollama_loaded_models() if reachable else []
@@ -242,8 +261,9 @@ class OllamaRuntimeBackend:
                 "loaded_models": loaded_models,
                 "sampled_at": time.monotonic(),
             }
-            self._status_snapshot = fresh
-            return fresh
+            with self._status_lock:
+                self._status_snapshot = fresh
+                return fresh
 
     def is_model_resident(self, model: str) -> bool:
         """Return whether Ollama currently reports a model resident in memory."""

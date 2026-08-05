@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import unittest
 from dataclasses import dataclass
 from typing import ClassVar, Literal
@@ -49,6 +50,10 @@ class _FakeBackend:
         self.fail_unload: set[str] = set()
         self.fail_load: set[str] = set()
         self.lock_held_during_io = False
+        self.unload_gate: threading.Event | None = None
+        self.unload_entered: threading.Event | None = None
+        self.load_gate: threading.Event | None = None
+        self.load_entered: threading.Event | None = None
 
     def get_status_snapshot(
         self, *, force_refresh: bool = False
@@ -83,6 +88,10 @@ class _FakeBackend:
 
     def load_model(self, profile: LocalModelProfile) -> bool:
         model = profile.runtime_model_id
+        if self.load_entered is not None:
+            self.load_entered.set()
+        if self.load_gate is not None:
+            self.load_gate.wait(timeout=2.0)
         self.load_calls.append(model)
         if model in self.fail_load:
             return False
@@ -90,6 +99,10 @@ class _FakeBackend:
         return True
 
     def unload_model(self, model: str) -> bool:
+        if self.unload_entered is not None:
+            self.unload_entered.set()
+        if self.unload_gate is not None:
+            self.unload_gate.wait(timeout=2.0)
         self.unload_calls.append(model)
         if model in self.fail_unload:
             return False
@@ -250,6 +263,25 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(coord.get_active_local_model(), ref)
         coord.end_local_execution()
 
+    def test_idle_unload_holds_execution_slot_through_unload(self) -> None:
+        ref = LocalModelRef(provider="ollama", model="mus-model")
+        self.backend.resident.add("mus-model")
+        coord.register_local_activity(ref)
+        self.clock["now"] = 2000.0
+        self.backend.unload_entered = threading.Event()
+        self.backend.unload_gate = threading.Event()
+
+        worker = threading.Thread(target=coord._maybe_unload_idle_model)
+        worker.start()
+        self.assertTrue(self.backend.unload_entered.wait(timeout=2.0))
+        self.assertTrue(coord.is_local_execution_active())
+        self.assertFalse(coord.try_begin_local_execution())
+        self.backend.unload_gate.set()
+        worker.join(timeout=2.0)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(coord.is_local_execution_active())
+        self.assertIsNone(coord.get_active_local_model())
+
     def test_idle_unload_success(self) -> None:
         ref = LocalModelRef(provider="ollama", model="mus-model")
         self.backend.resident.add("mus-model")
@@ -268,6 +300,52 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         coord._maybe_unload_idle_model()
         self.assertEqual(coord.get_active_local_model(), ref)
 
+    def test_provider_restart_clears_stale_ready_state(self) -> None:
+        ref = LocalModelRef(provider="ollama", model="mus-model")
+        self.backend.resident.add("mus-model")
+        coord.register_local_activity(ref)
+        self.assertTrue(coord.is_local_model_ready(ref))
+        self.backend.resident.clear()
+        self.assertFalse(coord.is_local_model_ready(ref))
+        self.assertIsNone(coord.get_active_local_model())
+
+    def test_external_unload_clears_stale_ready_state(self) -> None:
+        ref = LocalModelRef(provider="ollama", model="mus-model")
+        self.backend.resident.add("mus-model")
+        coord.register_local_activity(ref)
+        self.backend.resident.discard("mus-model")
+        self.assertFalse(coord.is_local_model_ready(ref))
+        with coord._state_lock:
+            self.assertIsNone(coord._active_local_model)
+
+    def test_stale_tracked_target_forces_verified_reload(self) -> None:
+        profile = _FakeProfile(api_model="mus-model")
+        self.backend.resident.add("mus-model")
+        self.assertTrue(coord.try_begin_local_execution())
+        self.assertTrue(coord.switch_local_model(profile))
+        self.backend.load_calls.clear()
+        self.backend.resident.discard("mus-model")
+        self.assertTrue(coord.switch_local_model(profile))
+        self.assertEqual(self.backend.load_calls, ["mus-model"])
+        self.assertIn("mus-model", self.backend.resident)
+        coord.end_local_execution()
+
+    def test_stale_ready_miss_exposes_cold_load_gate(self) -> None:
+        ref = LocalModelRef(provider="ollama", model="mus-model")
+        profile = _FakeProfile(api_model="mus-model", ram_limit=40.0, cpu_limit=40.0)
+        self.backend.resident.add("mus-model")
+        coord.register_local_activity(ref)
+        self.backend.resident.clear()
+
+        self.assertFalse(coord.is_local_model_ready(ref))
+        allowed, reason = coord.check_resource_gate(
+            profile.ram_limit,
+            profile.cpu_limit,
+            vitals={"cpu": 10.0, "ram": 80.0},
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "insufficient_ram")
+
     def test_restart_reconciliation_adopts_single_resident(self) -> None:
         self.backend.resident.add("mus-model")
         self.assertEqual(
@@ -278,6 +356,43 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
     def test_restart_reconciliation_leaves_multiple_untracked(self) -> None:
         self.backend.resident.update({"mus-model", "sorex-model"})
         self.assertIsNone(coord.get_active_local_model())
+
+    def test_restart_reconciliation_skips_during_switch(self) -> None:
+        self.backend.resident.add("sorex-model")
+        coord.register_local_activity(
+            LocalModelRef(provider="ollama", model="sorex-model")
+        )
+        self.backend.unload_entered = threading.Event()
+        self.backend.unload_gate = threading.Event()
+        results: list[bool] = []
+
+        def run_switch() -> None:
+            self.assertTrue(coord.try_begin_local_execution())
+            try:
+                results.append(
+                    coord.switch_local_model(_FakeProfile(api_model="mus-model"))
+                )
+            finally:
+                coord.end_local_execution()
+
+        switcher = threading.Thread(target=run_switch)
+        switcher.start()
+        self.assertTrue(self.backend.unload_entered.wait(timeout=2.0))
+        # Old resident is still present while unload is paused; reconciliation
+        # must not re-adopt it after the switch cleared the tracker.
+        self.assertIsNone(coord.get_active_local_model())
+        self.assertEqual(
+            coord.get_loading_local_model(),
+            LocalModelRef(provider="ollama", model="mus-model"),
+        )
+        self.backend.unload_gate.set()
+        switcher.join(timeout=2.0)
+        self.assertFalse(switcher.is_alive())
+        self.assertEqual(results, [True])
+        self.assertEqual(
+            coord.get_active_local_model(),
+            LocalModelRef(provider="ollama", model="mus-model"),
+        )
 
     def test_profile_protocol_compliance(self) -> None:
         profile = _FakeProfile(api_model="mus-model", high_resource=True)

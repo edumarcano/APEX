@@ -77,9 +77,17 @@ def _adopt_single_resident(found: list[LocalModelRef]) -> LocalModelRef | None:
     """Adopt exactly one discovered resident under the state lock."""
     global _active_local_model, _last_activity_time
 
+    # Never reconcile during a coordinated switch or while any local lifecycle
+    # holder owns the execution slot; a status poll must not re-adopt the old
+    # resident after the tracker was intentionally cleared.
+    if is_local_execution_active():
+        return None
+
     with _state_lock:
         if _active_local_model is not None:
             return _active_local_model
+        if _loading_local_model is not None:
+            return None
         if len(found) == 1:
             _active_local_model = found[0]
             _last_activity_time = _monotonic()
@@ -169,6 +177,10 @@ def get_active_local_model() -> LocalModelRef | None:
     with _state_lock:
         if _active_local_model is not None:
             return _active_local_model
+        if _loading_local_model is not None:
+            return None
+    if is_local_execution_active():
+        return None
     return _adopt_single_resident(_discover_known_residents())
 
 
@@ -216,14 +228,29 @@ def is_local_model_ready(ref: LocalModelRef) -> bool:
     """
     Return whether a model is already available without a cold load.
 
-    Checks the coordinator tracker first, then the provider residency probe so
-    models that survived an APEX restart are still recognized.
+    The in-memory tracker is never trusted alone: residency is always verified
+    with the provider backend. Stale tracker entries (provider restart, external
+    unload) are cleared so callers fall through the cold-load admission path.
     """
+    global _active_local_model
+
     with _state_lock:
-        if _active_local_model == ref:
-            return True
+        tracked = _active_local_model == ref
+
     backend = get_local_runtime_backend(ref.provider)
-    return backend.is_model_resident(ref.model)
+    if backend.is_model_resident(ref.model):
+        return True
+
+    if tracked:
+        with _state_lock:
+            if _active_local_model == ref:
+                _active_local_model = None
+                _LOGGER.info(
+                    "Cleared stale active tracker for %s/%s after residency miss",
+                    ref.provider,
+                    ref.model,
+                )
+    return False
 
 
 def switch_local_model(profile: LocalModelProfile) -> bool:
@@ -238,19 +265,36 @@ def switch_local_model(profile: LocalModelProfile) -> bool:
 
     target = _profile_ref(profile)
     backend = get_local_runtime_backend(target.provider)
+    previous: LocalModelRef | None
 
     with _state_lock:
-        if _active_local_model == target:
+        tracked_match = _active_local_model == target
+        if not tracked_match:
+            previous = _active_local_model
+            _active_local_model = None
+            _loading_local_model = target
+
+    if tracked_match:
+        if backend.is_model_resident(target.model):
             _LOGGER.debug(
                 "Model %s/%s already loaded; skipping switch",
                 target.provider,
                 target.model,
             )
-            _last_activity_time = _monotonic()
+            with _state_lock:
+                if _active_local_model == target:
+                    _last_activity_time = _monotonic()
             return True
-        previous = _active_local_model
-        _active_local_model = None
-        _loading_local_model = target
+        _LOGGER.info(
+            "Tracked model %s/%s is absent at the provider; reloading",
+            target.provider,
+            target.model,
+        )
+        with _state_lock:
+            if _active_local_model == target:
+                _active_local_model = None
+            previous = None
+            _loading_local_model = target
 
     try:
         known = _known_local_model_refs()
@@ -334,47 +378,50 @@ def _maybe_unload_idle_model() -> None:
     """
     Unload the active model when idle duration exceeds the configured threshold.
 
-    Skips the cycle entirely while a generation holds the execution slot so a
-    model is never evicted mid-inference. Uses a snapshot-and-reverify pattern
-    so concurrent activity or model switches are not clobbered by a stale
-    idle decision.
+    Claims the global execution slot for the full evaluate/unload/cleanup window
+    so a newly started generation cannot race between the idle check and the
+    unload request. Uses a snapshot-and-reverify pattern so concurrent activity
+    or model switches are not clobbered by a stale idle decision.
     """
     global _active_local_model
 
-    if is_local_execution_active():
+    if not try_begin_local_execution():
         return
 
-    active = get_active_local_model()
-    if active is None:
-        return
-
-    backend = get_local_runtime_backend(active.provider)
-    with _state_lock:
-        if _active_local_model != active:
+    try:
+        active = get_active_local_model()
+        if active is None:
             return
-        idle_seconds = _monotonic() - _last_activity_time
-        if idle_seconds < backend.idle_unload_seconds:
-            return
-        model_to_unload = active
-        activity_snapshot = _last_activity_time
 
-    if not get_local_runtime_backend(model_to_unload.provider).unload_model(
-        model_to_unload.model
-    ):
-        return
+        backend = get_local_runtime_backend(active.provider)
+        with _state_lock:
+            if _active_local_model != active:
+                return
+            idle_seconds = _monotonic() - _last_activity_time
+            if idle_seconds < backend.idle_unload_seconds:
+                return
+            model_to_unload = active
+            activity_snapshot = _last_activity_time
 
-    with _state_lock:
-        if (
-            _active_local_model == model_to_unload
-            and _last_activity_time == activity_snapshot
+        if not get_local_runtime_backend(model_to_unload.provider).unload_model(
+            model_to_unload.model
         ):
-            _active_local_model = None
-            _LOGGER.info(
-                "Idle unload triggered for %s/%s after %.0fs of inactivity",
-                model_to_unload.provider,
-                model_to_unload.model,
-                _monotonic() - activity_snapshot,
-            )
+            return
+
+        with _state_lock:
+            if (
+                _active_local_model == model_to_unload
+                and _last_activity_time == activity_snapshot
+            ):
+                _active_local_model = None
+                _LOGGER.info(
+                    "Idle unload triggered for %s/%s after %.0fs of inactivity",
+                    model_to_unload.provider,
+                    model_to_unload.model,
+                    _monotonic() - activity_snapshot,
+                )
+    finally:
+        end_local_execution()
 
 
 async def check_idle_local_models_loop() -> None:

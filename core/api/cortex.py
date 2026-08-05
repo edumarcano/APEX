@@ -396,22 +396,23 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     Returns success when no model is active or the unload completes cleanly.
     """
     active = get_active_local_model()
-    if active is not None:
-        backend = get_local_runtime_backend(active.provider)
-        if not backend.manual_unload_enabled:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Manual local model unload is disabled in system settings.",
-            )
-        reachability_provider = active.provider
-    else:
+    if active is None:
         enabled_backends = iter_local_runtime_backends(enabled_only=True)
         if not any(backend.manual_unload_enabled for backend in enabled_backends):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Manual local model unload is disabled in system settings.",
             )
-        reachability_provider = "ollama"
+        # No known model is tracked: succeed as a no-op without selecting an
+        # arbitrary provider to probe for reachability.
+        return LocalUnloadResponse()
+
+    backend = get_local_runtime_backend(active.provider)
+    if not backend.manual_unload_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manual local model unload is disabled in system settings.",
+        )
 
     if not try_begin_local_execution():
         raise HTTPException(
@@ -423,18 +424,18 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
         )
 
     try:
-        snapshot = get_provider_snapshot(reachability_provider, force_refresh=True)
+        snapshot = get_provider_snapshot(active.provider, force_refresh=True)
         if not snapshot["reachable"]:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    "Ollama daemon is unreachable; local model state cannot be verified."
+                    "Local runtime is unreachable; local model state cannot be verified."
                 ),
             )
         if not unload_active_local_model():
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Active local model failed to unload from Ollama.",
+                detail="Active local model failed to unload from the local runtime.",
             )
     finally:
         end_local_execution()
@@ -723,7 +724,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     Execute one Cortex Engine Agent turn with optional tool calling.
 
     Runs synchronously so uvicorn can offload blocking provider I/O to a
-    worker thread. Local (Ollama) queries pass an admission gate first:
+    worker thread. Local Agent queries pass an admission gate first:
     a non-blocking execution slot (429 when busy), a host resource gate for
     cold loads/switches (503 with the gate reason), and a coordinated model
     switch (503 on load failure). Already-loaded target models bypass the

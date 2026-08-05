@@ -91,7 +91,7 @@ def cortex_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     Execute one Cortex Engine turn for the selected Apex Agent.
 
     Runs synchronously so uvicorn can offload blocking provider I/O to a
-    worker thread. Local (Ollama) queries pass an admission gate first:
+    worker thread. Local Agent queries pass an admission gate first:
     a non-blocking execution slot (429 when busy), a host resource gate for
     cold loads/switches (503 with the gate reason), and a coordinated model
     switch (503 on load failure). Already-loaded target models bypass the
