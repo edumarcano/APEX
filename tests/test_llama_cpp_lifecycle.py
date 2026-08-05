@@ -12,6 +12,8 @@ from unittest.mock import MagicMock
 
 import requests
 
+from core.agent.catalog import agent_key_for_local_model_ref
+from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers import llama_cpp_lifecycle as lifecycle
 from core.agent.providers.llama_cpp_lifecycle import (
     LlamaCppRuntimeBackend,
@@ -67,7 +69,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
 
     def _session_get_models(
         self,
-        payload: dict | None = None,
+        payload: dict | list | None = None,
         *,
         side_effect: Exception | None = None,
     ) -> MagicMock:
@@ -83,30 +85,151 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         session.get.return_value = response
         return session
 
-    def test_models_list_parses_loaded_sleeping_and_loading(self) -> None:
+    def test_models_list_parses_object_status_and_context_args(self) -> None:
         session = self._session_get_models()
         with mock.patch.object(lifecycle, "_SESSION", session):
             snapshot = self.backend.get_status_snapshot(force_refresh=True)
 
         self.assertTrue(snapshot["reachable"])
-        self.assertIn("apodemus-8k", snapshot["installed_models"])
+        self.assertEqual(
+            snapshot["installed_models"],
+            ["apodemus-8k", "apodemus-4k", "apodemus-16k", "apodemus-32k"],
+        )
         states = {row["model"]: row["state"] for row in snapshot["loaded_models"]}
         self.assertEqual(states["apodemus-8k"], "loaded")
         self.assertEqual(states["apodemus-16k"], "sleeping")
         self.assertEqual(states["apodemus-32k"], "loading")
         self.assertNotIn("apodemus-4k", states)
 
+        windows = {
+            row["model"]: row["context_window"] for row in snapshot["loaded_models"]
+        }
+        self.assertEqual(windows["apodemus-8k"], 8192)
+        self.assertEqual(windows["apodemus-16k"], 16384)
+        self.assertEqual(windows["apodemus-32k"], 32768)
+
         _args, kwargs = session.get.call_args
         self.assertTrue(str(_args[0]).endswith("/models"))
         self.assertIn("headers", kwargs)
+
+    def test_flat_string_status_remains_supported(self) -> None:
+        payload = {
+            "data": [
+                {
+                    "id": "apodemus-8k",
+                    "status": "loaded",
+                    "n_ctx": 8192,
+                }
+            ]
+        }
+        session = self._session_get_models(payload)
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+        self.assertEqual(
+            [row["state"] for row in snapshot["loaded_models"]],
+            ["loaded"],
+        )
+        self.assertEqual(snapshot["loaded_models"][0]["context_window"], 8192)
+
+    def test_failed_status_object_with_unloaded_value(self) -> None:
+        payload = {
+            "data": [
+                {
+                    "id": "apodemus-8k",
+                    "status": {
+                        "value": "unloaded",
+                        "failed": True,
+                        "exit_code": 1,
+                        "args": [],
+                    },
+                }
+            ]
+        }
+        session = self._session_get_models(payload)
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+            self.assertEqual(snapshot["loaded_models"][0]["state"], "failed")
+            self.assertFalse(self.backend.is_model_resident("apodemus-8k"))
+
+    def test_missing_alias_is_not_fabricated_as_installed(self) -> None:
+        payload = {
+            "data": [
+                {
+                    "id": "apodemus-4k",
+                    "status": {"value": "unloaded", "args": []},
+                }
+            ]
+        }
+        session = self._session_get_models(payload)
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+
+        self.assertEqual(snapshot["installed_models"], ["apodemus-4k"])
+        self.assertNotIn("apodemus-8k", snapshot["installed_models"])
+        self.assertNotIn("apodemus-16k", snapshot["installed_models"])
+        self.assertNotIn("apodemus-32k", snapshot["installed_models"])
+
+    def test_unloaded_configured_alias_still_appears_installed(self) -> None:
+        payload = {
+            "data": [
+                {
+                    "id": "apodemus-8k",
+                    "status": {"value": "unloaded", "args": []},
+                }
+            ]
+        }
+        session = self._session_get_models(payload)
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+        self.assertIn("apodemus-8k", snapshot["installed_models"])
+        self.assertEqual(snapshot["loaded_models"], [])
+
+    def test_unknown_external_alias_is_not_an_apex_agent(self) -> None:
+        payload = {
+            "data": [
+                {
+                    "id": "other-gguf-alias",
+                    "status": {"value": "loaded", "args": ["-ctx", "2048"]},
+                }
+            ]
+        }
+        session = self._session_get_models(payload)
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+        self.assertEqual(snapshot["installed_models"], ["other-gguf-alias"])
+        self.assertIsNone(
+            agent_key_for_local_model_ref(
+                LocalModelRef(provider="llama_cpp", model="other-gguf-alias")
+            )
+        )
+
+    def test_malformed_models_payload_fails_closed(self) -> None:
+        for payload in ({}, {"unexpected": []}, {"data": "not-a-list"}):
+            with self.subTest(payload=payload):
+                session = self._session_get_models(payload)
+                with mock.patch.object(lifecycle, "_SESSION", session), self.assertLogs(
+                    "core.agent.providers.llama_cpp_lifecycle", level="WARNING"
+                ) as logs:
+                    snapshot = self.backend.get_status_snapshot(force_refresh=True)
+                self.assertFalse(snapshot["reachable"])
+                self.assertEqual(snapshot["installed_models"], [])
+                self.assertEqual(snapshot["loaded_models"], [])
+                self.assertIn("missing recognized model array", "\n".join(logs.output))
+
+    def test_empty_data_array_is_reachable_with_no_models(self) -> None:
+        session = self._session_get_models({"object": "list", "data": []})
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+        self.assertTrue(snapshot["reachable"])
+        self.assertEqual(snapshot["installed_models"], [])
+        self.assertEqual(snapshot["loaded_models"], [])
 
     def test_sleeping_model_is_not_resident(self) -> None:
         payload = {
             "data": [
                 {
                     "id": "apodemus-8k",
-                    "status": "sleeping",
-                    "n_ctx": 8192,
+                    "status": {"value": "sleeping", "args": ["-ctx", "8192"]},
                 }
             ]
         }
@@ -143,9 +266,33 @@ class LlamaCppLifecycleTests(unittest.TestCase):
 
     def test_load_model_posts_and_verifies_residency(self) -> None:
         get_payloads = [
-            {"data": [{"id": "apodemus-8k", "status": "unloaded"}]},
-            {"data": [{"id": "apodemus-8k", "status": "loaded", "n_ctx": 8192}]},
-            {"data": [{"id": "apodemus-8k", "status": "loaded", "n_ctx": 8192}]},
+            {
+                "data": [
+                    {"id": "apodemus-8k", "status": {"value": "unloaded", "args": []}}
+                ]
+            },
+            {
+                "data": [
+                    {
+                        "id": "apodemus-8k",
+                        "status": {
+                            "value": "loaded",
+                            "args": ["llama-server", "-ctx", "8192"],
+                        },
+                    }
+                ]
+            },
+            {
+                "data": [
+                    {
+                        "id": "apodemus-8k",
+                        "status": {
+                            "value": "loaded",
+                            "args": ["llama-server", "-ctx", "8192"],
+                        },
+                    }
+                ]
+            },
         ]
         get_calls = {"n": 0}
 
@@ -183,8 +330,28 @@ class LlamaCppLifecycleTests(unittest.TestCase):
 
     def test_unload_model_posts_and_accepts_sleeping(self) -> None:
         get_payloads = [
-            {"data": [{"id": "apodemus-8k", "status": "loaded", "n_ctx": 8192}]},
-            {"data": [{"id": "apodemus-8k", "status": "sleeping", "n_ctx": 8192}]},
+            {
+                "data": [
+                    {
+                        "id": "apodemus-8k",
+                        "status": {
+                            "value": "loaded",
+                            "args": ["llama-server", "-ctx", "8192"],
+                        },
+                    }
+                ]
+            },
+            {
+                "data": [
+                    {
+                        "id": "apodemus-8k",
+                        "status": {
+                            "value": "sleeping",
+                            "args": ["llama-server", "-ctx", "8192"],
+                        },
+                    }
+                ]
+            },
         ]
         get_calls = {"n": 0}
 

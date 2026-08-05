@@ -146,9 +146,10 @@ These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instea
 llama.cpp is not required to start APEX. When you want Apex Apodemus:
 
 1. Run an external llama.cpp router separately from APEX (the Python process does not embed the server).
-2. Configure router aliases such as `apodemus-8k` for `gemma-4-E2B-Q4_K_M.gguf` with reasoning disabled.
-3. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
-4. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
+2. Copy [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini) to a machine-local path, set the GGUF placeholder, and keep that copy untracked.
+3. Start the router with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-router-presets).
+4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
+5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 
 A manual smoke script is available when a router is running:
 

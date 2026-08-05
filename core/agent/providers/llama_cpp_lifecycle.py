@@ -21,7 +21,6 @@ from core.agent.local_runtime.contract import (
     LocalRuntimeModel,
     LocalRuntimeSnapshot,
 )
-from core.agent.providers.llama_cpp_models import APODEMUS_RUNTIME_MODEL_IDS
 from core.config import (
     LLAMA_CPP_ENABLED,
     LLAMA_CPP_HOST,
@@ -89,20 +88,22 @@ def _normalize_model_state(raw: object) -> LocalModelState:
     return "unknown"
 
 
-def _configured_aliases() -> list[str]:
-    return list(APODEMUS_RUNTIME_MODEL_IDS.values())
+def _extract_model_rows(payload: object) -> tuple[bool, list[dict[str, Any]]]:
+    """
+    Parse a /models payload into (shape_ok, rows).
 
-
-def _extract_model_rows(payload: object) -> list[dict[str, Any]]:
+    Accepted shapes are a top-level list, ``{"data": [...]}``, or
+    ``{"models": [...]}``. Any other dictionary fails closed.
+    """
     if isinstance(payload, list):
-        return [row for row in payload if isinstance(row, dict)]
+        return True, [row for row in payload if isinstance(row, dict)]
     if not isinstance(payload, dict):
-        return []
+        return False, []
     for key in ("data", "models"):
         rows = payload.get(key)
         if isinstance(rows, list):
-            return [row for row in rows if isinstance(row, dict)]
-    return []
+            return True, [row for row in rows if isinstance(row, dict)]
+    return False, []
 
 
 def _model_id_from_row(row: dict[str, Any]) -> str | None:
@@ -113,8 +114,63 @@ def _model_id_from_row(row: dict[str, Any]) -> str | None:
     return None
 
 
+def _context_window_from_args(args: object) -> int | None:
+    """Extract context size from router status.args CLI tokens."""
+    if not isinstance(args, list):
+        return None
+
+    flag_tokens = {"-ctx", "--ctx-size", "--ctx_size", "-c"}
+    for index, token in enumerate(args):
+        if not isinstance(token, str):
+            continue
+        stripped = token.strip()
+        for prefix in ("--ctx-size=", "--ctx_size=", "-ctx=", "-c="):
+            if stripped.startswith(prefix):
+                return _coerce_optional_int(stripped[len(prefix) :])
+        if stripped in flag_tokens and index + 1 < len(args):
+            return _coerce_optional_int(args[index + 1])
+    return None
+
+
+def _parse_row_status(row: dict[str, Any]) -> tuple[LocalModelState, int | None]:
+    """
+    Normalize router status into a LocalModelState and optional context window.
+
+    Official router builds report ``status`` as an object with ``value``,
+    optional ``failed``, and ``args``. Older synthetic fixtures used a flat
+    string; both forms are accepted.
+    """
+    status_raw = row.get("status")
+    status_value: object
+    failed = False
+    args: object = None
+
+    if isinstance(status_raw, dict):
+        status_value = status_raw.get("value")
+        failed = status_raw.get("failed") is True
+        args = status_raw.get("args")
+    elif isinstance(status_raw, str):
+        status_value = status_raw
+    else:
+        status_value = row.get("state")
+
+    state: LocalModelState = (
+        "failed" if failed else _normalize_model_state(status_value)
+    )
+
+    context_window = _coerce_optional_int(
+        row.get("n_ctx")
+        or row.get("context_window")
+        or row.get("ctx_size")
+        or row.get("context")
+    )
+    if context_window is None:
+        context_window = _context_window_from_args(args)
+    return state, context_window
+
+
 def _probe_models() -> tuple[bool, list[str], list[LocalRuntimeModel]]:
-    """Probe GET /models for reachability, configured IDs, and residency rows."""
+    """Probe GET /models for reachability, router-reported IDs, and residency."""
     url = f"{LLAMA_CPP_HOST.rstrip('/')}/models"
     try:
         response = _SESSION.get(
@@ -141,10 +197,13 @@ def _probe_models() -> tuple[bool, list[str], list[LocalRuntimeModel]]:
         )
         return False, [], []
 
-    rows = _extract_model_rows(payload)
-    if not rows and not isinstance(payload, (dict, list)):
-        _LOGGER.warning("llama.cpp models response missing model array from %s", url)
-        return True, _configured_aliases(), []
+    shape_ok, rows = _extract_model_rows(payload)
+    if not shape_ok:
+        _LOGGER.warning(
+            "llama.cpp models response missing recognized model array from %s",
+            url,
+        )
+        return False, [], []
 
     installed: list[str] = []
     loaded_models: list[LocalRuntimeModel] = []
@@ -158,17 +217,8 @@ def _probe_models() -> tuple[bool, list[str], list[LocalRuntimeModel]]:
             installed.append(model_id)
             seen_ids.add(model_id)
 
-        status_value = row.get("status")
-        if status_value is None and isinstance(row.get("state"), str):
-            status_value = row.get("state")
-        state = _normalize_model_state(status_value)
+        state, context_window = _parse_row_status(row)
         if state in {"loading", "loaded", "sleeping", "failed"}:
-            context_window = _coerce_optional_int(
-                row.get("n_ctx")
-                or row.get("context_window")
-                or row.get("ctx_size")
-                or row.get("context")
-            )
             loaded_models.append(
                 LocalRuntimeModel(
                     provider="llama_cpp",
@@ -185,13 +235,6 @@ def _probe_models() -> tuple[bool, list[str], list[LocalRuntimeModel]]:
                     expires_at=None,
                 )
             )
-
-    # Configured Apodemus aliases remain discoverable even when the router lists
-    # only currently resident models.
-    for alias in _configured_aliases():
-        if alias not in seen_ids:
-            installed.append(alias)
-            seen_ids.add(alias)
 
     return True, installed, loaded_models
 

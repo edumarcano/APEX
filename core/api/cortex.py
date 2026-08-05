@@ -121,6 +121,42 @@ def _local_context_window_for_agent(agent_key: str) -> int | None:
     return 8192
 
 
+def _local_provider_label(provider: str) -> str:
+    """Return a short display label for local-runtime error messages."""
+    if provider == "llama_cpp":
+        return "llama.cpp"
+    if provider == "ollama":
+        return "Ollama"
+    return "local runtime"
+
+
+def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
+    """
+    Verify the selected runtime alias exists on a fresh provider snapshot.
+
+    Raises HTTP 503 when the provider is unreachable or the alias is absent.
+    """
+    snapshot = get_provider_snapshot(profile.provider, force_refresh=True)
+    provider_label = _local_provider_label(profile.provider)
+    if not snapshot["reachable"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"{provider_label} is unreachable at the configured host. "
+                "Ensure the local runtime is running and reachable."
+            ),
+        )
+    if profile.runtime_model_id not in snapshot["installed_models"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Local model {profile.runtime_model_id} is not configured in "
+                f"{provider_label}. Ensure the selected preset or alias is "
+                "present in the local runtime."
+            ),
+        )
+
+
 def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
     spec = AGENT_SPECS[agent_key]
     pricing = agent_pricing(
@@ -505,7 +541,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
     assert is_local_profile(profile)
     backend = get_local_runtime_backend(profile.provider)
     if not backend.enabled:
-        provider_label = "llama.cpp" if profile.provider == "llama_cpp" else "Ollama"
+        provider_label = _local_provider_label(profile.provider)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Local {provider_label} inference is disabled in system settings.",
@@ -525,6 +561,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         )
 
     try:
+        _ensure_local_alias_configured(profile)
         already_resident = backend.is_model_resident(profile.runtime_model_id)
         if not already_resident:
             gate_open, gate_reason = check_resource_gate(
@@ -539,7 +576,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         if not switch_local_model(profile) or not backend.is_model_resident(
             profile.runtime_model_id
         ):
-            provider_label = "llama.cpp" if profile.provider == "llama_cpp" else "Ollama"
+            provider_label = _local_provider_label(profile.provider)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
@@ -893,10 +930,13 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     if is_local_profile(profile):
         backend = get_local_runtime_backend(profile.provider)
+        provider_label = _local_provider_label(profile.provider)
         if not backend.enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Local Ollama inference is disabled in system settings.",
+                detail=(
+                    f"Local {provider_label} inference is disabled in system settings."
+                ),
             )
 
         if not try_begin_local_execution():
@@ -909,6 +949,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             )
 
         try:
+            _ensure_local_alias_configured(profile)
             model_ref = LocalModelRef(
                 provider=profile.provider, model=profile.runtime_model_id
             )
@@ -931,7 +972,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=(
                         f"Local model {profile.runtime_model_id} failed to load. "
-                        "Ensure Ollama is reachable and configured."
+                        f"Ensure {provider_label} is reachable and configured."
                     ),
                 )
 

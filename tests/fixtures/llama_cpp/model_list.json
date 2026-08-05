@@ -5,28 +5,63 @@
       "id": "apodemus-8k",
       "object": "model",
       "owned_by": "llamacpp",
-      "status": "loaded",
-      "n_ctx": 8192,
-      "size": 2147483648
+      "created": 0,
+      "aliases": [],
+      "tags": [],
+      "status": {
+        "value": "loaded",
+        "args": [
+          "llama-server",
+          "-m",
+          "gemma-4-E2B-Q4_K_M.gguf",
+          "-ctx",
+          "8192"
+        ]
+      }
     },
     {
       "id": "apodemus-4k",
       "object": "model",
       "owned_by": "llamacpp",
-      "status": "unloaded"
+      "created": 0,
+      "aliases": [],
+      "tags": [],
+      "status": {
+        "value": "unloaded",
+        "args": []
+      }
     },
     {
       "id": "apodemus-16k",
       "object": "model",
       "owned_by": "llamacpp",
-      "status": "sleeping",
-      "n_ctx": 16384
+      "created": 0,
+      "aliases": [],
+      "tags": [],
+      "status": {
+        "value": "sleeping",
+        "args": [
+          "llama-server",
+          "--ctx-size",
+          "16384"
+        ]
+      }
     },
     {
       "id": "apodemus-32k",
       "object": "model",
       "owned_by": "llamacpp",
-      "status": "loading"
+      "created": 0,
+      "aliases": [],
+      "tags": [],
+      "status": {
+        "value": "loading",
+        "args": [
+          "llama-server",
+          "-c",
+          "32768"
+        ]
+      }
     }
   ]
 }

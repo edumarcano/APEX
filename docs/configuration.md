@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `8`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `9`.
 
 | Group | Editable values |
 |---|---|
@@ -155,7 +155,49 @@ Machine-local overrides may enable the backend without committing host details:
 }
 ```
 
-Preset aliases such as `apodemus-4k` through `apodemus-32k` are configured on the external router to load `gemma-4-E2B-Q4_K_M.gguf` with the matching context size. Do not commit absolute model paths.
+#### External router presets
+
+APEX does not ship binaries or GGUF weights. Configure Apodemus aliases on an external llama.cpp router with one preset per context size. A tracked placeholder is in [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholder, and keep absolute paths out of git.
+
+```ini
+version = 1
+
+[*]
+jinja = true
+reasoning = off
+parallel = 1
+
+[apodemus-4k]
+model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
+ctx-size = 4096
+
+[apodemus-8k]
+model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
+ctx-size = 8192
+
+[apodemus-16k]
+model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
+ctx-size = 16384
+
+[apodemus-32k]
+model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
+ctx-size = 32768
+```
+
+Recommended Windows launch (reconcile flag names against the build's `--help`):
+
+```powershell
+llama-server.exe `
+  --host 127.0.0.1 `
+  --port 8080 `
+  --models-preset <PATH_TO_MACHINE_LOCAL_PRESET> `
+  --models-max 1 `
+  --no-models-autoload
+```
+
+`--models-max 1` keeps a single resident model at the router. `--no-models-autoload` requires explicit `/models/load` so APEX remains the admission owner. Do not enable llama.cpp idle sleeping in this reference setup; APEX owns the HUD idle unload timer. Initial Windows validation used the `llama-b10276-bin-win-cpu-x64` package without hard-pinning that build in code.
+
+Installed aliases come only from the router's `/models` list. A missing `apodemus-8k` (or other selected preset) is reported as not configured rather than fabricated by APEX.
 
 #### Apodemus context preference
 

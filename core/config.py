@@ -433,24 +433,27 @@ def _parse_resource_gate(
     profile: str,
     default_ram: float,
     default_cpu: float,
+    gate_root: str = "ollama",
 ) -> tuple[float, float]:
-    """Parse RAM and CPU percentage limits for a single Ollama profile gate."""
+    """Parse RAM and CPU percentage limits for a single local-profile gate."""
+    root = gate_root.strip() or "ollama"
     if not isinstance(gates, dict):
         if gates is not None:
             _LOGGER.warning(
-                'Config key "ollama.resource_gates.%s" must be a JSON object; using defaults.',
+                'Config key "%s.resource_gates.%s" must be a JSON object; using defaults.',
+                root,
                 profile,
             )
         return default_ram, default_cpu
 
     ram = _parse_config_float(
         gates.get("ram_limit"),
-        key=f"ollama.resource_gates.{profile}.ram_limit",
+        key=f"{root}.resource_gates.{profile}.ram_limit",
         default=default_ram,
     )
     cpu = _parse_config_float(
         gates.get("cpu_limit"),
-        key=f"ollama.resource_gates.{profile}.cpu_limit",
+        key=f"{root}.resource_gates.{profile}.cpu_limit",
         default=default_cpu,
     )
     return ram, cpu
@@ -674,6 +677,7 @@ try:
         profile="apodemus",
         default_ram=_DEFAULT_APODEMUS_RAM,
         default_cpu=_DEFAULT_APODEMUS_CPU,
+        gate_root="llama_cpp",
     )
     APODEMUS_RAM_LIMIT: Final[float] = _apodemus_ram
     APODEMUS_CPU_LIMIT: Final[float] = _apodemus_cpu
