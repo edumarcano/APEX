@@ -145,15 +145,21 @@ export interface AgentPricingMetadata {
   long_context_cached_input_per_million: number | null
 }
 
-export interface LoadedOllamaModelStatus {
+export interface LocalLoadedModelStatus {
+  provider: 'ollama'
   name: string
   model: string
+  state: 'unloaded' | 'loading' | 'loaded' | 'sleeping' | 'failed' | 'unknown'
+  context_window: number | null
   size_bytes: number | null
   size_vram_bytes: number | null
   processor: string | null
   context: string | null
   expires_at: string | null
 }
+
+/** @deprecated Prefer LocalLoadedModelStatus */
+export type LoadedOllamaModelStatus = LocalLoadedModelStatus
 
 export interface AgentStatus {
   key: AgentKey
@@ -179,7 +185,7 @@ export interface AgentStatus {
   loading: boolean
   reason: string | null
   idle_unload_remaining_seconds: number | null
-  loaded_model: LoadedOllamaModelStatus | null
+  loaded_model: LocalLoadedModelStatus | null
 }
 
 export interface AgentInitialSelection {

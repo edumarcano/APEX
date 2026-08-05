@@ -15,8 +15,9 @@ from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_tod
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
-from core.config import ENV_PATH, OLLAMA_ENABLED
-from core.agent.providers.ollama_lifecycle import check_idle_models_loop
+from core.config import ENV_PATH
+from core.agent.local_runtime.coordinator import check_idle_local_models_loop
+from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core import database
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
@@ -39,9 +40,9 @@ async def _app_lifespan(_app: FastAPI):
     set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db()
 
-    if OLLAMA_ENABLED:
-        idle_model_task = asyncio.create_task(check_idle_models_loop())
-        _LOGGER.info("Started Ollama idle model monitor")
+    if any_local_runtime_enabled():
+        idle_model_task = asyncio.create_task(check_idle_local_models_loop())
+        _LOGGER.info("Started local runtime idle model monitor")
 
     mcp_config = load_mcp_config()
     mcp_manager = MCPClientManager(mcp_config)

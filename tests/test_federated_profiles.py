@@ -441,8 +441,23 @@ class ProfileStatusMetadataTests(unittest.TestCase):
     def test_neofelis_reports_configured_model_and_effective_native_tools(self) -> None:
         settings = mock.Mock()
         settings.ask_apex.neofelis_google_search_enabled = False
+        backend = mock.Mock()
+        backend.provider = "ollama"
+        backend.enabled = False
         with (
-            mock.patch("core.api.cortex.OLLAMA_ENABLED", False),
+            mock.patch("core.api.cortex.iter_local_runtime_backends", return_value=()),
+            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
+            mock.patch(
+                "core.api.cortex.get_system_vitals",
+                return_value={"cpu": 0.0, "ram": 0.0},
+            ),
+            mock.patch("core.api.cortex.get_active_local_model", return_value=None),
+            mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
+            mock.patch(
+                "core.api.cortex.get_idle_unload_remaining_seconds",
+                return_value=None,
+            ),
+            mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
             mock.patch("core.api.cortex.is_dev_mode", return_value=False),
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
             mock.patch("core.api.cortex.get_settings_store") as store,

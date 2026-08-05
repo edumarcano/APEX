@@ -56,9 +56,11 @@ import {
   resolveAppliedAgentSelection,
   resolveInitialAgentSelection,
 } from './lib/settings'
+import { isCloudSettingsAgentKey, isLocalAgentKey } from './lib/agents'
 import type {
   AgentKey,
   CloudEffort,
+  CloudSettingsAgent,
   LocalToolScope,
 } from './types/telemetry'
 import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
@@ -141,7 +143,7 @@ function isCloudAgentKey(
   if (match) {
     return match.runtime === 'cloud'
   }
-  return agent !== 'sorex' && agent !== 'mus'
+  return !isLocalAgentKey(agent)
 }
 
 export default function App(): ReactElement {
@@ -152,7 +154,7 @@ export default function App(): ReactElement {
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
-  const [cloudAgent, setCloudAgent] = useState<Exclude<AgentKey, 'sorex' | 'mus' | 'acinonyx'>>('panthera')
+  const [cloudAgent, setCloudAgent] = useState<CloudSettingsAgent>('panthera')
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
@@ -207,7 +209,7 @@ export default function App(): ReactElement {
     refreshAgentsStatus,
     clearCortexSession,
   } = useCortex(true, activeAgent)
-  const isLocalAgent = activeAgent === 'sorex' || activeAgent === 'mus'
+  const isLocalAgent = isLocalAgentKey(activeAgent)
   const { commands: localCommands } = useLocalCommands(isLocalAgent)
 
   useEffect(() => {
@@ -231,7 +233,7 @@ export default function App(): ReactElement {
     )
     if (selection) {
       setAgent(selection.agent)
-      if (selection.agent !== 'sorex' && selection.agent !== 'mus' && selection.agent !== 'acinonyx') {
+      if (isCloudSettingsAgentKey(selection.agent)) {
         setCloudAgent(selection.agent)
       }
       if (selection.effort) {
@@ -268,7 +270,7 @@ export default function App(): ReactElement {
         marketEnabled: response.settings.features.market,
       })
       setAgent(selection.agent)
-      if (selection.agent !== 'sorex' && selection.agent !== 'mus' && selection.agent !== 'acinonyx') {
+      if (isCloudSettingsAgentKey(selection.agent)) {
         setCloudAgent(selection.agent)
       }
       if (selection.effort) {
@@ -353,7 +355,7 @@ export default function App(): ReactElement {
   const activeLocalModel = useMemo(
     () =>
       agentsStatus.find(
-        (agent) => agent.provider === 'ollama' && agent.active,
+        (agent) => agent.runtime === 'local' && agent.active,
       ) ?? null,
     [agentsStatus],
   )
@@ -775,19 +777,21 @@ export default function App(): ReactElement {
 
   const handleAgentChange = useCallback((agent: AgentKey): void => {
     setAgent(agent)
-    if (agent !== 'sorex' && agent !== 'mus') {
+    if (!isLocalAgentKey(agent)) {
       setArmedLocalToolScope(null)
     }
     if (agent === 'acinonyx') {
       void persistAskApexSettings({ runtime: 'cloud', effort: cloudEffort }, agent)
       return
     }
-    if (agent === 'sorex' || agent === 'mus') {
+    if (isLocalAgentKey(agent)) {
       void persistAskApexSettings({ runtime: 'local', local_agent: agent }, agent)
       return
     }
-    setCloudAgent(agent)
-    void persistAskApexSettings({ runtime: 'cloud', cloud_agent: agent, effort: cloudEffort }, agent)
+    if (isCloudSettingsAgentKey(agent)) {
+      setCloudAgent(agent)
+      void persistAskApexSettings({ runtime: 'cloud', cloud_agent: agent, effort: cloudEffort }, agent)
+    }
   }, [cloudEffort, persistAskApexSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {

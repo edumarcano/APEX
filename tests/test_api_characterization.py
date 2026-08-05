@@ -66,8 +66,7 @@ class ApiCharacterizationBase(unittest.TestCase):
                 "core.api.cortex.get_settings_store", return_value=self.store
             ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
-            mock.patch("core.api.app.OLLAMA_ENABLED", False),
-            mock.patch("core.api.cortex.OLLAMA_ENABLED", False),
+            mock.patch("core.api.app.any_local_runtime_enabled", return_value=False),
             mock.patch("core.database.DB_NAME", str(self.db_path)),
         ]
         for patcher in self._patches:

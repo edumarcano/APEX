@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.agent.providers.contract import InferenceProvider, ProviderToolEvent
+from core.agent.providers.contract import (
+    InferenceProvider,
+    ProviderToolEvent,
+    is_local_inference_provider,
+)
 from core.agent.types import CostCompleteness, CostEstimate, TokenUsage
 
 PRICING_VERSION = "2026.08.02"
@@ -92,7 +96,7 @@ def lookup_model_rates(
     model: str | None, *, provider: InferenceProvider | None = None
 ) -> ModelTokenRates | None:
     """Return standard model rates; local inference has no provider token cost."""
-    if provider == "ollama":
+    if is_local_inference_provider(provider):
         return _LOCAL_ZERO
     if not model:
         return None
@@ -108,7 +112,7 @@ def agent_pricing(
     """Return the authoritative billing basis for an Apex Agent."""
     if agent_key == "acinonyx":
         return ProfilePricing("free_tier", _FREE_TIER_ZERO)
-    if provider == "ollama":
+    if is_local_inference_provider(provider):
         return ProfilePricing("local", _LOCAL_ZERO)
     return ProfilePricing(
         "standard",

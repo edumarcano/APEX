@@ -394,6 +394,14 @@ def check_frontend_owner_names(root: Path) -> list[DocumentationIssue]:
     return issues
 
 
+PROVIDER_DISPLAY_NAMES: dict[str, str] = {
+    "openai": "OpenAI",
+    "gemini": "Gemini",
+    "xai": "xAI",
+    "ollama": "Ollama",
+}
+
+
 def check_default_briefing_provider(root: Path) -> list[DocumentationIssue]:
     """Keep the README briefing diagram aligned with the configured default."""
     import json
@@ -404,12 +412,7 @@ def check_default_briefing_provider(root: Path) -> list[DocumentationIssue]:
     default_mode = config.get("briefing", {}).get("default_mode", "panthera")
     if default_mode in AGENT_SPECS:
         provider = AGENT_SPECS[default_mode].provider
-        expected = {
-            "openai": "OpenAI",
-            "gemini": "Gemini",
-            "xai": "xAI",
-            "ollama": "Ollama",
-        }[provider]
+        expected = PROVIDER_DISPLAY_NAMES[provider]
     else:
         expected = "Structured Digest"
 

@@ -13,7 +13,15 @@ from core.agent.types import (
 )
 
 InferenceProvider = Literal["gemini", "ollama", "openai", "xai"]
+LocalInferenceProvider = Literal["ollama"]
+LOCAL_INFERENCE_PROVIDERS: frozenset[str] = frozenset({"ollama"})
 ToolTraceOrigin = Literal["apex", "provider"]
+
+
+def is_local_inference_provider(value: object) -> bool:
+    """Return whether ``value`` identifies a local inference provider."""
+    return value in LOCAL_INFERENCE_PROVIDERS
+
 
 
 class ProviderToolEvent(BaseModel):

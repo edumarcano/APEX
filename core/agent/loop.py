@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Callable, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from core.agent.capabilities import (
     CapabilityDescriptor,
@@ -23,6 +23,7 @@ from core.agent.providers.contract import (
 )
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama_models import OllamaModelProfile
+from core.agent.local_runtime.contract import LocalModelProfile
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -57,6 +58,11 @@ class AgentProvider(Protocol[P]):
         ...
 
 
+def is_local_profile(profile: object) -> TypeGuard[LocalModelProfile]:
+    """Return whether a profile uses the local Agent runtime contract."""
+    return getattr(profile, "runtime", None) == "local"
+
+
 def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
     """Invoke a registered capability through the shared capability registry."""
     return invoke_capability(name, arguments)
@@ -67,12 +73,12 @@ def build_agent_failure_details(
     exc: Exception,
 ) -> tuple[str, str]:
     """Return the sanitized provider-specific failure response."""
-    if isinstance(profile, OllamaModelProfile):
+    if is_local_profile(profile):
         answer = (
-            "The Apex Agent encountered an issue reaching the local Ollama "
+            "The Apex Agent encountered an issue reaching the local "
             "provider or running the requested operations. Please verify that "
-            "Ollama is running, the model is installed, and system resources "
-            "are sufficient, then try again."
+            "the local runtime is available, the model is installed, and system "
+            "resources are sufficient, then try again."
         )
         error_detail = f"Local provider error ({type(exc).__name__})."
     else:
@@ -105,7 +111,7 @@ def run_agent_loop(
     provider_tool_events: list[ProviderToolEvent] = []
     total_tool_executions = 0
     last_model_content: str | None = None
-    is_local = isinstance(profile, OllamaModelProfile)
+    is_local = is_local_profile(profile)
     if is_local and request.tool_scope is not None:
         local_command = resolved_local_command or resolve_local_command(
             request.tool_scope

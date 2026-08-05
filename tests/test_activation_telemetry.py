@@ -162,7 +162,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "core.telemetry.preflight.get_settings_store", return_value=self.store
             ),
             mock.patch("core.database.DB_NAME", str(self.db_path)),
-            mock.patch("core.api.app.OLLAMA_ENABLED", False),
+            mock.patch("core.api.app.any_local_runtime_enabled", return_value=False),
         ]
         for patcher in self._patches:
             patcher.start()
@@ -616,20 +616,35 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_preflight_loaded_local_model_skips_cold_load_checks(self) -> None:
         local_snapshot = {
+            "provider": "ollama",
             "reachable": True,
-            "installed_tags": ["qwen3:1.7b"],
-            "loaded_models": [{"name": "qwen3:1.7b", "model": "qwen3:1.7b"}],
-            "vitals": {"ram": 99.0, "cpu": 99.0},
+            "installed_models": ["qwen3:1.7b"],
+            "loaded_models": [
+                {
+                    "provider": "ollama",
+                    "name": "qwen3:1.7b",
+                    "model": "qwen3:1.7b",
+                    "state": "loaded",
+                    "size_bytes": None,
+                    "size_vram_bytes": None,
+                    "processor": None,
+                    "context": None,
+                    "context_window": None,
+                    "expires_at": None,
+                }
+            ],
             "sampled_at": 0.0,
         }
+        backend = mock.Mock()
+        backend.enabled = True
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch(
-            "core.telemetry.preflight.OLLAMA_ENABLED", True
+            "core.telemetry.preflight.get_local_runtime_backend", return_value=backend
         ), mock.patch(
             "core.telemetry.preflight.is_local_execution_active", return_value=False
         ), mock.patch(
-            "core.telemetry.preflight.get_status_snapshot", return_value=local_snapshot
+            "core.telemetry.preflight.get_provider_snapshot", return_value=local_snapshot
         ), mock.patch(
             "core.telemetry.preflight.check_resource_gate"
         ) as resource_gate, mock.patch(
@@ -779,7 +794,7 @@ class TriggerWithoutGateTests(unittest.TestCase):
             ),
             mock.patch("core.speaker.get_settings_store", return_value=self.store),
             mock.patch("core.database.DB_NAME", str(self.db_path)),
-            mock.patch("core.api.app.OLLAMA_ENABLED", False),
+            mock.patch("core.api.app.any_local_runtime_enabled", return_value=False),
         ]
         for patcher in self._patches:
             patcher.start()

@@ -130,11 +130,11 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** Deterministic prose is less flexible, but its behavior is predictable and source-bounded.
 
-### Share one Ollama lifecycle across briefings and Agent turns
+### Share one local runtime lifecycle across briefings and Agent turns
 
-**Decision.** Local briefing and Agent work share Agent definitions, resource gates, the execution slot, model switching, and idle unload.
+**Decision.** Local briefing and Agent work share Agent definitions, resource gates, the execution slot, model switching, and idle unload through one provider-neutral coordinator. Ollama is currently the only local backend.
 
-**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. A second manager would hide rather than remove that contention.
+**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. A second manager would hide rather than remove that contention. Separating Ollama transport from global policy keeps a second local provider from copying orchestration throughout the application.
 
 **Trade-off.** One local operation can reject another instead of queuing. Prompts and context remain separate even though lifecycle ownership is shared.
 

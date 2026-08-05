@@ -336,27 +336,46 @@ class AgentPricingMetadata(BaseModel):
 
 
 class LocalLoadedModelStatus(BaseModel):
-    name: str = Field(description="Loaded model tag reported by Ollama.")
-    model: str = Field(description="Canonical loaded model name reported by Ollama.")
+    provider: Literal["ollama"] = Field(
+        default="ollama",
+        description="Local inference provider that reported this loaded model.",
+    )
+    name: str = Field(description="Loaded model tag reported by the local runtime.")
+    model: str = Field(description="Canonical loaded model name reported by the runtime.")
+    state: Literal[
+        "unloaded",
+        "loading",
+        "loaded",
+        "sleeping",
+        "failed",
+        "unknown",
+    ] = Field(
+        default="loaded",
+        description="Normalized residency state for the loaded model.",
+    )
+    context_window: int | None = Field(
+        default=None,
+        description="Numeric context window when reported by the runtime.",
+    )
     size_bytes: int | None = Field(
         default=None,
-        description="Total loaded model size in bytes, when reported by Ollama.",
+        description="Total loaded model size in bytes, when reported.",
     )
     size_vram_bytes: int | None = Field(
         default=None,
-        description="Loaded model bytes resident in VRAM, when reported by Ollama.",
+        description="Loaded model bytes resident in VRAM, when reported.",
     )
     processor: str | None = Field(
         default=None,
-        description="Processor/offload split reported by Ollama.",
+        description="Processor/offload split reported by the runtime.",
     )
     context: str | None = Field(
         default=None,
-        description="Runtime context length reported by Ollama.",
+        description="Runtime context length reported by the provider.",
     )
     expires_at: str | None = Field(
         default=None,
-        description="Ollama expiration timestamp for the loaded model.",
+        description="Provider expiration timestamp for the loaded model.",
     )
 
 
@@ -434,7 +453,7 @@ class AgentStatus(BaseModel):
     )
     loaded_model: LocalLoadedModelStatus | None = Field(
         default=None,
-        description="Runtime details reported by Ollama for the active loaded model.",
+        description="Runtime details reported by the local provider for the loaded model.",
     )
 
 
@@ -454,7 +473,7 @@ class LocalUnloadResponse(BaseModel):
 
 class LocalLoadRequest(BaseModel):
     agent: Literal["mus", "sorex"] = Field(
-        description="Local Apex Agent to pre-warm in Ollama memory."
+        description="Local Apex Agent to pre-warm in local runtime memory."
     )
 
 
@@ -464,7 +483,7 @@ class LocalLoadResponse(BaseModel):
         description="Outcome label for the verified local model load.",
     )
     agent: Literal["mus", "sorex"] = Field(
-        description="Local Agent confirmed resident by Ollama.",
+        description="Local Agent confirmed resident by the local runtime.",
     )
 
 

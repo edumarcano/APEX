@@ -3,6 +3,7 @@ import { useCallback, useState, type ReactElement } from 'react'
 
 import type { AgentStatus } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
+import { providerDisplayName } from '../lib/agents'
 
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'
@@ -52,7 +53,7 @@ export function LocalModelControl({
     return (
       <div className="home-local-runtime flex min-w-0 items-center gap-3 rounded-lg border border-orange-500/25 bg-orange-950/10 px-3 py-2" data-slot="home-local-runtime">
         <span className="min-w-0 flex-1 font-mono text-[10px] text-orange-100">
-          Local runtime: {agentName} · {runtimeState}
+          Local runtime ({providerDisplayName(visibleAgent.provider)}): {agentName} · {runtimeState}
         </span>
         <button
           type="button"

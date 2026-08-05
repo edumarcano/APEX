@@ -203,19 +203,24 @@ The MCP manager owns provider connection, discovery, registration, reconciliatio
 
 ## Local model lifecycle
 
-Local Agents share one Ollama lifecycle manager:
+Local Agents share one provider-neutral local runtime coordinator. Ollama is
+currently the only registered local backend:
 
 - Only one local generation can run at a time.
-- Only one APEX-selected model remains resident.
+- Only one APEX-selected model remains resident across local backends.
 - CPU and RAM percentage gates apply before a cold load.
 - An already resident target model skips the cold-load resource gate.
-- A different target unloads the previous model before warming the new one.
+- A different target unloads other known APEX local models before warming the new one.
+- Unknown externally loaded models remain visible but are not silently unloaded.
 - Activity resets the idle timer; the lifespan monitor unloads an idle model.
 - Manual load and unload are rejected while local inference or another lifecycle action is busy.
 - A manual load is a pre-warm; normal request routing can still load a selected model.
-- Lifecycle success is verified against Ollama's running-model state before the HUD reports it.
+- Lifecycle success is verified against the provider backend before the HUD reports it.
 
-This same lifecycle serves briefings and Agent turns, exposing contention immediately rather than hiding it behind an unbounded queue.
+Application orchestration routes through the coordinator and backend registry.
+Provider-specific discovery, warmup, unload, and residency probes remain inside
+the Ollama backend. This same lifecycle serves briefings and Agent turns,
+exposing contention immediately rather than hiding it behind an unbounded queue.
 
 ## Voice delivery
 

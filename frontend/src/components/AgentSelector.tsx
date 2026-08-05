@@ -12,8 +12,9 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
-import type { AgentStatus, AgentRuntime, AgentKey, AgentAvailabilityStatus } from '../types/telemetry'
+import type { AgentStatus, AgentRuntime, AgentKey, AgentAvailabilityStatus, LocalSettingsAgent } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
+import { providerDisplayName, runtimeForAgentKey } from '../lib/agents'
 
 import { AgentMark } from './AgentMark'
 
@@ -24,7 +25,7 @@ interface AgentSelectorProps {
   agentsStatusHydrated: boolean
   isQuerying: boolean
   verifyingAgent: AgentKey | null
-  onVerify: (agent: Exclude<AgentKey, 'mus' | 'sorex'>) => Promise<boolean>
+  onVerify: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
   presentation?: 'cortex' | 'home'
 }
 
@@ -38,7 +39,7 @@ const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
 }
 
 function agentRuntime(agent: AgentKey): AgentRuntime {
-  return agent === 'mus' || agent === 'sorex' ? 'local' : 'cloud'
+  return runtimeForAgentKey(agent)
 }
 
 function fallbackName(agent: AgentKey): string {
@@ -57,7 +58,10 @@ function formatModel(model: string): string {
 }
 
 function poweredBy(agent: AgentStatus): string {
-  const suffix = agent.provider === 'ollama' ? ' · Runs locally through Ollama' : ''
+  const suffix =
+    agent.runtime === 'local'
+      ? ` · Runs locally through ${providerDisplayName(agent.provider)}`
+      : ''
   return `Powered by ${formatModel(agent.configured_model)}${suffix}`
 }
 
@@ -172,7 +176,7 @@ export function AgentSelector({
         <span className="mt-3 block border-t border-white/10 pt-2 font-mono text-[10px] text-zinc-400">{poweredBy(agent)}</span>
         <span className="mt-2 flex flex-wrap items-center gap-1.5">{agent.capabilities.map((capability) => <span key={capability} className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400">{capability}</span>)}<span className={`ml-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{agent.status === 'unknown' || verifyPending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}{STATUS_LABELS[agent.status]}</span></span>
       </button>
-      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2"><span className="font-mono text-[9px] text-zinc-500">{agent.pricing.billing_basis === 'free_tier' ? 'Free tier' : agent.pricing.billing_basis === 'local' ? 'No provider token charge' : `In ${rate(agent.pricing.input_per_million)} · Out ${rate(agent.pricing.output_per_million)}`}</span>{agent.pricing.long_context_threshold_tokens ? <span className="font-mono text-[9px] text-zinc-600">Higher long-context rates may apply</span> : null}{isCloud ? <button type="button" disabled={!selectable || Boolean(verifyingAgent) || isQuerying} onClick={() => void onVerify(agent.key as Exclude<AgentKey, 'mus' | 'sorex'>)} className="ml-auto inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/55 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"><ShieldCheck className="size-3" aria-hidden />{verifyPending ? 'Verifying' : 'Verify access'}</button> : null}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2"><span className="font-mono text-[9px] text-zinc-500">{agent.pricing.billing_basis === 'free_tier' ? 'Free tier' : agent.pricing.billing_basis === 'local' ? 'No provider token charge' : `In ${rate(agent.pricing.input_per_million)} · Out ${rate(agent.pricing.output_per_million)}`}</span>{agent.pricing.long_context_threshold_tokens ? <span className="font-mono text-[9px] text-zinc-600">Higher long-context rates may apply</span> : null}{isCloud ? <button type="button" disabled={!selectable || Boolean(verifyingAgent) || isQuerying} onClick={() => void onVerify(agent.key as Exclude<AgentKey, LocalSettingsAgent>)} className="ml-auto inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/55 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"><ShieldCheck className="size-3" aria-hidden />{verifyPending ? 'Verifying' : 'Verify access'}</button> : null}</div>
       {agent.reason ? <p className="mt-2 text-[10px] text-red-200">{agent.reason}</p> : null}
     </article>
   }

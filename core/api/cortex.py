@@ -35,6 +35,7 @@ from core.agent.tool_policies import (
     filter_agent_capabilities,
     hosted_tools_for_agent,
 )
+from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
     cloud_status,
@@ -43,20 +44,24 @@ from core.agent.providers.cloud_verification import (
     verify_cloud_agent,
 )
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.ollama_lifecycle import (
-    SystemVitals,
+from core.agent.local_runtime.contract import LocalModelRef, SystemVitals
+from core.agent.local_runtime.coordinator import (
     check_resource_gate,
     end_local_execution,
-    get_active_loaded_model,
+    get_active_local_model,
     get_idle_unload_remaining_seconds,
-    get_loading_model,
-    get_status_snapshot,
+    get_loading_local_model,
+    get_provider_snapshot,
+    get_system_vitals,
     is_local_execution_active,
-    is_local_model_loaded,
-    is_local_model_resident,
+    is_local_model_ready,
     switch_local_model,
     try_begin_local_execution,
     unload_active_local_model,
+)
+from core.agent.local_runtime.registry import (
+    get_local_runtime_backend,
+    iter_local_runtime_backends,
 )
 from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.openai_provider import OpenAIProvider
@@ -79,7 +84,7 @@ from core.api.models import (
     AgentAvailabilityStatus,
     AgentStatusSource,
 )
-from core.config import DEMO_MODE, OLLAMA_ENABLED, OLLAMA_MANUAL_UNLOAD_ENABLED, is_dev_mode
+from core.config import DEMO_MODE, is_dev_mode
 from core.settings import get_settings_store
 from core.synthesis.formatting import sanitize_fact
 
@@ -130,21 +135,22 @@ def _resolve_local_agent_status(
     profile: OllamaModelProfile,
     *,
     is_active: bool,
-    ollama_reachable: bool,
-    installed_tags: list[str],
+    provider_reachable: bool,
+    installed_models: list[str],
     vitals: SystemVitals | None,
+    backend_enabled: bool,
 ) -> tuple[AgentAvailabilityStatus, str | None]:
-    """Evaluate a local Ollama model configuration using cached snapshot signals."""
-    if not OLLAMA_ENABLED:
+    """Evaluate a local model configuration using cached snapshot signals."""
+    if not backend_enabled:
         return "disabled", _PROFILE_STATUS_REASONS["disabled"]
 
-    if not ollama_reachable:
+    if not provider_reachable:
         return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
 
     if is_active:
         return "available", None
 
-    if profile.api_model not in installed_tags:
+    if profile.runtime_model_id not in installed_models:
         return "model_not_installed", _PROFILE_STATUS_REASONS["model_not_installed"]
 
     gate_open, gate_reason = check_resource_gate(
@@ -173,24 +179,34 @@ def _resolve_cloud_agent_status(
     )
 
 
+def _loaded_model_status(loaded_model: dict[str, Any]) -> LocalLoadedModelStatus:
+    """Map a normalized runtime model row into the public API shape."""
+    return LocalLoadedModelStatus(
+        provider=loaded_model.get("provider", "ollama"),
+        name=loaded_model["name"],
+        model=loaded_model["model"],
+        state=loaded_model.get("state", "loaded"),
+        context_window=loaded_model.get("context_window"),
+        size_bytes=loaded_model.get("size_bytes"),
+        size_vram_bytes=loaded_model.get("size_vram_bytes"),
+        processor=loaded_model.get("processor"),
+        context=loaded_model.get("context"),
+        expires_at=loaded_model.get("expires_at"),
+    )
+
+
 def build_agent_statuses() -> list[AgentStatus]:
     """Build the full Agent availability matrix for the HUD."""
-    tracked_active_model = get_active_loaded_model()
-    loading_model = get_loading_model()
+    tracked_active = get_active_local_model()
+    loading = get_loading_local_model()
     idle_remaining = get_idle_unload_remaining_seconds()
     dev_mode = is_dev_mode()
     assistant_settings = get_settings_store().get_snapshot().ask_apex
+    vitals = get_system_vitals()
 
-    ollama_reachable = False
-    installed_tags: list[str] = []
-    loaded_models: list[dict[str, Any]] = []
-    vitals: SystemVitals | None = None
-    if OLLAMA_ENABLED:
-        snapshot = get_status_snapshot()
-        ollama_reachable = snapshot["reachable"]
-        installed_tags = snapshot["installed_tags"]
-        loaded_models = snapshot["loaded_models"]
-        vitals = snapshot["vitals"]
+    snapshots: dict[str, Any] = {}
+    for backend in iter_local_runtime_backends(enabled_only=True):
+        snapshots[backend.provider] = backend.get_status_snapshot()
 
     agents: list[AgentStatus] = []
 
@@ -200,27 +216,41 @@ def build_agent_statuses() -> list[AgentStatus]:
             ["light", "focused", "extended"] if spec.supports_effort else None
         )
 
-        if spec.provider == "ollama":
+        if spec.runtime == "local":
             profile = build_concrete_agent(key, native_effort=None)
-            assert isinstance(profile, OllamaModelProfile)
+            assert is_local_profile(profile)
+            backend = get_local_runtime_backend(profile.provider)
+            snapshot = snapshots.get(profile.provider)
+            if snapshot is None and backend.enabled:
+                snapshot = backend.get_status_snapshot()
+                snapshots[profile.provider] = snapshot
+            loaded_models = snapshot["loaded_models"] if snapshot is not None else []
+            installed_models = (
+                snapshot["installed_models"] if snapshot is not None else []
+            )
+            provider_reachable = bool(snapshot and snapshot["reachable"])
+            model_ref = LocalModelRef(
+                provider=profile.provider, model=profile.runtime_model_id
+            )
             loaded_model = next(
                 (
                     model
                     for model in loaded_models
-                    if model["name"] == profile.api_model
-                    or model["model"] == profile.api_model
+                    if model["name"] == profile.runtime_model_id
+                    or model["model"] == profile.runtime_model_id
                 ),
                 None,
             )
-            is_tracked_active = tracked_active_model == profile.api_model
+            is_tracked_active = tracked_active == model_ref
             is_active = loaded_model is not None
-            is_loading = loading_model == profile.api_model
+            is_loading = loading == model_ref
             agent_status, reason = _resolve_local_agent_status(
-                profile,
+                profile,  # type: ignore[arg-type]
                 is_active=is_active,
-                ollama_reachable=ollama_reachable,
-                installed_tags=installed_tags,
+                provider_reachable=provider_reachable,
+                installed_models=installed_models,
                 vitals=vitals,
+                backend_enabled=backend.enabled,
             )
             if agent_status == "available" and is_local_execution_active():
                 agent_status, reason = "busy", _BUSY_REASON
@@ -229,7 +259,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                     key=key,
                     display_name=spec.display_name,
                     description=spec.description,
-                    provider="ollama",
+                    provider=spec.provider,
                     version=spec.agent_version,
                     configured_model=spec.api_model,
                     sort_order=sort_order,
@@ -250,7 +280,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                         idle_remaining if is_active and is_tracked_active else None
                     ),
                     loaded_model=(
-                        LocalLoadedModelStatus(**loaded_model)
+                        _loaded_model_status(loaded_model)
                         if loaded_model is not None
                         else None
                     ),
@@ -361,15 +391,27 @@ def build_local_command_statuses() -> list[LocalCommandStatus]:
 
 def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     """
-    Manually unload the currently active local Ollama model from memory.
+    Manually unload the currently active local model from memory.
 
     Returns success when no model is active or the unload completes cleanly.
     """
-    if not OLLAMA_MANUAL_UNLOAD_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manual local model unload is disabled in system settings.",
-        )
+    active = get_active_local_model()
+    if active is not None:
+        backend = get_local_runtime_backend(active.provider)
+        if not backend.manual_unload_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual local model unload is disabled in system settings.",
+            )
+        reachability_provider = active.provider
+    else:
+        enabled_backends = iter_local_runtime_backends(enabled_only=True)
+        if not any(backend.manual_unload_enabled for backend in enabled_backends):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual local model unload is disabled in system settings.",
+            )
+        reachability_provider = "ollama"
 
     if not try_begin_local_execution():
         raise HTTPException(
@@ -381,10 +423,13 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
         )
 
     try:
-        if not get_status_snapshot(force_refresh=True)["reachable"]:
+        snapshot = get_provider_snapshot(reachability_provider, force_refresh=True)
+        if not snapshot["reachable"]:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Ollama daemon is unreachable; local model state cannot be verified.",
+                detail=(
+                    "Ollama daemon is unreachable; local model state cannot be verified."
+                ),
             )
         if not unload_active_local_model():
             raise HTTPException(
@@ -397,28 +442,32 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
 
 
 def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
-    """Pre-warm one configured local Agent and verify Ollama residency."""
+    """Pre-warm one configured local Agent and verify residency."""
     if DEMO_MODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Local model pre-warming is unavailable in demo mode.",
         )
 
-    if not OLLAMA_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Local Ollama inference is disabled in system settings.",
-        )
-
     spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.provider != "ollama":
+    if spec is None or spec.runtime != "local":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Only configured local Agents can be pre-warmed.",
         )
 
     profile = build_concrete_agent(agent_key, native_effort=None)
-    assert isinstance(profile, OllamaModelProfile)
+    assert is_local_profile(profile)
+    backend = get_local_runtime_backend(profile.provider)
+    if not backend.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Local Ollama inference is disabled in system settings.",
+        )
+
+    model_ref = LocalModelRef(
+        provider=profile.provider, model=profile.runtime_model_id
+    )
 
     if not try_begin_local_execution():
         raise HTTPException(
@@ -430,7 +479,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         )
 
     try:
-        already_resident = is_local_model_resident(profile.api_model)
+        already_resident = backend.is_model_resident(profile.runtime_model_id)
         if not already_resident:
             gate_open, gate_reason = check_resource_gate(
                 profile.ram_limit, profile.cpu_limit
@@ -441,14 +490,14 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
                     detail=f"Local Agent blocked: {_PROFILE_STATUS_REASONS[gate_reason]}.",
                 )
 
-        if not switch_local_model(profile) or not is_local_model_resident(
-            profile.api_model
+        if not switch_local_model(profile) or not backend.is_model_resident(
+            profile.runtime_model_id
         ):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    f"Local model {profile.api_model} could not be verified in Ollama. "
-                    "Ensure Ollama is reachable and configured."
+                    f"Local model {profile.runtime_model_id} could not be verified "
+                    "in Ollama. Ensure Ollama is reachable and configured."
                 ),
             )
     finally:
@@ -456,7 +505,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
 
     # Force a post-transition snapshot so the next Agent response reflects
     # the daemon rather than a prior polling cache.
-    get_status_snapshot(force_refresh=True)
+    get_provider_snapshot(model_ref.provider, force_refresh=True)
     return LocalLoadResponse(agent=agent_key)
 
 
@@ -566,7 +615,9 @@ def _create_provider(agent_key: str, api_key: str):
         return OpenAIProvider(api_key=api_key)
     if spec.provider == "xai":
         return XAIProvider(api_key=api_key)
-    return OllamaProvider()
+    if spec.provider == "ollama":
+        return OllamaProvider()
+    raise ValueError(f"Unsupported inference provider: {spec.provider!r}")
 
 
 def _execute_agent_turn(
@@ -591,8 +642,13 @@ def _execute_agent_turn(
             else _build_hud_context(payload, agent_key=agent_key)
         )
 
-        if isinstance(profile, OllamaModelProfile):
-            provider = OllamaProvider()
+        if is_local_profile(profile):
+            if AGENT_SPECS[agent_key].provider == "ollama":
+                provider = OllamaProvider()
+            else:
+                raise ValueError(
+                    f"Unsupported local provider: {AGENT_SPECS[agent_key].provider!r}"
+                )
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
             if payload.tool_scope is None:
                 scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
@@ -628,7 +684,7 @@ def _execute_agent_turn(
             cloud_tools=cloud_tools,
             agent_key=agent_key,
         )
-        if not isinstance(profile, OllamaModelProfile):
+        if not is_local_profile(profile):
             record_cloud_request_success(agent_key)
         response.agent_used = build_agent_used_metadata(
             agent_key,
@@ -640,7 +696,7 @@ def _execute_agent_turn(
         )
         return response
     except Exception as exc:
-        if not isinstance(profile, OllamaModelProfile):
+        if not is_local_profile(profile):
             record_cloud_request_failure(agent_key, exc)
         _LOGGER.exception(
             "Agent turn failed for model configuration %s",
@@ -696,13 +752,13 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         return run_demo_agent_query(payload)
 
     spec = AGENT_SPECS[agent_key]
-    if spec.provider == "ollama" and payload.effort is not None:
+    if spec.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Effort cannot be set for local Agents.",
         )
 
-    if spec.provider != "ollama" and payload.tool_scope is not None:
+    if spec.runtime != "local" and payload.tool_scope is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Command scopes are available only for local Agents.",
@@ -727,7 +783,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     acinonyx_sandbox = is_acinonyx_agent(agent_key)
 
     resolved_local_command: ResolvedLocalCommand | None = None
-    if isinstance(profile, OllamaModelProfile) and payload.tool_scope is not None:
+    if is_local_profile(profile) and payload.tool_scope is not None:
         resolved_local_command = resolve_local_command(payload.tool_scope)
         if resolved_local_command.missing_tool_names:
             raise HTTPException(
@@ -782,8 +838,9 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         agent_key, list_agent_capabilities()
     )
 
-    if isinstance(profile, OllamaModelProfile):
-        if not OLLAMA_ENABLED:
+    if is_local_profile(profile):
+        backend = get_local_runtime_backend(profile.provider)
+        if not backend.enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Local Ollama inference is disabled in system settings.",
@@ -799,7 +856,10 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             )
 
         try:
-            already_loaded = is_local_model_loaded(profile.api_model)
+            model_ref = LocalModelRef(
+                provider=profile.provider, model=profile.runtime_model_id
+            )
+            already_loaded = is_local_model_ready(model_ref)
             if not already_loaded:
                 gate_open, gate_reason = check_resource_gate(
                     profile.ram_limit, profile.cpu_limit
@@ -817,7 +877,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=(
-                        f"Local model {profile.api_model} failed to load. "
+                        f"Local model {profile.runtime_model_id} failed to load. "
                         "Ensure Ollama is reachable and configured."
                     ),
                 )

@@ -7,8 +7,13 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 from core.agent.providers.contract import InferenceProvider
+from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
-from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS, OllamaModelProfile
+from core.agent.providers.ollama_models import (
+    OLLAMA_HIGH_RESOURCE_AGENTS,
+    OLLAMA_RUNTIME_CONFIGS,
+    OllamaModelProfile,
+)
 from core.agent.providers.responses_api import ResponsesModelProfile
 from core.agent.tool_policies import hosted_tools_for_agent
 from core.config import (
@@ -374,6 +379,7 @@ def build_concrete_agent(
             think=runtime.think,
             ram_limit=runtime.ram_limit,
             cpu_limit=runtime.cpu_limit,
+            high_resource=agent_key in OLLAMA_HIGH_RESOURCE_AGENTS,
             system_instruction=compose_agent_system_instruction(
                 agent_key, runtime.system_instruction
             ),
@@ -424,6 +430,70 @@ def build_agent_used_metadata(
 
 def is_acinonyx_agent(agent_key: str) -> bool:
     return agent_key == "acinonyx"
+
+
+def local_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
+    """Return visible Agent keys whose runtime is local, in HUD order."""
+    return tuple(
+        key
+        for key in runtime_agent_order(dev_mode=dev_mode)
+        if AGENT_SPECS[key].runtime == "local"
+    )
+
+
+def cloud_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
+    """Return visible Agent keys whose runtime is cloud, in HUD order."""
+    return tuple(
+        key
+        for key in runtime_agent_order(dev_mode=dev_mode)
+        if AGENT_SPECS[key].runtime == "cloud"
+    )
+
+
+def is_local_agent_key(agent_key: str) -> bool:
+    """Return whether ``agent_key`` is a catalogued local Agent."""
+    spec = AGENT_SPECS.get(agent_key)
+    return spec is not None and spec.runtime == "local"
+
+
+def is_cloud_agent_key(agent_key: str) -> bool:
+    """Return whether ``agent_key`` is a catalogued cloud Agent."""
+    spec = AGENT_SPECS.get(agent_key)
+    return spec is not None and spec.runtime == "cloud"
+
+
+def local_model_ref_for_agent(agent_key: str) -> LocalModelRef:
+    """Return the provider-qualified local model reference for an Agent key."""
+    spec = AGENT_SPECS[agent_key]
+    if spec.runtime != "local":
+        raise ValueError(f"Agent {agent_key!r} is not a local Agent")
+    if spec.provider not in {"ollama"}:
+        raise ValueError(
+            f"Agent {agent_key!r} uses unsupported local provider {spec.provider!r}"
+        )
+    return LocalModelRef(provider=spec.provider, model=spec.api_model)  # type: ignore[arg-type]
+
+
+def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
+    """Return the Agent key for a local model reference, if one is configured."""
+    for key, spec in AGENT_SPECS.items():
+        if (
+            spec.runtime == "local"
+            and spec.provider == ref.provider
+            and spec.api_model == ref.model
+        ):
+            return key
+    return None
+
+
+def known_local_model_refs() -> frozenset[LocalModelRef]:
+    """Return every configured APEX local model reference."""
+    refs: set[LocalModelRef] = set()
+    for key, spec in AGENT_SPECS.items():
+        if spec.runtime != "local":
+            continue
+        refs.add(local_model_ref_for_agent(key))
+    return frozenset(refs)
 
 
 def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:

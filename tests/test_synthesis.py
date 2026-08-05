@@ -292,8 +292,9 @@ class RoutingTests(unittest.TestCase):
     def test_prepare_local_warms_mus(self) -> None:
         router = SynthesisRouter()
         with patch("core.synthesis.router.resident_agent_key", return_value=None), patch(
-            "core.synthesis.router.OLLAMA_ENABLED", False
-        ):
+            "core.synthesis.router.get_local_runtime_backend"
+        ) as backend:
+            backend.return_value.enabled = False
             handle = router.prepare("local")
         self.assertIsNotNone(handle)
         assert handle is not None

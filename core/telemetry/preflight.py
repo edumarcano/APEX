@@ -10,18 +10,24 @@ from typing import Iterable
 from dotenv import load_dotenv
 
 from core import config, database, scanner
-from core.agent.providers.ollama_lifecycle import (
+from core.agent.local_runtime.coordinator import (
     check_resource_gate,
-    get_status_snapshot,
+    get_provider_snapshot,
+    get_system_vitals,
     is_local_execution_active,
 )
+from core.agent.local_runtime.registry import get_local_runtime_backend
 from core.agent.catalog import (
     AGENT_SPECS,
     agent_has_credentials,
     build_concrete_agent,
+    cloud_agent_keys,
+    is_cloud_agent_key,
+    is_local_agent_key,
+    local_agent_keys,
     resolve_agent_selection,
 )
-from core.config import ENV_PATH, OLLAMA_ENABLED, is_dev_mode
+from core.config import ENV_PATH, is_dev_mode
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
 from core.settings import RuntimeSettingsSnapshot, get_settings_store
 from core.telemetry.collector import enabled_connector_names
@@ -72,9 +78,6 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_LOCAL_AGENTS = frozenset({"sorex", "mus"})
-_CLOUD_AGENTS = frozenset({"panthera", "neofelis", "delphinus", "orcinus", "acinonyx"})
-_VALID_AGENTS = _LOCAL_AGENTS | _CLOUD_AGENTS
 _BRIEFING_MODES = frozenset({"panthera", "mus", "sorex", "structured_digest"})
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
@@ -135,29 +138,30 @@ def _evaluate_local_agent_blockers(
         blockers.append(_blocker("invalid_input", f"Unknown local Agent: {agent_key!r}"))
         return blockers, False
     agent = build_concrete_agent(agent_key, native_effort=None)
+    backend = get_local_runtime_backend(agent.provider)
 
-    if not OLLAMA_ENABLED:
+    if not backend.enabled:
         blockers.append(_blocker("model_unreachable", "Local Ollama runtime is disabled."))
         return blockers, False
 
     if is_local_execution_active():
         blockers.append(_blocker("concurrent_local_execution"))
 
-    snapshot = get_status_snapshot()
+    snapshot = get_provider_snapshot(agent.provider)
     if not snapshot["reachable"]:
         blockers.append(_blocker("model_unreachable"))
         return blockers, False
-    if agent.api_model not in snapshot["installed_tags"]:
+    if agent.runtime_model_id not in snapshot["installed_models"]:
         blockers.append(
             _blocker(
                 "model_not_installed",
-                f"Local model {agent.api_model!r} is not installed.",
+                f"Local model {agent.runtime_model_id!r} is not installed.",
             )
         )
         return blockers, False
 
     cold_load_required = not any(
-        _loaded_model_matches(loaded_model, agent.api_model)
+        _loaded_model_matches(loaded_model, agent.runtime_model_id)
         for loaded_model in snapshot["loaded_models"]
     )
 
@@ -165,7 +169,7 @@ def _evaluate_local_agent_blockers(
         allowed, gate_reason = check_resource_gate(
             agent.ram_limit,
             agent.cpu_limit,
-            vitals=snapshot["vitals"],
+            vitals=get_system_vitals(),
         )
         if not allowed and gate_reason == "insufficient_ram":
             blockers.append(_blocker("insufficient_ram"))
@@ -327,15 +331,18 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
                 and settings.briefing.default_mode != "structured_digest"
                 else "panthera"
             )
-        cloud_agent = agent in _CLOUD_AGENTS if agent else False
+        cloud_agent = is_cloud_agent_key(agent) if agent else False
         involves_cloud = bool(request.involves_cloud or cloud_agent)
 
-    if agent is not None and agent not in _VALID_AGENTS:
+    valid_agents = set(local_agent_keys(dev_mode=True)) | set(
+        cloud_agent_keys(dev_mode=True)
+    )
+    if agent is not None and agent not in valid_agents:
         blockers.append(
             _blocker("invalid_input", f"Unknown synthesis agent: {agent!r}")
         )
 
-    local_agent = agent in _LOCAL_AGENTS
+    local_agent = is_local_agent_key(agent) if agent else False
     if not is_dev_mode():
         warnings.extend(_network_warnings())
 
@@ -356,8 +363,10 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     ):
         warnings.append(_warning("rapid_connector_refresh"))
 
-    if agent == "mus":
-        warnings.append(_warning("high_resource_local_agent"))
+    if local_agent and agent is not None:
+        profile = build_concrete_agent(agent, native_effort=None)
+        if getattr(profile, "high_resource", False):
+            warnings.append(_warning("high_resource_local_agent"))
 
     blockers.extend(
         _cloud_credential_blockers(
