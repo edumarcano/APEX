@@ -2,7 +2,16 @@ import { BrainCircuit, ExternalLink, Loader2, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
-import type { AgentStatus, AgentKey, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalSettingsAgent, LocalToolScope, ToolOutputItem } from '../types/telemetry'
+import type {
+  AgentStatus,
+  AgentKey,
+  CloudEffort,
+  LocalContextUsage,
+  LocalSettingsAgent,
+  ToolCatalog,
+  ToolPreflightEstimate,
+  ToolOutputItem,
+} from '../types/telemetry'
 import type { ApodemusContextWindow } from '../types/settings'
 import { isLocalAgentKey } from '../lib/agents'
 
@@ -24,9 +33,26 @@ interface CortexWorkspaceProps {
   latestTrace: ToolTraceItem[]
   error: string | null
   contextUsage: LocalContextUsage | null
-  commands: LocalCommandStatus[]
-  armedToolScope: LocalToolScope | null
-  onArmedToolScopeChange: (scope: LocalToolScope | null) => void
+  toolCatalog?: ToolCatalog | null
+  selectedToolNames?: string[]
+  activeToolProfileId?: string | null
+  selectionReady?: boolean
+  onToolSelectionChange?: (names: string[]) => void
+  onToolProfileChange?: (profileId: string) => void
+  toolPreflight?: ToolPreflightEstimate | null
+  toolPreflightLoading?: boolean
+  toolCatalogError?: string | null
+  toolPreflightError?: string | null
+  toolProfileFeedback?: string | null
+  toolProfileError?: string | null
+  onSaveToolProfile?: (name: string) => void
+  onDuplicateToolProfile?: (profileId: string, name: string) => void
+  onRenameToolProfile?: (profileId: string, name: string) => void
+  onDeleteToolProfile?: (profileId: string) => void
+  onRestoreToolProfile?: (profileId: string) => void
+  onSetDefaultToolProfile?: (profileId: string) => void
+  draftPrompt?: string
+  onDraftChange?: (value: string) => void
   isQuerying: boolean
   lifecycleBusy: boolean
   lifecycleActionPending: boolean
@@ -45,7 +71,12 @@ interface CortexWorkspaceProps {
   onOrcinusXSearchChange: (enabled: boolean) => void
   apodemusContextWindow: ApodemusContextWindow
   onApodemusContextChange: (contextWindow: ApodemusContextWindow) => void
-  onSubmit: (query: string, agent: AgentKey, toolScope?: LocalToolScope | null) => void
+  onSubmit: (
+    query: string,
+    agent: AgentKey,
+    selectedToolNames: string[],
+    toolProfileId: string | null,
+  ) => void
   onNewSession: () => void
 }
 
@@ -112,11 +143,12 @@ function TraceList({ trace }: { trace: ToolTraceItem[] }): ReactElement | null {
 
 function ResponseMetrics({ metadata }: { metadata: AgentQueryMetadata | undefined }): ReactElement | null {
   if (!metadata) return null
-  const { agent, usage, timing, cost, citations } = metadata
+  const { agent, usage, timing, cost, citations, toolSelection } = metadata
   return <div className="mt-3 space-y-3">
     {agent ? <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-white/10 pt-3 font-mono text-[10px] text-zinc-500"><span>{agent.provider ?? 'provider'} / {agent.key}</span><span>{agent.resolvedModel ?? agent.configuredModel ?? 'model unavailable'}</span>{agent.resolvedEffort ? <span>{agent.resolvedEffort} effort</span> : null}{agent.version ? <span>v{agent.version}</span> : null}</div> : null}
     {usage || timing || cost ? <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3"><Metric label="Tokens" value={formatNumber(usage?.totalTokens)} detail={`in ${formatNumber(usage?.inputTokens)} · out ${formatNumber(usage?.outputTokens)} · reasoning ${formatNumber(usage?.reasoningTokens)}`} /><Metric label="Latency" value={formatMilliseconds(timing?.totalMs)} detail={`provider ${formatMilliseconds(timing?.providerMs)} · tools ${formatMilliseconds(timing?.apexToolMs)}`} /><Metric label="Estimate" value={formatCurrency(cost?.totalCost, cost?.currency)} detail={`tokens ${formatCurrency(cost?.tokenCost, cost?.currency)} · hosted ${formatCurrency(cost?.hostedToolCost, cost?.currency)}`} /></div> : null}
     {cost?.pricingVersion || cost?.completeness ? <p className="font-mono text-[10px] text-zinc-600">{cost.pricingVersion ?? 'pricing unavailable'} · {cost.completeness ?? 'estimate unavailable'}</p> : null}
+    {toolSelection ? <section className="rounded-lg border border-purple-300/15 bg-purple-950/10 p-2.5" aria-label="Resolved tool selection"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Resolved tools</p><p className="mt-1 font-mono text-[10px] text-zinc-400">{toolSelection.active_profile_name ?? 'Custom'} · {toolSelection.offered_tool_names.length} offered · ~{toolSelection.selected_schema_tokens.toLocaleString()} schema tokens</p>{toolSelection.rejected_tools.length > 0 ? <ul className="mt-1 space-y-1 text-[10px] text-red-200">{toolSelection.rejected_tools.map((failure) => <li key={`${failure.name}-${failure.code}`}>{failure.name}: {failure.reason}</li>)}</ul> : null}</section> : null}
     {citations.length > 0 ? <section className="space-y-1.5" aria-label="Citations"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Citations</p><ul className="space-y-1.5">{citations.map((citation, index) => <li key={`${citation.uri ?? citation.title ?? 'citation'}-${index}`} className="rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2 text-xs text-zinc-300">{citation.uri ? <a className="inline-flex items-center gap-1 text-[#7EB3FF] hover:text-white" href={citation.uri} target="_blank" rel="noreferrer"><span>{citation.title ?? citation.uri}</span><ExternalLink className="size-3" aria-hidden /></a> : <span>{citation.title ?? citation.source ?? 'Grounding source'}</span>}{citation.snippet ? <p className="mt-1 text-zinc-500">{citation.snippet}</p> : null}</li>)}</ul></section> : null}
   </div>
 }
@@ -144,11 +176,6 @@ function Conversation({ history, latestTrace, error, isQuerying, agentsStatus, a
     {isQuerying ? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]"><Loader2 className="size-4 animate-spin" aria-hidden />{agentName} working</div> : null}
     <div ref={endRef} />
   </div>
-}
-
-function LocalToolScopes({ commands, armedToolScope, contextUsage, onChange }: { commands: LocalCommandStatus[]; armedToolScope: LocalToolScope | null; contextUsage: LocalContextUsage | null; onChange: (scope: LocalToolScope | null) => void }): ReactElement {
-  const promptTokens = contextUsage ? contextUsage.peak_prompt_tokens ?? contextUsage.estimated_prompt_tokens : null
-  return <section className="space-y-2" aria-label="Local tool scopes"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local tool scopes</p>{armedToolScope ? <p className="rounded-md border border-orange-400/20 bg-orange-950/20 px-2 py-1 font-mono text-[10px] text-orange-200">/{armedToolScope} armed for next request</p> : <p className="font-mono text-[10px] text-zinc-500">No scope armed for the next request.</p>}<div className="space-y-1">{commands.length === 0 ? <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-zinc-500">Checking command availability…</p> : commands.map((command) => { const armed = armedToolScope === command.key; return <button key={command.key} type="button" disabled={!command.available} aria-pressed={armed} title={command.unavailable_reason ?? undefined} onClick={() => onChange(armed ? null : command.key)} className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${armed ? 'border-orange-400/45 bg-orange-950/25' : 'border-white/10 bg-white/[0.02] hover:border-white/25'} disabled:cursor-not-allowed disabled:opacity-45`}><span className="w-[4.75rem] shrink-0 font-mono text-[10px] text-[#7EB3FF]">{command.command}</span><span className="min-w-0 flex-1"><span className="block text-[11px] text-zinc-300">{command.description}</span>{!command.available && command.unavailable_reason ? <span className="block text-[10px] text-red-200">{command.unavailable_reason}</span> : null}</span><span className="shrink-0 text-right font-mono text-[9px] text-zinc-500">{command.tool_count} tools<br />~{command.estimated_schema_tokens}</span></button> })}</div>{contextUsage && promptTokens !== null ? <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-400"><div className="flex justify-between"><span>Local context</span><span className={promptTokens / contextUsage.context_window >= 0.8 ? 'text-amber-400' : ''}>{formatNumber(promptTokens)}/{formatNumber(contextUsage.context_window)}</span></div><p className="mt-1 text-zinc-600">{contextUsage.history_messages_dropped} messages trimmed</p></div> : null}</section>
 }
 
 function formatCountdown(seconds: number | null): string {
@@ -221,10 +248,10 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     Boolean(activeStatus?.active || activeStatus?.loading)
   return <section className="relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl" aria-label="Cortex workspace">
     <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div><button type="button" onClick={props.onNewSession} disabled={props.isQuerying} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button></header>
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={props.askApexEnabled ? (query) => props.onSubmit(query, props.activeAgent) : null} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} commands={local ? props.commands : []} armedToolScope={local ? props.armedToolScope : null} onArmedToolScopeChange={props.onArmedToolScopeChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
+    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={props.askApexEnabled && (props.selectionReady ?? false) ? (query) => props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) : null} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
         {!local ? <CloudControls {...props} /> : null}
-        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{props.activeAgent === 'apodemus' ? <ApodemusContextControl contextWindow={props.apodemusContextWindow} disabled={apodemusContextLocked} onChange={props.onApodemusContextChange} /> : null}<LocalToolScopes commands={props.commands} armedToolScope={props.armedToolScope} contextUsage={props.contextUsage} onChange={props.onArmedToolScopeChange} /></> : null}
+        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{props.activeAgent === 'apodemus' ? <ApodemusContextControl contextWindow={props.apodemusContextWindow} disabled={apodemusContextLocked} onChange={props.onApodemusContextChange} /> : null}</> : null}
         <ContextControl {...props} />
       </aside>
     </div>
@@ -242,6 +269,16 @@ function CloudControls(props: CortexWorkspaceProps): ReactElement {
   return <>{effortOptions.length > 0 ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{effortOptions.map((effort) => <option key={effort} value={effort}>{effort.slice(0, 1).toUpperCase()}{effort.slice(1)}</option>)}</select></section> : null}{grounding}</>
 }
 
-function ContextControl(props: CortexWorkspaceProps): ReactElement { return <section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Context</p><label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span className="text-xs text-zinc-300">Current HUD snapshot</span><input type="checkbox" checked={props.snapshotAttached} disabled={!props.snapshotAvailable} onChange={(event) => props.onSnapshotAttachedChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label><p className="text-[11px] leading-relaxed text-zinc-500">{props.snapshotAttached && props.snapshotAvailable ? 'The current snapshot will be included with the next turn.' : 'No HUD context will be attached.'}</p></section> }
+function ContextControl(props: CortexWorkspaceProps): ReactElement {
+  const selectedNames = props.selectedToolNames ?? []
+  const activeProfile = props.toolCatalog?.profiles.find(
+    (profile) => profile.id === props.activeToolProfileId,
+  )
+  const unavailableCount = selectedNames.filter((name) => {
+    const tool = props.toolCatalog?.tools.find((item) => item.name === name)
+    return !tool || !tool.available || !tool.allowed_for_agent
+  }).length
+  return <div className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Context</p><label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span className="text-xs text-zinc-300">Current HUD snapshot</span><input type="checkbox" checked={props.snapshotAttached} disabled={!props.snapshotAvailable} onChange={(event) => props.onSnapshotAttachedChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label><p className="text-[11px] leading-relaxed text-zinc-500">{props.snapshotAttached && props.snapshotAvailable ? 'The current snapshot will be included with the next turn.' : 'No HUD context will be attached.'}</p></section><section className="space-y-2" aria-label="Selected tools summary"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prompt tools</p><div className="rounded-lg border border-purple-300/15 bg-purple-950/10 p-3 font-mono text-[10px] text-zinc-400"><p className="text-zinc-200">{activeProfile?.name ?? 'Custom'} · {selectedNames.length} selected</p><p className="mt-1 text-zinc-500">{props.selectionReady ? 'Configured beside the prompt.' : 'Hydrating this Agent selection…'}</p>{unavailableCount > 0 ? <p className="mt-1 text-red-200">{unavailableCount} unavailable selection{unavailableCount === 1 ? '' : 's'} need removal.</p> : null}{props.contextUsage ? <p className="mt-2 text-zinc-600">Last local estimate: {formatNumber(props.contextUsage.estimated_prompt_tokens)}/{formatNumber(props.contextUsage.context_window)} tokens.</p> : null}{props.toolCatalogError ? <p className="mt-2 text-red-200" role="alert">{props.toolCatalogError}</p> : null}</div></section></div>
+}
 function GroundingToggle({ label, detail, checked, onChange }: { label: string; detail: string; checked: boolean; onChange: (enabled: boolean) => void }): ReactElement { return <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-zinc-300">{label}</span><span className="block text-[11px] text-zinc-500">{detail} · {checked ? 'Enabled' : 'Disabled'}</span></span><input aria-label={`${label} grounding`} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label> }
 function GroundingControls({ label, note, children }: { label: string; note: string; children: ReactElement | ReactElement[] }): ReactElement { return <section className="space-y-2" aria-label={`${label} grounding`}><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Grounding</p>{children}<p className="text-[11px] leading-relaxed text-zinc-500">{note}</p></section> }

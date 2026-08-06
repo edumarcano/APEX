@@ -8,11 +8,11 @@ import type {
   LocalLoadedModelStatus,
   LocalSettingsAgent,
   LocalContextUsage,
-  LocalToolScope,
   AgentAvailabilityStatus,
   AgentPricingMetadata,
   AgentStatusSource,
   AgentStability,
+  ToolSelectionDiagnostics,
   ToolOutputItem,
 } from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
@@ -92,6 +92,7 @@ export interface AgentQueryMetadata {
     completeness: string | null
   } | null
   citations: AgentCitation[]
+  toolSelection: ToolSelectionDiagnostics | null
 }
 
 interface AgentQueryResponseBody {
@@ -101,6 +102,7 @@ interface AgentQueryResponseBody {
   error?: string | null
   local_context_usage?: LocalContextUsage | null
   metadata?: AgentQueryMetadata
+  resolved_tool_selection?: ToolSelectionDiagnostics
 }
 
 const VALID_AGENT_KEYS: readonly AgentKey[] = [
@@ -434,6 +436,48 @@ function parseMetricRecord(value: unknown, keys: readonly string[]): Record<stri
   )
 }
 
+function parseToolSelection(value: unknown): ToolSelectionDiagnostics | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (
+    !Array.isArray(record.requested_tool_names) ||
+    !Array.isArray(record.offered_tool_names) ||
+    !Array.isArray(record.rejected_tool_names) ||
+    !Array.isArray(record.rejected_tools) ||
+    typeof record.selected_schema_tokens !== 'number'
+  ) {
+    return null
+  }
+  return {
+    requested_tool_names: record.requested_tool_names.filter(
+      (name): name is string => typeof name === 'string',
+    ),
+    offered_tool_names: record.offered_tool_names.filter(
+      (name): name is string => typeof name === 'string',
+    ),
+    rejected_tool_names: record.rejected_tool_names.filter(
+      (name): name is string => typeof name === 'string',
+    ),
+    rejected_tools: record.rejected_tools.flatMap((failure) => {
+      if (!failure || typeof failure !== 'object') return []
+      const item = failure as Record<string, unknown>
+      if (
+        typeof item.name !== 'string' ||
+        typeof item.code !== 'string' ||
+        typeof item.reason !== 'string'
+      ) {
+        return []
+      }
+      return [{ name: item.name, code: item.code, reason: item.reason }]
+    }),
+    selected_schema_tokens: record.selected_schema_tokens,
+    active_profile_id:
+      typeof record.active_profile_id === 'string' ? record.active_profile_id : null,
+    active_profile_name:
+      typeof record.active_profile_name === 'string' ? record.active_profile_name : null,
+  }
+}
+
 function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata | undefined {
   const agentRecord = record.agent_used && typeof record.agent_used === 'object'
     ? record.agent_used as Record<string, unknown>
@@ -470,8 +514,16 @@ function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata
         }]
       })
     : []
+  const toolSelection = parseToolSelection(record.resolved_tool_selection)
 
-  if (!agent && !usage && !timing && !costRecord && citations.length === 0) {
+  if (
+    !agent &&
+    !usage &&
+    !timing &&
+    !costRecord &&
+    citations.length === 0 &&
+    !toolSelection
+  ) {
     return undefined
   }
 
@@ -498,6 +550,7 @@ function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata
       completeness: parseNullableString(costRecord.completeness),
     } : null,
     citations,
+    toolSelection,
   }
 }
 
@@ -599,7 +652,8 @@ export interface UseCortexResult {
     context?: {
       snapshotId?: string | null
       briefingId?: number | null
-      toolScope?: LocalToolScope | null
+      selectedToolNames?: string[] | null
+      toolProfileId?: string | null
       effort?: CloudEffort | null
       sessionId?: string | null
     },
@@ -793,7 +847,8 @@ export function useCortex(
       context?: {
         snapshotId?: string | null
         briefingId?: number | null
-        toolScope?: LocalToolScope | null
+        selectedToolNames?: string[] | null
+        toolProfileId?: string | null
         effort?: CloudEffort | null
         sessionId?: string | null
       },
@@ -834,7 +889,12 @@ export function useCortex(
             ...(context?.effort ? { effort: context.effort } : {}),
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
-            ...(context?.toolScope ? { tool_scope: context.toolScope } : {}),
+            ...(context?.selectedToolNames !== undefined
+              ? { selected_tool_names: context.selectedToolNames ?? [] }
+              : {}),
+            ...(context?.toolProfileId
+              ? { tool_profile_id: context.toolProfileId }
+              : {}),
             ...(context?.sessionId ? { session_id: context.sessionId } : {}),
           }),
         })
@@ -850,6 +910,32 @@ export function useCortex(
               typeof (errorBody as { detail?: unknown }).detail === 'string'
             ) {
               message = (errorBody as { detail: string }).detail
+            } else if (
+              errorBody &&
+              typeof errorBody === 'object' &&
+              'detail' in errorBody &&
+              (errorBody as { detail?: unknown }).detail &&
+              typeof (errorBody as { detail: { message?: unknown } }).detail === 'object'
+            ) {
+              const detail = (errorBody as {
+                detail: {
+                  message?: unknown
+                  rejected_tools?: Array<{ name?: unknown; reason?: unknown }>
+                }
+              }).detail
+              const failures = Array.isArray(detail.rejected_tools)
+                ? detail.rejected_tools
+                  .filter(
+                    (failure) =>
+                      typeof failure.name === 'string' &&
+                      typeof failure.reason === 'string',
+                  )
+                  .map((failure) => `${failure.name}: ${failure.reason}`)
+                : []
+              message = [
+                typeof detail.message === 'string' ? detail.message : message,
+                ...failures,
+              ].join(' ')
             }
           } catch {
             // Keep default message when error body is not JSON.
