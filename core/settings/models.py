@@ -109,6 +109,28 @@ class AskApexSettings(BaseModel):
     orcinus_x_search_enabled: bool = True
 
 
+class ToolProfile(BaseModel):
+    """One persisted or built-in stable tool selection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=240)
+    tool_names: tuple[str, ...] = ()
+    built_in: bool = False
+    dynamic: bool = False
+
+
+class ToolProfilesSettings(BaseModel):
+    """Backend-persisted custom profiles and per-Agent defaults."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    custom_profiles: tuple[ToolProfile, ...] = ()
+    default_profile_by_agent: dict[str, str] = Field(default_factory=dict)
+
+
 class BriefingSettings(BaseModel):
     """Default briefing synthesis mode for generate and trigger."""
 
@@ -187,6 +209,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     football: FootballSettings = Field(default_factory=FootballSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
     ask_apex: AskApexSettings = Field(default_factory=AskApexSettings)
+    tool_profiles: ToolProfilesSettings = Field(default_factory=ToolProfilesSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
@@ -255,6 +278,15 @@ class AskApexPatch(BaseModel):
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
     orcinus_x_search_enabled: bool | None = None
+
+
+class ToolProfilesPatch(BaseModel):
+    """Replaceable persisted tool-profile collections."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    custom_profiles: list[ToolProfile] | None = None
+    default_profile_by_agent: dict[str, str] | None = None
 
 
 class BriefingPatch(BaseModel):
@@ -337,6 +369,7 @@ class SettingsPatch(BaseModel):
     football: FootballPatch | None = None
     market: MarketPatch | None = None
     ask_apex: AskApexPatch | None = None
+    tool_profiles: ToolProfilesPatch | None = None
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None
