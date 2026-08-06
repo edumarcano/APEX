@@ -220,4 +220,35 @@ describe('CortexWorkspace', () => {
     )
     expect(screen.getByLabelText('Context window')).toBeDisabled()
   })
+
+  it('renders agent response markdown elements including headings, bold text, links, code, and tables', () => {
+    const markdownContent = [
+      '# Cortex Response Header',
+      'This contains **bold text**, `inline code`, and a [Documentation Link](https://apex.example/docs).',
+      '| Feature | Status |\n| --- | --- |\n| Markdown | Supported |',
+    ].join('\n\n')
+
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          history: [
+            {
+              role: 'agent',
+              content: markdownContent,
+            },
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Cortex Response Header' })).toBeInTheDocument()
+    expect(screen.getByText('bold text')).toBeInTheDocument()
+    expect(screen.getByText('inline code')).toHaveClass('font-mono')
+    const link = screen.getByRole('link', { name: 'Documentation Link' })
+    expect(link).toHaveAttribute('href', 'https://apex.example/docs')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByText('Supported')).toBeInTheDocument()
+  })
 })
