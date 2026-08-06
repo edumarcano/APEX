@@ -276,7 +276,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_calls=4,
         tier="balanced",
         stability="preview",
-        capability_tags=("Efficient local", "Tool use", "Selectable context"),
+        capability_tags=("Efficient local", "Selectable context"),
         supports_effort=False,
     ),
 }
