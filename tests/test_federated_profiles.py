@@ -485,8 +485,8 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_nine(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 9)
+    def test_settings_schema_version_is_ten(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 10)
 
 
 if __name__ == "__main__":

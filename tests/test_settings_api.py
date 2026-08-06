@@ -11,7 +11,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
-from core.settings.models import SettingsPatch, VoicePatch
+from core.settings.models import SettingsPatch, VoicePatch, FootballPatch, FootballTeamPatch, MarketPatch
 from core.settings.store import (
     RuntimeSettingsStore,
     SettingsPersistenceError,
@@ -78,7 +78,7 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 9)
+        self.assertEqual(payload["schema_version"], 10)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
@@ -97,6 +97,31 @@ class SettingsApiTests(unittest.TestCase):
         self.assertIn("load_warning", payload)
         self.assertIn("dev_mode_active", payload)
         self.assertIn("demo_mode_active", payload)
+
+    def test_patch_football_and_market_symbol_lists(self) -> None:
+        response = self.client.patch(
+            "/api/v1/settings",
+            json={
+                "football": {
+                    "teams": [{"id": 81, "name": "Barcelona"}],
+                },
+                "market": {"symbols": ["SPY", "AAPL"]},
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["settings"]["football"]["teams"],
+            [{"id": 81, "name": "Barcelona"}],
+        )
+        self.assertEqual(payload["settings"]["market"]["symbols"], ["SPY", "AAPL"])
+
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            written["football"]["teams"],
+            [{"id": 81, "name": "Barcelona"}],
+        )
+        self.assertEqual(written["market"]["symbols"], ["SPY", "AAPL"])
 
     def test_market_patch_is_exposed_by_boot_config(self) -> None:
         response = self.client.patch(

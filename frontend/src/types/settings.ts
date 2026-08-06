@@ -37,6 +37,19 @@ export interface ModulesSettings {
   f1: boolean
 }
 
+export interface FootballTeamSettings {
+  id: number
+  name: string
+}
+
+export interface FootballSettings {
+  teams: FootballTeamSettings[]
+}
+
+export interface MarketSettings {
+  symbols: string[]
+}
+
 export interface AskApexSettings {
   enabled: boolean
   runtime: AgentRuntime
@@ -73,6 +86,8 @@ export interface RuntimeSettings {
   user_designation: string
   features: FeaturesSettings
   modules: ModulesSettings
+  football: FootballSettings
+  market: MarketSettings
   ask_apex: AskApexSettings
   briefing: BriefingSettings
   voice: VoiceSettings
@@ -92,6 +107,19 @@ export interface FeaturesPatch {
 export interface ModulesPatch {
   football?: boolean
   f1?: boolean
+}
+
+export interface FootballTeamPatch {
+  id: number
+  name: string
+}
+
+export interface FootballPatch {
+  teams?: FootballTeamPatch[]
+}
+
+export interface MarketPatch {
+  symbols?: string[]
 }
 
 export interface AskApexPatch {
@@ -157,6 +185,8 @@ export interface SettingsPatch {
   user_designation?: string
   features?: FeaturesPatch
   modules?: ModulesPatch
+  football?: FootballPatch
+  market?: MarketPatch
   ask_apex?: AskApexPatch
   briefing?: BriefingPatch
   voice?: VoicePatch
@@ -184,6 +214,7 @@ export type SettingsEffectiveTiming =
 export type SettingsTimingFieldGroup =
   | 'features'
   | 'market'
+  | 'football'
   | 'modules'
   | 'ask_apex'
   | 'briefing'

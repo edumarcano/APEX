@@ -150,6 +150,17 @@ describe('settings editing utilities', () => {
     ).toBe('sorex')
   })
 
+  it('includes football teams and market symbols in settings patches', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.football.teams = [{ id: 81, name: 'Barcelona' }]
+    draft.market.symbols = ['SPY', 'AAPL']
+
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      football: { teams: [{ id: 81, name: 'Barcelona' }] },
+      market: { symbols: ['SPY', 'AAPL'] },
+    })
+  })
+
   it('generates a patch containing only dirty fields', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.user_designation = 'Chief'

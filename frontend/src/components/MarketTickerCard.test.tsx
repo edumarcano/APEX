@@ -29,7 +29,7 @@ describe('MarketTickerCard', () => {
     expect(screen.getByText('MARKET MONITOR OFFLINE')).toBeVisible()
     expect(
       screen.getByText(
-        'Define ALPHA_VANTAGE_API_KEY and MARKET_SYMBOLS in `.env` to initialize market telemetry.',
+        'Add ticker symbols in Runtime Settings and define `ALPHA_VANTAGE_API_KEY` in `.env` to initialize market telemetry.',
       ),
     ).toBeVisible()
   })

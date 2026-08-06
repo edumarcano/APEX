@@ -13,6 +13,7 @@ import { Settings, X } from 'lucide-react'
 
 import McpSettingsSection from './McpSettingsSection'
 import MicrosoftTodoSettingsSection from './MicrosoftTodoSettingsSection'
+import { FootballTeamsEditor, MarketSymbolsEditor } from './SettingsListEditors'
 import {
   SectionHeading,
   SettingsSelect,
@@ -351,21 +352,48 @@ export default function SettingsPanel({
                       {control.key === 'sports' ? (
                         <div className="ml-3 space-y-2 border-l border-white/10 pl-3">
                           {MODULE_CONTROLS.map((module) => (
-                            <SettingsToggle
-                              key={module.key}
-                              id={`settings-module-${module.key}`}
-                              label={module.label}
-                              checked={draft.modules[module.key]}
-                              disabled={!draft.features.sports}
-                              timing={modulesTiming}
-                              onChange={(next) =>
-                                setDraft((prev) => ({
-                                  ...prev,
-                                  modules: { ...prev.modules, [module.key]: next },
-                                }))
-                              }
-                            />
+                            <div key={module.key} className="space-y-2">
+                              <SettingsToggle
+                                id={`settings-module-${module.key}`}
+                                label={module.label}
+                                checked={draft.modules[module.key]}
+                                disabled={!draft.features.sports}
+                                timing={modulesTiming}
+                                onChange={(next) =>
+                                  setDraft((prev) => ({
+                                    ...prev,
+                                    modules: { ...prev.modules, [module.key]: next },
+                                  }))
+                                }
+                              />
+                              {module.key === 'football' ? (
+                                <FootballTeamsEditor
+                                  teams={draft.football.teams}
+                                  disabled={!draft.features.sports || !draft.modules.football}
+                                  onChange={(teams) =>
+                                    setDraft((prev) => ({
+                                      ...prev,
+                                      football: { teams },
+                                    }))
+                                  }
+                                />
+                              ) : null}
+                            </div>
                           ))}
+                        </div>
+                      ) : null}
+                      {control.key === 'market' ? (
+                        <div className="ml-3 border-l border-white/10 pl-3">
+                          <MarketSymbolsEditor
+                            symbols={draft.market.symbols}
+                            disabled={!draft.features.market}
+                            onChange={(symbols) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                market: { symbols },
+                              }))
+                            }
+                          />
                         </div>
                       ) : null}
                     </div>

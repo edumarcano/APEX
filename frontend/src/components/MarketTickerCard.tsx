@@ -347,7 +347,7 @@ export function MarketTickerCard({
         <SetupPanel
           tone="muted"
           title="MARKET MONITOR OFFLINE"
-          message="Define ALPHA_VANTAGE_API_KEY and MARKET_SYMBOLS in `.env` to initialize market telemetry."
+          message="Add ticker symbols in Runtime Settings and define `ALPHA_VANTAGE_API_KEY` in `.env` to initialize market telemetry."
         />
       )
     }

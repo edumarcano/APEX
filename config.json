@@ -5,16 +5,17 @@
     "news": true,
     "email": true,
     "calendar": true,
-    "market": true
+    "market": false
   },
   "modules": {
-    "football": true,
+    "football": false,
     "f1": true
   },
   "football": {
-    "teams": [
-      {"id": 81, "name": "Barcelona"}
-    ]
+    "teams": []
+  },
+  "market": {
+    "symbols": []
   },
   "tts_settings": {
     "primary_tts": "google",

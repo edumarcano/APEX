@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -24,6 +25,7 @@ from core.settings.models import (
     FootballSettings,
     FootballTeamSettings,
     LlamaCppSettings,
+    MarketSettings,
     McpServerEnablementSettings,
     McpServersSettings,
     McpSettings,
@@ -46,6 +48,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "features",
         "modules",
         "football",
+        "market",
         "ask_apex",
         "briefing",
         "tts_settings",
@@ -140,8 +143,12 @@ def normalize_layer(
             )
         elif key == "football":
             football = _normalize_football(value, layer_name, issues)
-            if football:
+            if football is not None:
                 normalized["football"] = football
+        elif key == "market":
+            market = _normalize_market(value, layer_name, issues)
+            if market is not None:
+                normalized["market"] = market
         elif key == "ask_apex":
             ask_apex = _normalize_ask_apex(value, layer_name, issues)
             if ask_apex:
@@ -192,35 +199,78 @@ def _normalize_user_designation(
 
 def _normalize_football(
     value: Any, layer_name: str, issues: NormalizationIssues | None
-) -> dict[str, Any]:
-    """Validate the file-configured followed-team list as one replaceable value."""
+) -> dict[str, Any] | None:
+    """Validate the followed-team list as one replaceable value (zero to three teams)."""
     if not isinstance(value, dict):
         _record_error(issues, "football must be a JSON object")
-        return {}
+        return None
     teams = value.get("teams")
-    if not isinstance(teams, list) or not 1 <= len(teams) <= 3:
-        _record_error(issues, "football.teams must contain one to three teams")
-        return {}
+    if not isinstance(teams, list) or not 0 <= len(teams) <= 3:
+        _record_error(issues, "football.teams must contain zero to three teams")
+        return None
+    if not teams:
+        return {"teams": []}
     normalized_teams: list[dict[str, Any]] = []
     team_ids: set[int] = set()
     for team in teams:
         if not isinstance(team, dict):
             _record_error(issues, "football.teams entries must be objects")
-            return {}
+            return None
         team_id = team.get("id")
         name = team.get("name")
         if isinstance(team_id, bool) or not isinstance(team_id, int) or team_id <= 0:
             _record_error(issues, "football team id must be a positive integer")
-            return {}
+            return None
         if team_id in team_ids:
             _record_error(issues, "football team ids must be unique")
-            return {}
+            return None
         if not isinstance(name, str) or not (clean_name := name.strip()) or len(clean_name) > 100:
             _record_error(issues, "football team name must be a non-empty string up to 100 characters")
-            return {}
+            return None
         team_ids.add(team_id)
         normalized_teams.append({"id": team_id, "name": clean_name})
     return {"teams": normalized_teams}
+
+
+_TICKER_SYMBOL_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+_MAX_MARKET_SYMBOLS = 8
+
+
+def _normalize_market(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Validate the market ticker list as one replaceable value (zero to eight symbols)."""
+    if not isinstance(value, dict):
+        _record_error(issues, "market must be a JSON object")
+        return None
+    symbols = value.get("symbols")
+    if not isinstance(symbols, list) or not 0 <= len(symbols) <= _MAX_MARKET_SYMBOLS:
+        _record_error(
+            issues,
+            f"market.symbols must contain zero to {_MAX_MARKET_SYMBOLS} symbols",
+        )
+        return None
+    if not symbols:
+        return {"symbols": []}
+    normalized_symbols: list[str] = []
+    seen: set[str] = set()
+    for symbol in symbols:
+        if not isinstance(symbol, str):
+            _record_error(issues, "market.symbols entries must be strings")
+            return None
+        candidate = symbol.strip().upper()
+        if not candidate:
+            _record_error(issues, "market symbol must be a non-empty string")
+            return None
+        if not _TICKER_SYMBOL_PATTERN.match(candidate):
+            _record_error(issues, "market symbol contains invalid characters")
+            return None
+        if candidate in seen:
+            _record_error(issues, "market symbols must be unique")
+            return None
+        seen.add(candidate)
+        normalized_symbols.append(candidate)
+    return {"symbols": normalized_symbols}
 
 
 def _normalize_llama_cpp_host(
@@ -804,6 +854,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     features_raw = merged.get("features") if isinstance(merged.get("features"), dict) else {}
     modules_raw = merged.get("modules") if isinstance(merged.get("modules"), dict) else {}
     football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
+    market_raw = merged.get("market") if isinstance(merged.get("market"), dict) else {}
     ask_apex_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
     ask_apex = migrate_schema7_ask_apex(ask_apex_raw)
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
@@ -829,6 +880,13 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             FootballTeamSettings.model_validate(team)
             for team in football_raw.get("teams", [])
             if isinstance(team, dict)
+        )
+    )
+    market = MarketSettings(
+        symbols=tuple(
+            symbol.strip().upper()
+            for symbol in market_raw.get("symbols", [])
+            if isinstance(symbol, str) and symbol.strip()
         )
     )
     runtime = ask_apex.get("runtime", "cloud")
@@ -947,6 +1005,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         features=features,
         modules=modules,
         football=football,
+        market=market,
         ask_apex=ask_apex_settings,
         briefing=briefing,
         voice=voice,
@@ -1023,6 +1082,17 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         }
         if modules:
             ondisk["modules"] = modules
+    if patch.football is not None and patch.football.teams is not None:
+        ondisk["football"] = {
+            "teams": [
+                {"id": team.id, "name": team.name}
+                for team in patch.football.teams
+            ]
+        }
+    if patch.market is not None and patch.market.symbols is not None:
+        ondisk["market"] = {
+            "symbols": [symbol.strip().upper() for symbol in patch.market.symbols if symbol.strip()]
+        }
     if patch.ask_apex is not None:
         ask_apex: dict[str, Any] = {}
         ask_apex_patch = patch.ask_apex.model_dump(exclude_none=True)
