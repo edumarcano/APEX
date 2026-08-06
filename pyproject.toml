@@ -25,6 +25,7 @@ dependencies = [
     "python-dotenv",
     "pyttsx3",
     "requests",
+    "tokenizers>=0.23.1",
     "tzdata",
     "uvicorn[standard]",
 ]
