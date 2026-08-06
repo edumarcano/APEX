@@ -113,6 +113,27 @@ function isToolRoutingMode(value: unknown): value is ToolRoutingMode {
   return typeof value === 'string' && (VALID_TOOL_ROUTING_MODES as readonly string[]).includes(value)
 }
 
+function parseOptionalStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+  if (!value.every((item) => typeof item === 'string')) {
+    return undefined
+  }
+  return value
+}
+
+function parseOptionalFiniteNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined
+  }
+  return value
+}
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
 function parseCapabilityRoutingDiagnostics(value: unknown): CapabilityRoutingDiagnostics | undefined {
   if (!value || typeof value !== 'object') {
     return undefined
@@ -167,6 +188,25 @@ function parseCapabilityRoutingDiagnostics(value: unknown): CapabilityRoutingDia
     latency_ms: record.latency_ms,
     model_key: modelKey,
     fallback_reason: fallbackReason,
+    tool_search_enabled: parseOptionalBoolean(record.tool_search_enabled),
+    tool_search_offered: parseOptionalBoolean(record.tool_search_offered),
+    tool_search_attempted: parseOptionalBoolean(record.tool_search_attempted),
+    tool_search_invoked: parseOptionalBoolean(record.tool_search_invoked),
+    tool_search_succeeded: parseOptionalBoolean(record.tool_search_succeeded),
+    tool_search_calls: parseOptionalFiniteNumber(record.tool_search_calls),
+    recovery_matched_families: parseOptionalStringArray(record.recovery_matched_families),
+    recovered_families: parseOptionalStringArray(record.recovered_families),
+    recovery_results_already_offered: parseOptionalStringArray(record.recovery_results_already_offered),
+    recovery_expansion_blocked_by_budget: parseOptionalStringArray(
+      record.recovery_expansion_blocked_by_budget,
+    ),
+    recovery_expanded_tool_count: parseOptionalFiniteNumber(record.recovery_expanded_tool_count),
+    recovery_search_turns_used: parseOptionalFiniteNumber(record.recovery_search_turns_used),
+    recovery_expansion_turns_used: parseOptionalFiniteNumber(record.recovery_expansion_turns_used),
+    recovery_recovered_tool_invocation_turns: parseOptionalFiniteNumber(
+      record.recovery_recovered_tool_invocation_turns,
+    ),
+    recovery_usable_turn_available: parseOptionalBoolean(record.recovery_usable_turn_available),
   }
 }
 

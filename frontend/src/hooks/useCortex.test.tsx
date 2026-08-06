@@ -88,6 +88,52 @@ describe('useCortex', () => {
     expect(response.tool_trace?.[0]).toMatchObject({ name: 'search', origin: 'apex' })
   })
 
+  it('parses recovery routing diagnostics from query responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          answer: 'Recovered.',
+          routing: {
+            mode: 'enabled',
+            decision: 'semantic',
+            enforced: true,
+            selected_families: ['weather'],
+            considered_tool_count: 12,
+            offered_tool_count: 2,
+            considered_schema_tokens: 900,
+            offered_schema_tokens: 200,
+            top_score: 0.71,
+            score_margin: 0.22,
+            latency_ms: 4.2,
+            model_key: 'all-minilm-l6-v2',
+            fallback_reason: null,
+            tool_search_enabled: true,
+            tool_search_offered: true,
+            tool_search_attempted: true,
+            tool_search_succeeded: true,
+            recovery_matched_families: ['mail'],
+            recovered_families: ['mail'],
+            recovery_expanded_tool_count: 1,
+            recovery_usable_turn_available: true,
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+
+    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    await act(async () => {
+      await result.current.queryAgent('Find mail', 'panthera')
+    })
+
+    expect(result.current.cortexHistory[1].routing).toMatchObject({
+      tool_search_offered: true,
+      tool_search_attempted: true,
+      recovered_families: ['mail'],
+      recovery_expanded_tool_count: 1,
+    })
+  })
+
   it('parses routing diagnostics from query responses', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       if (init?.method === 'POST') {

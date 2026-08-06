@@ -126,6 +126,21 @@ export interface CapabilityRoutingDiagnostics {
   latency_ms: number
   model_key: string | null
   fallback_reason: string | null
+  tool_search_enabled?: boolean
+  tool_search_offered?: boolean
+  tool_search_attempted?: boolean
+  tool_search_invoked?: boolean
+  tool_search_succeeded?: boolean
+  tool_search_calls?: number
+  recovery_matched_families?: string[]
+  recovered_families?: string[]
+  recovery_results_already_offered?: string[]
+  recovery_expansion_blocked_by_budget?: string[]
+  recovery_expanded_tool_count?: number
+  recovery_search_turns_used?: number
+  recovery_expansion_turns_used?: number
+  recovery_recovered_tool_invocation_turns?: number
+  recovery_usable_turn_available?: boolean
 }
 
 export type AgentAvailabilityStatus =

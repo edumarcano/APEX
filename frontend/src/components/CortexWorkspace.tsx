@@ -175,13 +175,44 @@ function formatRoutingSummary(routing: CapabilityRoutingDiagnostics): string {
   return `${routing.decision} · ${families}`
 }
 
+function formatRecoveryDetail(label: string, values: string[] | undefined): string | null {
+  if (!values || values.length === 0) {
+    return null
+  }
+  return `${label}: ${values.join(', ')}`
+}
+
 function ToolRoutingInspector({ routing }: { routing: CapabilityRoutingDiagnostics | null }): ReactElement {
+  const recoveryLines = routing
+    ? [
+        routing.tool_search_enabled ? 'Recovery enabled' : null,
+        routing.tool_search_offered ? 'Search offered' : routing.tool_search_enabled ? 'Search not offered' : null,
+        routing.tool_search_attempted ? 'Search attempted' : null,
+        routing.tool_search_succeeded ? 'Search succeeded' : routing.tool_search_attempted ? 'Search empty' : null,
+        formatRecoveryDetail('Matched', routing.recovery_matched_families),
+        formatRecoveryDetail('Expanded', routing.recovered_families),
+        formatRecoveryDetail('Blocked', routing.recovery_expansion_blocked_by_budget),
+        formatRecoveryDetail('Already offered', routing.recovery_results_already_offered),
+        routing.recovery_expanded_tool_count
+          ? `Recovered tools: ${routing.recovery_expanded_tool_count}`
+          : null,
+        routing.recovery_usable_turn_available === false ? 'No usable recovery turn' : null,
+      ].filter((line): line is string => Boolean(line))
+    : []
+
   return (
     <section className="space-y-2" aria-label="Tool routing">
       <p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Tool routing</p>
       <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-300">
         {routing ? formatRoutingSummary(routing) : 'No routing diagnostics yet.'}
       </div>
+      {recoveryLines.length > 0 ? (
+        <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[10px] leading-relaxed text-zinc-500">
+          {recoveryLines.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }
