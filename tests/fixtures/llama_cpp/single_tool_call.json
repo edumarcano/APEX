@@ -1,0 +1,31 @@
+{
+  "id": "chatcmpl-fixture-single-tool",
+  "object": "chat.completion",
+  "created": 1710000001,
+  "model": "apodemus-8k",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_weather_1",
+            "type": "function",
+            "function": {
+              "name": "get_weather_forecast",
+              "arguments": "{\"location\":\"Boston\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 24,
+    "total_tokens": 144
+  }
+}

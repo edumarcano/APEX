@@ -7,7 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal["sorex", "mus"]
+LocalSettingsAgent = Literal["sorex", "mus", "apodemus"]
+ApodemusContextWindow = Literal[4096, 8192, 16384, 32768]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
 BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
@@ -18,7 +19,10 @@ VoiceMode = Literal["off", "manual", "automatic"]
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus", "apodemus"})
+VALID_APODEMUS_CONTEXT_WINDOWS: frozenset[int] = frozenset(
+    {4096, 8192, 16384, 32768}
+)
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "mus", "sorex", "structured_digest"}
@@ -27,8 +31,18 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 8
+SETTINGS_SCHEMA_VERSION: int = 9
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
+
+LlamaCppServerState = Literal[
+    "disabled",
+    "external_connected",
+    "managed_running",
+    "starting",
+    "managed_stopped",
+    "startup_failed",
+]
+LlamaCppServerOwnership = Literal["none", "external", "apex"]
 
 
 class FeaturesSettings(BaseModel):
@@ -80,6 +94,7 @@ class AskApexSettings(BaseModel):
     cloud_agent: CloudSettingsAgent = "panthera"
     effort: CloudEffort = "focused"
     local_agent: LocalSettingsAgent = "mus"
+    apodemus_context_window: ApodemusContextWindow = 8192
     neofelis_google_search_enabled: bool = True
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
@@ -137,6 +152,18 @@ class McpSettings(BaseModel):
     servers: McpServersSettings = Field(default_factory=McpServersSettings)
 
 
+class LlamaCppSettings(BaseModel):
+    """Editable llama.cpp router enablement, host, and optional managed server."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    managed: bool = False
+    host: str = "http://127.0.0.1:8080"
+    executable_path: str = ""
+    preset_path: str = ""
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -154,6 +181,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
+    llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -188,6 +216,7 @@ class AskApexPatch(BaseModel):
     cloud_agent: CloudSettingsAgent | None = None
     effort: CloudEffort | None = None
     local_agent: LocalSettingsAgent | None = None
+    apodemus_context_window: ApodemusContextWindow | None = None
     neofelis_google_search_enabled: bool | None = None
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
@@ -239,6 +268,30 @@ class McpPatch(BaseModel):
     servers: McpServersPatch | None = None
 
 
+class LlamaCppPatch(BaseModel):
+    """Partial llama.cpp runtime patch; unknown fields are rejected."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    managed: bool | None = None
+    host: str | None = None
+    executable_path: str | None = None
+    preset_path: str | None = None
+
+
+class LlamaCppServerStatusResponse(BaseModel):
+    """Sanitized llama.cpp server ownership status for the Settings UI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    managed: bool
+    ownership: LlamaCppServerOwnership
+    state: LlamaCppServerState
+    last_error: str | None = None
+
+
 class SettingsPatch(BaseModel):
     """Strict dirty-field patch for transactional settings updates."""
 
@@ -251,6 +304,7 @@ class SettingsPatch(BaseModel):
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None
+    llama_cpp: LlamaCppPatch | None = None
 
 
 class SettingsResponse(BaseModel):

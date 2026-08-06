@@ -1,0 +1,29 @@
+{
+  "id": "chatcmpl-fixture-usage-timings",
+  "object": "chat.completion",
+  "created": 1710000004,
+  "model": "apodemus-8k",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Usage and timings are present."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 100,
+    "completion_tokens": 20,
+    "total_tokens": 120,
+    "prompt_tokens_details": {
+      "cached_tokens": 25
+    }
+  },
+  "timings": {
+    "prompt_ms": 12.5,
+    "predicted_ms": 88.0,
+    "predicted_per_second": 42.5
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "id": "chatcmpl-fixture-parallel-tools",
+  "object": "chat.completion",
+  "created": 1710000002,
+  "model": "apodemus-8k",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_weather_a",
+            "type": "function",
+            "function": {
+              "name": "get_weather_forecast",
+              "arguments": "{\"location\":\"Boston\"}"
+            }
+          },
+          {
+            "id": "call_crypto_b",
+            "type": "function",
+            "function": {
+              "name": "fetch_crypto_price",
+              "arguments": {
+                "symbol": "BTC"
+              }
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 180,
+    "completion_tokens": 40,
+    "total_tokens": 220
+  }
+}

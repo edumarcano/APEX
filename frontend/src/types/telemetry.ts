@@ -72,7 +72,7 @@ export type WeatherConditionArchetype =
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent = 'sorex' | 'mus'
+export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus'
 
 export type CloudAgent = CloudSettingsAgent
 
@@ -146,7 +146,7 @@ export interface AgentPricingMetadata {
 }
 
 export interface LocalLoadedModelStatus {
-  provider: 'ollama'
+  provider: 'ollama' | 'llama_cpp'
   name: string
   model: string
   state: 'unloaded' | 'loading' | 'loaded' | 'sleeping' | 'failed' | 'unknown'
@@ -167,7 +167,7 @@ export interface AgentStatus {
   configured_model: string
   native_tools: Record<string, boolean>
   display_name: string
-  provider: 'ollama' | 'gemini' | 'openai' | 'xai'
+  provider: 'ollama' | 'llama_cpp' | 'gemini' | 'openai' | 'xai'
   version: string
   sort_order: number
   capabilities: string[]

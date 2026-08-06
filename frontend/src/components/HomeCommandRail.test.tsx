@@ -8,20 +8,21 @@ import type { AgentStatus, AgentKey } from '../types/telemetry'
 import { HomeCommandRail } from './HomeCommandRail'
 
 function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
-  const local = key === 'mus' || key === 'sorex'
+  const local = key === 'mus' || key === 'sorex' || key === 'apodemus'
   return {
     key,
     display_name: `Apex ${key.slice(0, 1).toUpperCase()}${key.slice(1)}`,
     description: `${key} profile.`,
-    configured_model: local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
+    configured_model:
+      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
     sort_order: key === 'panthera' ? 1 : 2,
     capabilities: [],
     native_tools: {},
-    provider: local ? 'ollama' : 'openai',
+    provider: key === 'apodemus' ? 'llama_cpp' : local ? 'ollama' : 'openai',
     version: '7.4',
     runtime: local ? 'local' : 'cloud',
     tier: 'stable',
-    stability: 'stable',
+    stability: key === 'apodemus' ? 'preview' : 'stable',
     effort_options: local ? null : ['light', 'focused', 'extended'],
     default_effort: local ? null : 'focused',
     status,
@@ -44,7 +45,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     activated: true,
     askApexEnabled: true,
     activeAgent: 'panthera',
-    agentsStatus: [profile('panthera'), profile('mus'), profile('sorex')],
+    agentsStatus: [profile('panthera'), profile('mus'), profile('sorex'), profile('apodemus')],
     agentsStatusHydrated: true,
     isCortexQuerying: false,
     verifyingCloudAgent: null,
@@ -150,17 +151,40 @@ describe('HomeCommandRail', () => {
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
     const actions = document.querySelector<HTMLElement>('[data-slot="home-briefing-actions"]')
     const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
-    expect(runtime).toHaveTextContent('Local runtime (Ollama): Mus · Loaded')
+    expect(runtime).toHaveTextContent('Mus · Ollama · Loaded')
     expect(actions).not.toContainElement(runtime)
     expect(actions).toContainElement(document.querySelector('.home-command-grid__synthesize'))
     await user.click(screen.getByRole('button', { name: 'Unload Apex Mus' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })
 
+  it('includes known Apodemus context in the local runtime strip', () => {
+    const activeApodemus = {
+      ...profile('apodemus'),
+      active: true,
+      display_name: 'Apex Apodemus',
+      loaded_model: {
+        provider: 'llama_cpp' as const,
+        name: 'apodemus-8k',
+        model: 'apodemus-8k',
+        state: 'loaded' as const,
+        context_window: 8192,
+        size_bytes: null,
+        size_vram_bytes: null,
+        processor: null,
+        context: null,
+        expires_at: null,
+      },
+    }
+    renderRail({ activeLocalModel: activeApodemus })
+
+    expect(screen.getByText('Apodemus · llama.cpp · 8K · Loaded')).toBeVisible()
+  })
+
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
     renderRail({ activeLocalModel: null, loadingLocalAgent: profile('mus') })
 
-    expect(screen.getByText('Local runtime (Ollama): Mus · Loading')).toBeVisible()
+    expect(screen.getByText('Mus · Ollama · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload Apex Mus' })).toBeDisabled()
   })
 })

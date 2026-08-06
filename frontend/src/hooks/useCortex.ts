@@ -110,6 +110,7 @@ const VALID_AGENT_KEYS: readonly AgentKey[] = [
   'orcinus',
   'sorex',
   'mus',
+  'apodemus',
   'acinonyx',
 ]
 
@@ -136,6 +137,7 @@ const VALID_AGENT_STATUSES: readonly AgentAvailabilityStatus[] = [
 
 const VALID_PROVIDERS: readonly AgentStatus['provider'][] = [
   'ollama',
+  'llama_cpp',
   'gemini',
   'openai',
   'xai',
@@ -226,7 +228,7 @@ function parseLocalLoadedModelStatus(value: unknown): LocalLoadedModelStatus | n
   if (typeof name !== 'string' || typeof model !== 'string') {
     return null
   }
-  if (provider !== 'ollama') {
+  if (provider !== 'ollama' && provider !== 'llama_cpp') {
     return null
   }
   if (

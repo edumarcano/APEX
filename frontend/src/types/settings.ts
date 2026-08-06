@@ -12,6 +12,16 @@ export type { McpProviderId } from '../lib/mcpProviders'
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
 export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+export type ApodemusContextWindow = 4096 | 8192 | 16384 | 32768
+
+export interface LlamaCppSettings {
+  enabled: boolean
+  managed: boolean
+  host: string
+  executable_path: string
+  preset_path: string
+}
+
 
 export interface FeaturesSettings {
   weather: boolean
@@ -33,6 +43,7 @@ export interface AskApexSettings {
   cloud_agent: CloudSettingsAgent
   effort: CloudEffort
   local_agent: LocalSettingsAgent
+  apodemus_context_window: ApodemusContextWindow
   neofelis_google_search_enabled: boolean
   neofelis_google_maps_enabled: boolean
   delphinus_x_search_enabled: boolean
@@ -66,6 +77,7 @@ export interface RuntimeSettings {
   briefing: BriefingSettings
   voice: VoiceSettings
   mcp: McpSettings
+  llama_cpp: LlamaCppSettings
 }
 
 export interface FeaturesPatch {
@@ -88,6 +100,7 @@ export interface AskApexPatch {
   cloud_agent?: CloudSettingsAgent
   effort?: CloudEffort
   local_agent?: LocalSettingsAgent
+  apodemus_context_window?: ApodemusContextWindow
   neofelis_google_search_enabled?: boolean
   neofelis_google_maps_enabled?: boolean
   delphinus_x_search_enabled?: boolean
@@ -113,6 +126,33 @@ export interface McpServerEnablementPatch {
   enabled?: boolean
 }
 
+export interface LlamaCppPatch {
+  enabled?: boolean
+  managed?: boolean
+  host?: string
+  executable_path?: string
+  preset_path?: string
+}
+
+export type LlamaCppServerState =
+  | 'disabled'
+  | 'external_connected'
+  | 'managed_running'
+  | 'starting'
+  | 'managed_stopped'
+  | 'startup_failed'
+
+export type LlamaCppServerOwnership = 'none' | 'external' | 'apex'
+
+export interface LlamaCppServerStatusResponse {
+  enabled: boolean
+  managed: boolean
+  ownership: LlamaCppServerOwnership
+  state: LlamaCppServerState
+  last_error: string | null
+}
+
+
 export interface SettingsPatch {
   user_designation?: string
   features?: FeaturesPatch
@@ -121,6 +161,7 @@ export interface SettingsPatch {
   briefing?: BriefingPatch
   voice?: VoicePatch
   mcp?: McpPatch
+  llama_cpp?: LlamaCppPatch
 }
 
 export interface SettingsResponse {
@@ -148,6 +189,7 @@ export type SettingsTimingFieldGroup =
   | 'briefing'
   | 'voice'
   | 'mcp'
+  | 'llama_cpp'
 
 export type McpRuntimeStatus =
   | 'configured'

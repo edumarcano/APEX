@@ -1,4 +1,5 @@
 import {
+  Cpu,
   FlaskConical,
   Gem,
   Globe2,
@@ -19,6 +20,7 @@ const AGENT_MARKS: Record<AgentKey, { icon: LucideIcon; label: string; className
   delphinus: { icon: ScanSearch, label: 'Delphinus agent mark', className: 'border-teal-300/25 bg-teal-400/10 text-teal-200' },
   orcinus: { icon: Orbit, label: 'Orcinus agent mark', className: 'border-indigo-300/25 bg-indigo-400/10 text-indigo-200' },
   mus: { icon: ShieldCheck, label: 'Mus agent mark', className: 'border-orange-300/25 bg-orange-400/10 text-orange-200' },
+  apodemus: { icon: Cpu, label: 'Apodemus agent mark', className: 'border-orange-200/30 bg-orange-500/15 text-orange-100' },
   sorex: { icon: Zap, label: 'Sorex agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
 }
 

@@ -38,6 +38,7 @@
     "neofelis_google_maps_enabled": true,
     "delphinus_x_search_enabled": true,
     "orcinus_x_search_enabled": true,
+    "apodemus_context_window": 8192,
     "max_session_messages": 6
   },
   "gemini": {
@@ -53,6 +54,22 @@
     "resource_gates": {
       "sorex": { "ram_limit": 88.0, "cpu_limit": 95.0 },
       "mus": { "ram_limit": 78.0, "cpu_limit": 90.0 }
+    }
+  },
+  "llama_cpp": {
+    "enabled": false,
+    "managed": false,
+    "host": "http://127.0.0.1:8080",
+    "executable_path": "",
+    "preset_path": "",
+    "idle_unload_timeout_minutes": 5,
+    "manual_unload_enabled": true,
+    "request_timeout_seconds": 180,
+    "resource_gates": {
+      "apodemus": {
+        "ram_limit": 88.0,
+        "cpu_limit": 95.0
+      }
     }
   },
   "mcp": {

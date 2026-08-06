@@ -6,9 +6,11 @@ import copy
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from core.agent.catalog import migrate_schema5_briefing, migrate_schema7_ask_apex
 from core.settings.models import (
+    VALID_APODEMUS_CONTEXT_WINDOWS,
     VALID_BRIEFING_MODES,
     VALID_CLOUD_EFFORTS,
     VALID_CLOUD_SETTINGS_AGENTS,
@@ -21,6 +23,7 @@ from core.settings.models import (
     FeaturesSettings,
     FootballSettings,
     FootballTeamSettings,
+    LlamaCppSettings,
     McpServerEnablementSettings,
     McpServersSettings,
     McpSettings,
@@ -47,8 +50,11 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "briefing",
         "tts_settings",
         "mcp",
+        "llama_cpp",
     }
 )
+_DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
+_LOOPBACK_HOSTNAMES: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 @dataclass
@@ -106,6 +112,7 @@ def normalize_layer(
                 "local_agent_system_prompt",
                 "gemini",
                 "ollama",
+                "llama_cpp",
             ):
                 _LOGGER.warning(
                     "Ignoring unknown config key %r in %s.",
@@ -153,6 +160,10 @@ def normalize_layer(
             mcp = _normalize_mcp_settings(value, layer_name, issues)
             if mcp:
                 normalized["mcp"] = mcp
+        elif key == "llama_cpp":
+            llama_cpp = _normalize_llama_cpp(value, layer_name, issues)
+            if llama_cpp:
+                normalized["llama_cpp"] = llama_cpp
 
     return normalized
 
@@ -210,6 +221,162 @@ def _normalize_football(
         team_ids.add(team_id)
         normalized_teams.append({"id": team_id, "name": clean_name})
     return {"teams": normalized_teams}
+
+
+def _normalize_llama_cpp_host(
+    value: Any,
+    *,
+    layer_name: str,
+    issues: NormalizationIssues | None,
+) -> str | None:
+    """Validate and normalize a loopback llama.cpp router URL."""
+    if not isinstance(value, str):
+        _record_error(issues, "llama_cpp.host must be a string")
+        _LOGGER.warning("llama_cpp.host in %s must be a string; ignoring.", layer_name)
+        return None
+
+    candidate = value.strip().rstrip("/")
+    if not candidate:
+        _record_error(issues, "llama_cpp.host must be a non-empty loopback HTTP URL")
+        return None
+
+    try:
+        parsed = urlparse(candidate)
+        if parsed.scheme != "http":
+            _record_error(issues, "llama_cpp.host must use HTTP")
+            return None
+        if parsed.username or parsed.password:
+            _record_error(issues, "llama_cpp.host must not include credentials")
+            return None
+        if parsed.query or parsed.fragment:
+            _record_error(issues, "llama_cpp.host must not include query strings or fragments")
+            return None
+        if parsed.path not in {"", "/"}:
+            _record_error(issues, "llama_cpp.host must not include a path")
+            return None
+
+        hostname = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError:
+        _record_error(issues, "llama_cpp.host must be a valid loopback HTTP URL")
+        return None
+
+    if hostname not in _LOOPBACK_HOSTNAMES:
+        _record_error(
+            issues,
+            "llama_cpp.host must target a loopback address (127.0.0.1, localhost, or [::1])",
+        )
+        return None
+
+    if port is None or port < 1 or port > 65535:
+        _record_error(issues, "llama_cpp.host must include a valid port")
+        return None
+
+    if hostname == "::1":
+        return f"http://[::1]:{port}"
+    return f"http://{hostname}:{port}"
+
+
+def _normalize_llama_cpp_path(
+    value: Any,
+    *,
+    field_name: str,
+    issues: NormalizationIssues | None,
+) -> str | None:
+    """Normalize a machine-local filesystem path string without existence checks."""
+    if not isinstance(value, str):
+        _record_error(issues, f"llama_cpp.{field_name} must be a string")
+        return None
+    candidate = value.strip()
+    if "\x00" in candidate:
+        _record_error(issues, f"llama_cpp.{field_name} must not contain null bytes")
+        return None
+    return candidate
+
+
+def _normalize_llama_cpp(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any]:
+    """Extract editable llama.cpp fields while leaving advanced config file-only."""
+    result: dict[str, Any] = {}
+    if not isinstance(value, dict):
+        if value is not None:
+            _record_error(issues, "llama_cpp must be a JSON object")
+            _LOGGER.warning('Config key "llama_cpp" in %s must be a JSON object.', layer_name)
+        return result
+
+    editable_keys = {
+        "enabled",
+        "managed",
+        "host",
+        "executable_path",
+        "preset_path",
+    }
+    for key in value:
+        if key not in editable_keys:
+            _LOGGER.warning(
+                "Ignoring non-editable llama_cpp key %r in %s.",
+                key,
+                layer_name,
+            )
+
+    enabled = value.get("enabled")
+    if isinstance(enabled, bool):
+        result["enabled"] = enabled
+    elif enabled is not None:
+        _record_error(issues, "llama_cpp.enabled must be a boolean")
+
+    managed = value.get("managed")
+    if isinstance(managed, bool):
+        result["managed"] = managed
+    elif managed is not None:
+        _record_error(issues, "llama_cpp.managed must be a boolean")
+
+    if "host" in value:
+        host = _normalize_llama_cpp_host(
+            value.get("host"),
+            layer_name=layer_name,
+            issues=issues,
+        )
+        if host is not None:
+            result["host"] = host
+
+    if "executable_path" in value:
+        executable_path = _normalize_llama_cpp_path(
+            value.get("executable_path"),
+            field_name="executable_path",
+            issues=issues,
+        )
+        if executable_path is not None:
+            result["executable_path"] = executable_path
+
+    if "preset_path" in value:
+        preset_path = _normalize_llama_cpp_path(
+            value.get("preset_path"),
+            field_name="preset_path",
+            issues=issues,
+        )
+        if preset_path is not None:
+            result["preset_path"] = preset_path
+
+    managed_effective = result.get("managed")
+    if managed_effective is True:
+        executable = result.get("executable_path")
+        preset = result.get("preset_path")
+        # When only toggling managed, require both path keys in this layer or
+        # leave validation to the merged snapshot below.
+        if "executable_path" in value and not (isinstance(executable, str) and executable):
+            _record_error(
+                issues,
+                "llama_cpp.managed requires a non-empty executable_path",
+            )
+        if "preset_path" in value and not (isinstance(preset, str) and preset):
+            _record_error(
+                issues,
+                "llama_cpp.managed requires a non-empty preset_path",
+            )
+
+    return result
 
 
 def _normalize_mcp_settings(
@@ -363,6 +530,7 @@ def _normalize_ask_apex(
         "cloud_agent",
         "effort",
         "local_agent",
+        "apodemus_context_window",
         "neofelis_google_search_enabled",
         "neofelis_google_maps_enabled",
         "delphinus_x_search_enabled",
@@ -422,6 +590,21 @@ def _normalize_ask_apex(
                 result["local_agent"] = normalized
             else:
                 _record_error(errors, "ask_apex.local_agent is not valid")
+
+    if "apodemus_context_window" in migrated:
+        context_window = migrated["apodemus_context_window"]
+        if isinstance(context_window, bool):
+            _record_error(
+                errors, "ask_apex.apodemus_context_window must be an integer"
+            )
+        elif isinstance(context_window, int) and context_window in (
+            VALID_APODEMUS_CONTEXT_WINDOWS
+        ):
+            result["apodemus_context_window"] = context_window
+        elif context_window is not None:
+            _record_error(
+                errors, "ask_apex.apodemus_context_window is not a supported preset"
+            )
 
     if "neofelis_google_search_enabled" in migrated:
         google_search = migrated["neofelis_google_search_enabled"]
@@ -660,6 +843,9 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     local_agent = ask_apex.get("local_agent", "mus")
     if local_agent not in VALID_LOCAL_SETTINGS_AGENTS:
         local_agent = "mus"
+    apodemus_context_window = ask_apex.get("apodemus_context_window", 8192)
+    if apodemus_context_window not in VALID_APODEMUS_CONTEXT_WINDOWS:
+        apodemus_context_window = 8192
     ask_apex_settings = AskApexSettings(
         enabled=bool(ask_apex.get("enabled", True))
         if "enabled" in ask_apex
@@ -668,6 +854,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         cloud_agent=cloud_agent,  # type: ignore[arg-type]
         effort=effort,  # type: ignore[arg-type]
         local_agent=local_agent,  # type: ignore[arg-type]
+        apodemus_context_window=apodemus_context_window,  # type: ignore[arg-type]
         neofelis_google_search_enabled=bool(
             ask_apex.get("neofelis_google_search_enabled", True)
         ),
@@ -719,6 +906,38 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             }
         ),
     )
+    llama_cpp_raw = (
+        merged.get("llama_cpp") if isinstance(merged.get("llama_cpp"), dict) else {}
+    )
+    llama_host = llama_cpp_raw.get("host", _DEFAULT_LLAMA_CPP_HOST)
+    if not isinstance(llama_host, str) or not llama_host.strip():
+        llama_host = _DEFAULT_LLAMA_CPP_HOST
+    else:
+        llama_host = llama_host.strip().rstrip("/")
+    executable_path = llama_cpp_raw.get("executable_path", "")
+    if not isinstance(executable_path, str):
+        executable_path = ""
+    else:
+        executable_path = executable_path.strip()
+    preset_path = llama_cpp_raw.get("preset_path", "")
+    if not isinstance(preset_path, str):
+        preset_path = ""
+    else:
+        preset_path = preset_path.strip()
+    managed = bool(llama_cpp_raw.get("managed", False))
+    if managed and (not executable_path or not preset_path):
+        _LOGGER.warning(
+            "llama_cpp.managed requires executable_path and preset_path; "
+            "treating managed as false."
+        )
+        managed = False
+    llama_cpp = LlamaCppSettings(
+        enabled=bool(llama_cpp_raw.get("enabled", False)),
+        managed=managed,
+        host=llama_host,
+        executable_path=executable_path,
+        preset_path=preset_path,
+    )
     return RuntimeSettingsSnapshot(
         user_designation=(
             merged.get("user_designation", "")
@@ -732,6 +951,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         briefing=briefing,
         voice=voice,
         mcp=mcp,
+        llama_cpp=llama_cpp,
     )
 
 
@@ -747,6 +967,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "cloud_agent": snapshot.ask_apex.cloud_agent,
             "effort": snapshot.ask_apex.effort,
             "local_agent": snapshot.ask_apex.local_agent,
+            "apodemus_context_window": snapshot.ask_apex.apodemus_context_window,
             "neofelis_google_search_enabled": (
                 snapshot.ask_apex.neofelis_google_search_enabled
             ),
@@ -765,6 +986,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "voice_mode": snapshot.voice.mode,
         },
         "mcp": snapshot.mcp.model_dump(),
+        "llama_cpp": snapshot.llama_cpp.model_dump(),
     }
 
 
@@ -836,4 +1058,18 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
                 mcp["servers"] = servers
         if mcp:
             ondisk["mcp"] = mcp
+    if patch.llama_cpp is not None:
+        llama_cpp: dict[str, Any] = {}
+        if patch.llama_cpp.enabled is not None:
+            llama_cpp["enabled"] = patch.llama_cpp.enabled
+        if patch.llama_cpp.managed is not None:
+            llama_cpp["managed"] = patch.llama_cpp.managed
+        if patch.llama_cpp.host is not None:
+            llama_cpp["host"] = patch.llama_cpp.host
+        if patch.llama_cpp.executable_path is not None:
+            llama_cpp["executable_path"] = patch.llama_cpp.executable_path
+        if patch.llama_cpp.preset_path is not None:
+            llama_cpp["preset_path"] = patch.llama_cpp.preset_path
+        if llama_cpp:
+            ondisk["llama_cpp"] = llama_cpp
     return ondisk

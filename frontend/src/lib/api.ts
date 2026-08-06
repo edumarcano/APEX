@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
   diagnostics: `${API_BASE}/api/v1/diagnostics`,
   market: `${API_BASE}/api/v1/market`,
   mcpStatus: `${API_BASE}/api/v1/mcp/status`,
+  llamaCppStatus: `${API_BASE}/api/v1/llama-cpp/status`,
   microsoftTodoStatus: `${API_BASE}/api/v1/microsoft-todo/status`,
   microsoftTodoAuthStart: `${API_BASE}/api/v1/microsoft-todo/auth/start`,
   microsoftTodoAuth: `${API_BASE}/api/v1/microsoft-todo/auth`,

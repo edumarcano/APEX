@@ -44,7 +44,8 @@ from core.agent.providers.cloud_verification import (
     verify_cloud_agent,
 )
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.local_runtime.contract import LocalModelRef, SystemVitals
+from core.agent.providers.llama_cpp import LlamaCppProvider
+from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef, SystemVitals
 from core.agent.local_runtime.coordinator import (
     check_resource_gate,
     end_local_execution,
@@ -63,7 +64,6 @@ from core.agent.local_runtime.registry import (
     get_local_runtime_backend,
     iter_local_runtime_backends,
 )
-from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.providers.xai_provider import XAIProvider
 from core.agent.pricing import PRICING_VERSION, agent_pricing
@@ -102,12 +102,59 @@ _LOCAL_TOOL_FREE_INSTRUCTION = (
 
 _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
-    "disabled": "Ollama local inference is disabled in system settings",
+    "disabled": "Local inference is disabled in system settings",
     "ollama_unreachable": "Ollama daemon is unreachable",
-    "model_not_installed": "Model tag is not installed locally",
+    "provider_unreachable": "Local runtime provider is unreachable",
+    "model_not_installed": "Model is not installed or configured locally",
     "insufficient_ram": "Current memory pressure exceeds threshold",
     "cpu_overloaded": "Current CPU utilization exceeds threshold",
 }
+
+
+def _local_context_window_for_agent(agent_key: str) -> int | None:
+    """Return the stored Apodemus context preference for local profile builds."""
+    if agent_key != "apodemus":
+        return None
+    value = get_settings_store().get_snapshot().ask_apex.apodemus_context_window
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 8192
+
+
+def _local_provider_label(provider: str) -> str:
+    """Return a short display label for local-runtime error messages."""
+    if provider == "llama_cpp":
+        return "llama.cpp"
+    if provider == "ollama":
+        return "Ollama"
+    return "local runtime"
+
+
+def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
+    """
+    Verify the selected runtime alias exists on a fresh provider snapshot.
+
+    Raises HTTP 503 when the provider is unreachable or the alias is absent.
+    """
+    snapshot = get_provider_snapshot(profile.provider, force_refresh=True)
+    provider_label = _local_provider_label(profile.provider)
+    if not snapshot["reachable"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"{provider_label} is unreachable at the configured host. "
+                "Ensure the local runtime is running and reachable."
+            ),
+        )
+    if profile.runtime_model_id not in snapshot["installed_models"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Local model {profile.runtime_model_id} is not configured in "
+                f"{provider_label}. Ensure the selected preset or alias is "
+                "present in the local runtime."
+            ),
+        )
 
 
 def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
@@ -132,20 +179,37 @@ def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
 
 
 def _resolve_local_agent_status(
-    profile: OllamaModelProfile,
+    profile: LocalModelProfile,
     *,
     is_active: bool,
     provider_reachable: bool,
     installed_models: list[str],
     vitals: SystemVitals | None,
     backend_enabled: bool,
+    load_failed: bool = False,
 ) -> tuple[AgentAvailabilityStatus, str | None]:
     """Evaluate a local model configuration using cached snapshot signals."""
     if not backend_enabled:
-        return "disabled", _PROFILE_STATUS_REASONS["disabled"]
+        if profile.provider == "llama_cpp":
+            return (
+                "disabled",
+                "llama.cpp local inference is disabled in system settings",
+            )
+        return "disabled", "Ollama local inference is disabled in system settings"
 
     if not provider_reachable:
-        return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
+        if profile.provider == "ollama":
+            return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
+        return "provider_unreachable", (
+            "llama.cpp router is unreachable at the configured loopback host"
+        )
+
+    if load_failed:
+        provider_label = _local_provider_label(profile.provider)
+        return (
+            "provider_error",
+            f"{provider_label} reported that the selected model preset failed to load.",
+        )
 
     if is_active:
         return "available", None
@@ -160,6 +224,22 @@ def _resolve_local_agent_status(
         return gate_reason, _PROFILE_STATUS_REASONS[gate_reason]
 
     return "available", None
+
+
+def _matching_runtime_model_row(
+    loaded_models: list[dict[str, Any]],
+    runtime_model_id: str,
+    *,
+    state: str | None = None,
+) -> dict[str, Any] | None:
+    """Return the first loaded-model row matching a runtime alias and optional state."""
+    for model in loaded_models:
+        if model.get("name") != runtime_model_id and model.get("model") != runtime_model_id:
+            continue
+        if state is not None and model.get("state", "loaded") != state:
+            continue
+        return model
+    return None
 
 
 def _resolve_cloud_agent_status(
@@ -217,7 +297,11 @@ def build_agent_statuses() -> list[AgentStatus]:
         )
 
         if spec.runtime == "local":
-            profile = build_concrete_agent(key, native_effort=None)
+            profile = build_concrete_agent(
+                key,
+                native_effort=None,
+                local_context_window=_local_context_window_for_agent(key),
+            )
             assert is_local_profile(profile)
             backend = get_local_runtime_backend(profile.provider)
             snapshot = snapshots.get(profile.provider)
@@ -232,28 +316,31 @@ def build_agent_statuses() -> list[AgentStatus]:
             model_ref = LocalModelRef(
                 provider=profile.provider, model=profile.runtime_model_id
             )
-            loaded_model = next(
-                (
-                    model
-                    for model in loaded_models
-                    if model["name"] == profile.runtime_model_id
-                    or model["model"] == profile.runtime_model_id
-                ),
-                None,
+            loaded_model = _matching_runtime_model_row(
+                loaded_models,
+                profile.runtime_model_id,
+                state="loaded",
+            )
+            failed_model = _matching_runtime_model_row(
+                loaded_models,
+                profile.runtime_model_id,
+                state="failed",
             )
             is_tracked_active = tracked_active == model_ref
             is_active = loaded_model is not None
             is_loading = loading == model_ref
             agent_status, reason = _resolve_local_agent_status(
-                profile,  # type: ignore[arg-type]
+                profile,
                 is_active=is_active,
                 provider_reachable=provider_reachable,
                 installed_models=installed_models,
                 vitals=vitals,
                 backend_enabled=backend.enabled,
+                load_failed=failed_model is not None,
             )
             if agent_status == "available" and is_local_execution_active():
                 agent_status, reason = "busy", _BUSY_REASON
+            status_model = loaded_model if loaded_model is not None else failed_model
             agents.append(
                 AgentStatus(
                     key=key,
@@ -280,8 +367,8 @@ def build_agent_statuses() -> list[AgentStatus]:
                         idle_remaining if is_active and is_tracked_active else None
                     ),
                     loaded_model=(
-                        _loaded_model_status(loaded_model)
-                        if loaded_model is not None
+                        _loaded_model_status(status_model)
+                        if status_model is not None
                         else None
                     ),
                 )
@@ -470,13 +557,18 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
             detail="Only configured local Agents can be pre-warmed.",
         )
 
-    profile = build_concrete_agent(agent_key, native_effort=None)
+    profile = build_concrete_agent(
+        agent_key,
+        native_effort=None,
+        local_context_window=_local_context_window_for_agent(agent_key),
+    )
     assert is_local_profile(profile)
     backend = get_local_runtime_backend(profile.provider)
     if not backend.enabled:
+        provider_label = _local_provider_label(profile.provider)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Local Ollama inference is disabled in system settings.",
+            detail=f"Local {provider_label} inference is disabled in system settings.",
         )
 
     model_ref = LocalModelRef(
@@ -493,6 +585,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         )
 
     try:
+        _ensure_local_alias_configured(profile)
         already_resident = backend.is_model_resident(profile.runtime_model_id)
         if not already_resident:
             gate_open, gate_reason = check_resource_gate(
@@ -507,11 +600,13 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         if not switch_local_model(profile) or not backend.is_model_resident(
             profile.runtime_model_id
         ):
+            provider_label = _local_provider_label(profile.provider)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
                     f"Local model {profile.runtime_model_id} could not be verified "
-                    "in Ollama. Ensure Ollama is reachable and configured."
+                    f"in {provider_label}. Ensure the local runtime is reachable "
+                    "and configured."
                 ),
             )
     finally:
@@ -631,6 +726,8 @@ def _create_provider(agent_key: str, api_key: str):
         return XAIProvider(api_key=api_key)
     if spec.provider == "ollama":
         return OllamaProvider()
+    if spec.provider == "llama_cpp":
+        return LlamaCppProvider()
     raise ValueError(f"Unsupported inference provider: {spec.provider!r}")
 
 
@@ -659,6 +756,8 @@ def _execute_agent_turn(
         if is_local_profile(profile):
             if AGENT_SPECS[agent_key].provider == "ollama":
                 provider = OllamaProvider()
+            elif AGENT_SPECS[agent_key].provider == "llama_cpp":
+                provider = LlamaCppProvider()
             else:
                 raise ValueError(
                     f"Unsupported local provider: {AGENT_SPECS[agent_key].provider!r}"
@@ -785,6 +884,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     profile = build_concrete_agent(
         agent_key,
         native_effort=resolved_native_effort,
+        local_context_window=_local_context_window_for_agent(agent_key),
         neofelis_google_search_enabled=(
             settings.ask_apex.neofelis_google_search_enabled
         ),
@@ -854,10 +954,13 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     if is_local_profile(profile):
         backend = get_local_runtime_backend(profile.provider)
+        provider_label = _local_provider_label(profile.provider)
         if not backend.enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Local Ollama inference is disabled in system settings.",
+                detail=(
+                    f"Local {provider_label} inference is disabled in system settings."
+                ),
             )
 
         if not try_begin_local_execution():
@@ -870,6 +973,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             )
 
         try:
+            _ensure_local_alias_configured(profile)
             model_ref = LocalModelRef(
                 provider=profile.provider, model=profile.runtime_model_id
             )
@@ -892,7 +996,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=(
                         f"Local model {profile.runtime_model_id} failed to load. "
-                        "Ensure Ollama is reachable and configured."
+                        f"Ensure {provider_label} is reachable and configured."
                     ),
                 )
 

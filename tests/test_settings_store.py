@@ -334,12 +334,20 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch.model_validate({"unknown_root": {"a": 1}})
 
     def test_local_agents_are_valid_patch_values(self) -> None:
-        for profile in ("sorex", "mus"):
+        for profile in ("sorex", "mus", "apodemus"):
             with self.subTest(agent=profile):
                 patch = SettingsPatch.model_validate(
                     {"ask_apex": {"local_agent": profile}}
                 )
                 self.assertEqual(patch.ask_apex.local_agent, profile)
+
+    def test_apodemus_context_window_patch_values(self) -> None:
+        for window in (4096, 8192, 16384, 32768):
+            with self.subTest(context_window=window):
+                patch = SettingsPatch.model_validate(
+                    {"ask_apex": {"apodemus_context_window": window}}
+                )
+                self.assertEqual(patch.ask_apex.apodemus_context_window, window)
 
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
         store = self._store()

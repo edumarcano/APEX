@@ -63,7 +63,7 @@ import type {
   CloudSettingsAgent,
   LocalToolScope,
 } from './types/telemetry'
-import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
+import type { ApodemusContextWindow, BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
 interface ParsedEmail {
   subject: string
@@ -155,6 +155,7 @@ export default function App(): ReactElement {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
   const [cloudAgent, setCloudAgent] = useState<CloudSettingsAgent>('panthera')
+  const [apodemusContextWindow, setApodemusContextWindow] = useState<ApodemusContextWindow>(8192)
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
@@ -280,8 +281,17 @@ export default function App(): ReactElement {
         setBriefingMode(response.settings.briefing.default_mode)
       }
       setVoiceMode(response.settings.voice.mode)
+      setApodemusContextWindow(response.settings.ask_apex.apodemus_context_window)
     },
     [activeAgent, applyBootSettings],
+  )
+
+  const handleSettingsPanelApplied = useCallback(
+    async (response: SettingsResponse) => {
+      handleSettingsApplied(response)
+      await refreshAgentsStatus()
+    },
+    [handleSettingsApplied, refreshAgentsStatus],
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
@@ -305,6 +315,15 @@ export default function App(): ReactElement {
           }
           if (values.effort === 'light' || values.effort === 'focused' || values.effort === 'extended') {
             setCloudEffort(values.effort)
+          }
+          const contextWindow = values.apodemus_context_window
+          if (
+            contextWindow === 4096 ||
+            contextWindow === 8192 ||
+            contextWindow === 16384 ||
+            contextWindow === 32768
+          ) {
+            setApodemusContextWindow(contextWindow)
           }
         }
         const briefing = settingsValues.briefing
@@ -729,10 +748,10 @@ export default function App(): ReactElement {
   )
 
   const persistAskApexSettings = useCallback(
-    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<void> => {
+    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<boolean> => {
       const payload = devModeActive ? filterAskApexSettingsForDevMode(askApex) : askApex
       if (Object.keys(payload).length === 0) {
-        return
+        return true
       }
       try {
         const response = await fetch(API_ENDPOINTS.settings, {
@@ -741,7 +760,7 @@ export default function App(): ReactElement {
           body: JSON.stringify({ ask_apex: payload }),
         })
         if (!response.ok) {
-          return
+          return false
         }
         const body: unknown = await response.json()
         const parsed = parseSettingsResponse(body)
@@ -749,8 +768,10 @@ export default function App(): ReactElement {
           handleSettingsApplied(parsed, selectedAgent)
           await refreshAgentsStatus()
         }
+        return parsed !== null
       } catch {
         // The session selection remains usable if local preference persistence fails.
+        return false
       }
     },
     [devModeActive, handleSettingsApplied, refreshAgentsStatus],
@@ -813,6 +834,20 @@ export default function App(): ReactElement {
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
     void persistAskApexSettings({ orcinus_x_search_enabled: enabled }, activeAgent)
   }, [activeAgent, persistAskApexSettings])
+
+  const handleApodemusContextChange = useCallback((contextWindow: ApodemusContextWindow): void => {
+    const previous = apodemusContextWindow
+    setApodemusContextWindow(contextWindow)
+    void (async (): Promise<void> => {
+      const persisted = await persistAskApexSettings(
+        { apodemus_context_window: contextWindow },
+        activeAgent,
+      )
+      if (!persisted) {
+        setApodemusContextWindow(previous)
+      }
+    })()
+  }, [activeAgent, apodemusContextWindow, persistAskApexSettings])
 
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession(activeAgent)
@@ -882,7 +917,7 @@ export default function App(): ReactElement {
           agentsStatusHydrated={agentsStatusHydrated}
           failedConnectors={briefing.failedConnectors}
           hasBriefingEvidence={briefing.status === 'success' || briefing.status === 'error'}
-          onApplied={handleSettingsApplied}
+          onApplied={handleSettingsPanelApplied}
         />
 
         {workspace === 'home' ? (
@@ -1242,6 +1277,8 @@ export default function App(): ReactElement {
             onGoogleMapsChange={handleGoogleMapsChange}
             onDelphinusXSearchChange={handleDelphinusXSearchChange}
             onOrcinusXSearchChange={handleOrcinusXSearchChange}
+            apodemusContextWindow={apodemusContextWindow}
+            onApodemusContextChange={handleApodemusContextChange}
             onSubmit={handleHomeSubmit}
             onNewSession={handleNewCortexSession}
           />

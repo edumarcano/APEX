@@ -76,4 +76,28 @@ describe('AskApexBar local command shortcuts', () => {
     fireEvent.submit(screen.getByLabelText('Ask APEX'))
     expect(onSubmit).toHaveBeenCalledWith('tomorrow', 'mus', 'weather')
   })
+
+  it('treats Apodemus as a local Agent for slash-command tooling', () => {
+    const apodemusAgent: AgentStatus = {
+      ...localAgent,
+      key: 'apodemus',
+      display_name: 'Apex Apodemus',
+      configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
+      provider: 'llama_cpp',
+    }
+    render(
+      <AskApexBar
+        presentation="cortex"
+        activeAgent="apodemus"
+        onSubmit={vi.fn()}
+        agentsStatus={[apodemusAgent]}
+        commands={[weatherCommand]}
+        armedToolScope="weather"
+        onArmedToolScopeChange={vi.fn()}
+        isSubmitting={false}
+      />,
+    )
+
+    expect(screen.getByText('Tool scope: /weather')).toBeInTheDocument()
+  })
 })

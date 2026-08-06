@@ -18,10 +18,12 @@ from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, rem
 from core.config import ENV_PATH
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
+from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
+from core.settings.store import get_settings_store
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -39,6 +41,21 @@ async def _app_lifespan(_app: FastAPI):
     set_microsoft_auth_service(microsoft_auth)
     set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db()
+    get_settings_store()
+
+    llama_supervisor = get_llama_cpp_server_supervisor()
+
+    async def _managed_llama_startup() -> None:
+        try:
+            await asyncio.to_thread(
+                lambda: llama_supervisor.ensure_ready(allow_restart=False)
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Managed llama.cpp startup failed; continuing APEX boot without Apodemus"
+            )
+
+    asyncio.create_task(_managed_llama_startup())
 
     if any_local_runtime_enabled():
         idle_model_task = asyncio.create_task(check_idle_local_models_loop())
@@ -57,6 +74,11 @@ async def _app_lifespan(_app: FastAPI):
         await mcp_manager.shutdown()
         set_mcp_manager(None)
         _LOGGER.info("Stopped MCP client runtime")
+
+    try:
+        await asyncio.to_thread(llama_supervisor.shutdown_owned)
+    except Exception:
+        _LOGGER.exception("Error while stopping owned llama.cpp process")
 
     await microsoft_auth.shutdown()
     microsoft_todo_client.close()

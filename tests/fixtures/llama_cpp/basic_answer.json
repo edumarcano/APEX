@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-basic",
+  "object": "chat.completion",
+  "created": 1710000000,
+  "model": "apodemus-8k",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The local weather looks clear."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 42,
+    "completion_tokens": 8,
+    "total_tokens": 50
+  }
+}

@@ -28,6 +28,7 @@ from core.agent.catalog import (
     resolve_agent_selection,
 )
 from core.config import ENV_PATH, is_dev_mode
+from core.settings import get_settings_store
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
 from core.settings import RuntimeSettingsSnapshot, get_settings_store
 from core.telemetry.collector import enabled_connector_names
@@ -137,11 +138,25 @@ def _evaluate_local_agent_blockers(
     if spec is None or spec.runtime != "local":
         blockers.append(_blocker("invalid_input", f"Unknown local Agent: {agent_key!r}"))
         return blockers, False
-    agent = build_concrete_agent(agent_key, native_effort=None)
+    agent = build_concrete_agent(
+        agent_key,
+        native_effort=None,
+        local_context_window=(
+            get_settings_store().get_snapshot().ask_apex.apodemus_context_window
+            if agent_key == "apodemus"
+            else None
+        ),
+    )
     backend = get_local_runtime_backend(agent.provider)
 
     if not backend.enabled:
-        blockers.append(_blocker("model_unreachable", "Local Ollama runtime is disabled."))
+        provider_label = "llama.cpp" if agent.provider == "llama_cpp" else "Ollama"
+        blockers.append(
+            _blocker(
+                "model_unreachable",
+                f"Local {provider_label} runtime is disabled.",
+            )
+        )
         return blockers, False
 
     if is_local_execution_active():
@@ -162,6 +177,7 @@ def _evaluate_local_agent_blockers(
 
     cold_load_required = not any(
         _loaded_model_matches(loaded_model, agent.runtime_model_id)
+        and loaded_model.get("state", "loaded") == "loaded"
         for loaded_model in snapshot["loaded_models"]
     )
 
@@ -364,7 +380,15 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         warnings.append(_warning("rapid_connector_refresh"))
 
     if local_agent and agent is not None:
-        profile = build_concrete_agent(agent, native_effort=None)
+        profile = build_concrete_agent(
+            agent,
+            native_effort=None,
+            local_context_window=(
+                get_settings_store().get_snapshot().ask_apex.apodemus_context_window
+                if agent == "apodemus"
+                else None
+            ),
+        )
         if getattr(profile, "high_resource", False):
             warnings.append(_warning("high_resource_local_agent"))
 

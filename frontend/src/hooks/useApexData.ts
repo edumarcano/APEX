@@ -17,6 +17,7 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
+import { isAgentKey } from '../lib/agents'
 import {
   resolvePipelineTemperatureF,
   resolveWeatherCondition,
@@ -114,15 +115,6 @@ function getStringField(
 }
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
-const VALID_AGENT_PROFILES: readonly AgentKey[] = [
-  'panthera',
-  'neofelis',
-  'delphinus',
-  'orcinus',
-  'sorex',
-  'mus',
-  'acinonyx',
-]
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'gemini',
   'ollama',
@@ -153,7 +145,7 @@ function parseAgentInitialSelection(value: unknown): AgentInitialSelection | und
   if (runtime !== 'cloud' && runtime !== 'local') {
     return undefined
   }
-  if (typeof agent !== 'string' || !VALID_AGENT_PROFILES.includes(agent as AgentKey)) {
+  if (!isAgentKey(agent)) {
     return undefined
   }
   const effort =
@@ -165,7 +157,7 @@ function parseAgentInitialSelection(value: unknown): AgentInitialSelection | und
   }
   return {
     runtime,
-    agent: agent as AgentKey,
+    agent,
     effort,
   }
 }
@@ -673,11 +665,9 @@ export function useApexData(): UseApexDataReturn {
               if (agentInitialSelection) {
                 defaultAgent = agentInitialSelection.agent
               } else {
-                defaultAgent =
-                  typeof body.default_agent === 'string' &&
-                  VALID_AGENT_PROFILES.includes(body.default_agent as AgentKey)
-                    ? (body.default_agent as AgentKey)
-                    : undefined
+                defaultAgent = isAgentKey(body.default_agent)
+                  ? body.default_agent
+                  : undefined
               }
               if (typeof body.ask_apex_enabled === 'boolean') {
                 askApexEnabled = body.ask_apex_enabled

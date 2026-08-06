@@ -30,6 +30,7 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/cortex/query` | Run one Cortex Engine turn |
 | GET | `/api/v1/market` | Independent EOD market data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
+| GET | `/api/v1/llama-cpp/status` | Sanitized llama.cpp server ownership status |
 | GET | `/api/v1/microsoft-todo/status` | Microsoft To Do authorization status |
 | POST | `/api/v1/microsoft-todo/auth/start` | Begin device-code authorization |
 | DELETE | `/api/v1/microsoft-todo/auth` | Disconnect Microsoft To Do |
@@ -63,19 +64,20 @@ Returns boot-time HUD values such as Ask APEX enablement, the effective Agent an
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `8`.
+Returns the resolved settings envelope. The current contract version is `10`.
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
     "modules": { "football": false, "f1": true },
-    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true, "apodemus_context_window": 8192 },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
-    "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } }
+    "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
+    "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -91,7 +93,7 @@ Returns the resolved settings envelope. The current contract version is `8`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
 
 ```json
 {
@@ -102,11 +104,15 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 }
 ```
 
-The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds.
+The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-Environment modes, prompt text, credentials, endpoints, commands, allowlists, tool risks, and football teams are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay.
+Environment modes, prompt text, credentials, endpoints, commands, allowlists, tool risks, and football teams are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
 ## Runtime status
+
+### GET `/api/v1/llama-cpp/status`
+
+Returns sanitized llama.cpp server ownership for Runtime Settings: `enabled`, `managed`, `ownership` (`none` | `external` | `apex`), `state` (`disabled` | `external_connected` | `managed_running` | `starting` | `managed_stopped` | `startup_failed`), and an optional sanitized `last_error`. Never includes executable paths, preset paths, PIDs, or raw process output.
 
 ### GET `/api/v1/status`
 
@@ -229,9 +235,9 @@ Returns local Agent tool scopes, including availability, reason, tool count, and
 
 Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
-The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), and Mus (`qwen3:4b-instruct`).
+The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), and Apodemus (`gemma-4-E2B-Q4_K_M.gguf` through llama.cpp).
 
-Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
@@ -250,7 +256,7 @@ Pre-warms one installed local Agent before a request:
 { "agent": "mus" }
 ```
 
-The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
+`agent` may be `mus`, `sorex`, or `apodemus`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
 
 - `403` — demo mode disallows model calls.
 - `409` — a local generation or lifecycle action is active.
@@ -292,7 +298,7 @@ Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex and Mus use up to 2/3 and 3/4 turns/calls respectively. The last model turn is answer-only.
+Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex, Mus, and Apodemus use up to 2/3, 3/4, and 3/4 turns/calls respectively. The last model turn is answer-only.
 
 ## Markets and MCP
 

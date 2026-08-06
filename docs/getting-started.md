@@ -123,7 +123,8 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Weather, news, football, and market data | The corresponding key from `.env.example` |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
-| Local inference | Ollama plus the desired Qwen3 model tags |
+| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags |
+| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with Apodemus aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.Read` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
@@ -139,6 +140,24 @@ ollama pull qwen3:4b-instruct
 ```
 
 These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instead of failing at selection time.
+
+## Optional llama.cpp path
+
+llama.cpp is not required to start APEX. When you want Apex Apodemus:
+
+1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
+2. Copy [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini) to a machine-local path, set the GGUF placeholder, and keep that copy untracked.
+3. Choose a mode:
+   - **External:** start the router yourself with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-and-managed-router-modes).
+   - **Managed:** in Runtime Settings, enable llama.cpp, turn on Manage server automatically, and set the executable and preset paths. APEX starts the router only when the configured loopback URL is unreachable.
+4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
+5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
+
+A manual smoke script is available when a router is running:
+
+```powershell
+uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-8k --load --unload
+```
 
 ## First-run expectations
 
@@ -175,7 +194,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### A local model is unavailable
 
-Confirm Ollama is running at the configured host and that the exact model tag is installed with `ollama list`. Cold loads can also be blocked by the Agent's CPU or RAM gate.
+Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For Apodemus, confirm the llama.cpp router lists the selected runtime alias. Cold loads can also be blocked by the Agent's CPU or RAM gate.
 
 ### Live connectors return no data
 

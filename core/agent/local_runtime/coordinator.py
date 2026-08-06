@@ -27,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 _IDLE_CHECK_INTERVAL_SECONDS = 30
 
 _execution_lock = threading.Lock()
+_runtime_transition_lock = threading.Lock()
 _state_lock = threading.Lock()
 _active_local_model: LocalModelRef | None = None
 _loading_local_model: LocalModelRef | None = None
@@ -95,6 +96,31 @@ def _adopt_single_resident(found: list[LocalModelRef]) -> LocalModelRef | None:
         return None
 
 
+def try_begin_local_runtime_transition() -> bool:
+    """
+    Attempt to claim the local-runtime settings transition gate without blocking.
+
+    Returns False when another transition is in progress or Apodemus is active
+    or loading, allowing callers to reject conflicting settings changes.
+    """
+    if not _runtime_transition_lock.acquire(blocking=False):
+        return False
+    if is_local_execution_active() or get_loading_local_model() is not None:
+        _runtime_transition_lock.release()
+        return False
+    return True
+
+
+def end_local_runtime_transition() -> None:
+    """Release the local-runtime settings transition gate."""
+    _runtime_transition_lock.release()
+
+
+def is_local_runtime_transition_active() -> bool:
+    """Return whether a local-runtime settings transition is in progress."""
+    return _runtime_transition_lock.locked()
+
+
 def try_begin_local_execution() -> bool:
     """
     Attempt to claim the single local execution slot without blocking.
@@ -102,12 +128,25 @@ def try_begin_local_execution() -> bool:
     Returns False when another local generation is already running, allowing
     the caller to reject the request instead of parking a worker thread.
     """
+    if _runtime_transition_lock.locked():
+        return False
     return _execution_lock.acquire(blocking=False)
 
 
 def end_local_execution() -> None:
     """Release the local execution slot claimed by try_begin_local_execution."""
     _execution_lock.release()
+    try:
+        from core.agent.providers.llama_cpp_supervisor import (
+            get_llama_cpp_server_supervisor,
+        )
+
+        get_llama_cpp_server_supervisor().maybe_stop_after_idle()
+    except Exception:
+        _LOGGER.debug(
+            "Deferred llama.cpp shutdown check failed after local execution",
+            exc_info=True,
+        )
 
 
 def is_local_execution_active() -> bool:

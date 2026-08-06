@@ -12,11 +12,12 @@ const panthera: AgentStatus = {
 const neofelis: AgentStatus = { ...panthera, key: 'neofelis', display_name: 'Apex Neofelis', configured_model: 'gemini-3.6-flash', provider: 'gemini', sort_order: 2, capabilities: ['Research', 'Google Search', 'Google Maps'], native_tools: { google_search: true, google_maps: true } }
 const acinonyx: AgentStatus = { ...neofelis, key: 'acinonyx', display_name: 'Apex Acinonyx', configured_model: 'gemini-3.5-flash-lite', sort_order: 0, capabilities: ['Privacy sandbox', 'Masked context'], pricing: { ...neofelis.pricing, billing_basis: 'free_tier', input_per_million: 0, output_per_million: 0 } }
 const mus: AgentStatus = { ...panthera, key: 'mus', display_name: 'Apex Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', runtime: 'local', sort_order: 5, capabilities: ['Larger model', 'Primary local'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', active: false, pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
+const apodemus: AgentStatus = { ...mus, key: 'apodemus', display_name: 'Apex Apodemus', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', sort_order: 6, stability: 'preview', capabilities: ['Local llama.cpp'] }
 const weather: LocalCommandStatus = { key: 'weather', command: '/weather', label: 'Weather', description: 'Configured-location forecast.', tool_count: 1, estimated_schema_tokens: 120, available: true, unavailable_reason: null }
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
+    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), apodemusContextWindow: 8192, onApodemusContextChange: vi.fn(), onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
   }
 }
 
@@ -154,5 +155,69 @@ describe('CortexWorkspace', () => {
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', lifecycleBusy: true, agentsStatus: [{ ...mus, active: true, idle_unload_remaining_seconds: 299 }] })} />)
     expect(screen.getByText('In use · auto-unload paused')).toBeInTheDocument()
+  })
+
+  it('shows Apodemus context selector only when Apodemus is selected', async () => {
+    const user = userEvent.setup()
+    const onApodemusContextChange = vi.fn()
+    const { rerender } = render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'mus',
+          agentsStatus: [mus, apodemus],
+          onApodemusContextChange,
+        })}
+      />,
+    )
+    expect(screen.queryByLabelText('Context window')).not.toBeInTheDocument()
+
+    rerender(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [mus, apodemus],
+          apodemusContextWindow: 8192,
+          onApodemusContextChange,
+        })}
+      />,
+    )
+    const contextSelect = screen.getByLabelText('Context window')
+    expect(contextSelect).toBeEnabled()
+    expect(contextSelect).toHaveValue('8192')
+    await user.selectOptions(contextSelect, '32768')
+    expect(onApodemusContextChange).toHaveBeenCalledWith(32768)
+  })
+
+  it('disables Apodemus context selector during local generation or loading', () => {
+    const { rerender } = render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [apodemus],
+        })}
+      />,
+    )
+    expect(screen.getByLabelText('Context window')).toBeEnabled()
+
+    rerender(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [{ ...apodemus, loading: true }],
+        })}
+      />,
+    )
+    expect(screen.getByLabelText('Context window')).toBeDisabled()
+
+    rerender(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [apodemus],
+          lifecycleBusy: true,
+        })}
+      />,
+    )
+    expect(screen.getByLabelText('Context window')).toBeDisabled()
   })
 })

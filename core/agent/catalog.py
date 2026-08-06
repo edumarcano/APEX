@@ -9,6 +9,11 @@ from typing import Any, Literal, TypeAlias
 from core.agent.providers.contract import InferenceProvider, is_local_inference_provider
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
+from core.agent.providers.llama_cpp_models import (
+    APODEMUS_RUNTIME_MODEL_IDS,
+    LlamaCppModelProfile,
+    build_apodemus_profile,
+)
 from core.agent.providers.ollama_models import (
     OLLAMA_HIGH_RESOURCE_AGENTS,
     OLLAMA_RUNTIME_CONFIGS,
@@ -29,7 +34,14 @@ from core.config import (
 )
 
 AgentKey: TypeAlias = Literal[
-    "acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus"
+    "acinonyx",
+    "panthera",
+    "neofelis",
+    "delphinus",
+    "orcinus",
+    "sorex",
+    "mus",
+    "apodemus",
 ]
 CloudAgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
@@ -37,18 +49,27 @@ CloudAgentKey: TypeAlias = Literal[
 CloudSettingsAgentKey: TypeAlias = Literal[
     "panthera", "neofelis", "delphinus", "orcinus"
 ]
-LocalAgentKey: TypeAlias = Literal["sorex", "mus"]
+LocalAgentKey: TypeAlias = Literal["sorex", "mus", "apodemus"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset(
-    {"acinonyx", "panthera", "neofelis", "delphinus", "orcinus", "sorex", "mus"}
+    {
+        "acinonyx",
+        "panthera",
+        "neofelis",
+        "delphinus",
+        "orcinus",
+        "sorex",
+        "mus",
+        "apodemus",
+    }
 )
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus", "apodemus"})
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
 
@@ -63,7 +84,10 @@ _APEX_TO_NATIVE_EFFORT: dict[str, NativeEffort] = {
 }
 
 AgentModelProfile = (
-    GeminiModelProfile | OllamaModelProfile | ResponsesModelProfile
+    GeminiModelProfile
+    | OllamaModelProfile
+    | LlamaCppModelProfile
+    | ResponsesModelProfile
 )
 
 
@@ -232,6 +256,29 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         capability_tags=("Larger model", "Primary local"),
         supports_effort=False,
     ),
+    "apodemus": AgentSpec(
+        key="apodemus",
+        display_name="Apex Apodemus",
+        description=(
+            "Preview private local Agent for efficient tool-driven work through llama.cpp."
+        ),
+        identity_instruction=(
+            "You are Apex Apodemus, an Apex Agent powered by "
+            "Gemma 4 E2B through llama.cpp."
+        ),
+        agent_version="1.0",
+        provider="llama_cpp",
+        runtime="local",
+        api_model="gemma-4-E2B-Q4_K_M.gguf",
+        default_effort=None,
+        credential_env=None,
+        max_tool_turns=3,
+        max_tool_calls=4,
+        tier="balanced",
+        stability="preview",
+        capability_tags=("Efficient local", "Selectable context"),
+        supports_effort=False,
+    ),
 }
 
 _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
@@ -241,6 +288,7 @@ _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
     "delphinus",
     "orcinus",
     "mus",
+    "apodemus",
     "sorex",
 )
 
@@ -331,6 +379,7 @@ def build_concrete_agent(
     agent_key: str,
     *,
     native_effort: NativeEffort | None,
+    local_context_window: int | None = None,
     neofelis_google_search_enabled: bool = True,
     neofelis_google_maps_enabled: bool = True,
     delphinus_x_search_enabled: bool = True,
@@ -383,6 +432,22 @@ def build_concrete_agent(
             system_instruction=compose_agent_system_instruction(
                 agent_key, runtime.system_instruction
             ),
+        )
+    if spec.provider == "llama_cpp":
+        if agent_key != "apodemus":
+            raise ValueError(f"Unsupported llama.cpp Agent: {agent_key!r}")
+        return build_apodemus_profile(
+            display_name=spec.display_name,
+            agent_version=spec.agent_version,
+            api_model=spec.api_model,
+            tier=spec.tier,  # type: ignore[arg-type]
+            stability=spec.stability,
+            max_tool_turns=spec.max_tool_turns,
+            max_tool_calls=spec.max_tool_calls,
+            system_instruction=compose_agent_system_instruction(
+                agent_key, LOCAL_AGENT_SYSTEM_PROMPT
+            ),
+            context_window=local_context_window,
         )
     return ResponsesModelProfile(
         provider=spec.provider,  # type: ignore[arg-type]
@@ -462,7 +527,11 @@ def is_cloud_agent_key(agent_key: str) -> bool:
     return spec is not None and spec.runtime == "cloud"
 
 
-def local_model_ref_for_agent(agent_key: str) -> LocalModelRef:
+def local_model_ref_for_agent(
+    agent_key: str,
+    *,
+    local_context_window: int | None = None,
+) -> LocalModelRef:
     """Return the currently selected runtime reference for a local Agent."""
     spec = AGENT_SPECS[agent_key]
     if spec.runtime != "local":
@@ -471,7 +540,11 @@ def local_model_ref_for_agent(agent_key: str) -> LocalModelRef:
         raise ValueError(
             f"Agent {agent_key!r} uses unsupported local provider {spec.provider!r}"
         )
-    profile = build_concrete_agent(agent_key, native_effort=None)
+    profile = build_concrete_agent(
+        agent_key,
+        native_effort=None,
+        local_context_window=local_context_window,
+    )
     runtime_model_id = getattr(profile, "runtime_model_id", None)
     if not isinstance(runtime_model_id, str) or not runtime_model_id:
         raise ValueError(
@@ -485,6 +558,14 @@ def local_model_ref_for_agent(agent_key: str) -> LocalModelRef:
 
 def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
     """Return every recognized runtime reference belonging to a local Agent."""
+    spec = AGENT_SPECS[agent_key]
+    if spec.runtime != "local":
+        return frozenset()
+    if spec.provider == "llama_cpp" and agent_key == "apodemus":
+        return frozenset(
+            LocalModelRef(provider="llama_cpp", model=alias)
+            for alias in APODEMUS_RUNTIME_MODEL_IDS.values()
+        )
     return frozenset({local_model_ref_for_agent(agent_key)})
 
 

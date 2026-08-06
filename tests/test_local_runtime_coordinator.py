@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import unittest
 from dataclasses import dataclass
-from typing import ClassVar, Literal
+from typing import Literal
 from unittest import mock
 
 from core.agent.local_runtime import coordinator as coord
@@ -19,9 +19,9 @@ from core.agent.local_runtime.contract import (
 
 @dataclass
 class _FakeProfile:
-    provider: ClassVar[Literal["ollama"]] = "ollama"
-    runtime: ClassVar[Literal["local"]] = "local"
     api_model: str
+    provider: Literal["ollama", "llama_cpp"] = "ollama"
+    runtime: Literal["local"] = "local"
     context_window: int = 4096
     generation_timeout: int = 30
     ram_limit: float = 90.0
@@ -37,9 +37,8 @@ class _FakeProfile:
 
 
 class _FakeBackend:
-    provider = "ollama"
-
-    def __init__(self) -> None:
+    def __init__(self, provider: Literal["ollama", "llama_cpp"] = "ollama") -> None:
+        self.provider = provider
         self.enabled = True
         self.idle_unload_seconds = 60
         self.manual_unload_enabled = True
@@ -62,7 +61,7 @@ class _FakeBackend:
             self.lock_held_during_io = True
         loaded: list[LocalRuntimeModel] = [
             {
-                "provider": "ollama",
+                "provider": self.provider,
                 "name": model,
                 "model": model,
                 "state": "loaded",
@@ -76,7 +75,7 @@ class _FakeBackend:
             for model in sorted(self.resident)
         ]
         return {
-            "provider": "ollama",
+            "provider": self.provider,
             "reachable": True,
             "installed_models": list(self.installed),
             "loaded_models": loaded,
@@ -115,7 +114,12 @@ class _FakeBackend:
 
 class LocalRuntimeCoordinatorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.backend = _FakeBackend()
+        self.backend = _FakeBackend("ollama")
+        self.llama_backend = _FakeBackend("llama_cpp")
+        self.backends = {
+            "ollama": self.backend,
+            "llama_cpp": self.llama_backend,
+        }
         self.clock = {"now": 1000.0}
         self._patches = [
             mock.patch.object(coord, "_active_local_model", None),
@@ -128,11 +132,11 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
             ),
             mock.patch(
                 "core.agent.local_runtime.coordinator.get_local_runtime_backend",
-                return_value=self.backend,
+                side_effect=lambda provider: self.backends[provider],
             ),
             mock.patch(
                 "core.agent.local_runtime.coordinator.iter_local_runtime_backends",
-                return_value=(self.backend,),
+                side_effect=lambda enabled_only=False: tuple(self.backends.values()),
             ),
             mock.patch(
                 "core.agent.local_runtime.coordinator._known_local_model_refs",
@@ -140,6 +144,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
                     {
                         LocalModelRef(provider="ollama", model="sorex-model"),
                         LocalModelRef(provider="ollama", model="mus-model"),
+                        LocalModelRef(provider="llama_cpp", model="apodemus-8k"),
+                        LocalModelRef(provider="llama_cpp", model="apodemus-4k"),
                     }
                 ),
             ),
@@ -147,9 +153,23 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         for patched in self._patches:
             patched.start()
             self.addCleanup(patched.stop)
-        # Ensure execution lock is released between tests.
+        # Ensure execution and transition locks are released between tests.
+        while coord.is_local_runtime_transition_active():
+            coord.end_local_runtime_transition()
         while coord.is_local_execution_active():
             coord.end_local_execution()
+
+    def test_transition_lock_blocks_local_execution(self) -> None:
+        self.assertTrue(coord.try_begin_local_runtime_transition())
+        self.assertFalse(coord.try_begin_local_execution())
+        coord.end_local_runtime_transition()
+        self.assertTrue(coord.try_begin_local_execution())
+        coord.end_local_execution()
+
+    def test_transition_lock_rejects_when_execution_active(self) -> None:
+        self.assertTrue(coord.try_begin_local_execution())
+        self.assertFalse(coord.try_begin_local_runtime_transition())
+        coord.end_local_execution()
 
     def test_lock_is_non_blocking(self) -> None:
         self.assertTrue(coord.try_begin_local_execution())
@@ -400,6 +420,76 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         sorex = _FakeProfile(api_model="sorex-model", high_resource=False)
         self.assertFalse(sorex.high_resource)
         self.assertTrue(profile.high_resource)
+
+    def test_mus_to_apodemus_unloads_ollama_first(self) -> None:
+        self.backend.resident.add("mus-model")
+        coord.register_local_activity(
+            LocalModelRef(provider="ollama", model="mus-model")
+        )
+        self.assertTrue(coord.try_begin_local_execution())
+        self.assertTrue(
+            coord.switch_local_model(
+                _FakeProfile(api_model="apodemus-8k", provider="llama_cpp")
+            )
+        )
+        self.assertEqual(self.backend.unload_calls, ["mus-model"])
+        self.assertEqual(self.llama_backend.load_calls, ["apodemus-8k"])
+        self.assertNotIn("mus-model", self.backend.resident)
+        self.assertIn("apodemus-8k", self.llama_backend.resident)
+        self.assertEqual(
+            coord.get_active_local_model(),
+            LocalModelRef(provider="llama_cpp", model="apodemus-8k"),
+        )
+        coord.end_local_execution()
+
+    def test_apodemus_to_sorex_unloads_llama_cpp_first(self) -> None:
+        self.llama_backend.resident.add("apodemus-8k")
+        coord.register_local_activity(
+            LocalModelRef(provider="llama_cpp", model="apodemus-8k")
+        )
+        self.assertTrue(coord.try_begin_local_execution())
+        self.assertTrue(
+            coord.switch_local_model(
+                _FakeProfile(api_model="sorex-model", provider="ollama")
+            )
+        )
+        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-8k"])
+        self.assertEqual(self.backend.load_calls, ["sorex-model"])
+        self.assertNotIn("apodemus-8k", self.llama_backend.resident)
+        self.assertEqual(
+            coord.get_active_local_model(),
+            LocalModelRef(provider="ollama", model="sorex-model"),
+        )
+        coord.end_local_execution()
+
+    def test_failed_cross_provider_unload_blocks_target_load(self) -> None:
+        self.backend.resident.add("mus-model")
+        self.backend.fail_unload.add("mus-model")
+        coord.register_local_activity(
+            LocalModelRef(provider="ollama", model="mus-model")
+        )
+        self.assertTrue(coord.try_begin_local_execution())
+        self.assertFalse(
+            coord.switch_local_model(
+                _FakeProfile(api_model="apodemus-8k", provider="llama_cpp")
+            )
+        )
+        self.assertEqual(self.llama_backend.load_calls, [])
+        self.assertEqual(
+            coord.get_active_local_model(),
+            LocalModelRef(provider="ollama", model="mus-model"),
+        )
+        coord.end_local_execution()
+
+    def test_idle_unload_targets_active_provider(self) -> None:
+        ref = LocalModelRef(provider="llama_cpp", model="apodemus-8k")
+        self.llama_backend.resident.add("apodemus-8k")
+        coord.register_local_activity(ref)
+        self.clock["now"] = 2000.0
+        coord._maybe_unload_idle_model()
+        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-8k"])
+        self.assertEqual(self.backend.unload_calls, [])
+        self.assertIsNone(coord.get_active_local_model())
 
 
 if __name__ == "__main__":

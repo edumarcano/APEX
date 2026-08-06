@@ -10,6 +10,7 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
+  ApodemusContextWindow,
   BriefingMode,
   FeaturesSettings,
   ModulesSettings,
@@ -21,6 +22,7 @@ import type {
   SettingsResponse,
   SettingsTimingFieldGroup,
   SettingsTimingRuntime,
+  LlamaCppServerStatusResponse,
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
@@ -33,7 +35,18 @@ const VALID_CLOUD_SETTINGS_AGENTS: readonly CloudSettingsAgent[] = [
   'orcinus',
 ]
 
-const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = ['sorex', 'mus']
+const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = [
+  'sorex',
+  'mus',
+  'apodemus',
+]
+
+const VALID_APODEMUS_CONTEXT_WINDOWS: readonly ApodemusContextWindow[] = [
+  4096,
+  8192,
+  16384,
+  32768,
+]
 
 export { isLocalAgentKey } from './agents'
 
@@ -89,6 +102,7 @@ export function resolveAppliedAgentSelection(
 
 const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
   'effort',
+  'apodemus_context_window',
   'neofelis_google_search_enabled',
   'neofelis_google_maps_enabled',
   'delphinus_x_search_enabled',
@@ -144,6 +158,13 @@ function isLocalSettingsAgent(value: unknown): value is LocalSettingsAgent {
   return (
     typeof value === 'string' &&
     (VALID_LOCAL_SETTINGS_AGENTS as readonly string[]).includes(value)
+  )
+}
+
+function isApodemusContextWindow(value: unknown): value is ApodemusContextWindow {
+  return (
+    typeof value === 'number' &&
+    (VALID_APODEMUS_CONTEXT_WINDOWS as readonly number[]).includes(value)
   )
 }
 
@@ -219,6 +240,35 @@ function parseModules(value: unknown): ModulesSettings | null {
   }
 }
 
+function parseLlamaCppSettings(value: unknown): RuntimeSettings['llama_cpp'] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  if (typeof value.enabled !== 'boolean' || typeof value.host !== 'string') {
+    return null
+  }
+  if (!value.host.trim()) {
+    return null
+  }
+  const managed = value.managed === undefined ? false : value.managed
+  if (typeof managed !== 'boolean') {
+    return null
+  }
+  const executable_path =
+    value.executable_path === undefined ? '' : value.executable_path
+  const preset_path = value.preset_path === undefined ? '' : value.preset_path
+  if (typeof executable_path !== 'string' || typeof preset_path !== 'string') {
+    return null
+  }
+  return {
+    enabled: value.enabled,
+    managed,
+    host: value.host.trim().replace(/\/$/, ''),
+    executable_path,
+    preset_path,
+  }
+}
+
 function parseMcpSettings(value: unknown): McpSettings | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' || !isRecord(value.servers)) {
     return null
@@ -245,10 +295,12 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const features = parseFeatures(value.features)
   const modules = parseModules(value.modules)
   const mcp = parseMcpSettings(value.mcp)
+  const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   if (
     !features ||
     !modules ||
     !mcp ||
+    !llama_cpp ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -269,6 +321,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     return null
   }
   if (!isLocalSettingsAgent(value.ask_apex.local_agent)) {
+    return null
+  }
+  if (!isApodemusContextWindow(value.ask_apex.apodemus_context_window)) {
     return null
   }
   if (typeof value.ask_apex.neofelis_google_search_enabled !== 'boolean') {
@@ -305,6 +360,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       cloud_agent: value.ask_apex.cloud_agent,
       effort: value.ask_apex.effort,
       local_agent: value.ask_apex.local_agent,
+      apodemus_context_window: value.ask_apex.apodemus_context_window,
       neofelis_google_search_enabled: value.ask_apex.neofelis_google_search_enabled,
       neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
       delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
@@ -319,6 +375,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       mode: value.voice.mode,
     },
     mcp,
+    llama_cpp,
   }
 }
 
@@ -342,6 +399,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
         alphavantage: { ...settings.mcp.servers.alphavantage },
       },
     },
+    llama_cpp: { ...settings.llama_cpp },
   }
 }
 
@@ -456,6 +514,11 @@ export function diffSettingsPatch(
     }
   }
 
+  const llamaCpp = diffSection(baseline.llama_cpp, draft.llama_cpp)
+  if (llamaCpp) {
+    patch.llama_cpp = llamaCpp
+  }
+
   return patch
 }
 
@@ -467,7 +530,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.ask_apex === undefined &&
     patch.briefing === undefined &&
     patch.voice === undefined &&
-    patch.mcp === undefined
+    patch.mcp === undefined &&
+    patch.llama_cpp === undefined
   )
 }
 
@@ -513,7 +577,7 @@ export function resolveEffectiveTiming(
     return runtime.briefingActive ? 'Applies next briefing' : 'Active'
   }
 
-  if (group === 'mcp') {
+  if (group === 'mcp' || group === 'llama_cpp') {
     return 'Active'
   }
 
@@ -572,6 +636,41 @@ export function parseMcpStatusResponse(body: unknown): McpStatusResponse | null 
     status: body.status as McpStatusResponse['status'],
     reason: body.reason,
     servers: servers as McpStatusResponse['servers'],
+  }
+}
+
+const VALID_LLAMA_CPP_SERVER_STATES = [
+  'disabled',
+  'external_connected',
+  'managed_running',
+  'starting',
+  'managed_stopped',
+  'startup_failed',
+] as const
+
+const VALID_LLAMA_CPP_OWNERSHIP = ['none', 'external', 'apex'] as const
+
+export function parseLlamaCppServerStatusResponse(
+  body: unknown,
+): LlamaCppServerStatusResponse | null {
+  if (
+    !isRecord(body) ||
+    typeof body.enabled !== 'boolean' ||
+    typeof body.managed !== 'boolean' ||
+    typeof body.ownership !== 'string' ||
+    !(VALID_LLAMA_CPP_OWNERSHIP as readonly string[]).includes(body.ownership) ||
+    typeof body.state !== 'string' ||
+    !(VALID_LLAMA_CPP_SERVER_STATES as readonly string[]).includes(body.state) ||
+    !(body.last_error === null || typeof body.last_error === 'string')
+  ) {
+    return null
+  }
+  return {
+    enabled: body.enabled,
+    managed: body.managed,
+    ownership: body.ownership as LlamaCppServerStatusResponse['ownership'],
+    state: body.state as LlamaCppServerStatusResponse['state'],
+    last_error: body.last_error,
   }
 }
 

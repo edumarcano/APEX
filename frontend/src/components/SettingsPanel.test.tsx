@@ -15,6 +15,7 @@ import {
   buildMcpStatusResponse,
   jsonResponse,
 } from '../test/settingsFixtures'
+import { API_ENDPOINTS } from '../lib/api'
 
 const DEFAULT_PROPS: ComponentProps<typeof SettingsPanel> = {
   open: true,
@@ -34,6 +35,55 @@ function renderPanel(
   overrides: Partial<ComponentProps<typeof SettingsPanel>> = {},
 ) {
   return render(<SettingsPanel {...DEFAULT_PROPS} {...overrides} />)
+}
+
+function buildLlamaCppStatusResponse(
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    enabled: false,
+    managed: false,
+    ownership: 'none',
+    state: 'disabled',
+    last_error: null,
+    ...overrides,
+  }
+}
+
+function mockSettingsPanelFetches(
+  handlers: {
+    settings?: Response | (() => Response)
+    patch?: Response | (() => Response)
+  } = {},
+) {
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url === API_ENDPOINTS.settings && method === 'GET') {
+      const value = handlers.settings ?? jsonResponse(buildSettingsResponse())
+      return typeof value === 'function' ? value() : value
+    }
+    if (url === API_ENDPOINTS.settings && method === 'PATCH') {
+      const value =
+        handlers.patch ??
+        jsonResponse({ detail: 'Write failed.' }, { status: 503 })
+      return typeof value === 'function' ? value() : value
+    }
+    if (url === API_ENDPOINTS.mcpStatus) {
+      return jsonResponse(buildMcpStatusResponse())
+    }
+    if (url === API_ENDPOINTS.llamaCppStatus) {
+      return jsonResponse(buildLlamaCppStatusResponse())
+    }
+    if (url === API_ENDPOINTS.microsoftTodoStatus) {
+      return jsonResponse({
+        configured: false,
+        state: 'not-configured',
+        permission: 'Tasks.Read',
+      })
+    }
+    return jsonResponse({})
+  })
 }
 
 describe('SettingsPanel', () => {
@@ -176,6 +226,43 @@ describe('SettingsPanel', () => {
     expect(screen.queryByLabelText('Google Search grounding')).not.toBeInTheDocument()
   })
 
+  it('exposes llama.cpp enablement and router URL in Runtime Settings', async () => {
+    mockSettingsPanelFetches()
+    const user = userEvent.setup()
+    renderPanel({ agentsStatusHydrated: true })
+
+    expect(await screen.findByRole('heading', { name: 'llama.cpp' })).toBeVisible()
+    expect(screen.getByRole('switch', { name: 'Enable llama.cpp' })).toBeVisible()
+    expect(
+      screen.getByRole('switch', { name: 'Manage server automatically' }),
+    ).toBeVisible()
+    const hostInput = screen.getByLabelText('Router URL')
+    expect(hostInput).toHaveValue('http://127.0.0.1:8080')
+    expect(
+      screen.getByText(/External mode uses a loopback router/i),
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Executable path')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Apodemus context')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('switch', { name: 'Manage server automatically' }))
+    expect(screen.getByLabelText('Executable path')).toBeVisible()
+    expect(screen.getByLabelText('Preset path')).toBeVisible()
+
+    await user.clear(hostInput)
+    await user.type(hostInput, 'http://localhost:9090')
+    expect(hostInput).toHaveValue('http://localhost:9090')
+  })
+
+  it('does not render Apodemus context in Runtime Settings', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    renderPanel({ agentsStatusHydrated: true })
+
+    await screen.findByRole('switch', { name: 'Ask APEX enabled' })
+    expect(screen.queryByLabelText('Apodemus context')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Local Runtime' })).not.toBeInTheDocument()
+  })
+
+
   it('edits the optional user designation through local settings', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
@@ -205,19 +292,9 @@ describe('SettingsPanel', () => {
   })
 
   it('preserves the dirty controls and reports a failed save', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
-      .mockResolvedValueOnce(jsonResponse(buildMcpStatusResponse()))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          configured: false,
-          state: 'not-configured',
-          permission: 'Tasks.Read',
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ detail: 'Write failed.' }, { status: 503 }),
-      )
+    mockSettingsPanelFetches({
+      patch: jsonResponse({ detail: 'Write failed.' }, { status: 503 }),
+    })
     const user = userEvent.setup()
     renderPanel()
 
