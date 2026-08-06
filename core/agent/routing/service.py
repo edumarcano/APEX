@@ -18,7 +18,11 @@ from core.agent.routing.models import (
     CapabilityRoutingRequest,
     RankedCapabilityFamily,
 )
-from core.agent.routing.calibration import DEFAULT_CALIBRATOR, is_calibrated_low_confidence
+from core.agent.routing.calibration import (
+    DISABLED_CALIBRATOR,
+    ScoreCalibrator,
+    is_calibrated_low_confidence,
+)
 from core.agent.routing.ranker import RankerResult, RankerUnavailable, rank_capability_families
 from core.agent.routing.rules import RuleMatch
 from core.agent.routing.thresholds import DEFAULT_THRESHOLDS, RoutingThresholds
@@ -85,6 +89,7 @@ def _select_families(
     runtime: str,
     *,
     rule_matches: Sequence[RuleMatch] | None = None,
+    calibrator: ScoreCalibrator = DISABLED_CALIBRATOR,
 ) -> tuple[list[str], float | None, float | None, bool]:
     if not rankings:
         return [], None, None, True
@@ -121,7 +126,7 @@ def _select_families(
         not rule_supported_top
         and is_calibrated_low_confidence(
             rankings,
-            calibrator=DEFAULT_CALIBRATOR,
+            calibrator=calibrator,
             thresholds=thresholds,
         )
     ):
@@ -156,9 +161,15 @@ def _apply_schema_budget(
     schema_budget: int,
     *,
     local_runtime: bool = False,
-) -> tuple[list[CapabilityDescriptor], tuple[str, ...]]:
+) -> tuple[list[CapabilityDescriptor], tuple[str, ...], tuple[str, ...]]:
+    """Apply schema budget with atomic per-family inclusion.
+
+    A family is offered only when every ordered descriptor fits. Partial fits are
+    recorded as partial truncation and nothing from that family is offered.
+    """
     offered: list[CapabilityDescriptor] = []
-    truncated: list[str] = []
+    fully_truncated: list[str] = []
+    partially_truncated: list[str] = []
     used_tokens = 0
     for family_key in selected_families:
         family_descriptors = _order_descriptors_for_family(family_key, tuple(descriptors))
@@ -167,17 +178,25 @@ def _apply_schema_budget(
                 project_local_descriptor(family_key, descriptor)  # type: ignore[arg-type]
                 for descriptor in family_descriptors
             ]
-        family_added = 0
+        if not family_descriptors:
+            continue
+        fitting: list[CapabilityDescriptor] = []
+        family_tokens = 0
         for descriptor in family_descriptors:
             tokens = estimate_schema_tokens([descriptor])
-            if offered and used_tokens + tokens > schema_budget:
-                if family_added == 0:
-                    truncated.append(family_key)
+            if used_tokens + family_tokens + tokens > schema_budget:
                 break
-            offered.append(descriptor)
-            used_tokens += tokens
-            family_added += 1
-    return offered, tuple(truncated)
+            fitting.append(descriptor)
+            family_tokens += tokens
+        if len(fitting) < len(family_descriptors):
+            if fitting:
+                partially_truncated.append(family_key)
+            else:
+                fully_truncated.append(family_key)
+            continue
+        offered.extend(fitting)
+        used_tokens += family_tokens
+    return offered, tuple(fully_truncated), tuple(partially_truncated)
 
 
 def _decision_from_capabilities(
@@ -193,6 +212,7 @@ def _decision_from_capabilities(
     model_key: str | None,
     fallback_reason: str | None,
     truncated_families: tuple[str, ...] = (),
+    partially_truncated_families: tuple[str, ...] = (),
 ) -> CapabilityRoutingDecision:
     considered_tokens = estimate_schema_tokens(list(considered))
     offered_tokens = estimate_schema_tokens(list(capabilities))
@@ -211,6 +231,7 @@ def _decision_from_capabilities(
         model_key=model_key,
         fallback_reason=fallback_reason,
         truncated_families=truncated_families,
+        partially_truncated_families=partially_truncated_families,
     )
 
 
@@ -218,6 +239,7 @@ def resolve_capabilities(
     request: CapabilityRoutingRequest,
     *,
     thresholds: RoutingThresholds = DEFAULT_THRESHOLDS,
+    calibrator: ScoreCalibrator = DISABLED_CALIBRATOR,
 ) -> CapabilityRoutingDecision:
     started = time.perf_counter()
     exposed = tuple(
@@ -332,6 +354,7 @@ def resolve_capabilities(
         thresholds,
         request.runtime,
         rule_matches=rule_matches,
+        calibrator=calibrator,
     )
 
     if request.mode == "shadow":
@@ -380,12 +403,13 @@ def resolve_capabilities(
         for descriptor in routable
         if descriptor.routing_family in selected_families
     ]
-    offered_list, truncated = _apply_schema_budget(
+    offered_list, fully_truncated, partially_truncated = _apply_schema_budget(
         selected_families,
         selected_descriptors,
         _schema_budget_for_agent(request.agent_key, thresholds),
         local_runtime=request.runtime == "local",
     )
+    truncated = fully_truncated + partially_truncated
     if not offered_list and request.runtime == "local":
         decision = _decision_from_capabilities(
             kind="fallback_none",
@@ -414,6 +438,7 @@ def resolve_capabilities(
         model_key=model_key,
         fallback_reason=None,
         truncated_families=truncated,
+        partially_truncated_families=partially_truncated,
     )
     _log_decision(request, decision)
     return decision

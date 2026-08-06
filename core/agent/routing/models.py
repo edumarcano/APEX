@@ -58,3 +58,4 @@ class CapabilityRoutingDecision:
     model_key: str | None
     fallback_reason: str | None
     truncated_families: tuple[str, ...] = ()
+    partially_truncated_families: tuple[str, ...] = ()

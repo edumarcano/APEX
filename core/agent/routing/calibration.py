@@ -111,4 +111,11 @@ def is_calibrated_low_confidence(
     )
 
 
-DEFAULT_CALIBRATOR = ScoreCalibrator(bins=(), default_error_rate=0.0)
+# Runtime calibration is intentionally disabled: an empty calibrator with a zero
+# default error rate never exceeds the configured error budget. Benchmarks pass
+# an explicitly fitted ``ScoreCalibrator`` into selection helpers instead of
+# mutating module-level state.
+DISABLED_CALIBRATOR = ScoreCalibrator(bins=(), default_error_rate=0.0)
+
+# Backward-compatible alias for call sites that omit an explicit calibrator.
+DEFAULT_CALIBRATOR = DISABLED_CALIBRATOR

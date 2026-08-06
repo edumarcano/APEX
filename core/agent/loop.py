@@ -22,6 +22,7 @@ from core.agent.routing.tool_search import (
     execute_tool_search,
     expand_pending_descriptors,
     get_search_available_tools_descriptor,
+    validate_search_query,
 )
 from core.agent.providers.contract import (
     InferenceProvider,
@@ -196,8 +197,13 @@ def run_agent_loop(
                     search_state.expansion_blocked_by_budget
                 ),
                 "recovery_expanded_tool_count": search_state.expanded_tool_count,
-                "recovery_extra_turns": search_state.extra_turns,
+                "recovery_search_turns_used": search_state.search_turns_used,
+                "recovery_expansion_turns_used": search_state.expansion_turns_used,
+                "recovery_recovered_tool_invocation_turns": (
+                    search_state.recovered_tool_invocation_turns
+                ),
                 "recovery_usable_turn_available": search_state.usable_recovery_turn_available,
+                "tool_search_offered": search_state.search_offered,
             }
         )
 
@@ -253,9 +259,10 @@ def run_agent_loop(
             except (TypeError, ValueError):
                 max_results = search_state.config.max_result_families
             max_results = max(1, min(max_results, search_state.config.max_result_families))
+            query = validate_search_query(str(arguments.get("query", "")))
             return execute_tool_search(
                 search_state.config.searchable_catalog,
-                str(arguments.get("query", "")),
+                query,
                 max_results=max_results,
                 max_capabilities_per_family=search_state.config.max_capabilities_per_family,
                 history=request.history,
@@ -286,10 +293,20 @@ def run_agent_loop(
                 )
                 search_state.pending_descriptors = []
                 search_state.blocked_descriptors = blocked
+                search_state.expansion_blocked_by_budget = sorted(
+                    {
+                        descriptor.routing_family
+                        for descriptor in blocked
+                        if descriptor.routing_family is not None
+                    }
+                )
                 if added:
                     search_state.expanded_tool_count += count
-                    search_state.extra_turns += 1
+                    search_state.expansion_turns_used += 1
                     search_state.register_offered(added)
+                    search_state._recovered_tool_names.update(
+                        descriptor.name for descriptor in added
+                    )
                     expanded_families = sorted(
                         {
                             descriptor.routing_family
@@ -298,13 +315,6 @@ def run_agent_loop(
                         }
                     )
                     search_state.recovered_families = expanded_families
-                    search_state.expansion_blocked_by_budget = sorted(
-                        {
-                            descriptor.routing_family
-                            for descriptor in blocked
-                            if descriptor.routing_family is not None
-                        }
-                    )
                     if is_local:
                         allowed_local_tools.update(descriptor.name for descriptor in added)
                     else:
@@ -325,10 +335,16 @@ def run_agent_loop(
                 and not is_final_turn
                 and can_offer_search_recovery(profile.max_tool_turns, turn_index)
                 and search_state.search_calls < search_state.config.max_search_calls
+                and search_state.config.searchable_catalog
+                and (
+                    search_state.config.max_expansion_schema_tokens is None
+                    or search_state.config.max_expansion_schema_tokens > 0
+                )
             ):
                 search_descriptor = get_search_available_tools_descriptor()
                 if all(tool.name != SEARCH_AVAILABLE_TOOLS_NAME for tool in turn_tools):
                     turn_tools.append(search_descriptor)
+                    search_state.search_offered = True
 
             # Withhold tools on the last permitted turn so every provider must
             # use its final model request to answer from the results already
@@ -434,6 +450,7 @@ def run_agent_loop(
                             )
                         search_state.search_attempted = True
                         search_state.search_calls += 1
+                        search_state.search_turns_used += 1
                     if is_local and call.name not in allowed_local_tools:
                         if call.name != SEARCH_AVAILABLE_TOOLS_NAME:
                             raise CapabilityError(
@@ -447,6 +464,12 @@ def run_agent_loop(
                                 "Tool is outside the selected Agent policy.",
                             )
                     output = dispatch_tool(call.name, call.arguments)
+                    if (
+                        search_state is not None
+                        and call.name in search_state._recovered_tool_names
+                        and status == "ok"
+                    ):
+                        search_state.recovered_tool_invocation_turns += 1
                     if (
                         call.name == SEARCH_AVAILABLE_TOOLS_NAME
                         and search_state is not None

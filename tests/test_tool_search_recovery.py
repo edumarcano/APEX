@@ -728,5 +728,40 @@ class ToolSearchEndToEndScriptedTests(unittest.TestCase):
         self.assertTrue(holder.get("tool_search_attempted"))
 
 
+class ToolSearchValidationTests(unittest.TestCase):
+    def test_rejects_empty_and_overlong_queries(self) -> None:
+        catalog = (_descriptor("search_gmail", "mail"),)
+        with self.assertRaises(CapabilityError):
+            execute_tool_search(catalog, "   ", max_results=1, max_capabilities_per_family=1)
+        with self.assertRaises(CapabilityError):
+            execute_tool_search(
+                catalog,
+                "x" * 501,
+                max_results=1,
+                max_capabilities_per_family=1,
+            )
+
+    def test_expansion_blocked_diagnostics_populated_when_nothing_fits(self) -> None:
+        huge = _descriptor(
+            "huge",
+            "mail",
+            schema={
+                "type": "object",
+                "properties": {f"p{i}": {"type": "string"} for i in range(200)},
+            },
+        )
+        tiny = _descriptor("tiny", "mail")
+        offered: list[CapabilityDescriptor] = []
+        added, count, blocked = expand_pending_descriptors(
+            pending=[huge, tiny],
+            offered=offered,
+            expansion_allowance=estimate_schema_tokens([tiny]) - 1,
+            blocked=[],
+        )
+        self.assertEqual(added, [])
+        self.assertEqual(count, 0)
+        self.assertEqual(len(blocked), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

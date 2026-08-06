@@ -58,8 +58,12 @@ class ToolSearchRecoveryState:
     pending_descriptors: list[CapabilityDescriptor] = field(default_factory=list)
     blocked_descriptors: list[CapabilityDescriptor] = field(default_factory=list)
     expanded_tool_count: int = 0
-    extra_turns: int = 0
+    search_turns_used: int = 0
+    expansion_turns_used: int = 0
+    recovered_tool_invocation_turns: int = 0
     usable_recovery_turn_available: bool = True
+    search_offered: bool = False
+    _recovered_tool_names: set[str] = field(default_factory=set)
     _offered_names: set[str] = field(default_factory=set)
 
     def register_offered(self, descriptors: Sequence[CapabilityDescriptor]) -> None:
@@ -251,6 +255,26 @@ def _compact_capability(descriptor: CapabilityDescriptor) -> dict[str, str]:
     }
 
 
+SEARCH_QUERY_MIN_LENGTH = 1
+SEARCH_QUERY_MAX_LENGTH = 500
+
+
+def validate_search_query(query: str) -> str:
+    """Validate and normalize a tool-search query."""
+    cleaned = query.strip()
+    if len(cleaned) < SEARCH_QUERY_MIN_LENGTH:
+        raise CapabilityError(
+            CapabilityErrorCategory.INVALID_INPUT,
+            "Tool search requires a non-empty query.",
+        )
+    if len(cleaned) > SEARCH_QUERY_MAX_LENGTH:
+        raise CapabilityError(
+            CapabilityErrorCategory.INVALID_INPUT,
+            f"Tool search query must be at most {SEARCH_QUERY_MAX_LENGTH} characters.",
+        )
+    return cleaned
+
+
 def execute_tool_search(
     catalog: Sequence[CapabilityDescriptor],
     query: str,
@@ -261,12 +285,7 @@ def execute_tool_search(
     excluded_families: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Search a pre-filtered catalog and return compact family/capability metadata."""
-    cleaned = query.strip()
-    if not cleaned:
-        raise CapabilityError(
-            CapabilityErrorCategory.INVALID_INPUT,
-            "Tool search requires a non-empty query.",
-        )
+    cleaned = validate_search_query(query)
     bounded_results = max(1, max_results)
     excluded = set(excluded_families or ())
     all_ranked = rank_searchable_families(
@@ -397,15 +416,74 @@ def expand_pending_descriptors(
 
 @dataclass(frozen=True, slots=True)
 class RecoverySimulationResult:
-  initial_selected: set[str]
-  final_selected: set[str]
-  invoked: bool
-  extra_turns: int
-  false_positive: set[str]
-  search_attempted: bool
-  search_succeeded: bool
-  expanded_families: set[str]
-  expansion_tokens_used: int
+    initial_selected: set[str]
+    final_selected: set[str]
+    initial_offered_names: tuple[str, ...]
+    matched_descriptor_names: tuple[str, ...]
+    expanded_descriptor_names: tuple[str, ...]
+    blocked_descriptor_names: tuple[str, ...]
+    final_offered_names: tuple[str, ...]
+    final_schema_tokens: int
+    final_tool_count: int
+    invoked: bool
+    search_turns_used: int
+    expansion_turns_used: int
+    recovered_tool_invocation_turns: int
+    false_positive: set[str]
+    search_attempted: bool
+    search_succeeded: bool
+    expanded_families: set[str]
+    expansion_tokens_used: int
+
+
+def _recovery_result(
+    *,
+    initial_selected: set[str],
+    initial_offered: Sequence[CapabilityDescriptor],
+    final_offered: Sequence[CapabilityDescriptor],
+    matched: Sequence[CapabilityDescriptor] = (),
+    expanded: Sequence[CapabilityDescriptor] = (),
+    blocked: Sequence[CapabilityDescriptor] = (),
+    search_attempted: bool = False,
+    search_succeeded: bool = False,
+    search_turns_used: int = 0,
+    expansion_turns_used: int = 0,
+    recovered_tool_invocation_turns: int = 0,
+    expected: set[str] | None = None,
+) -> RecoverySimulationResult:
+    final_families = {
+        descriptor.routing_family
+        for descriptor in final_offered
+        if descriptor.routing_family is not None
+    }
+    expanded_families = {
+        descriptor.routing_family
+        for descriptor in expanded
+        if descriptor.routing_family is not None
+    }
+    expansion_tokens_used = estimate_schema_tokens(expanded)
+    false_positive = final_families - (expected or set())
+    invoked = bool(expanded_families)
+    return RecoverySimulationResult(
+        initial_selected=initial_selected,
+        final_selected=final_families,
+        initial_offered_names=tuple(descriptor.name for descriptor in initial_offered),
+        matched_descriptor_names=tuple(descriptor.name for descriptor in matched),
+        expanded_descriptor_names=tuple(descriptor.name for descriptor in expanded),
+        blocked_descriptor_names=tuple(descriptor.name for descriptor in blocked),
+        final_offered_names=tuple(descriptor.name for descriptor in final_offered),
+        final_schema_tokens=estimate_schema_tokens(final_offered),
+        final_tool_count=len(final_offered),
+        invoked=invoked,
+        search_turns_used=search_turns_used,
+        expansion_turns_used=expansion_turns_used,
+        recovered_tool_invocation_turns=recovered_tool_invocation_turns,
+        false_positive=false_positive,
+        search_attempted=search_attempted,
+        search_succeeded=search_succeeded,
+        expanded_families=expanded_families,
+        expansion_tokens_used=expansion_tokens_used,
+    )
 
 
 def simulate_oracle_catalog_recovery(
@@ -414,113 +492,103 @@ def simulate_oracle_catalog_recovery(
     initial_selected: set[str],
     expected: set[str],
     searchable_catalog: Sequence[CapabilityDescriptor],
+    initial_offered: Sequence[CapabilityDescriptor],
     max_result_families: int,
     max_capabilities_per_family: int,
     expansion_allowance: int | None,
     max_tool_turns: int = 4,
     history: Sequence[AgentMessage | object] = (),
     apply_local_projection: bool = False,
+    offered_families: frozenset[str] | None = None,
 ) -> RecoverySimulationResult:
     """Oracle upper-bound helper: one bounded search using the request prompt.
 
     This simulates catalog recovery when the agent would search with the original
     user prompt. It does not model agent-initiated search decisions.
     """
-    if expected <= initial_selected:
-        return RecoverySimulationResult(
+    initial_offered_list = list(initial_offered)
+    if expected <= {
+        descriptor.routing_family
+        for descriptor in initial_offered_list
+        if descriptor.routing_family is not None
+    }:
+        return _recovery_result(
             initial_selected=initial_selected,
-            final_selected=set(initial_selected),
-            invoked=False,
-            extra_turns=0,
-            false_positive=set(),
-            search_attempted=False,
-            search_succeeded=False,
-            expanded_families=set(),
-            expansion_tokens_used=0,
+            initial_offered=initial_offered_list,
+            final_offered=initial_offered_list,
+            expected=expected,
         )
 
     if not can_offer_search_recovery(max_tool_turns, current_turn=0):
-        return RecoverySimulationResult(
+        return _recovery_result(
             initial_selected=initial_selected,
-            final_selected=set(initial_selected),
-            invoked=False,
-            extra_turns=0,
-            false_positive=set(),
-            search_attempted=False,
-            search_succeeded=False,
-            expanded_families=set(),
-            expansion_tokens_used=0,
+            initial_offered=initial_offered_list,
+            final_offered=initial_offered_list,
+            expected=expected,
         )
 
+    if not searchable_catalog or expansion_allowance == 0:
+        return _recovery_result(
+            initial_selected=initial_selected,
+            initial_offered=initial_offered_list,
+            final_offered=initial_offered_list,
+            expected=expected,
+        )
+
+    excluded_families = offered_families or frozenset(
+        descriptor.routing_family
+        for descriptor in initial_offered_list
+        if descriptor.routing_family is not None
+    )
     search_result = execute_tool_search(
         searchable_catalog,
         prompt,
         max_results=max_result_families,
         max_capabilities_per_family=max_capabilities_per_family,
         history=history,
-        excluded_families=sorted(initial_selected),
+        excluded_families=sorted(excluded_families),
     )
     search_attempted = True
     search_succeeded = search_result["match_count"] > 0
+    search_turns_used = 1
 
     config = ToolSearchRecoveryConfig(
         enabled=True,
         searchable_catalog=tuple(searchable_catalog),
-        offered_families=frozenset(initial_selected),
+        offered_families=excluded_families,
         max_result_families=max_result_families,
         max_capabilities_per_family=max_capabilities_per_family,
         max_expansion_schema_tokens=expansion_allowance,
         apply_local_projection=apply_local_projection,
     )
     state = ToolSearchRecoveryState(config=config)
-    state.register_offered(
-        [
-            CapabilityDescriptor(
-                name=f"offered_{family}",
-                title=family,
-                description=family,
-                input_schema={"type": "object", "properties": {}},
-                origin="native",
-                risk="read",
-                expose_to_agent=True,
-                expose_to_mcp_server=False,
-                expose_to_client_display=False,
-                routing_family=family,
-            )
-            for family in sorted(initial_selected)
-        ]
-    )
+    state.register_offered(initial_offered_list)
     state.queue_recovery_descriptors(search_result)
+    matched = list(state.pending_descriptors)
 
-    offered: list[CapabilityDescriptor] = []
-    added, _, _blocked = expand_pending_descriptors(
+    offered = list(initial_offered_list)
+    added, _, blocked = expand_pending_descriptors(
         pending=state.pending_descriptors,
         offered=offered,
         expansion_allowance=expansion_allowance,
     )
-    expanded_families = {
-        descriptor.routing_family
-        for descriptor in added
-        if descriptor.routing_family is not None
-    }
-    expansion_tokens_used = estimate_schema_tokens(added)
+    expansion_turns_used = 1 if added else 0
+    if can_expand_recovery_schemas(max_tool_turns, current_turn=1) and added:
+        recovered_tool_invocation_turns = 1
+    else:
+        recovered_tool_invocation_turns = 0
 
-    final_selected = set(initial_selected)
-    final_selected.update(expanded_families)
-    false_positive = final_selected - expected
-    invoked = bool(expanded_families) and expected > initial_selected
-    extra_turns = 1 if search_attempted else 0
-    if invoked and can_expand_recovery_schemas(max_tool_turns, current_turn=1):
-        extra_turns += 1
-
-    return RecoverySimulationResult(
+    return _recovery_result(
         initial_selected=initial_selected,
-        final_selected=final_selected,
-        invoked=invoked,
-        extra_turns=extra_turns,
-        false_positive=false_positive,
+        initial_offered=initial_offered_list,
+        final_offered=offered,
+        matched=matched,
+        expanded=added,
+        blocked=blocked,
         search_attempted=search_attempted,
         search_succeeded=search_succeeded,
-        expanded_families=expanded_families,
-        expansion_tokens_used=expansion_tokens_used,
+        search_turns_used=search_turns_used,
+        expansion_turns_used=expansion_turns_used,
+        recovered_tool_invocation_turns=recovered_tool_invocation_turns,
+        expected=expected,
     )

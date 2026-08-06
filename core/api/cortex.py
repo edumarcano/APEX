@@ -42,7 +42,11 @@ from core.agent.routing.diagnostics import (
 from core.agent.routing.models import CapabilityRoutingRequest
 from core.agent.routing.service import _schema_budget_for_agent, resolve_capabilities
 from core.agent.routing.thresholds import DEFAULT_THRESHOLDS
-from core.agent.routing.tool_search import ToolSearchRecoveryConfig, build_searchable_catalog
+from core.agent.routing.tool_search import (
+    ToolSearchRecoveryConfig,
+    build_searchable_catalog,
+    can_offer_search_recovery,
+)
 from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
@@ -1021,14 +1025,21 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
 
     tool_search_recovery: ToolSearchRecoveryConfig | None = None
     recovery_ineligible_kinds = {"fallback_full", "semantic_none"}
+    agent_max_tool_turns = AGENT_SPECS[agent_key].max_tool_turns
     if (
         DEFAULT_THRESHOLDS.tool_search_recovery_enabled
         and routing_mode == "enabled"
         and payload.tool_scope is None
         and routing_decision.kind not in recovery_ineligible_kinds
+        and can_offer_search_recovery(agent_max_tool_turns, current_turn=0)
     ):
         offered_names = {
             descriptor.name for descriptor in routing_decision.offered_capabilities
+        }
+        offered_families = {
+            descriptor.routing_family
+            for descriptor in routing_decision.offered_capabilities
+            if descriptor.routing_family is not None
         }
         searchable_catalog = build_searchable_catalog(
             cloud_tools,
@@ -1043,20 +1054,21 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             agent_schema_budget - routing_decision.offered_schema_tokens,
         )
         expansion_allowance = min(expansion_allowance, remaining_headroom)
-        tool_search_recovery = ToolSearchRecoveryConfig(
-            enabled=True,
-            searchable_catalog=searchable_catalog,
-            offered_names=frozenset(offered_names),
-            offered_families=frozenset(routing_decision.selected_families),
-            max_search_calls=1,
-            max_result_families=DEFAULT_THRESHOLDS.tool_search_max_result_families,
-            max_capabilities_per_family=DEFAULT_THRESHOLDS.tool_search_max_capabilities_per_family,
-            max_expansion_schema_tokens=expansion_allowance,
-            apply_local_projection=routing_runtime == "local",
-        )
-        routing_diagnostics = routing_diagnostics.model_copy(
-            update={"tool_search_enabled": True}
-        )
+        if searchable_catalog and expansion_allowance > 0:
+            tool_search_recovery = ToolSearchRecoveryConfig(
+                enabled=True,
+                searchable_catalog=searchable_catalog,
+                offered_names=frozenset(offered_names),
+                offered_families=frozenset(offered_families),
+                max_search_calls=1,
+                max_result_families=DEFAULT_THRESHOLDS.tool_search_max_result_families,
+                max_capabilities_per_family=DEFAULT_THRESHOLDS.tool_search_max_capabilities_per_family,
+                max_expansion_schema_tokens=expansion_allowance,
+                apply_local_projection=routing_runtime == "local",
+            )
+            routing_diagnostics = routing_diagnostics.model_copy(
+                update={"tool_search_enabled": True}
+            )
 
     if is_local_profile(profile):
         backend = get_local_runtime_backend(profile.provider)

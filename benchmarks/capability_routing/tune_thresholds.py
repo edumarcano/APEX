@@ -27,7 +27,9 @@ def select_families_from_rankings(
     *,
     runtime: str = "cloud",
     rule_matches=None,
+    calibrator: ScoreCalibrator | None = None,
 ) -> set[str]:
+    from core.agent.routing.calibration import DISABLED_CALIBRATOR
     from core.agent.routing.service import _select_families
 
     selected, _, _, low = _select_families(
@@ -35,6 +37,7 @@ def select_families_from_rankings(
         thresholds,
         runtime,
         rule_matches=rule_matches,
+        calibrator=calibrator or DISABLED_CALIBRATOR,
     )
     if low:
         return set()

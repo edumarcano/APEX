@@ -272,8 +272,11 @@ class CapabilityRoutingDiagnostics(BaseModel):
     recovery_results_already_offered: list[str] = Field(default_factory=list)
     recovery_expansion_blocked_by_budget: list[str] = Field(default_factory=list)
     recovery_expanded_tool_count: int = 0
-    recovery_extra_turns: int = 0
+    recovery_search_turns_used: int = 0
+    recovery_expansion_turns_used: int = 0
+    recovery_recovered_tool_invocation_turns: int = 0
     recovery_usable_turn_available: bool = False
+    tool_search_offered: bool = False
 
 
 class AgentQueryResponse(BaseModel):
