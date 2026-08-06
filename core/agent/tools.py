@@ -658,6 +658,18 @@ def register_native_capabilities() -> None:
         ),
         list_microsoft_todo_lists,
     )
+    from core.agent.routing.tool_search import (
+        SEARCH_AVAILABLE_TOOLS_NAME,
+        get_search_available_tools_descriptor,
+        search_available_tools,
+    )
+
+    if SEARCH_AVAILABLE_TOOLS_NAME not in capabilities_module._REGISTRY._entries:
+        register_capability(
+            get_search_available_tools_descriptor(),
+            search_available_tools,
+        )
+
     register_capability(
         CapabilityDescriptor(
             name="list_microsoft_todo_tasks",

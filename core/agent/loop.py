@@ -13,6 +13,14 @@ from core.agent.capabilities import (
 from core.agent.local_commands import ResolvedLocalCommand, resolve_local_command
 from core.agent.pricing import estimate_inference_cost
 from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
+from core.agent.routing.tool_search import (
+    SEARCH_AVAILABLE_TOOLS_NAME,
+    ToolSearchRecoveryConfig,
+    ToolSearchRecoveryState,
+    execute_tool_search,
+    expand_pending_descriptors,
+    get_search_available_tools_descriptor,
+)
 from core.agent.providers.contract import (
     InferenceProvider,
     ProviderProfile,
@@ -102,6 +110,8 @@ def run_agent_loop(
     cloud_tools: list[CapabilityDescriptor] | None = None,
     offered_tools: list[CapabilityDescriptor] | None = None,
     agent_key: str | None = None,
+    tool_search_recovery: ToolSearchRecoveryConfig | None = None,
+    recovery_diagnostics_holder: dict[str, object] | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -157,6 +167,34 @@ def run_agent_loop(
     provider_ms_total = 0.0
     apex_tool_ms_total = 0.0
     started_at = time.perf_counter()
+    search_state: ToolSearchRecoveryState | None = None
+    if tool_search_recovery and tool_search_recovery.enabled:
+        search_state = ToolSearchRecoveryState(config=tool_search_recovery)
+        search_descriptor = get_search_available_tools_descriptor()
+        if is_local:
+            if search_descriptor.name not in allowed_local_tools:
+                local_tools.append(search_descriptor)
+                allowed_local_tools.add(search_descriptor.name)
+            search_state.register_offered(local_tools)
+        elif not disable_cloud_tools:
+            if search_descriptor.name not in allowed_cloud_tools:
+                resolved_cloud_tools.append(search_descriptor)
+                allowed_cloud_tools.add(search_descriptor.name)
+            search_state.register_offered(resolved_cloud_tools)
+
+    def _attach_recovery_diagnostics() -> None:
+        if search_state is None or recovery_diagnostics_holder is None:
+            return
+        recovery_diagnostics_holder.update(
+            {
+                "tool_search_enabled": True,
+                "tool_search_invoked": search_state.invoked,
+                "tool_search_calls": search_state.search_calls,
+                "recovered_families": list(search_state.recovered_families),
+                "recovery_expanded_tool_count": search_state.expanded_tool_count,
+                "recovery_extra_turns": search_state.extra_turns,
+            }
+        )
 
     def response(
         *,
@@ -185,6 +223,7 @@ def run_agent_loop(
             provider=inference_provider,
             agent_key=agent_key,
         )
+        _attach_recovery_diagnostics()
         return AgentQueryResponse(
             answer=answer,
             agent_used=profile.model_dump(),
@@ -201,8 +240,41 @@ def run_agent_loop(
             citations=citations,
         )
 
+    def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
+        if name == SEARCH_AVAILABLE_TOOLS_NAME and search_state is not None:
+            max_results = int(arguments.get("max_results", search_state.config.max_result_families))
+            return execute_tool_search(
+                search_state.config.searchable_catalog,
+                str(arguments.get("query", "")),
+                max_results=max_results,
+                max_capabilities_per_family=search_state.config.max_capabilities_per_family,
+                history=request.history,
+            )
+        return tools_dispatcher(name, arguments)
+
     try:
         for _turn in range(profile.max_tool_turns):
+            if search_state and search_state.pending_descriptors:
+                target_tools = local_tools if is_local else resolved_cloud_tools
+                added, count = expand_pending_descriptors(
+                    pending=search_state.pending_descriptors,
+                    offered=target_tools,
+                    schema_budget=search_state.config.max_expansion_schema_tokens,
+                )
+                search_state.pending_descriptors = [
+                    descriptor
+                    for descriptor in search_state.pending_descriptors
+                    if descriptor not in added
+                ]
+                if added:
+                    search_state.expanded_tool_count += count
+                    search_state.extra_turns += 1
+                    search_state.register_offered(added)
+                    if is_local:
+                        allowed_local_tools.update(descriptor.name for descriptor in added)
+                    else:
+                        allowed_cloud_tools.update(descriptor.name for descriptor in added)
+
             turn_tools: list[CapabilityDescriptor] = (
                 list(local_tools)
                 if is_local
@@ -297,6 +369,17 @@ def run_agent_loop(
                 output: Any
 
                 try:
+                    if call.name == SEARCH_AVAILABLE_TOOLS_NAME:
+                        if search_state is None:
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "Tool search recovery is not enabled for this request.",
+                            )
+                        if search_state.search_calls >= search_state.config.max_search_calls:
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "Tool search recovery limit reached for this request.",
+                            )
                     if is_local and call.name not in allowed_local_tools:
                         raise CapabilityError(
                             CapabilityErrorCategory.UNAVAILABLE,
@@ -307,7 +390,16 @@ def run_agent_loop(
                             CapabilityErrorCategory.UNAVAILABLE,
                             "Tool is outside the selected Agent policy.",
                         )
-                    output = tools_dispatcher(call.name, call.arguments)
+                    output = dispatch_tool(call.name, call.arguments)
+                    if (
+                        call.name == SEARCH_AVAILABLE_TOOLS_NAME
+                        and search_state is not None
+                        and status == "ok"
+                    ):
+                        search_state.search_calls += 1
+                        search_state.invoked = True
+                        if isinstance(output, dict):
+                            search_state.queue_recovery_descriptors(output)
                 except CapabilityError as exc:
                     status = "error"
                     _LOGGER.warning(

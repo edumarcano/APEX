@@ -38,6 +38,13 @@ Held-out failure analysis (machine-readable JSON + Markdown):
 uv run python benchmarks/capability_routing/analyze_errors.py --split test --router hybrid-minilm-onnx
 ```
 
+Tool-search recovery comparison (hybrid router vs relaxed second-family vs router+search):
+
+```bash
+uv run python benchmarks/capability_routing/benchmark_recovery.py --split test --runtime cloud
+uv run python benchmarks/capability_routing/benchmark_recovery.py --split test --runtime local
+```
+
 ## Runtime benchmark
 
 ```bash

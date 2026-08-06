@@ -39,6 +39,23 @@ class RouterMetrics:
     false_positive_ids: list[str]
 
 
+@dataclass
+class RecoveryRouterMetrics:
+    name: str
+    split: str
+    initial_complete_coverage_rate: float
+    final_complete_coverage_rate: float
+    recovery_success_rate: float
+    recovery_invocation_rate: float
+    false_positive_family_rate: float
+    avg_schemas_exposed: float
+    avg_extra_turns: float
+    no_tool_accuracy: float
+    micro_recall_initial: float
+    micro_recall_final: float
+    by_origin: dict[str, dict[str, float]]
+
+
 def load_cases(split: str) -> list[dict]:
     cases: list[dict] = []
     with CASES_PATH.open(encoding="utf-8") as handle:
@@ -259,6 +276,104 @@ def run_router_predictions(
             )
         )
     return predictions, ranking_lists
+
+
+def compute_recovery_metrics(
+    *,
+    config_name: str,
+    split: str,
+    cases: list[dict],
+    initial_predictions: list[tuple[str, set[str], set[str], int, int]],
+    final_predictions: list[tuple[str, set[str], set[str], int, int]],
+    search_invoked: dict[str, bool],
+    extra_turns: dict[str, int],
+) -> RecoveryRouterMetrics:
+    total = len(cases)
+    initial_complete = final_complete = recovery_successes = invocations = 0
+    false_positive_cases = 0
+    no_tool_total = no_tool_correct = 0
+    schema_sum = extra_turn_sum = 0
+    tp_initial = fn_initial = tp_final = fn_final = 0
+    origin_stats: dict[str, dict[str, float]] = defaultdict(
+        lambda: {
+            "initial_complete": 0,
+            "final_complete": 0,
+            "recovery_success": 0,
+            "total": 0,
+        }
+    )
+
+    for case in cases:
+        case_id = case["id"]
+        expected = set(case["expected_families"])
+        if "none" in expected:
+            expected.discard("none")
+        origin = _case_origin(case_id)
+        origin_stats[origin]["total"] += 1
+
+        initial = next(item for item in initial_predictions if item[0] == case_id)
+        final = next(item for item in final_predictions if item[0] == case_id)
+        initial_selected = initial[2]
+        final_selected = final[2]
+
+        if not expected:
+            no_tool_total += 1
+            if not final_selected:
+                no_tool_correct += 1
+
+        if expected <= initial_selected:
+            initial_complete += 1
+            origin_stats[origin]["initial_complete"] += 1
+        if expected <= final_selected:
+            final_complete += 1
+            origin_stats[origin]["final_complete"] += 1
+        if expected > initial_selected and expected <= final_selected:
+            recovery_successes += 1
+            origin_stats[origin]["recovery_success"] += 1
+        if search_invoked.get(case_id, False):
+            invocations += 1
+        if final_selected - expected:
+            false_positive_cases += 1
+
+        tp_initial += len(expected & initial_selected)
+        fn_initial += len(expected - initial_selected)
+        tp_final += len(expected & final_selected)
+        fn_final += len(expected - final_selected)
+        schema_sum += final[4]
+        extra_turn_sum += extra_turns.get(case_id, 0)
+
+    by_origin: dict[str, dict[str, float]] = {}
+    for origin, stats in origin_stats.items():
+        by_origin[origin] = {
+            "initial_complete_coverage_rate": _safe_div(
+                stats["initial_complete"], stats["total"]
+            ),
+            "final_complete_coverage_rate": _safe_div(
+                stats["final_complete"], stats["total"]
+            ),
+            "recovery_success_rate": _safe_div(
+                stats["recovery_success"],
+                max(stats["total"] - stats["initial_complete"], 0),
+            ),
+            "case_count": stats["total"],
+        }
+
+    incomplete = total - initial_complete
+    return RecoveryRouterMetrics(
+        name=config_name,
+        split=split,
+        initial_complete_coverage_rate=_safe_div(initial_complete, total),
+        final_complete_coverage_rate=_safe_div(final_complete, total),
+        recovery_success_rate=_safe_div(recovery_successes, incomplete),
+        recovery_invocation_rate=_safe_div(invocations, total),
+        false_positive_family_rate=_safe_div(false_positive_cases, total),
+        avg_schemas_exposed=_safe_div(schema_sum, total),
+        avg_extra_turns=_safe_div(extra_turn_sum, total),
+        no_tool_accuracy=_safe_div(no_tool_correct, no_tool_total),
+        micro_recall_initial=_safe_div(tp_initial, tp_initial + fn_initial),
+        micro_recall_final=_safe_div(tp_final, tp_final + fn_final),
+        by_origin=by_origin,
+    )
 
 
 def write_json_report(path: Path, payload: dict[str, Any]) -> None:

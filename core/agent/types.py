@@ -262,6 +262,12 @@ class CapabilityRoutingDiagnostics(BaseModel):
     latency_ms: float
     model_key: str | None = None
     fallback_reason: str | None = None
+    tool_search_enabled: bool = False
+    tool_search_invoked: bool = False
+    tool_search_calls: int = 0
+    recovered_families: list[str] = Field(default_factory=list)
+    recovery_expanded_tool_count: int = 0
+    recovery_extra_turns: int = 0
 
 
 class AgentQueryResponse(BaseModel):

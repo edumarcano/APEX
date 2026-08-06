@@ -18,6 +18,10 @@ class RoutingThresholds:
     max_schema_tokens_apodemus: int
     calibrated_max_error_rate: float
     rule_match_minimum_confidence: float
+    tool_search_recovery_enabled: bool
+    tool_search_max_result_families: int
+    tool_search_max_capabilities_per_family: int
+    tool_search_max_expansion_schema_tokens: int
 
 
 # Updated after benchmark tuning on dev split.
@@ -33,4 +37,8 @@ DEFAULT_THRESHOLDS = RoutingThresholds(
     max_schema_tokens_apodemus=1500,
     calibrated_max_error_rate=0.35,
     rule_match_minimum_confidence=0.85,
+    tool_search_recovery_enabled=False,
+    tool_search_max_result_families=3,
+    tool_search_max_capabilities_per_family=3,
+    tool_search_max_expansion_schema_tokens=1200,
 )

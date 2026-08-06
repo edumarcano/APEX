@@ -41,6 +41,8 @@ from core.agent.routing.diagnostics import (
 )
 from core.agent.routing.models import CapabilityRoutingRequest
 from core.agent.routing.service import resolve_capabilities
+from core.agent.routing.thresholds import DEFAULT_THRESHOLDS
+from core.agent.routing.tool_search import ToolSearchRecoveryConfig, build_searchable_catalog
 from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
@@ -110,6 +112,13 @@ _LOCAL_AUTO_ROUTE_INSTRUCTION = (
     "\n\nLOCAL COMMAND SCOPE:\n"
     "APEX automatically selected the attached live tools for this request. "
     "Use only those tools for live data."
+)
+_TOOL_SEARCH_RECOVERY_INSTRUCTION = (
+    "\n\nTOOL SEARCH RECOVERY:\n"
+    "If the initially offered read-only tools may be incomplete, you may call "
+    "search_available_tools once to discover other authorized capabilities. "
+    "Matching tool schemas will be offered on your next turn. Do not use tool "
+    "search when a slash command scope is active."
 )
 
 _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
@@ -757,6 +766,7 @@ def _execute_agent_turn(
     cloud_tools: list[CapabilityDescriptor] | None = None,
     offered_tools: list[CapabilityDescriptor] | None = None,
     routing_diagnostics=None,
+    tool_search_recovery=None,
     user_designation: str = "",
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
@@ -786,12 +796,16 @@ def _execute_agent_turn(
                 )
             elif offered_tools:
                 scope_instruction = _LOCAL_AUTO_ROUTE_INSTRUCTION
+                if tool_search_recovery and tool_search_recovery.enabled:
+                    scope_instruction += _TOOL_SEARCH_RECOVERY_INSTRUCTION
             else:
                 scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
         else:
             provider = _create_provider(agent_key, api_key or "")
             base_prompt = config.AGENT_SYSTEM_PROMPT
             scope_instruction = ""
+            if tool_search_recovery and tool_search_recovery.enabled:
+                scope_instruction = _TOOL_SEARCH_RECOVERY_INSTRUCTION
 
         local_system_instruction = (
             compose_agent_system_instruction(
@@ -803,6 +817,7 @@ def _execute_agent_turn(
             + hud_context
         )
 
+    recovery_diagnostics_holder: dict[str, object] = {}
         response = run_agent_loop(
             payload,
             provider,
@@ -813,7 +828,13 @@ def _execute_agent_turn(
             cloud_tools=cloud_tools,
             offered_tools=offered_tools,
             agent_key=agent_key,
+            tool_search_recovery=tool_search_recovery,
+            recovery_diagnostics_holder=recovery_diagnostics_holder,
         )
+        if routing_diagnostics is not None and recovery_diagnostics_holder:
+            routing_diagnostics = routing_diagnostics.model_copy(
+                update=recovery_diagnostics_holder
+            )
         if routing_diagnostics is not None:
             response = response.model_copy(update={"routing": routing_diagnostics})
         if not is_local_profile(profile):
@@ -989,6 +1010,39 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     offered_tools = list(routing_decision.offered_capabilities)
     routing_diagnostics = diagnostics_from_decision(routing_mode, routing_decision)
 
+    tool_search_recovery: ToolSearchRecoveryConfig | None = None
+    if (
+        DEFAULT_THRESHOLDS.tool_search_recovery_enabled
+        and routing_mode == "enabled"
+        and payload.tool_scope is None
+    ):
+        searchable_catalog = build_searchable_catalog(
+            cloud_tools,
+            runtime=routing_runtime,
+            agent_key=agent_key,
+        )
+        remaining_schema_budget = DEFAULT_THRESHOLDS.tool_search_max_expansion_schema_tokens
+        if routing_decision.considered_schema_tokens:
+            remaining_schema_budget = min(
+                remaining_schema_budget,
+                max(
+                    0,
+                    routing_decision.considered_schema_tokens
+                    - routing_decision.offered_schema_tokens,
+                ),
+            )
+        tool_search_recovery = ToolSearchRecoveryConfig(
+            enabled=True,
+            searchable_catalog=searchable_catalog,
+            max_search_calls=1,
+            max_result_families=DEFAULT_THRESHOLDS.tool_search_max_result_families,
+            max_capabilities_per_family=DEFAULT_THRESHOLDS.tool_search_max_capabilities_per_family,
+            max_expansion_schema_tokens=remaining_schema_budget,
+        )
+        routing_diagnostics = routing_diagnostics.model_copy(
+            update={"tool_search_enabled": True}
+        )
+
     if is_local_profile(profile):
         backend = get_local_runtime_backend(profile.provider)
         provider_label = _local_provider_label(profile.provider)
@@ -1050,6 +1104,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 cloud_tools=cloud_tools,
                 offered_tools=offered_tools,
                 routing_diagnostics=routing_diagnostics,
+                tool_search_recovery=tool_search_recovery,
                 user_designation=settings.user_designation,
             )
         finally:
@@ -1073,6 +1128,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         cloud_tools=cloud_tools,
         offered_tools=offered_tools,
         routing_diagnostics=routing_diagnostics,
+        tool_search_recovery=tool_search_recovery,
         user_designation=settings.user_designation,
     )
 
