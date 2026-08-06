@@ -16,12 +16,17 @@ from core.config import DEMO_MODE, DEV_AI_SYNTHESIS, is_dev_mode
 from core.agent.catalog import resolve_agent_selection
 from core.settings import (
     SETTINGS_SCHEMA_VERSION,
+    LlamaCppServerStatusResponse,
     SettingsPatch,
     SettingsPersistenceError,
     SettingsResponse,
     get_settings_store,
 )
 from core.agent.local_runtime.registry import get_local_runtime_backend
+from core.agent.providers.llama_cpp_supervisor import (
+    LlamaCppManagedServerError,
+    get_llama_cpp_server_supervisor,
+)
 from core.mcp import get_mcp_manager, load_mcp_config
 
 router = APIRouter(tags=["system"])
@@ -132,6 +137,7 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
     snapshot unchanged.
     """
     store = get_settings_store()
+    previous_llama = store.get_snapshot().llama_cpp
     dirty = payload.model_dump(exclude_none=True)
     if not dirty:
         return _build_settings_response()
@@ -153,6 +159,17 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
             ),
         ) from None
     if payload.llama_cpp is not None:
+        current_llama = store.get_snapshot().llama_cpp
+        supervisor = get_llama_cpp_server_supervisor()
+        try:
+            await asyncio.to_thread(
+                supervisor.on_settings_changed, previous_llama, current_llama
+            )
+        except LlamaCppManagedServerError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from None
         try:
             backend = get_local_runtime_backend("llama_cpp")
         except KeyError:
@@ -164,6 +181,16 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
         if manager is not None:
             await manager.reconfigure(load_mcp_config())
     return _build_settings_response()
+
+
+@router.get("/api/v1/llama-cpp/status", response_model=LlamaCppServerStatusResponse)
+def get_llama_cpp_server_status() -> LlamaCppServerStatusResponse:
+    """
+    Return sanitized llama.cpp server ownership status for Runtime Settings.
+
+    Never includes executable paths, preset paths, PIDs, or raw process output.
+    """
+    return get_llama_cpp_server_supervisor().status_snapshot()
 
 
 @router.get("/api/v1/status", response_model=PipelineStatusSnapshot)

@@ -31,8 +31,18 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 9
+SETTINGS_SCHEMA_VERSION: int = 10
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
+
+LlamaCppServerState = Literal[
+    "disabled",
+    "external_connected",
+    "managed_running",
+    "starting",
+    "managed_stopped",
+    "startup_failed",
+]
+LlamaCppServerOwnership = Literal["none", "external", "apex"]
 
 
 class FeaturesSettings(BaseModel):
@@ -143,12 +153,15 @@ class McpSettings(BaseModel):
 
 
 class LlamaCppSettings(BaseModel):
-    """Editable llama.cpp router enablement and loopback host."""
+    """Editable llama.cpp router enablement, host, and optional managed server."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     enabled: bool = False
+    managed: bool = False
     host: str = "http://127.0.0.1:8080"
+    executable_path: str = ""
+    preset_path: str = ""
 
 
 class RuntimeSettingsSnapshot(BaseModel):
@@ -261,7 +274,22 @@ class LlamaCppPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool | None = None
+    managed: bool | None = None
     host: str | None = None
+    executable_path: str | None = None
+    preset_path: str | None = None
+
+
+class LlamaCppServerStatusResponse(BaseModel):
+    """Sanitized llama.cpp server ownership status for the Settings UI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    managed: bool
+    ownership: LlamaCppServerOwnership
+    state: LlamaCppServerState
+    last_error: str | None = None
 
 
 class SettingsPatch(BaseModel):

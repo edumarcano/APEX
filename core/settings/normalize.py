@@ -272,6 +272,23 @@ def _normalize_llama_cpp_host(
     return f"http://{hostname}:{port}"
 
 
+def _normalize_llama_cpp_path(
+    value: Any,
+    *,
+    field_name: str,
+    issues: NormalizationIssues | None,
+) -> str | None:
+    """Normalize a machine-local filesystem path string without existence checks."""
+    if not isinstance(value, str):
+        _record_error(issues, f"llama_cpp.{field_name} must be a string")
+        return None
+    candidate = value.strip()
+    if "\x00" in candidate:
+        _record_error(issues, f"llama_cpp.{field_name} must not contain null bytes")
+        return None
+    return candidate
+
+
 def _normalize_llama_cpp(
     value: Any, layer_name: str, issues: NormalizationIssues | None
 ) -> dict[str, Any]:
@@ -283,8 +300,15 @@ def _normalize_llama_cpp(
             _LOGGER.warning('Config key "llama_cpp" in %s must be a JSON object.', layer_name)
         return result
 
+    editable_keys = {
+        "enabled",
+        "managed",
+        "host",
+        "executable_path",
+        "preset_path",
+    }
     for key in value:
-        if key not in {"enabled", "host"}:
+        if key not in editable_keys:
             _LOGGER.warning(
                 "Ignoring non-editable llama_cpp key %r in %s.",
                 key,
@@ -297,6 +321,12 @@ def _normalize_llama_cpp(
     elif enabled is not None:
         _record_error(issues, "llama_cpp.enabled must be a boolean")
 
+    managed = value.get("managed")
+    if isinstance(managed, bool):
+        result["managed"] = managed
+    elif managed is not None:
+        _record_error(issues, "llama_cpp.managed must be a boolean")
+
     if "host" in value:
         host = _normalize_llama_cpp_host(
             value.get("host"),
@@ -305,6 +335,41 @@ def _normalize_llama_cpp(
         )
         if host is not None:
             result["host"] = host
+
+    if "executable_path" in value:
+        executable_path = _normalize_llama_cpp_path(
+            value.get("executable_path"),
+            field_name="executable_path",
+            issues=issues,
+        )
+        if executable_path is not None:
+            result["executable_path"] = executable_path
+
+    if "preset_path" in value:
+        preset_path = _normalize_llama_cpp_path(
+            value.get("preset_path"),
+            field_name="preset_path",
+            issues=issues,
+        )
+        if preset_path is not None:
+            result["preset_path"] = preset_path
+
+    managed_effective = result.get("managed")
+    if managed_effective is True:
+        executable = result.get("executable_path")
+        preset = result.get("preset_path")
+        # When only toggling managed, require both path keys in this layer or
+        # leave validation to the merged snapshot below.
+        if "executable_path" in value and not (isinstance(executable, str) and executable):
+            _record_error(
+                issues,
+                "llama_cpp.managed requires a non-empty executable_path",
+            )
+        if "preset_path" in value and not (isinstance(preset, str) and preset):
+            _record_error(
+                issues,
+                "llama_cpp.managed requires a non-empty preset_path",
+            )
 
     return result
 
@@ -844,9 +909,29 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         llama_host = _DEFAULT_LLAMA_CPP_HOST
     else:
         llama_host = llama_host.strip().rstrip("/")
+    executable_path = llama_cpp_raw.get("executable_path", "")
+    if not isinstance(executable_path, str):
+        executable_path = ""
+    else:
+        executable_path = executable_path.strip()
+    preset_path = llama_cpp_raw.get("preset_path", "")
+    if not isinstance(preset_path, str):
+        preset_path = ""
+    else:
+        preset_path = preset_path.strip()
+    managed = bool(llama_cpp_raw.get("managed", False))
+    if managed and (not executable_path or not preset_path):
+        _LOGGER.warning(
+            "llama_cpp.managed requires executable_path and preset_path; "
+            "treating managed as false."
+        )
+        managed = False
     llama_cpp = LlamaCppSettings(
         enabled=bool(llama_cpp_raw.get("enabled", False)),
+        managed=managed,
         host=llama_host,
+        executable_path=executable_path,
+        preset_path=preset_path,
     )
     return RuntimeSettingsSnapshot(
         user_designation=(
@@ -972,8 +1057,14 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         llama_cpp: dict[str, Any] = {}
         if patch.llama_cpp.enabled is not None:
             llama_cpp["enabled"] = patch.llama_cpp.enabled
+        if patch.llama_cpp.managed is not None:
+            llama_cpp["managed"] = patch.llama_cpp.managed
         if patch.llama_cpp.host is not None:
             llama_cpp["host"] = patch.llama_cpp.host
+        if patch.llama_cpp.executable_path is not None:
+            llama_cpp["executable_path"] = patch.llama_cpp.executable_path
+        if patch.llama_cpp.preset_path is not None:
+            llama_cpp["preset_path"] = patch.llama_cpp.preset_path
         if llama_cpp:
             ondisk["llama_cpp"] = llama_cpp
     return ondisk

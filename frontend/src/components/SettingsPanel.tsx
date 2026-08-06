@@ -20,6 +20,7 @@ import {
   StatusRow,
 } from './SettingsControls'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useLlamaCppStatus } from '../hooks/useLlamaCppStatus'
 import { useMcpStatus } from '../hooks/useMcpStatus'
 import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
@@ -121,6 +122,35 @@ function resolveConnectorStatus(
   return { value: 'Clear last briefing', tone: 'ok' }
 }
 
+function describeLlamaCppServerStatus(runtime: {
+  status: { state: string } | null
+  loading: boolean
+  unavailable: boolean
+}): string {
+  if (runtime.unavailable) {
+    return 'Status unavailable'
+  }
+  if (!runtime.status) {
+    return runtime.loading ? 'Checking…' : 'Unknown'
+  }
+  switch (runtime.status.state) {
+    case 'disabled':
+      return 'Disabled'
+    case 'external_connected':
+      return 'External server connected'
+    case 'managed_running':
+      return 'Managed server running'
+    case 'starting':
+      return 'Starting managed server'
+    case 'managed_stopped':
+      return 'Managed server stopped'
+    case 'startup_failed':
+      return 'Startup failed'
+    default:
+      return 'Unknown'
+  }
+}
+
 export default function SettingsPanel({
   open,
   onClose,
@@ -150,6 +180,7 @@ export default function SettingsPanel({
     save,
   } = useSettingsEditor({ open, onApplied })
   const mcpRuntime = useMcpStatus(open)
+  const llamaCppRuntime = useLlamaCppStatus(open)
 
   const microsoftTodoRuntime = useMicrosoftTodoStatus(open)
   useFocusTrap(open, dialogRef, restoreFocusRef)
@@ -408,6 +439,18 @@ export default function SettingsPanel({
                       }))
                     }
                   />
+                  <SettingsToggle
+                    id="settings-llama-cpp-managed"
+                    label="Manage server automatically"
+                    checked={draft.llama_cpp.managed}
+                    timing={llamaCppTiming}
+                    onChange={(next) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        llama_cpp: { ...prev.llama_cpp, managed: next },
+                      }))
+                    }
+                  />
                   <div>
                     <label
                       htmlFor="settings-llama-cpp-host"
@@ -434,10 +477,73 @@ export default function SettingsPanel({
                       id={`${titleId}-llama-cpp-help`}
                       className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
                     >
-                      llama.cpp runs as an external local server. Use a loopback HTTP URL
-                      such as http://127.0.0.1:8080 or http://localhost:8080.
+                      External mode uses a loopback router you start yourself. Managed mode
+                      starts your installed llama-server when the router is unreachable.
+                      APEX does not install llama.cpp or download model weights.
                     </p>
                   </div>
+                  {draft.llama_cpp.managed ? (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="settings-llama-cpp-executable"
+                          className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500"
+                        >
+                          Executable path
+                        </label>
+                        <input
+                          id="settings-llama-cpp-executable"
+                          type="text"
+                          value={draft.llama_cpp.executable_path}
+                          placeholder="C:\path\to\llama-server.exe"
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              llama_cpp: {
+                                ...prev.llama_cpp,
+                                executable_path: event.target.value,
+                              },
+                            }))
+                          }
+                          className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="settings-llama-cpp-preset"
+                          className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500"
+                        >
+                          Preset path
+                        </label>
+                        <input
+                          id="settings-llama-cpp-preset"
+                          type="text"
+                          value={draft.llama_cpp.preset_path}
+                          placeholder="C:\path\to\apodemus.preset.ini"
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              llama_cpp: {
+                                ...prev.llama_cpp,
+                                preset_path: event.target.value,
+                              },
+                            }))
+                          }
+                          className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                  <StatusRow
+                    label="Server"
+                    value={describeLlamaCppServerStatus(llamaCppRuntime)}
+                  />
+                  {llamaCppRuntime.status?.state === 'startup_failed' &&
+                  llamaCppRuntime.status.last_error ? (
+                    <p className="text-[11px] leading-relaxed text-rose-300/90">
+                      {llamaCppRuntime.status.last_error}
+                    </p>
+                  ) : null}
                 </div>
               </section>
 

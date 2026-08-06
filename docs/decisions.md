@@ -190,13 +190,13 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Trade-off.** Users may need to retry a rejected request. Idle auto-unload returns memory without depending on manual cleanup.
 
-### Run llama.cpp as an external router
+### Talk to llama.cpp over HTTP with optional process supervision
 
-**Decision.** APEX talks to llama.cpp over HTTP as an external process rather than embedding a Python binding.
+**Decision.** APEX talks to llama.cpp over HTTP rather than embedding a Python binding. Operators may run the router externally, or opt into APEX-managed start/stop of a user-installed `llama-server` executable.
 
-**Why.** Process isolation, independent upgrades, and existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD.
+**Why.** Process isolation, independent upgrades, and existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD. Optional managed mode removes a manual startup step without bundling binaries or weights.
 
-**Trade-off.** Operators must start and configure the router separately. APEX never commits binaries, weights, or machine-local model paths.
+**Trade-off.** APEX never installs, bundles, or updates llama.cpp and never downloads model weights. Managed mode accepts only loopback hosts, terminates only processes APEX launched, and exposes sanitized status without local filesystem paths outside Runtime Settings.
 
 ### Use stable runtime aliases for Apodemus context presets
 

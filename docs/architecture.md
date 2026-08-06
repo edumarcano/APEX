@@ -232,9 +232,13 @@ flowchart TB
 - A manual load is a pre-warm; normal request routing can still load a selected model.
 - Lifecycle success is verified against the provider backend before the HUD reports it.
 
-APEX does not embed llama.cpp. The router is an external process owned outside
-the Python package. Inference and property probes pass `autoload=false` so the
-server cannot bypass APEX admission, resource gates, or explicit load.
+APEX does not embed llama.cpp or ship its binaries or weights. Inference still
+uses the OpenAI-compatible HTTP router. Operators may start that router
+externally, or enable managed mode so APEX starts a user-installed
+`llama-server` when the configured loopback URL is unreachable. APEX terminates
+only a child process it owns. Inference and property probes pass
+`autoload=false` so the server cannot bypass APEX admission, resource gates, or
+explicit load.
 
 Application orchestration routes through the coordinator and backend registry.
 Provider-specific discovery, warmup, unload, and residency probes remain inside

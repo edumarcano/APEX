@@ -137,6 +137,16 @@ export function useSettingsEditor({
       return true
     }
 
+    if (
+      draft.llama_cpp.managed &&
+      (!draft.llama_cpp.executable_path.trim() || !draft.llama_cpp.preset_path.trim())
+    ) {
+      setSaveError(
+        'Managed llama.cpp mode requires both an executable path and a preset path.',
+      )
+      return false
+    }
+
     setSaving(true)
     setSaveError(null)
 

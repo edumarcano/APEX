@@ -30,6 +30,7 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/cortex/query` | Run one Cortex Engine turn |
 | GET | `/api/v1/market` | Independent EOD market data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
+| GET | `/api/v1/llama-cpp/status` | Sanitized llama.cpp server ownership status |
 | GET | `/api/v1/microsoft-todo/status` | Microsoft To Do authorization status |
 | POST | `/api/v1/microsoft-todo/auth/start` | Begin device-code authorization |
 | DELETE | `/api/v1/microsoft-todo/auth` | Disconnect Microsoft To Do |
@@ -63,11 +64,11 @@ Returns boot-time HUD values such as Ask APEX enablement, the effective Agent an
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `9`.
+Returns the resolved settings envelope. The current contract version is `10`.
 
 ```json
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
@@ -76,7 +77,7 @@ Returns the resolved settings envelope. The current contract version is `9`.
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
-    "llama_cpp": { "enabled": false, "host": "http://127.0.0.1:8080" }
+    "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -92,7 +93,7 @@ Returns the resolved settings envelope. The current contract version is `9`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, llama.cpp enablement and loopback host, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
 
 ```json
 {
@@ -103,11 +104,15 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 }
 ```
 
-The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds.
+The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-Environment modes, prompt text, credentials, endpoints, commands, allowlists, tool risks, and football teams are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay.
+Environment modes, prompt text, credentials, endpoints, commands, allowlists, tool risks, and football teams are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
 ## Runtime status
+
+### GET `/api/v1/llama-cpp/status`
+
+Returns sanitized llama.cpp server ownership for Runtime Settings: `enabled`, `managed`, `ownership` (`none` | `external` | `apex`), `state` (`disabled` | `external_connected` | `managed_running` | `starting` | `managed_stopped` | `startup_failed`), and an optional sanitized `last_error`. Never includes executable paths, preset paths, PIDs, or raw process output.
 
 ### GET `/api/v1/status`
 

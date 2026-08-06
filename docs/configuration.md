@@ -50,7 +50,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
-| llama.cpp | Enablement and loopback router URL |
+| llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
 
 Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, llama.cpp resource gates and timeouts, router presets, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
 
@@ -62,7 +62,7 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
-- llama.cpp enablement and router URL apply immediately after a successful settings write; APEX invalidates the provider status cache without loading a model.
+- llama.cpp enablement, router URL, and managed-server settings apply after a successful settings write; APEX invalidates the provider status cache and reconciles an APEX-owned server when configured.
 
 ## Runtime modes
 
@@ -131,14 +131,17 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 | `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` defaults to `false` and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus.
+`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus.
 
 #### llama.cpp configuration
 
 | Key | Default | Runtime Settings | Notes |
 |---|---|---|---|
 | `llama_cpp.enabled` | `false` | Yes | Optional second local backend |
+| `llama_cpp.managed` | `false` | Yes | When true, APEX may start a user-installed `llama-server` if the router is unreachable |
 | `llama_cpp.host` | `http://127.0.0.1:8080` | Yes | Loopback HTTP router URL only |
+| `llama_cpp.executable_path` | `""` | Yes | Machine-local path to `llama-server`; required when managed |
+| `llama_cpp.preset_path` | `""` | Yes | Machine-local models preset INI; required when managed |
 | `llama_cpp.idle_unload_timeout_minutes` | `5` | No | Same idle range as Ollama |
 | `llama_cpp.manual_unload_enabled` | `true` | No | Allows HUD unload |
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
@@ -146,20 +149,28 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 
-Machine-local overrides may enable the backend without committing host details:
+Machine-local overrides may enable the backend without committing host or path details:
 
 ```json
 {
   "llama_cpp": {
     "enabled": true,
-    "host": "http://127.0.0.1:8080"
+    "managed": false,
+    "host": "http://127.0.0.1:8080",
+    "executable_path": "",
+    "preset_path": ""
   }
 }
 ```
 
-#### External router presets
+#### External and managed router modes
 
-APEX does not ship binaries or GGUF weights. Configure Apodemus aliases on an external llama.cpp router with one preset per context size. A tracked placeholder is in [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholder, and keep absolute paths out of git.
+APEX does not install, bundle, or update llama.cpp, and it does not download model weights. Two operator modes are supported:
+
+- **External mode** (`managed: false`): you start `llama-server` yourself. APEX only talks to the configured loopback URL over HTTP.
+- **Managed mode** (`managed: true`): when llama.cpp is enabled and the router is unreachable, APEX starts your installed executable with the configured preset. If the router is already reachable, APEX uses it as an external server and does not spawn a duplicate process. APEX terminates only a child process it launched, never an externally started server.
+
+Configure Apodemus aliases with one preset per context size. A tracked placeholder is in [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholder, and keep absolute paths out of git.
 
 ```ini
 version = 1
@@ -186,7 +197,7 @@ model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
 ctx-size = 32768
 ```
 
-Recommended Windows launch (reconcile flag names against the build's `--help`):
+Recommended Windows launch for external mode (reconcile flag names against the build's `--help`). Managed mode uses the same argument sequence when APEX starts the process:
 
 ```powershell
 llama-server.exe `

@@ -48,7 +48,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
   },
   llama_cpp: {
     enabled: false,
+    managed: false,
     host: 'http://127.0.0.1:8080',
+    executable_path: '',
+    preset_path: '',
   },
 }
 
@@ -56,7 +59,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 9,
+    schema_version: 10,
     settings,
     local_file_present: false,
     local_override_active: false,

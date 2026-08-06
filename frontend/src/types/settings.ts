@@ -16,8 +16,12 @@ export type ApodemusContextWindow = 4096 | 8192 | 16384 | 32768
 
 export interface LlamaCppSettings {
   enabled: boolean
+  managed: boolean
   host: string
+  executable_path: string
+  preset_path: string
 }
+
 
 export interface FeaturesSettings {
   weather: boolean
@@ -124,8 +128,30 @@ export interface McpServerEnablementPatch {
 
 export interface LlamaCppPatch {
   enabled?: boolean
+  managed?: boolean
   host?: string
+  executable_path?: string
+  preset_path?: string
 }
+
+export type LlamaCppServerState =
+  | 'disabled'
+  | 'external_connected'
+  | 'managed_running'
+  | 'starting'
+  | 'managed_stopped'
+  | 'startup_failed'
+
+export type LlamaCppServerOwnership = 'none' | 'external' | 'apex'
+
+export interface LlamaCppServerStatusResponse {
+  enabled: boolean
+  managed: boolean
+  ownership: LlamaCppServerOwnership
+  state: LlamaCppServerState
+  last_error: string | null
+}
+
 
 export interface SettingsPatch {
   user_designation?: string

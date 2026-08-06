@@ -182,9 +182,18 @@ describe('settings editing utilities', () => {
   it('includes llama_cpp changes in settings patches', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.llama_cpp.enabled = true
+    draft.llama_cpp.managed = true
     draft.llama_cpp.host = 'http://localhost:8181'
+    draft.llama_cpp.executable_path = 'C:\\Tools\\llama-server.exe'
+    draft.llama_cpp.preset_path = 'C:\\Tools\\preset.ini'
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
-      llama_cpp: { enabled: true, host: 'http://localhost:8181' },
+      llama_cpp: {
+        enabled: true,
+        managed: true,
+        host: 'http://localhost:8181',
+        executable_path: 'C:\\Tools\\llama-server.exe',
+        preset_path: 'C:\\Tools\\preset.ini',
+      },
     })
     expect(isSettingsPatchEmpty(diffSettingsPatch(BASE_SETTINGS, draft))).toBe(false)
   })

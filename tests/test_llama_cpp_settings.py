@@ -159,11 +159,16 @@ class LlamaCppRuntimeIntegrationTests(unittest.TestCase):
                 "core.agent.providers.llama_cpp_lifecycle._SESSION",
                 session,
             ),
+            mock.patch(
+                "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor"
+            ) as get_supervisor,
         ):
             get_store.return_value.get_snapshot.return_value.llama_cpp.enabled = True
             get_store.return_value.get_snapshot.return_value.llama_cpp.host = (
                 "http://localhost:9191"
             )
+            get_supervisor.return_value.ensure_ready.return_value = None
+            get_supervisor.return_value.maybe_stop_after_idle.return_value = None
             backend.get_status_snapshot(force_refresh=True)
 
         session.get.assert_called_once()
@@ -254,6 +259,9 @@ class LlamaCppRuntimeIntegrationTests(unittest.TestCase):
         client = TestClient(app)
         payload = client.get("/api/v1/settings").json()
         llama_cpp = payload["settings"]["llama_cpp"]
-        self.assertEqual(set(llama_cpp.keys()), {"enabled", "host"})
+        self.assertEqual(
+            set(llama_cpp.keys()),
+            {"enabled", "managed", "host", "executable_path", "preset_path"},
+        )
         self.assertNotIn("resource_gates", payload["settings"])
         self.assertNotIn("request_timeout_seconds", payload["settings"])

@@ -174,9 +174,34 @@ class RuntimeSettingsStore:
                     "Refusing to persist invalid settings: "
                     + "; ".join(next_issues.errors)
                 )
-            next_snapshot = snapshot_from_merged(
-                recursive_overlay(self._base_ondisk, next_local)
+            next_merged = recursive_overlay(self._base_ondisk, next_local)
+            llama_merged = (
+                next_merged.get("llama_cpp")
+                if isinstance(next_merged.get("llama_cpp"), dict)
+                else {}
             )
+            if llama_merged.get("managed") is True:
+                executable = llama_merged.get("executable_path", "")
+                preset = llama_merged.get("preset_path", "")
+                if not (
+                    isinstance(executable, str)
+                    and executable.strip()
+                    and isinstance(preset, str)
+                    and preset.strip()
+                ):
+                    raise SettingsPersistenceError(
+                        "Refusing to persist invalid settings: "
+                        "llama_cpp.managed requires non-empty executable_path and preset_path"
+                    )
+            next_snapshot = snapshot_from_merged(next_merged)
+            if next_snapshot.llama_cpp.managed and (
+                not next_snapshot.llama_cpp.executable_path
+                or not next_snapshot.llama_cpp.preset_path
+            ):
+                raise SettingsPersistenceError(
+                    "Refusing to persist invalid settings: "
+                    "llama_cpp.managed requires non-empty executable_path and preset_path"
+                )
 
             prior_snapshot = self._snapshot
             prior_local = copy_dict(self._local_ondisk)

@@ -124,7 +124,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
 | Local inference (Ollama) | Ollama plus the desired Qwen3 model tags |
-| Local inference (llama.cpp) | Optional external llama.cpp router with Apodemus aliases |
+| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with Apodemus aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.Read` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
@@ -145,9 +145,11 @@ These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instea
 
 llama.cpp is not required to start APEX. When you want Apex Apodemus:
 
-1. Run an external llama.cpp router separately from APEX (the Python process does not embed the server).
+1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
 2. Copy [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini) to a machine-local path, set the GGUF placeholder, and keep that copy untracked.
-3. Start the router with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-router-presets).
+3. Choose a mode:
+   - **External:** start the router yourself with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-and-managed-router-modes).
+   - **Managed:** in Runtime Settings, enable llama.cpp, turn on Manage server automatically, and set the executable and preset paths. APEX starts the router only when the configured loopback URL is unreachable.
 4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
 5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 

@@ -28,6 +28,7 @@ from core.config import (
 )
 from core.agent.providers.llama_cpp_runtime import (
     get_llama_cpp_host,
+    get_llama_cpp_runtime_settings,
     is_llama_cpp_enabled,
 )
 
@@ -321,6 +322,16 @@ class LlamaCppRuntimeBackend:
         outside that lock. An invalidation epoch prevents stale in-flight
         probes from repopulating the cache after load/unload.
         """
+        if is_llama_cpp_enabled():
+            from core.agent.providers.llama_cpp_supervisor import (
+                get_llama_cpp_server_supervisor,
+            )
+
+            supervisor = get_llama_cpp_server_supervisor()
+            if get_llama_cpp_runtime_settings().managed:
+                supervisor.ensure_ready(allow_restart=True)
+            supervisor.maybe_stop_after_idle()
+
         with self._status_lock:
             cached = self._cached_snapshot_if_fresh(force_refresh=force_refresh)
             if cached is not None:
@@ -390,6 +401,12 @@ class LlamaCppRuntimeBackend:
 
     def load_model(self, profile: LocalModelProfile) -> bool:
         """Explicitly load a configured runtime alias and verify residency."""
+        from core.agent.providers.llama_cpp_supervisor import (
+            get_llama_cpp_server_supervisor,
+        )
+
+        if get_llama_cpp_runtime_settings().managed:
+            get_llama_cpp_server_supervisor().ensure_ready(allow_restart=True)
         target = profile.runtime_model_id
         if self.is_model_resident(target):
             _LOGGER.info("Model %s already resident in llama.cpp", target)

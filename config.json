@@ -58,7 +58,10 @@
   },
   "llama_cpp": {
     "enabled": false,
+    "managed": false,
     "host": "http://127.0.0.1:8080",
+    "executable_path": "",
+    "preset_path": "",
     "idle_unload_timeout_minutes": 5,
     "manual_unload_enabled": true,
     "request_timeout_seconds": 180,

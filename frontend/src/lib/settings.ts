@@ -22,6 +22,7 @@ import type {
   SettingsResponse,
   SettingsTimingFieldGroup,
   SettingsTimingRuntime,
+  LlamaCppServerStatusResponse,
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
@@ -248,9 +249,22 @@ function parseLlamaCppSettings(value: unknown): RuntimeSettings['llama_cpp'] | n
   if (!value.host.trim()) {
     return null
   }
+  const managed = value.managed === undefined ? false : value.managed
+  if (typeof managed !== 'boolean') {
+    return null
+  }
+  const executable_path =
+    value.executable_path === undefined ? '' : value.executable_path
+  const preset_path = value.preset_path === undefined ? '' : value.preset_path
+  if (typeof executable_path !== 'string' || typeof preset_path !== 'string') {
+    return null
+  }
   return {
     enabled: value.enabled,
+    managed,
     host: value.host.trim().replace(/\/$/, ''),
+    executable_path,
+    preset_path,
   }
 }
 
@@ -621,6 +635,41 @@ export function parseMcpStatusResponse(body: unknown): McpStatusResponse | null 
     status: body.status as McpStatusResponse['status'],
     reason: body.reason,
     servers: servers as McpStatusResponse['servers'],
+  }
+}
+
+const VALID_LLAMA_CPP_SERVER_STATES = [
+  'disabled',
+  'external_connected',
+  'managed_running',
+  'starting',
+  'managed_stopped',
+  'startup_failed',
+] as const
+
+const VALID_LLAMA_CPP_OWNERSHIP = ['none', 'external', 'apex'] as const
+
+export function parseLlamaCppServerStatusResponse(
+  body: unknown,
+): LlamaCppServerStatusResponse | null {
+  if (
+    !isRecord(body) ||
+    typeof body.enabled !== 'boolean' ||
+    typeof body.managed !== 'boolean' ||
+    typeof body.ownership !== 'string' ||
+    !(VALID_LLAMA_CPP_OWNERSHIP as readonly string[]).includes(body.ownership) ||
+    typeof body.state !== 'string' ||
+    !(VALID_LLAMA_CPP_SERVER_STATES as readonly string[]).includes(body.state) ||
+    !(body.last_error === null || typeof body.last_error === 'string')
+  ) {
+    return null
+  }
+  return {
+    enabled: body.enabled,
+    managed: body.managed,
+    ownership: body.ownership as LlamaCppServerStatusResponse['ownership'],
+    state: body.state as LlamaCppServerStatusResponse['state'],
+    last_error: body.last_error,
   }
 }
 
