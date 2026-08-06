@@ -29,3 +29,4 @@ weights/
 *.wav
 *.mp3
 .local-plans/
+benchmarks/capability_routing/results/*.json

@@ -1,0 +1,16 @@
+{
+  "candidates": [
+    {
+      "key": "all-minilm-l6-v2",
+      "repository": "sentence-transformers/all-MiniLM-L6-v2",
+      "revision": "d83dd3760b5bfe921f2fe125446b17bf0b7eda8c",
+      "onnx_file": "onnx/model_qint8_avx512_vnni.onnx"
+    },
+    {
+      "key": "bge-small-en-v1.5",
+      "repository": "BAAI/bge-small-en-v1.5",
+      "revision": "07e27b8edc19a66f020db6906126054f190f7284",
+      "onnx_file": "onnx/model_qint8_avx512_vnni.onnx"
+    }
+  ]
+}
