@@ -17,6 +17,8 @@ from core.agent.routing.tool_search import (
     SEARCH_AVAILABLE_TOOLS_NAME,
     ToolSearchRecoveryConfig,
     ToolSearchRecoveryState,
+    can_expand_recovery_schemas,
+    can_offer_search_recovery,
     execute_tool_search,
     expand_pending_descriptors,
     get_search_available_tools_descriptor,
@@ -170,16 +172,9 @@ def run_agent_loop(
     search_state: ToolSearchRecoveryState | None = None
     if tool_search_recovery and tool_search_recovery.enabled:
         search_state = ToolSearchRecoveryState(config=tool_search_recovery)
-        search_descriptor = get_search_available_tools_descriptor()
         if is_local:
-            if search_descriptor.name not in allowed_local_tools:
-                local_tools.append(search_descriptor)
-                allowed_local_tools.add(search_descriptor.name)
             search_state.register_offered(local_tools)
         elif not disable_cloud_tools:
-            if search_descriptor.name not in allowed_cloud_tools:
-                resolved_cloud_tools.append(search_descriptor)
-                allowed_cloud_tools.add(search_descriptor.name)
             search_state.register_offered(resolved_cloud_tools)
 
     def _attach_recovery_diagnostics() -> None:
@@ -188,11 +183,21 @@ def run_agent_loop(
         recovery_diagnostics_holder.update(
             {
                 "tool_search_enabled": True,
+                "tool_search_attempted": search_state.search_attempted,
                 "tool_search_invoked": search_state.invoked,
+                "tool_search_succeeded": search_state.search_succeeded,
                 "tool_search_calls": search_state.search_calls,
+                "recovery_matched_families": list(search_state.matched_families),
                 "recovered_families": list(search_state.recovered_families),
+                "recovery_results_already_offered": list(
+                    search_state.results_already_offered
+                ),
+                "recovery_expansion_blocked_by_budget": list(
+                    search_state.expansion_blocked_by_budget
+                ),
                 "recovery_expanded_tool_count": search_state.expanded_tool_count,
                 "recovery_extra_turns": search_state.extra_turns,
+                "recovery_usable_turn_available": search_state.usable_recovery_turn_available,
             }
         )
 
@@ -242,34 +247,64 @@ def run_agent_loop(
 
     def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         if name == SEARCH_AVAILABLE_TOOLS_NAME and search_state is not None:
-            max_results = int(arguments.get("max_results", search_state.config.max_result_families))
+            requested_max = arguments.get("max_results", search_state.config.max_result_families)
+            try:
+                max_results = int(requested_max)
+            except (TypeError, ValueError):
+                max_results = search_state.config.max_result_families
+            max_results = max(1, min(max_results, search_state.config.max_result_families))
             return execute_tool_search(
                 search_state.config.searchable_catalog,
                 str(arguments.get("query", "")),
                 max_results=max_results,
                 max_capabilities_per_family=search_state.config.max_capabilities_per_family,
                 history=request.history,
+                excluded_families=sorted(search_state.config.offered_families),
             )
         return tools_dispatcher(name, arguments)
 
     try:
-        for _turn in range(profile.max_tool_turns):
-            if search_state and search_state.pending_descriptors:
+        for turn_index in range(profile.max_tool_turns):
+            is_final_turn = turn_index == profile.max_tool_turns - 1
+            if search_state is not None:
+                search_state.usable_recovery_turn_available = can_offer_search_recovery(
+                    profile.max_tool_turns,
+                    turn_index,
+                )
+
+            if (
+                search_state
+                and search_state.pending_descriptors
+                and can_expand_recovery_schemas(profile.max_tool_turns, turn_index)
+            ):
                 target_tools = local_tools if is_local else resolved_cloud_tools
-                added, count = expand_pending_descriptors(
+                added, count, blocked = expand_pending_descriptors(
                     pending=search_state.pending_descriptors,
                     offered=target_tools,
-                    schema_budget=search_state.config.max_expansion_schema_tokens,
+                    expansion_allowance=search_state.config.max_expansion_schema_tokens,
+                    blocked=search_state.blocked_descriptors,
                 )
-                search_state.pending_descriptors = [
-                    descriptor
-                    for descriptor in search_state.pending_descriptors
-                    if descriptor not in added
-                ]
+                search_state.pending_descriptors = []
+                search_state.blocked_descriptors = blocked
                 if added:
                     search_state.expanded_tool_count += count
                     search_state.extra_turns += 1
                     search_state.register_offered(added)
+                    expanded_families = sorted(
+                        {
+                            descriptor.routing_family
+                            for descriptor in added
+                            if descriptor.routing_family is not None
+                        }
+                    )
+                    search_state.recovered_families = expanded_families
+                    search_state.expansion_blocked_by_budget = sorted(
+                        {
+                            descriptor.routing_family
+                            for descriptor in blocked
+                            if descriptor.routing_family is not None
+                        }
+                    )
                     if is_local:
                         allowed_local_tools.update(descriptor.name for descriptor in added)
                     else:
@@ -285,10 +320,19 @@ def run_agent_loop(
                 )
             )
 
+            if (
+                search_state is not None
+                and not is_final_turn
+                and can_offer_search_recovery(profile.max_tool_turns, turn_index)
+                and search_state.search_calls < search_state.config.max_search_calls
+            ):
+                search_descriptor = get_search_available_tools_descriptor()
+                if all(tool.name != SEARCH_AVAILABLE_TOOLS_NAME for tool in turn_tools):
+                    turn_tools.append(search_descriptor)
+
             # Withhold tools on the last permitted turn so every provider must
             # use its final model request to answer from the results already
             # collected instead of requesting a call that cannot be followed up.
-            is_final_turn = _turn == profile.max_tool_turns - 1
             turn_instruction = system_instruction_override
             if is_final_turn:
                 turn_tools = []
@@ -375,30 +419,42 @@ def run_agent_loop(
                                 CapabilityErrorCategory.UNAVAILABLE,
                                 "Tool search recovery is not enabled for this request.",
                             )
-                        if search_state.search_calls >= search_state.config.max_search_calls:
+                        if not can_offer_search_recovery(
+                            profile.max_tool_turns,
+                            turn_index,
+                        ):
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "No remaining tool-enabled turn is available for recovery.",
+                            )
+                        if search_state.search_attempted:
                             raise CapabilityError(
                                 CapabilityErrorCategory.UNAVAILABLE,
                                 "Tool search recovery limit reached for this request.",
                             )
+                        search_state.search_attempted = True
+                        search_state.search_calls += 1
                     if is_local and call.name not in allowed_local_tools:
-                        raise CapabilityError(
-                            CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the selected local command scope.",
-                        )
+                        if call.name != SEARCH_AVAILABLE_TOOLS_NAME:
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "Tool is outside the selected local command scope.",
+                            )
                     if not is_local and call.name not in allowed_cloud_tools:
-                        raise CapabilityError(
-                            CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the selected Agent policy.",
-                        )
+                        if call.name != SEARCH_AVAILABLE_TOOLS_NAME:
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "Tool is outside the selected Agent policy.",
+                            )
                     output = dispatch_tool(call.name, call.arguments)
                     if (
                         call.name == SEARCH_AVAILABLE_TOOLS_NAME
                         and search_state is not None
                         and status == "ok"
                     ):
-                        search_state.search_calls += 1
                         search_state.invoked = True
                         if isinstance(output, dict):
+                            search_state.search_succeeded = output.get("match_count", 0) > 0
                             search_state.queue_recovery_descriptors(output)
                 except CapabilityError as exc:
                     status = "error"

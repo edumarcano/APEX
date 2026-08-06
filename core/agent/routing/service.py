@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.local_commands import (
     estimate_schema_tokens,
-    project_local_descriptors,
+    project_local_descriptor,
     resolve_local_command,
 )
 from core.agent.routing.families import CAPABILITY_FAMILIES, get_family
@@ -155,17 +155,18 @@ def _apply_schema_budget(
     descriptors: list[CapabilityDescriptor],
     schema_budget: int,
     *,
-    local_scope: str | None,
+    local_runtime: bool = False,
 ) -> tuple[list[CapabilityDescriptor], tuple[str, ...]]:
     offered: list[CapabilityDescriptor] = []
     truncated: list[str] = []
     used_tokens = 0
     for family_key in selected_families:
         family_descriptors = _order_descriptors_for_family(family_key, tuple(descriptors))
-        if local_scope is not None:
-            family_descriptors = list(
-                project_local_descriptors(local_scope, family_descriptors)
-            )
+        if local_runtime:
+            family_descriptors = [
+                project_local_descriptor(family_key, descriptor)  # type: ignore[arg-type]
+                for descriptor in family_descriptors
+            ]
         family_added = 0
         for descriptor in family_descriptors:
             tokens = estimate_schema_tokens([descriptor])
@@ -379,12 +380,11 @@ def resolve_capabilities(
         for descriptor in routable
         if descriptor.routing_family in selected_families
     ]
-    local_scope = selected_families[0] if request.runtime == "local" and len(selected_families) == 1 else None
     offered_list, truncated = _apply_schema_budget(
         selected_families,
         selected_descriptors,
         _schema_budget_for_agent(request.agent_key, thresholds),
-        local_scope=local_scope,
+        local_runtime=request.runtime == "local",
     )
     if not offered_list and request.runtime == "local":
         decision = _decision_from_capabilities(

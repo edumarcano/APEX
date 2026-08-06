@@ -40,7 +40,7 @@ from core.agent.routing.diagnostics import (
     diagnostics_from_decision,
 )
 from core.agent.routing.models import CapabilityRoutingRequest
-from core.agent.routing.service import resolve_capabilities
+from core.agent.routing.service import _schema_budget_for_agent, resolve_capabilities
 from core.agent.routing.thresholds import DEFAULT_THRESHOLDS
 from core.agent.routing.tool_search import ToolSearchRecoveryConfig, build_searchable_catalog
 from core.agent.loop import is_local_profile
@@ -107,6 +107,13 @@ _LOCAL_TOOL_FREE_INSTRUCTION = (
     "\n\nLOCAL COMMAND SCOPE:\n"
     "No live tools are available for this turn. Answer from the conversation "
     "only and do not claim to have queried live data."
+)
+_LOCAL_RECOVERY_ONLY_INSTRUCTION = (
+    "\n\nLOCAL COMMAND SCOPE:\n"
+    "No initial live tools were routed for this request. You may call "
+    "search_available_tools once to discover authorized read-only capabilities. "
+    "Matching tool schemas will be offered on your next turn when a recovery "
+    "turn remains available."
 )
 _LOCAL_AUTO_ROUTE_INSTRUCTION = (
     "\n\nLOCAL COMMAND SCOPE:\n"
@@ -798,6 +805,8 @@ def _execute_agent_turn(
                 scope_instruction = _LOCAL_AUTO_ROUTE_INSTRUCTION
                 if tool_search_recovery and tool_search_recovery.enabled:
                     scope_instruction += _TOOL_SEARCH_RECOVERY_INSTRUCTION
+            elif tool_search_recovery and tool_search_recovery.enabled:
+                scope_instruction = _LOCAL_RECOVERY_ONLY_INSTRUCTION
             else:
                 scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
         else:
@@ -817,7 +826,7 @@ def _execute_agent_turn(
             + hud_context
         )
 
-    recovery_diagnostics_holder: dict[str, object] = {}
+        recovery_diagnostics_holder: dict[str, object] = {}
         response = run_agent_loop(
             payload,
             provider,
@@ -1011,33 +1020,39 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     routing_diagnostics = diagnostics_from_decision(routing_mode, routing_decision)
 
     tool_search_recovery: ToolSearchRecoveryConfig | None = None
+    recovery_ineligible_kinds = {"fallback_full", "semantic_none"}
     if (
         DEFAULT_THRESHOLDS.tool_search_recovery_enabled
         and routing_mode == "enabled"
         and payload.tool_scope is None
+        and routing_decision.kind not in recovery_ineligible_kinds
     ):
+        offered_names = {
+            descriptor.name for descriptor in routing_decision.offered_capabilities
+        }
         searchable_catalog = build_searchable_catalog(
             cloud_tools,
             runtime=routing_runtime,
             agent_key=agent_key,
+            offered_names=offered_names,
         )
-        remaining_schema_budget = DEFAULT_THRESHOLDS.tool_search_max_expansion_schema_tokens
-        if routing_decision.considered_schema_tokens:
-            remaining_schema_budget = min(
-                remaining_schema_budget,
-                max(
-                    0,
-                    routing_decision.considered_schema_tokens
-                    - routing_decision.offered_schema_tokens,
-                ),
-            )
+        expansion_allowance = DEFAULT_THRESHOLDS.tool_search_max_expansion_schema_tokens
+        agent_schema_budget = _schema_budget_for_agent(agent_key, DEFAULT_THRESHOLDS)
+        remaining_headroom = max(
+            0,
+            agent_schema_budget - routing_decision.offered_schema_tokens,
+        )
+        expansion_allowance = min(expansion_allowance, remaining_headroom)
         tool_search_recovery = ToolSearchRecoveryConfig(
             enabled=True,
             searchable_catalog=searchable_catalog,
+            offered_names=frozenset(offered_names),
+            offered_families=frozenset(routing_decision.selected_families),
             max_search_calls=1,
             max_result_families=DEFAULT_THRESHOLDS.tool_search_max_result_families,
             max_capabilities_per_family=DEFAULT_THRESHOLDS.tool_search_max_capabilities_per_family,
-            max_expansion_schema_tokens=remaining_schema_budget,
+            max_expansion_schema_tokens=expansion_allowance,
+            apply_local_projection=routing_runtime == "local",
         )
         routing_diagnostics = routing_diagnostics.model_copy(
             update={"tool_search_enabled": True}

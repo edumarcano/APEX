@@ -263,11 +263,17 @@ class CapabilityRoutingDiagnostics(BaseModel):
     model_key: str | None = None
     fallback_reason: str | None = None
     tool_search_enabled: bool = False
+    tool_search_attempted: bool = False
     tool_search_invoked: bool = False
+    tool_search_succeeded: bool = False
     tool_search_calls: int = 0
+    recovery_matched_families: list[str] = Field(default_factory=list)
     recovered_families: list[str] = Field(default_factory=list)
+    recovery_results_already_offered: list[str] = Field(default_factory=list)
+    recovery_expansion_blocked_by_budget: list[str] = Field(default_factory=list)
     recovery_expanded_tool_count: int = 0
     recovery_extra_turns: int = 0
+    recovery_usable_turn_available: bool = False
 
 
 class AgentQueryResponse(BaseModel):
