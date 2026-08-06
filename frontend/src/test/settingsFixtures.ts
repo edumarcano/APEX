@@ -18,6 +18,12 @@ export const BASE_SETTINGS: RuntimeSettings = {
     football: false,
     f1: true,
   },
+  football: {
+    teams: [],
+  },
+  market: {
+    symbols: [],
+  },
   ask_apex: {
     enabled: true,
     runtime: 'cloud',
@@ -59,7 +65,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 9,
+    schema_version: 10,
     settings,
     local_file_present: false,
     local_override_active: false,

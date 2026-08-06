@@ -39,12 +39,14 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `9`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `10`.
 
 | Group | Editable values |
 |---|---|
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
+| Football teams | Up to three football-data.org team IDs with display names |
+| Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Ask APEX | Global enablement switch, Apodemus context size, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
@@ -52,7 +54,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
 
-Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Followed football teams, Ollama host and resource gates, llama.cpp resource gates and timeouts, router presets, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
+Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Ollama host and resource gates, llama.cpp resource gates and timeouts, router presets, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
 
 ### When changes take effect
 
@@ -60,7 +62,7 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 - The Home command rail persists the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
 - Ask APEX enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
-- Market enablement starts or stops HUD polling immediately.
+- Market enablement starts or stops HUD polling immediately; symbol changes apply on the next poll.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
 - llama.cpp enablement, router URL, and managed-server settings apply after a successful settings write; APEX invalidates the provider status cache and reconciles an APEX-owned server when configured.
 
@@ -96,12 +98,12 @@ Disabling a connector prevents its network or authentication attempt and exclude
 |---|---|---|
 | Weather | OpenWeatherMap API key and target location | Current conditions and forecast facts |
 | Formula 1 | None | Jolpica/Ergast data with a 24-hour file cache |
-| Football | football-data.org key | One to three configured team IDs; disabled by default |
+| Football | football-data.org key | Up to three followed team IDs configured in Runtime Settings; disabled by default |
 | News | GNews key | AI and global-events headlines |
 | Gmail | Google desktop OAuth | Read-only primary inbox and Agent search/read tools |
 | Calendar | Google desktop OAuth | Seven-day telemetry horizon and Agent tools |
 | Reminders | SQLite | Always local; independent of Microsoft To Do |
-| Market | Alpha Vantage key plus symbols | End-of-day data; absent configuration returns an empty not-configured state |
+| Market | Alpha Vantage key plus Runtime Settings symbols | End-of-day data; absent configuration returns an empty not-configured state |
 
 Football telemetry keeps each configured team's next fixture. Briefing synthesis receives only the earliest eligible fixture within seven days.
 

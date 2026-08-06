@@ -15,6 +15,7 @@ import requests
 from dotenv import load_dotenv
 
 from core.config import DEMO_MODE
+from core.settings import get_settings_store
 
 load_dotenv()
 
@@ -112,11 +113,7 @@ def _write_cache(cache: dict[str, Any]) -> None:
 
 
 def _parse_configured_symbols() -> list[str] | None:
-    raw = os.environ.get("MARKET_SYMBOLS")
-    if raw is None:
-        return None
-
-    symbols = [symbol.strip().upper() for symbol in raw.split(",") if symbol.strip()]
+    symbols = list(get_settings_store().get_snapshot().market.symbols)
     if not symbols:
         return None
     return symbols

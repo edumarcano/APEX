@@ -68,11 +68,13 @@ Returns the resolved settings envelope. The current contract version is `10`.
 
 ```json
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "settings": {
     "user_designation": "",
-    "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
+    "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
     "modules": { "football": false, "f1": true },
+    "football": { "teams": [] },
+    "market": { "symbols": [] },
     "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true, "apodemus_context_window": 8192 },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
@@ -87,13 +89,13 @@ Returns the resolved settings envelope. The current contract version is `10`.
 }
 ```
 
-`football.teams` is also returned as read-only file configuration. OpenAPI contains the complete shape.
+`football.teams` and `market.symbols` are returned in the resolved settings snapshot and are patchable through Runtime Settings. OpenAPI contains the complete shape.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, Ask APEX, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Ask APEX, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
 
 ```json
 {
@@ -106,7 +108,7 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-Environment modes, prompt text, credentials, endpoints, commands, allowlists, tool risks, and football teams are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
+Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
 ## Runtime status
 

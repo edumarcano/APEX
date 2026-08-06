@@ -103,7 +103,7 @@ function toStaleFallback(previous: MarketResponse): MarketResponse {
   }
 }
 
-export function useMarketData(enabled: boolean): MarketDataState {
+export function useMarketData(enabled: boolean, pollKey = 0): MarketDataState {
   const [data, setData] = useState<MarketResponse | null>(null)
   const [isLoading, setIsLoading] = useState(enabled)
   const dataRef = useRef<MarketResponse | null>(null)
@@ -182,7 +182,7 @@ export function useMarketData(enabled: boolean): MarketDataState {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [enabled])
+  }, [enabled, pollKey])
 
   return { data, isLoading }
 }

@@ -31,7 +31,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 9
+SETTINGS_SCHEMA_VERSION: int = 10
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -68,7 +68,7 @@ class ModulesSettings(BaseModel):
 
 
 class FootballTeamSettings(BaseModel):
-    """One followed football-data.org team, configured outside Runtime Settings."""
+    """One followed football-data.org team."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -77,11 +77,19 @@ class FootballTeamSettings(BaseModel):
 
 
 class FootballSettings(BaseModel):
-    """Read-only football connector preferences from the configuration files."""
+    """Football connector preferences (up to three followed teams)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     teams: tuple[FootballTeamSettings, ...] = ()
+
+
+class MarketSettings(BaseModel):
+    """Market ticker symbols for the HUD monitor."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbols: tuple[str, ...] = ()
 
 
 class AskApexSettings(BaseModel):
@@ -177,6 +185,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
+    market: MarketSettings = Field(default_factory=MarketSettings)
     ask_apex: AskApexSettings = Field(default_factory=AskApexSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
@@ -204,6 +213,31 @@ class ModulesPatch(BaseModel):
 
     football: bool | None = None
     f1: bool | None = None
+
+
+class FootballTeamPatch(BaseModel):
+    """One followed team in a replaceable football teams patch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=100)
+
+
+class FootballPatch(BaseModel):
+    """Partial football patch; teams replaces the full followed-team list."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    teams: list[FootballTeamPatch] | None = None
+
+
+class MarketPatch(BaseModel):
+    """Partial market patch; symbols replaces the full ticker list."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbols: list[str] | None = None
 
 
 class AskApexPatch(BaseModel):
@@ -300,6 +334,8 @@ class SettingsPatch(BaseModel):
     user_designation: str | None = Field(default=None, max_length=80)
     features: FeaturesPatch | None = None
     modules: ModulesPatch | None = None
+    football: FootballPatch | None = None
+    market: MarketPatch | None = None
     ask_apex: AskApexPatch | None = None
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None

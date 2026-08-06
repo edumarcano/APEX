@@ -13,6 +13,8 @@ import type {
   ApodemusContextWindow,
   BriefingMode,
   FeaturesSettings,
+  FootballSettings,
+  MarketSettings,
   ModulesSettings,
   McpSettings,
   McpStatusResponse,
@@ -287,6 +289,57 @@ function parseMcpSettings(value: unknown): McpSettings | null {
   }
 }
 
+function parseFootballSettings(value: unknown): FootballSettings {
+  if (!isRecord(value) || !Array.isArray(value.teams)) {
+    return { teams: [] }
+  }
+
+  const teams = value.teams.flatMap((team) => {
+    if (!isRecord(team)) {
+      return []
+    }
+    if (
+      typeof team.id !== 'number' ||
+      !Number.isInteger(team.id) ||
+      team.id <= 0 ||
+      typeof team.name !== 'string' ||
+      !team.name.trim()
+    ) {
+      return []
+    }
+    return [{ id: team.id, name: team.name.trim() }]
+  })
+
+  return { teams: teams.slice(0, 3) }
+}
+
+function parseMarketSettings(value: unknown): MarketSettings {
+  if (!isRecord(value) || !Array.isArray(value.symbols)) {
+    return { symbols: [] }
+  }
+
+  const symbols = value.symbols
+    .filter((symbol): symbol is string => typeof symbol === 'string' && symbol.trim().length > 0)
+    .map((symbol) => symbol.trim().toUpperCase())
+    .slice(0, 8)
+
+  return { symbols }
+}
+
+function footballTeamsEqual(
+  left: FootballSettings['teams'],
+  right: FootballSettings['teams'],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((team, index) => team.id === right[index]?.id && team.name === right[index]?.name)
+  )
+}
+
+function marketSymbolsEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((symbol, index) => symbol === right[index])
+}
+
 function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!isRecord(value)) {
     return null
@@ -294,6 +347,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
 
   const features = parseFeatures(value.features)
   const modules = parseModules(value.modules)
+  const football = parseFootballSettings(value.football)
+  const market = parseMarketSettings(value.market)
   const mcp = parseMcpSettings(value.mcp)
   const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   if (
@@ -354,6 +409,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       typeof value.user_designation === 'string' ? value.user_designation : '',
     features,
     modules,
+    football,
+    market,
     ask_apex: {
       enabled: value.ask_apex.enabled,
       runtime: value.ask_apex.runtime,
@@ -388,6 +445,12 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     user_designation: settings.user_designation,
     features: { ...settings.features },
     modules: { ...settings.modules },
+    football: {
+      teams: settings.football.teams.map((team) => ({ ...team })),
+    },
+    market: {
+      symbols: [...settings.market.symbols],
+    },
     ask_apex: { ...settings.ask_apex },
     briefing: { ...settings.briefing },
     voice: { ...settings.voice },
@@ -480,6 +543,20 @@ export function diffSettingsPatch(
     patch.modules = modules
   }
 
+  if (!footballTeamsEqual(baseline.football.teams, draft.football.teams)) {
+    patch.football = {
+      teams: draft.football.teams
+        .filter((team) => team.id > 0 && team.name.trim().length > 0)
+        .map((team) => ({ id: team.id, name: team.name.trim() })),
+    }
+  }
+
+  if (!marketSymbolsEqual(baseline.market.symbols, draft.market.symbols)) {
+    patch.market = {
+      symbols: [...draft.market.symbols],
+    }
+  }
+
   const askApex = diffSection(baseline.ask_apex, draft.ask_apex)
   if (askApex) {
     patch.ask_apex = askApex
@@ -527,6 +604,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.user_designation === undefined &&
     patch.features === undefined &&
     patch.modules === undefined &&
+    patch.football === undefined &&
+    patch.market === undefined &&
     patch.ask_apex === undefined &&
     patch.briefing === undefined &&
     patch.voice === undefined &&
@@ -561,7 +640,7 @@ export function resolveEffectiveTiming(
   group: SettingsTimingFieldGroup,
   runtime: SettingsTimingRuntime,
 ): SettingsEffectiveTiming {
-  if (group === 'features' || group === 'modules') {
+  if (group === 'features' || group === 'modules' || group === 'football') {
     return runtime.briefingActive ? 'Applies next briefing' : 'Active'
   }
 

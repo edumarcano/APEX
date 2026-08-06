@@ -16,6 +16,9 @@ from core.settings.models import (
     AskApexPatch,
     BriefingPatch,
     FeaturesPatch,
+    FootballPatch,
+    FootballTeamPatch,
+    MarketPatch,
     ModulesPatch,
     SettingsPatch,
     VoicePatch,
@@ -107,6 +110,35 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.user_designation, "Chief")
         self.assertTrue(store.local_file_present)
         self.assertTrue(store.local_override_active)
+
+    def test_empty_football_teams_in_base_config(self) -> None:
+        self.base["football"] = {"teams": []}
+        self.base["market"] = {"symbols": []}
+        _write_json(self.config_path, self.base)
+        store = self._store()
+        snap = store.get_snapshot()
+        self.assertEqual(snap.football.teams, ())
+        self.assertEqual(snap.market.symbols, ())
+
+    def test_patch_football_and_market_lists_persist_to_local_overlay(self) -> None:
+        store = self._store()
+        snap = store.apply_patch(
+            SettingsPatch(
+                football=FootballPatch(
+                    teams=[FootballTeamPatch(id=81, name="Barcelona")]
+                ),
+                market=MarketPatch(symbols=["SPY", "AAPL"]),
+            )
+        )
+        self.assertEqual([(team.id, team.name) for team in snap.football.teams], [(81, "Barcelona")])
+        self.assertEqual(list(snap.market.symbols), ["SPY", "AAPL"])
+
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            written["football"]["teams"],
+            [{"id": 81, "name": "Barcelona"}],
+        )
+        self.assertEqual(written["market"]["symbols"], ["SPY", "AAPL"])
 
     def test_football_team_array_is_replaced_by_local_overlay(self) -> None:
         self.base["football"] = {"teams": [{"id": 1, "name": "One"}, {"id": 2, "name": "Two"}]}

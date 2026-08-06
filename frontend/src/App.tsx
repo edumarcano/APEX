@@ -162,6 +162,7 @@ export default function App(): ReactElement {
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
   )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
@@ -180,7 +181,10 @@ export default function App(): ReactElement {
     markReminderAsRead,
     applyBootSettings,
   } = apexData
-  const { data: marketData, isLoading: isMarketLoading } = useMarketData(marketEnabled)
+  const { data: marketData, isLoading: isMarketLoading } = useMarketData(
+    marketEnabled,
+    marketPollKey,
+  )
 
   const { activated, activate } = useAppActivation()
   const preflight = usePreflight()
@@ -289,6 +293,7 @@ export default function App(): ReactElement {
   const handleSettingsPanelApplied = useCallback(
     async (response: SettingsResponse) => {
       handleSettingsApplied(response)
+      setMarketPollKey((key) => key + 1)
       await refreshAgentsStatus()
     },
     [handleSettingsApplied, refreshAgentsStatus],
