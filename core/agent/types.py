@@ -233,6 +233,37 @@ class AgentQueryRequest(BaseModel):
     )
 
 
+ToolRoutingMode: TypeAlias = Literal["disabled", "shadow", "enabled"]
+RoutingDecisionKind: TypeAlias = Literal[
+    "disabled",
+    "explicit",
+    "explicit_none",
+    "semantic",
+    "semantic_none",
+    "shadow",
+    "fallback_full",
+    "fallback_none",
+    "model_unavailable",
+    "model_error",
+]
+
+
+class CapabilityRoutingDiagnostics(BaseModel):
+    mode: ToolRoutingMode
+    decision: RoutingDecisionKind
+    enforced: bool
+    selected_families: list[str]
+    considered_tool_count: int
+    offered_tool_count: int
+    considered_schema_tokens: int
+    offered_schema_tokens: int
+    top_score: float | None = None
+    score_margin: float | None = None
+    latency_ms: float
+    model_key: str | None = None
+    fallback_reason: str | None = None
+
+
 class AgentQueryResponse(BaseModel):
     answer: str = Field(description="The final synthesized response from the agent.")
     agent_used: Dict[str, Any] = Field(
@@ -280,4 +311,8 @@ class AgentQueryResponse(BaseModel):
     citations: List[Citation] = Field(
         default_factory=list,
         description="Normalized citations from provider-hosted grounding tools.",
+    )
+    routing: CapabilityRoutingDiagnostics | None = Field(
+        default=None,
+        description="Sanitized smart tool-routing diagnostics for this response.",
     )

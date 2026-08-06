@@ -100,6 +100,7 @@ def run_agent_loop(
     resolved_local_command: ResolvedLocalCommand | None = None,
     disable_cloud_tools: bool = False,
     cloud_tools: list[CapabilityDescriptor] | None = None,
+    offered_tools: list[CapabilityDescriptor] | None = None,
     agent_key: str | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
@@ -112,26 +113,37 @@ def run_agent_loop(
     total_tool_executions = 0
     last_model_content: str | None = None
     is_local = is_local_profile(profile)
-    if is_local and request.tool_scope is not None:
+    if offered_tools is not None:
+        resolved_offered = list(offered_tools)
+        local_tools = resolved_offered if is_local else []
+        allowed_local_tools = {tool.name for tool in local_tools}
+        resolved_cloud_tools = [] if is_local else resolved_offered
+        allowed_cloud_tools = (
+            set() if disable_cloud_tools else {tool.name for tool in resolved_cloud_tools}
+        )
+    elif is_local and request.tool_scope is not None:
         local_command = resolved_local_command or resolve_local_command(
             request.tool_scope
         )
         if local_command.scope != request.tool_scope:
             raise ValueError("Resolved local command does not match the request scope.")
         local_tools = list(local_command.descriptors)
+        allowed_local_tools = {tool.name for tool in local_tools}
+        resolved_cloud_tools = []
+        allowed_cloud_tools = set()
     else:
         local_tools = []
-    allowed_local_tools = {tool.name for tool in local_tools}
-    resolved_cloud_tools = [] if is_local else (
-        list(cloud_tools)
-        if cloud_tools is not None
-        else list_agent_capabilities()
-    )
-    allowed_cloud_tools = (
-        set()
-        if disable_cloud_tools
-        else {tool.name for tool in resolved_cloud_tools}
-    )
+        allowed_local_tools = set()
+        resolved_cloud_tools = [] if is_local else (
+            list(cloud_tools)
+            if cloud_tools is not None
+            else list_agent_capabilities()
+        )
+        allowed_cloud_tools = (
+            set()
+            if disable_cloud_tools
+            else {tool.name for tool in resolved_cloud_tools}
+        )
     estimated_prompt_tokens = 0
     peak_prompt_tokens: int | None = None
     history_messages_dropped = 0

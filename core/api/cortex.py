@@ -35,6 +35,12 @@ from core.agent.tool_policies import (
     filter_agent_capabilities,
     hosted_tools_for_agent,
 )
+from core.agent.routing.diagnostics import (
+    build_tool_routing_status,
+    diagnostics_from_decision,
+)
+from core.agent.routing.models import CapabilityRoutingRequest
+from core.agent.routing.service import resolve_capabilities
 from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
@@ -86,6 +92,7 @@ from core.api.models import (
 )
 from core.config import DEMO_MODE, is_dev_mode
 from core.settings import get_settings_store
+from core.settings.models import VALID_TOOL_ROUTING_MODES
 from core.synthesis.formatting import sanitize_fact
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,6 +105,11 @@ _LOCAL_TOOL_FREE_INSTRUCTION = (
     "\n\nLOCAL COMMAND SCOPE:\n"
     "No live tools are available for this turn. Answer from the conversation "
     "only and do not claim to have queried live data."
+)
+_LOCAL_AUTO_ROUTE_INSTRUCTION = (
+    "\n\nLOCAL COMMAND SCOPE:\n"
+    "APEX automatically selected the attached live tools for this request. "
+    "Use only those tools for live data."
 )
 
 _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
@@ -743,6 +755,8 @@ def _execute_agent_turn(
     disable_tools: bool = False,
     disable_hud_context: bool = False,
     cloud_tools: list[CapabilityDescriptor] | None = None,
+    offered_tools: list[CapabilityDescriptor] | None = None,
+    routing_diagnostics=None,
     user_designation: str = "",
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
@@ -763,15 +777,17 @@ def _execute_agent_turn(
                     f"Unsupported local provider: {AGENT_SPECS[agent_key].provider!r}"
                 )
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
-            if payload.tool_scope is None:
-                scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
-            else:
+            if payload.tool_scope is not None:
                 scope_instruction = (
                     "\n\nLOCAL COMMAND SCOPE:\n"
                     f"The /{payload.tool_scope} command defines the only tools "
                     "that may be offered during tool-selection turns. Use only "
                     "results from those tools for live data."
                 )
+            elif offered_tools:
+                scope_instruction = _LOCAL_AUTO_ROUTE_INSTRUCTION
+            else:
+                scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
         else:
             provider = _create_provider(agent_key, api_key or "")
             base_prompt = config.AGENT_SYSTEM_PROMPT
@@ -795,8 +811,11 @@ def _execute_agent_turn(
             resolved_local_command=resolved_local_command,
             disable_cloud_tools=disable_tools,
             cloud_tools=cloud_tools,
+            offered_tools=offered_tools,
             agent_key=agent_key,
         )
+        if routing_diagnostics is not None:
+            response = response.model_copy(update={"routing": routing_diagnostics})
         if not is_local_profile(profile):
             record_cloud_request_success(agent_key)
         response.agent_used = build_agent_used_metadata(
@@ -828,6 +847,7 @@ def _execute_agent_turn(
             ),
             session_id=payload.session_id,
             error=error_detail,
+            routing=routing_diagnostics,
         )
 
 
@@ -952,6 +972,23 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         agent_key, list_agent_capabilities()
     )
 
+    routing_mode = settings.ask_apex.tool_routing_mode
+    if routing_mode not in VALID_TOOL_ROUTING_MODES:
+        routing_mode = "disabled"
+    routing_runtime = "local" if is_local_profile(profile) else "cloud"
+    routing_request = CapabilityRoutingRequest(
+        prompt=payload.prompt,
+        history=tuple(payload.history),
+        capabilities=tuple(cloud_tools),
+        agent_key=agent_key,
+        runtime=routing_runtime,  # type: ignore[arg-type]
+        mode=routing_mode,  # type: ignore[arg-type]
+        explicit_scope=payload.tool_scope,
+    )
+    routing_decision = resolve_capabilities(routing_request)
+    offered_tools = list(routing_decision.offered_capabilities)
+    routing_diagnostics = diagnostics_from_decision(routing_mode, routing_decision)
+
     if is_local_profile(profile):
         backend = get_local_runtime_backend(profile.provider)
         provider_label = _local_provider_label(profile.provider)
@@ -1011,6 +1048,8 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 disable_tools=False,
                 disable_hud_context=False,
                 cloud_tools=cloud_tools,
+                offered_tools=offered_tools,
+                routing_diagnostics=routing_diagnostics,
                 user_designation=settings.user_designation,
             )
         finally:
@@ -1032,5 +1071,12 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         disable_tools=False,
         disable_hud_context=False,
         cloud_tools=cloud_tools,
+        offered_tools=offered_tools,
+        routing_diagnostics=routing_diagnostics,
         user_designation=settings.user_designation,
     )
+
+
+def build_tool_routing_status_payload() -> dict[str, object]:
+    mode = get_settings_store().get_snapshot().ask_apex.tool_routing_mode
+    return build_tool_routing_status(mode)

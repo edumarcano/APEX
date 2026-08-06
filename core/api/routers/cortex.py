@@ -8,6 +8,7 @@ from core.agent.types import AgentQueryRequest, AgentQueryResponse, LocalCommand
 from core.api.cortex import (
     build_agent_statuses,
     build_local_command_statuses,
+    build_tool_routing_status_payload,
     load_local_model_endpoint,
     query_agent,
     unload_active_local_model_endpoint,
@@ -22,6 +23,14 @@ from core.api.models import (
 )
 
 router = APIRouter(tags=["cortex"])
+
+
+@router.get(
+    "/api/v1/cortex/tool-routing/status",
+)
+def tool_routing_status() -> dict[str, object]:
+    """Return read-only tool-routing mode and model installation status."""
+    return build_tool_routing_status_payload()
 
 
 @router.get(
