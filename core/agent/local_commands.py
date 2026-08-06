@@ -9,88 +9,11 @@ from dataclasses import dataclass
 from core.agent.capabilities import (
     CapabilityDescriptor,
     get_capability_descriptor,
+    list_agent_capabilities,
 )
+from core.agent.routing.families import CAPABILITY_FAMILIES, get_family
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.types import LocalCommandStatus, LocalToolScope
-
-
-@dataclass(frozen=True)
-class LocalCommandDefinition:
-    key: LocalToolScope
-    label: str
-    description: str
-    tool_names: tuple[str, ...]
-
-    @property
-    def command(self) -> str:
-        return f"/{self.key}"
-
-
-@dataclass(frozen=True)
-class ResolvedLocalCommand:
-    scope: LocalToolScope
-    descriptors: tuple[CapabilityDescriptor, ...]
-    missing_tool_names: tuple[str, ...]
-
-
-LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = (
-    LocalCommandDefinition(
-        key="schedule",
-        label="Schedule",
-        description="Calendar events and pending reminders.",
-        tool_names=("get_upcoming_calendar_events", "get_active_reminders"),
-    ),
-    LocalCommandDefinition(
-        key="weather",
-        label="Weather",
-        description="Configured-location forecast up to five days.",
-        tool_names=("get_weather_forecast",),
-    ),
-    LocalCommandDefinition(
-        key="f1",
-        label="Formula 1",
-        description="Driver standings and season race calendar.",
-        tool_names=("get_f1_driver_standings", "get_f1_season_calendar"),
-    ),
-    LocalCommandDefinition(
-        key="mail",
-        label="Mail",
-        description="Search Gmail and retrieve a selected message.",
-        tool_names=("search_gmail", "get_gmail_message"),
-    ),
-    LocalCommandDefinition(
-        key="search",
-        label="Web Search",
-        description="Brave web search with a compact local schema.",
-        tool_names=("brave_brave_web_search",),
-    ),
-    LocalCommandDefinition(
-        key="market",
-        label="Market",
-        description="Quotes, symbols, company details, time series, and market news.",
-        tool_names=(
-            "alphavantage_time_series_daily",
-            "alphavantage_global_quote",
-            "alphavantage_symbol_search",
-            "alphavantage_news_sentiment",
-            "alphavantage_company_overview",
-        ),
-    ),
-    LocalCommandDefinition(
-        key="briefings",
-        label="Briefings",
-        description="Recent persisted APEX briefing history.",
-        tool_names=("get_briefing_history",),
-    ),
-    LocalCommandDefinition(
-        key="todo",
-        label="Microsoft To Do",
-        description="Read-only Microsoft To Do lists and tasks.",
-        tool_names=("list_microsoft_todo_lists", "list_microsoft_todo_tasks"),
-    ),
-)
-
-_DEFINITIONS_BY_KEY = {definition.key: definition for definition in LOCAL_COMMAND_DEFINITIONS}
 
 _LOCAL_SEARCH_SCHEMA = {
     "type": "object",
@@ -113,7 +36,75 @@ _LOCAL_SEARCH_SCHEMA = {
 }
 
 
-def _project_local_descriptor(
+@dataclass(frozen=True)
+class LocalCommandDefinition:
+    key: LocalToolScope
+    label: str
+    description: str
+    family_key: str
+
+    @property
+    def command(self) -> str:
+        return f"/{self.key}"
+
+
+@dataclass(frozen=True)
+class ResolvedLocalCommand:
+    scope: LocalToolScope
+    descriptors: tuple[CapabilityDescriptor, ...]
+    missing_tool_names: tuple[str, ...]
+
+
+def _build_command_definitions() -> tuple[LocalCommandDefinition, ...]:
+    definitions: list[LocalCommandDefinition] = []
+    for family in CAPABILITY_FAMILIES:
+        if not family.local_command_enabled:
+            continue
+        definitions.append(
+            LocalCommandDefinition(
+                key=family.key,  # type: ignore[arg-type]
+                label=family.label,
+                description=family.description,
+                family_key=family.key,
+            )
+        )
+    definitions.append(
+        LocalCommandDefinition(
+            key="none",
+            label="No Tools",
+            description="Force a tool-free local turn.",
+            family_key="none",
+        )
+    )
+    return tuple(definitions)
+
+
+LOCAL_COMMAND_DEFINITIONS: tuple[LocalCommandDefinition, ...] = _build_command_definitions()
+
+_DEFINITIONS_BY_KEY = {definition.key: definition for definition in LOCAL_COMMAND_DEFINITIONS}
+
+
+def _ordered_family_tool_names(family_key: str) -> tuple[str, ...]:
+    family = get_family(family_key)
+    if family is None or family_key == "none":
+        return ()
+    priority = list(family.tool_priority)
+    priority_set = set(priority)
+    registered = [
+        descriptor.name
+        for descriptor in list_agent_capabilities()
+        if descriptor.routing_family == family_key
+        and descriptor.expose_to_agent
+        and descriptor.risk == "read"
+    ]
+    ordered: list[str] = [name for name in priority if name in registered]
+    for name in sorted(registered):
+        if name not in priority_set:
+            ordered.append(name)
+    return tuple(ordered)
+
+
+def project_local_descriptor(
     scope: LocalToolScope,
     descriptor: CapabilityDescriptor,
 ) -> CapabilityDescriptor:
@@ -131,7 +122,24 @@ def _project_local_descriptor(
     return descriptor
 
 
-def _estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
+def _project_local_descriptor(
+    scope: LocalToolScope,
+    descriptor: CapabilityDescriptor,
+) -> CapabilityDescriptor:
+    return project_local_descriptor(scope, descriptor)
+
+
+def project_local_descriptors(
+    scope: LocalToolScope | None,
+    descriptors: tuple[CapabilityDescriptor, ...] | list[CapabilityDescriptor],
+) -> tuple[CapabilityDescriptor, ...]:
+    """Apply local schema projections to routed or command-resolved descriptors."""
+    if scope is None:
+        return tuple(descriptors)
+    return tuple(_project_local_descriptor(scope, descriptor) for descriptor in descriptors)
+
+
+def estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
     if not descriptors:
         return 0
     return estimate_json_tokens(
@@ -139,13 +147,25 @@ def _estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
     )
 
 
+def _estimate_schema_tokens(descriptors: list[CapabilityDescriptor]) -> int:
+    return estimate_schema_tokens(descriptors)
+
+
 def resolve_local_command(
     scope: LocalToolScope,
 ) -> ResolvedLocalCommand:
     definition = _DEFINITIONS_BY_KEY[scope]
+    if definition.family_key == "none":
+        return ResolvedLocalCommand(
+            scope=scope,
+            descriptors=(),
+            missing_tool_names=(),
+        )
+
+    tool_names = _ordered_family_tool_names(definition.family_key)
     descriptors: list[CapabilityDescriptor] = []
     missing: list[str] = []
-    for tool_name in definition.tool_names:
+    for tool_name in tool_names:
         descriptor = get_capability_descriptor(tool_name)
         if descriptor is None or not descriptor.expose_to_agent:
             missing.append(tool_name)
@@ -162,22 +182,29 @@ def list_local_command_statuses() -> list[LocalCommandStatus]:
     statuses: list[LocalCommandStatus] = []
     for definition in LOCAL_COMMAND_DEFINITIONS:
         resolution = resolve_local_command(definition.key)
+        tool_names = _ordered_family_tool_names(definition.family_key)
         todo_not_configured = definition.key == "todo" and not os.getenv(
             "MICROSOFT_TODO_CLIENT_ID", ""
         ).strip()
-        available = not resolution.missing_tool_names and not todo_not_configured
-        unavailable_reason = None
-        if todo_not_configured:
-            unavailable_reason = "Microsoft To Do is not configured."
-        elif not available:
-            unavailable_reason = "Required provider tools are not currently connected."
+        if definition.key == "none":
+            available = True
+            unavailable_reason = None
+        else:
+            available = not resolution.missing_tool_names and not todo_not_configured
+            unavailable_reason = None
+            if todo_not_configured:
+                unavailable_reason = "Microsoft To Do is not configured."
+            elif not available:
+                unavailable_reason = (
+                    "Required provider tools are not currently connected."
+                )
         statuses.append(
             LocalCommandStatus(
                 key=definition.key,
                 command=definition.command,
                 label=definition.label,
                 description=definition.description,
-                tool_count=len(definition.tool_names),
+                tool_count=len(tool_names) if definition.key != "none" else 0,
                 estimated_schema_tokens=_estimate_schema_tokens(
                     list(resolution.descriptors)
                 ),

@@ -12,6 +12,7 @@ LocalToolScope: TypeAlias = Literal[
     "market",
     "briefings",
     "todo",
+    "none",
 ]
 
 AgentKey: TypeAlias = Literal[

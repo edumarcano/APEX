@@ -69,10 +69,18 @@ class LocalCommandScopeTests(unittest.TestCase):
                 "/market",
                 "/briefings",
                 "/todo",
+                "/none",
             },
         )
         self.assertNotIn("/github", commands)
         self.assertNotIn("/auto", commands)
+
+    def test_none_resolves_to_empty_descriptors(self) -> None:
+        from core.agent.local_commands import resolve_local_command
+
+        resolution = resolve_local_command("none")
+        self.assertEqual(resolution.descriptors, ())
+        self.assertEqual(resolution.missing_tool_names, ())
 
     def test_local_query_without_scope_receives_no_tools(self) -> None:
         provider = _CapturingProvider(
