@@ -22,8 +22,6 @@ def _profile(
         built_in=True,
         dynamic=dynamic,
     )
-
-
 BUILT_IN_TOOL_PROFILES: tuple[ToolProfile, ...] = (
     _profile(
         "no_tools",
@@ -183,4 +181,3 @@ def default_profile_names(
         profile.id,
         available_names=available_names,
     )
-

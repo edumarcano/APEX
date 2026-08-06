@@ -39,11 +39,9 @@ interface ToolsSelectorProps {
   onRestoreProfile?: (profileId: string) => void
   onSetDefaultProfile?: (profileId: string) => void
 }
-
 function formatTokens(value: number): string {
   return `~${Math.max(0, Math.round(value)).toLocaleString()}`
 }
-
 function selectedTokenTotal(
   catalog: ToolCatalog | null,
   selectedToolNames: string[],
@@ -373,4 +371,3 @@ export function ToolsSelector({
     </div>
   )
 }
-

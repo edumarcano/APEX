@@ -14,7 +14,6 @@ const SESSION_PREFIX = 'apex.tool-selection.'
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
-
 function parseTool(value: unknown): ToolCatalogTool | null {
   if (!isRecord(value)) return null
   if (
@@ -46,7 +45,6 @@ function parseTool(value: unknown): ToolCatalogTool | null {
     allowed_for_agent: value.allowed_for_agent,
   }
 }
-
 function parseGroup(value: unknown): ToolCatalogGroup | null {
   if (!isRecord(value) || !Array.isArray(value.tools)) return null
   if (
@@ -343,4 +341,3 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
     refreshCatalog,
   }
 }
-

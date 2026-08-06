@@ -85,7 +85,6 @@ def _requested_names(
         for tool in catalog.tools
         if tool.available and tool.allowed_for_agent
     }
-
     if selected_tool_names is not None:
         names = _dedupe_names(selected_tool_names)
         active_profile_id: str | None = None
@@ -259,4 +258,3 @@ def selection_as_response_fields(
         "active_tool_profile_id": diagnostics.active_profile_id,
         "active_tool_profile_name": diagnostics.active_profile_name,
     }
-

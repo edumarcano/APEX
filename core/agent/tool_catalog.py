@@ -539,4 +539,3 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         context_window=context_window,
         reserved_response_tokens=reserved_response_tokens,
     )
-

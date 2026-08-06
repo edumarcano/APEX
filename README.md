@@ -36,7 +36,7 @@ A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a de
 
 ### Operates Apex Agents
 
-Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer, while local commands remain explicitly scoped per request.
+Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
 
 <p align="center">
   <img

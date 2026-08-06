@@ -11,6 +11,7 @@ from core.agent.capabilities import (
     CapabilityError,
     CapabilityErrorCategory,
     clear_capability_registry_for_tests,
+    get_capability_descriptor,
     invoke_capability,
     is_client_display_enabled,
     list_agent_capabilities,
@@ -360,6 +361,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             build_concrete_agent(
                 "neofelis", native_effort=resolve_effort("neofelis", None)[1]
             ),
+            selected_tools=[get_capability_descriptor("hidden_tool")],  # type: ignore[list-item]
         )
 
         self.assertEqual(

@@ -154,7 +154,7 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ## Domain-Specific Color
 
-### Local command scope
+### Unified Tools selector
 
 ### Cortex Agent catalog
 
@@ -162,7 +162,7 @@ The Cortex inspector is the detailed Agent-configuration surface. Show one selec
 
 Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its Agent-selection button.
 
-The Cortex inspector owns local tool scopes when a local Agent is selected. Show every supported slash command as compact selectable rows with availability, descriptions, tool counts, and schema-token estimates. Show the active command as a one-shot armed state. A bare slash command remains a shortcut that selects the scope without submitting; the next query consumes and clears it. Keep the composer limited to an armed-scope indicator.
+The Tools control is shared by cloud and local Agents. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only prompt exposure; MCP settings remain a separate authority boundary.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 

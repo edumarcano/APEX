@@ -104,7 +104,7 @@ FastAPI's lifespan initializes the database and Microsoft To Do services, starts
 | `useTelemetrySnapshot` | Current process-local telemetry snapshot and refresh state |
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useCortex` | Browser-held conversation, Agent status, local command scope, and tool cards |
+| `useCortex` | Browser-held conversation, Agent status, explicit tool-selection diagnostics, and tool cards |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
@@ -185,17 +185,23 @@ Production cloud Agents receive the APEX capability registry. Brave MCP is the o
 
 The Home command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
 
-### Local Agents and command scopes
+### Local Agents and explicit tool selection
 
 Local Agent requests use Sorex, Mus, or Apodemus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
-Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the Agent's 4K context window and reports sanitized usage counts.
+Local and cloud queries use the same explicit capability descriptor list. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no tools. Omitted selection preserves the migration default of All Allowed for cloud Agents and No Tools for local Agents. The resolver intersects selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns structured per-tool failures instead of silently dropping a request. Local context preflight uses the same projected descriptors and rejects known overflow before provider submission.
 
 ## Capability and MCP boundary
 
 `core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound.
 
 Native capabilities are read-only. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
+
+The Tools selector exposes only the canonical resolved descriptor list:
+`selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP
+allowlists`. It can narrow a turn but cannot enable a provider, modify an
+allowlist, or bypass Acinonyx restrictions. Catalog and preflight responses use
+the same projected descriptors that provider turns receive.
 
 Provider-hosted Search, Maps, and X activity is normalized separately from APEX tool calls. Successful billable uses carry provider-origin traces, citations where available, attributed latency, and versioned cost estimates.
 
@@ -292,7 +298,7 @@ Optional failures remain local to their path. A connector outage lowers telemetr
 | `core/telemetry/` | Snapshot collection, freshness, preflight, and process-local store |
 | `core/connectors/` and `clients/` | Typed collection and external service adapters |
 | `core/synthesis/` | Bounded briefing input, cloud/local routing, deterministic fallback |
-| `core/agent/` | Agent catalog, bounded model loop, local scopes, native capabilities |
+| `core/agent/` | Agent catalog, bounded model loop, explicit tool selection, native capabilities |
 | `core/mcp/` | External MCP client configuration and lifecycle |
 | `core/settings/` | Typed overlay, normalization, transactional local persistence |
 | `core/database.py` | SQLite reminders, run records, briefing ledger, readiness query |

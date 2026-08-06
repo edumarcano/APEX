@@ -187,7 +187,7 @@ class AcinonyxContextTests(unittest.TestCase):
             Provider(),
             build_concrete_agent("acinonyx", native_effort=native),
             tools_dispatcher=mock.Mock(side_effect=AssertionError("must not execute")),
-            cloud_tools=[weather],
+            selected_tools=[weather],
         )
 
         self.assertEqual(response.tool_trace[0]["status"], "error")

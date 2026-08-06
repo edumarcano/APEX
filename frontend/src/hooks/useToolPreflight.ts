@@ -10,7 +10,6 @@ import type {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
-
 function parsePreflight(value: unknown): ToolPreflightEstimate | null {
   if (!isRecord(value) || !isRecord(value.breakdown) || !isRecord(value.selection)) {
     return null
@@ -98,7 +97,6 @@ function parsePreflight(value: unknown): ToolPreflightEstimate | null {
     can_proceed: value.can_proceed !== false,
   }
 }
-
 interface UseToolPreflightOptions {
   agent: AgentKey
   selectedToolNames: string[]
@@ -200,4 +198,3 @@ export function useToolPreflight({
 
   return { estimate, isLoading, error }
 }
-
