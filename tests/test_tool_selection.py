@@ -67,6 +67,72 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             {tool.name for tool in catalog.tools},
         )
 
+    def test_catalog_groups_render_each_capability_once_without_duplicate_mcp_families(
+        self,
+    ) -> None:
+        catalog = build_tool_catalog("panthera")
+        rendered = [tool.name for group in catalog.groups for tool in group.tools]
+        self.assertEqual(len(rendered), len(set(rendered)))
+        self.assertEqual(set(rendered), {tool.name for tool in catalog.tools})
+
+        groups_by_id = {group.id: group for group in catalog.groups}
+        self.assertNotIn("family:web_search", groups_by_id)
+        self.assertNotIn("family:market", groups_by_id)
+        self.assertEqual(
+            {tool.name for tool in groups_by_id["mcp:brave"].tools},
+            {"brave_brave_web_search", "brave_brave_news_search"},
+        )
+        self.assertEqual(
+            {tool.name for tool in groups_by_id["mcp:alphavantage"].tools},
+            {
+                "alphavantage_symbol_search",
+                "alphavantage_global_quote",
+                "alphavantage_time_series_daily",
+                "alphavantage_company_overview",
+                "alphavantage_news_sentiment",
+            },
+        )
+        self.assertTrue(
+            all(tool.apex_family == "web_search" for tool in groups_by_id["mcp:brave"].tools)
+        )
+        self.assertTrue(
+            all(
+                tool.apex_family == "market"
+                for tool in groups_by_id["mcp:alphavantage"].tools
+            )
+        )
+        expected_native_families = {
+            "schedule": {
+                "get_upcoming_calendar_events",
+                "get_active_reminders",
+            },
+            "weather": {"get_weather_forecast"},
+            "mail": {"search_gmail", "get_gmail_message"},
+            "briefings": {"get_briefing_history"},
+            "formula_1": {"get_f1_driver_standings", "get_f1_season_calendar"},
+            "microsoft_todo": {
+                "list_microsoft_todo_lists",
+                "list_microsoft_todo_tasks",
+            },
+        }
+        for family_id, names in expected_native_families.items():
+            self.assertEqual(
+                {tool.name for tool in groups_by_id[f"family:{family_id}"].tools},
+                names,
+            )
+            self.assertTrue(
+                all(tool.origin == "native" for tool in groups_by_id[f"family:{family_id}"].tools)
+            )
+
+        self.assertEqual(
+            sum(group.schema_token_subtotal for group in catalog.groups),
+            sum(tool.estimated_schema_tokens for tool in catalog.tools),
+        )
+        self.assertEqual(
+            sum(group.tool_count for group in catalog.groups),
+            len(catalog.tools),
+        )
+
     def test_exact_local_selection_is_the_only_offered_descriptor(self) -> None:
         selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
         self.assertEqual(

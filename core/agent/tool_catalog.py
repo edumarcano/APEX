@@ -104,9 +104,9 @@ _FAMILY_BY_TOOL: dict[str, str] = {
 }
 _FAMILY_BY_TOOL.update(
     {
-        # Known MCP names also carry an APEX family label so family toggles can
-        # select current web-search or market tools; server groups retain the
-        # provider boundary separately.
+        # These are optional category metadata for filtering, diagnostics, and
+        # future provider substitution. MCP capabilities still render only in
+        # their server group.
         "brave_brave_web_search": "web_search",
         "brave_brave_news_search": "web_search",
         "alphavantage_symbol_search": "market",
@@ -140,8 +140,19 @@ def server_id_for_tool(name: str) -> str | None:
 
 
 def family_for_tool(name: str) -> str | None:
-    """Return the curated APEX family ID for a native capability."""
+    """Return optional category metadata for a capability."""
     return _FAMILY_BY_TOOL.get(name)
+
+
+def _category_for_tool(name: str, source_id: str | None = None) -> str | None:
+    """Return category metadata, including configured MCP aliases."""
+    category = family_for_tool(name)
+    if category is not None:
+        return category
+    return {
+        "brave": "web_search",
+        "alphavantage": "market",
+    }.get(source_id or "")
 
 
 def _configured_mcp_tools(
@@ -360,7 +371,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         schema_tokens = estimate_json_tokens(
             descriptor_to_openai_schema(projected)
         )
-        family_id = family_for_tool(name)
+        family_id = _category_for_tool(name, source_id)
         catalog_tools[name] = ToolCatalogTool(
             name=name,
             label=descriptor.title,
@@ -432,7 +443,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
                 ),
                 origin=origin,  # type: ignore[arg-type]
                 source_id=server_id or "apex",
-                apex_family=family_for_tool(name),
+                apex_family=_category_for_tool(name, server_id),
                 risk="read",
                 available=False,
                 unavailable_reason=(
@@ -442,14 +453,21 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
                 allowed_for_agent=allowed_for_agent,
             )
 
+    for tool in catalog_tools.values():
+        if tool.origin == "mcp" and tool.apex_family is None:
+            tool.apex_family = _category_for_tool(tool.name, tool.source_id)
+
     groups: list[ToolCatalogGroup] = []
 
     for family in APEX_TOOL_FAMILIES:
         tools = [
             catalog_tools[name]
             for name in catalog_tools
-            if family_for_tool(name) == family.id
+            if catalog_tools[name].origin == "native"
+            and catalog_tools[name].apex_family == family.id
         ]
+        if not tools:
+            continue
         groups.append(
             ToolCatalogGroup(
                 id=f"family:{family.id}",
@@ -465,12 +483,9 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
 
     mcp_groups: dict[str, list[ToolCatalogTool]] = {}
     for tool in catalog_tools.values():
-        server_id = (
-            server_id_for_tool(tool.name)
-            or (tool.source_id if tool.origin == "mcp" else None)
-        )
-        if server_id is None:
+        if tool.origin != "mcp" or not tool.source_id:
             continue
+        server_id = tool.source_id
         mcp_groups.setdefault(server_id, []).append(tool)
     for server_id in sorted(mcp_groups):
         tools = mcp_groups[server_id]
@@ -489,9 +504,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
     ungrouped_tools = [
         tool
         for tool in catalog_tools.values()
-        if family_for_tool(tool.name) is None
-        and server_id_for_tool(tool.name) is None
-        and tool.origin == "native"
+        if tool.origin == "native" and tool.apex_family is None
     ]
     if ungrouped_tools:
         groups.append(

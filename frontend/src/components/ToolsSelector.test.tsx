@@ -66,6 +66,50 @@ const catalog: ToolCatalog = {
         },
       ],
     },
+    {
+      id: 'mcp:brave',
+      label: 'Brave',
+      kind: 'mcp_server',
+      tool_count: 1,
+      schema_token_subtotal: 70,
+      tools: [
+        {
+          name: 'brave_brave_web_search',
+          label: 'Web search',
+          description: 'Brave web search',
+          origin: 'mcp',
+          source_id: 'brave',
+          apex_family: null,
+          risk: 'read',
+          available: true,
+          unavailable_reason: null,
+          estimated_schema_tokens: 70,
+          allowed_for_agent: true,
+        },
+      ],
+    },
+    {
+      id: 'mcp:alphavantage',
+      label: 'Alphavantage',
+      kind: 'mcp_server',
+      tool_count: 1,
+      schema_token_subtotal: 80,
+      tools: [
+        {
+          name: 'alphavantage_global_quote',
+          label: 'Global quote',
+          description: 'Alpha Vantage quote',
+          origin: 'mcp',
+          source_id: 'alphavantage',
+          apex_family: null,
+          risk: 'read',
+          available: true,
+          unavailable_reason: null,
+          estimated_schema_tokens: 80,
+          allowed_for_agent: true,
+        },
+      ],
+    },
   ],
   tools: [],
   profiles: [
@@ -187,5 +231,19 @@ describe('ToolsSelector', () => {
     expect(screen.getByText(/Provider-hosted grounding active separately: Google Search/)).toBeInTheDocument()
     expect(screen.getByText('Profile request failed.')).toBeInTheDocument()
     expect(screen.getByText('Tool estimate unavailable.')).toBeInTheDocument()
+  })
+
+  it('does not render duplicate APEX Web Search or Market sections for MCP tools', async () => {
+    const user = userEvent.setup()
+    renderSelector()
+
+    await user.click(screen.getByRole('button', { name: /Tools:/ }))
+
+    expect(screen.getByText('Brave')).toBeInTheDocument()
+    expect(screen.getByText('Alphavantage')).toBeInTheDocument()
+    expect(screen.queryByText('Web Search')).not.toBeInTheDocument()
+    expect(screen.queryByText('Market')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select Web Search' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select Market' })).not.toBeInTheDocument()
   })
 })
