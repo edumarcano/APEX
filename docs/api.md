@@ -22,7 +22,13 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | GET | `/api/v1/reminders` | Active reminders |
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
-| GET | `/api/v1/cortex/tool-scopes` | Local Agent tool scopes |
+| GET | `/api/v1/cortex/tool-catalog` | Agent-specific native and MCP tool catalog |
+| POST | `/api/v1/cortex/tool-preflight` | Estimated next-request token breakdown |
+| GET | `/api/v1/cortex/tool-profiles` | Built-in and saved tool profiles |
+| POST | `/api/v1/cortex/tool-profiles` | Create a saved tool profile |
+| PATCH | `/api/v1/cortex/tool-profiles/{profile_id}` | Edit a saved tool profile |
+| DELETE | `/api/v1/cortex/tool-profiles/{profile_id}` | Delete a saved tool profile |
+| POST | `/api/v1/cortex/tool-profiles/default` | Assign an Agent default profile |
 | GET | `/api/v1/agents` | Backend-owned Agent catalog and availability |
 | POST | `/api/v1/agents/{agent_key}/verify` | Explicit non-generative cloud access check |
 | POST | `/api/v1/cortex/local-model/load` | Pre-warm a selected local model |
@@ -229,9 +235,57 @@ The operation is explicit and is not changed by development mode.
 
 ## Apex Agents and local models
 
-### GET `/api/v1/cortex/tool-scopes`
+### GET `/api/v1/cortex/tool-catalog`
 
-Returns local Agent tool scopes, including availability, reason, tool count, and estimated schema-token cost. Local Agents are tool-free unless one returned scope is selected for the next query.
+Returns the current catalog for one Agent (`?agent=panthera`). Individual entries
+include the stable capability name, model-facing label and description, native or
+MCP origin, source/server, risk, availability reason, Agent-policy result, and
+estimated schema tokens. Groups contain curated APEX families or MCP servers with
+tool counts and schema-token subtotals. The response also includes built-in and
+saved profiles, the Agent's default profile, and known local context capacity.
+
+The selector is a prompt-level exposure layer. It does not enable an MCP server,
+connect or authenticate it, change a persistent allowlist, or bypass Acinonyx's
+policy.
+
+### POST `/api/v1/cortex/tool-preflight`
+
+Accepts an Agent, selected stable names, optional profile, prompt, bounded
+history, and explicit snapshot/briefing attachment IDs. It returns estimates for
+system instructions, conversation history, HUD context, selected schemas,
+prompt, total, configured context, reserved response capacity, and remaining
+capacity. Every value is marked as an estimate by the response contract.
+Rejected selections remain in the response as structured diagnostics with
+`can_proceed=false`; the endpoint does not turn those diagnostics into a
+generic HTTP error. A conservative local context boundary can still report
+`can_proceed=false` so the query route can block a known overflow without
+silently truncating selected schemas.
+
+### GET `/api/v1/cortex/tool-profiles`
+
+Returns built-in and persisted custom profiles. Built-in profiles are `No Tools`, `All Allowed`, `Personal Ops`, `Daily
+Planning`, `Research`, and `Markets`. `All Allowed` resolves dynamically against
+current Agent policy and runtime availability; other profiles retain explicit
+stable names. Custom profile references are preserved when a tool later becomes
+unavailable. Profile writes persist non-secret settings in `config.local.json`
+and never modify MCP runtime configuration.
+
+### POST `/api/v1/cortex/tool-profiles`
+
+Creates a custom profile from explicit stable capability names.
+
+### PATCH `/api/v1/cortex/tool-profiles/{profile_id}`
+
+Edits a saved custom profile. Its missing or unavailable tool references remain
+in the profile.
+
+### DELETE `/api/v1/cortex/tool-profiles/{profile_id}`
+
+Deletes a saved custom profile and clears Agent defaults that pointed to it.
+
+### POST `/api/v1/cortex/tool-profiles/default`
+
+Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
@@ -288,14 +342,16 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
   "history_partition": "production",
   "snapshot_id": "optional-current-snapshot-id",
   "briefing_id": 42,
-  "tool_scope": null
+  "selected_tool_names": [],
+  "tool_profile_id": null
 }
 ```
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local Agents receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No Tools`; omitted selection preserves the migration default of `All Allowed` for cloud Agents and `No Tools` for local Agents. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
+- `400` — selected tools are invalid, outside policy, unavailable, or the local estimated context is full.
 - `403` — Ask APEX is disabled.
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.

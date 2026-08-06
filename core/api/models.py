@@ -7,7 +7,13 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from core.agent.types import CostEstimate, TokenUsage
+from core.agent.types import (
+    AgentKey,
+    AgentMessage,
+    CostEstimate,
+    TokenUsage,
+    ToolProfileMetadata,
+)
 from core.connectors.models import ConnectorHealthEntry
 
 
@@ -455,6 +461,50 @@ class AgentStatus(BaseModel):
         default=None,
         description="Runtime details reported by the local provider for the loaded model.",
     )
+
+
+class ToolPreflightRequest(BaseModel):
+    """Inputs for the next-request tool/context token estimate."""
+
+    agent: AgentKey = "panthera"
+    selected_tool_names: list[str] | None = None
+    tool_profile_id: str | None = None
+    prompt: str = ""
+    history: list[AgentMessage] = Field(default_factory=list)
+    history_partition: Literal["production", "acinonyx"] = "production"
+    snapshot_id: str | None = None
+    briefing_id: int | None = Field(default=None, ge=1)
+
+
+class ToolProfileCreateRequest(BaseModel):
+    """Create or duplicate a custom profile from stable capability names."""
+
+    id: str | None = Field(default=None, min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=240)
+    tool_names: list[str] = Field(default_factory=list)
+
+
+class ToolProfileUpdateRequest(BaseModel):
+    """Edit the name, description, or explicit names of a custom profile."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=240)
+    tool_names: list[str] | None = None
+
+
+class ToolProfileDefaultRequest(BaseModel):
+    """Assign one existing profile as an Agent default."""
+
+    agent: AgentKey
+    profile_id: str
+
+
+class ToolProfilesResponse(BaseModel):
+    """Built-in and persisted tool profiles plus Agent defaults."""
+
+    profiles: list[ToolProfileMetadata] = Field(default_factory=list)
+    default_profile_by_agent: dict[str, str] = Field(default_factory=dict)
 
 
 class CloudAgentVerificationResponse(BaseModel):

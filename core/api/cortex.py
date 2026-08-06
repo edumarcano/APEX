@@ -9,13 +9,19 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from core import config, database
-from core.agent.local_commands import (
-    ResolvedLocalCommand,
-    list_local_command_statuses,
-    resolve_local_command,
-)
 from core.agent.loop import build_agent_failure_details, run_agent_loop
-from core.agent.capabilities import CapabilityDescriptor, list_agent_capabilities
+from core.agent.capabilities import CapabilityDescriptor
+from core.agent.tool_catalog import build_tool_catalog
+from core.agent.tool_selection import (
+    ResolvedToolSelection,
+    resolve_selected_tools,
+    selection_as_response_fields,
+)
+from core.agent.prompting import (
+    SECURITY_BOUNDARY_DIRECTIVE,
+    build_tool_access_instruction,
+)
+from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.catalog import (
     AGENT_SPECS,
     AgentModelProfile,
@@ -24,17 +30,13 @@ from core.agent.catalog import (
     compose_agent_system_instruction,
     credential_missing_error,
     credential_missing_message,
-    is_acinonyx_agent,
     is_agent_visible,
     agent_has_credentials,
     resolve_effort,
     runtime_agent_order,
 )
 from core.agent.sandbox_context import get_masked_briefing
-from core.agent.tool_policies import (
-    filter_agent_capabilities,
-    hosted_tools_for_agent,
-)
+from core.agent.tool_policies import hosted_tools_for_agent
 from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
@@ -71,7 +73,9 @@ from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
     AgentQueryResponse,
-    LocalCommandStatus,
+    ToolPreflightResponse,
+    ToolSelectionDiagnostics,
+    ToolTokenBreakdown,
 )
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
@@ -83,6 +87,7 @@ from core.api.models import (
     AgentPricingMetadata,
     AgentAvailabilityStatus,
     AgentStatusSource,
+    ToolPreflightRequest,
 )
 from core.config import DEMO_MODE, is_dev_mode
 from core.settings import get_settings_store
@@ -94,12 +99,6 @@ _BUSY_REASON = "Briefing synthesis is using local inference."
 _HUD_CONTEXT_OPEN = "<untrusted_hud_context>"
 _HUD_CONTEXT_CLOSE = "</untrusted_hud_context>"
 _HUD_CONTEXT_MAX_CHARS = 2000
-_LOCAL_TOOL_FREE_INSTRUCTION = (
-    "\n\nLOCAL COMMAND SCOPE:\n"
-    "No live tools are available for this turn. Answer from the conversation "
-    "only and do not claim to have queried live data."
-)
-
 _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
     "disabled": "Local inference is disabled in system settings",
@@ -471,11 +470,6 @@ def verify_cloud_agent_endpoint(agent_key: str) -> CloudAgentVerificationRespons
     )
 
 
-def build_local_command_statuses() -> list[LocalCommandStatus]:
-    """Return the authoritative local command catalog and live availability."""
-    return list_local_command_statuses()
-
-
 def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     """
     Manually unload the currently active local model from memory.
@@ -637,6 +631,32 @@ def _trim_agent_history(
     return trimmed
 
 
+def _prepare_agent_payload(
+    payload: AgentQueryRequest,
+    *,
+    agent_key: str,
+) -> AgentQueryRequest:
+    """Apply the same bounded history partition used by execution and preflight."""
+    prepared = payload.model_copy(
+        update={
+            "history": _trim_agent_history(
+                payload.history, config.MAX_SESSION_MESSAGES
+            )
+        }
+    )
+    if agent_key == "acinonyx":
+        if prepared.briefing_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Acinonyx cannot attach saved briefing history.",
+            )
+        if prepared.history_partition != "acinonyx":
+            prepared = prepared.model_copy(update={"history": []})
+    elif prepared.history_partition != "production":
+        prepared = prepared.model_copy(update={"history": []})
+    return prepared
+
+
 def _build_hud_context(
     payload: AgentQueryRequest, *, agent_key: str = "panthera"
 ) -> str:
@@ -739,10 +759,9 @@ def _execute_agent_turn(
     api_key: str | None,
     resolved_apex_effort,
     resolved_native_effort,
-    resolved_local_command: ResolvedLocalCommand | None = None,
-    disable_tools: bool = False,
+    selected_tools: list[CapabilityDescriptor] | None = None,
+    tool_selection: ToolSelectionDiagnostics | None = None,
     disable_hud_context: bool = False,
-    cloud_tools: list[CapabilityDescriptor] | None = None,
     user_designation: str = "",
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
@@ -763,19 +782,9 @@ def _execute_agent_turn(
                     f"Unsupported local provider: {AGENT_SPECS[agent_key].provider!r}"
                 )
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
-            if payload.tool_scope is None:
-                scope_instruction = _LOCAL_TOOL_FREE_INSTRUCTION
-            else:
-                scope_instruction = (
-                    "\n\nLOCAL COMMAND SCOPE:\n"
-                    f"The /{payload.tool_scope} command defines the only tools "
-                    "that may be offered during tool-selection turns. Use only "
-                    "results from those tools for live data."
-                )
         else:
             provider = _create_provider(agent_key, api_key or "")
             base_prompt = config.AGENT_SYSTEM_PROMPT
-            scope_instruction = ""
 
         local_system_instruction = (
             compose_agent_system_instruction(
@@ -783,8 +792,10 @@ def _execute_agent_turn(
                 base_prompt,
                 user_designation=user_designation,
             )
-            + scope_instruction
             + hud_context
+            + build_tool_access_instruction(
+                [descriptor.name for descriptor in selected_tools or []]
+            )
         )
 
         response = run_agent_loop(
@@ -792,9 +803,8 @@ def _execute_agent_turn(
             provider,
             profile,
             system_instruction_override=local_system_instruction,
-            resolved_local_command=resolved_local_command,
-            disable_cloud_tools=disable_tools,
-            cloud_tools=cloud_tools,
+            selected_tools=selected_tools,
+            tool_selection=tool_selection,
             agent_key=agent_key,
         )
         if not is_local_profile(profile):
@@ -816,7 +826,7 @@ def _execute_agent_turn(
             agent_key,
         )
         answer, error_detail = build_agent_failure_details(profile, exc)
-        return AgentQueryResponse(
+        response = AgentQueryResponse(
             answer=answer,
             agent_used=build_agent_used_metadata(
                 agent_key,
@@ -829,6 +839,175 @@ def _execute_agent_turn(
             session_id=payload.session_id,
             error=error_detail,
         )
+        if tool_selection is not None:
+            response.resolved_tool_selection = tool_selection
+            response.requested_tool_names = tool_selection.requested_tool_names
+            response.offered_tool_names = tool_selection.offered_tool_names
+            response.rejected_tool_names = tool_selection.rejected_tool_names
+            response.selected_schema_tokens = tool_selection.selected_schema_tokens
+            response.active_tool_profile_id = tool_selection.active_profile_id
+            response.active_tool_profile_name = tool_selection.active_profile_name
+        return response
+
+
+def _explicit_selection_names(
+    payload: AgentQueryRequest,
+) -> list[str] | None:
+    """Return explicit names while preserving omitted-vs-empty semantics."""
+    if "selected_tool_names" in payload.model_fields_set:
+        return list(payload.selected_tool_names)
+    return None
+
+
+def _selection_failure_detail(selection: ResolvedToolSelection) -> dict[str, Any]:
+    """Build a structured HTTP detail without exposing provider internals."""
+    return {
+        "message": "One or more selected tools are invalid or unavailable.",
+        "rejected_tools": [
+            failure.model_dump() for failure in selection.diagnostics.rejected_tools
+        ],
+        "requested_tool_names": selection.diagnostics.requested_tool_names,
+    }
+
+
+def _estimate_agent_request(
+    payload: AgentQueryRequest,
+    profile: AgentModelProfile,
+    selection: ResolvedToolSelection,
+    *,
+    agent_key: str,
+) -> ToolPreflightResponse:
+    """Estimate the model-facing request from the canonical execution inputs."""
+    hud_context = _build_hud_context(payload, agent_key=agent_key)
+    if is_local_profile(profile):
+        base_prompt = (
+            config.LOCAL_AGENT_SYSTEM_PROMPT
+            if agent_key != "acinonyx"
+            else config.AGENT_SYSTEM_PROMPT
+        )
+    else:
+        base_prompt = config.AGENT_SYSTEM_PROMPT
+    system_instruction = compose_agent_system_instruction(
+        agent_key,
+        base_prompt,
+        user_designation=get_settings_store().get_snapshot().user_designation,
+    ) + build_tool_access_instruction(
+        [descriptor.name for descriptor in selection.descriptors]
+    )
+    history_payload = [
+        message.model_dump(exclude_none=True, exclude={"provider_output_items"})
+        for message in payload.history
+    ]
+    system_tokens = estimate_json_tokens(
+        system_instruction + SECURITY_BOUNDARY_DIRECTIVE
+    )
+    history_tokens = estimate_json_tokens(history_payload)
+    hud_tokens = estimate_json_tokens(hud_context) if hud_context else 0
+    schema_tokens = (
+        estimate_json_tokens(
+            [
+                descriptor_to_openai_schema(descriptor)
+                for descriptor in selection.descriptors
+            ]
+        )
+        if selection.descriptors
+        else 0
+    )
+    prompt_tokens = estimate_json_tokens(payload.prompt)
+    total = system_tokens + history_tokens + hud_tokens + schema_tokens + prompt_tokens
+    context_window = getattr(profile, "context_window", None)
+    reserved_response_tokens = (
+        getattr(profile, "final_answer_max_tokens", None)
+        if is_local_profile(profile)
+        else None
+    )
+    remaining: int | None = None
+    can_proceed = not selection.failures
+    warning: str | None = None
+    if context_window is not None and reserved_response_tokens is not None:
+        remaining = context_window - total - reserved_response_tokens
+        if remaining < 0:
+            can_proceed = False
+            warning = (
+                "The conservative estimated request exceeds this local Agent's "
+                "context window. "
+                "Clear older conversation turns, shorten the prompt, or select "
+                "fewer tools before submitting."
+            )
+    if selection.failures:
+        rejection_warning = (
+            "One or more selected tools are unavailable or unauthorized. "
+            "Remove them before submitting."
+        )
+        warning = f"{warning} {rejection_warning}".strip() if warning else rejection_warning
+    return ToolPreflightResponse(
+        agent=agent_key,  # type: ignore[arg-type]
+        selection=selection.diagnostics,
+        breakdown=ToolTokenBreakdown(
+            system_instructions=system_tokens,
+            conversation_history=history_tokens,
+            hud_context=hud_tokens,
+            selected_tool_schemas=schema_tokens,
+            current_prompt=prompt_tokens,
+            total=total,
+            configured_context_window=context_window,
+            reserved_response_tokens=reserved_response_tokens,
+            remaining_estimated_capacity=remaining,
+        ),
+        warning=warning,
+        can_proceed=can_proceed,
+    )
+
+
+def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
+    """Build an Agent-specific estimate without making a provider call."""
+    agent_key = payload.agent
+    if agent_key not in AGENT_SPECS or not is_agent_visible(agent_key):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_key!r} is not available.",
+        )
+    settings = get_settings_store().get_snapshot()
+    resolved_apex_effort, resolved_native_effort = resolve_effort(agent_key, None)
+    profile = build_concrete_agent(
+        agent_key,
+        native_effort=resolved_native_effort,
+        local_context_window=_local_context_window_for_agent(agent_key),
+        neofelis_google_search_enabled=settings.ask_apex.neofelis_google_search_enabled,
+        neofelis_google_maps_enabled=settings.ask_apex.neofelis_google_maps_enabled,
+        delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
+        orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
+    )
+    del resolved_apex_effort
+    query_payload_kwargs: dict[str, Any] = {
+        "prompt": payload.prompt,
+        "agent": agent_key,
+        "tool_profile_id": payload.tool_profile_id,
+        "history": list(payload.history),
+        "history_partition": payload.history_partition,
+        "snapshot_id": payload.snapshot_id,
+        "briefing_id": payload.briefing_id,
+    }
+    if (
+        "selected_tool_names" in payload.model_fields_set
+        and payload.selected_tool_names is not None
+    ):
+        query_payload_kwargs["selected_tool_names"] = list(payload.selected_tool_names)
+    query_payload = _prepare_agent_payload(
+        AgentQueryRequest(**query_payload_kwargs),
+        agent_key=agent_key,
+    )
+    selection = resolve_selected_tools(
+        agent_key,
+        _explicit_selection_names(query_payload),
+        tool_profile_id=payload.tool_profile_id,
+    )
+    return _estimate_agent_request(
+        query_payload,
+        profile,
+        selection,
+        agent_key=agent_key,
+    )
 
 
 def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
@@ -861,20 +1040,11 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             detail=f"Agent {agent_key!r} is not available.",
         )
 
-    if DEMO_MODE:
-        return run_demo_agent_query(payload)
-
     spec = AGENT_SPECS[agent_key]
     if spec.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Effort cannot be set for local Agents.",
-        )
-
-    if spec.runtime != "local" and payload.tool_scope is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Command scopes are available only for local Agents.",
         )
 
     resolved_apex_effort, resolved_native_effort = resolve_effort(
@@ -894,19 +1064,19 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
         orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
     )
-    acinonyx_sandbox = is_acinonyx_agent(agent_key)
+    selection = resolve_selected_tools(
+        agent_key,
+        _explicit_selection_names(payload),
+        tool_profile_id=payload.tool_profile_id,
+    )
+    if selection.failures:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_selection_failure_detail(selection),
+        )
 
-    resolved_local_command: ResolvedLocalCommand | None = None
-    if is_local_profile(profile) and payload.tool_scope is not None:
-        resolved_local_command = resolve_local_command(payload.tool_scope)
-        if resolved_local_command.missing_tool_names:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    f"/{payload.tool_scope} is unavailable because its provider "
-                    "tools are not currently connected."
-                ),
-            )
+    if DEMO_MODE:
+        return run_demo_agent_query(payload, tool_selection=selection.diagnostics)
 
     if spec.credential_env and not agent_has_credentials(agent_key):
         return AgentQueryResponse(
@@ -921,38 +1091,27 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             ),
             session_id=payload.session_id,
             error=credential_missing_error(agent_key),
+            **selection_as_response_fields(selection),
         )
 
-    payload.history = _trim_agent_history(
-        payload.history, config.MAX_SESSION_MESSAGES
-    )
-
-    if acinonyx_sandbox:
-        if payload.briefing_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Acinonyx cannot attach saved briefing history.",
-            )
-        # Keep the sandbox conversation isolated and reject arbitrary production
-        # context. Branch 3 supplies Acinonyx's explicit non-personal allowlist.
-        payload = payload.model_copy(
-            update={
-                "tool_scope": None,
-                "history": (
-                    payload.history
-                    if payload.history_partition == "acinonyx"
-                    else []
-                ),
-            }
-        )
-    elif payload.history_partition != "production":
-        payload = payload.model_copy(update={"history": []})
-
-    cloud_tools = filter_agent_capabilities(
-        agent_key, list_agent_capabilities()
-    )
+    payload = _prepare_agent_payload(payload, agent_key=agent_key)
 
     if is_local_profile(profile):
+        estimate = _estimate_agent_request(
+            payload,
+            profile,
+            selection,
+            agent_key=agent_key,
+        )
+        if not estimate.can_proceed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": estimate.warning
+                    or "The estimated local Agent request exceeds its context window.",
+                    "estimate": estimate.model_dump(),
+                },
+            )
         backend = get_local_runtime_backend(profile.provider)
         provider_label = _local_provider_label(profile.provider)
         if not backend.enabled:
@@ -1007,10 +1166,9 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 api_key=None,
                 resolved_apex_effort=resolved_apex_effort,
                 resolved_native_effort=resolved_native_effort,
-                resolved_local_command=resolved_local_command,
-                disable_tools=False,
+                selected_tools=list(selection.descriptors),
+                tool_selection=selection.diagnostics,
                 disable_hud_context=False,
-                cloud_tools=cloud_tools,
                 user_designation=settings.user_designation,
             )
         finally:
@@ -1029,8 +1187,8 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         api_key=api_key,
         resolved_apex_effort=resolved_apex_effort,
         resolved_native_effort=resolved_native_effort,
-        disable_tools=False,
+        selected_tools=list(selection.descriptors),
+        tool_selection=selection.diagnostics,
         disable_hud_context=False,
-        cloud_tools=cloud_tools,
         user_designation=settings.user_designation,
     )
