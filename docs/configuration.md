@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `10`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `11`.
 
 | Group | Editable values |
 |---|---|
@@ -48,7 +48,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Football teams | Up to three football-data.org team IDs with display names |
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
-| Ask APEX | Global enablement switch, Apodemus context size, and grounding selection; Cortex owns Agent, effort, and grounding selection |
+| Ask APEX | Global enablement switch, tool-routing mode (`disabled`, `shadow`, `enabled`), Apodemus context size, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
@@ -219,6 +219,26 @@ Installed aliases come only from the router's `/models` list. A missing `apodemu
 `ask_apex.apodemus_context_window` selects one of `4096`, `8192`, `16384`, or `32768`. The default is `8192`. The Cortex inspector exposes this control when Apodemus is selected; changes persist to `config.local.json` and apply the next time Apodemus loads without triggering an automatic model load. The value `131072` is model maximum metadata only and is not an exposed preset. `32768` is marked experimental in the HUD. Reasoning stays off for Apodemus (`reasoning_effort: "none"` on every request).
 
 Current Agent mapping used by documentation checks: `apodemus -> gemma-4-E2B-Q4_K_M.gguf`.
+
+## Smart tool routing
+
+`ask_apex.tool_routing_mode` controls semantic APEX capability routing. The tracked default is `shadow`.
+
+| Mode | Behavior |
+|---|---|
+| `disabled` | Routing is off. Cloud Agents receive every policy-allowed tool; local Agents receive tools only through an explicit slash command. |
+| `shadow` | The ranker predicts families and returns diagnostics, but offered tools match `disabled`. |
+| `enabled` | High-confidence predictions reduce the offered read-only tool set. Low confidence or model failure uses safe fallbacks. |
+
+Install the pinned ONNX encoder explicitly:
+
+```bash
+uv run python scripts/install_tool_router_model.py --model all-minilm-l6-v2
+```
+
+Models are stored under the per-user APEX data directory (`%LOCALAPPDATA%\APEX\models\tool-routing` on Windows). `APEX_TOOL_ROUTING_MODEL_DIR` can override the root. APEX verifies pinned revisions and checksums at load time and never downloads during startup or query handling.
+
+Offline startup succeeds without the routing model. Missing or corrupt artifacts degrade to the mode-specific fallback described in [Architecture](architecture.md). `/none` forces a tool-free local turn even when Enforce is active.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 

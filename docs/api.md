@@ -23,6 +23,7 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
 | GET | `/api/v1/cortex/tool-scopes` | Local Agent tool scopes |
+| GET | `/api/v1/cortex/tool-routing/status` | Tool-routing mode and model status |
 | GET | `/api/v1/agents` | Backend-owned Agent catalog and availability |
 | POST | `/api/v1/agents/{agent_key}/verify` | Explicit non-generative cloud access check |
 | POST | `/api/v1/cortex/local-model/load` | Pre-warm a selected local model |
@@ -64,11 +65,11 @@ Returns boot-time HUD values such as Ask APEX enablement, the effective Agent an
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `10`.
+Returns the resolved settings envelope. The current contract version is `11`.
 
 ```json
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -231,7 +232,15 @@ The operation is explicit and is not changed by development mode.
 
 ### GET `/api/v1/cortex/tool-scopes`
 
-Returns local Agent tool scopes, including availability, reason, tool count, and estimated schema-token cost. Local Agents are tool-free unless one returned scope is selected for the next query.
+Returns local Agent tool scopes, including availability, reason, tool count, and estimated schema-token cost. Local Agents are tool-free unless one returned scope is selected for the next query. `/none` forces a tool-free local turn.
+
+### GET `/api/v1/cortex/tool-routing/status`
+
+Read-only tool-routing status for the configured `ask_apex.tool_routing_mode`. Reports whether the pinned ONNX encoder is installed, verified, or loaded. The route does not download models or force a load.
+
+### Query-response routing diagnostics
+
+`POST /api/v1/cortex/query` may include a `routing` object when smart tool routing is not `disabled`. Fields are sanitized counts and labels only: mode, decision kind, whether enforcement occurred, selected families, considered/offered tool counts, schema-token estimates, top score and margin, latency, model key, and fallback reason. Prompt text, history, tool arguments, and vectors are never returned.
 
 ### GET `/api/v1/agents`
 
@@ -294,7 +303,7 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local Agents receive no tools unless `tool_scope` selects one command bundle. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Local Agents receive no tools unless `tool_scope` selects one command bundle or Enforce routing selects tools automatically. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, versioned cost estimate, and optional sanitized `routing` diagnostics. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `403` — Ask APEX is disabled.
 - `429` — another local generation owns the execution slot.

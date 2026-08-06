@@ -72,6 +72,14 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** Status polling continues while audio plays.
 
+### Route APEX tools with a local semantic encoder
+
+**Decision.** Smart tool routing uses a pinned CPU-only ONNX sentence encoder, separate from Ollama and llama.cpp, to select read-only capability families per request.
+
+**Why.** A generative router would add latency, cost, and prompt-exposure risk. Lexical matching alone failed benchmark gates. A small encoder can score recent conversation context locally without expanding Agent policy.
+
+**Trade-off.** Routing quality depends on benchmark realism and family prototypes. Agent policy still runs first; cloud and local fallbacks differ (`fallback_full` vs `fallback_none`) when the model is missing or low confidence. Model installation is explicit so offline startup never depends on Hugging Face. Provider-hosted Search, Maps, and X remain outside routing. Write tools stay out of scope.
+
 ### Reset pipeline state after audio finishes
 
 **Decision.** `_speak_and_cleanup` owns the final pipeline reset.

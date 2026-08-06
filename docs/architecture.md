@@ -181,6 +181,48 @@ Each non-demo Agent request begins with the selected Agent's immutable identity 
 
 Production cloud Agents receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
+### Smart tool routing
+
+Smart tool routing narrows the APEX capability list per request after the existing Agent policy filter and before the bounded Agent loop. Routing may reduce authorization; it never broadens it. Provider-hosted Google Search, Google Maps, and X Search remain outside this path.
+
+```text
+Registered capabilities
+        |
+        v
+Agent policy filter
+        |
+        v
+Explicit local command or /none? -----> exact override
+        |
+        v
+Semantic ranker (CPU ONNX encoder)
+        |
+        v
+disabled / shadow / enabled mode
+        |
+        v
+offered capability descriptors
+        |
+        v
+Agent loop (execution-time name checks remain)
+```
+
+The ranker is a separate CPU-only sentence encoder. It does not use Ollama, llama.cpp, or the local generative model coordinator. Model installation is explicit through `scripts/install_tool_router_model.py`; APEX does not download weights during startup or query handling.
+
+`ask_apex.tool_routing_mode` controls behavior:
+
+| Mode | Cloud | Local without slash command |
+|---|---|---|
+| `disabled` | All policy-allowed tools | No tools (current default behavior) |
+| `shadow` | All policy-allowed tools plus diagnostics | No tools plus diagnostics |
+| `enabled` | Reduced read-only tool set when confidence is high | Automatically selected local-eligible tools when confidence is high |
+
+When the model is missing, corrupt, or low confidence, cloud Agents fall back to the full policy-allowed set; local Agents fall back to no tools. The tracked default is `shadow` so operators can observe predictions before enforcement.
+
+Only read-only native and classified MCP capabilities participate in automatic routing. Explicit slash commands and `/none` remain deterministic overrides. The final permitted Agent turn stays answer-only.
+
+`GET /api/v1/cortex/tool-routing/status` reports mode and installation state. Each query response may include sanitized `routing` diagnostics for the Cortex inspector.
+
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
 
 The Home command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
@@ -189,7 +231,7 @@ The Home command rail owns the visible briefing-mode selector. It persists `brie
 
 Local Agent requests use Sorex, Mus, or Apodemus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
-Local queries are tool-free unless the user arms one command bundle for that request. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, and Microsoft To Do. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the Agent's 4K context window and reports sanitized usage counts.
+Local queries are tool-free unless the user arms one command bundle for that request, or Enforce routing selects tools automatically from recent conversation context. Cortex exposes the command catalog and local context diagnostics in its inspector; typed slash commands remain a shortcut. Supported bundles cover schedule, weather, Formula 1, mail, search, market, briefings, Microsoft To Do, and `/none` for a tool-free turn. The selected bundle is consumed after the query. Local context budgeting removes the oldest complete interactions before exceeding the Agent's 4K context window and reports sanitized usage counts.
 
 ## Capability and MCP boundary
 

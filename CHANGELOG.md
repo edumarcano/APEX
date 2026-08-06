@@ -2,6 +2,19 @@
 
 ---
 
+## Unreleased
+
+### Smart tool routing (shadow default)
+
+- Added a shared capability-family taxonomy and semantic routing service that narrows read-only APEX tools per request after the existing Agent policy filter.
+- Added `ask_apex.tool_routing_mode` with `disabled`, `shadow`, and `enabled` modes; tracked default is `shadow`.
+- Added explicit ONNX encoder installation (`scripts/install_tool_router_model.py`), benchmark harness, and `GET /api/v1/cortex/tool-routing/status`.
+- Added sanitized `routing` diagnostics to query responses and the Cortex inspector.
+- Added `/none` local command override and automatic local routing when Enforce is active.
+- Benchmarks on the development machine did not pass quality gates; enforcement must remain off until recall and coverage improve.
+
+---
+
 
 ## v1.18.0 — Cortex: MCP Client Foundation & Read-Only Integrations
 
