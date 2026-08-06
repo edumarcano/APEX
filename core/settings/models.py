@@ -31,8 +31,11 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 10
+SETTINGS_SCHEMA_VERSION: int = 11
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
+
+ToolRoutingMode = Literal["disabled", "shadow", "enabled"]
+VALID_TOOL_ROUTING_MODES: frozenset[str] = frozenset({"disabled", "shadow", "enabled"})
 
 LlamaCppServerState = Literal[
     "disabled",
@@ -107,6 +110,7 @@ class AskApexSettings(BaseModel):
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
     orcinus_x_search_enabled: bool = True
+    tool_routing_mode: ToolRoutingMode = "disabled"
 
 
 class BriefingSettings(BaseModel):
@@ -255,6 +259,7 @@ class AskApexPatch(BaseModel):
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
     orcinus_x_search_enabled: bool | None = None
+    tool_routing_mode: ToolRoutingMode | None = None
 
 
 class BriefingPatch(BaseModel):

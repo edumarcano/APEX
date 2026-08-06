@@ -16,6 +16,7 @@ from core.settings.models import (
     VALID_CLOUD_EFFORTS,
     VALID_CLOUD_SETTINGS_AGENTS,
     VALID_LOCAL_SETTINGS_AGENTS,
+    VALID_TOOL_ROUTING_MODES,
     VALID_VOICE_ENGINES,
     VALID_VOICE_GENDERS,
     VALID_VOICE_MODES,
@@ -585,6 +586,7 @@ def _normalize_ask_apex(
         "neofelis_google_maps_enabled",
         "delphinus_x_search_enabled",
         "orcinus_x_search_enabled",
+        "tool_routing_mode",
         "max_session_messages",
         # Historical schema-7 keys are accepted only so the one-way migration
         # can preserve existing local settings without spurious warnings.
@@ -674,6 +676,13 @@ def _normalize_ask_apex(
                 result[key] = enabled
             elif enabled is not None:
                 _record_error(errors, f"ask_apex.{key} must be a boolean")
+
+    if "tool_routing_mode" in migrated:
+        mode = migrated["tool_routing_mode"]
+        if isinstance(mode, str) and mode in VALID_TOOL_ROUTING_MODES:
+            result["tool_routing_mode"] = mode
+        elif mode is not None:
+            _record_error(errors, "ask_apex.tool_routing_mode is not valid")
 
     return result
 
@@ -925,6 +934,11 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         orcinus_x_search_enabled=bool(
             ask_apex.get("orcinus_x_search_enabled", True)
         ),
+        tool_routing_mode=(
+            ask_apex.get("tool_routing_mode", "disabled")
+            if ask_apex.get("tool_routing_mode", "disabled") in VALID_TOOL_ROUTING_MODES
+            else "disabled"
+        ),  # type: ignore[arg-type]
     )
     engine = tts.get("primary_tts", "pyttsx3")
     if engine not in VALID_VOICE_ENGINES:
@@ -1035,6 +1049,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             ),
             "delphinus_x_search_enabled": snapshot.ask_apex.delphinus_x_search_enabled,
             "orcinus_x_search_enabled": snapshot.ask_apex.orcinus_x_search_enabled,
+            "tool_routing_mode": snapshot.ask_apex.tool_routing_mode,
         },
         "briefing": {
             "default_mode": snapshot.briefing.default_mode,

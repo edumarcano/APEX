@@ -39,6 +39,7 @@
     "neofelis_google_maps_enabled": true,
     "delphinus_x_search_enabled": true,
     "orcinus_x_search_enabled": true,
+    "tool_routing_mode": "shadow",
     "apodemus_context_window": 8192,
     "max_session_messages": 6
   },
