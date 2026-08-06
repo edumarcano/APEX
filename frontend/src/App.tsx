@@ -748,10 +748,10 @@ export default function App(): ReactElement {
   )
 
   const persistAskApexSettings = useCallback(
-    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<void> => {
+    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<boolean> => {
       const payload = devModeActive ? filterAskApexSettingsForDevMode(askApex) : askApex
       if (Object.keys(payload).length === 0) {
-        return
+        return true
       }
       try {
         const response = await fetch(API_ENDPOINTS.settings, {
@@ -760,7 +760,7 @@ export default function App(): ReactElement {
           body: JSON.stringify({ ask_apex: payload }),
         })
         if (!response.ok) {
-          return
+          return false
         }
         const body: unknown = await response.json()
         const parsed = parseSettingsResponse(body)
@@ -768,8 +768,10 @@ export default function App(): ReactElement {
           handleSettingsApplied(parsed, selectedAgent)
           await refreshAgentsStatus()
         }
+        return parsed !== null
       } catch {
         // The session selection remains usable if local preference persistence fails.
+        return false
       }
     },
     [devModeActive, handleSettingsApplied, refreshAgentsStatus],
@@ -834,9 +836,18 @@ export default function App(): ReactElement {
   }, [activeAgent, persistAskApexSettings])
 
   const handleApodemusContextChange = useCallback((contextWindow: ApodemusContextWindow): void => {
+    const previous = apodemusContextWindow
     setApodemusContextWindow(contextWindow)
-    void persistAskApexSettings({ apodemus_context_window: contextWindow }, activeAgent)
-  }, [activeAgent, persistAskApexSettings])
+    void (async (): Promise<void> => {
+      const persisted = await persistAskApexSettings(
+        { apodemus_context_window: contextWindow },
+        activeAgent,
+      )
+      if (!persisted) {
+        setApodemusContextWindow(previous)
+      }
+    })()
+  }, [activeAgent, apodemusContextWindow, persistAskApexSettings])
 
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession(activeAgent)

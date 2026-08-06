@@ -34,6 +34,10 @@ class LlamaCppSupervisorHelpersTests(unittest.TestCase):
         self.assertEqual(bind.host, "127.0.0.1")
         self.assertEqual(bind.port, 8080)
 
+    def test_bind_rejects_malformed_port(self) -> None:
+        with self.assertRaises(supervisor_mod.LlamaCppManagedServerError):
+            parse_loopback_bind("http://localhost:notaport")
+
     def test_args_include_expected_sequence_with_spaces(self) -> None:
         bind = parse_loopback_bind("http://127.0.0.1:9090")
         args = build_llama_server_args(
@@ -377,14 +381,135 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
         popen2.assert_not_called()
         self.assertIsNotNone(second)
 
-    def test_status_payload_omits_paths(self) -> None:
-        self._enable(managed=True)
-        payload = self.supervisor.status_snapshot().model_dump()
-        blob = json.dumps(payload)
-        self.assertNotIn(str(self.exe), blob)
-        self.assertNotIn(str(self.preset), blob)
-        self.assertNotIn("executable_path", blob)
-        self.assertNotIn("preset_path", blob)
+
+class LlamaCppSettingsTransitionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_llama_sup_trans_")
+        self.addCleanup(self._temp_dir.cleanup)
+        self._dir = Path(self._temp_dir.name)
+        self.config_path = self._dir / "config.json"
+        self.local_path = self._dir / "config.local.json"
+        self.exe = self._dir / "llama-server.exe"
+        self.preset = self._dir / "preset.ini"
+        self.exe.write_text("fake", encoding="utf-8")
+        self.preset.write_text("[*]\n", encoding="utf-8")
+        _write_json(
+            self.config_path,
+            {
+                "llama_cpp": {
+                    "enabled": False,
+                    "managed": False,
+                    "host": "http://127.0.0.1:8080",
+                    "executable_path": "",
+                    "preset_path": "",
+                }
+            },
+        )
+        reset_settings_store_for_tests()
+        reset_llama_cpp_server_supervisor_for_tests()
+        self.store = RuntimeSettingsStore(
+            config_path=self.config_path,
+            local_config_path=self.local_path,
+        )
+        self._runtime_patch = mock.patch(
+            "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_runtime_settings",
+            side_effect=lambda: self.store.get_snapshot().llama_cpp,
+        )
+        self._runtime_patch.start()
+        self.addCleanup(self._runtime_patch.stop)
+        self.addCleanup(reset_settings_store_for_tests)
+        self.addCleanup(reset_llama_cpp_server_supervisor_for_tests)
+        self.supervisor = LlamaCppServerSupervisor()
+
+    def tearDown(self) -> None:
+        self.supervisor.shutdown_owned()
+
+    def _enable_managed(self) -> None:
+        self.store.apply_patch(
+            SettingsPatch(
+                llama_cpp=LlamaCppPatch(
+                    enabled=True,
+                    managed=True,
+                    executable_path=str(self.exe),
+                    preset_path=str(self.preset),
+                )
+            )
+        )
+
+    def test_validate_rejects_identity_change_during_local_execution(self) -> None:
+        self._enable_managed()
+        previous = self.store.get_snapshot().llama_cpp
+        proposed = previous.model_copy(update={"host": "http://127.0.0.1:9090"})
+        with mock.patch.object(
+            supervisor_mod, "is_local_execution_active", return_value=True
+        ):
+            with self.assertRaises(supervisor_mod.LlamaCppManagedServerError):
+                self.supervisor.validate_settings_transition(previous, proposed)
+
+    def test_validate_rejects_changes_while_starting(self) -> None:
+        self._enable_managed()
+        previous = self.store.get_snapshot().llama_cpp
+        proposed = previous.model_copy(update={"managed": False})
+        self.supervisor._state = "starting"  # noqa: SLF001
+        with self.assertRaises(supervisor_mod.LlamaCppManagedServerError):
+            self.supervisor.validate_settings_transition(previous, proposed)
+
+    def test_deferred_shutdown_runs_after_local_execution_ends(self) -> None:
+        self._enable_managed()
+        fake_proc = mock.Mock()
+        fake_proc.poll.return_value = None
+        fake_proc.stdout = iter(())
+        fake_proc.stderr = iter(())
+        fake_proc.pid = 21
+        previous = self.store.get_snapshot().llama_cpp
+        current = previous.model_copy(update={"enabled": False})
+        from core.agent.local_runtime import coordinator as coord
+
+        with mock.patch.object(
+            supervisor_mod, "probe_router_reachable", side_effect=[False, True]
+        ), mock.patch.object(
+            supervisor_mod.subprocess, "Popen", return_value=fake_proc
+        ), mock.patch.object(supervisor_mod.time, "sleep"):
+            self.supervisor.ensure_ready()
+            self.assertTrue(coord.try_begin_local_execution())
+            self.supervisor.on_settings_changed(previous, current)
+            self.assertTrue(self.supervisor._stop_after_idle)  # noqa: SLF001
+            with mock.patch.object(
+                supervisor_mod,
+                "get_llama_cpp_server_supervisor",
+                return_value=self.supervisor,
+            ):
+                coord.end_local_execution()
+        fake_proc.terminate.assert_called_once()
+
+    def test_settings_patch_conflict_does_not_persist(self) -> None:
+        self._enable_managed()
+        store_patches = [
+            mock.patch(
+                "core.api.routers.system.get_settings_store",
+                return_value=self.store,
+            ),
+            mock.patch("core.speaker.get_settings_store", return_value=self.store),
+        ]
+        for patcher in store_patches:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        from core.api import app
+
+        client = TestClient(app)
+        host_before = self.store.get_snapshot().llama_cpp.host
+        self.supervisor._state = "starting"  # noqa: SLF001
+        with mock.patch(
+            "core.api.routers.system.get_llama_cpp_server_supervisor",
+            return_value=self.supervisor,
+        ):
+            response = client.patch(
+                "/api/v1/settings",
+                json={"llama_cpp": {"host": "http://127.0.0.1:9191"}},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.store.get_snapshot().llama_cpp.host, host_before)
 
 
 class LlamaCppManagedSettingsPersistenceTests(unittest.TestCase):

@@ -148,6 +148,19 @@ class RuntimeSettingsStore:
             self._snapshot = snapshot
             return snapshot
 
+    def preview_patch(self, patch: SettingsPatch) -> RuntimeSettingsSnapshot:
+        """
+        Compute the snapshot that would result from ``apply_patch`` without writing.
+
+        Raises ``SettingsPersistenceError`` when the patch would be rejected.
+        """
+        with self._lock:
+            next_raw, next_local, next_issues, next_snapshot = self._compute_patch(
+                patch
+            )
+            del next_raw, next_local, next_issues
+            return next_snapshot
+
     def apply_patch(self, patch: SettingsPatch) -> RuntimeSettingsSnapshot:
         """
         Merge dirty fields, validate, persist to ``config.local.json``, then publish.
@@ -157,51 +170,11 @@ class RuntimeSettingsStore:
         with self._lock:
             current = self._snapshot
 
-            patch_ondisk = patch_to_ondisk(patch)
-            if not patch_ondisk:
+            computed = self._compute_patch(patch)
+            if computed is None:
                 return current
 
-            latest_raw = self._load_latest_raw_for_write()
-            next_raw = recursive_overlay(latest_raw, patch_ondisk)
-            next_issues = NormalizationIssues()
-            next_local = normalize_layer(
-                next_raw,
-                layer_name="config.local.json",
-                issues=next_issues,
-            )
-            if next_issues.errors:
-                raise SettingsPersistenceError(
-                    "Refusing to persist invalid settings: "
-                    + "; ".join(next_issues.errors)
-                )
-            next_merged = recursive_overlay(self._base_ondisk, next_local)
-            llama_merged = (
-                next_merged.get("llama_cpp")
-                if isinstance(next_merged.get("llama_cpp"), dict)
-                else {}
-            )
-            if llama_merged.get("managed") is True:
-                executable = llama_merged.get("executable_path", "")
-                preset = llama_merged.get("preset_path", "")
-                if not (
-                    isinstance(executable, str)
-                    and executable.strip()
-                    and isinstance(preset, str)
-                    and preset.strip()
-                ):
-                    raise SettingsPersistenceError(
-                        "Refusing to persist invalid settings: "
-                        "llama_cpp.managed requires non-empty executable_path and preset_path"
-                    )
-            next_snapshot = snapshot_from_merged(next_merged)
-            if next_snapshot.llama_cpp.managed and (
-                not next_snapshot.llama_cpp.executable_path
-                or not next_snapshot.llama_cpp.preset_path
-            ):
-                raise SettingsPersistenceError(
-                    "Refusing to persist invalid settings: "
-                    "llama_cpp.managed requires non-empty executable_path and preset_path"
-                )
+            next_raw, next_local, next_issues, next_snapshot = computed
 
             prior_snapshot = self._snapshot
             prior_local = copy_dict(self._local_ondisk)
@@ -232,6 +205,60 @@ class RuntimeSettingsStore:
             )
             self._snapshot = next_snapshot
             return next_snapshot
+
+    def _compute_patch(
+        self, patch: SettingsPatch
+    ) -> (
+        tuple[dict[str, Any], dict[str, Any], NormalizationIssues, RuntimeSettingsSnapshot]
+        | None
+    ):
+        """Validate a patch and return the next on-disk layers and snapshot."""
+        patch_ondisk = patch_to_ondisk(patch)
+        if not patch_ondisk:
+            return None
+
+        latest_raw = self._load_latest_raw_for_write()
+        next_raw = recursive_overlay(latest_raw, patch_ondisk)
+        next_issues = NormalizationIssues()
+        next_local = normalize_layer(
+            next_raw,
+            layer_name="config.local.json",
+            issues=next_issues,
+        )
+        if next_issues.errors:
+            raise SettingsPersistenceError(
+                "Refusing to persist invalid settings: "
+                + "; ".join(next_issues.errors)
+            )
+        next_merged = recursive_overlay(self._base_ondisk, next_local)
+        llama_merged = (
+            next_merged.get("llama_cpp")
+            if isinstance(next_merged.get("llama_cpp"), dict)
+            else {}
+        )
+        if llama_merged.get("managed") is True:
+            executable = llama_merged.get("executable_path", "")
+            preset = llama_merged.get("preset_path", "")
+            if not (
+                isinstance(executable, str)
+                and executable.strip()
+                and isinstance(preset, str)
+                and preset.strip()
+            ):
+                raise SettingsPersistenceError(
+                    "Refusing to persist invalid settings: "
+                    "llama_cpp.managed requires non-empty executable_path and preset_path"
+                )
+        next_snapshot = snapshot_from_merged(next_merged)
+        if next_snapshot.llama_cpp.managed and (
+            not next_snapshot.llama_cpp.executable_path
+            or not next_snapshot.llama_cpp.preset_path
+        ):
+            raise SettingsPersistenceError(
+                "Refusing to persist invalid settings: "
+                "llama_cpp.managed requires non-empty executable_path and preset_path"
+            )
+        return next_raw, next_local, next_issues, next_snapshot
 
     def _load_latest_raw_for_write(self) -> dict[str, Any]:
         """Read the latest local document while preserving only safe invalid content."""

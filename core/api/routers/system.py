@@ -141,6 +141,38 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
     dirty = payload.model_dump(exclude_none=True)
     if not dirty:
         return _build_settings_response()
+
+    if payload.llama_cpp is not None:
+        try:
+            proposed_snapshot = await asyncio.to_thread(store.preview_patch, payload)
+        except SettingsPersistenceError as exc:
+            _LOGGER.exception("Settings persistence failed")
+            detail = str(exc)
+            if "Refusing to persist invalid settings" in detail:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=detail,
+                ) from None
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Failed to persist settings to config.local.json. "
+                    "Active settings were not changed."
+                ),
+            ) from None
+        supervisor = get_llama_cpp_server_supervisor()
+        try:
+            await asyncio.to_thread(
+                supervisor.validate_settings_transition,
+                previous_llama,
+                proposed_snapshot.llama_cpp,
+            )
+        except LlamaCppManagedServerError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from None
+
     try:
         await asyncio.to_thread(store.apply_patch, payload)
     except SettingsPersistenceError as exc:
@@ -166,9 +198,13 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                 supervisor.on_settings_changed, previous_llama, current_llama
             )
         except LlamaCppManagedServerError as exc:
+            _LOGGER.error(
+                "llama.cpp settings transition failed after persistence: %s",
+                exc,
+            )
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(exc),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Settings were saved but llama.cpp could not apply them.",
             ) from None
         try:
             backend = get_local_runtime_backend("llama_cpp")

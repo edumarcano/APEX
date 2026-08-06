@@ -262,7 +262,11 @@ def _normalize_llama_cpp_host(
         )
         return None
 
-    port = parsed.port
+    try:
+        port = parsed.port
+    except ValueError:
+        _record_error(issues, "llama_cpp.host must include a valid port")
+        return None
     if port is None or port < 1 or port > 65535:
         _record_error(issues, "llama_cpp.host must include a valid port")
         return None

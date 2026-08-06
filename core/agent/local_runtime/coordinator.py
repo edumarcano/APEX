@@ -108,6 +108,17 @@ def try_begin_local_execution() -> bool:
 def end_local_execution() -> None:
     """Release the local execution slot claimed by try_begin_local_execution."""
     _execution_lock.release()
+    try:
+        from core.agent.providers.llama_cpp_supervisor import (
+            get_llama_cpp_server_supervisor,
+        )
+
+        get_llama_cpp_server_supervisor().maybe_stop_after_idle()
+    except Exception:
+        _LOGGER.debug(
+            "Deferred llama.cpp shutdown check failed after local execution",
+            exc_info=True,
+        )
 
 
 def is_local_execution_active() -> bool:

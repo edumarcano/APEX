@@ -106,6 +106,16 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                 )
             )
 
+    def test_malformed_port_is_rejected(self) -> None:
+        store = self._store()
+        with self.assertRaises(SettingsPersistenceError) as raised:
+            store.apply_patch(
+                SettingsPatch(
+                    llama_cpp=LlamaCppPatch(host="http://localhost:notaport")
+                )
+            )
+        self.assertIn("valid port", str(raised.exception))
+
     def test_schema_eight_local_file_loads_with_defaults(self) -> None:
         _write_json(
             self.local_path,
@@ -140,6 +150,18 @@ class LlamaCppHostNormalizationTests(unittest.TestCase):
         )
         self.assertNotIn("host", normalized.get("llama_cpp", {}))
         self.assertTrue(any("credentials" in error for error in issues.errors))
+
+    def test_rejects_malformed_port(self) -> None:
+        from core.settings.normalize import NormalizationIssues
+
+        issues = NormalizationIssues()
+        normalized = normalize_layer(
+            {"llama_cpp": {"host": "http://localhost:notaport"}},
+            layer_name="config.local.json",
+            issues=issues,
+        )
+        self.assertNotIn("host", normalized.get("llama_cpp", {}))
+        self.assertTrue(any("valid port" in error for error in issues.errors))
 
 
 class LlamaCppRuntimeIntegrationTests(unittest.TestCase):

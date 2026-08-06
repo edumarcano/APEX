@@ -44,14 +44,18 @@ async def _app_lifespan(_app: FastAPI):
     get_settings_store()
 
     llama_supervisor = get_llama_cpp_server_supervisor()
-    try:
-        await asyncio.to_thread(
-            lambda: llama_supervisor.ensure_ready(allow_restart=False)
-        )
-    except Exception:
-        _LOGGER.exception(
-            "Managed llama.cpp startup failed; continuing APEX boot without Apodemus"
-        )
+
+    async def _managed_llama_startup() -> None:
+        try:
+            await asyncio.to_thread(
+                lambda: llama_supervisor.ensure_ready(allow_restart=False)
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Managed llama.cpp startup failed; continuing APEX boot without Apodemus"
+            )
+
+    asyncio.create_task(_managed_llama_startup())
 
     if any_local_runtime_enabled():
         idle_model_task = asyncio.create_task(check_idle_local_models_loop())

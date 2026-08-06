@@ -21,7 +21,10 @@ from urllib.parse import urlparse
 
 from requests.exceptions import RequestException
 
-from core.agent.local_runtime.coordinator import is_local_execution_active
+from core.agent.local_runtime.coordinator import (
+    get_loading_local_model,
+    is_local_execution_active,
+)
 from core.agent.providers.llama_cpp_runtime import get_llama_cpp_runtime_settings
 from core.settings.models import (
     LlamaCppServerOwnership,
@@ -64,7 +67,12 @@ def parse_loopback_bind(host_url: str) -> _BindAddress:
         raise LlamaCppManagedServerError(
             "Managed llama.cpp host must target a loopback address."
         )
-    port = parsed.port
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise LlamaCppManagedServerError(
+            "Managed llama.cpp host must include a valid port."
+        ) from exc
     if port is None or port < 1 or port > 65535:
         raise LlamaCppManagedServerError(
             "Managed llama.cpp host must include a valid port."
@@ -244,6 +252,30 @@ class LlamaCppServerSupervisor:
                 self._stop_owned_process_locked(force=True)
             return self._snapshot_locked(settings)
 
+    def validate_settings_transition(
+        self,
+        previous: LlamaCppSettings,
+        current: LlamaCppSettings,
+    ) -> None:
+        """Reject unsafe llama.cpp settings changes before persistence."""
+        with self._lock:
+            if self._state == "starting":
+                raise LlamaCppManagedServerError(
+                    "Cannot change llama.cpp settings while the managed server is starting."
+                )
+
+            identity_changed = self._identity_tuple(current) != self._identity_tuple(
+                previous
+            )
+            if not identity_changed:
+                return
+
+            if is_local_execution_active() or get_loading_local_model() is not None:
+                raise LlamaCppManagedServerError(
+                    "Cannot change llama.cpp server settings while Apodemus is active "
+                    "or loading."
+                )
+
     def on_settings_changed(
         self,
         previous: LlamaCppSettings,
@@ -251,11 +283,6 @@ class LlamaCppServerSupervisor:
     ) -> None:
         """Apply managed-server transitions after a successful settings write."""
         with self._lock:
-            if self._state == "starting":
-                raise LlamaCppManagedServerError(
-                    "Cannot change llama.cpp settings while the managed server is starting."
-                )
-
             self._reconcile_process_locked()
             identity_changed = self._identity_tuple(current) != self._identity_tuple(
                 previous
