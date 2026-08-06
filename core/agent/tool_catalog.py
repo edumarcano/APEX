@@ -18,7 +18,7 @@ from core.agent.capabilities import (
     list_agent_capabilities,
     namespaced_capability_name,
 )
-from core.agent.tool_policies import filter_agent_capabilities
+from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
     estimate_json_tokens,
@@ -301,6 +301,16 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
     }:
         raise ValueError(f"Unknown Agent: {agent_key!r}")
 
+    from core.settings import get_settings_store
+
+    settings = get_settings_store().get_snapshot()
+    hosted_tools = hosted_tools_for_agent(
+        agent_key,
+        neofelis_google_search_enabled=settings.ask_apex.neofelis_google_search_enabled,
+        neofelis_google_maps_enabled=settings.ask_apex.neofelis_google_maps_enabled,
+        delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
+        orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
+    )
     config = load_mcp_config()
     configured_mcp = _configured_mcp_tools(config)
     descriptors = {
@@ -536,6 +546,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         default_profile_id=profile_id,
         default_profile_name=profile_name,
         default_selected_tool_names=default_tools,
+        provider_hosted_tools=sorted(hosted_tools),
         context_window=context_window,
         reserved_response_tokens=reserved_response_tokens,
     )

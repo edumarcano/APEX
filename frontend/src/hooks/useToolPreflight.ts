@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
 import type {
@@ -6,6 +6,8 @@ import type {
   AgentMessage,
   ToolPreflightEstimate,
 } from '../types/telemetry'
+
+const EMPTY_HISTORY: AgentMessage[] = []
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -114,7 +116,7 @@ export function useToolPreflight({
   selectedToolNames,
   toolProfileId,
   prompt = '',
-  history = [],
+  history = EMPTY_HISTORY,
   historyPartition = 'production',
   snapshotId = null,
   briefingId = null,
@@ -127,11 +129,18 @@ export function useToolPreflight({
   const [estimate, setEstimate] = useState<ToolPreflightEstimate | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const requestSequence = useRef(0)
 
   useEffect(() => {
+    const requestId = ++requestSequence.current
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A new preflight contract invalidates the prior estimate before its debounced request starts.
+    setEstimate(null)
+    setError(null)
+    setIsLoading(enabled)
     if (!enabled) return
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => {
+      if (requestSequence.current !== requestId) return
       setIsLoading(true)
       setError(null)
       void fetch(API_ENDPOINTS.cortexToolPreflight, {
@@ -169,15 +178,19 @@ export function useToolPreflight({
           }
           const parsed = parsePreflight(await response.json())
           if (!parsed) throw new Error('APEX returned an invalid tool estimate.')
-          setEstimate(parsed)
+          if (requestSequence.current === requestId && !controller.signal.aborted) {
+            setEstimate(parsed)
+          }
         })
         .catch((fetchError: unknown) => {
-          if (controller.signal.aborted) return
+          if (controller.signal.aborted || requestSequence.current !== requestId) return
           setEstimate(null)
           setError(fetchError instanceof Error ? fetchError.message : 'Tool estimate unavailable.')
         })
         .finally(() => {
-          if (!controller.signal.aborted) setIsLoading(false)
+          if (!controller.signal.aborted && requestSequence.current === requestId) {
+            setIsLoading(false)
+          }
         })
     }, 250)
     return () => {

@@ -25,13 +25,13 @@ def _profile(
 BUILT_IN_TOOL_PROFILES: tuple[ToolProfile, ...] = (
     _profile(
         "no_tools",
-        "No Tools",
-        "Answer from the conversation and explicitly attached HUD context only.",
+        "No APEX Tools",
+        "Attach no APEX-managed or MCP tool schemas to this turn.",
     ),
     _profile(
         "all_allowed",
-        "All Allowed",
-        "Expose every tool currently allowed and available to this Agent.",
+        "All APEX Tools",
+        "Expose every APEX-managed or MCP tool currently allowed and available to this Agent.",
         dynamic=True,
     ),
     _profile(
@@ -156,7 +156,7 @@ def resolve_profile_names(
 ) -> list[str]:
     """Return stable names represented by a profile.
 
-    ``All Allowed`` is intentionally dynamic.  Custom and other built-in
+    ``All APEX Tools`` is intentionally dynamic.  Custom and other built-in
     profiles retain explicit names so newly discovered MCP tools do not become
     selected implicitly.
     """

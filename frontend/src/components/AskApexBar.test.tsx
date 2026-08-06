@@ -2,7 +2,11 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentStatus, ToolCatalog } from '../types/telemetry'
+import type {
+  AgentStatus,
+  ToolCatalog,
+  ToolPreflightEstimate,
+} from '../types/telemetry'
 
 import { AskApexBar } from './AskApexBar'
 
@@ -50,17 +54,45 @@ const catalog: ToolCatalog = {
   tools: [],
   profiles: [],
   default_profile_id: 'no_tools',
-  default_profile_name: 'No Tools',
+  default_profile_name: 'No APEX Tools',
   default_selected_tool_names: [],
+  provider_hosted_tools: [],
   context_window: 4096,
   reserved_response_tokens: 512,
+}
+
+const overflowPreflight: ToolPreflightEstimate = {
+  agent: 'mus',
+  selection: {
+    requested_tool_names: ['get_weather_forecast'],
+    offered_tool_names: ['get_weather_forecast'],
+    rejected_tool_names: [],
+    rejected_tools: [],
+    selected_schema_tokens: 80,
+    active_profile_id: 'custom_weather',
+    active_profile_name: 'Weather',
+  },
+  breakdown: {
+    system_instructions: 100,
+    conversation_history: 200,
+    hud_context: 0,
+    selected_tool_schemas: 80,
+    current_prompt: 5000,
+    total: 5380,
+    configured_context_window: 4096,
+    reserved_response_tokens: 512,
+    remaining_estimated_capacity: -1796,
+    is_estimate: true,
+  },
+  warning: 'The generic token estimate exceeds the local context budget.',
+  can_proceed: false,
 }
 
 function renderBar(
   onSubmit = vi.fn(),
   overrides: Partial<ComponentProps<typeof AskApexBar>> = {},
-): void {
-  render(
+): ReturnType<typeof render> {
+  return render(
     <AskApexBar
       presentation="cortex"
       activeAgent="mus"
@@ -102,6 +134,43 @@ describe('AskApexBar unified tool selection', () => {
     expect(input).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Send query' })).toBeDisabled()
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('keeps the editor and selector usable while an overflow estimate blocks Send', () => {
+    const onSubmit = vi.fn()
+    const view = renderBar(onSubmit, { toolPreflight: overflowPreflight })
+
+    const input = screen.getByLabelText('Ask APEX query')
+    expect(input).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Tools:/ })).toBeEnabled()
+    fireEvent.change(input, { target: { value: 'Shorten this prompt' } })
+
+    expect(input).toHaveValue('Shorten this prompt')
+    expect(screen.getByRole('button', { name: 'Send query' })).toBeDisabled()
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    view.rerender(
+      <AskApexBar
+        presentation="cortex"
+        activeAgent="mus"
+        onSubmit={onSubmit}
+        agentsStatus={[mus]}
+        catalog={catalog}
+        selectedToolNames={['get_weather_forecast']}
+        activeToolProfileId="custom_weather"
+        selectionReady
+        isSubmitting={false}
+        toolPreflight={null}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Send query' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
+    expect(onSubmit).toHaveBeenCalledWith(
+      'Shorten this prompt',
+      'mus',
+      ['get_weather_forecast'],
+      'custom_weather',
+    )
   })
 
   it('has no slash-command compatibility path', () => {

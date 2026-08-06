@@ -1,13 +1,13 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { AgentKey, ToolCatalog } from '../types/telemetry'
+import type { AgentKey, ToolCatalog, ToolCatalogTool } from '../types/telemetry'
 
 import { useToolCatalog } from './useToolCatalog'
 
-function catalogFor(agent: AgentKey): ToolCatalog {
-  const allAllowed = agent === 'panthera'
-  const tools = [
+function catalogFor(
+  agent: AgentKey,
+  tools: ToolCatalogTool[] = [
     {
       name: 'get_weather_forecast',
       label: 'Weather',
@@ -21,7 +21,9 @@ function catalogFor(agent: AgentKey): ToolCatalog {
       estimated_schema_tokens: 80,
       allowed_for_agent: true,
     },
-  ]
+  ],
+): ToolCatalog {
+  const allAllowed = agent === 'panthera'
   return {
     agent,
     groups: [],
@@ -29,7 +31,7 @@ function catalogFor(agent: AgentKey): ToolCatalog {
     profiles: [
       {
         id: 'no_tools',
-        name: 'No Tools',
+        name: 'No APEX Tools',
         description: 'No live tools.',
         tool_names: [],
         built_in: true,
@@ -37,7 +39,7 @@ function catalogFor(agent: AgentKey): ToolCatalog {
       },
       {
         id: 'all_allowed',
-        name: 'All Allowed',
+        name: 'All APEX Tools',
         description: 'All available tools.',
         tool_names: [],
         built_in: true,
@@ -53,8 +55,9 @@ function catalogFor(agent: AgentKey): ToolCatalog {
       },
     ],
     default_profile_id: allAllowed ? 'all_allowed' : 'no_tools',
-    default_profile_name: allAllowed ? 'All Allowed' : 'No Tools',
+    default_profile_name: allAllowed ? 'All APEX Tools' : 'No APEX Tools',
     default_selected_tool_names: allAllowed ? ['get_weather_forecast'] : [],
+    provider_hosted_tools: [],
     context_window: agent === 'panthera' ? null : 4096,
     reserved_response_tokens: agent === 'panthera' ? null : 512,
   }
@@ -120,6 +123,54 @@ describe('useToolCatalog per-Agent hydration', () => {
 
     expect(hook.result.current.selectedToolNames).toEqual(['unknown_tool'])
     expect(hook.result.current.activeToolProfileId).toBeNull()
+  })
+
+  it('re-resolves a stored dynamic profile after availability, discovery, and policy changes', async () => {
+    const weather = catalogFor('panthera').tools[0]
+    const newMcpTool = {
+      ...weather,
+      name: 'brave_brave_web_search',
+      label: 'Web search',
+      origin: 'mcp' as const,
+      source_id: 'brave',
+      apex_family: 'web_search',
+    }
+    const disconnectedWeather = {
+      ...weather,
+      available: false,
+      unavailable_reason: 'Weather is disconnected.',
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => catalogFor('panthera', [disconnectedWeather, newMcpTool]),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => catalogFor('panthera', [
+          disconnectedWeather,
+          { ...newMcpTool, allowed_for_agent: false },
+        ]),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    sessionStorage.setItem(
+      'apex.tool-selection.panthera',
+      JSON.stringify({
+        names: ['get_weather_forecast'],
+        profileId: 'all_allowed',
+      }),
+    )
+
+    const hook = renderHook(() => useToolCatalog('panthera'))
+    await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
+    expect(hook.result.current.selectedToolNames).toEqual(['brave_brave_web_search'])
+    expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
+
+    await act(async () => {
+      await hook.result.current.refreshCatalog()
+    })
+    await waitFor(() => expect(hook.result.current.selectedToolNames).toEqual([]))
+    expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
   })
 
   it('never copies the previous Agent selection into a new Agent session', async () => {

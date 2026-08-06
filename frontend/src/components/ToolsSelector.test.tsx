@@ -71,7 +71,7 @@ const catalog: ToolCatalog = {
   profiles: [
     {
       id: 'no_tools',
-      name: 'No Tools',
+      name: 'No APEX Tools',
       description: 'None',
       tool_names: [],
       built_in: true,
@@ -79,7 +79,7 @@ const catalog: ToolCatalog = {
     },
     {
       id: 'all_allowed',
-      name: 'All Allowed',
+      name: 'All APEX Tools',
       description: 'All',
       tool_names: [],
       built_in: true,
@@ -87,8 +87,9 @@ const catalog: ToolCatalog = {
     },
   ],
   default_profile_id: 'no_tools',
-  default_profile_name: 'No Tools',
+  default_profile_name: 'No APEX Tools',
   default_selected_tool_names: [],
+  provider_hosted_tools: ['google_search'],
   context_window: 4096,
   reserved_response_tokens: 512,
 }
@@ -183,6 +184,7 @@ describe('ToolsSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /Tools:/ }))
+    expect(screen.getByText(/Provider-hosted grounding active separately: Google Search/)).toBeInTheDocument()
     expect(screen.getByText('Profile request failed.')).toBeInTheDocument()
     expect(screen.getByText('Tool estimate unavailable.')).toBeInTheDocument()
   })

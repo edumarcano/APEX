@@ -301,8 +301,9 @@ export default function App(): ReactElement {
       handleSettingsApplied(response)
       setMarketPollKey((key) => key + 1)
       await refreshAgentsStatus()
+      await toolCatalogState.refreshCatalog()
     },
-    [handleSettingsApplied, refreshAgentsStatus],
+    [handleSettingsApplied, refreshAgentsStatus, toolCatalogState],
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
@@ -785,6 +786,7 @@ export default function App(): ReactElement {
         if (parsed) {
           handleSettingsApplied(parsed, selectedAgent)
           await refreshAgentsStatus()
+          await toolCatalogState.refreshCatalog()
         }
         return parsed !== null
       } catch {
@@ -792,7 +794,7 @@ export default function App(): ReactElement {
         return false
       }
     },
-    [devModeActive, handleSettingsApplied, refreshAgentsStatus],
+    [devModeActive, handleSettingsApplied, refreshAgentsStatus, toolCatalogState],
   )
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
@@ -872,19 +874,11 @@ export default function App(): ReactElement {
           : 'Saved and activated the new tool profile.',
       ).then((responseBody) => {
         if (!responseBody || method !== 'POST') return
-        const profiles = responseBody.profiles
-        if (!Array.isArray(profiles)) return
-        const created = profiles.find(
-          (profile): profile is { id: string; name: string } =>
-            Boolean(profile) &&
-            typeof profile === 'object' &&
-            typeof (profile as { id?: unknown }).id === 'string' &&
-            (profile as { name?: unknown }).name === name,
-        )
-        if (created) {
+        const affectedProfileId = responseBody.affected_profile_id
+        if (typeof affectedProfileId === 'string' && affectedProfileId.length > 0) {
           toolCatalogState.setToolSelection(
             toolCatalogState.selectedToolNames,
-            created.id,
+            affectedProfileId,
           )
         }
       })
@@ -904,19 +898,11 @@ export default function App(): ReactElement {
         tool_names: toolCatalogState.selectedToolNames,
       }, 'Duplicated the current resolved tool selection.').then((responseBody) => {
         if (!responseBody) return
-        const profiles = responseBody.profiles
-        if (!Array.isArray(profiles)) return
-        const created = profiles.find(
-          (item): item is { id: string; name: string } =>
-            Boolean(item) &&
-            typeof item === 'object' &&
-            typeof (item as { id?: unknown }).id === 'string' &&
-            (item as { name?: unknown }).name === name,
-        )
-        if (created) {
+        const affectedProfileId = responseBody.affected_profile_id
+        if (typeof affectedProfileId === 'string' && affectedProfileId.length > 0) {
           toolCatalogState.setToolSelection(
             toolCatalogState.selectedToolNames,
-            created.id,
+            affectedProfileId,
           )
         }
       })

@@ -13,29 +13,47 @@ SECURITY_BOUNDARY_DIRECTIVE = (
 )
 
 
-def build_tool_access_instruction(tool_names: list[str] | tuple[str, ...]) -> str:
+def build_tool_access_instruction(
+    tool_names: list[str] | tuple[str, ...],
+    *,
+    hosted_tool_names: list[str] | tuple[str, ...] = (),
+) -> str:
     """Return the shared deterministic tool-authority instruction.
 
     Tool selection controls only which already-authorized schemas are attached
-    to one request. It never changes MCP server enablement, authentication, or
-    persistent allowlists.
+    to one request. Provider-hosted grounding is a separate provider capability;
+    it never changes MCP server enablement, authentication, or persistent
+    allowlists.
     """
+    hosted = tuple(sorted({name.strip() for name in hosted_tool_names if name.strip()}))
     if tool_names:
         availability = (
-            "Only the tool schemas attached to this turn are available and "
-            "authorized. Do not claim to have used, or request, a tool whose "
-            "schema is not attached."
+            "Only the attached APEX-managed or MCP tool schemas are available "
+            "for APEX-managed tool calls. Do not claim to have used, or request, "
+            "an APEX-managed or MCP tool whose schema is not attached."
         )
     else:
         availability = (
-            "No live tools are attached to this turn. Answer only from the "
-            "conversation and attached HUD context; do not claim that a live "
-            "lookup or tool call was performed."
+            "No APEX-managed or MCP tool schemas are attached to this turn. "
+            "Provider-hosted grounding is controlled separately and is not "
+            "represented by this selector."
+        )
+    if hosted:
+        hosted_access = (
+            " Provider-hosted grounding is enabled separately for this turn "
+            f"({', '.join(hosted)}); use it only when the provider exposes it "
+            "and it is appropriate."
+        )
+    else:
+        hosted_access = (
+            " Provider-hosted grounding is controlled separately; no enabled "
+            "provider-hosted grounding is attached to this turn."
         )
     return (
         "\n\nTOOL ACCESS INSTRUCTION:\n"
-        f"{availability} Selected tools do not change MCP authorization, server "
-        "enablement, authentication, or persistent tool allowlists."
+        f"{availability}{hosted_access} Selected APEX/MCP tools do not change "
+        "MCP authorization, server enablement, authentication, or persistent "
+        "tool allowlists."
     )
 
 

@@ -242,7 +242,9 @@ include the stable capability name, model-facing label and description, native o
 MCP origin, source/server, risk, availability reason, Agent-policy result, and
 estimated schema tokens. Groups contain curated APEX families or MCP servers with
 tool counts and schema-token subtotals. The response also includes built-in and
-saved profiles, the Agent's default profile, and known local context capacity.
+saved profiles, the Agent's default profile, known local context capacity, and
+the active provider-hosted grounding names. Provider-hosted grounding is
+separate from APEX/MCP schema profiles.
 
 The selector is a prompt-level exposure layer. It does not enable an MCP server,
 connect or authenticate it, change a persistent allowlist, or bypass Acinonyx's
@@ -257,18 +259,22 @@ prompt, total, configured context, reserved response capacity, and remaining
 capacity. Every value is marked as an estimate by the response contract.
 Rejected selections remain in the response as structured diagnostics with
 `can_proceed=false`; the endpoint does not turn those diagnostics into a
-generic HTTP error. A conservative local context boundary can still report
-`can_proceed=false` so the query route can block a known overflow without
-silently truncating selected schemas.
+generic HTTP error. Local context totals are generic UI warnings only. The
+provider serializes the actual request, applies its template allowance and
+safety margin, trims complete older interactions, and is authoritative for
+whether the current interaction fits.
 
 ### GET `/api/v1/cortex/tool-profiles`
 
-Returns built-in and persisted custom profiles. Built-in profiles are `No Tools`, `All Allowed`, `Personal Ops`, `Daily
-Planning`, `Research`, and `Markets`. `All Allowed` resolves dynamically against
+Returns built-in and persisted custom profiles. Built-in profiles are `No APEX
+Tools`, `All APEX Tools`, `Personal Ops`, `Daily Planning`, `Research`, and
+`Markets`. `All APEX Tools` resolves dynamically against
 current Agent policy and runtime availability; other profiles retain explicit
 stable names. Custom profile references are preserved when a tool later becomes
 unavailable. Profile writes persist non-secret settings in `config.local.json`
-and never modify MCP runtime configuration.
+and never modify MCP runtime configuration. Mutation responses include the
+stable `affected_profile_id` when a profile was created, updated, deleted, or
+assigned as a default.
 
 ### POST `/api/v1/cortex/tool-profiles`
 
@@ -349,9 +355,12 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is `production` or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No Tools`; omitted selection preserves the migration default of `All Allowed` for cloud Agents and `No Tools` for local Agents. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for cloud Agents and `No APEX Tools` for local Agents. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and xAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
-- `400` — selected tools are invalid, outside policy, unavailable, or the local estimated context is full.
+- `400` — selected tools are invalid, outside policy, or unavailable.
+- A provider-authoritative local context overflow is returned as an actionable
+  stable response error after history trimming; the generic preflight estimate
+  does not block the request.
 - `403` — Ask APEX is disabled.
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.

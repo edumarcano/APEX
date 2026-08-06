@@ -123,6 +123,7 @@ export interface ToolCatalog {
   default_profile_id: string
   default_profile_name: string
   default_selected_tool_names: string[]
+  provider_hosted_tools: string[]
   context_window: number | null
   reserved_response_tokens: number | null
 }

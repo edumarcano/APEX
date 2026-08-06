@@ -480,7 +480,7 @@ class ToolProfileCreateRequest(BaseModel):
     """Create or duplicate a custom profile from stable capability names."""
 
     id: str | None = Field(default=None, min_length=1, max_length=80)
-    name: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1)
     description: str = Field(default="", max_length=240)
     tool_names: list[str] = Field(default_factory=list)
 
@@ -488,7 +488,7 @@ class ToolProfileCreateRequest(BaseModel):
 class ToolProfileUpdateRequest(BaseModel):
     """Edit the name, description, or explicit names of a custom profile."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=80)
+    name: str | None = Field(default=None, min_length=1)
     description: str | None = Field(default=None, max_length=240)
     tool_names: list[str] | None = None
 
@@ -505,6 +505,7 @@ class ToolProfilesResponse(BaseModel):
 
     profiles: list[ToolProfileMetadata] = Field(default_factory=list)
     default_profile_by_agent: dict[str, str] = Field(default_factory=dict)
+    affected_profile_id: str | None = None
 
 
 class CloudAgentVerificationResponse(BaseModel):

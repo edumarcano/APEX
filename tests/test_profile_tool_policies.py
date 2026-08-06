@@ -9,6 +9,7 @@ from unittest import mock
 from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.loop import run_agent_loop
 from core.agent.capabilities import CapabilityDescriptor
+from core.agent.prompting import build_tool_access_instruction
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _parse_grounding
 from core.agent.providers.xai_provider import XAIProvider
@@ -23,6 +24,25 @@ from core.connectors.models import ConnectorResult
 
 
 class HostedGroundingTests(unittest.TestCase):
+    def test_hosted_grounding_stays_outside_apex_tool_schema_profiles(self) -> None:
+        expected = {
+            "neofelis": {"google_search", "google_maps"},
+            "delphinus": {"x_search"},
+            "orcinus": {"x_search"},
+        }
+        for agent_key, hosted_names in expected.items():
+            _apex, native = resolve_effort(agent_key, None)
+            profile = build_concrete_agent(agent_key, native_effort=native)
+            instruction = build_tool_access_instruction(
+                [],
+                hosted_tool_names=tuple(profile.hosted_tools),
+            )
+
+            self.assertEqual(set(profile.hosted_tools), hosted_names)
+            self.assertIn("No APEX-managed or MCP tool schemas", instruction)
+            self.assertIn("Provider-hosted grounding is enabled separately", instruction)
+            self.assertNotIn("No live tools are attached", instruction)
+
     def test_gemini_grounding_normalizes_search_and_maps(self) -> None:
         metadata = SimpleNamespace(
             grounding_chunks=[

@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CortexWorkspace } from './CortexWorkspace'
-import type { AgentStatus, ToolCatalog } from '../types/telemetry'
+import type { AgentStatus, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 
 const panthera: AgentStatus = {
   key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '7.4', runtime: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
@@ -78,8 +78,9 @@ const toolCatalog: ToolCatalog = {
   }],
   profiles: [],
   default_profile_id: 'no_tools',
-  default_profile_name: 'No Tools',
+  default_profile_name: 'No APEX Tools',
   default_selected_tool_names: [],
+  provider_hosted_tools: [],
   context_window: 4096,
   reserved_response_tokens: 512,
 }
@@ -112,6 +113,17 @@ describe('CortexWorkspace', () => {
 
     await user.click(screen.getByRole('button', { name: 'Forecast' }))
     expect(onSubmit).toHaveBeenCalledWith('What is the 5-day weather forecast?', 'panthera', [], null)
+  })
+
+  it('hides prompt chips when preflight reports a strict selection failure', () => {
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          toolPreflight: { can_proceed: false } as ToolPreflightEstimate,
+        })}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Forecast' })).not.toBeInTheDocument()
   })
 
   it('submits the footer with the chosen tool set on every request', async () => {

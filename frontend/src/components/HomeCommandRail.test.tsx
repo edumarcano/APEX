@@ -47,8 +47,9 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     tools: [],
     profiles: [],
     default_profile_id: 'no_tools',
-    default_profile_name: 'No Tools',
+    default_profile_name: 'No APEX Tools',
     default_selected_tool_names: [],
+    provider_hosted_tools: [],
     context_window: null,
     reserved_response_tokens: null,
   }

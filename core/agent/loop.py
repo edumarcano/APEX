@@ -74,6 +74,27 @@ def build_agent_failure_details(
 ) -> tuple[str, str]:
     """Return the sanitized provider-specific failure response."""
     if is_local_profile(profile):
+        overflow = any(
+            marker in str(exc).lower()
+            for marker in (
+                "local prompt budget exceeded",
+                "context length",
+                "context window",
+                "too many tokens",
+                "prompt is too long",
+                "prompt too long",
+                "input length",
+            )
+        ) or bool(getattr(exc, "is_context_overflow", False))
+        if overflow:
+            return (
+                "The current interaction is too large for the local Agent "
+                "context window after older complete interactions were removed. "
+                "Shorten the prompt, select fewer tools, or start a new session "
+                "and try again.",
+                "Local context overflow: the current interaction did not fit "
+                "after provider-authoritative history trimming.",
+            )
         answer = (
             "The Apex Agent encountered an issue reaching the local "
             "provider or running the requested operations. Please verify that "

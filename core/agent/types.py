@@ -197,6 +197,13 @@ class ToolCatalogResponse(BaseModel):
     default_profile_id: str
     default_profile_name: str
     default_selected_tool_names: list[str] = Field(default_factory=list)
+    provider_hosted_tools: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Provider-hosted grounding enabled for this Agent; these tools are "
+            "separate from APEX-managed and MCP schemas."
+        ),
+    )
     context_window: int | None = Field(default=None, ge=1)
     reserved_response_tokens: int | None = Field(default=None, ge=0)
 

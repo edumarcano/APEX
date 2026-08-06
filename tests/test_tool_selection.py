@@ -8,12 +8,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.catalog import build_concrete_agent
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
 from core.agent.tool_schemas import project_descriptor_for_agent
+from core.agent.tool_profiles import resolve_profile_names
 from core.agent.tool_selection import resolve_selected_tools
 from core.agent.types import AgentMessage, AgentQueryRequest
 from core.api.cortex import build_tool_preflight
@@ -148,6 +151,27 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertGreater(result.breakdown.selected_tool_schemas, 0)
         self.assertIsNotNone(result.breakdown.configured_context_window)
         self.assertGreater(result.breakdown.remaining_estimated_capacity or 0, 0)
+
+    def test_generic_local_overflow_is_a_warning_until_provider_budget_runs(self) -> None:
+        history = [
+            AgentMessage(role="user", content="Prior question"),
+            AgentMessage(role="agent", content="Prior answer " * 1_500),
+            AgentMessage(role="user", content="Another prior question"),
+            AgentMessage(role="agent", content="Another prior answer " * 1_500),
+            AgentMessage(role="user", content="A third prior question"),
+            AgentMessage(role="agent", content="A third prior answer " * 1_500),
+        ]
+        result = build_tool_preflight(
+            ToolPreflightRequest(
+                agent="mus",
+                prompt="Current question",
+                history=history,
+            )
+        )
+
+        self.assertTrue(result.can_proceed)
+        self.assertLess(result.breakdown.remaining_estimated_capacity or 0, 0)
+        self.assertIn("warning only", result.warning or "")
 
     def test_preflight_includes_typed_prompt_and_returns_rejections_in_response(self) -> None:
         result = build_tool_preflight(
@@ -330,6 +354,115 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                     "route_profile",
                     {profile.id for profile in deleted.profiles},
                 )
+
+    def test_profile_mutations_normalize_names_and_return_stable_ids(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="apex_tool_profile_normalize_") as directory:
+            root = Path(directory)
+            config_path = root / "config.json"
+            local_path = root / "config.local.json"
+            config_path.write_text(json.dumps({}), encoding="utf-8")
+            store = RuntimeSettingsStore(
+                config_path=config_path,
+                local_config_path=local_path,
+            )
+            with (
+                patch(
+                    "core.api.routers.cortex.get_settings_store",
+                    return_value=store,
+                ),
+                patch(
+                    "core.agent.tool_profiles.get_settings_store",
+                    return_value=store,
+                ),
+            ):
+                first = create_tool_profile(
+                    ToolProfileCreateRequest(
+                        id="explicit_one",
+                        name="  Shared   Display   Name  ",
+                        tool_names=[" get_active_reminders ", "get_active_reminders", ""],
+                    )
+                )
+                second = create_tool_profile(
+                    ToolProfileCreateRequest(
+                        id="explicit_two",
+                        name="Shared Display Name",
+                        tool_names=["get_weather_forecast"],
+                    )
+                )
+                resolved_dynamic_names = resolve_profile_names(
+                    "panthera",
+                    "all_allowed",
+                    available_names={
+                        "get_active_reminders",
+                        "get_weather_forecast",
+                    },
+                )
+                dynamic_snapshot = create_tool_profile(
+                    ToolProfileCreateRequest(
+                        id="dynamic_snapshot",
+                        name="Resolved Dynamic Snapshot",
+                        tool_names=resolved_dynamic_names,
+                    )
+                )
+                self.assertEqual(first.affected_profile_id, "explicit_one")
+                self.assertEqual(second.affected_profile_id, "explicit_two")
+                self.assertEqual(dynamic_snapshot.affected_profile_id, "dynamic_snapshot")
+                self.assertEqual(
+                    next(
+                        profile
+                        for profile in dynamic_snapshot.profiles
+                        if profile.id == "dynamic_snapshot"
+                    ).tool_names,
+                    resolved_dynamic_names,
+                )
+                self.assertEqual(
+                    {
+                        profile.id: profile.name
+                        for profile in second.profiles
+                        if profile.id in {"explicit_one", "explicit_two"}
+                    },
+                    {
+                        "explicit_one": "Shared Display Name",
+                        "explicit_two": "Shared Display Name",
+                    },
+                )
+                with self.assertRaises(HTTPException) as duplicate:
+                    create_tool_profile(
+                        ToolProfileCreateRequest(
+                            id="explicit_one",
+                            name="Different Name",
+                        )
+                    )
+                self.assertEqual(duplicate.exception.status_code, 409)
+                with self.assertRaises(HTTPException) as blank:
+                    create_tool_profile(ToolProfileCreateRequest(name="   "))
+                self.assertEqual(blank.exception.status_code, 422)
+
+                updated = update_tool_profile(
+                    "explicit_one",
+                    ToolProfileUpdateRequest(
+                        name="  Updated   Name ",
+                        tool_names=[" get_active_reminders ", "missing_tool"],
+                    ),
+                )
+                self.assertEqual(updated.affected_profile_id, "explicit_one")
+                updated_profile = next(
+                    profile
+                    for profile in updated.profiles
+                    if profile.id == "explicit_one"
+                )
+                self.assertEqual(updated_profile.name, "Updated Name")
+                self.assertEqual(
+                    updated_profile.tool_names,
+                    ["get_active_reminders", "missing_tool"],
+                )
+
+                with self.assertRaises(HTTPException) as blank_update:
+                    update_tool_profile(
+                        "explicit_one",
+                        ToolProfileUpdateRequest(name="\t \n"),
+                    )
+                self.assertEqual(blank_update.exception.status_code, 422)
 
 
 if __name__ == "__main__":

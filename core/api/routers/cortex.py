@@ -64,6 +64,21 @@ def _normalized_tool_names(names: list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(name.strip() for name in names if name.strip()))
 
 
+def _normalize_profile_name(value: str) -> str:
+    candidate = " ".join(value.split())
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Profile names must contain at least one non-whitespace character.",
+        )
+    if len(candidate) > 80:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Profile names may contain at most 80 characters after normalization.",
+        )
+    return candidate
+
+
 @router.get(
     "/api/v1/cortex/tool-catalog",
     response_model=ToolCatalogResponse,
@@ -82,7 +97,9 @@ def tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
     return build_tool_preflight(payload)
 
 
-def _profile_response() -> ToolProfilesResponse:
+def _profile_response(
+    *, affected_profile_id: str | None = None
+) -> ToolProfilesResponse:
     snapshot = get_settings_store().get_snapshot()
     return ToolProfilesResponse(
         profiles=[
@@ -99,6 +116,7 @@ def _profile_response() -> ToolProfilesResponse:
         default_profile_by_agent=dict(
             snapshot.tool_profiles.default_profile_by_agent
         ),
+        affected_profile_id=affected_profile_id,
     )
 
 
@@ -112,6 +130,8 @@ def _custom_profile_map() -> dict[str, ToolProfile]:
 def _persist_custom_profiles(
     profiles: list[ToolProfile],
     defaults: dict[str, str] | None = None,
+    *,
+    affected_profile_id: str | None = None,
 ) -> ToolProfilesResponse:
     snapshot = get_settings_store().get_snapshot()
     get_settings_store().apply_patch(
@@ -126,7 +146,7 @@ def _persist_custom_profiles(
             )
         )
     )
-    return _profile_response()
+    return _profile_response(affected_profile_id=affected_profile_id)
 
 
 @router.get(
@@ -144,9 +164,10 @@ def tool_profiles() -> ToolProfilesResponse:
 )
 def create_tool_profile(payload: ToolProfileCreateRequest) -> ToolProfilesResponse:
     """Persist a custom profile without changing MCP authorization settings."""
+    normalized_name = _normalize_profile_name(payload.name)
     profile_id = payload.id
     if profile_id is None:
-        profile_id = re.sub(r"[^a-z0-9]+", "_", payload.name.strip().lower()).strip("_")
+        profile_id = re.sub(r"[^a-z0-9]+", "_", normalized_name.lower()).strip("_")
     if not profile_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -161,11 +182,14 @@ def create_tool_profile(payload: ToolProfileCreateRequest) -> ToolProfilesRespon
     profiles = _custom_profile_map()
     profiles[profile_id] = ToolProfile(
         id=profile_id,
-        name=" ".join(payload.name.split()),
+        name=normalized_name,
         description=payload.description.strip(),
         tool_names=_normalized_tool_names(payload.tool_names),
     )
-    return _persist_custom_profiles(list(profiles.values()))
+    return _persist_custom_profiles(
+        list(profiles.values()),
+        affected_profile_id=profile_id,
+    )
 
 
 @router.patch(
@@ -185,13 +209,12 @@ def update_tool_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Only saved custom profiles can be edited.",
         )
+    normalized_name = (
+        _normalize_profile_name(payload.name) if payload.name is not None else current.name
+    )
     profiles[normalized_id] = current.model_copy(
         update={
-            "name": (
-                " ".join(payload.name.split())
-                if payload.name is not None
-                else current.name
-            ),
+            "name": normalized_name,
             "description": (
                 payload.description.strip()
                 if payload.description is not None
@@ -204,7 +227,10 @@ def update_tool_profile(
             ),
         }
     )
-    return _persist_custom_profiles(list(profiles.values()))
+    return _persist_custom_profiles(
+        list(profiles.values()),
+        affected_profile_id=normalized_id,
+    )
 
 
 @router.delete(
@@ -213,7 +239,7 @@ def update_tool_profile(
 )
 def delete_tool_profile(profile_id: str) -> ToolProfilesResponse:
     """Delete a saved custom profile and clear defaults pointing to it."""
-    normalized_id = profile_id.strip().lower()
+    normalized_id = _normalize_profile_id(profile_id)
     profiles = _custom_profile_map()
     if normalized_id not in profiles:
         raise HTTPException(
@@ -227,7 +253,11 @@ def delete_tool_profile(profile_id: str) -> ToolProfilesResponse:
         for agent, selected in snapshot.tool_profiles.default_profile_by_agent.items()
         if selected != normalized_id
     }
-    return _persist_custom_profiles(list(profiles.values()), defaults)
+    return _persist_custom_profiles(
+        list(profiles.values()),
+        defaults,
+        affected_profile_id=normalized_id,
+    )
 
 
 @router.post(
@@ -250,6 +280,7 @@ def set_tool_profile_default(
     return _persist_custom_profiles(
         list(snapshot.tool_profiles.custom_profiles),
         defaults,
+        affected_profile_id=profile_id,
     )
 
 

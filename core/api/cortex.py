@@ -794,7 +794,10 @@ def _execute_agent_turn(
             )
             + hud_context
             + build_tool_access_instruction(
-                [descriptor.name for descriptor in selected_tools or []]
+                [descriptor.name for descriptor in selected_tools or []],
+                hosted_tool_names=tuple(
+                    sorted(getattr(profile, "hosted_tools", ()))
+                ),
             )
         )
 
@@ -892,7 +895,8 @@ def _estimate_agent_request(
         base_prompt,
         user_designation=get_settings_store().get_snapshot().user_designation,
     ) + build_tool_access_instruction(
-        [descriptor.name for descriptor in selection.descriptors]
+        [descriptor.name for descriptor in selection.descriptors],
+        hosted_tool_names=tuple(sorted(getattr(profile, "hosted_tools", ()))),
     )
     history_payload = [
         message.model_dump(exclude_none=True, exclude={"provider_output_items"})
@@ -927,12 +931,13 @@ def _estimate_agent_request(
     if context_window is not None and reserved_response_tokens is not None:
         remaining = context_window - total - reserved_response_tokens
         if remaining < 0:
-            can_proceed = False
             warning = (
-                "The conservative estimated request exceeds this local Agent's "
-                "context window. "
-                "Clear older conversation turns, shorten the prompt, or select "
-                "fewer tools before submitting."
+                "The generic token estimate exceeds this local Agent's context "
+                "budget. This is a warning only: the local provider will serialize "
+                "the actual request, remove complete older interactions when "
+                "possible, and apply its template allowance and safety margin "
+                "before deciding whether the current interaction fits. If it "
+                "still overflows, shorten the prompt or select fewer tools."
             )
     if selection.failures:
         rejection_warning = (
@@ -1097,21 +1102,6 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     payload = _prepare_agent_payload(payload, agent_key=agent_key)
 
     if is_local_profile(profile):
-        estimate = _estimate_agent_request(
-            payload,
-            profile,
-            selection,
-            agent_key=agent_key,
-        )
-        if not estimate.can_proceed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "message": estimate.warning
-                    or "The estimated local Agent request exceeds its context window.",
-                    "estimate": estimate.model_dump(),
-                },
-            )
         backend = get_local_runtime_backend(profile.provider)
         provider_label = _local_provider_label(profile.provider)
         if not backend.enabled:

@@ -42,6 +42,11 @@ interface ToolsSelectorProps {
 function formatTokens(value: number): string {
   return `~${Math.max(0, Math.round(value)).toLocaleString()}`
 }
+function formatHostedToolName(name: string): string {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
 function selectedTokenTotal(
   catalog: ToolCatalog | null,
   selectedToolNames: string[],
@@ -226,6 +231,16 @@ export function ToolsSelector({
               <p className="mt-1 font-mono text-[10px] text-zinc-500">
                 Selection narrows Agent policy; it never changes MCP settings.
               </p>
+              {catalog?.provider_hosted_tools.length ? (
+                <p className="mt-1 font-mono text-[10px] text-cyan-200/80">
+                  Provider-hosted grounding active separately:{' '}
+                  {catalog.provider_hosted_tools.map(formatHostedToolName).join(', ')}
+                </p>
+              ) : (
+                <p className="mt-1 font-mono text-[10px] text-zinc-600">
+                  Provider-hosted grounding is controlled separately from these APEX/MCP schemas.
+                </p>
+              )}
             </div>
             <button
               type="button"

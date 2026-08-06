@@ -124,6 +124,11 @@ function parseCatalog(value: unknown, agent: AgentKey): ToolCatalog | null {
     default_profile_id: value.default_profile_id,
     default_profile_name: value.default_profile_name,
     default_selected_tool_names: value.default_selected_tool_names,
+    provider_hosted_tools: Array.isArray(value.provider_hosted_tools)
+      ? value.provider_hosted_tools.filter(
+        (name): name is string => typeof name === 'string',
+      )
+      : [],
     context_window:
       typeof value.context_window === 'number' ? value.context_window : null,
     reserved_response_tokens:
@@ -173,6 +178,32 @@ function writeSessionSelection(agent: AgentKey, selection: SessionSelection): vo
   }
 }
 
+function normalizeNames(names: string[]): string[] {
+  return [...new Set(names.map((name) => name.trim()).filter(Boolean))]
+}
+
+function availableToolNames(catalog: ToolCatalog): string[] {
+  return catalog.tools
+    .filter((tool) => tool.available && tool.allowed_for_agent)
+    .map((tool) => tool.name)
+}
+
+function sameNames(left: string[], right: string[]): boolean {
+  const normalizedLeft = new Set(normalizeNames(left))
+  const normalizedRight = new Set(normalizeNames(right))
+  return (
+    normalizedLeft.size === normalizedRight.size &&
+    [...normalizedLeft].every((name) => normalizedRight.has(name))
+  )
+}
+
+function resolvedProfileNames(
+  catalog: ToolCatalog,
+  profile: ToolProfileMetadata,
+): string[] {
+  return profile.dynamic ? availableToolNames(catalog) : normalizeNames(profile.tool_names)
+}
+
 export interface UseToolCatalogResult {
   catalog: ToolCatalog | null
   isLoading: boolean
@@ -200,11 +231,7 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
   const setSelection = useCallback(
     (names: string[], profileId: string | null = null): void => {
       const normalized = [
-        ...new Set(
-          names
-            .map((name) => name.trim())
-            .filter((name) => name.length > 0),
-        ),
+        ...normalizeNames(names),
       ]
       setSelectedToolNamesState(normalized)
       setActiveToolProfileId(profileId)
@@ -256,22 +283,31 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
     hydratedAgent.current = activeAgent
     const pending = pendingSelection.current
     const stored = pending?.agent === activeAgent ? pending.selection : null
-    const names = stored?.names ?? catalog.default_selected_tool_names
+    const storedProfile = stored?.profileId
+      ? catalog.profiles.find((item) => item.id === stored.profileId)
+      : null
+    const defaultProfile = catalog.profiles.find(
+      (item) => item.id === catalog.default_profile_id,
+    )
+    const names = stored
+      ? storedProfile?.dynamic
+        ? resolvedProfileNames(catalog, storedProfile)
+        : stored.names
+      : defaultProfile?.dynamic
+        ? resolvedProfileNames(catalog, defaultProfile)
+        : catalog.default_selected_tool_names
     let profileId: string | null = stored?.profileId ?? catalog.default_profile_id
-    if (stored?.profileId) {
-      const profile = catalog.profiles.find((item) => item.id === stored.profileId)
-      const expectedNames = profile
-        ? profile.dynamic
-          ? catalog.tools
-            .filter((tool) => tool.available && tool.allowed_for_agent)
-            .map((tool) => tool.name)
-          : profile.tool_names
-        : null
-      if (!expectedNames || new Set(expectedNames).size !== new Set(names).size || expectedNames.some((name) => !names.includes(name))) {
+    if (stored?.profileId && !storedProfile) {
+      profileId = null
+    } else if (stored?.profileId && storedProfile?.dynamic) {
+      profileId = storedProfile.id
+    } else if (stored?.profileId && storedProfile) {
+      const expectedNames = resolvedProfileNames(catalog, storedProfile)
+      if (!sameNames(expectedNames, names)) {
         profileId = null
       }
     }
-    const normalizedNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))]
+    const normalizedNames = normalizeNames(names)
     setSelectedToolNamesState(normalizedNames)
     setActiveToolProfileId(profileId)
     writeSessionSelection(activeAgent, { names: normalizedNames, profileId })
@@ -282,31 +318,22 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
     if (!catalog || catalog.agent !== activeAgent || hydratedAgent.current !== activeAgent) {
       return
     }
-    if (activeToolProfileId === 'all_allowed') {
-      const refreshedNames = catalog.tools
-        .filter((tool) => tool.available && tool.allowed_for_agent)
-        .map((tool) => tool.name)
-      if (
-        refreshedNames.length !== selectedToolNames.length ||
-        refreshedNames.some((name) => !selectedToolNames.includes(name))
-      ) {
+    const activeProfile = activeToolProfileId
+      ? catalog.profiles.find((item) => item.id === activeToolProfileId)
+      : null
+    if (activeProfile?.dynamic) {
+      const refreshedNames = resolvedProfileNames(catalog, activeProfile)
+      if (!sameNames(refreshedNames, selectedToolNames)) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- Dynamic profiles synchronize their resolved names with the refreshed catalog.
         setSelection(refreshedNames, activeToolProfileId)
       }
       return
     }
     if (activeToolProfileId) {
-      const profile = catalog.profiles.find((item) => item.id === activeToolProfileId)
-      const expectedNames = profile?.dynamic
-        ? catalog.tools
-          .filter((tool) => tool.available && tool.allowed_for_agent)
-          .map((tool) => tool.name)
-        : profile?.tool_names
-      if (
-        !expectedNames ||
-        expectedNames.length !== selectedToolNames.length ||
-        expectedNames.some((name) => !selectedToolNames.includes(name))
-      ) {
+      const expectedNames = activeProfile
+        ? resolvedProfileNames(catalog, activeProfile)
+        : null
+      if (!expectedNames || !sameNames(expectedNames, selectedToolNames)) {
         setActiveToolProfileId(null)
         writeSessionSelection(activeAgent, { names: selectedToolNames, profileId: null })
       }
