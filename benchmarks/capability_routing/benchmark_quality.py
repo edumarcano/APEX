@@ -78,12 +78,16 @@ def _evaluate_router(
     cases: list[dict],
     thresholds: RoutingThresholds,
     expose_tokens: int,
+    *,
+    select_fn=select_families_from_rankings,
+    runtime: str = "cloud",
 ) -> dict:
     predictions, ranking_lists = run_router_predictions(
         router,
         cases,
         thresholds,
-        select_fn=select_families_from_rankings,
+        select_fn=select_fn,
+        runtime=runtime,
     )
     metrics = compute_extended_metrics(
         router_name=router.name,
@@ -127,9 +131,6 @@ def main() -> int:
     if hasattr(tuning_router, "rank"):
         thresholds = tune_thresholds(dev_cases, tuning_router.rank)
         calibrator = fit_calibrator_from_cases(dev_cases, tuning_router.rank, thresholds)
-        from core.agent.routing import calibration as calibration_module
-
-        calibration_module.DEFAULT_CALIBRATOR = calibrator
         write_json_report(
             RESULTS_DIR / "selected_parameters.json",
             {
@@ -137,6 +138,14 @@ def main() -> int:
                 "calibration": calibration_payload(calibrator),
             },
         )
+        select_fn = lambda rankings, config_thresholds, **kwargs: select_families_from_rankings(
+            rankings,
+            config_thresholds,
+            calibrator=calibrator,
+            **kwargs,
+        )
+    else:
+        select_fn = select_families_from_rankings
 
     expose_predictions, _ = run_router_predictions(
         ExposeAllRouter(),
@@ -157,7 +166,13 @@ def main() -> int:
     }
 
     for router in routers:
-        metrics = _evaluate_router(router, cases, thresholds, expose_tokens)
+        metrics = _evaluate_router(
+            router,
+            cases,
+            thresholds,
+            expose_tokens,
+            select_fn=select_fn,
+        )
         report["routers"][router.name] = metrics
         report["configurations"][router.name] = {
             "passes_gates": _passes_gates(metrics),
@@ -182,7 +197,9 @@ def main() -> int:
                 name=label,
                 prototype_mode=mode,
             )
-            prototype_report[label] = _evaluate_router(router, cases, thresholds, expose_tokens)
+            prototype_report[label] = _evaluate_router(
+                router, cases, thresholds, expose_tokens, select_fn=select_fn
+            )
         report["prototype_comparison"] = prototype_report
 
     if args.compare_max_families:
@@ -195,6 +212,7 @@ def main() -> int:
                 cases,
                 capped,
                 expose_tokens,
+                select_fn=select_fn,
             )
         report["max_family_cap_comparison"] = cap_report
 

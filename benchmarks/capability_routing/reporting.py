@@ -45,6 +45,7 @@ class RecoveryRouterMetrics:
     split: str
     benchmark_kind: str
     benchmark_limitation: str
+    report_kind: str
     total_cases: int
     unique_prompt_cases: int
     initial_complete_coverage_rate: float
@@ -53,10 +54,19 @@ class RecoveryRouterMetrics:
     recovery_invocation_rate: float
     false_positive_family_rate: float
     avg_schemas_exposed: float
-    avg_extra_turns: float
+    avg_final_schema_tokens: float
+    avg_final_tool_count: float
+    avg_search_turns_used: float
+    avg_expansion_turns_used: float
+    avg_recovered_tool_invocation_turns: float
     no_tool_accuracy: float
     micro_recall_initial: float
     micro_recall_final: float
+    unique_initial_complete_coverage_rate: float
+    unique_final_complete_coverage_rate: float
+    unique_recovery_success_rate: float
+    unique_no_tool_accuracy: float
+    unique_false_positive_family_rate: float
     by_origin: dict[str, dict[str, float]]
     by_origin_unique: dict[str, dict[str, float]]
 
@@ -76,14 +86,37 @@ def _safe_div(numerator: float, denominator: float) -> float:
 
 
 def _case_origin(case_id: str) -> str:
-    if case_id.startswith("pad-") or "-auto-" in case_id:
-        return "synthetic"
-    if case_id.startswith("multi-todo-sched-"):
-        return "synthetic"
-    if case_id.rsplit("-", 1)[-1].isdigit() and not case_id.startswith(
-        ("sched-", "wx-", "f1-", "mail-", "search-", "market-", "brief-", "todo-", "multi-", "ambig-")
-    ):
-        return "synthetic"
+    """Deprecated: prefer ``classify_case_origin``."""
+    return classify_case_origin({"id": case_id})
+
+
+def classify_case_origin(
+    case: dict,
+    *,
+    seen_prompt_keys: set[tuple[str, tuple[tuple[str, str], ...]]] | None = None,
+) -> str:
+    """Classify benchmark case provenance without inferring origin from IDs alone."""
+    case_id = case.get("id", "")
+    difficulty = case.get("difficulty", "")
+    history_key = tuple(
+        (item.get("role", ""), item.get("content", ""))
+        for item in case.get("history", [])
+    )
+    prompt_key = (case.get("prompt", ""), history_key)
+
+    if seen_prompt_keys is not None:
+        if prompt_key in seen_prompt_keys:
+            return "exact_duplicate"
+        seen_prompt_keys.add(prompt_key)
+
+    if case_id.startswith("pad-"):
+        return "synthetic_padding"
+    if "-auto-" in case_id:
+        return "generated_paraphrase"
+    if difficulty == "paraphrased" and case_id.rsplit("-", 1)[-1].isdigit():
+        prefix = case_id.rsplit("-", 1)[0]
+        if prefix.endswith("-auto") or "-auto-" in prefix:
+            return "generated_paraphrase"
     return "handwritten"
 
 
@@ -112,6 +145,7 @@ def compute_metrics(
     expose_all_tokens: int,
     cases_by_id: dict[str, dict] | None = None,
     ranking_lists: dict[str, list[str]] | None = None,
+    runtime: str = "cloud",
 ) -> RouterMetrics:
     return compute_extended_metrics(
         router_name=router_name,
@@ -120,6 +154,7 @@ def compute_metrics(
         expose_all_tokens=expose_all_tokens,
         cases_by_id=cases_by_id or {},
         ranking_lists=ranking_lists or {},
+        runtime=runtime,
     )
 
 
@@ -131,6 +166,7 @@ def compute_extended_metrics(
     expose_all_tokens: int,
     cases_by_id: dict[str, dict],
     ranking_lists: dict[str, list[str]],
+    runtime: str = "cloud",
 ) -> RouterMetrics:
     tp = fp = fn = 0
     exact = complete = 0
@@ -149,10 +185,11 @@ def compute_extended_metrics(
     family_sets: dict[str, list[bool]] = defaultdict(list)
     token_sum = family_count_sum = tool_count_sum = 0
     top1_hits = top2_hits = top3_hits = expected_family_total = 0
+    seen_prompt_keys: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
 
     for case_id, expected, selected, tool_count, schema_tokens in predictions:
         case = cases_by_id.get(case_id, {})
-        origin = _case_origin(case_id)
+        origin = classify_case_origin(case, seen_prompt_keys=seen_prompt_keys)
         origin_stats[origin]["total"] += 1
         difficulty = case.get("difficulty", "unknown")
         difficulty_total[difficulty] += 1
@@ -266,6 +303,7 @@ def run_router_predictions(
     thresholds,
     *,
     select_fn,
+    runtime: str = "cloud",
 ) -> tuple[list[tuple[str, set[str], set[str], int, int]], dict[str, list[str]]]:
     from benchmarks.capability_routing.benchmark_quality import (
         estimate_schema_tokens_for_families,
@@ -287,6 +325,7 @@ def run_router_predictions(
             selected = select_fn(
                 rankings,
                 thresholds,
+                runtime=runtime,
                 rule_matches=getattr(router, "last_rule_matches", None),
             )
         expected = set(case["expected_families"])
@@ -312,20 +351,28 @@ def compute_recovery_metrics(
     initial_predictions: list[tuple[str, set[str], set[str], int, int]],
     final_predictions: list[tuple[str, set[str], set[str], int, int]],
     search_invoked: dict[str, bool],
-    extra_turns: dict[str, int],
+    search_turns: dict[str, int],
+    expansion_turns: dict[str, int],
+    recovered_tool_turns: dict[str, int],
     benchmark_kind: str = "oracle_catalog_recovery",
     benchmark_limitation: str = (
         "Uses expected labels and the original prompt as the search query. "
         "This is an oracle upper bound, not agent-initiated recovery."
     ),
+    report_kind: str = "classifier_family_oracle",
 ) -> RecoveryRouterMetrics:
     total = len(cases)
     unique_cases = dedupe_cases_by_prompt(cases)
+    unique_case_ids = {case["id"] for case in unique_cases}
     initial_complete = final_complete = recovery_successes = invocations = 0
     false_positive_cases = 0
     no_tool_total = no_tool_correct = 0
-    schema_sum = extra_turn_sum = 0
+    schema_sum = schema_token_sum = tool_count_sum = 0
+    search_turn_sum = expansion_turn_sum = recovered_tool_turn_sum = 0
     tp_initial = fn_initial = tp_final = fn_final = 0
+    unique_initial_complete = unique_final_complete = unique_recovery_successes = 0
+    unique_false_positive_cases = 0
+    unique_no_tool_total = unique_no_tool_correct = 0
     origin_stats: dict[str, dict[str, float]] = defaultdict(
         lambda: {
             "initial_complete": 0,
@@ -342,15 +389,16 @@ def compute_recovery_metrics(
             "total": 0,
         }
     )
-    unique_case_ids = {case["id"] for case in unique_cases}
+    seen_prompt_keys: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
 
     for case in cases:
         case_id = case["id"]
         expected = set(case["expected_families"])
         if "none" in expected:
             expected.discard("none")
-        origin = _case_origin(case_id)
+        origin = classify_case_origin(case, seen_prompt_keys=seen_prompt_keys)
         origin_stats[origin]["total"] += 1
+        is_unique = case_id in unique_case_ids
 
         initial = next(item for item in initial_predictions if item[0] == case_id)
         final = next(item for item in final_predictions if item[0] == case_id)
@@ -361,29 +409,37 @@ def compute_recovery_metrics(
             no_tool_total += 1
             if not final_selected:
                 no_tool_correct += 1
+            if is_unique:
+                unique_no_tool_total += 1
+                if not final_selected:
+                    unique_no_tool_correct += 1
 
         if expected <= initial_selected:
             initial_complete += 1
             origin_stats[origin]["initial_complete"] += 1
-            if case_id in unique_case_ids:
+            if is_unique:
+                unique_initial_complete += 1
                 unique_origin_stats[origin]["initial_complete"] += 1
         if expected <= final_selected:
             final_complete += 1
             origin_stats[origin]["final_complete"] += 1
-            if case_id in unique_case_ids:
+            if is_unique:
+                unique_final_complete += 1
                 unique_origin_stats[origin]["final_complete"] += 1
         if expected > initial_selected and expected <= final_selected:
             recovery_successes += 1
             origin_stats[origin]["recovery_success"] += 1
-            if case_id in unique_case_ids:
+            if is_unique:
+                unique_recovery_successes += 1
                 unique_origin_stats[origin]["recovery_success"] += 1
         if search_invoked.get(case_id, False):
             invocations += 1
         if final_selected - expected:
             false_positive_cases += 1
+            if is_unique:
+                unique_false_positive_cases += 1
 
-        origin_stats[origin]["total"] += 1
-        if case_id in unique_case_ids:
+        if is_unique:
             unique_origin_stats[origin]["total"] += 1
 
         tp_initial += len(expected & initial_selected)
@@ -391,7 +447,11 @@ def compute_recovery_metrics(
         tp_final += len(expected & final_selected)
         fn_final += len(expected - final_selected)
         schema_sum += final[4]
-        extra_turn_sum += extra_turns.get(case_id, 0)
+        schema_token_sum += final[4]
+        tool_count_sum += final[3]
+        search_turn_sum += search_turns.get(case_id, 0)
+        expansion_turn_sum += expansion_turns.get(case_id, 0)
+        recovered_tool_turn_sum += recovered_tool_turns.get(case_id, 0)
 
     by_origin: dict[str, dict[str, float]] = {}
     for origin, stats in origin_stats.items():
@@ -425,11 +485,14 @@ def compute_recovery_metrics(
         }
 
     incomplete = total - initial_complete
+    unique_incomplete = len(unique_cases) - unique_initial_complete
+    unique_no_tool_denom = unique_no_tool_total
     return RecoveryRouterMetrics(
         name=config_name,
         split=split,
         benchmark_kind=benchmark_kind,
         benchmark_limitation=benchmark_limitation,
+        report_kind=report_kind,
         total_cases=total,
         unique_prompt_cases=len(unique_cases),
         initial_complete_coverage_rate=_safe_div(initial_complete, total),
@@ -438,10 +501,29 @@ def compute_recovery_metrics(
         recovery_invocation_rate=_safe_div(invocations, total),
         false_positive_family_rate=_safe_div(false_positive_cases, total),
         avg_schemas_exposed=_safe_div(schema_sum, total),
-        avg_extra_turns=_safe_div(extra_turn_sum, total),
+        avg_final_schema_tokens=_safe_div(schema_token_sum, total),
+        avg_final_tool_count=_safe_div(tool_count_sum, total),
+        avg_search_turns_used=_safe_div(search_turn_sum, total),
+        avg_expansion_turns_used=_safe_div(expansion_turn_sum, total),
+        avg_recovered_tool_invocation_turns=_safe_div(recovered_tool_turn_sum, total),
         no_tool_accuracy=_safe_div(no_tool_correct, no_tool_total),
         micro_recall_initial=_safe_div(tp_initial, tp_initial + fn_initial),
         micro_recall_final=_safe_div(tp_final, tp_final + fn_final),
+        unique_initial_complete_coverage_rate=_safe_div(
+            unique_initial_complete, len(unique_cases)
+        ),
+        unique_final_complete_coverage_rate=_safe_div(
+            unique_final_complete, len(unique_cases)
+        ),
+        unique_recovery_success_rate=_safe_div(
+            unique_recovery_successes, unique_incomplete
+        ),
+        unique_no_tool_accuracy=_safe_div(
+            unique_no_tool_correct, unique_no_tool_denom
+        ),
+        unique_false_positive_family_rate=_safe_div(
+            unique_false_positive_cases, len(unique_cases)
+        ),
         by_origin=by_origin,
         by_origin_unique=by_origin_unique,
     )

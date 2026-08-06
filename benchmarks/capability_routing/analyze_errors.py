@@ -124,6 +124,8 @@ def _analyze_router_failures(
     router,
     cases: list[dict],
     thresholds,
+    *,
+    calibrator=None,
 ) -> list[FailureRecord]:
     failures: list[FailureRecord] = []
     for case in cases:
@@ -137,6 +139,7 @@ def _analyze_router_failures(
             thresholds,
             runtime="cloud",
             rule_matches=getattr(router, "last_rule_matches", None),
+            calibrator=calibrator,
         )
         expected = set(case["expected_families"])
         if "none" in expected:
@@ -258,15 +261,13 @@ def main() -> int:
         DEFAULT_THRESHOLDS,
         max_selected_families=args.max_selected_families,
     )
+    calibrator = None
 
     if args.router == "hybrid-minilm-onnx":
         router = HybridOnnxRouter(model_key="all-minilm-l6-v2", name="hybrid-minilm-onnx")
         tuned = tune_thresholds(dev_cases, router.rank)
         thresholds = replace(thresholds, **{k: v for k, v in asdict(tuned).items() if k in asdict(DEFAULT_THRESHOLDS)})
         calibrator = fit_calibrator_from_cases(dev_cases, router.rank, thresholds)
-        from core.agent.routing import calibration as calibration_module
-
-        calibration_module.DEFAULT_CALIBRATOR = calibrator
     elif args.router == "minilm-onnx":
         router = OnnxBenchmarkRouter(model_key="all-minilm-l6-v2", name="minilm-onnx")
         tuned = tune_thresholds(dev_cases, router.rank)
@@ -275,7 +276,12 @@ def main() -> int:
         routers = {item.name: item for item in build_candidate_routers(include_onnx=True)}
         router = routers[args.router]
 
-    failures = _analyze_router_failures(router, cases, thresholds)
+    failures = _analyze_router_failures(
+        router,
+        cases,
+        thresholds,
+        calibrator=calibrator,
+    )
     report = {
         "router": args.router,
         "split": args.split,
