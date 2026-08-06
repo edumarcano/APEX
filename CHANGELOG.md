@@ -14,7 +14,8 @@
 - Added `/none` local command override and automatic local routing when Enforce is active.
 - Benchmarks on the development machine did not pass quality gates; enforcement must remain off until recall and coverage improve.
 - Added experimental `search_available_tools` recovery: a bounded, policy-safe catalog search that can expand offered tool schemas on the next agent turn without broadening authority.
-- Added recovery benchmark comparison (`benchmark_recovery.py`) for hybrid routing, relaxed second-family caps, and router-plus-search recovery.
+- Corrected recovery runtime semantics: additional expansion-token allowance, recovery-turn gating (including Sorex), already-offered catalog exclusion, bound enforcement, richer diagnostics, and multi-family local schema projections.
+- Renamed recovery benchmark to oracle catalog-recovery upper bound with runtime-aligned simulation, unique-prompt reporting, and optional real-provider evaluation harness.
 
 ---
 

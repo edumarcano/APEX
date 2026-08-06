@@ -92,6 +92,20 @@ Exemplar and combined prototypes tie on coverage; description-only underperforms
 
 `ask_apex.tool_routing_mode` remains **`shadow`**. The ONNX shadow-mode candidate is **all-minilm-l6-v2** for observation only.
 
+### Tool-search recovery evaluation
+
+The `benchmark_recovery.py` harness measures an **oracle upper-bound catalog-recovery** scenario:
+
+- It uses the original user prompt as the search query.
+- It uses expected family labels to decide whether recovery should help.
+- It does **not** model agent-initiated search decisions, query quality, or end-to-end task completion.
+
+Report both raw-case metrics (for reproducibility) and unique-prompt metrics (deduplicated logical prompts). Repeated `multi-todo-sched-*` variants count once in unique-prompt handwritten reporting. `search-auto-*` cases remain synthetic stress cases.
+
+Optional real-provider evaluation lives in `evaluate_recovery_e2e.py` and is not run in CI.
+
+Enforcement remains disabled because held-out routing quality gates are still unmet and agent-initiated recovery has not passed end-to-end safety and usefulness gates.
+
 ### Quality progression (test split, hybrid-minilm)
 
 | Stage | Micro recall | Complete coverage | No-tool accuracy |

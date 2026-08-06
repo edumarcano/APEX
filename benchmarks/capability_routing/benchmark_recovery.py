@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare routing-only, relaxed second-family, and tool-search recovery."""
+"""Oracle upper-bound catalog-recovery benchmark for capability routing."""
 
 from __future__ import annotations
 
@@ -16,6 +16,10 @@ from benchmarks.capability_routing.benchmark_quality import (
     estimate_schema_tokens_for_families,
     estimate_tools_for_families,
 )
+from benchmarks.capability_routing.recovery_simulation import (
+    estimate_final_schema_tokens,
+    simulate_runtime_catalog_recovery,
+)
 from benchmarks.capability_routing.reporting import (
     CASES_PATH,
     compute_recovery_metrics,
@@ -29,17 +33,18 @@ from benchmarks.capability_routing.tune_thresholds import (
     select_families_from_rankings,
     tune_thresholds,
 )
-from core.agent.capabilities import list_agent_capabilities
+from core.agent.catalog import AGENT_SPECS
 from core.agent.routing import calibration as calibration_module
-from core.agent.routing.families import CAPABILITY_FAMILIES
 from core.agent.routing.thresholds import DEFAULT_THRESHOLDS, RoutingThresholds
-from core.agent.routing.tool_search import (
-    build_searchable_catalog,
-    simulate_tool_search_recovery,
-)
 
 BENCH_ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = BENCH_ROOT / "results"
+
+ORACLE_BENCHMARK_KIND = "oracle_catalog_recovery"
+ORACLE_BENCHMARK_LIMITATION = (
+    "Uses expected labels and the original prompt as the search query. "
+    "This is an oracle upper bound on catalog recovery, not agent-initiated recovery."
+)
 
 RELAXED_SECOND_FAMILY_THRESHOLDS = replace(
     DEFAULT_THRESHOLDS,
@@ -48,19 +53,10 @@ RELAXED_SECOND_FAMILY_THRESHOLDS = replace(
     additional_family_margin=0.08,
 )
 
-
-def _searchable_families_for_runtime(runtime: str) -> set[str]:
-    if runtime == "local":
-        return {
-            family.key
-            for family in CAPABILITY_FAMILIES
-            if family.local_auto_enabled and family.key != "none"
-        }
-    return {
-        family.key
-        for family in CAPABILITY_FAMILIES
-        if family.cloud_auto_enabled and family.key != "none"
-    }
+_RUNTIME_AGENT = {
+    "cloud": "neofelis",
+    "local": "mus",
+}
 
 
 def _apply_recovery(
@@ -68,22 +64,14 @@ def _apply_recovery(
     initial_predictions: list[tuple[str, set[str], set[str], int, int]],
     *,
     runtime: str,
-    max_result_families: int,
+    thresholds: RoutingThresholds,
 ) -> tuple[
     list[tuple[str, set[str], set[str], int, int]],
     dict[str, bool],
     dict[str, int],
 ]:
-    searchable = build_searchable_catalog(
-        list_agent_capabilities(),
-        runtime=runtime,
-        agent_key="neofelis",
-    )
-    searchable_families = {
-        descriptor.routing_family
-        for descriptor in searchable
-        if descriptor.routing_family is not None
-    }
+    agent_key = _RUNTIME_AGENT[runtime]
+    max_tool_turns = AGENT_SPECS[agent_key].max_tool_turns
     cases_by_id = {case["id"]: case for case in cases}
     final_predictions: list[tuple[str, set[str], set[str], int, int]] = []
     search_invoked: dict[str, bool] = {}
@@ -92,23 +80,31 @@ def _apply_recovery(
     for case_id, expected_set, initial_selected, _tools, _tokens in initial_predictions:
         case = cases_by_id[case_id]
         expected = set(expected_set)
-        final_selected, invoked, turns, _false_positive = simulate_tool_search_recovery(
+        result = simulate_runtime_catalog_recovery(
             prompt=case["prompt"],
             initial_selected=initial_selected,
             expected=expected,
-            searchable_families=searchable_families,
-            max_result_families=max_result_families,
+            runtime=runtime,
+            agent_key=agent_key,
+            thresholds=thresholds,
+            max_tool_turns=max_tool_turns,
             history=case.get("history", []),
         )
-        search_invoked[case_id] = invoked
-        extra_turns[case_id] = turns
+        final_selected = result.final_selected
+        search_invoked[case_id] = result.search_attempted
+        extra_turns[case_id] = result.extra_turns
         final_predictions.append(
             (
                 case_id,
                 expected,
                 final_selected,
                 estimate_tools_for_families(final_selected),
-                estimate_schema_tokens_for_families(final_selected),
+                estimate_final_schema_tokens(
+                    final_selected,
+                    runtime=runtime,
+                    agent_key=agent_key,
+                    thresholds=thresholds,
+                ),
             )
         )
     return final_predictions, search_invoked, extra_turns
@@ -134,7 +130,7 @@ def _evaluate_configuration(
             cases,
             initial_predictions,
             runtime=runtime,
-            max_result_families=thresholds.tool_search_max_result_families,
+            thresholds=thresholds,
         )
     else:
         final_predictions = initial_predictions
@@ -149,12 +145,20 @@ def _evaluate_configuration(
         final_predictions=final_predictions,
         search_invoked=search_invoked,
         extra_turns=extra_turns,
+        benchmark_kind=ORACLE_BENCHMARK_KIND,
+        benchmark_limitation=ORACLE_BENCHMARK_LIMITATION,
     )
     return asdict(metrics)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Oracle upper-bound catalog-recovery benchmark. "
+            "Recovery uses the original prompt and expected labels; "
+            "it does not model agent-initiated search."
+        )
+    )
     parser.add_argument("--split", choices=["dev", "test"], default="test")
     parser.add_argument("--runtime", choices=["cloud", "local"], default="cloud")
     args = parser.parse_args()
@@ -172,7 +176,9 @@ def main() -> int:
     report = {
         "split": args.split,
         "runtime": args.runtime,
-        "searchable_families": sorted(_searchable_families_for_runtime(args.runtime)),
+        "benchmark_kind": ORACLE_BENCHMARK_KIND,
+        "benchmark_limitation": ORACLE_BENCHMARK_LIMITATION,
+        "runtime_agent": _RUNTIME_AGENT[args.runtime],
         "configurations": {},
     }
 
@@ -180,7 +186,7 @@ def main() -> int:
         ("hybrid-router", thresholds, False),
         ("relaxed-second-family", RELAXED_SECOND_FAMILY_THRESHOLDS, False),
         (
-            "hybrid-router-plus-tool-search",
+            "hybrid-router-plus-oracle-catalog-recovery",
             thresholds,
             True,
         ),
@@ -196,15 +202,18 @@ def main() -> int:
         )
         report["configurations"][name] = metrics
         print(
-            f"{name}: initial_coverage={metrics['initial_complete_coverage_rate']:.3f} "
+            f"{name}: cases={metrics['total_cases']} "
+            f"unique_prompts={metrics['unique_prompt_cases']} "
+            f"initial_coverage={metrics['initial_complete_coverage_rate']:.3f} "
             f"final_coverage={metrics['final_complete_coverage_rate']:.3f} "
             f"recovery_success={metrics['recovery_success_rate']:.3f} "
             f"extra_turns={metrics['avg_extra_turns']:.3f}"
         )
 
-    out = RESULTS_DIR / f"recovery-{args.runtime}-{args.split}.json"
+    out = RESULTS_DIR / f"oracle-catalog-recovery-{args.runtime}-{args.split}.json"
     write_json_report(out, report)
     print(f"Wrote {out}")
+    print(f"NOTE: {ORACLE_BENCHMARK_LIMITATION}")
     return 0
 
 

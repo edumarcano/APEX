@@ -38,11 +38,17 @@ Held-out failure analysis (machine-readable JSON + Markdown):
 uv run python benchmarks/capability_routing/analyze_errors.py --split test --router hybrid-minilm-onnx
 ```
 
-Tool-search recovery comparison (hybrid router vs relaxed second-family vs router+search):
+Tool-search oracle catalog-recovery comparison (hybrid router vs relaxed second-family vs router+oracle recovery):
 
 ```bash
 uv run python benchmarks/capability_routing/benchmark_recovery.py --split test --runtime cloud
 uv run python benchmarks/capability_routing/benchmark_recovery.py --split test --runtime local
+```
+
+The recovery benchmark is an **oracle upper bound**: it uses expected labels and the original prompt as the search query. It does not model agent-initiated recovery. For optional real-provider end-to-end evaluation:
+
+```bash
+uv run python benchmarks/capability_routing/evaluate_recovery_e2e.py --enable-recovery
 ```
 
 ## Runtime benchmark

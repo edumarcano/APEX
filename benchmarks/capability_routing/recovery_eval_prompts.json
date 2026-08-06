@@ -1,0 +1,17 @@
+[
+  {
+    "id": "weather-only",
+    "prompt": "What is the weather in Boston tomorrow?",
+    "expect_search": false
+  },
+  {
+    "id": "mail-recovery",
+    "prompt": "Find unread email from my manager.",
+    "expect_search": true
+  },
+  {
+    "id": "no-tool",
+    "prompt": "Explain recursion in one paragraph.",
+    "expect_search": false
+  }
+]

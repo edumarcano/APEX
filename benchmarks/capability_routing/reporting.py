@@ -43,6 +43,10 @@ class RouterMetrics:
 class RecoveryRouterMetrics:
     name: str
     split: str
+    benchmark_kind: str
+    benchmark_limitation: str
+    total_cases: int
+    unique_prompt_cases: int
     initial_complete_coverage_rate: float
     final_complete_coverage_rate: float
     recovery_success_rate: float
@@ -54,6 +58,7 @@ class RecoveryRouterMetrics:
     micro_recall_initial: float
     micro_recall_final: float
     by_origin: dict[str, dict[str, float]]
+    by_origin_unique: dict[str, dict[str, float]]
 
 
 def load_cases(split: str) -> list[dict]:
@@ -73,11 +78,30 @@ def _safe_div(numerator: float, denominator: float) -> float:
 def _case_origin(case_id: str) -> str:
     if case_id.startswith("pad-") or "-auto-" in case_id:
         return "synthetic"
+    if case_id.startswith("multi-todo-sched-"):
+        return "synthetic"
     if case_id.rsplit("-", 1)[-1].isdigit() and not case_id.startswith(
         ("sched-", "wx-", "f1-", "mail-", "search-", "market-", "brief-", "todo-", "multi-", "ambig-")
     ):
         return "synthetic"
     return "handwritten"
+
+
+def dedupe_cases_by_prompt(cases: list[dict]) -> list[dict]:
+    """Keep the first case for each logical prompt/history pair."""
+    seen: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
+    unique: list[dict] = []
+    for case in cases:
+        history_key = tuple(
+            (item.get("role", ""), item.get("content", ""))
+            for item in case.get("history", [])
+        )
+        key = (case["prompt"], history_key)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(case)
+    return unique
 
 
 def compute_metrics(
@@ -152,9 +176,11 @@ def compute_extended_metrics(
             origin_stats[origin]["exact"] += 1
         if expected <= selected:
             complete += 1
-        if fn > 0 or (expected and not selected):
+        case_false_negatives = expected - selected
+        case_false_positives = selected - expected
+        if case_false_negatives:
             false_negative_ids.append(case_id)
-        if fp > 0:
+        if case_false_positives:
             false_positive_ids.append(case_id)
         for family in expected:
             family_sets[family].append(family in selected)
@@ -287,8 +313,14 @@ def compute_recovery_metrics(
     final_predictions: list[tuple[str, set[str], set[str], int, int]],
     search_invoked: dict[str, bool],
     extra_turns: dict[str, int],
+    benchmark_kind: str = "oracle_catalog_recovery",
+    benchmark_limitation: str = (
+        "Uses expected labels and the original prompt as the search query. "
+        "This is an oracle upper bound, not agent-initiated recovery."
+    ),
 ) -> RecoveryRouterMetrics:
     total = len(cases)
+    unique_cases = dedupe_cases_by_prompt(cases)
     initial_complete = final_complete = recovery_successes = invocations = 0
     false_positive_cases = 0
     no_tool_total = no_tool_correct = 0
@@ -302,6 +334,15 @@ def compute_recovery_metrics(
             "total": 0,
         }
     )
+    unique_origin_stats: dict[str, dict[str, float]] = defaultdict(
+        lambda: {
+            "initial_complete": 0,
+            "final_complete": 0,
+            "recovery_success": 0,
+            "total": 0,
+        }
+    )
+    unique_case_ids = {case["id"] for case in unique_cases}
 
     for case in cases:
         case_id = case["id"]
@@ -324,16 +365,26 @@ def compute_recovery_metrics(
         if expected <= initial_selected:
             initial_complete += 1
             origin_stats[origin]["initial_complete"] += 1
+            if case_id in unique_case_ids:
+                unique_origin_stats[origin]["initial_complete"] += 1
         if expected <= final_selected:
             final_complete += 1
             origin_stats[origin]["final_complete"] += 1
+            if case_id in unique_case_ids:
+                unique_origin_stats[origin]["final_complete"] += 1
         if expected > initial_selected and expected <= final_selected:
             recovery_successes += 1
             origin_stats[origin]["recovery_success"] += 1
+            if case_id in unique_case_ids:
+                unique_origin_stats[origin]["recovery_success"] += 1
         if search_invoked.get(case_id, False):
             invocations += 1
         if final_selected - expected:
             false_positive_cases += 1
+
+        origin_stats[origin]["total"] += 1
+        if case_id in unique_case_ids:
+            unique_origin_stats[origin]["total"] += 1
 
         tp_initial += len(expected & initial_selected)
         fn_initial += len(expected - initial_selected)
@@ -357,11 +408,30 @@ def compute_recovery_metrics(
             ),
             "case_count": stats["total"],
         }
+    by_origin_unique: dict[str, dict[str, float]] = {}
+    for origin, stats in unique_origin_stats.items():
+        by_origin_unique[origin] = {
+            "initial_complete_coverage_rate": _safe_div(
+                stats["initial_complete"], stats["total"]
+            ),
+            "final_complete_coverage_rate": _safe_div(
+                stats["final_complete"], stats["total"]
+            ),
+            "recovery_success_rate": _safe_div(
+                stats["recovery_success"],
+                max(stats["total"] - stats["initial_complete"], 0),
+            ),
+            "case_count": stats["total"],
+        }
 
     incomplete = total - initial_complete
     return RecoveryRouterMetrics(
         name=config_name,
         split=split,
+        benchmark_kind=benchmark_kind,
+        benchmark_limitation=benchmark_limitation,
+        total_cases=total,
+        unique_prompt_cases=len(unique_cases),
         initial_complete_coverage_rate=_safe_div(initial_complete, total),
         final_complete_coverage_rate=_safe_div(final_complete, total),
         recovery_success_rate=_safe_div(recovery_successes, incomplete),
@@ -373,6 +443,7 @@ def compute_recovery_metrics(
         micro_recall_initial=_safe_div(tp_initial, tp_initial + fn_initial),
         micro_recall_final=_safe_div(tp_final, tp_final + fn_final),
         by_origin=by_origin,
+        by_origin_unique=by_origin_unique,
     )
 
 
