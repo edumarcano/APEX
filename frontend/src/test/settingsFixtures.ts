@@ -35,6 +35,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     neofelis_google_maps_enabled: true,
     delphinus_x_search_enabled: true,
     orcinus_x_search_enabled: true,
+    tool_routing_mode: 'shadow',
   },
   briefing: {
     default_mode: 'panthera',
@@ -65,7 +66,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 10,
+    schema_version: 11,
     settings,
     local_file_present: false,
     local_override_active: false,

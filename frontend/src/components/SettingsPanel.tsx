@@ -25,6 +25,7 @@ import { useLlamaCppStatus } from '../hooks/useLlamaCppStatus'
 import { useMcpStatus } from '../hooks/useMcpStatus'
 import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
+import { useToolRoutingStatus } from '../hooks/useToolRoutingStatus'
 import {
   buildSettingsTimingRuntime,
   resolveEffectiveTiming,
@@ -182,6 +183,7 @@ export default function SettingsPanel({
   } = useSettingsEditor({ open, onApplied })
   const mcpRuntime = useMcpStatus(open)
   const llamaCppRuntime = useLlamaCppStatus(open)
+  const toolRoutingStatus = useToolRoutingStatus(open)
 
   const microsoftTodoRuntime = useMicrosoftTodoStatus(open)
   useFocusTrap(open, dialogRef, restoreFocusRef)
@@ -449,6 +451,39 @@ export default function SettingsPanel({
                       }))
                     }
                   />
+                  <div>
+                    <SettingsSelect
+                      id="settings-tool-routing-mode"
+                      label="Tool routing"
+                      value={draft.ask_apex.tool_routing_mode}
+                      timing={askApexTiming}
+                      onChange={(value) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          ask_apex: {
+                            ...prev.ask_apex,
+                            tool_routing_mode: value as typeof prev.ask_apex.tool_routing_mode,
+                          },
+                        }))
+                      }
+                      options={[
+                        { value: 'disabled', label: 'Off' },
+                        { value: 'shadow', label: 'Observe' },
+                        { value: 'enabled', label: 'Enforce' },
+                      ]}
+                    />
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
+                      Routing uses a local CPU encoder. Observe predicts without changing offered
+                      tools. Enforce narrows APEX capabilities. The model is installed explicitly;
+                      missing or failed routing falls back safely.
+                    </p>
+                    {toolRoutingStatus ? (
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        Router status: {toolRoutingStatus.state}
+                        {toolRoutingStatus.installed ? ' · model ready' : ' · model not installed'}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </section>
 

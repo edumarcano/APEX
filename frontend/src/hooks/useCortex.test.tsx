@@ -88,6 +88,63 @@ describe('useCortex', () => {
     expect(response.tool_trace?.[0]).toMatchObject({ name: 'search', origin: 'apex' })
   })
 
+  it('parses routing diagnostics from query responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          answer: 'Routed.',
+          routing: {
+            mode: 'shadow',
+            decision: 'shadow',
+            enforced: false,
+            selected_families: ['weather'],
+            considered_tool_count: 12,
+            offered_tool_count: 12,
+            considered_schema_tokens: 900,
+            offered_schema_tokens: 900,
+            top_score: 0.71,
+            score_margin: 0.22,
+            latency_ms: 4.2,
+            model_key: 'all-minilm-l6-v2',
+            fallback_reason: null,
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+
+    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    await act(async () => {
+      await result.current.queryAgent('Forecast', 'panthera')
+    })
+
+    expect(result.current.cortexHistory[1].routing).toMatchObject({
+      mode: 'shadow',
+      enforced: false,
+      selected_families: ['weather'],
+      offered_tool_count: 12,
+    })
+  })
+
+  it('ignores malformed routing diagnostics safely', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          answer: 'No routing.',
+          routing: { mode: 'shadow', decision: 'shadow' },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+
+    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    await act(async () => {
+      await result.current.queryAgent('Hello', 'panthera')
+    })
+
+    expect(result.current.cortexHistory[1].routing).toBeUndefined()
+  })
+
   it('adds the user turn immediately and keeps it when the request fails', async () => {
     let rejectRequest: ((reason?: unknown) => void) | null = null
     vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {

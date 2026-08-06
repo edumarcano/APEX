@@ -1,8 +1,8 @@
 import { BrainCircuit, ExternalLink, Loader2, Plus } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 
 import { type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
-import type { AgentStatus, AgentKey, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalSettingsAgent, LocalToolScope, ToolOutputItem } from '../types/telemetry'
+import type { AgentStatus, AgentKey, CapabilityRoutingDiagnostics, CloudEffort, LocalCommandStatus, LocalContextUsage, LocalSettingsAgent, LocalToolScope, ToolOutputItem } from '../types/telemetry'
 import type { ApodemusContextWindow } from '../types/settings'
 import { isLocalAgentKey } from '../lib/agents'
 
@@ -148,7 +148,52 @@ function Conversation({ history, latestTrace, error, isQuerying, agentsStatus, a
 
 function LocalToolScopes({ commands, armedToolScope, contextUsage, onChange }: { commands: LocalCommandStatus[]; armedToolScope: LocalToolScope | null; contextUsage: LocalContextUsage | null; onChange: (scope: LocalToolScope | null) => void }): ReactElement {
   const promptTokens = contextUsage ? contextUsage.peak_prompt_tokens ?? contextUsage.estimated_prompt_tokens : null
-  return <section className="space-y-2" aria-label="Local tool scopes"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local tool scopes</p>{armedToolScope ? <p className="rounded-md border border-orange-400/20 bg-orange-950/20 px-2 py-1 font-mono text-[10px] text-orange-200">/{armedToolScope} armed for next request</p> : <p className="font-mono text-[10px] text-zinc-500">No scope armed for the next request.</p>}<div className="space-y-1">{commands.length === 0 ? <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-zinc-500">Checking command availability…</p> : commands.map((command) => { const armed = armedToolScope === command.key; return <button key={command.key} type="button" disabled={!command.available} aria-pressed={armed} title={command.unavailable_reason ?? undefined} onClick={() => onChange(armed ? null : command.key)} className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${armed ? 'border-orange-400/45 bg-orange-950/25' : 'border-white/10 bg-white/[0.02] hover:border-white/25'} disabled:cursor-not-allowed disabled:opacity-45`}><span className="w-[4.75rem] shrink-0 font-mono text-[10px] text-[#7EB3FF]">{command.command}</span><span className="min-w-0 flex-1"><span className="block text-[11px] text-zinc-300">{command.description}</span>{!command.available && command.unavailable_reason ? <span className="block text-[10px] text-red-200">{command.unavailable_reason}</span> : null}</span><span className="shrink-0 text-right font-mono text-[9px] text-zinc-500">{command.tool_count} tools<br />~{command.estimated_schema_tokens}</span></button> })}</div>{contextUsage && promptTokens !== null ? <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-400"><div className="flex justify-between"><span>Local context</span><span className={promptTokens / contextUsage.context_window >= 0.8 ? 'text-amber-400' : ''}>{formatNumber(promptTokens)}/{formatNumber(contextUsage.context_window)}</span></div><p className="mt-1 text-zinc-600">{contextUsage.history_messages_dropped} messages trimmed</p></div> : null}</section>
+  return <section className="space-y-2" aria-label="Local tool scopes"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Local tool scopes</p><p className="font-mono text-[10px] leading-relaxed text-zinc-500">No slash command uses automatic routing when Enforce is active. Slash commands force a bundle; /none forces a tool-free turn.</p>{armedToolScope ? <p className="rounded-md border border-orange-400/20 bg-orange-950/20 px-2 py-1 font-mono text-[10px] text-orange-200">/{armedToolScope} armed for next request</p> : <p className="font-mono text-[10px] text-zinc-500">No scope armed for the next request.</p>}<div className="space-y-1">{commands.length === 0 ? <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-zinc-500">Checking command availability…</p> : commands.map((command) => { const armed = armedToolScope === command.key; return <button key={command.key} type="button" disabled={!command.available} aria-pressed={armed} title={command.unavailable_reason ?? undefined} onClick={() => onChange(armed ? null : command.key)} className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${armed ? 'border-orange-400/45 bg-orange-950/25' : 'border-white/10 bg-white/[0.02] hover:border-white/25'} disabled:cursor-not-allowed disabled:opacity-45`}><span className="w-[4.75rem] shrink-0 font-mono text-[10px] text-[#7EB3FF]">{command.command}</span><span className="min-w-0 flex-1"><span className="block text-[11px] text-zinc-300">{command.description}</span>{!command.available && command.unavailable_reason ? <span className="block text-[10px] text-red-200">{command.unavailable_reason}</span> : null}</span><span className="shrink-0 text-right font-mono text-[9px] text-zinc-500">{command.tool_count} tools<br />~{command.estimated_schema_tokens}</span></button> })}</div>{contextUsage && promptTokens !== null ? <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-400"><div className="flex justify-between"><span>Local context</span><span className={promptTokens / contextUsage.context_window >= 0.8 ? 'text-amber-400' : ''}>{formatNumber(promptTokens)}/{formatNumber(contextUsage.context_window)}</span></div><p className="mt-1 text-zinc-600">{contextUsage.history_messages_dropped} messages trimmed</p></div> : null}</section>
+}
+
+function formatRoutingFamilies(families: string[]): string {
+  if (families.length === 0) {
+    return 'none'
+  }
+  return families.join(', ')
+}
+
+function formatRoutingSummary(routing: CapabilityRoutingDiagnostics): string {
+  const families = formatRoutingFamilies(routing.selected_families)
+  if (routing.mode === 'shadow') {
+    return `Observe · predicted ${families} · not enforced`
+  }
+  if (routing.decision.startsWith('fallback')) {
+    return `Fallback · ${routing.fallback_reason ?? routing.decision}`
+  }
+  if (routing.enforced) {
+    return `Semantic · ${families} · ${routing.offered_tool_count}/${routing.considered_tool_count} tools · ${Math.round(routing.latency_ms)} ms`
+  }
+  if (routing.mode === 'disabled') {
+    return 'Off'
+  }
+  return `${routing.decision} · ${families}`
+}
+
+function ToolRoutingInspector({ routing }: { routing: CapabilityRoutingDiagnostics | null }): ReactElement {
+  return (
+    <section className="space-y-2" aria-label="Tool routing">
+      <p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Tool routing</p>
+      <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[11px] text-zinc-300">
+        {routing ? formatRoutingSummary(routing) : 'No routing diagnostics yet.'}
+      </div>
+    </section>
+  )
+}
+
+function latestRoutingDiagnostics(history: AgentMessage[]): CapabilityRoutingDiagnostics | null {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index]
+    if (message.role === 'agent' && message.routing) {
+      return message.routing
+    }
+  }
+  return null
 }
 
 function formatCountdown(seconds: number | null): string {
@@ -214,6 +259,10 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
 export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const local = isLocalAgent(props.activeAgent)
   const activeStatus = props.agentsStatus.find((agent) => agent.key === props.activeAgent)
+  const routingDiagnostics = useMemo(
+    () => latestRoutingDiagnostics(props.history),
+    [props.history],
+  )
   const apodemusContextLocked =
     props.lifecycleBusy ||
     props.lifecycleActionPending ||
@@ -225,6 +274,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
         {!local ? <CloudControls {...props} /> : null}
         {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{props.activeAgent === 'apodemus' ? <ApodemusContextControl contextWindow={props.apodemusContextWindow} disabled={apodemusContextLocked} onChange={props.onApodemusContextChange} /> : null}<LocalToolScopes commands={props.commands} armedToolScope={props.armedToolScope} contextUsage={props.contextUsage} onChange={props.onArmedToolScopeChange} /></> : null}
+        <ToolRoutingInspector routing={routingDiagnostics} />
         <ContextControl {...props} />
       </aside>
     </div>

@@ -81,6 +81,8 @@ export type AgentKey =
   | LocalSettingsAgent
   | 'acinonyx'
 
+export type ToolRoutingMode = 'disabled' | 'shadow' | 'enabled'
+
 export type LocalToolScope =
   | 'schedule'
   | 'weather'
@@ -90,6 +92,7 @@ export type LocalToolScope =
   | 'market'
   | 'briefings'
   | 'todo'
+  | 'none'
 
 export interface LocalCommandStatus {
   key: LocalToolScope
@@ -107,6 +110,22 @@ export interface LocalContextUsage {
   peak_prompt_tokens: number | null
   context_window: number
   history_messages_dropped: number
+}
+
+export interface CapabilityRoutingDiagnostics {
+  mode: ToolRoutingMode
+  decision: string
+  enforced: boolean
+  selected_families: string[]
+  considered_tool_count: number
+  offered_tool_count: number
+  considered_schema_tokens: number
+  offered_schema_tokens: number
+  top_score: number | null
+  score_margin: number | null
+  latency_ms: number
+  model_key: string | null
+  fallback_reason: string | null
 }
 
 export type AgentAvailabilityStatus =

@@ -50,6 +50,8 @@ export interface MarketSettings {
   symbols: string[]
 }
 
+export type ToolRoutingMode = 'disabled' | 'shadow' | 'enabled'
+
 export interface AskApexSettings {
   enabled: boolean
   runtime: AgentRuntime
@@ -61,6 +63,7 @@ export interface AskApexSettings {
   neofelis_google_maps_enabled: boolean
   delphinus_x_search_enabled: boolean
   orcinus_x_search_enabled: boolean
+  tool_routing_mode: ToolRoutingMode
 }
 
 export interface BriefingSettings {
@@ -133,6 +136,7 @@ export interface AskApexPatch {
   neofelis_google_maps_enabled?: boolean
   delphinus_x_search_enabled?: boolean
   orcinus_x_search_enabled?: boolean
+  tool_routing_mode?: ToolRoutingMode
 }
 
 export interface BriefingPatch {

@@ -5,10 +5,12 @@ import type {
   AgentStatus,
   AgentKey,
   CloudEffort,
+  CapabilityRoutingDiagnostics,
   LocalLoadedModelStatus,
   LocalSettingsAgent,
   LocalContextUsage,
   LocalToolScope,
+  ToolRoutingMode,
   AgentAvailabilityStatus,
   AgentPricingMetadata,
   AgentStatusSource,
@@ -44,6 +46,7 @@ export interface AgentMessage extends TelemetryAgentMessage {
   tool_results?: ToolResult[]
   tool_trace?: ToolTraceItem[]
   metadata?: AgentQueryMetadata
+  routing?: CapabilityRoutingDiagnostics
 }
 
 export interface ToolTraceItem {
@@ -101,6 +104,70 @@ interface AgentQueryResponseBody {
   error?: string | null
   local_context_usage?: LocalContextUsage | null
   metadata?: AgentQueryMetadata
+  routing?: CapabilityRoutingDiagnostics
+}
+
+const VALID_TOOL_ROUTING_MODES: readonly ToolRoutingMode[] = ['disabled', 'shadow', 'enabled']
+
+function isToolRoutingMode(value: unknown): value is ToolRoutingMode {
+  return typeof value === 'string' && (VALID_TOOL_ROUTING_MODES as readonly string[]).includes(value)
+}
+
+function parseCapabilityRoutingDiagnostics(value: unknown): CapabilityRoutingDiagnostics | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  if (
+    !isToolRoutingMode(record.mode) ||
+    typeof record.decision !== 'string' ||
+    typeof record.enforced !== 'boolean' ||
+    !Array.isArray(record.selected_families) ||
+    !record.selected_families.every((family) => typeof family === 'string') ||
+    typeof record.considered_tool_count !== 'number' ||
+    !Number.isFinite(record.considered_tool_count) ||
+    typeof record.offered_tool_count !== 'number' ||
+    !Number.isFinite(record.offered_tool_count) ||
+    typeof record.considered_schema_tokens !== 'number' ||
+    !Number.isFinite(record.considered_schema_tokens) ||
+    typeof record.offered_schema_tokens !== 'number' ||
+    !Number.isFinite(record.offered_schema_tokens) ||
+    typeof record.latency_ms !== 'number' ||
+    !Number.isFinite(record.latency_ms)
+  ) {
+    return undefined
+  }
+  const topScore = parseNullableFiniteNumber(record.top_score)
+  const scoreMargin = parseNullableFiniteNumber(record.score_margin)
+  if (record.top_score !== null && record.top_score !== undefined && topScore === null) {
+    return undefined
+  }
+  if (record.score_margin !== null && record.score_margin !== undefined && scoreMargin === null) {
+    return undefined
+  }
+  const modelKey = parseNullableString(record.model_key)
+  if (record.model_key !== null && record.model_key !== undefined && modelKey === null) {
+    return undefined
+  }
+  const fallbackReason = parseNullableString(record.fallback_reason)
+  if (record.fallback_reason !== null && record.fallback_reason !== undefined && fallbackReason === null) {
+    return undefined
+  }
+  return {
+    mode: record.mode,
+    decision: record.decision,
+    enforced: record.enforced,
+    selected_families: record.selected_families,
+    considered_tool_count: record.considered_tool_count,
+    offered_tool_count: record.offered_tool_count,
+    considered_schema_tokens: record.considered_schema_tokens,
+    offered_schema_tokens: record.offered_schema_tokens,
+    top_score: topScore,
+    score_margin: scoreMargin,
+    latency_ms: record.latency_ms,
+    model_key: modelKey,
+    fallback_reason: fallbackReason,
+  }
 }
 
 const VALID_AGENT_KEYS: readonly AgentKey[] = [
@@ -574,6 +641,7 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
     error,
     local_context_usage,
     metadata: parseQueryMetadata(record),
+    routing: parseCapabilityRoutingDiagnostics(record.routing),
   }
 }
 
@@ -868,6 +936,7 @@ export function useCortex(
             ? { tool_trace: body.tool_trace }
             : {}),
           ...(body.metadata ? { metadata: body.metadata } : {}),
+          ...(body.routing ? { routing: body.routing } : {}),
         }
 
         if (useAcinonyxStore) {

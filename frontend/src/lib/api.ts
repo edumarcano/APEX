@@ -4,6 +4,7 @@ export const API_ENDPOINTS = {
   cortexLocalModelLoad: `${API_BASE}/api/v1/cortex/local-model/load`,
   cortexLocalModelUnload: `${API_BASE}/api/v1/cortex/local-model/unload`,
   cortexToolScopes: `${API_BASE}/api/v1/cortex/tool-scopes`,
+  cortexToolRoutingStatus: `${API_BASE}/api/v1/cortex/tool-routing/status`,
   agents: `${API_BASE}/api/v1/agents`,
   agentVerify: (agent: string) => `${API_BASE}/api/v1/agents/${encodeURIComponent(agent)}/verify`,
   cortexQuery: `${API_BASE}/api/v1/cortex/query`,

@@ -24,6 +24,7 @@ import type {
   SettingsResponse,
   SettingsTimingFieldGroup,
   SettingsTimingRuntime,
+  ToolRoutingMode,
   LlamaCppServerStatusResponse,
   VoiceGender,
   VoiceMode,
@@ -123,6 +124,8 @@ export function filterAskApexSettingsForDevMode(
   )
 }
 
+const VALID_TOOL_ROUTING_MODES: readonly ToolRoutingMode[] = ['disabled', 'shadow', 'enabled']
+
 const VALID_ASSISTANT_MODES: readonly AgentRuntime[] = ['cloud', 'local']
 
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
@@ -168,6 +171,10 @@ function isApodemusContextWindow(value: unknown): value is ApodemusContextWindow
     typeof value === 'number' &&
     (VALID_APODEMUS_CONTEXT_WINDOWS as readonly number[]).includes(value)
   )
+}
+
+function isToolRoutingMode(value: unknown): value is ToolRoutingMode {
+  return typeof value === 'string' && (VALID_TOOL_ROUTING_MODES as readonly string[]).includes(value)
 }
 
 function isAgentRuntime(value: unknown): value is AgentRuntime {
@@ -393,6 +400,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.ask_apex.orcinus_x_search_enabled !== 'boolean') {
     return null
   }
+  if (!isToolRoutingMode(value.ask_apex.tool_routing_mode)) {
+    return null
+  }
   if (!isBriefingMode(value.briefing.default_mode)) {
     return null
   }
@@ -422,6 +432,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
       delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
       orcinus_x_search_enabled: value.ask_apex.orcinus_x_search_enabled,
+      tool_routing_mode: value.ask_apex.tool_routing_mode,
     },
     briefing: {
       default_mode: value.briefing.default_mode,

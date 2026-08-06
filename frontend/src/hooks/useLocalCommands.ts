@@ -12,6 +12,7 @@ const LOCAL_TOOL_SCOPES: readonly LocalToolScope[] = [
   'market',
   'briefings',
   'todo',
+  'none',
 ]
 
 function isLocalToolScope(value: unknown): value is LocalToolScope {

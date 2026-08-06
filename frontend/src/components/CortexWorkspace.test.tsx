@@ -109,9 +109,36 @@ describe('CortexWorkspace', () => {
     expect(screen.getByLabelText('Local tool scopes')).toBeInTheDocument()
     expect(screen.getByText('/weather armed for next request')).toBeInTheDocument()
     expect(screen.getByText('45/4,096')).toBeInTheDocument()
+    expect(screen.getByText(/No slash command uses automatic routing/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /\/weather/ }))
     expect(onArmedToolScopeChange).toHaveBeenCalledWith(null)
     expect(screen.queryByText('Commands')).not.toBeInTheDocument()
+  })
+
+  it('shows the latest routing diagnostics in the inspector', () => {
+    render(<CortexWorkspace {...workspaceProps({
+      history: [{
+        role: 'agent',
+        content: 'Forecast ready.',
+        routing: {
+          mode: 'shadow',
+          decision: 'shadow',
+          enforced: false,
+          selected_families: ['schedule', 'weather'],
+          considered_tool_count: 18,
+          offered_tool_count: 18,
+          considered_schema_tokens: 1200,
+          offered_schema_tokens: 1200,
+          top_score: 0.66,
+          score_margin: 0.12,
+          latency_ms: 8.4,
+          model_key: 'all-minilm-l6-v2',
+          fallback_reason: null,
+        },
+      }],
+    })} />)
+
+    expect(screen.getByLabelText('Tool routing')).toHaveTextContent('Observe · predicted schedule, weather · not enforced')
   })
 
   it('shows local lifecycle controls only for local profiles and disables them during activity', () => {
