@@ -322,7 +322,7 @@ This milestone also establishes delegated read-only Microsoft To Do access and n
 
 ## v1.19.0 - Apex Agents & Cortex Workspace
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Replace the former profile family with cloud and local Apex Agents, add provider-neutral observability and tool policies, and establish the Cortex workspace as APEX's dedicated Agent configuration surface.

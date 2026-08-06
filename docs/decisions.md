@@ -188,11 +188,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Why.** Consumer hardware should remain responsive, and a hidden queue behind a slow generation gives poor feedback. Agent-specific CPU/RAM gates prevent unsafe cold loads; a model already resident skips the gate because reselection adds no new model footprint.
 
-**Trade-off.** Users may need to retry a rejected request. Idle auto-unload returns memory without depending on manual cleanup.
+**Trade-off.** I may need to retry a rejected request. Idle auto-unload returns memory without depending on manual cleanup.
 
 ### Talk to llama.cpp over HTTP with optional process supervision
 
-**Decision.** APEX talks to llama.cpp over HTTP rather than embedding a Python binding. Operators may run the router externally, or opt into APEX-managed start/stop of a user-installed `llama-server` executable.
+**Decision.** APEX talks to llama.cpp over HTTP rather than embedding a Python binding. I can run the router myself, or let APEX start and stop a locally installed `llama-server` executable.
 
 **Why.** Process isolation, independent upgrades, and existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD. Optional managed mode removes a manual startup step without bundling binaries or weights.
 
@@ -202,7 +202,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** Apodemus loads through aliases such as `apodemus-8k` instead of exposing raw GGUF paths or an arbitrary context slider.
 
-**Why.** Discrete, tested contexts keep admission, residency, and documentation predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
+**Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
 
 **Trade-off.** Adding a new context requires a router preset and settings migration work. The model maximum of 131072 tokens stays metadata only.
 
@@ -210,7 +210,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** Server presets and every Apodemus request disable reasoning (`reasoning_effort: "none"`), and hidden reasoning fields or think-style tags are discarded.
 
-**Why.** The Agent is positioned for efficient tool-driven local work, not extended hidden deliberation.
+**Why.** I want Apodemus for efficient tool-driven local work, not extended hidden deliberation.
 
 **Trade-off.** Some model behaviors that rely on internal reasoning traces are unavailable.
 
@@ -218,9 +218,9 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** The first Apodemus release supports interactive local Agents only; briefing modes remain Panthera, Mus, Sorex, and Structured Digest.
 
-**Why.** Briefing fallback and synthesis contracts should stay stable until llama.cpp behavior is proven for that path.
+**Why.** I want briefing fallback and synthesis contracts to stay stable until llama.cpp behavior is proven for that path.
 
-**Trade-off.** Operators who want Gemma-backed briefings must wait for a later integration.
+**Trade-off.** Gemma-backed briefings wait for a later integration.
 
 ## Security
 
