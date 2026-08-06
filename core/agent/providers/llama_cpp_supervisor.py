@@ -61,18 +61,18 @@ class LlamaCppManagedServerError(RuntimeError):
 
 def parse_loopback_bind(host_url: str) -> _BindAddress:
     """Derive ``--host`` / ``--port`` bind values from a validated loopback URL."""
-    parsed = urlparse(host_url.strip().rstrip("/"))
-    hostname = (parsed.hostname or "").lower()
+    try:
+        parsed = urlparse(host_url.strip().rstrip("/"))
+        hostname = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as exc:
+        raise LlamaCppManagedServerError(
+            "Managed llama.cpp host must be a valid loopback HTTP URL."
+        ) from exc
     if hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise LlamaCppManagedServerError(
             "Managed llama.cpp host must target a loopback address."
         )
-    try:
-        port = parsed.port
-    except ValueError as exc:
-        raise LlamaCppManagedServerError(
-            "Managed llama.cpp host must include a valid port."
-        ) from exc
     if port is None or port < 1 or port > 65535:
         raise LlamaCppManagedServerError(
             "Managed llama.cpp host must include a valid port."
@@ -290,6 +290,11 @@ class LlamaCppServerSupervisor:
             owns_running = self._owned and self._process_alive_locked()
 
             if owns_running and identity_changed:
+                if is_local_execution_active() or get_loading_local_model() is not None:
+                    raise LlamaCppManagedServerError(
+                        "Cannot apply llama.cpp server settings while Apodemus is "
+                        "active or loading."
+                    )
                 self._stop_owned_process_locked(force=False)
 
             if not current.enabled:

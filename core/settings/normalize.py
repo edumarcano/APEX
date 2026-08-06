@@ -240,21 +240,27 @@ def _normalize_llama_cpp_host(
         _record_error(issues, "llama_cpp.host must be a non-empty loopback HTTP URL")
         return None
 
-    parsed = urlparse(candidate)
-    if parsed.scheme != "http":
-        _record_error(issues, "llama_cpp.host must use HTTP")
-        return None
-    if parsed.username or parsed.password:
-        _record_error(issues, "llama_cpp.host must not include credentials")
-        return None
-    if parsed.query or parsed.fragment:
-        _record_error(issues, "llama_cpp.host must not include query strings or fragments")
-        return None
-    if parsed.path not in {"", "/"}:
-        _record_error(issues, "llama_cpp.host must not include a path")
+    try:
+        parsed = urlparse(candidate)
+        if parsed.scheme != "http":
+            _record_error(issues, "llama_cpp.host must use HTTP")
+            return None
+        if parsed.username or parsed.password:
+            _record_error(issues, "llama_cpp.host must not include credentials")
+            return None
+        if parsed.query or parsed.fragment:
+            _record_error(issues, "llama_cpp.host must not include query strings or fragments")
+            return None
+        if parsed.path not in {"", "/"}:
+            _record_error(issues, "llama_cpp.host must not include a path")
+            return None
+
+        hostname = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError:
+        _record_error(issues, "llama_cpp.host must be a valid loopback HTTP URL")
         return None
 
-    hostname = (parsed.hostname or "").lower()
     if hostname not in _LOOPBACK_HOSTNAMES:
         _record_error(
             issues,
@@ -262,11 +268,6 @@ def _normalize_llama_cpp_host(
         )
         return None
 
-    try:
-        port = parsed.port
-    except ValueError:
-        _record_error(issues, "llama_cpp.host must include a valid port")
-        return None
     if port is None or port < 1 or port > 65535:
         _record_error(issues, "llama_cpp.host must include a valid port")
         return None

@@ -153,9 +153,23 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         for patched in self._patches:
             patched.start()
             self.addCleanup(patched.stop)
-        # Ensure execution lock is released between tests.
+        # Ensure execution and transition locks are released between tests.
+        while coord.is_local_runtime_transition_active():
+            coord.end_local_runtime_transition()
         while coord.is_local_execution_active():
             coord.end_local_execution()
+
+    def test_transition_lock_blocks_local_execution(self) -> None:
+        self.assertTrue(coord.try_begin_local_runtime_transition())
+        self.assertFalse(coord.try_begin_local_execution())
+        coord.end_local_runtime_transition()
+        self.assertTrue(coord.try_begin_local_execution())
+        coord.end_local_execution()
+
+    def test_transition_lock_rejects_when_execution_active(self) -> None:
+        self.assertTrue(coord.try_begin_local_execution())
+        self.assertFalse(coord.try_begin_local_runtime_transition())
+        coord.end_local_execution()
 
     def test_lock_is_non_blocking(self) -> None:
         self.assertTrue(coord.try_begin_local_execution())

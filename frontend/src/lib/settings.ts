@@ -102,6 +102,7 @@ export function resolveAppliedAgentSelection(
 
 const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
   'effort',
+  'apodemus_context_window',
   'neofelis_google_search_enabled',
   'neofelis_google_maps_enabled',
   'delphinus_x_search_enabled',

@@ -38,6 +38,10 @@ class LlamaCppSupervisorHelpersTests(unittest.TestCase):
         with self.assertRaises(supervisor_mod.LlamaCppManagedServerError):
             parse_loopback_bind("http://localhost:notaport")
 
+    def test_bind_rejects_unmatched_ipv6_bracket(self) -> None:
+        with self.assertRaises(supervisor_mod.LlamaCppManagedServerError):
+            parse_loopback_bind("http://[::1:8080")
+
     def test_args_include_expected_sequence_with_spaces(self) -> None:
         bind = parse_loopback_bind("http://127.0.0.1:9090")
         args = build_llama_server_args(
@@ -481,6 +485,38 @@ class LlamaCppSettingsTransitionTests(unittest.TestCase):
             ):
                 coord.end_local_execution()
         fake_proc.terminate.assert_called_once()
+
+    def test_settings_patch_returns_409_when_execution_active(self) -> None:
+        from core.agent.local_runtime import coordinator as coord
+
+        self._enable_managed()
+        store_patches = [
+            mock.patch(
+                "core.api.routers.system.get_settings_store",
+                return_value=self.store,
+            ),
+            mock.patch("core.speaker.get_settings_store", return_value=self.store),
+        ]
+        for patcher in store_patches:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        from core.api import app
+
+        client = TestClient(app)
+        self.assertTrue(coord.try_begin_local_execution())
+        try:
+            with mock.patch(
+                "core.api.routers.system.get_llama_cpp_server_supervisor",
+                return_value=self.supervisor,
+            ):
+                response = client.patch(
+                    "/api/v1/settings",
+                    json={"llama_cpp": {"host": "http://127.0.0.1:9191"}},
+                )
+        finally:
+            coord.end_local_execution()
+        self.assertEqual(response.status_code, 409)
 
     def test_settings_patch_conflict_does_not_persist(self) -> None:
         self._enable_managed()

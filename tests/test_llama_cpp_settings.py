@@ -114,7 +114,13 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                     llama_cpp=LlamaCppPatch(host="http://localhost:notaport")
                 )
             )
-        self.assertIn("valid port", str(raised.exception))
+        self.assertIn("valid", str(raised.exception))
+
+    def test_empty_llama_cpp_patch_preview_is_noop(self) -> None:
+        store = self._store()
+        before = store.get_snapshot()
+        preview = store.preview_patch(SettingsPatch(llama_cpp=LlamaCppPatch()))
+        self.assertEqual(preview, before)
 
     def test_schema_eight_local_file_loads_with_defaults(self) -> None:
         _write_json(
@@ -161,7 +167,19 @@ class LlamaCppHostNormalizationTests(unittest.TestCase):
             issues=issues,
         )
         self.assertNotIn("host", normalized.get("llama_cpp", {}))
-        self.assertTrue(any("valid port" in error for error in issues.errors))
+        self.assertTrue(any("valid" in error for error in issues.errors))
+
+    def test_rejects_unmatched_ipv6_bracket(self) -> None:
+        from core.settings.normalize import NormalizationIssues
+
+        issues = NormalizationIssues()
+        normalized = normalize_layer(
+            {"llama_cpp": {"host": "http://[::1:8080"}},
+            layer_name="config.local.json",
+            issues=issues,
+        )
+        self.assertNotIn("host", normalized.get("llama_cpp", {}))
+        self.assertTrue(any("valid" in error for error in issues.errors))
 
 
 class LlamaCppRuntimeIntegrationTests(unittest.TestCase):

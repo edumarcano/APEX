@@ -44,18 +44,20 @@ describe('assistant boot hydration', () => {
     })
   })
 
-  it('keeps effort and native-tool preferences while filtering DEV_MODE profile fields', () => {
+  it('keeps effort, context window, and native-tool preferences while filtering DEV_MODE profile fields', () => {
     expect(filterAskApexSettingsForDevMode({
       runtime: 'cloud',
       cloud_agent: 'neofelis',
       local_agent: 'mus',
       effort: 'extended',
+      apodemus_context_window: 32768,
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
       orcinus_x_search_enabled: true,
     })).toEqual({
       effort: 'extended',
+      apodemus_context_window: 32768,
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,

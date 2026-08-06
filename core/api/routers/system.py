@@ -22,6 +22,10 @@ from core.settings import (
     SettingsResponse,
     get_settings_store,
 )
+from core.agent.local_runtime.coordinator import (
+    end_local_runtime_transition,
+    try_begin_local_runtime_transition,
+)
 from core.agent.local_runtime.registry import get_local_runtime_backend
 from core.agent.providers.llama_cpp_supervisor import (
     LlamaCppManagedServerError,
@@ -142,9 +146,53 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
     if not dirty:
         return _build_settings_response()
 
+    transition_held = False
     if payload.llama_cpp is not None:
+        acquired = await asyncio.to_thread(try_begin_local_runtime_transition)
+        if not acquired:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Cannot change llama.cpp settings while Apodemus is active "
+                    "or loading."
+                ),
+            ) from None
+        transition_held = True
+
+    try:
+        if payload.llama_cpp is not None:
+            try:
+                proposed_snapshot = await asyncio.to_thread(store.preview_patch, payload)
+            except SettingsPersistenceError as exc:
+                _LOGGER.exception("Settings persistence failed")
+                detail = str(exc)
+                if "Refusing to persist invalid settings" in detail:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=detail,
+                    ) from None
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        "Failed to persist settings to config.local.json. "
+                        "Active settings were not changed."
+                    ),
+                ) from None
+            supervisor = get_llama_cpp_server_supervisor()
+            try:
+                await asyncio.to_thread(
+                    supervisor.validate_settings_transition,
+                    previous_llama,
+                    proposed_snapshot.llama_cpp,
+                )
+            except LlamaCppManagedServerError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=str(exc),
+                ) from None
+
         try:
-            proposed_snapshot = await asyncio.to_thread(store.preview_patch, payload)
+            await asyncio.to_thread(store.apply_patch, payload)
         except SettingsPersistenceError as exc:
             _LOGGER.exception("Settings persistence failed")
             detail = str(exc)
@@ -160,63 +208,36 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                     "Active settings were not changed."
                 ),
             ) from None
-        supervisor = get_llama_cpp_server_supervisor()
-        try:
-            await asyncio.to_thread(
-                supervisor.validate_settings_transition,
-                previous_llama,
-                proposed_snapshot.llama_cpp,
-            )
-        except LlamaCppManagedServerError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(exc),
-            ) from None
-
-    try:
-        await asyncio.to_thread(store.apply_patch, payload)
-    except SettingsPersistenceError as exc:
-        _LOGGER.exception("Settings persistence failed")
-        detail = str(exc)
-        if "Refusing to persist invalid settings" in detail:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=detail,
-            ) from None
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Failed to persist settings to config.local.json. "
-                "Active settings were not changed."
-            ),
-        ) from None
-    if payload.llama_cpp is not None:
-        current_llama = store.get_snapshot().llama_cpp
-        supervisor = get_llama_cpp_server_supervisor()
-        try:
-            await asyncio.to_thread(
-                supervisor.on_settings_changed, previous_llama, current_llama
-            )
-        except LlamaCppManagedServerError as exc:
-            _LOGGER.error(
-                "llama.cpp settings transition failed after persistence: %s",
-                exc,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Settings were saved but llama.cpp could not apply them.",
-            ) from None
-        try:
-            backend = get_local_runtime_backend("llama_cpp")
-        except KeyError:
-            backend = None
-        if backend is not None:
-            backend.invalidate_status_snapshot()
-    if payload.mcp is not None:
-        manager = get_mcp_manager()
-        if manager is not None:
-            await manager.reconfigure(load_mcp_config())
-    return _build_settings_response()
+        if payload.llama_cpp is not None:
+            current_llama = store.get_snapshot().llama_cpp
+            supervisor = get_llama_cpp_server_supervisor()
+            try:
+                await asyncio.to_thread(
+                    supervisor.on_settings_changed, previous_llama, current_llama
+                )
+            except LlamaCppManagedServerError as exc:
+                _LOGGER.error(
+                    "llama.cpp settings transition failed after persistence: %s",
+                    exc,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Settings were saved but llama.cpp could not apply them.",
+                ) from None
+            try:
+                backend = get_local_runtime_backend("llama_cpp")
+            except KeyError:
+                backend = None
+            if backend is not None:
+                backend.invalidate_status_snapshot()
+        if payload.mcp is not None:
+            manager = get_mcp_manager()
+            if manager is not None:
+                await manager.reconfigure(load_mcp_config())
+        return _build_settings_response()
+    finally:
+        if transition_held:
+            await asyncio.to_thread(end_local_runtime_transition)
 
 
 @router.get("/api/v1/llama-cpp/status", response_model=LlamaCppServerStatusResponse)

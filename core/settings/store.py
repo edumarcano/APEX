@@ -155,9 +155,10 @@ class RuntimeSettingsStore:
         Raises ``SettingsPersistenceError`` when the patch would be rejected.
         """
         with self._lock:
-            next_raw, next_local, next_issues, next_snapshot = self._compute_patch(
-                patch
-            )
+            computed = self._compute_patch(patch)
+            if computed is None:
+                return self._snapshot
+            next_raw, next_local, next_issues, next_snapshot = computed
             del next_raw, next_local, next_issues
             return next_snapshot
 
