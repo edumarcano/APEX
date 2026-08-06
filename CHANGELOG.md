@@ -8,6 +8,7 @@
 
 - Added a shared capability-family taxonomy and semantic routing service that narrows read-only APEX tools per request after the existing Agent policy filter.
 - Added `ask_apex.tool_routing_mode` with `disabled`, `shadow`, and `enabled` modes; tracked default is `shadow`.
+- Added deterministic routing rules, dev-set score calibration, hybrid lexical union, held-out error analysis, and prototype embedding comparisons in the benchmark harness.
 - Added explicit ONNX encoder installation (`scripts/install_tool_router_model.py`), benchmark harness, and `GET /api/v1/cortex/tool-routing/status`.
 - Added sanitized `routing` diagnostics to query responses and the Cortex inspector.
 - Added `/none` local command override and automatic local routing when Enforce is active.

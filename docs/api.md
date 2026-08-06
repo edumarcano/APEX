@@ -236,7 +236,7 @@ Returns local Agent tool scopes, including availability, reason, tool count, and
 
 ### GET `/api/v1/cortex/tool-routing/status`
 
-Read-only tool-routing status for the configured `ask_apex.tool_routing_mode`. Reports whether the pinned ONNX encoder is installed, verified, or loaded. The route does not download models or force a load.
+Read-only tool-routing status for the configured `ask_apex.tool_routing_mode`. Reports whether the shadow-mode candidate ONNX encoder is installed, verified, or loaded. The route does not download models or force a load.
 
 ### Query-response routing diagnostics
 

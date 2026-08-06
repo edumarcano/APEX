@@ -13,32 +13,36 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from benchmarks.capability_routing.reporting import compute_metrics, write_json_report
+from benchmarks.capability_routing.reporting import (
+    CASES_PATH,
+    compute_extended_metrics,
+    load_cases,
+    run_router_predictions,
+    write_json_report,
+)
 from benchmarks.capability_routing.routers import (
     ExposeAllRouter,
+    HybridOnnxRouter,
     LexicalBaselineRouter,
+    OnnxBenchmarkRouter,
     build_candidate_routers,
 )
 from benchmarks.capability_routing.tune_thresholds import (
+    calibration_payload,
+    fit_calibrator_from_cases,
     select_families_from_rankings,
     tune_thresholds,
 )
 from core.agent.routing.thresholds import DEFAULT_THRESHOLDS, RoutingThresholds
-from core.agent.types import AgentMessage
 
 BENCH_ROOT = Path(__file__).resolve().parent
-CASES_PATH = BENCH_ROOT / "cases.jsonl"
 RESULTS_DIR = BENCH_ROOT / "results"
 
-
-def load_cases(split: str) -> list[dict]:
-    cases: list[dict] = []
-    with CASES_PATH.open(encoding="utf-8") as handle:
-        for line in handle:
-            case = json.loads(line)
-            if case["split"] == split:
-                cases.append(case)
-    return cases
+ACCEPTANCE_GATES = {
+    "micro_recall": 0.97,
+    "complete_coverage_rate": 0.95,
+    "no_tool_accuracy": 0.93,
+}
 
 
 def estimate_tools_for_families(families: set[str]) -> int:
@@ -65,105 +69,135 @@ def estimate_schema_tokens_for_families(families: set[str]) -> int:
     return estimate_schema_tokens(descriptors)
 
 
-def run_router(
+def _cases_by_id(cases: list[dict]) -> dict[str, dict]:
+    return {case["id"]: case for case in cases}
+
+
+def _evaluate_router(
     router,
     cases: list[dict],
     thresholds: RoutingThresholds,
-) -> list[tuple[str, set[str], set[str], int, int]]:
-    predictions: list[tuple[str, set[str], set[str], int, int]] = []
-    for case in cases:
-        history = [
-            AgentMessage(role=item["role"], content=item["content"])
-            for item in case.get("history", [])
-        ]
-        rankings = router.rank(case["prompt"], history)
-        if router.name == "expose-all":
-            selected = {item.key for item in rankings if item.key != "none"}
-        else:
-            selected = select_families_from_rankings(rankings, thresholds)
-        expected = set(case["expected_families"])
-        if "none" in expected:
-            expected.discard("none")
-        predictions.append(
-            (
-                case["id"],
-                expected,
-                selected,
-                estimate_tools_for_families(selected),
-                estimate_schema_tokens_for_families(selected),
-            )
-        )
-    return predictions
+    expose_tokens: int,
+) -> dict:
+    predictions, ranking_lists = run_router_predictions(
+        router,
+        cases,
+        thresholds,
+        select_fn=select_families_from_rankings,
+    )
+    metrics = compute_extended_metrics(
+        router_name=router.name,
+        split=cases[0]["split"] if cases else "dev",
+        predictions=predictions,
+        expose_all_tokens=expose_tokens,
+        cases_by_id=_cases_by_id(cases),
+        ranking_lists=ranking_lists,
+    )
+    return asdict(metrics)
+
+
+def _passes_gates(metrics: dict) -> bool:
+    return all(metrics[key] >= required for key, required in ACCEPTANCE_GATES.items())
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--all-candidates", action="store_true")
-    parser.add_argument("--locked-parameters", type=Path)
+    parser.add_argument("--compare-prototypes", action="store_true")
+    parser.add_argument("--compare-max-families", action="store_true")
+    parser.add_argument("--router", default=None)
     args = parser.parse_args()
     cases = load_cases(args.split)
+    dev_cases = load_cases("dev")
     thresholds = DEFAULT_THRESHOLDS
-    if args.split == "dev" and args.all_candidates:
-        from benchmarks.capability_routing.routers import OnnxBenchmarkRouter
 
-        minilm = OnnxBenchmarkRouter(
-            model_key="all-minilm-l6-v2",
-            name="minilm-onnx",
-        )
-
-        def _rank(prompt: str, history: list[dict]) -> list:
-            messages = [
-                AgentMessage(role=item["role"], content=item["content"])
-                for item in history
-            ]
-            return minilm.rank(prompt, messages)
-
-        thresholds = tune_thresholds(cases, _rank)
-        write_json_report(
-            RESULTS_DIR / "selected_parameters.json",
-            {
-                "minimum_top_score": thresholds.minimum_top_score,
-                "minimum_none_margin": thresholds.minimum_none_margin,
-                "additional_family_minimum_score": (
-                    thresholds.additional_family_minimum_score
-                ),
-                "additional_family_margin": thresholds.additional_family_margin,
-                "max_selected_families": thresholds.max_selected_families,
-            },
-        )
-        print(
-            "Tuned thresholds:",
-            thresholds.minimum_top_score,
-            thresholds.minimum_none_margin,
-        )
-    elif args.locked_parameters and args.locked_parameters.is_file():
-        locked = json.loads(args.locked_parameters.read_text(encoding="utf-8"))
-        thresholds = replace(DEFAULT_THRESHOLDS, **locked)
-
-    expose_all = ExposeAllRouter()
-    expose_predictions = run_router(expose_all, cases, thresholds)
-    expose_tokens = int(
-        sum(item[4] for item in expose_predictions) / max(len(expose_predictions), 1)
-    )
     routers = [ExposeAllRouter(), LexicalBaselineRouter()]
     if args.all_candidates:
         routers = build_candidate_routers(include_onnx=True)
-    report: dict = {"split": args.split, "thresholds": asdict(thresholds), "routers": {}}
+    if args.router:
+        if args.router == "hybrid-minilm-onnx":
+            routers = [HybridOnnxRouter(model_key="all-minilm-l6-v2", name="hybrid-minilm-onnx")]
+        elif args.router == "minilm-onnx":
+            routers = [OnnxBenchmarkRouter(model_key="all-minilm-l6-v2", name="minilm-onnx")]
+        else:
+            routers = [item for item in build_candidate_routers(include_onnx=True) if item.name == args.router]
+
+    tuning_router = routers[2] if len(routers) > 2 else routers[0]
+    if hasattr(tuning_router, "rank"):
+        thresholds = tune_thresholds(dev_cases, tuning_router.rank)
+        calibrator = fit_calibrator_from_cases(dev_cases, tuning_router.rank, thresholds)
+        from core.agent.routing import calibration as calibration_module
+
+        calibration_module.DEFAULT_CALIBRATOR = calibrator
+        write_json_report(
+            RESULTS_DIR / "selected_parameters.json",
+            {
+                **{k: getattr(thresholds, k) for k in asdict(DEFAULT_THRESHOLDS)},
+                "calibration": calibration_payload(calibrator),
+            },
+        )
+
+    expose_predictions, _ = run_router_predictions(
+        ExposeAllRouter(),
+        cases,
+        thresholds,
+        select_fn=select_families_from_rankings,
+    )
+    expose_tokens = int(
+        sum(item[4] for item in expose_predictions) / max(len(expose_predictions), 1)
+    )
+
+    report: dict = {
+        "split": args.split,
+        "thresholds": asdict(thresholds),
+        "acceptance_gates": ACCEPTANCE_GATES,
+        "routers": {},
+        "configurations": {},
+    }
+
     for router in routers:
-        predictions = run_router(router, cases, thresholds)
-        metrics = compute_metrics(
-            router_name=router.name,
-            split=args.split,
-            predictions=predictions,
-            expose_all_tokens=expose_tokens,
-        )
-        report["routers"][router.name] = metrics.__dict__
+        metrics = _evaluate_router(router, cases, thresholds, expose_tokens)
+        report["routers"][router.name] = metrics
+        report["configurations"][router.name] = {
+            "passes_gates": _passes_gates(metrics),
+            "max_selected_families": thresholds.max_selected_families,
+        }
         print(
-            f"{router.name}: recall={metrics.micro_recall:.3f} "
-            f"coverage={metrics.complete_coverage_rate:.3f} "
-            f"no_tool={metrics.no_tool_accuracy:.3f}"
+            f"{router.name}: recall={metrics['micro_recall']:.3f} "
+            f"coverage={metrics['complete_coverage_rate']:.3f} "
+            f"no_tool={metrics['no_tool_accuracy']:.3f} "
+            f"top1={metrics['top1_family_recall']:.3f}"
         )
+
+    if args.compare_prototypes and args.split == "dev":
+        prototype_report = {}
+        for mode, label in (
+            ("description", "minilm-description-onnx"),
+            ("exemplars", "minilm-exemplars-onnx"),
+            ("combined", "minilm-onnx"),
+        ):
+            router = OnnxBenchmarkRouter(
+                model_key="all-minilm-l6-v2",
+                name=label,
+                prototype_mode=mode,
+            )
+            prototype_report[label] = _evaluate_router(router, cases, thresholds, expose_tokens)
+        report["prototype_comparison"] = prototype_report
+
+    if args.compare_max_families:
+        cap_report = {}
+        for cap in (2, 3):
+            capped = replace(thresholds, max_selected_families=cap)
+            router = HybridOnnxRouter(model_key="all-minilm-l6-v2", name="hybrid-minilm-onnx")
+            cap_report[f"max_selected_families={cap}"] = _evaluate_router(
+                router,
+                cases,
+                capped,
+                expose_tokens,
+            )
+        report["max_family_cap_comparison"] = cap_report
+
     out = RESULTS_DIR / f"quality-{args.split}.json"
     write_json_report(out, report)
     print(f"Wrote {out}")

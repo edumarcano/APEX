@@ -230,7 +230,7 @@ Current Agent mapping used by documentation checks: `apodemus -> gemma-4-E2B-Q4_
 | `shadow` | The ranker predicts families and returns diagnostics, but offered tools match `disabled`. |
 | `enabled` | High-confidence predictions reduce the offered read-only tool set. Low confidence or model failure uses safe fallbacks. |
 
-Install the pinned ONNX encoder explicitly:
+Install the shadow-mode candidate ONNX encoder explicitly:
 
 ```bash
 uv run python scripts/install_tool_router_model.py --model all-minilm-l6-v2

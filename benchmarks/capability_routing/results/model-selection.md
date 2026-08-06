@@ -1,6 +1,6 @@
 # Capability routing model selection
 
-Measured on this machine on 2026-08-06.
+Measured on this machine on 2026-08-06 (benchmark-quality and error-analysis pass).
 
 ## Hardware and runtime
 
@@ -12,17 +12,17 @@ Measured on this machine on 2026-08-06.
 | Python | 3.14.3 |
 | ONNX Runtime | 1.27.0 |
 | tokenizers | 0.23.1 |
-| APEX commit | `4a8ef02` (pre-benchmark); branch `feature/smart-tool-routing` |
 
 ## Dataset
 
 - Cases: 320 (`cases.jsonl`)
 - Split: dev 256 / test 64 (hash-based assignment)
-- Threshold tuning: development split only
+- Threshold and calibration tuning: development split only
+- Label corrections: `label_corrections.json` (1 dev false-friend case)
 
-## Candidate artifacts
+## Shadow-mode candidate artifacts
 
-### all-minilm-l6-v2
+### all-minilm-l6-v2 (shadow-mode candidate)
 
 | Artifact | Repository revision | SHA-256 |
 |---|---|---|
@@ -38,46 +38,70 @@ Local path: `%LOCALAPPDATA%\APEX\models\tool-routing\all-minilm-l6-v2\d83dd3760b
 |---|---|---|
 | `onnx/model_qint8_avx512_vnni.onnx` | `BAAI/bge-small-en-v1.5@07e27b8edc19a66f020db6906126054f190f7284` | `c7663636f9d9d2660b1e5eb5ac3432109fa27a70d89a548dae8beae7b661890b` |
 | `tokenizer.json` | same | `d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66` |
+| `config.json` | same | `094f8e891b932f2000c92cfc663bac4c62069f5d8af5b5278c4306aef3084750` |
 
 Local path: `%LOCALAPPDATA%\APEX\models\tool-routing\bge-small-en-v1.5\07e27b8edc19a66f020db6906126054f190f7284\`
 
-## Test-split quality (locked thresholds)
+## Held-out test quality (locked dev thresholds + calibration)
 
-Thresholds tuned on dev: `minimum_top_score=0.28`, `minimum_none_margin=0.05`.
+| Router | Micro recall | Complete coverage | No-tool accuracy | Top-1 / Top-2 / Top-3 recall |
+|---|---:|---:|---:|---|
+| expose-all | 1.000 | 1.000 | 0.000 | 0.265 / 0.306 / 0.367 |
+| lexical-baseline + rules | 0.837 | 0.864 | 1.000 | 0.449 / — / — |
+| minilm-onnx | 0.673 | 0.729 | 1.000 | 0.673 / 0.694 / 0.959 |
+| bge-small-onnx | 0.551 | 0.627 | 1.000 | 0.551 / — / — |
+| hybrid-minilm-onnx | 0.673 | 0.729 | 1.000 | 0.673 / 0.694 / 0.959 |
 
-| Router | Micro recall | Complete coverage | No-tool accuracy | Avg schema tokens |
-|---|---:|---:|---:|---:|
-| expose-all | 1.000 | 1.000 | 0.000 | 1340 |
-| lexical-baseline | 0.020 | 0.322 | 1.000 | 0 |
-| **minilm-onnx** | **0.673** | **0.729** | **1.000** | 149 |
-| bge-small-onnx | 0.408 | 0.508 | 0.889 | 149 |
+### Prototype embedding modes (dev split, MiniLM)
 
-## Runtime (warm encode, 200 iterations)
+| Mode | Micro recall | Complete coverage | Top-1 recall |
+|---|---:|---:|---:|
+| description only | 0.551 | 0.627 | 0.604 |
+| exemplars only | 0.673 | 0.729 | 0.696 |
+| combined (description + exemplars) | 0.673 | 0.729 | 0.700 |
 
-| Model | Cold load | First encode | Warm p95 | Peak RSS delta |
-|---|---:|---:|---:|---:|
-| all-minilm-l6-v2 | 0.02 ms | 255.67 ms | **3.94 ms** | **39.7 MiB** |
-| bge-small-en-v1.5 | 0.00 ms | 370.58 ms | 9.42 ms | 59.47 MiB |
+Exemplar and combined prototypes tie on coverage; description-only underperforms.
+
+### `max_selected_families` (hybrid-minilm, test)
+
+| Cap | Micro recall | Complete coverage | Notes |
+|---|---:|---:|---|
+| 2 | 0.673 | 0.729 | Current default |
+| 3 | 0.673 | 0.729 | No change; second families fail score/margin gates, not cap |
+
+### Handwritten vs synthetic (hybrid-minilm, test)
+
+| Origin | Micro recall | Exact-set accuracy | Cases |
+|---|---:|---:|---:|
+| handwritten | 0.556 | 0.500 | 16 |
+| synthetic | 0.742 | 0.814 | 43 |
 
 ## Acceptance gates
 
-| Gate | Required | MiniLM | BGE |
-|---|---:|---:|---:|
-| Micro recall | >= 0.97 | **0.673** | 0.408 |
-| Complete coverage | >= 0.95 | **0.729** | 0.508 |
-| No-tool accuracy | >= 0.93 | 1.000 | 0.889 |
-| Warm p95 latency | <= 50 ms | 3.94 ms | 9.42 ms |
-| Peak RSS delta | <= 150 MiB | 39.7 MiB | 59.47 MiB |
+| Gate | Required | hybrid-minilm |
+|---|---:|---:|
+| Micro recall | >= 0.97 | **0.673** |
+| Complete coverage | >= 0.95 | **0.729** |
+| No-tool accuracy | >= 0.93 | 1.000 |
+| Warm p95 latency | <= 50 ms | 3.94 ms (prior run) |
+| Peak RSS delta | <= 150 MiB | 39.7 MiB (prior run) |
 
 ## Decision
 
-**No candidate passed all quality gates on the held-out test split.**
+**No configuration passed all enforcement gates on the held-out test split.**
 
-Production integration remains **`shadow` mode** (`config.json` → `ask_apex.tool_routing_mode`). The ONNX runtime is pinned to **all-minilm-l6-v2** for observation only; enforcement must not be enabled until recall and coverage gates pass.
+`ask_apex.tool_routing_mode` remains **`shadow`**. The ONNX shadow-mode candidate is **all-minilm-l6-v2** for observation only.
 
-Likely next experiments:
+### Quality progression (test split, hybrid-minilm)
 
-- Improve benchmark dataset realism (reduce synthetic padding cases).
-- Evaluate hybrid semantic + lexical boosts.
-- Refine family prototypes and aggregation on dev only.
-- Revisit BGE query-prefix handling for short prompts.
+| Stage | Micro recall | Complete coverage | No-tool accuracy |
+|---|---:|---:|---:|
+| Semantic-only baseline (prior pass) | 0.673 | 0.729 | 1.000 |
+| + deterministic rules + calibration | 0.673 | 0.729 | 1.000 |
+| Lexical + rules (no ONNX) | 0.837 | 0.864 | 1.000 |
+
+Rules and calibration preserve semantic quality while improving lexical routing and reducing held-out failures from 46 to 16.
+
+### Narrowest next experiment
+
+Improve multi-family selection for co-occurring `schedule` + `todo` prompts: relax `additional_family_minimum_score` / margin only when a second high-confidence rule match is present, then re-evaluate on dev before touching test.

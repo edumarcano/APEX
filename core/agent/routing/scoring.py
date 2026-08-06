@@ -10,9 +10,20 @@ from core.agent.routing.encoder import TextEncoder
 from core.agent.routing.families import CAPABILITY_FAMILIES, CapabilityFamilyDefinition
 from core.agent.routing.models import RankedCapabilityFamily
 
+PrototypeMode = str  # "combined" | "description" | "exemplars"
 
-def family_prototype_texts(family: CapabilityFamilyDefinition) -> tuple[str, ...]:
-    texts = (family.description, *family.semantic_examples)
+
+def family_prototype_texts(
+    family: CapabilityFamilyDefinition,
+    *,
+    mode: PrototypeMode = "combined",
+) -> tuple[str, ...]:
+    if mode == "description":
+        texts = (family.description,)
+    elif mode == "exemplars":
+        texts = family.semantic_examples
+    else:
+        texts = (family.description, *family.semantic_examples)
     return tuple(text for text in texts if text.strip())
 
 
@@ -49,10 +60,12 @@ def rank_families_from_embeddings(
 def build_family_vectors(
     encoder: TextEncoder,
     families: Sequence[CapabilityFamilyDefinition] | None = None,
+    *,
+    mode: PrototypeMode = "combined",
 ) -> dict[str, np.ndarray]:
     selected = families or CAPABILITY_FAMILIES
     vectors: dict[str, np.ndarray] = {}
     for family in selected:
-        texts = family_prototype_texts(family)
+        texts = family_prototype_texts(family, mode=mode)
         vectors[family.key] = encoder.encode_documents(texts)
     return vectors

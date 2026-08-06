@@ -18,7 +18,7 @@ from huggingface_hub import hf_hub_download
 
 from core.agent.routing.model_manifest import (
     CANDIDATE_MODEL_SPECS,
-    PRODUCTION_MODEL_KEY,
+    SHADOW_MODE_MODEL_KEY,
     EmbeddingModelSpec,
     ModelArtifact,
     get_model_spec,
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install APEX tool-routing ONNX models.")
     parser.add_argument(
         "--model",
-        default=PRODUCTION_MODEL_KEY,
+        default=SHADOW_MODE_MODEL_KEY,
         choices=sorted(CANDIDATE_MODEL_SPECS),
     )
     parser.add_argument("--verify-only", action="store_true")

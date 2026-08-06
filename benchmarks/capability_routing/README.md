@@ -17,10 +17,10 @@ uv run python scripts/install_tool_router_model.py --model bge-small-en-v1.5
 
 ## Quality benchmark
 
-Tune thresholds on the development split only:
+Tune thresholds and calibration on the development split only:
 
 ```bash
-uv run python benchmarks/capability_routing/benchmark_quality.py --split dev --all-candidates
+uv run python benchmarks/capability_routing/benchmark_quality.py --split dev --all-candidates --compare-prototypes
 ```
 
 Evaluate locked parameters on the held-out test split:
@@ -28,7 +28,14 @@ Evaluate locked parameters on the held-out test split:
 ```bash
 uv run python benchmarks/capability_routing/benchmark_quality.py \
   --split test \
-  --all-candidates
+  --all-candidates \
+  --compare-max-families
+```
+
+Held-out failure analysis (machine-readable JSON + Markdown):
+
+```bash
+uv run python benchmarks/capability_routing/analyze_errors.py --split test --router hybrid-minilm-onnx
 ```
 
 ## Runtime benchmark
@@ -44,3 +51,4 @@ uv run python benchmarks/capability_routing/benchmark_all.py
 ```
 
 Generated JSON under `results/` is local-only unless curated into `model-selection.md`.
+Label corrections are recorded in `label_corrections.json`.

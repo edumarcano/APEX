@@ -111,7 +111,7 @@
 {"id": "market-direct-1", "split": "dev", "difficulty": "direct", "prompt": "What is Apple's stock price right now?", "history": [], "expected_families": ["market"], "notes": "Family market."}
 {"id": "market-paraphrase-1", "split": "dev", "difficulty": "paraphrased", "prompt": "Look up the ticker for Microsoft.", "history": [], "expected_families": ["market"], "notes": "Family market."}
 {"id": "market-context-1", "split": "dev", "difficulty": "contextual", "prompt": "Show recent daily prices for that symbol.", "history": [{"role": "user", "content": "Look up Tesla's ticker."}, {"role": "agent", "content": "The symbol is TSLA."}], "expected_families": ["market"], "notes": "Family market."}
-{"id": "market-false-friend-1", "split": "dev", "difficulty": "false_friend", "prompt": "What is the weather market like today?", "history": [], "expected_families": ["weather"], "notes": "Family market."}
+{"id": "market-false-friend-1", "split": "dev", "difficulty": "false_friend", "prompt": "What is the weather market like today?", "history": [], "expected_families": ["none"], "notes": "False friend: market wording without financial intent."}
 {"id": "market-auto-88", "split": "dev", "difficulty": "paraphrased", "prompt": "Please help with market information request 88.", "history": [], "expected_families": ["market"], "notes": "Family market."}
 {"id": "market-auto-89", "split": "dev", "difficulty": "paraphrased", "prompt": "Please help with market information request 89.", "history": [], "expected_families": ["market"], "notes": "Family market."}
 {"id": "market-auto-90", "split": "test", "difficulty": "paraphrased", "prompt": "Please help with market information request 90.", "history": [], "expected_families": ["market"], "notes": "Family market."}

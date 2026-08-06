@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.agent.routing.model_manifest import PRODUCTION_MODEL_KEY, PRODUCTION_MODEL_SPEC
+from core.agent.routing.model_manifest import SHADOW_MODE_MODEL_KEY, SHADOW_MODE_MODEL_SPEC
 from core.agent.routing.model_store import verify_installed_model
 from core.agent.routing.models import CapabilityRoutingDecision
 from core.agent.routing.onnx_encoder import _ENCODER_CACHE
@@ -34,17 +34,17 @@ def build_tool_routing_status(mode: ToolRoutingMode) -> dict[str, object]:
     if mode == "disabled":
         return {
             "mode": mode,
-            "model_key": PRODUCTION_MODEL_KEY,
+            "model_key": SHADOW_MODE_MODEL_KEY,
             "installed": False,
             "verified": False,
             "loaded": False,
             "state": "disabled",
             "reason": None,
         }
-    verified, reason = verify_installed_model(PRODUCTION_MODEL_SPEC)
+    verified, reason = verify_installed_model(SHADOW_MODE_MODEL_SPEC)
     loaded = False
     if verified:
-        cached = _ENCODER_CACHE.get(PRODUCTION_MODEL_KEY)
+        cached = _ENCODER_CACHE.get(SHADOW_MODE_MODEL_KEY)
         loaded = cached is not None and cached._session is not None  # noqa: SLF001
     state = "disabled"
     status_reason = reason
@@ -57,7 +57,7 @@ def build_tool_routing_status(mode: ToolRoutingMode) -> dict[str, object]:
             state = "ready"
     return {
         "mode": mode,
-        "model_key": PRODUCTION_MODEL_KEY,
+        "model_key": SHADOW_MODE_MODEL_KEY,
         "installed": verified,
         "verified": verified,
         "loaded": loaded,

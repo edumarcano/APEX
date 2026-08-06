@@ -16,8 +16,9 @@ ROOT = Path(__file__).resolve().parent
 
 def main() -> int:
     commands = [
-        [sys.executable, str(ROOT / "benchmark_quality.py"), "--split", "dev", "--all-candidates"],
-        [sys.executable, str(ROOT / "benchmark_quality.py"), "--split", "test", "--all-candidates"],
+        [sys.executable, str(ROOT / "benchmark_quality.py"), "--split", "dev", "--all-candidates", "--compare-prototypes"],
+        [sys.executable, str(ROOT / "benchmark_quality.py"), "--split", "test", "--all-candidates", "--compare-max-families"],
+        [sys.executable, str(ROOT / "analyze_errors.py"), "--split", "test", "--router", "hybrid-minilm-onnx"],
         [sys.executable, str(ROOT / "benchmark_runtime.py"), "--all-candidates"],
     ]
     for command in commands:

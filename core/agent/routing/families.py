@@ -92,7 +92,10 @@ CAPABILITY_FAMILIES: tuple[CapabilityFamilyDefinition, ...] = (
     CapabilityFamilyDefinition(
         key="search",
         label="Web Search",
-        description="Public web and news search through Brave.",
+        description=(
+            "Public web and general news search through Brave. "
+            "Not for stock quotes, tickers, or financial market data."
+        ),
         semantic_examples=(
             "Search the web for recent Mars rover updates.",
             "What are journalists saying about the new policy?",
@@ -111,7 +114,7 @@ CAPABILITY_FAMILIES: tuple[CapabilityFamilyDefinition, ...] = (
         label="Market",
         description=(
             "Stock quotes, symbol lookup, price history, company overview, "
-            "and market news."
+            "and financial market news. Not for general web search."
         ),
         semantic_examples=(
             "What is Apple's stock price right now?",
@@ -135,7 +138,10 @@ CAPABILITY_FAMILIES: tuple[CapabilityFamilyDefinition, ...] = (
     CapabilityFamilyDefinition(
         key="briefings",
         label="Briefings",
-        description="Persisted APEX briefing history and digests.",
+        description=(
+            "Persisted APEX briefing history and digests stored by APEX. "
+            "Not for summarizing the current chat."
+        ),
         semantic_examples=(
             "What did my last briefing cover?",
             "Show recent APEX briefings.",

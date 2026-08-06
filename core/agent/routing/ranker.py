@@ -1,4 +1,4 @@
-"""Semantic family ranker for production tool routing."""
+"""Semantic family ranker for shadow-mode tool routing."""
 
 from __future__ import annotations
 
@@ -15,9 +15,10 @@ from core.agent.routing.scoring import (
 from core.agent.routing.context import build_routing_document
 from core.agent.routing.encoder import TextEncoder
 from core.agent.routing.families import CAPABILITY_FAMILIES
-from core.agent.routing.model_manifest import PRODUCTION_MODEL_SPEC
+from core.agent.routing.model_manifest import SHADOW_MODE_MODEL_SPEC
 from core.agent.routing.models import RankedCapabilityFamily
 from core.agent.routing.onnx_encoder import get_onnx_encoder
+from core.agent.routing.rules import RuleMatch, apply_routing_rules
 from core.agent.types import AgentMessage
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class RankerResult:
     rankings: tuple[RankedCapabilityFamily, ...]
     model_key: str
     latency_ms: float
+    rule_matches: tuple[RuleMatch, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +48,7 @@ class SemanticFamilyRanker:
     def _get_encoder(self) -> TextEncoder:
         if self._encoder is not None:
             return self._encoder
-        return get_onnx_encoder(PRODUCTION_MODEL_SPEC)
+        return get_onnx_encoder(SHADOW_MODE_MODEL_SPEC)
 
     def _family_vectors(self, encoder: TextEncoder) -> dict[str, np.ndarray]:
         global _FAMILY_VECTORS
@@ -66,6 +68,7 @@ class SemanticFamilyRanker:
         try:
             encoder = self._get_encoder()
             document = build_routing_document(prompt, history)
+            rule_matches = apply_routing_rules(prompt, history)
             query_vector = encoder.encode_queries([document])[0]
             rankings = rank_families_from_embeddings(
                 query_vector,
@@ -76,6 +79,7 @@ class SemanticFamilyRanker:
                 rankings=tuple(rankings),
                 model_key=encoder.model_key,
                 latency_ms=latency_ms,
+                rule_matches=tuple(rule_matches),
             )
         except FileNotFoundError:
             return RankerUnavailable(reason="model_unavailable")

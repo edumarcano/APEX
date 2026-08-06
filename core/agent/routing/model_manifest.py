@@ -75,7 +75,7 @@ _BGE_FILES = (
     ModelArtifact(
         relative_path="config.json",
         byte_size=743,
-        sha256="",
+        sha256="094f8e891b932f2000c92cfc663bac4c62069f5d8af5b5278c4306aef3084750",
     ),
 )
 
@@ -108,10 +108,14 @@ CANDIDATE_MODEL_SPECS: dict[str, EmbeddingModelSpec] = {
     ),
 }
 
-# Production model selected after benchmark; default until benchmark runs.
-PRODUCTION_MODEL_KEY = "all-minilm-l6-v2"
+# Shadow-mode candidate selected after benchmark; default until gates pass.
+SHADOW_MODE_MODEL_KEY = "all-minilm-l6-v2"
 
-PRODUCTION_MODEL_SPEC: EmbeddingModelSpec = CANDIDATE_MODEL_SPECS[PRODUCTION_MODEL_KEY]
+SHADOW_MODE_MODEL_SPEC: EmbeddingModelSpec = CANDIDATE_MODEL_SPECS[SHADOW_MODE_MODEL_KEY]
+
+# Backward-compatible aliases for internal callers during shadow rollout.
+PRODUCTION_MODEL_KEY = SHADOW_MODE_MODEL_KEY
+PRODUCTION_MODEL_SPEC = SHADOW_MODE_MODEL_SPEC
 
 
 def get_model_spec(key: str) -> EmbeddingModelSpec | None:

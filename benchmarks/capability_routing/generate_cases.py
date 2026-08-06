@@ -68,7 +68,7 @@ FAMILY_TEMPLATES: dict[str, list[tuple[str, str, list, list[str]]]] = {
         ("market-direct-1", "direct", "What is Apple's stock price right now?", [], ["market"]),
         ("market-paraphrase-1", "paraphrased", "Look up the ticker for Microsoft.", [], ["market"]),
         ("market-context-1", "contextual", "Show recent daily prices for that symbol.", [{"role": "user", "content": "Look up Tesla's ticker."}, {"role": "agent", "content": "The symbol is TSLA."}], ["market"]),
-        ("market-false-friend-1", "false_friend", "What is the weather market like today?", [], ["weather"]),
+        ("market-false-friend-1", "false_friend", "What is the weather market like today?", [], ["none"]),
     ],
     "briefings": [
         ("brief-direct-1", "direct", "What did my last briefing cover?", [], ["briefings"]),

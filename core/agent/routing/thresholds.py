@@ -1,4 +1,4 @@
-"""Production routing thresholds tuned on the development split."""
+"""Shadow-mode routing thresholds tuned on the development split."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ class RoutingThresholds:
     max_schema_tokens_sorex: int
     max_schema_tokens_mus: int
     max_schema_tokens_apodemus: int
+    calibrated_max_error_rate: float
+    rule_match_minimum_confidence: float
 
 
 # Updated after benchmark tuning on dev split.
@@ -29,4 +31,6 @@ DEFAULT_THRESHOLDS = RoutingThresholds(
     max_schema_tokens_sorex=900,
     max_schema_tokens_mus=1200,
     max_schema_tokens_apodemus=1500,
+    calibrated_max_error_rate=0.35,
+    rule_match_minimum_confidence=0.85,
 )

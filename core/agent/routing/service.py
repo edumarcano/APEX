@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.local_commands import (
@@ -17,7 +18,9 @@ from core.agent.routing.models import (
     CapabilityRoutingRequest,
     RankedCapabilityFamily,
 )
+from core.agent.routing.calibration import DEFAULT_CALIBRATOR, is_calibrated_low_confidence
 from core.agent.routing.ranker import RankerResult, RankerUnavailable, rank_capability_families
+from core.agent.routing.rules import RuleMatch
 from core.agent.routing.thresholds import DEFAULT_THRESHOLDS, RoutingThresholds
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,6 +83,8 @@ def _select_families(
     rankings: list[RankedCapabilityFamily],
     thresholds: RoutingThresholds,
     runtime: str,
+    *,
+    rule_matches: Sequence[RuleMatch] | None = None,
 ) -> tuple[list[str], float | None, float | None, bool]:
     if not rankings:
         return [], None, None, True
@@ -95,8 +100,31 @@ def _select_families(
     if none_score >= top.score and none_score >= thresholds.minimum_top_score:
         return [], top.score, margin, False
     if top.score < thresholds.minimum_top_score:
+        rule_only = [
+            match.family
+            for match in rule_matches or ()
+            if match.family != "none"
+            and match.confidence >= thresholds.rule_match_minimum_confidence
+            and _family_eligible(match.family, runtime)
+        ]
+        if rule_only:
+            return rule_only[: thresholds.max_selected_families], top.score, margin, False
         return [], top.score, margin, True
     if margin < thresholds.minimum_none_margin:
+        return [], top.score, margin, True
+    rule_supported_top = any(
+        match.family == top.key
+        and match.confidence >= thresholds.rule_match_minimum_confidence
+        for match in rule_matches or ()
+    )
+    if (
+        not rule_supported_top
+        and is_calibrated_low_confidence(
+            rankings,
+            calibrator=DEFAULT_CALIBRATOR,
+            thresholds=thresholds,
+        )
+    ):
         return [], top.score, margin, True
     selected = [top.key]
     for candidate in real[1:]:
@@ -107,6 +135,18 @@ def _select_families(
         if top.score - candidate.score > thresholds.additional_family_margin:
             continue
         selected.append(candidate.key)
+    for match in rule_matches or ():
+        if match.family == "none":
+            continue
+        if match.confidence < thresholds.rule_match_minimum_confidence:
+            continue
+        if not _family_eligible(match.family, runtime):
+            continue
+        if match.family in selected:
+            continue
+        if len(selected) >= thresholds.max_selected_families:
+            break
+        selected.append(match.family)
     return selected, top.score, margin, False
 
 
@@ -243,10 +283,12 @@ def resolve_capabilities(
     rankings: list[RankedCapabilityFamily] = []
     model_key: str | None = None
     rank_latency = 0.0
+    rule_matches: tuple[RuleMatch, ...] = ()
     if isinstance(rank_outcome, RankerResult):
         rankings = list(rank_outcome.rankings)
         model_key = rank_outcome.model_key
         rank_latency = rank_outcome.latency_ms
+        rule_matches = rank_outcome.rule_matches
     elif isinstance(rank_outcome, RankerUnavailable):
         if request.mode == "shadow":
             fallback_kind = "shadow"
@@ -288,6 +330,7 @@ def resolve_capabilities(
         rankings,
         thresholds,
         request.runtime,
+        rule_matches=rule_matches,
     )
 
     if request.mode == "shadow":

@@ -1,0 +1,9 @@
+[
+  {
+    "case_id": "market-false-friend-1",
+    "split": "dev",
+    "original_expected_families": ["weather"],
+    "corrected_expected_families": ["none"],
+    "justification": "false_friend difficulty; prompt uses weather wording without forecast intent and matches other false_friend none labels."
+  }
+]
