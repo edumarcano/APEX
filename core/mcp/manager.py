@@ -36,6 +36,12 @@ from core.mcp.models import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_MCP_ROUTING_FAMILIES: dict[str, str] = {
+    "github": "github",
+    "brave": "search",
+    "alphavantage": "market",
+}
+
 _LOCAL_NAME_SANITIZE = re.compile(r"[^a-z0-9_]+")
 _OAUTH_KEYRING_SERVICE = "APEX MCP OAuth"
 _STATUS_PRIORITY: tuple[McpServerStatusValue, ...] = (
@@ -517,6 +523,7 @@ class MCPClientManager:
             title = remote_name.replace("_", " ").strip().title() or capability_name
 
             handler = _make_sync_handler(self, server_id, capability_name)
+            routing_family = _MCP_ROUTING_FAMILIES.get(server_id)
             descriptor = CapabilityDescriptor(
                 name=capability_name,
                 title=title,
@@ -529,6 +536,7 @@ class MCPClientManager:
                 expose_to_client_display=config.expose_to_client_display,
                 timeout_seconds=config.timeout_seconds,
                 max_output_chars=config.max_output_chars,
+                routing_family=routing_family,
             )
             try:
                 register_capability(descriptor, handler)

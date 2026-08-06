@@ -83,6 +83,13 @@ class CapabilityDescriptor(BaseModel):
         gt=0,
         description="Maximum serialized output size returned to callers.",
     )
+    routing_family: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description=(
+            "Optional semantic family used only to narrow Agent capability exposure."
+        ),
+    )
 
 
 class _CapabilityEntry(BaseModel):
