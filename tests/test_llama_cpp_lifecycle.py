@@ -61,6 +61,7 @@ class LlamaCppAuthHeaderTests(unittest.TestCase):
 class LlamaCppLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.backend = LlamaCppRuntimeBackend()
+        self.backend.invalidate_status_snapshot()
         self._poll_patch = mock.patch.object(
             lifecycle, "_POLL_INTERVAL_SECONDS", 0.01
         )
@@ -310,8 +311,12 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         post_response.raise_for_status.return_value = None
         session.post.return_value = post_response
 
+        mock_sup = MagicMock()
         with mock.patch.object(lifecycle, "_SESSION", session), mock.patch.object(
             lifecycle, "_probe_props", return_value={"default_model": "apodemus-8k"}
+        ), mock.patch(
+            "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
+            return_value=mock_sup,
         ):
             self.assertTrue(self.backend.load_model(_apodemus_profile()))
 

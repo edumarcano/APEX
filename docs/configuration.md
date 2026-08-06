@@ -46,7 +46,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Connectors | Weather, sports, news, email, calendar, market |
 | Sports modules | Formula 1 and football |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
-| Ask APEX | Global enablement switch; Cortex owns Agent, effort, and grounding selection |
+| Ask APEX | Global enablement switch, Apodemus context size, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |

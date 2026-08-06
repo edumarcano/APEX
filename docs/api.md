@@ -68,7 +68,7 @@ Returns the resolved settings envelope. The current contract version is `10`.
 
 ```json
 {
-  "schema_version": 10,
+  "schema_version": 9,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": true },
