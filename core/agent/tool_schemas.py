@@ -41,6 +41,53 @@ def descriptor_to_responses_tool(
     }
 
 
+_COMPACT_BRAVE_SEARCH_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "The concise web search query.",
+            "minLength": 1,
+        },
+        "count": {
+            "type": "integer",
+            "description": "Maximum results to return.",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5,
+        },
+    },
+    "required": ["query"],
+    "additionalProperties": False,
+}
+
+
+def project_descriptor_for_agent(
+    agent_key: str,
+    descriptor: CapabilityDescriptor,
+) -> CapabilityDescriptor:
+    """Return an Agent-specific model schema without mutating registry state.
+
+    Local models benefit from a compact Brave search contract.  The projection
+    belongs to the shared schema boundary so every local Agent, catalog view,
+    preflight estimate, and provider turn uses the same descriptor.
+    """
+    if (
+        agent_key in {"sorex", "mus", "apodemus"}
+        and descriptor.name == "brave_brave_web_search"
+    ):
+        return descriptor.model_copy(
+            update={
+                "description": (
+                    "Search the public web for current information. Use a concise "
+                    "query and request no more results than needed."
+                ),
+                "input_schema": _COMPACT_BRAVE_SEARCH_SCHEMA,
+            }
+        )
+    return descriptor
+
+
 def estimate_json_tokens(
     payload: Any,
     *,
