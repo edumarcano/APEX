@@ -92,6 +92,43 @@ class HostedGroundingTests(unittest.TestCase):
         self.assertFalse(any(item.get("type") == "web_search" for item in tools))
 
 
+class ToolAccessInstructionTests(unittest.TestCase):
+    def test_attached_apex_tools_are_described_as_preapproved_read_only(self) -> None:
+        instruction = build_tool_access_instruction(
+            ["get_weather_forecast"],
+            hosted_tool_names=["google_search"],
+        )
+
+        self.assertIn(
+            "Every attached APEX-managed or MCP tool has passed the Agent "
+            "read-only policy gate",
+            instruction,
+        )
+        self.assertIn(
+            "may be used directly without asking for confirmation",
+            instruction,
+        )
+        self.assertIn(
+            "Provider-hosted grounding is enabled separately",
+            instruction,
+        )
+        self.assertNotIn("No APEX-managed or MCP tool schemas", instruction)
+
+    def test_no_attached_apex_tools_do_not_claim_read_only_authority(self) -> None:
+        instruction = build_tool_access_instruction([])
+
+        self.assertIn("No APEX-managed or MCP tool schemas", instruction)
+        self.assertNotIn(
+            "Every attached APEX-managed or MCP tool has passed the Agent "
+            "read-only policy gate",
+            instruction,
+        )
+        self.assertNotIn(
+            "may be used directly without asking for confirmation",
+            instruction,
+        )
+
+
 class AcinonyxContextTests(unittest.TestCase):
     def tearDown(self) -> None:
         clear_masked_briefing_for_tests()
