@@ -9,9 +9,10 @@ import {
 } from './agents'
 
 describe('agents helpers', () => {
-  it('includes Apodemus among local Agents', () => {
-    expect(LOCAL_AGENT_KEYS).toEqual(['sorex', 'mus', 'apodemus'])
+  it('includes llama.cpp Agents among local Agents', () => {
+    expect(LOCAL_AGENT_KEYS).toEqual(['sorex', 'mus', 'apodemus', 'neotoma'])
     expect(isLocalAgentKey('apodemus')).toBe(true)
+    expect(isLocalAgentKey('neotoma')).toBe(true)
     expect(isLocalAgentKey('panthera')).toBe(false)
   })
 

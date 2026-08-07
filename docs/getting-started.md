@@ -144,10 +144,10 @@ These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instea
 
 ## Optional llama.cpp path
 
-llama.cpp is not required to start APEX. When you want Apex Apodemus:
+llama.cpp is not required to start APEX. When you want Apex Apodemus or Apex Neotoma:
 
 1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
-2. Copy [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini) to a machine-local path, set the GGUF placeholder, and keep that copy untracked.
+2. Copy [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini) to a machine-local path, set the GGUF placeholders, and keep that copy untracked.
 3. Choose a mode:
    - **External:** start the router yourself with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-and-managed-router-modes).
    - **Managed:** in Runtime Settings, enable llama.cpp, turn on Manage server automatically, and set the executable and preset paths. APEX starts the router only when the configured loopback URL is unreachable.

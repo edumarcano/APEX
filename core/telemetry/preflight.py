@@ -24,6 +24,7 @@ from core.agent.catalog import (
     cloud_agent_keys,
     is_cloud_agent_key,
     is_local_agent_key,
+    local_context_window_for_agent,
     local_agent_keys,
     resolve_agent_selection,
 )
@@ -141,11 +142,7 @@ def _evaluate_local_agent_blockers(
     agent = build_concrete_agent(
         agent_key,
         native_effort=None,
-        local_context_window=(
-            get_settings_store().get_snapshot().ask_apex.apodemus_context_window
-            if agent_key == "apodemus"
-            else None
-        ),
+        local_context_window=local_context_window_for_agent(agent_key),
     )
     backend = get_local_runtime_backend(agent.provider)
 
@@ -383,11 +380,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         profile = build_concrete_agent(
             agent,
             native_effort=None,
-            local_context_window=(
-                get_settings_store().get_snapshot().ask_apex.apodemus_context_window
-                if agent == "apodemus"
-                else None
-            ),
+            local_context_window=local_context_window_for_agent(agent),
         )
         if getattr(profile, "high_resource", False):
             warnings.append(_warning("high_resource_local_agent"))

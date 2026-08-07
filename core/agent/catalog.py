@@ -10,9 +10,9 @@ from core.agent.providers.contract import InferenceProvider, is_local_inference_
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
 from core.agent.providers.llama_cpp_models import (
-    APODEMUS_RUNTIME_MODEL_IDS,
+    LLAMA_CPP_RUNTIME_CONFIGS,
     LlamaCppModelProfile,
-    build_apodemus_profile,
+    build_llama_cpp_profile,
 )
 from core.agent.providers.ollama_models import (
     OLLAMA_HIGH_RESOURCE_AGENTS,
@@ -42,6 +42,7 @@ AgentKey: TypeAlias = Literal[
     "sorex",
     "mus",
     "apodemus",
+    "neotoma",
 ]
 CloudAgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
@@ -49,7 +50,7 @@ CloudAgentKey: TypeAlias = Literal[
 CloudSettingsAgentKey: TypeAlias = Literal[
     "panthera", "neofelis", "delphinus", "orcinus"
 ]
-LocalAgentKey: TypeAlias = Literal["sorex", "mus", "apodemus"]
+LocalAgentKey: TypeAlias = Literal["sorex", "mus", "apodemus", "neotoma"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
@@ -64,12 +65,15 @@ VALID_AGENT_KEYS: frozenset[str] = frozenset(
         "sorex",
         "mus",
         "apodemus",
+        "neotoma",
     }
 )
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus", "apodemus"})
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
+    {"sorex", "mus", "apodemus", "neotoma"}
+)
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
 
@@ -279,6 +283,29 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         capability_tags=("Efficient local", "Selectable context"),
         supports_effort=False,
     ),
+    "neotoma": AgentSpec(
+        key="neotoma",
+        display_name="Apex Neotoma",
+        description=(
+            "Preview private local Agent for Qwen3.5 4B work through llama.cpp."
+        ),
+        identity_instruction=(
+            "You are Apex Neotoma, an Apex Agent powered by "
+            "Qwen3.5 4B through llama.cpp."
+        ),
+        agent_version="1.0",
+        provider="llama_cpp",
+        runtime="local",
+        api_model="Qwen3.5-4B-Q4_K_M.gguf",
+        default_effort=None,
+        credential_env=None,
+        max_tool_turns=3,
+        max_tool_calls=4,
+        tier="balanced",
+        stability="preview",
+        capability_tags=("Generalist local", "Selectable context"),
+        supports_effort=False,
+    ),
 }
 
 _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
@@ -289,6 +316,7 @@ _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
     "orcinus",
     "mus",
     "apodemus",
+    "neotoma",
     "sorex",
 )
 
@@ -434,9 +462,8 @@ def build_concrete_agent(
             ),
         )
     if spec.provider == "llama_cpp":
-        if agent_key != "apodemus":
-            raise ValueError(f"Unsupported llama.cpp Agent: {agent_key!r}")
-        return build_apodemus_profile(
+        return build_llama_cpp_profile(
+            agent_key,
             display_name=spec.display_name,
             agent_version=spec.agent_version,
             api_model=spec.api_model,
@@ -521,6 +548,20 @@ def is_local_agent_key(agent_key: str) -> bool:
     return spec is not None and spec.runtime == "local"
 
 
+def local_context_window_for_agent(agent_key: str) -> int | None:
+    """Return the persisted selectable context for a local Agent, if present."""
+    if not is_local_agent_key(agent_key):
+        return None
+    from core.settings import get_settings_store
+
+    value = get_settings_store().get_snapshot().ask_apex.local_context_windows.get(
+        agent_key
+    )
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
 def is_cloud_agent_key(agent_key: str) -> bool:
     """Return whether ``agent_key`` is a catalogued cloud Agent."""
     spec = AGENT_SPECS.get(agent_key)
@@ -561,10 +602,13 @@ def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
     spec = AGENT_SPECS[agent_key]
     if spec.runtime != "local":
         return frozenset()
-    if spec.provider == "llama_cpp" and agent_key == "apodemus":
+    if spec.provider == "llama_cpp":
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
+        if runtime is None:
+            return frozenset()
         return frozenset(
             LocalModelRef(provider="llama_cpp", model=alias)
-            for alias in APODEMUS_RUNTIME_MODEL_IDS.values()
+            for alias in runtime.runtime_model_ids.values()
         )
     return frozenset({local_model_ref_for_agent(agent_key)})
 

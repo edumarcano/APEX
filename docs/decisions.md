@@ -168,7 +168,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, and Apodemus.
+**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, Apodemus, and Neotoma.
 
 **Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
 

@@ -272,8 +272,8 @@ class LlamaCppServerSupervisor:
 
             if is_local_execution_active() or get_loading_local_model() is not None:
                 raise LlamaCppManagedServerError(
-                    "Cannot change llama.cpp server settings while Apodemus is active "
-                    "or loading."
+                    "Cannot change llama.cpp server settings while a local llama.cpp "
+                    "Agent is active or loading."
                 )
 
     def on_settings_changed(
@@ -292,8 +292,8 @@ class LlamaCppServerSupervisor:
             if owns_running and identity_changed:
                 if is_local_execution_active() or get_loading_local_model() is not None:
                     raise LlamaCppManagedServerError(
-                        "Cannot apply llama.cpp server settings while Apodemus is "
-                        "active or loading."
+                        "Cannot apply llama.cpp server settings while a local "
+                        "llama.cpp Agent is active or loading."
                     )
                 self._stop_owned_process_locked(force=False)
 

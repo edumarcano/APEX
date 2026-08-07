@@ -10,8 +10,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from core.agent.catalog import migrate_schema5_briefing, migrate_schema7_ask_apex
+from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.settings.models import (
-    VALID_APODEMUS_CONTEXT_WINDOWS,
     VALID_BRIEFING_MODES,
     VALID_CLOUD_EFFORTS,
     VALID_CLOUD_SETTINGS_AGENTS,
@@ -588,6 +588,7 @@ def _normalize_ask_apex(
         "cloud_agent",
         "effort",
         "local_agent",
+        "local_context_windows",
         "apodemus_context_window",
         "neofelis_google_search_enabled",
         "neofelis_google_maps_enabled",
@@ -649,19 +650,34 @@ def _normalize_ask_apex(
             else:
                 _record_error(errors, "ask_apex.local_agent is not valid")
 
+    normalized_context_windows: dict[str, int] | None = None
+    if "local_context_windows" in migrated:
+        normalized_context_windows = _normalize_local_context_windows(
+            migrated["local_context_windows"],
+            layer_name,
+            errors,
+        )
+        if normalized_context_windows is not None:
+            result["local_context_windows"] = normalized_context_windows
+
     if "apodemus_context_window" in migrated:
         context_window = migrated["apodemus_context_window"]
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS["apodemus"]
         if isinstance(context_window, bool):
             _record_error(
                 errors, "ask_apex.apodemus_context_window must be an integer"
             )
-        elif isinstance(context_window, int) and context_window in (
-            VALID_APODEMUS_CONTEXT_WINDOWS
+        elif (
+            isinstance(context_window, int)
+            and context_window in runtime.allowed_context_windows
         ):
-            result["apodemus_context_window"] = context_window
+            if normalized_context_windows is None:
+                result["local_context_windows"] = {}
+            result["local_context_windows"]["apodemus"] = context_window
         elif context_window is not None:
             _record_error(
-                errors, "ask_apex.apodemus_context_window is not a supported preset"
+                errors,
+                "ask_apex.apodemus_context_window is not a supported preset",
             )
 
     if "neofelis_google_search_enabled" in migrated:
@@ -684,6 +700,49 @@ def _normalize_ask_apex(
                 _record_error(errors, f"ask_apex.{key} must be a boolean")
 
     return result
+
+
+def _normalize_local_context_windows(
+    value: Any,
+    layer_name: str,
+    errors: NormalizationIssues | None,
+) -> dict[str, int] | None:
+    """Normalize selectable context preferences for registered local runtimes."""
+    if not isinstance(value, dict):
+        _record_error(errors, "ask_apex.local_context_windows must be an object")
+        _LOGGER.warning(
+            "ask_apex.local_context_windows in %s must be an object; ignoring.",
+            layer_name,
+        )
+        return None
+
+    normalized: dict[str, int] = {}
+    for agent_key, context_window in value.items():
+        if not isinstance(agent_key, str):
+            _record_error(
+                errors,
+                "ask_apex.local_context_windows keys must be Agent names",
+            )
+            continue
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key.strip().lower())
+        if runtime is None:
+            _record_error(
+                errors,
+                f"ask_apex.local_context_windows has unsupported Agent {agent_key!r}",
+            )
+            continue
+        if (
+            isinstance(context_window, int)
+            and not isinstance(context_window, bool)
+            and context_window in runtime.allowed_context_windows
+        ):
+            normalized[agent_key.strip().lower()] = context_window
+            continue
+        _record_error(
+            errors,
+            f"ask_apex.local_context_windows[{agent_key!r}] is not a supported preset",
+        )
+    return normalized
 
 
 def _normalize_tool_profiles(
@@ -1006,9 +1065,21 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     local_agent = ask_apex.get("local_agent", "mus")
     if local_agent not in VALID_LOCAL_SETTINGS_AGENTS:
         local_agent = "mus"
-    apodemus_context_window = ask_apex.get("apodemus_context_window", 8192)
-    if apodemus_context_window not in VALID_APODEMUS_CONTEXT_WINDOWS:
-        apodemus_context_window = 8192
+    local_context_windows = {
+        agent_key: runtime.default_context_window
+        for agent_key, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items()
+    }
+    configured_context_windows = ask_apex.get("local_context_windows", {})
+    if isinstance(configured_context_windows, dict):
+        for agent_key, context_window in configured_context_windows.items():
+            runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
+            if (
+                runtime_config is not None
+                and isinstance(context_window, int)
+                and not isinstance(context_window, bool)
+                and context_window in runtime_config.allowed_context_windows
+            ):
+                local_context_windows[agent_key] = context_window
     ask_apex_settings = AskApexSettings(
         enabled=bool(ask_apex.get("enabled", True))
         if "enabled" in ask_apex
@@ -1017,7 +1088,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         cloud_agent=cloud_agent,  # type: ignore[arg-type]
         effort=effort,  # type: ignore[arg-type]
         local_agent=local_agent,  # type: ignore[arg-type]
-        apodemus_context_window=apodemus_context_window,  # type: ignore[arg-type]
+        local_context_windows=local_context_windows,
         neofelis_google_search_enabled=bool(
             ask_apex.get("neofelis_google_search_enabled", True)
         ),
@@ -1169,7 +1240,9 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "cloud_agent": snapshot.ask_apex.cloud_agent,
             "effort": snapshot.ask_apex.effort,
             "local_agent": snapshot.ask_apex.local_agent,
-            "apodemus_context_window": snapshot.ask_apex.apodemus_context_window,
+            "local_context_windows": dict(
+                snapshot.ask_apex.local_context_windows
+            ),
             "neofelis_google_search_enabled": (
                 snapshot.ask_apex.neofelis_google_search_enabled
             ),

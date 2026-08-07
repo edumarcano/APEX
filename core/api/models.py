@@ -414,6 +414,22 @@ class AgentStatus(BaseModel):
         default=None,
         description="Selectable APEX effort tiers; null for fixed-effort local Agents.",
     )
+    context_window: int | None = Field(
+        default=None,
+        description="Currently selected local context preset, when configurable.",
+    )
+    context_window_options: list[int] | None = Field(
+        default=None,
+        description="Selectable local context presets; null for fixed-context Agents.",
+    )
+    context_window_experimental_options: list[int] | None = Field(
+        default=None,
+        description="Selectable local context presets that carry an experimental label.",
+    )
+    default_context_window: int | None = Field(
+        default=None,
+        description="Default local context preset when no preference is stored.",
+    )
     default_effort: Literal["light", "focused", "extended"] | None = Field(
         default=None,
         description="Default APEX effort tier for this Agent.",
@@ -523,7 +539,7 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["mus", "sorex", "apodemus"] = Field(
+    agent: Literal["mus", "sorex", "apodemus", "neotoma"] = Field(
         description="Local Apex Agent to pre-warm in local runtime memory."
     )
 
@@ -533,7 +549,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["mus", "sorex", "apodemus"] = Field(
+    agent: Literal["mus", "sorex", "apodemus", "neotoma"] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 

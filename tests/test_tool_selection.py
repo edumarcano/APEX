@@ -219,6 +219,9 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertIn("Read-only", projected.description)
         self.assertIn("without asking for confirmation", projected.description)
         self.assertIn("Retrieve upcoming events.", projected.description)
+        neotoma = project_descriptor_for_agent("neotoma", descriptor)
+        self.assertIn("Read-only", neotoma.description)
+        self.assertIn("without asking for confirmation", neotoma.description)
 
         cloud_projection = project_descriptor_for_agent("panthera", descriptor)
         self.assertEqual(cloud_projection.description, descriptor.description)
@@ -237,6 +240,11 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(apodemus.input_schema, descriptor.input_schema)
         self.assertIn("Read-only", apodemus.description)
         self.assertIn("Search the full public web.", apodemus.description)
+
+        neotoma = project_descriptor_for_agent("neotoma", descriptor)
+        self.assertEqual(neotoma.input_schema, descriptor.input_schema)
+        self.assertIn("Read-only", neotoma.description)
+        self.assertIn("Search the full public web.", neotoma.description)
 
         cloud = project_descriptor_for_agent("panthera", descriptor)
         self.assertEqual(cloud.input_schema, descriptor.input_schema)

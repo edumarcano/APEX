@@ -100,8 +100,8 @@ def try_begin_local_runtime_transition() -> bool:
     """
     Attempt to claim the local-runtime settings transition gate without blocking.
 
-    Returns False when another transition is in progress or Apodemus is active
-    or loading, allowing callers to reject conflicting settings changes.
+    Returns False when another transition is in progress or a local model is
+    active or loading, allowing callers to reject conflicting settings changes.
     """
     if not _runtime_transition_lock.acquire(blocking=False):
         return False

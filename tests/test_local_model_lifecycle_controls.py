@@ -295,7 +295,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.get_status_snapshot.return_value = snapshot
 
         settings = mock.Mock()
-        settings.ask_apex.apodemus_context_window = 8192
+        settings.ask_apex.local_context_windows = {"apodemus": 8192, "neotoma": 16384}
 
         with (
             mock.patch(
@@ -362,7 +362,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.get_status_snapshot.return_value = snapshot
 
         settings = mock.Mock()
-        settings.ask_apex.apodemus_context_window = 8192
+        settings.ask_apex.local_context_windows = {"apodemus": 8192, "neotoma": 16384}
 
         with (
             mock.patch(
@@ -416,7 +416,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend.enabled = True
         settings = mock.Mock()
         settings.ask_apex.enabled = True
-        settings.ask_apex.apodemus_context_window = 8192
+        settings.ask_apex.local_context_windows = {"apodemus": 8192, "neotoma": 16384}
         settings.user_designation = ""
         missing = {
             "provider": "llama_cpp",

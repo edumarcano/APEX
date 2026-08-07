@@ -155,6 +155,10 @@ class ProfileIdentityTests(unittest.TestCase):
             "You are Apex Apodemus, an Apex Agent powered by "
             "Gemma 4 E2B through llama.cpp."
         ),
+        "neotoma": (
+            "You are Apex Neotoma, an Apex Agent powered by "
+            "Qwen3.5 4B through llama.cpp."
+        ),
     }
 
     def test_every_profile_has_the_expected_immutable_identity(self) -> None:
@@ -498,11 +502,19 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             neofelis.native_tools,
             {"google_search": False, "google_maps": True},
         )
+        neotoma = next(item for item in profiles if item.key == "neotoma")
+        self.assertEqual(neotoma.configured_model, "Qwen3.5-4B-Q4_K_M.gguf")
+        self.assertEqual(
+            neotoma.context_window_options,
+            [4096, 16384, 32768, 65536],
+        )
+        self.assertEqual(neotoma.default_context_window, 16384)
+        self.assertEqual(neotoma.context_window, 16384)
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_ten(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 10)
+    def test_settings_schema_version_is_eleven(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 11)
 
 
 if __name__ == "__main__":

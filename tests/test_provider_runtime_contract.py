@@ -72,15 +72,21 @@ class ProviderContractTests(unittest.TestCase):
         sorex = _concrete_profile("sorex")
         mus = _concrete_profile("mus")
         apodemus = _concrete_profile("apodemus")
+        neotoma = _concrete_profile("neotoma")
         self.assertTrue(isinstance(sorex, LocalModelProfile))
         self.assertTrue(isinstance(mus, LocalModelProfile))
         self.assertTrue(isinstance(apodemus, LocalModelProfile))
+        self.assertTrue(isinstance(neotoma, LocalModelProfile))
         self.assertEqual(resolve_inference_provider(sorex), "ollama")
         self.assertEqual(resolve_inference_provider(apodemus), "llama_cpp")
         self.assertEqual(sorex.runtime_model_id, sorex.api_model)
         self.assertEqual(mus.runtime_model_id, mus.api_model)
         self.assertEqual(apodemus.runtime_model_id, "apodemus-8k")
         self.assertEqual(apodemus.api_model, "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(neotoma.runtime_model_id, "neotoma-16k")
+        self.assertEqual(neotoma.api_model, "Qwen3.5-4B-Q4_K_M.gguf")
+        self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))
+        self.assertEqual(neotoma.maximum_context_window, 262144)
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
         self.assertFalse(apodemus.high_resource)
@@ -89,7 +95,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertFalse(is_local_inference_provider("openai"))
 
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
-        for agent_key in ("sorex", "mus", "apodemus"):
+        for agent_key in ("sorex", "mus", "apodemus", "neotoma"):
             profile = build_concrete_agent(agent_key, native_effort=None)
             self.assertTrue(is_local_profile(profile))
             selected = local_model_ref_for_agent(agent_key)
@@ -100,10 +106,11 @@ class ProviderContractTests(unittest.TestCase):
 
         known = known_local_model_refs()
         expected = set()
-        for agent_key in ("sorex", "mus", "apodemus"):
+        for agent_key in ("sorex", "mus", "apodemus", "neotoma"):
             expected.update(local_model_refs_for_agent(agent_key))
         self.assertEqual(known, frozenset(expected))
         self.assertEqual(len(local_model_refs_for_agent("apodemus")), 4)
+        self.assertEqual(len(local_model_refs_for_agent("neotoma")), 4)
         self.assertIsNone(
             agent_key_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")
@@ -731,11 +738,11 @@ class PublicRosterTests(unittest.TestCase):
         self.assertIn("xai", providers)
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"},
-            {"sorex", "mus", "apodemus"},
+            {"sorex", "mus", "apodemus", "neotoma"},
         )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "llama_cpp"},
-            {"apodemus"},
+            {"apodemus", "neotoma"},
         )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},

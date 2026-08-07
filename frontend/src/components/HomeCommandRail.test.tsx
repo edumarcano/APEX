@@ -8,23 +8,27 @@ import type { AgentStatus, AgentKey, ToolCatalog } from '../types/telemetry'
 import { HomeCommandRail } from './HomeCommandRail'
 
 function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
-  const local = key === 'mus' || key === 'sorex' || key === 'apodemus'
+  const local = key === 'mus' || key === 'sorex' || key === 'apodemus' || key === 'neotoma'
   return {
     key,
     display_name: `Apex ${key.slice(0, 1).toUpperCase()}${key.slice(1)}`,
     description: `${key} profile.`,
     configured_model:
-      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
+      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : key === 'neotoma' ? 'Qwen3.5-4B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
     sort_order: key === 'panthera' ? 1 : 2,
     capabilities: [],
     native_tools: {},
-    provider: key === 'apodemus' ? 'llama_cpp' : local ? 'ollama' : 'openai',
+    provider: key === 'apodemus' || key === 'neotoma' ? 'llama_cpp' : local ? 'ollama' : 'openai',
     version: '7.4',
     runtime: local ? 'local' : 'cloud',
     tier: 'stable',
-    stability: key === 'apodemus' ? 'preview' : 'stable',
+    stability: key === 'apodemus' || key === 'neotoma' ? 'preview' : 'stable',
     effort_options: local ? null : ['light', 'focused', 'extended'],
     default_effort: local ? null : 'focused',
+    context_window: key === 'apodemus' ? 8192 : key === 'neotoma' ? 16384 : null,
+    context_window_options: key === 'apodemus' ? [4096, 8192, 16384, 32768] : key === 'neotoma' ? [4096, 16384, 32768, 65536] : null,
+    context_window_experimental_options: key === 'apodemus' ? [32768] : key === 'neotoma' ? [] : null,
+    default_context_window: key === 'apodemus' ? 8192 : key === 'neotoma' ? 16384 : null,
     status,
     status_source: local ? 'runtime' : 'configuration',
     status_checked_at: null,

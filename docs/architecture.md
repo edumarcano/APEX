@@ -181,13 +181,13 @@ Each non-demo Agent request begins with the selected Agent's immutable identity 
 
 Production cloud Agents receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
-`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, selectable local context metadata, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
 
 The Home command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
 
 ### Local Agents and explicit tool selection
 
-Local Agent requests use Sorex, Mus, or Apodemus. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+Local Agent requests use Sorex, Mus, Apodemus, or Neotoma. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
 Local and cloud queries use the same explicit capability descriptor list. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for cloud Agents and No APEX Tools for local Agents. The resolver intersects selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns structured per-tool failures instead of silently dropping a request. Generic local context preflight is a warning-only estimate; the provider serializes the actual request, trims complete older interactions, and applies its template allowance and safety margin before deciding whether the current interaction fits. Provider-hosted Google and X grounding remains outside these schema profiles and is controlled separately.
 
@@ -228,7 +228,7 @@ flowchart TB
 
 - Only one local generation can run at a time across both backends.
 - Only one APEX-selected model remains resident; identity is provider-qualified
-  (`ollama`/`qwen3:…` or `llama_cpp`/`apodemus-8k`).
+  (`ollama`/`qwen3:…` or `llama_cpp`/`<agent>-<context>`).
 - CPU and RAM percentage gates apply before a cold load.
 - An already resident target model skips the cold-load resource gate.
 - A different target unloads other known APEX local models before warming the new one.

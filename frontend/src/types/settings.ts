@@ -12,7 +12,7 @@ export type { McpProviderId } from '../lib/mcpProviders'
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
 export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
-export type ApodemusContextWindow = 4096 | 8192 | 16384 | 32768
+export type LocalContextWindows = Record<string, number>
 
 export interface LlamaCppSettings {
   enabled: boolean
@@ -56,7 +56,7 @@ export interface AskApexSettings {
   cloud_agent: CloudSettingsAgent
   effort: CloudEffort
   local_agent: LocalSettingsAgent
-  apodemus_context_window: ApodemusContextWindow
+  local_context_windows: LocalContextWindows
   neofelis_google_search_enabled: boolean
   neofelis_google_maps_enabled: boolean
   delphinus_x_search_enabled: boolean
@@ -143,7 +143,7 @@ export interface AskApexPatch {
   cloud_agent?: CloudSettingsAgent
   effort?: CloudEffort
   local_agent?: LocalSettingsAgent
-  apodemus_context_window?: ApodemusContextWindow
+  local_context_windows?: LocalContextWindows
   neofelis_google_search_enabled?: boolean
   neofelis_google_maps_enabled?: boolean
   delphinus_x_search_enabled?: boolean

@@ -143,7 +143,9 @@ def default_profile_for_agent(agent_key: str) -> ToolProfile:
             return configured
     except Exception:
         pass
-    if agent_key in {"sorex", "mus", "apodemus"}:
+    from core.agent.catalog import is_local_agent_key
+
+    if is_local_agent_key(agent_key):
         return _BUILT_IN_BY_ID["no_tools"]
     return _BUILT_IN_BY_ID["all_allowed"]
 

@@ -92,7 +92,9 @@ def project_descriptor_for_agent(
             }
         )
 
-    if agent_key in {"sorex", "mus", "apodemus"} and projected.risk == "read":
+    from core.agent.catalog import is_local_agent_key
+
+    if is_local_agent_key(agent_key) and projected.risk == "read":
         projected = projected.model_copy(
             update={
                 "description": (

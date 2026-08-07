@@ -36,8 +36,11 @@ __all__ = [
     "LLAMA_CPP_IDLE_UNLOAD_MINUTES",
     "LLAMA_CPP_MANUAL_UNLOAD_ENABLED",
     "LLAMA_CPP_REQUEST_TIMEOUT_SECONDS",
+    "LLAMA_CPP_RESOURCE_GATES",
     "APODEMUS_RAM_LIMIT",
     "APODEMUS_CPU_LIMIT",
+    "NEOTOMA_RAM_LIMIT",
+    "NEOTOMA_CPU_LIMIT",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -617,8 +620,8 @@ except Exception as exc:
     MUS_RAM_LIMIT = _DEFAULT_MUS_RAM
     MUS_CPU_LIMIT = _DEFAULT_MUS_CPU
 
-_DEFAULT_APODEMUS_RAM: Final[float] = 82.0
-_DEFAULT_APODEMUS_CPU: Final[float] = 92.0
+_DEFAULT_LLAMA_CPP_RAM: Final[float] = 82.0
+_DEFAULT_LLAMA_CPP_CPU: Final[float] = 92.0
 
 try:
     _llama_cpp_cfg = _CONFIG_DATA.get("llama_cpp", {})
@@ -672,15 +675,25 @@ try:
             )
         _llama_resource_gates = {}
 
-    _apodemus_ram, _apodemus_cpu = _parse_resource_gate(
-        _llama_resource_gates.get("apodemus"),
-        profile="apodemus",
-        default_ram=_DEFAULT_APODEMUS_RAM,
-        default_cpu=_DEFAULT_APODEMUS_CPU,
-        gate_root="llama_cpp",
+    _llama_cpp_resource_limits: dict[str, tuple[float, float]] = {}
+    for _profile, _profile_gate in (
+        ("apodemus", _llama_resource_gates.get("apodemus")),
+        ("neotoma", _llama_resource_gates.get("neotoma")),
+    ):
+        _llama_cpp_resource_limits[_profile] = _parse_resource_gate(
+            _profile_gate,
+            profile=_profile,
+            default_ram=_DEFAULT_LLAMA_CPP_RAM,
+            default_cpu=_DEFAULT_LLAMA_CPP_CPU,
+            gate_root="llama_cpp",
+        )
+    LLAMA_CPP_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
+        _llama_cpp_resource_limits
     )
-    APODEMUS_RAM_LIMIT: Final[float] = _apodemus_ram
-    APODEMUS_CPU_LIMIT: Final[float] = _apodemus_cpu
+    APODEMUS_RAM_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
+    APODEMUS_CPU_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]
+    NEOTOMA_RAM_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["neotoma"][0]
+    NEOTOMA_CPU_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["neotoma"][1]
 except Exception as exc:
     _LOGGER.warning("Unable to parse llama_cpp config: %s; using defaults.", exc)
     LLAMA_CPP_ENABLED = False
@@ -688,5 +701,11 @@ except Exception as exc:
     LLAMA_CPP_IDLE_UNLOAD_MINUTES = 5
     LLAMA_CPP_MANUAL_UNLOAD_ENABLED = True
     LLAMA_CPP_REQUEST_TIMEOUT_SECONDS = 180
-    APODEMUS_RAM_LIMIT = _DEFAULT_APODEMUS_RAM
-    APODEMUS_CPU_LIMIT = _DEFAULT_APODEMUS_CPU
+    LLAMA_CPP_RESOURCE_GATES = {
+        "apodemus": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+        "neotoma": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+    }
+    APODEMUS_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
+    APODEMUS_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]
+    NEOTOMA_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["neotoma"][0]
+    NEOTOMA_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["neotoma"][1]

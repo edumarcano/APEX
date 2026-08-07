@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal["sorex", "mus", "apodemus"]
-ApodemusContextWindow = Literal[4096, 8192, 16384, 32768]
+LocalSettingsAgent = Literal["sorex", "mus", "apodemus", "neotoma"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
 BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
@@ -19,9 +18,8 @@ VoiceMode = Literal["off", "manual", "automatic"]
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset({"sorex", "mus", "apodemus"})
-VALID_APODEMUS_CONTEXT_WINDOWS: frozenset[int] = frozenset(
-    {4096, 8192, 16384, 32768}
+VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
+    {"sorex", "mus", "apodemus", "neotoma"}
 )
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
@@ -31,7 +29,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 10
+SETTINGS_SCHEMA_VERSION: int = 11
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -43,6 +41,32 @@ LlamaCppServerState = Literal[
     "startup_failed",
 ]
 LlamaCppServerOwnership = Literal["none", "external", "apex"]
+
+
+def _default_local_context_windows() -> dict[str, int]:
+    """Resolve defaults from registered provider capabilities."""
+    from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
+
+    return {
+        agent_key: runtime.default_context_window
+        for agent_key, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items()
+    }
+
+
+def _validate_local_context_windows(
+    value: dict[str, StrictInt],
+) -> dict[str, StrictInt]:
+    """Validate context preferences against the registered provider data."""
+    from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
+
+    for agent_key, context_window in value.items():
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
+        if runtime is None or context_window not in runtime.allowed_context_windows:
+            raise ValueError(
+                f"Unsupported local context preset for Agent {agent_key!r}: "
+                f"{context_window!r}"
+            )
+    return value
 
 
 class FeaturesSettings(BaseModel):
@@ -102,11 +126,17 @@ class AskApexSettings(BaseModel):
     cloud_agent: CloudSettingsAgent = "panthera"
     effort: CloudEffort = "focused"
     local_agent: LocalSettingsAgent = "mus"
-    apodemus_context_window: ApodemusContextWindow = 8192
+    local_context_windows: dict[str, StrictInt] = Field(
+        default_factory=_default_local_context_windows
+    )
     neofelis_google_search_enabled: bool = True
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
     orcinus_x_search_enabled: bool = True
+
+    _validate_context_windows = field_validator("local_context_windows")(
+        _validate_local_context_windows
+    )
 
 
 class ToolProfile(BaseModel):
@@ -273,11 +303,15 @@ class AskApexPatch(BaseModel):
     cloud_agent: CloudSettingsAgent | None = None
     effort: CloudEffort | None = None
     local_agent: LocalSettingsAgent | None = None
-    apodemus_context_window: ApodemusContextWindow | None = None
+    local_context_windows: dict[str, StrictInt] | None = None
     neofelis_google_search_enabled: bool | None = None
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
     orcinus_x_search_enabled: bool | None = None
+
+    _validate_context_windows = field_validator("local_context_windows")(
+        _validate_local_context_windows
+    )
 
 
 class ToolProfilesPatch(BaseModel):

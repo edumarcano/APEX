@@ -1,4 +1,4 @@
-"""llama.cpp OpenAI-compatible Chat Completions provider for Apex Apodemus."""
+"""llama.cpp OpenAI-compatible Chat Completions provider for Apex local Agents."""
 
 from __future__ import annotations
 

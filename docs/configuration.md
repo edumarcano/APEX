@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `10`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `11`.
 
 | Group | Editable values |
 |---|---|
@@ -48,7 +48,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Football teams | Up to three football-data.org team IDs with display names |
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
-| Ask APEX | Global enablement switch, Apodemus context size, and grounding selection; Cortex owns Agent, effort, and grounding selection |
+| Ask APEX | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
@@ -132,8 +132,9 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
 | `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 | `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent with selectable context |
+| `neotoma` — Neotoma 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus.
+`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus and Neotoma.
 
 #### llama.cpp configuration
 
@@ -148,6 +149,7 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `llama_cpp.manual_unload_enabled` | `true` | No | Allows HUD unload |
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
 | `llama_cpp.resource_gates.apodemus` | RAM/CPU limits | No | Cold-load gates for Apodemus |
+| `llama_cpp.resource_gates.neotoma` | RAM/CPU limits | No | Cold-load gates for Neotoma |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 
@@ -172,7 +174,7 @@ APEX does not install, bundle, or update llama.cpp, and it does not download mod
 - **External mode** (`managed: false`): you start `llama-server` yourself. APEX only talks to the configured loopback URL over HTTP.
 - **Managed mode** (`managed: true`): when llama.cpp is enabled and the router is unreachable, APEX starts your installed executable with the configured preset. If the router is already reachable, APEX uses it as an external server and does not spawn a duplicate process. APEX terminates only a child process it launched, never an externally started server.
 
-Configure Apodemus aliases with one preset per context size. A tracked placeholder is in [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholder, and keep absolute paths out of git.
+Configure Apodemus and Neotoma aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git.
 
 ```ini
 version = 1
@@ -186,17 +188,7 @@ parallel = 1
 model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
 ctx-size = 4096
 
-[apodemus-8k]
-model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
-ctx-size = 8192
-
-[apodemus-16k]
-model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
-ctx-size = 16384
-
-[apodemus-32k]
-model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
-ctx-size = 32768
+; Include the remaining Apodemus and Neotoma aliases from the tracked preset.
 ```
 
 Recommended Windows launch for external mode (reconcile flag names against the build's `--help`). Managed mode uses the same argument sequence when APEX starts the process:
@@ -214,11 +206,13 @@ llama-server.exe `
 
 Installed aliases come only from the router's `/models` list. A missing `apodemus-8k` (or other selected preset) is reported as not configured rather than fabricated by APEX.
 
-#### Apodemus context preference
+#### Local context preferences
 
-`ask_apex.apodemus_context_window` selects one of `4096`, `8192`, `16384`, or `32768`. The default is `8192`. The Cortex inspector exposes this control when Apodemus is selected; changes persist to `config.local.json` and apply the next time Apodemus loads without triggering an automatic model load. The value `131072` is model maximum metadata only and is not an exposed preset. `32768` is marked experimental in the HUD. Reasoning stays off for Apodemus (`reasoning_effort: "none"` on every request).
+`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `8192`, `16384`, or `32768` and defaults to `8192`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
 
-Current Agent mapping used by documentation checks: `apodemus -> gemma-4-E2B-Q4_K_M.gguf`.
+Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; neither maximum is an exposed preset. Reasoning stays off for both llama.cpp Agents (`reasoning_effort: "none"` on every request).
+
+Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf` and `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 

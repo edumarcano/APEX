@@ -113,6 +113,7 @@ const VALID_AGENT_KEYS: readonly AgentKey[] = [
   'sorex',
   'mus',
   'apodemus',
+  'neotoma',
   'acinonyx',
 ]
 
@@ -355,6 +356,61 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   ) {
     return null
   }
+  const contextWindow = parseNullableFiniteNumber(record.context_window)
+  if (
+    record.context_window !== undefined &&
+    record.context_window !== null &&
+    contextWindow === null
+  ) {
+    return null
+  }
+  const contextWindowOptions =
+    record.context_window_options === undefined || record.context_window_options === null
+      ? null
+      : Array.isArray(record.context_window_options) &&
+          record.context_window_options.every(
+            (value) =>
+              typeof value === 'number' &&
+              Number.isInteger(value) &&
+              value > 0,
+          )
+        ? record.context_window_options
+        : null
+  if (
+    record.context_window_options !== undefined &&
+    record.context_window_options !== null &&
+    contextWindowOptions === null
+  ) {
+    return null
+  }
+  const contextWindowExperimentalOptions =
+    record.context_window_experimental_options === undefined ||
+    record.context_window_experimental_options === null
+      ? null
+      : Array.isArray(record.context_window_experimental_options) &&
+          record.context_window_experimental_options.every(
+            (value) =>
+              typeof value === 'number' &&
+              Number.isInteger(value) &&
+              value > 0,
+          )
+        ? record.context_window_experimental_options
+        : null
+  if (
+    record.context_window_experimental_options !== undefined &&
+    record.context_window_experimental_options !== null &&
+    contextWindowExperimentalOptions === null
+  ) {
+    return null
+  }
+  const defaultContextWindow = parseNullableFiniteNumber(record.default_context_window)
+  if (
+    record.default_context_window !== undefined &&
+    record.default_context_window !== null &&
+    defaultContextWindow === null
+  ) {
+    return null
+  }
 
   return {
     key,
@@ -371,6 +427,10 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     stability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
+    context_window: contextWindow,
+    context_window_options: contextWindowOptions,
+    context_window_experimental_options: contextWindowExperimentalOptions,
+    default_context_window: defaultContextWindow,
     status,
     status_source: isAgentStatusSource(record.status_source) ? record.status_source : 'configuration',
     status_checked_at: parseNullableString(record.status_checked_at),

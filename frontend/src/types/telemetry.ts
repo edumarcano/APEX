@@ -72,7 +72,7 @@ export type WeatherConditionArchetype =
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus'
+export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus' | 'neotoma'
 
 export type CloudAgent = CloudSettingsAgent
 
@@ -239,6 +239,10 @@ export interface AgentStatus {
   stability: AgentStability
   effort_options: CloudEffort[] | null
   default_effort: CloudEffort | null
+  context_window: number | null
+  context_window_options: number[] | null
+  context_window_experimental_options: number[] | null
+  default_context_window: number | null
   status: AgentAvailabilityStatus
   status_source: AgentStatusSource
   status_checked_at: string | null

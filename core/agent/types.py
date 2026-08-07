@@ -29,6 +29,7 @@ AgentKey: TypeAlias = Literal[
     "sorex",
     "mus",
     "apodemus",
+    "neotoma",
 ]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 

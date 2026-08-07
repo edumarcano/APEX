@@ -19,7 +19,7 @@ from core.agent.providers.llama_cpp_lifecycle import (
     LlamaCppRuntimeBackend,
     get_auth_headers,
 )
-from core.agent.providers.llama_cpp_models import build_apodemus_profile
+from core.agent.providers.llama_cpp_models import build_llama_cpp_profile
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "llama_cpp"
 
@@ -29,7 +29,8 @@ def _load_fixture(name: str) -> dict:
 
 
 def _apodemus_profile(*, context_window: int = 8192):
-    return build_apodemus_profile(
+    return build_llama_cpp_profile(
+        "apodemus",
         display_name="Apex Apodemus",
         agent_version="1.0",
         api_model="gemma-4-E2B-Q4_K_M.gguf",

@@ -50,14 +50,14 @@ describe('assistant boot hydration', () => {
       cloud_agent: 'neofelis',
       local_agent: 'mus',
       effort: 'extended',
-      apodemus_context_window: 32768,
+      local_context_windows: { apodemus: 32768, neotoma: 16384 },
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
       orcinus_x_search_enabled: true,
     })).toEqual({
       effort: 'extended',
-      apodemus_context_window: 32768,
+      local_context_windows: { apodemus: 32768, neotoma: 16384 },
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
@@ -82,7 +82,7 @@ describe('settings response parsing', () => {
     ['cloud profile', ['settings', 'ask_apex', 'cloud_agent'], 'invalid'],
     ['cloud effort', ['settings', 'ask_apex', 'effort'], 'invalid'],
     ['local profile', ['settings', 'ask_apex', 'local_agent'], 'invalid'],
-    ['apodemus context window', ['settings', 'ask_apex', 'apodemus_context_window'], 131072],
+    ['local context windows', ['settings', 'ask_apex', 'local_context_windows'], null],
     ['neofelis google search', ['settings', 'ask_apex', 'neofelis_google_search_enabled'], null],
     ['neofelis google maps', ['settings', 'ask_apex', 'neofelis_google_maps_enabled'], null],
     ['delphinus x search', ['settings', 'ask_apex', 'delphinus_x_search_enabled'], null],
@@ -133,6 +133,9 @@ describe('settings editing utilities', () => {
     expect(clone.features).not.toBe(BASE_SETTINGS.features)
     expect(clone.modules).not.toBe(BASE_SETTINGS.modules)
     expect(clone.ask_apex).not.toBe(BASE_SETTINGS.ask_apex)
+    expect(clone.ask_apex.local_context_windows).not.toBe(
+      BASE_SETTINGS.ask_apex.local_context_windows,
+    )
     expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
     expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
@@ -168,7 +171,10 @@ describe('settings editing utilities', () => {
     draft.features.market = false
     draft.ask_apex.runtime = 'local'
     draft.ask_apex.local_agent = 'sorex'
-    draft.ask_apex.apodemus_context_window = 16384
+    draft.ask_apex.local_context_windows = {
+      ...draft.ask_apex.local_context_windows,
+      apodemus: 16384,
+    }
     draft.briefing.default_mode = 'mus'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
@@ -181,7 +187,7 @@ describe('settings editing utilities', () => {
       ask_apex: {
         runtime: 'local',
         local_agent: 'sorex',
-        apodemus_context_window: 16384,
+        local_context_windows: { apodemus: 16384, neotoma: 16384 },
       },
       briefing: { default_mode: 'mus' },
       voice: { gender: 'male', mode: 'manual' },
@@ -211,20 +217,30 @@ describe('settings editing utilities', () => {
     expect(isSettingsPatchEmpty(diffSettingsPatch(BASE_SETTINGS, draft))).toBe(false)
   })
 
-  it('persists apodemus context through ask_apex patch', () => {
+  it('persists independent local contexts through ask_apex patch', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
-    draft.ask_apex.apodemus_context_window = 32768
+    draft.ask_apex.local_context_windows = {
+      ...draft.ask_apex.local_context_windows,
+      neotoma: 65536,
+    }
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
-      ask_apex: { apodemus_context_window: 32768 },
+      ask_apex: {
+        local_context_windows: { apodemus: 8192, neotoma: 65536 },
+      },
     })
   })
 
-  it('keeps apodemus context patch isolated from llama_cpp settings', () => {
+  it('keeps local context patches isolated from llama_cpp settings', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
-    draft.ask_apex.apodemus_context_window = 32768
+    draft.ask_apex.local_context_windows = {
+      ...draft.ask_apex.local_context_windows,
+      apodemus: 32768,
+    }
     draft.llama_cpp.enabled = true
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
-      ask_apex: { apodemus_context_window: 32768 },
+      ask_apex: {
+        local_context_windows: { apodemus: 32768, neotoma: 16384 },
+      },
       llama_cpp: { enabled: true },
     })
   })

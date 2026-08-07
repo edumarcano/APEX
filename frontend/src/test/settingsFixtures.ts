@@ -30,7 +30,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
     cloud_agent: 'panthera',
     effort: 'focused',
     local_agent: 'mus',
-    apodemus_context_window: 8192,
+    local_context_windows: {
+      apodemus: 8192,
+      neotoma: 16384,
+    },
     neofelis_google_search_enabled: true,
     neofelis_google_maps_enabled: true,
     delphinus_x_search_enabled: true,
@@ -65,7 +68,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 10,
+    schema_version: 11,
     settings,
     local_file_present: false,
     local_override_active: false,

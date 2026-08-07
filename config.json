@@ -39,7 +39,10 @@
     "neofelis_google_maps_enabled": true,
     "delphinus_x_search_enabled": true,
     "orcinus_x_search_enabled": true,
-    "apodemus_context_window": 8192,
+    "local_context_windows": {
+      "apodemus": 8192,
+      "neotoma": 16384
+    },
     "max_session_messages": 6
   },
   "gemini": {
@@ -70,6 +73,10 @@
       "apodemus": {
         "ram_limit": 88.0,
         "cpu_limit": 95.0
+      },
+      "neotoma": {
+        "ram_limit": 80.0,
+        "cpu_limit": 90.0
       }
     }
   },

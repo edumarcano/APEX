@@ -153,8 +153,8 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "Cannot change llama.cpp settings while Apodemus is active "
-                    "or loading."
+                    "Cannot change llama.cpp settings while a local llama.cpp "
+                    "Agent is active or loading."
                 ),
             ) from None
         transition_held = True
