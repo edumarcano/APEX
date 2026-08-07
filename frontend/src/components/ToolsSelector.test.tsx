@@ -247,4 +247,15 @@ describe('ToolsSelector', () => {
     expect(screen.queryByRole('checkbox', { name: 'Select Web Search' })).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'Select Market' })).not.toBeInTheDocument()
   })
+
+  it('closes the full tools menu when clicking outside it', async () => {
+    const user = userEvent.setup()
+    renderSelector()
+
+    await user.click(screen.getByRole('button', { name: /Tools:/ }))
+    expect(screen.getByRole('dialog', { name: 'Tools selector' })).toBeInTheDocument()
+
+    await user.click(document.body)
+    expect(screen.queryByRole('dialog', { name: 'Tools selector' })).not.toBeInTheDocument()
+  })
 })

@@ -12,7 +12,9 @@ import {
   X,
 } from 'lucide-react'
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
@@ -128,6 +130,7 @@ export function ToolsSelector({
   onRestoreProfile,
   onSetDefaultProfile,
 }: ToolsSelectorProps): ReactElement {
+  const selectorRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [profileMenuIndex, setProfileMenuIndex] = useState(0)
@@ -156,6 +159,19 @@ export function ToolsSelector({
     0,
     profileOptions.findIndex((profile) => profile.id === (activeToolProfileId ?? 'custom')),
   )
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      const target = event.target as Node
+      if (selectorRef.current?.contains(target)) return
+      setProfileMenuOpen(false)
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [open])
+
   const selectedUnavailableNames = selectedToolNames.filter((name) => {
     const tool = catalog?.tools.find((item) => item.name === name)
     return !tool || !tool.available || !tool.allowed_for_agent
@@ -260,7 +276,7 @@ export function ToolsSelector({
   }
 
   return (
-    <div className="relative shrink-0">
+    <div ref={selectorRef} className="relative shrink-0">
       <button
         type="button"
         className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/10 px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-purple-100 transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/20 disabled:cursor-not-allowed disabled:opacity-45"
@@ -284,7 +300,7 @@ export function ToolsSelector({
           id="apex-tools-selector-panel"
           role="dialog"
           aria-label="Tools selector"
-          className="absolute bottom-full right-0 z-50 mb-2 max-h-[min(75vh,38rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl"
+          className="absolute bottom-full right-0 z-50 mb-2 max-h-[min(75vh,38rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl scrollbar-thin"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
