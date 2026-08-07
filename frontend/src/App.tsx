@@ -146,6 +146,10 @@ function isCloudAgentKey(
   return !isLocalAgentKey(agent)
 }
 
+interface PersistAskApexSettingsOptions {
+  refreshToolCatalog?: boolean
+}
+
 export default function App(): ReactElement {
   const reminderPulseCount = 0
   const [activeAgent, setAgent] = useState<AgentKey>('panthera')
@@ -791,8 +795,13 @@ export default function App(): ReactElement {
     ],
   )
 
+  const refreshToolCatalog = toolCatalogState.refreshCatalog
   const persistAskApexSettings = useCallback(
-    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<boolean> => {
+    async (
+      askApex: Record<string, unknown>,
+      selectedAgent?: AgentKey,
+      options: PersistAskApexSettingsOptions = {},
+    ): Promise<boolean> => {
       const payload = devModeActive ? filterAskApexSettingsForDevMode(askApex) : askApex
       if (Object.keys(payload).length === 0) {
         return true
@@ -811,6 +820,9 @@ export default function App(): ReactElement {
         if (parsed) {
           handleSettingsApplied(parsed, selectedAgent)
           await refreshAgentsStatus()
+          if (options.refreshToolCatalog) {
+            await refreshToolCatalog()
+          }
         }
         return parsed !== null
       } catch {
@@ -818,7 +830,12 @@ export default function App(): ReactElement {
         return false
       }
     },
-    [devModeActive, handleSettingsApplied, refreshAgentsStatus],
+    [
+      devModeActive,
+      handleSettingsApplied,
+      refreshAgentsStatus,
+      refreshToolCatalog,
+    ],
   )
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
@@ -984,38 +1001,70 @@ export default function App(): ReactElement {
     activeAgentRef.current = agent
     setAgent(agent)
     if (agent === 'acinonyx') {
-      void persistAskApexSettings({ runtime: 'cloud', effort: cloudEffort }, agent)
+      void persistAskApexSettings(
+        { runtime: 'cloud', effort: cloudEffort },
+        agent,
+        { refreshToolCatalog: false },
+      )
       return
     }
     if (isLocalAgentKey(agent)) {
-      void persistAskApexSettings({ runtime: 'local', local_agent: agent }, agent)
+      void persistAskApexSettings(
+        { runtime: 'local', local_agent: agent },
+        agent,
+        { refreshToolCatalog: false },
+      )
       return
     }
     if (isCloudSettingsAgentKey(agent)) {
       setCloudAgent(agent)
-      void persistAskApexSettings({ runtime: 'cloud', cloud_agent: agent, effort: cloudEffort }, agent)
+      void persistAskApexSettings(
+        { runtime: 'cloud', cloud_agent: agent, effort: cloudEffort },
+        agent,
+        { refreshToolCatalog: false },
+      )
     }
   }, [cloudEffort, persistAskApexSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
-    void persistAskApexSettings({ runtime: 'cloud', cloud_agent: cloudAgent, effort: effort }, activeAgent)
+    void persistAskApexSettings(
+      { runtime: 'cloud', cloud_agent: cloudAgent, effort: effort },
+      activeAgent,
+      { refreshToolCatalog: false },
+    )
   }, [activeAgent, cloudAgent, persistAskApexSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ neofelis_google_search_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { neofelis_google_search_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ neofelis_google_maps_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { neofelis_google_maps_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ delphinus_x_search_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { delphinus_x_search_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ orcinus_x_search_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { orcinus_x_search_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleApodemusContextChange = useCallback((contextWindow: ApodemusContextWindow): void => {
@@ -1025,6 +1074,7 @@ export default function App(): ReactElement {
       const persisted = await persistAskApexSettings(
         { apodemus_context_window: contextWindow },
         activeAgent,
+        { refreshToolCatalog: true },
       )
       if (!persisted) {
         setApodemusContextWindow(previous)
