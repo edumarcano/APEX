@@ -1,10 +1,11 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactElement } from 'react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CortexWorkspace } from './CortexWorkspace'
-import type { AgentStatus, LocalCommandStatus } from '../types/telemetry'
+import type { AgentStatus, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 
 const panthera: AgentStatus = {
   key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '7.4', runtime: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
@@ -13,11 +14,80 @@ const neofelis: AgentStatus = { ...panthera, key: 'neofelis', display_name: 'Ape
 const acinonyx: AgentStatus = { ...neofelis, key: 'acinonyx', display_name: 'Apex Acinonyx', configured_model: 'gemini-3.5-flash-lite', sort_order: 0, capabilities: ['Privacy sandbox', 'Masked context'], pricing: { ...neofelis.pricing, billing_basis: 'free_tier', input_per_million: 0, output_per_million: 0 } }
 const mus: AgentStatus = { ...panthera, key: 'mus', display_name: 'Apex Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', runtime: 'local', sort_order: 5, capabilities: ['Larger model', 'Primary local'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', active: false, pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
 const apodemus: AgentStatus = { ...mus, key: 'apodemus', display_name: 'Apex Apodemus', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', sort_order: 6, stability: 'preview', capabilities: ['Local llama.cpp'] }
-const weather: LocalCommandStatus = { key: 'weather', command: '/weather', label: 'Weather', description: 'Configured-location forecast.', tool_count: 1, estimated_schema_tokens: 120, available: true, unavailable_reason: null }
+const toolCatalog: ToolCatalog = {
+  agent: 'panthera',
+  groups: [{
+    id: 'family:schedule',
+    label: 'Schedule',
+    kind: 'apex_family',
+    tool_count: 2,
+    schema_token_subtotal: 160,
+    tools: [
+      {
+        name: 'get_upcoming_calendar_events',
+        label: 'Calendar events',
+        description: 'Calendar',
+        origin: 'native',
+        source_id: 'apex',
+        apex_family: 'schedule',
+        risk: 'read',
+        available: true,
+        unavailable_reason: null,
+        estimated_schema_tokens: 80,
+        allowed_for_agent: true,
+      },
+      {
+        name: 'get_active_reminders',
+        label: 'Reminders',
+        description: 'Reminders',
+        origin: 'native',
+        source_id: 'apex',
+        apex_family: 'schedule',
+        risk: 'read',
+        available: true,
+        unavailable_reason: null,
+        estimated_schema_tokens: 80,
+        allowed_for_agent: true,
+      },
+    ],
+  }],
+  tools: [{
+    name: 'get_upcoming_calendar_events',
+    label: 'Calendar events',
+    description: 'Calendar',
+    origin: 'native',
+    source_id: 'apex',
+    apex_family: 'schedule',
+    risk: 'read',
+    available: true,
+    unavailable_reason: null,
+    estimated_schema_tokens: 80,
+    allowed_for_agent: true,
+  }, {
+    name: 'get_active_reminders',
+    label: 'Reminders',
+    description: 'Reminders',
+    origin: 'native',
+    source_id: 'apex',
+    apex_family: 'schedule',
+    risk: 'read',
+    available: true,
+    unavailable_reason: null,
+    estimated_schema_tokens: 80,
+    allowed_for_agent: true,
+  }],
+  profiles: [],
+  default_profile_id: 'no_tools',
+  default_profile_name: 'No APEX Tools',
+  default_selected_tool_names: [],
+  provider_hosted_tools: [],
+  context_window: 4096,
+  reserved_response_tokens: 512,
+}
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, commands: [], armedToolScope: null, onArmedToolScopeChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), apodemusContextWindow: 8192, onApodemusContextChange: vi.fn(), onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
+    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, onToolSelectionChange: vi.fn(), onToolProfileChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), apodemusContextWindow: 8192, onApodemusContextChange: vi.fn(), onSubmit: vi.fn().mockResolvedValue(true), onNewSession: vi.fn(), ...overrides,
   }
 }
 
@@ -37,12 +107,63 @@ describe('CortexWorkspace', () => {
   })
 
   it('offers empty-canvas prompt chips through the active profile submission path', async () => {
-    const onSubmit = vi.fn()
+    const onSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     render(<CortexWorkspace {...workspaceProps({ onSubmit })} />)
 
     await user.click(screen.getByRole('button', { name: 'Forecast' }))
-    expect(onSubmit).toHaveBeenCalledWith('What is the 5-day weather forecast?', 'panthera')
+    expect(onSubmit).toHaveBeenCalledWith('What is the 5-day weather forecast?', 'panthera', [], null)
+  })
+
+  it('hides prompt chips when preflight reports a strict selection failure', () => {
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          toolPreflight: { can_proceed: false } as ToolPreflightEstimate,
+        })}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Forecast' })).not.toBeInTheDocument()
+  })
+
+  it('submits the footer with the chosen tool set on every request', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true)
+    const user = userEvent.setup()
+    function Harness(): ReactElement {
+      const [selected, setSelected] = useState<string[]>([])
+      return <CortexWorkspace {...workspaceProps({
+        onSubmit,
+        selectedToolNames: selected,
+        onToolSelectionChange: setSelected,
+      })} />
+    }
+
+    render(<Harness />)
+    await user.click(screen.getByRole('button', { name: /Tools:/ }))
+    await user.click(screen.getByRole('checkbox', { name: 'Select Schedule' }))
+    await user.click(screen.getByRole('button', { name: 'Expand Schedule' }))
+    await user.click(screen.getByRole('checkbox', { name: /Reminders/ }))
+
+    const input = screen.getByLabelText('Ask APEX query')
+    await user.type(input, 'First request')
+    await user.click(screen.getByRole('button', { name: 'Send query' }))
+    await user.type(input, 'Second request')
+    await user.click(screen.getByRole('button', { name: 'Send query' }))
+
+    expect(onSubmit).toHaveBeenNthCalledWith(
+      1,
+      'First request',
+      'panthera',
+      ['get_upcoming_calendar_events'],
+      null,
+    )
+    expect(onSubmit).toHaveBeenNthCalledWith(
+      2,
+      'Second request',
+      'panthera',
+      ['get_upcoming_calendar_events'],
+      null,
+    )
   })
 
   it('shows only the selected profile until its anchored selector is opened', async () => {
@@ -100,18 +221,6 @@ describe('CortexWorkspace', () => {
     await user.click(screen.getByRole('button', { name: /Apex Panthera/ }))
     expect(screen.getByLabelText('Delphinus agent mark')).toBeInTheDocument()
     expect(screen.getByLabelText('Orcinus agent mark')).toBeInTheDocument()
-  })
-
-  it('moves local scopes and context diagnostics into the inspector and arms one next request', async () => {
-    const onArmedToolScopeChange = vi.fn()
-    const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [mus], commands: [weather], armedToolScope: 'weather', onArmedToolScopeChange })} />)
-    expect(screen.getByLabelText('Local tool scopes')).toBeInTheDocument()
-    expect(screen.getByText('/weather armed for next request')).toBeInTheDocument()
-    expect(screen.getByText('45/4,096')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /\/weather/ }))
-    expect(onArmedToolScopeChange).toHaveBeenCalledWith(null)
-    expect(screen.queryByText('Commands')).not.toBeInTheDocument()
   })
 
   it('shows local lifecycle controls only for local profiles and disables them during activity', () => {

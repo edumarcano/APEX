@@ -1,7 +1,13 @@
 import type { ReactElement } from 'react'
 
 import type { BriefingMode } from '../types/settings'
-import type { AgentStatus, AgentKey, LocalSettingsAgent } from '../types/telemetry'
+import type {
+  AgentStatus,
+  AgentKey,
+  LocalSettingsAgent,
+  ToolCatalog,
+  ToolPreflightEstimate,
+} from '../types/telemetry'
 
 import { AskApexBar } from './AskApexBar'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
@@ -19,7 +25,33 @@ interface HomeCommandRailProps {
   verifyingCloudAgent: AgentKey | null
   onAgentChange: (agent: AgentKey) => void
   onVerifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
-  onAgentSubmit: (query: string, agent: AgentKey) => void
+  onAgentSubmit: (
+    query: string,
+    agent: AgentKey,
+    selectedToolNames: string[],
+    toolProfileId: string | null,
+  ) => Promise<boolean>
+  toolCatalog?: ToolCatalog | null
+  selectedToolNames?: string[]
+  activeToolProfileId?: string | null
+  selectionReady?: boolean
+  submissionPending?: boolean
+  onToolSelectionChange?: (names: string[]) => void
+  onToolProfileChange?: (profileId: string) => void
+  toolPreflight?: ToolPreflightEstimate | null
+  toolPreflightLoading?: boolean
+  toolCatalogError?: string | null
+  toolPreflightError?: string | null
+  toolProfileFeedback?: string | null
+  toolProfileError?: string | null
+  draftPrompt?: string
+  onDraftChange?: (value: string) => void
+  onSaveToolProfile?: (name: string) => void
+  onDuplicateToolProfile?: (profileId: string, name: string) => void
+  onRenameToolProfile?: (profileId: string, name: string) => void
+  onDeleteToolProfile?: (profileId: string) => void
+  onRestoreToolProfile?: (profileId: string) => void
+  onSetDefaultToolProfile?: (profileId: string) => void
   onStartApex: () => void
   onStartWithBriefing: () => void
   startDisabled: boolean
@@ -49,6 +81,27 @@ export function HomeCommandRail({
   onAgentChange,
   onVerifyCloudAgent,
   onAgentSubmit,
+  toolCatalog = null,
+  selectedToolNames = [],
+  activeToolProfileId = null,
+  selectionReady = false,
+  submissionPending = false,
+  onToolSelectionChange = () => undefined,
+  onToolProfileChange = () => undefined,
+  toolPreflight = null,
+  toolPreflightLoading = false,
+  toolCatalogError = null,
+  toolPreflightError = null,
+  toolProfileFeedback = null,
+  toolProfileError = null,
+  draftPrompt,
+  onDraftChange,
+  onSaveToolProfile,
+  onDuplicateToolProfile,
+  onRenameToolProfile,
+  onDeleteToolProfile,
+  onRestoreToolProfile,
+  onSetDefaultToolProfile,
   onStartApex,
   onStartWithBriefing,
   startDisabled,
@@ -102,7 +155,7 @@ export function HomeCommandRail({
                   onChange={onAgentChange}
                   agentsStatus={agentsStatus}
                   agentsStatusHydrated={agentsStatusHydrated}
-                  isQuerying={isCortexQuerying}
+                  isQuerying={isCortexQuerying || submissionPending}
                   verifyingAgent={verifyingCloudAgent}
                   onVerify={onVerifyCloudAgent}
                 />
@@ -113,6 +166,27 @@ export function HomeCommandRail({
                   activeAgent={activeAgent}
                   onSubmit={onAgentSubmit}
                   agentsStatus={agentsStatus}
+                  catalog={toolCatalog}
+                  selectedToolNames={selectedToolNames}
+                  activeToolProfileId={activeToolProfileId}
+                  selectionReady={selectionReady}
+                  submissionPending={submissionPending}
+                  onToolSelectionChange={onToolSelectionChange}
+                  onToolProfileChange={onToolProfileChange}
+                  toolPreflight={toolPreflight}
+                  toolPreflightLoading={toolPreflightLoading}
+                  toolCatalogError={toolCatalogError}
+                  toolPreflightError={toolPreflightError}
+                  toolProfileFeedback={toolProfileFeedback}
+                  toolProfileError={toolProfileError}
+                  draftPrompt={draftPrompt}
+                  onDraftChange={onDraftChange}
+                  onSaveToolProfile={onSaveToolProfile}
+                  onDuplicateToolProfile={onDuplicateToolProfile}
+                  onRenameToolProfile={onRenameToolProfile}
+                  onDeleteToolProfile={onDeleteToolProfile}
+                  onRestoreToolProfile={onRestoreToolProfile}
+                  onSetDefaultToolProfile={onSetDefaultToolProfile}
                   isSubmitting={isCortexQuerying}
                 />
               </div>

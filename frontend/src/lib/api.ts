@@ -3,7 +3,13 @@ export const API_BASE = 'http://127.0.0.1:8000'
 export const API_ENDPOINTS = {
   cortexLocalModelLoad: `${API_BASE}/api/v1/cortex/local-model/load`,
   cortexLocalModelUnload: `${API_BASE}/api/v1/cortex/local-model/unload`,
-  cortexToolScopes: `${API_BASE}/api/v1/cortex/tool-scopes`,
+  cortexToolCatalog: (agent: string) =>
+    `${API_BASE}/api/v1/cortex/tool-catalog?agent=${encodeURIComponent(agent)}`,
+  cortexToolPreflight: `${API_BASE}/api/v1/cortex/tool-preflight`,
+  cortexToolProfiles: `${API_BASE}/api/v1/cortex/tool-profiles`,
+  cortexToolProfile: (profileId: string) =>
+    `${API_BASE}/api/v1/cortex/tool-profiles/${encodeURIComponent(profileId)}`,
+  cortexToolProfileDefault: `${API_BASE}/api/v1/cortex/tool-profiles/default`,
   agents: `${API_BASE}/api/v1/agents`,
   agentVerify: (agent: string) => `${API_BASE}/api/v1/agents/${encodeURIComponent(agent)}/verify`,
   cortexQuery: `${API_BASE}/api/v1/cortex/query`,

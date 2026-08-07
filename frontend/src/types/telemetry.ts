@@ -81,25 +81,88 @@ export type AgentKey =
   | LocalSettingsAgent
   | 'acinonyx'
 
-export type LocalToolScope =
-  | 'schedule'
-  | 'weather'
-  | 'f1'
-  | 'mail'
-  | 'search'
-  | 'market'
-  | 'briefings'
-  | 'todo'
+export type ToolCatalogGroupKind = 'apex_family' | 'mcp_server'
 
-export interface LocalCommandStatus {
-  key: LocalToolScope
-  command: string
+export interface ToolCatalogTool {
+  name: string
   label: string
   description: string
-  tool_count: number
-  estimated_schema_tokens: number
+  origin: 'native' | 'mcp'
+  source_id: string
+  apex_family: string | null
+  risk: 'read' | 'write' | 'destructive'
   available: boolean
   unavailable_reason: string | null
+  estimated_schema_tokens: number
+  allowed_for_agent: boolean
+}
+
+export interface ToolCatalogGroup {
+  id: string
+  label: string
+  kind: ToolCatalogGroupKind
+  tool_count: number
+  schema_token_subtotal: number
+  tools: ToolCatalogTool[]
+}
+
+export interface ToolProfileMetadata {
+  id: string
+  name: string
+  description: string
+  tool_names: string[]
+  built_in: boolean
+  dynamic: boolean
+}
+
+export interface ToolCatalog {
+  agent: AgentKey
+  groups: ToolCatalogGroup[]
+  tools: ToolCatalogTool[]
+  profiles: ToolProfileMetadata[]
+  default_profile_id: string
+  default_profile_name: string
+  default_selected_tool_names: string[]
+  provider_hosted_tools: string[]
+  context_window: number | null
+  reserved_response_tokens: number | null
+}
+
+export interface ToolSelectionFailure {
+  name: string
+  code: string
+  reason: string
+}
+
+export interface ToolSelectionDiagnostics {
+  requested_tool_names: string[]
+  offered_tool_names: string[]
+  rejected_tool_names: string[]
+  rejected_tools: ToolSelectionFailure[]
+  selected_schema_tokens: number
+  active_profile_id: string | null
+  active_profile_name: string | null
+}
+
+export interface ToolTokenBreakdown {
+  system_instructions: number
+  conversation_history: number
+  hud_context: number
+  selected_tool_schemas: number
+  current_prompt: number
+  total: number
+  configured_context_window: number | null
+  reserved_response_tokens: number | null
+  remaining_estimated_capacity: number | null
+  is_estimate: boolean
+}
+
+export interface ToolPreflightEstimate {
+  agent: AgentKey
+  selection: ToolSelectionDiagnostics
+  breakdown: ToolTokenBreakdown
+  warning: string | null
+  can_proceed: boolean
 }
 
 export interface LocalContextUsage {

@@ -115,4 +115,46 @@ describe('useCortex', () => {
     expect(result.current.cortexHistory).toEqual([{ role: 'user', content: 'Keep this question' }])
     expect(result.current.cortexError).toContain('Network unavailable')
   })
+
+  it('uses an empty history immediately after starting a new session', async () => {
+    const queryBodies: Record<string, unknown>[] = []
+    let answerNumber = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        queryBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        answerNumber += 1
+        return new Response(JSON.stringify({ answer: `answer ${answerNumber}` }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+
+    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    await act(async () => {
+      await result.current.queryAgent('old question', 'panthera', {
+        sessionId: 'old-session',
+      })
+    })
+
+    act(() => {
+      result.current.clearCortexSession('panthera')
+    })
+    expect(result.current.cortexHistory).toEqual([])
+
+    await act(async () => {
+      await result.current.queryAgent('new question', 'panthera', {
+        sessionId: 'new-session',
+      })
+    })
+
+    expect(queryBodies[1]).toMatchObject({
+      history: [],
+      session_id: 'new-session',
+    })
+  })
 })

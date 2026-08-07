@@ -63,6 +63,20 @@ export interface AskApexSettings {
   orcinus_x_search_enabled: boolean
 }
 
+export interface ToolProfileSettings {
+  id: string
+  name: string
+  description: string
+  tool_names: string[]
+  built_in: boolean
+  dynamic: boolean
+}
+
+export interface ToolProfilesSettings {
+  custom_profiles: ToolProfileSettings[]
+  default_profile_by_agent: Record<string, string>
+}
+
 export interface BriefingSettings {
   default_mode: BriefingMode
 }
@@ -89,6 +103,7 @@ export interface RuntimeSettings {
   football: FootballSettings
   market: MarketSettings
   ask_apex: AskApexSettings
+  tool_profiles?: ToolProfilesSettings
   briefing: BriefingSettings
   voice: VoiceSettings
   mcp: McpSettings
@@ -133,6 +148,11 @@ export interface AskApexPatch {
   neofelis_google_maps_enabled?: boolean
   delphinus_x_search_enabled?: boolean
   orcinus_x_search_enabled?: boolean
+}
+
+export interface ToolProfilesPatch {
+  custom_profiles?: ToolProfileSettings[]
+  default_profile_by_agent?: Record<string, string>
 }
 
 export interface BriefingPatch {
@@ -188,6 +208,7 @@ export interface SettingsPatch {
   football?: FootballPatch
   market?: MarketPatch
   ask_apex?: AskApexPatch
+  tool_profiles?: ToolProfilesPatch
   briefing?: BriefingPatch
   voice?: VoicePatch
   mcp?: McpPatch

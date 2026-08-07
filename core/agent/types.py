@@ -3,16 +3,22 @@ from typing import Any, Dict, List, Literal, Optional, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field
 
 
-LocalToolScope: TypeAlias = Literal[
-    "schedule",
-    "weather",
-    "f1",
-    "mail",
-    "search",
-    "market",
-    "briefings",
-    "todo",
+ToolSelectionFailureCode: TypeAlias = Literal[
+    "invalid",
+    "profile-invalid",
+    "not-exposed",
+    "policy",
+    "risk-rejected",
+    "configuration-required",
+    "authentication-required",
+    "mcp-disabled",
+    "mcp-disconnected",
+    "mcp-not-allowlisted",
+    "runtime-unavailable",
+    "unavailable",
 ]
+
+ToolCatalogGroupKind: TypeAlias = Literal["apex_family", "mcp_server"]
 
 AgentKey: TypeAlias = Literal[
     "acinonyx",
@@ -123,15 +129,108 @@ class LocalContextUsage(BaseModel):
     )
 
 
-class LocalCommandStatus(BaseModel):
-    key: LocalToolScope
-    command: str = Field(description="Slash command shown in the Ask APEX console.")
+class ToolSelectionFailure(BaseModel):
+    """Structured reason why one requested tool could not be selected."""
+
+    name: str
+    code: ToolSelectionFailureCode
+    reason: str
+
+
+class ToolSelectionDiagnostics(BaseModel):
+    """The exact tool selection used or rejected for one Agent turn."""
+
+    requested_tool_names: list[str] = Field(default_factory=list)
+    offered_tool_names: list[str] = Field(default_factory=list)
+    rejected_tool_names: list[str] = Field(default_factory=list)
+    rejected_tools: list[ToolSelectionFailure] = Field(default_factory=list)
+    selected_schema_tokens: int = Field(default=0, ge=0)
+    active_profile_id: str | None = None
+    active_profile_name: str | None = None
+
+
+class ToolCatalogTool(BaseModel):
+    """Provider-neutral catalog metadata for one model-facing capability."""
+
+    name: str
     label: str
     description: str
-    tool_count: int = Field(ge=0)
-    estimated_schema_tokens: int = Field(ge=0)
+    origin: Literal["native", "mcp"]
+    source_id: str
+    apex_family: str | None = None
+    risk: Literal["read", "write", "destructive"] = "read"
     available: bool
     unavailable_reason: str | None = None
+    estimated_schema_tokens: int = Field(default=0, ge=0)
+    allowed_for_agent: bool
+
+
+class ToolCatalogGroup(BaseModel):
+    """A curated APEX family or external MCP server group."""
+
+    id: str
+    label: str
+    kind: ToolCatalogGroupKind
+    tool_count: int = Field(ge=0)
+    schema_token_subtotal: int = Field(default=0, ge=0)
+    tools: list[ToolCatalogTool] = Field(default_factory=list)
+
+
+class ToolProfileMetadata(BaseModel):
+    """A built-in or persisted tool profile exposed to the picker."""
+
+    id: str
+    name: str
+    description: str
+    tool_names: list[str] = Field(default_factory=list)
+    built_in: bool = False
+    dynamic: bool = False
+
+
+class ToolCatalogResponse(BaseModel):
+    """Agent-specific tool catalog and current policy/availability metadata."""
+
+    agent: AgentKey
+    groups: list[ToolCatalogGroup] = Field(default_factory=list)
+    tools: list[ToolCatalogTool] = Field(default_factory=list)
+    profiles: list[ToolProfileMetadata] = Field(default_factory=list)
+    default_profile_id: str
+    default_profile_name: str
+    default_selected_tool_names: list[str] = Field(default_factory=list)
+    provider_hosted_tools: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Provider-hosted grounding enabled for this Agent; these tools are "
+            "separate from APEX-managed and MCP schemas."
+        ),
+    )
+    context_window: int | None = Field(default=None, ge=1)
+    reserved_response_tokens: int | None = Field(default=None, ge=0)
+
+
+class ToolTokenBreakdown(BaseModel):
+    """Estimated input-token accounting for one next Agent request."""
+
+    system_instructions: int = Field(default=0, ge=0)
+    conversation_history: int = Field(default=0, ge=0)
+    hud_context: int = Field(default=0, ge=0)
+    selected_tool_schemas: int = Field(default=0, ge=0)
+    current_prompt: int = Field(default=0, ge=0)
+    total: int = Field(default=0, ge=0)
+    configured_context_window: int | None = Field(default=None, ge=1)
+    reserved_response_tokens: int | None = Field(default=None, ge=0)
+    remaining_estimated_capacity: int | None = None
+    is_estimate: bool = True
+
+
+class ToolPreflightResponse(BaseModel):
+    """Estimated request budget using the same selected descriptors as execution."""
+
+    agent: AgentKey
+    selection: ToolSelectionDiagnostics
+    breakdown: ToolTokenBreakdown
+    warning: str | None = None
+    can_proceed: bool = True
 
 
 class ToolCall(BaseModel):
@@ -206,12 +305,17 @@ class AgentQueryRequest(BaseModel):
             "when explicitly marked as sandbox history."
         ),
     )
-    tool_scope: LocalToolScope | None = Field(
-        default=None,
+    selected_tool_names: list[str] = Field(
+        default_factory=list,
         description=(
-            "Explicit local Agent command bundle. Omit for tool-free local turns; "
-            "cloud Agents retain their normal automatic capability set."
+            "Explicit stable capability names to expose for this turn. An empty "
+            "list means no tools. When omitted, the active Agent default profile "
+            "is resolved."
         ),
+    )
+    tool_profile_id: str | None = Field(
+        default=None,
+        description="Optional saved or built-in tool profile used for diagnostics.",
     )
     snapshot_id: Optional[str] = Field(
         default=None,
@@ -252,10 +356,16 @@ class AgentQueryResponse(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Detailed error diagnostics, if any."
     )
-    tool_scope_used: LocalToolScope | None = Field(
-        default=None,
-        description="Resolved local command bundle used for this response.",
+    resolved_tool_selection: ToolSelectionDiagnostics = Field(
+        default_factory=ToolSelectionDiagnostics,
+        description="Exact requested, offered, rejected, and estimated tool selection.",
     )
+    requested_tool_names: list[str] = Field(default_factory=list)
+    offered_tool_names: list[str] = Field(default_factory=list)
+    rejected_tool_names: list[str] = Field(default_factory=list)
+    selected_schema_tokens: int = Field(default=0, ge=0)
+    active_tool_profile_id: str | None = None
+    active_tool_profile_name: str | None = None
     local_context_usage: LocalContextUsage | None = Field(
         default=None,
         description="Local Agent prompt-window usage; null for cloud Agents.",

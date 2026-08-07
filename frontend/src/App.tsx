@@ -34,11 +34,12 @@ import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
-import { useLocalCommands } from './hooks/useLocalCommands'
 import { useMarketData } from './hooks/useMarketData'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
+import { useToolCatalog } from './hooks/useToolCatalog'
+import { useToolPreflight } from './hooks/useToolPreflight'
 import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
@@ -61,7 +62,6 @@ import type {
   AgentKey,
   CloudEffort,
   CloudSettingsAgent,
-  LocalToolScope,
 } from './types/telemetry'
 import type { ApodemusContextWindow, BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
@@ -146,6 +146,10 @@ function isCloudAgentKey(
   return !isLocalAgentKey(agent)
 }
 
+interface PersistAskApexSettingsOptions {
+  refreshToolCatalog?: boolean
+}
+
 export default function App(): ReactElement {
   const reminderPulseCount = 0
   const [activeAgent, setAgent] = useState<AgentKey>('panthera')
@@ -157,13 +161,21 @@ export default function App(): ReactElement {
   const [cloudAgent, setCloudAgent] = useState<CloudSettingsAgent>('panthera')
   const [apodemusContextWindow, setApodemusContextWindow] = useState<ApodemusContextWindow>(8192)
   const [snapshotAttached, setSnapshotAttached] = useState(true)
-  const [armedLocalToolScope, setArmedLocalToolScope] = useState<LocalToolScope | null>(null)
+  const [draftPrompt, setDraftPrompt] = useState('')
+  const [submissionPending, setSubmissionPending] = useState(false)
+  const submissionPendingRef = useRef(false)
+  const [toolProfileFeedback, setToolProfileFeedback] = useState<string | null>(null)
+  const [toolProfileError, setToolProfileError] = useState<string | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
   )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
+  const activeAgentRef = useRef(activeAgent)
+  useEffect(() => {
+    activeAgentRef.current = activeAgent
+  }, [activeAgent])
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
@@ -214,18 +226,22 @@ export default function App(): ReactElement {
     refreshAgentsStatus,
     clearCortexSession,
   } = useCortex(true, activeAgent)
-  const isLocalAgent = isLocalAgentKey(activeAgent)
-  const { commands: localCommands } = useLocalCommands(isLocalAgent)
-
-  useEffect(() => {
-    const armedScopeIsUnavailable = armedLocalToolScope && (
-      !isLocalAgent ||
-      !localCommands.some((command) => command.key === armedLocalToolScope && command.available)
-    )
-    if (!armedScopeIsUnavailable) return
-    const timeoutId = window.setTimeout(() => setArmedLocalToolScope(null), 0)
-    return () => window.clearTimeout(timeoutId)
-  }, [armedLocalToolScope, isLocalAgent, localCommands])
+  const toolCatalogState = useToolCatalog(activeAgent)
+  const toolPreflightState = useToolPreflight({
+    agent: activeAgent,
+    selectedToolNames: toolCatalogState.selectedToolNames,
+    toolProfileId: toolCatalogState.activeToolProfileId,
+    prompt: draftPrompt,
+    history: cortexHistory,
+    snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+    historyPartition: activeAgent === 'acinonyx' ? 'acinonyx' : 'production',
+    enabled: Boolean(
+      askApexEnabled &&
+      !toolCatalogState.isLoading &&
+      toolCatalogState.selectionReady &&
+      toolCatalogState.catalog?.agent === activeAgent,
+    ),
+  })
 
   const agentSelectionHydratedRef = useRef(false)
 
@@ -274,6 +290,7 @@ export default function App(): ReactElement {
         agentInitialSelection: selection,
         marketEnabled: response.settings.features.market,
       })
+      activeAgentRef.current = selection.agent
       setAgent(selection.agent)
       if (isCloudSettingsAgentKey(selection.agent)) {
         setCloudAgent(selection.agent)
@@ -295,8 +312,9 @@ export default function App(): ReactElement {
       handleSettingsApplied(response)
       setMarketPollKey((key) => key + 1)
       await refreshAgentsStatus()
+      await toolCatalogState.refreshCatalog()
     },
-    [handleSettingsApplied, refreshAgentsStatus],
+    [handleSettingsApplied, refreshAgentsStatus, toolCatalogState],
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
@@ -725,21 +743,44 @@ export default function App(): ReactElement {
     async (
       prompt: string,
       agent: AgentKey,
-      toolScope?: LocalToolScope | null,
-    ): Promise<void> => {
-      const resolution = await preflight.requestOperation('cortex_query', {
-        synthesis_agent: agent,
-        involves_cloud: isCloudAgentKey(agent, agentsStatus),
-      })
-      if (resolution !== 'proceed') {
-        return
+      selectedToolNames: string[],
+      toolProfileId: string | null,
+    ): Promise<boolean> => {
+      if (submissionPendingRef.current) return false
+      submissionPendingRef.current = true
+      setSubmissionPending(true)
+      try {
+        if (
+          activeAgentRef.current !== agent ||
+          !toolCatalogState.selectionReady ||
+          toolCatalogState.catalog?.agent !== agent
+        ) {
+          return false
+        }
+        const resolution = await preflight.requestOperation('cortex_query', {
+          synthesis_agent: agent,
+          involves_cloud: isCloudAgentKey(agent, agentsStatus),
+        })
+        if (
+          resolution !== 'proceed' ||
+          activeAgentRef.current !== agent ||
+          !toolCatalogState.selectionReady ||
+          toolCatalogState.catalog?.agent !== agent
+        ) {
+          return false
+        }
+        void queryAgent(prompt, agent, {
+          snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+          selectedToolNames,
+          toolProfileId,
+          effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
+          sessionId: cortexSessionId,
+        })
+        return true
+      } finally {
+        submissionPendingRef.current = false
+        setSubmissionPending(false)
       }
-      await queryAgent(prompt, agent, {
-        snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-        toolScope,
-        effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
-        sessionId: cortexSessionId,
-      })
     },
     [
       preflight,
@@ -749,11 +790,18 @@ export default function App(): ReactElement {
       cloudEffort,
       snapshotAttached,
       cortexSessionId,
+      toolCatalogState.catalog,
+      toolCatalogState.selectionReady,
     ],
   )
 
+  const refreshToolCatalog = toolCatalogState.refreshCatalog
   const persistAskApexSettings = useCallback(
-    async (askApex: Record<string, unknown>, selectedAgent?: AgentKey): Promise<boolean> => {
+    async (
+      askApex: Record<string, unknown>,
+      selectedAgent?: AgentKey,
+      options: PersistAskApexSettingsOptions = {},
+    ): Promise<boolean> => {
       const payload = devModeActive ? filterAskApexSettingsForDevMode(askApex) : askApex
       if (Object.keys(payload).length === 0) {
         return true
@@ -772,6 +820,9 @@ export default function App(): ReactElement {
         if (parsed) {
           handleSettingsApplied(parsed, selectedAgent)
           await refreshAgentsStatus()
+          if (options.refreshToolCatalog) {
+            await refreshToolCatalog()
+          }
         }
         return parsed !== null
       } catch {
@@ -779,7 +830,12 @@ export default function App(): ReactElement {
         return false
       }
     },
-    [devModeActive, handleSettingsApplied, refreshAgentsStatus],
+    [
+      devModeActive,
+      handleSettingsApplied,
+      refreshAgentsStatus,
+      refreshToolCatalog,
+    ],
   )
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
@@ -794,6 +850,147 @@ export default function App(): ReactElement {
     }
   }, [])
 
+  const mutateToolProfile = useCallback(
+    async (
+      endpoint: string,
+      method: 'POST' | 'PATCH' | 'DELETE',
+      body?: Record<string, unknown>,
+      successMessage = 'Tool profile updated.',
+    ): Promise<Record<string, unknown> | null> => {
+      setToolProfileError(null)
+      setToolProfileFeedback(null)
+      try {
+        const response = await fetch(endpoint, {
+          method,
+          ...(body
+            ? {
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              }
+            : {}),
+        })
+        const responseBody: unknown = await response.json().catch(() => null)
+        if (!response.ok) {
+          const detail = responseBody && typeof responseBody === 'object' && 'detail' in responseBody
+            ? (responseBody as { detail?: unknown }).detail
+            : null
+          const message = typeof detail === 'string'
+            ? detail
+            : detail && typeof detail === 'object' && 'message' in detail && typeof (detail as { message?: unknown }).message === 'string'
+              ? (detail as { message: string }).message
+              : `Tool profile request failed (${response.status}).`
+          setToolProfileError(message)
+          return null
+        }
+        await toolCatalogState.refreshCatalog()
+        setToolProfileFeedback(successMessage)
+        return responseBody && typeof responseBody === 'object'
+          ? responseBody as Record<string, unknown>
+          : {}
+      } catch {
+        setToolProfileError('Tool profile request failed. Check the API connection and try again.')
+        return null
+      }
+    },
+    [toolCatalogState],
+  )
+
+  const saveToolProfile = useCallback(
+    (name: string): void => {
+      const currentProfile = toolCatalogState.catalog?.profiles.find(
+        (profile) => profile.id === toolCatalogState.activeToolProfileId,
+      )
+      const endpoint = currentProfile && !currentProfile.built_in
+        ? API_ENDPOINTS.cortexToolProfile(currentProfile.id)
+        : API_ENDPOINTS.cortexToolProfiles
+      const method = currentProfile && !currentProfile.built_in ? 'PATCH' : 'POST'
+      void mutateToolProfile(
+        endpoint,
+        method,
+        currentProfile && !currentProfile.built_in
+          ? { name, tool_names: toolCatalogState.selectedToolNames }
+          : { name, tool_names: toolCatalogState.selectedToolNames },
+        currentProfile && !currentProfile.built_in
+          ? 'Updated the active tool profile.'
+          : 'Saved and activated the new tool profile.',
+      ).then((responseBody) => {
+        if (!responseBody || method !== 'POST') return
+        const affectedProfileId = responseBody.affected_profile_id
+        if (typeof affectedProfileId === 'string' && affectedProfileId.length > 0) {
+          toolCatalogState.setToolSelection(
+            toolCatalogState.selectedToolNames,
+            affectedProfileId,
+          )
+        }
+      })
+    },
+    [mutateToolProfile, toolCatalogState],
+  )
+
+  const duplicateToolProfile = useCallback(
+    (profileId: string, name: string): void => {
+      const profile = toolCatalogState.catalog?.profiles.find(
+        (item) => item.id === profileId,
+      )
+      if (!profile) return
+      void mutateToolProfile(API_ENDPOINTS.cortexToolProfiles, 'POST', {
+        name,
+        description: profile.description,
+        tool_names: toolCatalogState.selectedToolNames,
+      }, 'Duplicated the current resolved tool selection.').then((responseBody) => {
+        if (!responseBody) return
+        const affectedProfileId = responseBody.affected_profile_id
+        if (typeof affectedProfileId === 'string' && affectedProfileId.length > 0) {
+          toolCatalogState.setToolSelection(
+            toolCatalogState.selectedToolNames,
+            affectedProfileId,
+          )
+        }
+      })
+    },
+    [mutateToolProfile, toolCatalogState],
+  )
+
+  const renameToolProfile = useCallback(
+    (profileId: string, name: string): void => {
+      void mutateToolProfile(API_ENDPOINTS.cortexToolProfile(profileId), 'PATCH', {
+        name,
+      }, 'Renamed the tool profile.')
+    },
+    [mutateToolProfile],
+  )
+
+  const deleteToolProfile = useCallback(
+    (profileId: string): void => {
+      void mutateToolProfile(API_ENDPOINTS.cortexToolProfile(profileId), 'DELETE', undefined, 'Deleted the tool profile.')
+        .then((responseBody) => {
+          if (responseBody) {
+            toolCatalogState.setToolSelection(toolCatalogState.selectedToolNames, null)
+          }
+        })
+    },
+    [mutateToolProfile, toolCatalogState],
+  )
+
+  const restoreToolProfile = useCallback(
+    (profileId: string): void => {
+      toolCatalogState.applyToolProfile(profileId)
+      setToolProfileError(null)
+      setToolProfileFeedback('Reapplied the saved tool profile to the current selection.')
+    },
+    [toolCatalogState],
+  )
+
+  const setDefaultToolProfile = useCallback(
+    (profileId: string): void => {
+      void mutateToolProfile(API_ENDPOINTS.cortexToolProfileDefault, 'POST', {
+        agent: activeAgent,
+        profile_id: profileId,
+      }, 'Set as the default profile for this Agent.')
+    },
+    [activeAgent, mutateToolProfile],
+  )
+
   const handleBriefingModeChange = useCallback((mode: BriefingMode): void => {
     briefingModeSelectionTouchedRef.current = true
     setBriefingMode(mode)
@@ -801,43 +998,73 @@ export default function App(): ReactElement {
   }, [persistBriefingMode])
 
   const handleAgentChange = useCallback((agent: AgentKey): void => {
+    activeAgentRef.current = agent
     setAgent(agent)
-    if (!isLocalAgentKey(agent)) {
-      setArmedLocalToolScope(null)
-    }
     if (agent === 'acinonyx') {
-      void persistAskApexSettings({ runtime: 'cloud', effort: cloudEffort }, agent)
+      void persistAskApexSettings(
+        { runtime: 'cloud', effort: cloudEffort },
+        agent,
+        { refreshToolCatalog: false },
+      )
       return
     }
     if (isLocalAgentKey(agent)) {
-      void persistAskApexSettings({ runtime: 'local', local_agent: agent }, agent)
+      void persistAskApexSettings(
+        { runtime: 'local', local_agent: agent },
+        agent,
+        { refreshToolCatalog: false },
+      )
       return
     }
     if (isCloudSettingsAgentKey(agent)) {
       setCloudAgent(agent)
-      void persistAskApexSettings({ runtime: 'cloud', cloud_agent: agent, effort: cloudEffort }, agent)
+      void persistAskApexSettings(
+        { runtime: 'cloud', cloud_agent: agent, effort: cloudEffort },
+        agent,
+        { refreshToolCatalog: false },
+      )
     }
   }, [cloudEffort, persistAskApexSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
-    void persistAskApexSettings({ runtime: 'cloud', cloud_agent: cloudAgent, effort: effort }, activeAgent)
+    void persistAskApexSettings(
+      { runtime: 'cloud', cloud_agent: cloudAgent, effort: effort },
+      activeAgent,
+      { refreshToolCatalog: false },
+    )
   }, [activeAgent, cloudAgent, persistAskApexSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ neofelis_google_search_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { neofelis_google_search_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ neofelis_google_maps_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { neofelis_google_maps_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ delphinus_x_search_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { delphinus_x_search_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings({ orcinus_x_search_enabled: enabled }, activeAgent)
+    void persistAskApexSettings(
+      { orcinus_x_search_enabled: enabled },
+      activeAgent,
+      { refreshToolCatalog: true },
+    )
   }, [activeAgent, persistAskApexSettings])
 
   const handleApodemusContextChange = useCallback((contextWindow: ApodemusContextWindow): void => {
@@ -847,6 +1074,7 @@ export default function App(): ReactElement {
       const persisted = await persistAskApexSettings(
         { apodemus_context_window: contextWindow },
         activeAgent,
+        { refreshToolCatalog: true },
       )
       if (!persisted) {
         setApodemusContextWindow(previous)
@@ -857,13 +1085,20 @@ export default function App(): ReactElement {
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession(activeAgent)
     setSnapshotAttached(false)
-    setArmedLocalToolScope(null)
     setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
   }, [activeAgent, clearCortexSession])
 
-  const handleHomeSubmit = useCallback((query: string, agent: AgentKey, toolScope?: LocalToolScope | null): void => {
-    setWorkspace('cortex')
-    void queryAgentWithContext(query, agent, toolScope)
+  const handleHomeSubmit = useCallback(async (
+    query: string,
+    agent: AgentKey,
+    selectedToolNames: string[],
+    toolProfileId: string | null,
+  ): Promise<boolean> => {
+    const accepted = await queryAgentWithContext(query, agent, selectedToolNames, toolProfileId)
+    if (accepted) {
+      setWorkspace('cortex')
+    }
+    return accepted
   }, [queryAgentWithContext])
 
   return (
@@ -1080,6 +1315,27 @@ export default function App(): ReactElement {
                   onAgentChange={handleAgentChange}
                   onVerifyCloudAgent={verifyCloudAgent}
                   onAgentSubmit={handleHomeSubmit}
+                  toolCatalog={toolCatalogState.catalog}
+                  selectedToolNames={toolCatalogState.selectedToolNames}
+                  activeToolProfileId={toolCatalogState.activeToolProfileId}
+                  selectionReady={toolCatalogState.selectionReady}
+                  submissionPending={submissionPending}
+                  onToolSelectionChange={toolCatalogState.setSelectedToolNames}
+                  onToolProfileChange={toolCatalogState.applyToolProfile}
+                  toolPreflight={toolPreflightState.estimate}
+                  toolPreflightLoading={toolPreflightState.isLoading}
+                  toolCatalogError={toolCatalogState.error}
+                  toolPreflightError={toolPreflightState.error}
+                  toolProfileFeedback={toolProfileFeedback}
+                  toolProfileError={toolProfileError}
+                  draftPrompt={draftPrompt}
+                  onDraftChange={setDraftPrompt}
+                  onSaveToolProfile={saveToolProfile}
+                  onDuplicateToolProfile={duplicateToolProfile}
+                  onRenameToolProfile={renameToolProfile}
+                  onDeleteToolProfile={deleteToolProfile}
+                  onRestoreToolProfile={restoreToolProfile}
+                  onSetDefaultToolProfile={setDefaultToolProfile}
                   onStartApex={() => void handleStartApex()}
                   onStartWithBriefing={() => void handleStartWithBriefing()}
                   startDisabled={preflight.isChecking}
@@ -1263,9 +1519,27 @@ export default function App(): ReactElement {
             latestTrace={cortexLatestTrace}
             error={cortexError}
             contextUsage={cortexContextUsage}
-            commands={localCommands}
-            armedToolScope={armedLocalToolScope}
-            onArmedToolScopeChange={setArmedLocalToolScope}
+            toolCatalog={toolCatalogState.catalog}
+            selectedToolNames={toolCatalogState.selectedToolNames}
+            activeToolProfileId={toolCatalogState.activeToolProfileId}
+            selectionReady={toolCatalogState.selectionReady}
+            submissionPending={submissionPending}
+            onToolSelectionChange={toolCatalogState.setSelectedToolNames}
+            onToolProfileChange={toolCatalogState.applyToolProfile}
+            toolPreflight={toolPreflightState.estimate}
+            toolPreflightLoading={toolPreflightState.isLoading}
+            toolCatalogError={toolCatalogState.error}
+            toolPreflightError={toolPreflightState.error}
+            toolProfileFeedback={toolProfileFeedback}
+            toolProfileError={toolProfileError}
+            draftPrompt={draftPrompt}
+            onDraftChange={setDraftPrompt}
+            onSaveToolProfile={saveToolProfile}
+            onDuplicateToolProfile={duplicateToolProfile}
+            onRenameToolProfile={renameToolProfile}
+            onDeleteToolProfile={deleteToolProfile}
+            onRestoreToolProfile={restoreToolProfile}
+            onSetDefaultToolProfile={setDefaultToolProfile}
             isQuerying={isCortexQuerying}
             lifecycleBusy={localLifecycleBusy}
             lifecycleActionPending={isLocalModelActionPending}

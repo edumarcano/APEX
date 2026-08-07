@@ -8,11 +8,10 @@ from core.agent.capabilities import (
     CapabilityErrorCategory,
     invoke_capability,
     is_client_display_enabled,
-    list_agent_capabilities,
 )
-from core.agent.local_commands import ResolvedLocalCommand, resolve_local_command
 from core.agent.pricing import estimate_inference_cost
 from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
+from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.providers.contract import (
     InferenceProvider,
     ProviderProfile,
@@ -32,6 +31,7 @@ from core.agent.types import (
     LocalContextUsage,
     QueryTiming,
     TokenUsage,
+    ToolSelectionDiagnostics,
     ToolResult,
 )
 
@@ -74,6 +74,27 @@ def build_agent_failure_details(
 ) -> tuple[str, str]:
     """Return the sanitized provider-specific failure response."""
     if is_local_profile(profile):
+        overflow = any(
+            marker in str(exc).lower()
+            for marker in (
+                "local prompt budget exceeded",
+                "context length",
+                "context window",
+                "too many tokens",
+                "prompt is too long",
+                "prompt too long",
+                "input length",
+            )
+        ) or bool(getattr(exc, "is_context_overflow", False))
+        if overflow:
+            return (
+                "The current interaction is too large for the local Agent "
+                "context window after older complete interactions were removed. "
+                "Shorten the prompt, select fewer tools, or start a new session "
+                "and try again.",
+                "Local context overflow: the current interaction did not fit "
+                "after provider-authoritative history trimming.",
+            )
         answer = (
             "The Apex Agent encountered an issue reaching the local "
             "provider or running the requested operations. Please verify that "
@@ -97,9 +118,8 @@ def run_agent_loop(
     profile: P,
     tools_dispatcher: ToolsDispatcher = default_tools_dispatcher,
     system_instruction_override: str | None = None,
-    resolved_local_command: ResolvedLocalCommand | None = None,
-    disable_cloud_tools: bool = False,
-    cloud_tools: list[CapabilityDescriptor] | None = None,
+    selected_tools: list[CapabilityDescriptor] | None = None,
+    tool_selection: ToolSelectionDiagnostics | None = None,
     agent_key: str | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
@@ -112,26 +132,29 @@ def run_agent_loop(
     total_tool_executions = 0
     last_model_content: str | None = None
     is_local = is_local_profile(profile)
-    if is_local and request.tool_scope is not None:
-        local_command = resolved_local_command or resolve_local_command(
-            request.tool_scope
+    resolved_tools = list(selected_tools or [])
+    allowed_tools = {tool.name for tool in resolved_tools}
+    if tool_selection is None:
+        requested_names = (
+            list(request.selected_tool_names)
+            if "selected_tool_names" in request.model_fields_set
+            else []
         )
-        if local_command.scope != request.tool_scope:
-            raise ValueError("Resolved local command does not match the request scope.")
-        local_tools = list(local_command.descriptors)
-    else:
-        local_tools = []
-    allowed_local_tools = {tool.name for tool in local_tools}
-    resolved_cloud_tools = [] if is_local else (
-        list(cloud_tools)
-        if cloud_tools is not None
-        else list_agent_capabilities()
-    )
-    allowed_cloud_tools = (
-        set()
-        if disable_cloud_tools
-        else {tool.name for tool in resolved_cloud_tools}
-    )
+        tool_selection = ToolSelectionDiagnostics(
+            requested_tool_names=requested_names,
+            offered_tool_names=[tool.name for tool in resolved_tools],
+            selected_schema_tokens=(
+                estimate_json_tokens(
+                    [
+                        descriptor_to_openai_schema(tool)
+                        for tool in resolved_tools
+                    ]
+                )
+                if resolved_tools
+                else 0
+            ),
+            active_profile_id=request.tool_profile_id,
+        )
     estimated_prompt_tokens = 0
     peak_prompt_tokens: int | None = None
     history_messages_dropped = 0
@@ -180,7 +203,35 @@ def run_agent_loop(
             tool_outputs=tool_outputs,
             session_id=request.session_id,
             error=error,
-            tool_scope_used=request.tool_scope if is_local else None,
+            resolved_tool_selection=tool_selection or ToolSelectionDiagnostics(),
+            requested_tool_names=(
+                tool_selection.requested_tool_names
+                if tool_selection is not None
+                else []
+            ),
+            offered_tool_names=(
+                tool_selection.offered_tool_names if tool_selection is not None else []
+            ),
+            rejected_tool_names=(
+                tool_selection.rejected_tool_names
+                if tool_selection is not None
+                else []
+            ),
+            selected_schema_tokens=(
+                tool_selection.selected_schema_tokens
+                if tool_selection is not None
+                else 0
+            ),
+            active_tool_profile_id=(
+                tool_selection.active_profile_id
+                if tool_selection is not None
+                else None
+            ),
+            active_tool_profile_name=(
+                tool_selection.active_profile_name
+                if tool_selection is not None
+                else None
+            ),
             local_context_usage=context_usage,
             resolved_model=resolved_model,
             usage=aggregated_usage,
@@ -191,15 +242,7 @@ def run_agent_loop(
 
     try:
         for _turn in range(profile.max_tool_turns):
-            turn_tools: list[CapabilityDescriptor] = (
-                list(local_tools)
-                if is_local
-                else (
-                    []
-                    if disable_cloud_tools
-                    else list(resolved_cloud_tools)
-                )
-            )
+            turn_tools: list[CapabilityDescriptor] = list(resolved_tools)
 
             # Withhold tools on the last permitted turn so every provider must
             # use its final model request to answer from the results already
@@ -285,15 +328,10 @@ def run_agent_loop(
                 output: Any
 
                 try:
-                    if is_local and call.name not in allowed_local_tools:
+                    if call.name not in allowed_tools:
                         raise CapabilityError(
                             CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the selected local command scope.",
-                        )
-                    if not is_local and call.name not in allowed_cloud_tools:
-                        raise CapabilityError(
-                            CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the selected Agent policy.",
+                            "Tool is outside the resolved Agent tool selection.",
                         )
                     output = tools_dispatcher(call.name, call.arguments)
                 except CapabilityError as exc:

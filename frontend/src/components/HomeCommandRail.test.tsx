@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentStatus, AgentKey } from '../types/telemetry'
+import type { AgentStatus, AgentKey, ToolCatalog } from '../types/telemetry'
 
 import { HomeCommandRail } from './HomeCommandRail'
 
@@ -41,6 +41,18 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
 }
 
 function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> = {}) {
+  const toolCatalog: ToolCatalog = {
+    agent: 'panthera',
+    groups: [],
+    tools: [],
+    profiles: [],
+    default_profile_id: 'no_tools',
+    default_profile_name: 'No APEX Tools',
+    default_selected_tool_names: [],
+    provider_hosted_tools: [],
+    context_window: null,
+    reserved_response_tokens: null,
+  }
   const props: ComponentProps<typeof HomeCommandRail> = {
     activated: true,
     askApexEnabled: true,
@@ -51,7 +63,11 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     verifyingCloudAgent: null,
     onAgentChange: vi.fn(),
     onVerifyCloudAgent: vi.fn(async () => true),
-    onAgentSubmit: vi.fn(),
+    onAgentSubmit: vi.fn().mockResolvedValue(true),
+    toolCatalog,
+    selectedToolNames: [],
+    activeToolProfileId: null,
+    selectionReady: true,
     onStartApex: vi.fn(),
     onStartWithBriefing: vi.fn(),
     startDisabled: false,
@@ -128,7 +144,7 @@ describe('HomeCommandRail', () => {
   })
 
   it('submits with the active Agent while keeping the composer free of a second selector', async () => {
-    const onAgentSubmit = vi.fn()
+    const onAgentSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     renderRail({ onAgentSubmit })
 
@@ -136,7 +152,7 @@ describe('HomeCommandRail', () => {
     await user.type(screen.getByLabelText('Ask APEX query'), 'Summarize my day')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
-    expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', null)
+    expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', [], null)
   })
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {

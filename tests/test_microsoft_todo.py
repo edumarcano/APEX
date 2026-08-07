@@ -35,7 +35,7 @@ from core.agent.capabilities import (
     CapabilityErrorCategory,
     get_capability_descriptor,
 )
-from core.agent.local_commands import list_local_command_statuses
+from core.agent.tool_catalog import build_tool_catalog
 from core.agent.tools import list_microsoft_todo_lists, list_microsoft_todo_tasks
 from core.api.routers.microsoft_todo import (
     disconnect_microsoft_todo,
@@ -320,10 +320,12 @@ class MicrosoftTodoCapabilityTests(unittest.TestCase):
             list_microsoft_todo_lists()
         self.assertEqual(raised.exception.category, CapabilityErrorCategory.AUTHENTICATION)
 
-    def test_todo_scope_is_unavailable_without_configuration(self) -> None:
+    def test_todo_catalog_is_unavailable_without_configuration(self) -> None:
         with mock.patch.dict(os.environ, {"MICROSOFT_TODO_CLIENT_ID": ""}):
-            status = next(
-                item for item in list_local_command_statuses() if item.key == "todo"
+            tool = next(
+                item
+                for item in build_tool_catalog("panthera").tools
+                if item.name == "list_microsoft_todo_lists"
             )
-        self.assertFalse(status.available)
-        self.assertEqual(status.unavailable_reason, "Microsoft To Do is not configured.")
+        self.assertFalse(tool.available)
+        self.assertEqual(tool.unavailable_reason, "Microsoft To Do is not configured.")

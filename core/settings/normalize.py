@@ -33,6 +33,8 @@ from core.settings.models import (
     ModulesSettings,
     RuntimeSettingsSnapshot,
     SettingsPatch,
+    ToolProfile,
+    ToolProfilesSettings,
     VoiceSettings,
 )
 
@@ -50,6 +52,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "football",
         "market",
         "ask_apex",
+        "tool_profiles",
         "briefing",
         "tts_settings",
         "mcp",
@@ -58,6 +61,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
 )
 _DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
 _LOOPBACK_HOSTNAMES: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
+_TOOL_PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$", re.IGNORECASE)
 
 
 @dataclass
@@ -153,6 +157,10 @@ def normalize_layer(
             ask_apex = _normalize_ask_apex(value, layer_name, issues)
             if ask_apex:
                 normalized["ask_apex"] = ask_apex
+        elif key == "tool_profiles":
+            tool_profiles = _normalize_tool_profiles(value, layer_name, issues)
+            if tool_profiles:
+                normalized["tool_profiles"] = tool_profiles
         elif key == "briefing":
             briefing = _normalize_briefing(
                 value, layer_name, issues, schema5=schema5_layer
@@ -678,6 +686,98 @@ def _normalize_ask_apex(
     return result
 
 
+def _normalize_tool_profiles(
+    value: Any, layer_name: str, errors: NormalizationIssues | None
+) -> dict[str, Any]:
+    """Normalize non-secret saved tool selections and Agent defaults."""
+    if not isinstance(value, dict):
+        _record_error(errors, "tool_profiles must be a JSON object")
+        _LOGGER.warning(
+            'Config key "tool_profiles" in %s must be a JSON object.',
+            layer_name,
+        )
+        return {}
+
+    result: dict[str, Any] = {}
+    profiles_raw = value.get("custom_profiles", [])
+    if profiles_raw is not None:
+        if not isinstance(profiles_raw, list):
+            _record_error(errors, "tool_profiles.custom_profiles must be a list")
+        else:
+            profiles: list[dict[str, Any]] = []
+            seen_ids: set[str] = set()
+            for raw_profile in profiles_raw:
+                if not isinstance(raw_profile, dict):
+                    _record_error(errors, "tool profile entries must be objects")
+                    continue
+                profile_id = raw_profile.get("id")
+                name = raw_profile.get("name")
+                description = raw_profile.get("description", "")
+                tool_names = raw_profile.get("tool_names", [])
+                if (
+                    not isinstance(profile_id, str)
+                    or not profile_id.strip()
+                    or len(profile_id.strip()) > 80
+                    or not _TOOL_PROFILE_ID_PATTERN.fullmatch(profile_id.strip())
+                    or not isinstance(name, str)
+                    or not name.strip()
+                    or len(name.strip()) > 80
+                    or not isinstance(description, str)
+                    or len(description) > 240
+                    or not isinstance(tool_names, list)
+                    or not all(isinstance(tool_name, str) for tool_name in tool_names)
+                ):
+                    _record_error(errors, "tool profile contains invalid fields")
+                    continue
+                normalized_id = profile_id.strip().lower()
+                if normalized_id in seen_ids:
+                    _record_error(errors, "tool profile ids must be unique")
+                    continue
+                seen_ids.add(normalized_id)
+                deduped_names = list(
+                    dict.fromkeys(
+                        tool_name.strip()
+                        for tool_name in tool_names
+                        if tool_name.strip()
+                    )
+                )
+                profiles.append(
+                    ToolProfile(
+                        id=normalized_id,
+                        name=" ".join(name.split()),
+                        description=description.strip(),
+                        tool_names=tuple(deduped_names),
+                        built_in=False,
+                        dynamic=False,
+                    ).model_dump()
+                )
+            result["custom_profiles"] = profiles
+
+    defaults_raw = value.get("default_profile_by_agent", {})
+    if defaults_raw is not None:
+        if not isinstance(defaults_raw, dict):
+            _record_error(
+                errors, "tool_profiles.default_profile_by_agent must be an object"
+            )
+        else:
+            defaults: dict[str, str] = {}
+            for agent, profile_id in defaults_raw.items():
+                if (
+                    isinstance(agent, str)
+                    and agent.strip()
+                    and isinstance(profile_id, str)
+                    and profile_id.strip()
+                ):
+                    defaults[agent.strip().lower()] = profile_id.strip().lower()
+                else:
+                    _record_error(
+                        errors,
+                        "tool profile defaults must map Agent names to profile IDs",
+                    )
+            result["default_profile_by_agent"] = defaults
+    return result
+
+
 def _normalize_tts_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
@@ -856,6 +956,11 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
     market_raw = merged.get("market") if isinstance(merged.get("market"), dict) else {}
     ask_apex_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
+    tool_profiles_raw = (
+        merged.get("tool_profiles")
+        if isinstance(merged.get("tool_profiles"), dict)
+        else {}
+    )
     ask_apex = migrate_schema7_ask_apex(ask_apex_raw)
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
     mcp_raw = merged.get("mcp") if isinstance(merged.get("mcp"), dict) else {}
@@ -925,6 +1030,43 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         orcinus_x_search_enabled=bool(
             ask_apex.get("orcinus_x_search_enabled", True)
         ),
+    )
+    custom_profiles: list[ToolProfile] = []
+    for raw_profile in tool_profiles_raw.get("custom_profiles", []):
+        if not isinstance(raw_profile, dict):
+            continue
+        try:
+            profile = ToolProfile.model_validate(raw_profile)
+        except Exception:
+            continue
+        if profile.built_in:
+            profile = profile.model_copy(update={"built_in": False, "dynamic": False})
+        custom_profiles.append(
+            profile.model_copy(
+                update={
+                    "tool_names": tuple(
+                        dict.fromkeys(
+                            name.strip()
+                            for name in profile.tool_names
+                            if name.strip()
+                        )
+                    )
+                }
+            )
+        )
+    defaults_raw = tool_profiles_raw.get("default_profile_by_agent", {})
+    default_profile_by_agent = (
+        {
+            str(agent).strip().lower(): str(profile_id).strip().lower()
+            for agent, profile_id in defaults_raw.items()
+            if str(agent).strip() and str(profile_id).strip()
+        }
+        if isinstance(defaults_raw, dict)
+        else {}
+    )
+    tool_profiles = ToolProfilesSettings(
+        custom_profiles=tuple(custom_profiles),
+        default_profile_by_agent=default_profile_by_agent,
     )
     engine = tts.get("primary_tts", "pyttsx3")
     if engine not in VALID_VOICE_ENGINES:
@@ -1007,6 +1149,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         football=football,
         market=market,
         ask_apex=ask_apex_settings,
+        tool_profiles=tool_profiles,
         briefing=briefing,
         voice=voice,
         mcp=mcp,
@@ -1036,6 +1179,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "delphinus_x_search_enabled": snapshot.ask_apex.delphinus_x_search_enabled,
             "orcinus_x_search_enabled": snapshot.ask_apex.orcinus_x_search_enabled,
         },
+        "tool_profiles": snapshot.tool_profiles.model_dump(),
         "briefing": {
             "default_mode": snapshot.briefing.default_mode,
         },
@@ -1099,6 +1243,22 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         ask_apex.update(ask_apex_patch)
         if ask_apex:
             ondisk["ask_apex"] = ask_apex
+    if patch.tool_profiles is not None:
+        tool_profiles: dict[str, Any] = {}
+        if patch.tool_profiles.custom_profiles is not None:
+            serialized_profiles: list[dict[str, Any]] = []
+            for profile in patch.tool_profiles.custom_profiles:
+                serialized = profile.model_dump()
+                serialized["tool_names"] = list(profile.tool_names)
+                serialized_profiles.append(serialized)
+            tool_profiles["custom_profiles"] = serialized_profiles
+        if patch.tool_profiles.default_profile_by_agent is not None:
+            tool_profiles["default_profile_by_agent"] = {
+                agent.strip().lower(): profile_id.strip().lower()
+                for agent, profile_id in patch.tool_profiles.default_profile_by_agent.items()
+            }
+        if tool_profiles:
+            ondisk["tool_profiles"] = tool_profiles
     if patch.briefing is not None:
         briefing: dict[str, Any] = {}
         if patch.briefing.default_mode is not None:

@@ -79,7 +79,7 @@ Ask APEX is not itself an Agent. A request entered through Ask APEX is handled b
 
 The **Cortex workspace** is the detailed interface for working with Apex Agents.
 
-It contains Agent selection, effort controls, provider-specific capabilities, local command scopes, model lifecycle controls, conversation history, and execution information.
+It contains Agent selection, effort controls, provider-specific capabilities, the unified Tools selector, model lifecycle controls, conversation history, and execution information.
 
 ### Cortex Engine
 

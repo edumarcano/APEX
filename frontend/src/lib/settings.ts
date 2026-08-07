@@ -24,6 +24,8 @@ import type {
   SettingsResponse,
   SettingsTimingFieldGroup,
   SettingsTimingRuntime,
+  ToolProfilesSettings,
+  ToolProfileSettings,
   LlamaCppServerStatusResponse,
   VoiceGender,
   VoiceMode,
@@ -289,6 +291,44 @@ function parseMcpSettings(value: unknown): McpSettings | null {
   }
 }
 
+function parseToolProfiles(value: unknown): ToolProfilesSettings {
+  if (!isRecord(value)) {
+    return { custom_profiles: [], default_profile_by_agent: {} }
+  }
+  const custom_profiles = Array.isArray(value.custom_profiles)
+    ? value.custom_profiles.flatMap((profile): ToolProfileSettings[] => {
+      if (!isRecord(profile)) return []
+      if (
+        typeof profile.id !== 'string' ||
+        typeof profile.name !== 'string' ||
+        typeof profile.description !== 'string' ||
+        !Array.isArray(profile.tool_names) ||
+        !profile.tool_names.every((name) => typeof name === 'string') ||
+        typeof profile.built_in !== 'boolean' ||
+        typeof profile.dynamic !== 'boolean'
+      ) {
+        return []
+      }
+      return [{
+        id: profile.id,
+        name: profile.name,
+        description: profile.description,
+        tool_names: profile.tool_names,
+        built_in: profile.built_in,
+        dynamic: profile.dynamic,
+      }]
+    })
+    : []
+  const defaults = isRecord(value.default_profile_by_agent)
+    ? Object.fromEntries(
+      Object.entries(value.default_profile_by_agent).filter(
+        ([agent, profileId]) => typeof agent === 'string' && typeof profileId === 'string',
+      ),
+    ) as Record<string, string>
+    : {}
+  return { custom_profiles, default_profile_by_agent: defaults }
+}
+
 function parseFootballSettings(value: unknown): FootballSettings {
   if (!isRecord(value) || !Array.isArray(value.teams)) {
     return { teams: [] }
@@ -350,6 +390,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const football = parseFootballSettings(value.football)
   const market = parseMarketSettings(value.market)
   const mcp = parseMcpSettings(value.mcp)
+  const hasToolProfiles = isRecord(value.tool_profiles)
+  const tool_profiles = parseToolProfiles(value.tool_profiles)
   const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   if (
     !features ||
@@ -423,6 +465,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
       orcinus_x_search_enabled: value.ask_apex.orcinus_x_search_enabled,
     },
+    ...(hasToolProfiles ? { tool_profiles } : {}),
     briefing: {
       default_mode: value.briefing.default_mode,
     },
@@ -452,6 +495,19 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
       symbols: [...settings.market.symbols],
     },
     ask_apex: { ...settings.ask_apex },
+    ...(settings.tool_profiles
+      ? {
+          tool_profiles: {
+            custom_profiles: settings.tool_profiles.custom_profiles.map((profile) => ({
+              ...profile,
+              tool_names: [...profile.tool_names],
+            })),
+            default_profile_by_agent: {
+              ...settings.tool_profiles.default_profile_by_agent,
+            },
+          },
+        }
+      : {}),
     briefing: { ...settings.briefing },
     voice: { ...settings.voice },
     mcp: {
@@ -560,6 +616,20 @@ export function diffSettingsPatch(
   const askApex = diffSection(baseline.ask_apex, draft.ask_apex)
   if (askApex) {
     patch.ask_apex = askApex
+  }
+
+  if (JSON.stringify(baseline.tool_profiles) !== JSON.stringify(draft.tool_profiles)) {
+    const draftProfiles = draft.tool_profiles ?? {
+      custom_profiles: [],
+      default_profile_by_agent: {},
+    }
+    patch.tool_profiles = {
+      custom_profiles: draftProfiles.custom_profiles.map((profile) => ({
+        ...profile,
+        tool_names: [...profile.tool_names],
+      })),
+      default_profile_by_agent: { ...draftProfiles.default_profile_by_agent },
+    }
   }
 
   const briefing = diffSection(baseline.briefing, draft.briefing)

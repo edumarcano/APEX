@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 from core.agent import tools as agent_tools
+from core.agent.capabilities import get_capability_descriptor
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.catalog import build_concrete_agent, resolve_effort
@@ -169,6 +170,7 @@ class StableAgentErrorTests(unittest.TestCase):
                 "neofelis", native_effort=resolve_effort("neofelis", None)[1]
             ),
             tools_dispatcher=failing_dispatcher,
+            selected_tools=[get_capability_descriptor("get_weather_forecast")],  # type: ignore[list-item]
         )
 
         expected_error = {

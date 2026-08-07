@@ -8,7 +8,11 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from core.agent.types import AgentQueryRequest, AgentQueryResponse
+from core.agent.types import (
+    AgentQueryRequest,
+    AgentQueryResponse,
+    ToolSelectionDiagnostics,
+)
 from core.api.models import DigestPayload, TelemetryPayload, parse_digest_payload
 
 _MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent.parent / "mock" / "telemetry.json"
@@ -259,7 +263,11 @@ def _demo_greeting() -> str:
     return f"Greetings {designation}." if designation else "Greetings."
 
 
-def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
+def run_demo_agent_query(
+    payload: AgentQueryRequest,
+    *,
+    tool_selection: ToolSelectionDiagnostics | None = None,
+) -> AgentQueryResponse:
     """Return deterministic Agent responses when ``DEMO_MODE`` is active."""
     from core.agent.catalog import (
         AGENT_SPECS,
@@ -303,4 +311,23 @@ def run_demo_agent_query(payload: AgentQueryRequest) -> AgentQueryResponse:
         tool_outputs=selected_response.get("tool_outputs", []),
         session_id=payload.session_id,
         error=None,
+        resolved_tool_selection=tool_selection or ToolSelectionDiagnostics(),
+        requested_tool_names=(
+            tool_selection.requested_tool_names if tool_selection is not None else []
+        ),
+        offered_tool_names=(
+            tool_selection.offered_tool_names if tool_selection is not None else []
+        ),
+        rejected_tool_names=(
+            tool_selection.rejected_tool_names if tool_selection is not None else []
+        ),
+        selected_schema_tokens=(
+            tool_selection.selected_schema_tokens if tool_selection is not None else 0
+        ),
+        active_tool_profile_id=(
+            tool_selection.active_profile_id if tool_selection is not None else None
+        ),
+        active_tool_profile_name=(
+            tool_selection.active_profile_name if tool_selection is not None else None
+        ),
     )
