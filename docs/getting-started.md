@@ -159,7 +159,7 @@ Apodemus and Neotoma default to request-level `None` reasoning. Their Cortex Rea
 A manual smoke script is available when a router is running:
 
 ```powershell
-uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-8k --load --unload
+uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-16k --load --unload
 ```
 
 ## First-run expectations

@@ -33,8 +33,8 @@ def _load_fixture(name: str) -> dict:
 
 def _apodemus_profile(
     *,
-    context_window: int = 8192,
-    reasoning_mode: str | None = None,
+    context_window: int = 16384,
+    reasoning_mode: str | None = "none",
 ):
     _apex, native = resolve_effort("apodemus", None)
     return build_concrete_agent(
@@ -97,7 +97,7 @@ class LlamaCppProviderTests(unittest.TestCase):
             _apodemus_profile(),
         )
         self.assertEqual(result.message.content, "The local weather looks clear.")
-        self.assertEqual(result.resolved_model, "apodemus-8k")
+        self.assertEqual(result.resolved_model, "apodemus-16k")
         self.assertIsNone(result.message.tool_calls)
         payload = mock_post.call_args.args[0]
         self.assertEqual(payload["reasoning_effort"], "none")
@@ -111,7 +111,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
         mock_post.return_value = {
-            "model": "apodemus-8k",
+            "model": "apodemus-16k",
             "choices": [
                 {
                     "message": {"role": "assistant", "content": ""},
@@ -342,7 +342,7 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         mock_post.side_effect = [
             {
-                "model": "apodemus-8k",
+                "model": "apodemus-16k",
                 "choices": [
                     {
                         "message": {
@@ -359,7 +359,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 },
             },
             {
-                "model": "apodemus-8k",
+                "model": "apodemus-16k",
                 "choices": [
                     {
                         "message": {
@@ -401,7 +401,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         mock_get_session.return_value = session
         _post_chat(
             {
-                "model": "apodemus-8k",
+                "model": "apodemus-16k",
                 "messages": [{"role": "user", "content": "Hi"}],
                 "stream": False,
                 "temperature": 0.2,
@@ -421,7 +421,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         session = MagicMock()
         mock_get_session.return_value = session
         profile = _apodemus_profile()
-        payload = {"model": "apodemus-8k", "messages": []}
+        payload = {"model": "apodemus-16k", "messages": []}
 
         session.post.side_effect = requests.Timeout()
         with self.assertRaisesRegex(RuntimeError, "timed out"):
@@ -449,7 +449,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         with self.assertRaises(LlamaCppRequestError) as raised:
             _post_chat(
                 {
-                    "model": "apodemus-8k",
+                    "model": "apodemus-16k",
                     "messages": [{"role": "user", "content": prompt}],
                     "headers_should_not_leak": secret,
                 },
@@ -471,7 +471,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         mock_get_session.return_value = session
         session.post.return_value = _mock_response(status_code=200, payload=None)
         with self.assertRaisesRegex(RuntimeError, "non-JSON"):
-            _post_chat({"model": "apodemus-8k", "messages": []}, _apodemus_profile())
+            _post_chat({"model": "apodemus-16k", "messages": []}, _apodemus_profile())
 
         with patch(
             "core.agent.providers.llama_cpp.register_local_activity",

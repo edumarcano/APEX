@@ -423,9 +423,9 @@ class AgentStatus(BaseModel):
         default=None,
         description="Selectable local context presets; null for fixed-context Agents.",
     )
-    context_window_experimental_options: list[int] | None = Field(
+    context_window_high_resource_options: list[int] | None = Field(
         default=None,
-        description="Selectable local context presets that carry an experimental label.",
+        description="Selectable local context presets that carry a high-resource label.",
     )
     default_context_window: int | None = Field(
         default=None,

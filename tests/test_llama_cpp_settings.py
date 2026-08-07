@@ -127,7 +127,7 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
             self.local_path,
             {
                 "schema_version": 8,
-                "ask_apex": {"apodemus_context_window": 16384},
+                "ask_apex": {"apodemus_context_window": 8192},
             },
         )
         store = self._store()

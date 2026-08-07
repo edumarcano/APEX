@@ -207,7 +207,7 @@ function deferred<T>(): Deferred<T> {
 function catalogFor(
   agent: AgentKey,
   googleSearchEnabled = false,
-  contextWindow = 8192,
+  contextWindow = 16384,
 ): ToolCatalog {
   return {
     agent,
@@ -233,10 +233,10 @@ function catalogFor(
 function settingsResponse(
   agent: AgentKey,
   googleSearchEnabled = false,
-  contextWindow = 8192,
+  contextWindow = 16384,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 12,
+    schema_version: 13,
     settings: {
       user_designation: '',
       features: {
@@ -370,7 +370,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const refreshedContextWindow =
-            agent === 'apodemus' && apodemusCatalogRequests++ > 0 ? 32768 : 8192
+            agent === 'apodemus' && apodemusCatalogRequests++ > 0 ? 32768 : 16384
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, false, refreshedContextWindow)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -389,7 +389,7 @@ describe('App catalog-affecting settings', () => {
     await waitFor(() => expect(catalogRequests).toContain('apodemus'))
     await waitFor(() => {
       expect(screen.getByTestId('active-agent')).toHaveTextContent('apodemus')
-      expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('8192')
+      expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('16384')
     })
 
     await user.click(screen.getByRole('button', { name: 'Increase Local Context' }))

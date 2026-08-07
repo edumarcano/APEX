@@ -513,13 +513,21 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         self.assertEqual(neotoma.reasoning_mode_options, ["none", "focused"])
         self.assertEqual(neotoma.default_reasoning_mode, "none")
         self.assertEqual(neotoma.reasoning_mode, "none")
+        apodemus = next(item for item in profiles if item.key == "apodemus")
+        self.assertEqual(
+            apodemus.context_window_options,
+            [4096, 16384, 32768, 131072],
+        )
+        self.assertEqual(apodemus.context_window_high_resource_options, [131072])
+        self.assertEqual(apodemus.default_context_window, 16384)
+        self.assertEqual(apodemus.context_window, 16384)
         mus = next(item for item in profiles if item.key == "mus")
         self.assertEqual(mus.reasoning_mode_options, ["none"])
 
 
 class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_twelve(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 12)
+    def test_settings_schema_version_is_thirteen(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 13)
 
 
 if __name__ == "__main__":

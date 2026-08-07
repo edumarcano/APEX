@@ -43,7 +43,13 @@ from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCa
 
 def _concrete_profile(key: str):
     _apex, native = resolve_effort(key, None)
-    return build_concrete_agent(key, native_effort=native)
+    return build_concrete_agent(
+        key,
+        native_effort=native,
+        local_reasoning_mode=(
+            "none" if key in {"sorex", "mus", "apodemus", "neotoma"} else None
+        ),
+    )
 
 
 class ProviderContractTests(unittest.TestCase):
@@ -81,8 +87,11 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(resolve_inference_provider(apodemus), "llama_cpp")
         self.assertEqual(sorex.runtime_model_id, sorex.api_model)
         self.assertEqual(mus.runtime_model_id, mus.api_model)
-        self.assertEqual(apodemus.runtime_model_id, "apodemus-8k")
+        self.assertEqual(apodemus.runtime_model_id, "apodemus-16k")
         self.assertEqual(apodemus.api_model, "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(apodemus.allowed_context_windows, (4096, 16384, 32768, 131072))
+        self.assertEqual(apodemus.default_context_window, 16384)
+        self.assertEqual(apodemus.high_resource_context_options, (131072,))
         self.assertEqual(neotoma.runtime_model_id, "neotoma-16k")
         self.assertEqual(neotoma.api_model, "Qwen3.5-4B-Q4_K_M.gguf")
         self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))

@@ -27,7 +27,7 @@ const mus: AgentStatus = {
   default_effort: null,
   context_window: null,
   context_window_options: null,
-  context_window_experimental_options: null,
+  context_window_high_resource_options: null,
   default_context_window: null,
   reasoning_mode: 'none',
   reasoning_mode_options: ['none'],

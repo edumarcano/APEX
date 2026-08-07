@@ -29,7 +29,7 @@ function profile(
     default_effort: mode === 'cloud' ? 'focused' : null,
     context_window: null,
     context_window_options: null,
-    context_window_experimental_options: null,
+    context_window_high_resource_options: null,
     default_context_window: null,
     reasoning_mode: mode === 'local' ? 'none' : null,
     reasoning_mode_options: mode === 'local' ? ['none'] : null,

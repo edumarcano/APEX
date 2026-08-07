@@ -399,23 +399,23 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   ) {
     return null
   }
-  const contextWindowExperimentalOptions =
-    record.context_window_experimental_options === undefined ||
-    record.context_window_experimental_options === null
+  const contextWindowHighResourceOptions =
+    record.context_window_high_resource_options === undefined ||
+    record.context_window_high_resource_options === null
       ? null
-      : Array.isArray(record.context_window_experimental_options) &&
-          record.context_window_experimental_options.every(
+      : Array.isArray(record.context_window_high_resource_options) &&
+          record.context_window_high_resource_options.every(
             (value) =>
               typeof value === 'number' &&
               Number.isInteger(value) &&
               value > 0,
           )
-        ? record.context_window_experimental_options
+        ? record.context_window_high_resource_options
         : null
   if (
-    record.context_window_experimental_options !== undefined &&
-    record.context_window_experimental_options !== null &&
-    contextWindowExperimentalOptions === null
+    record.context_window_high_resource_options !== undefined &&
+    record.context_window_high_resource_options !== null &&
+    contextWindowHighResourceOptions === null
   ) {
     return null
   }
@@ -481,7 +481,7 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     default_effort: defaultEffort,
     context_window: contextWindow,
     context_window_options: contextWindowOptions,
-    context_window_experimental_options: contextWindowExperimentalOptions,
+    context_window_high_resource_options: contextWindowHighResourceOptions,
     default_context_window: defaultContextWindow,
     reasoning_mode: reasoningMode,
     reasoning_mode_options: reasoningModeOptions,

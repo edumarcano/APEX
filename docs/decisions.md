@@ -200,11 +200,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use stable runtime aliases for Apodemus context presets
 
-**Decision.** Apodemus loads through aliases such as `apodemus-8k` instead of exposing raw GGUF paths or an arbitrary context slider.
+**Decision.** Apodemus loads through aliases such as `apodemus-16k` and `apodemus-132k` instead of exposing raw GGUF paths or an arbitrary context slider.
 
 **Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. The model maximum of 131072 tokens stays metadata only.
+**Trade-off.** Adding a new context requires a router preset and settings migration work. The 132K preset is explicitly high-resource, while the model maximum of 131072 tokens remains metadata-aligned with that preset.
 
 ### Make local reasoning capability-driven and private
 

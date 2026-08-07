@@ -242,7 +242,7 @@ export interface AgentStatus {
   default_effort: CloudEffort | null
   context_window: number | null
   context_window_options: number[] | null
-  context_window_experimental_options: number[] | null
+  context_window_high_resource_options: number[] | null
   default_context_window: number | null
   reasoning_mode: LocalReasoningMode | null
   reasoning_mode_options: LocalReasoningMode[] | null

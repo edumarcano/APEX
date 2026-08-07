@@ -31,7 +31,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     effort: 'focused',
     local_agent: 'mus',
     local_context_windows: {
-      apodemus: 8192,
+      apodemus: 16384,
       neotoma: 16384,
     },
     local_reasoning_modes: {
@@ -74,7 +74,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 12,
+    schema_version: 13,
     settings,
     local_file_present: false,
     local_override_active: false,

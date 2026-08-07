@@ -179,7 +179,7 @@ describe('settings editing utilities', () => {
     draft.ask_apex.local_agent = 'sorex'
     draft.ask_apex.local_context_windows = {
       ...draft.ask_apex.local_context_windows,
-      apodemus: 16384,
+      apodemus: 32768,
     }
     draft.briefing.default_mode = 'mus'
     draft.voice.gender = 'male'
@@ -193,7 +193,7 @@ describe('settings editing utilities', () => {
       ask_apex: {
         runtime: 'local',
         local_agent: 'sorex',
-        local_context_windows: { apodemus: 16384, neotoma: 16384 },
+        local_context_windows: { apodemus: 32768, neotoma: 16384 },
       },
       briefing: { default_mode: 'mus' },
       voice: { gender: 'male', mode: 'manual' },
@@ -231,7 +231,7 @@ describe('settings editing utilities', () => {
     }
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: {
-        local_context_windows: { apodemus: 8192, neotoma: 65536 },
+        local_context_windows: { apodemus: 16384, neotoma: 65536 },
       },
     })
   })

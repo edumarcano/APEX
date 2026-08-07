@@ -71,6 +71,9 @@ export function formatContextWindowLabel(
   if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens <= 0) {
     return null
   }
+  if (tokens === 131072) {
+    return '132K'
+  }
   if (tokens % 1024 === 0) {
     return `${tokens / 1024}K`
   }

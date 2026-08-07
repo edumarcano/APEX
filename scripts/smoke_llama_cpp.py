@@ -344,7 +344,7 @@ def _print_table(results: list[CheckResult]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Optional llama.cpp smoke checks for Apex Apodemus."
+        description="Optional llama.cpp smoke checks for Apex local Agents."
     )
     parser.add_argument(
         "--host",
@@ -353,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--model",
-        default="apodemus-8k",
+        default="apodemus-16k",
         help="Runtime alias to exercise",
     )
     parser.add_argument(

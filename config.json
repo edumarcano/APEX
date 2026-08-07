@@ -40,7 +40,7 @@
     "delphinus_x_search_enabled": true,
     "orcinus_x_search_enabled": true,
     "local_context_windows": {
-      "apodemus": 8192,
+      "apodemus": 16384,
       "neotoma": 16384
     },
     "local_reasoning_modes": {

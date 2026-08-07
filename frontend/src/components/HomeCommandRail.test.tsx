@@ -25,10 +25,10 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     stability: key === 'apodemus' || key === 'neotoma' ? 'preview' : 'stable',
     effort_options: local ? null : ['light', 'focused', 'extended'],
     default_effort: local ? null : 'focused',
-    context_window: key === 'apodemus' ? 8192 : key === 'neotoma' ? 16384 : null,
-    context_window_options: key === 'apodemus' ? [4096, 8192, 16384, 32768] : key === 'neotoma' ? [4096, 16384, 32768, 65536] : null,
-    context_window_experimental_options: key === 'apodemus' ? [32768] : key === 'neotoma' ? [] : null,
-    default_context_window: key === 'apodemus' ? 8192 : key === 'neotoma' ? 16384 : null,
+    context_window: key === 'apodemus' ? 16384 : key === 'neotoma' ? 16384 : null,
+    context_window_options: key === 'apodemus' ? [4096, 16384, 32768, 131072] : key === 'neotoma' ? [4096, 16384, 32768, 65536] : null,
+    context_window_high_resource_options: key === 'apodemus' ? [131072] : key === 'neotoma' ? [] : null,
+    default_context_window: key === 'apodemus' ? 16384 : key === 'neotoma' ? 16384 : null,
     reasoning_mode: key === 'apodemus' || key === 'neotoma' ? 'none' : local ? 'none' : null,
     reasoning_mode_options: key === 'apodemus' || key === 'neotoma' ? ['none', 'focused'] : local ? ['none'] : null,
     default_reasoning_mode: key === 'apodemus' || key === 'neotoma' ? 'none' : local ? 'none' : null,
@@ -188,10 +188,10 @@ describe('HomeCommandRail', () => {
       display_name: 'Apex Apodemus',
       loaded_model: {
         provider: 'llama_cpp' as const,
-        name: 'apodemus-8k',
-        model: 'apodemus-8k',
+        name: 'apodemus-16k',
+        model: 'apodemus-16k',
         state: 'loaded' as const,
-        context_window: 8192,
+        context_window: 16384,
         size_bytes: null,
         size_vram_bytes: null,
         processor: null,
@@ -201,7 +201,7 @@ describe('HomeCommandRail', () => {
     }
     renderRail({ activeLocalModel: activeApodemus })
 
-    expect(screen.getByText('Apodemus · llama.cpp · 8K · Loaded')).toBeVisible()
+    expect(screen.getByText('Apodemus · llama.cpp · 16K · Loaded')).toBeVisible()
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {

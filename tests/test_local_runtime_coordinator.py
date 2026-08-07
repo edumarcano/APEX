@@ -144,7 +144,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
                     {
                         LocalModelRef(provider="ollama", model="sorex-model"),
                         LocalModelRef(provider="ollama", model="mus-model"),
-                        LocalModelRef(provider="llama_cpp", model="apodemus-8k"),
+                        LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
                         LocalModelRef(provider="llama_cpp", model="apodemus-4k"),
                     }
                 ),
@@ -429,23 +429,23 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(
             coord.switch_local_model(
-                _FakeProfile(api_model="apodemus-8k", provider="llama_cpp")
+                _FakeProfile(api_model="apodemus-16k", provider="llama_cpp")
             )
         )
         self.assertEqual(self.backend.unload_calls, ["mus-model"])
-        self.assertEqual(self.llama_backend.load_calls, ["apodemus-8k"])
+        self.assertEqual(self.llama_backend.load_calls, ["apodemus-16k"])
         self.assertNotIn("mus-model", self.backend.resident)
-        self.assertIn("apodemus-8k", self.llama_backend.resident)
+        self.assertIn("apodemus-16k", self.llama_backend.resident)
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="llama_cpp", model="apodemus-8k"),
+            LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
         )
         coord.end_local_execution()
 
     def test_apodemus_to_sorex_unloads_llama_cpp_first(self) -> None:
-        self.llama_backend.resident.add("apodemus-8k")
+        self.llama_backend.resident.add("apodemus-16k")
         coord.register_local_activity(
-            LocalModelRef(provider="llama_cpp", model="apodemus-8k")
+            LocalModelRef(provider="llama_cpp", model="apodemus-16k")
         )
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(
@@ -453,9 +453,9 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
                 _FakeProfile(api_model="sorex-model", provider="ollama")
             )
         )
-        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-8k"])
+        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-16k"])
         self.assertEqual(self.backend.load_calls, ["sorex-model"])
-        self.assertNotIn("apodemus-8k", self.llama_backend.resident)
+        self.assertNotIn("apodemus-16k", self.llama_backend.resident)
         self.assertEqual(
             coord.get_active_local_model(),
             LocalModelRef(provider="ollama", model="sorex-model"),
@@ -471,7 +471,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertTrue(coord.try_begin_local_execution())
         self.assertFalse(
             coord.switch_local_model(
-                _FakeProfile(api_model="apodemus-8k", provider="llama_cpp")
+                _FakeProfile(api_model="apodemus-16k", provider="llama_cpp")
             )
         )
         self.assertEqual(self.llama_backend.load_calls, [])
@@ -482,12 +482,12 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         coord.end_local_execution()
 
     def test_idle_unload_targets_active_provider(self) -> None:
-        ref = LocalModelRef(provider="llama_cpp", model="apodemus-8k")
-        self.llama_backend.resident.add("apodemus-8k")
+        ref = LocalModelRef(provider="llama_cpp", model="apodemus-16k")
+        self.llama_backend.resident.add("apodemus-16k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
-        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-8k"])
+        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-16k"])
         self.assertEqual(self.backend.unload_calls, [])
         self.assertIsNone(coord.get_active_local_model())
 

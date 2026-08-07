@@ -204,13 +204,13 @@ llama-server.exe `
 
 `--models-max 1` keeps a single resident model at the router. `--no-models-autoload` requires explicit `/models/load` so APEX remains the admission owner. Do not enable llama.cpp idle sleeping in this reference setup; APEX owns the HUD idle unload timer. Initial Windows validation used the `llama-b10276-bin-win-cpu-x64` package without hard-pinning that build in code.
 
-Installed aliases come only from the router's `/models` list. A missing `apodemus-8k` (or other selected preset) is reported as not configured rather than fabricated by APEX.
+Installed aliases come only from the router's `/models` list. A missing `apodemus-16k` (or other selected preset) is reported as not configured rather than fabricated by APEX.
 
 #### Local context preferences
 
-`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `8192`, `16384`, or `32768` and defaults to `8192`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
+`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. Apodemus's `131072` preset is marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
 
-Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; neither maximum is an exposed preset.
+Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; Neotoma's maximum is not an exposed preset.
 
 #### Local reasoning preferences
 
@@ -218,7 +218,7 @@ Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata 
 
 For llama.cpp, `none` sends `reasoning_effort: "none"` and `focused` omits that request field so the model template can use its native reasoning behavior. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
-Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf` and `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`.
+Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Retired Apodemus `8K` preferences migrate to `16K`. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf` and `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 

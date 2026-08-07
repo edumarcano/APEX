@@ -26,8 +26,8 @@ class LlamaCppRuntimeConfig(BaseModel):
     default_context_window: int = Field(
         description="Context preset used when no persisted preference exists."
     )
-    experimental_context_windows: tuple[int, ...] = Field(
-        description="Context presets that receive an experimental UI label."
+    high_resource_context_options: tuple[int, ...] = Field(
+        description="Context presets that receive a high-resource UI label."
     )
     supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
         description="Provider-supported local reasoning modes for this Agent."
@@ -78,11 +78,11 @@ class LlamaCppRuntimeConfig(BaseModel):
             raise ValueError(
                 "runtime_model_ids must provide exactly one alias per allowed context"
             )
-        if not set(self.experimental_context_windows).issubset(
+        if not set(self.high_resource_context_options).issubset(
             self.allowed_context_windows
         ):
             raise ValueError(
-                "experimental_context_windows must be allowed context presets"
+                "high_resource_context_options must be allowed context presets"
             )
         if not self.supported_reasoning_modes:
             raise ValueError("supported_reasoning_modes must not be empty")
@@ -135,8 +135,8 @@ class LlamaCppModelProfile(BaseModel):
     allowed_context_windows: tuple[int, ...] = Field(
         description="Discrete selectable context presets for this Agent.",
     )
-    experimental_context_windows: tuple[int, ...] = Field(
-        description="Context presets that receive an experimental UI label."
+    high_resource_context_options: tuple[int, ...] = Field(
+        description="Context presets that receive a high-resource UI label."
     )
     supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
         description="Provider-supported local reasoning modes for this Agent."
@@ -187,11 +187,11 @@ class LlamaCppModelProfile(BaseModel):
             raise ValueError(
                 "default_context_window must be one of allowed_context_windows"
             )
-        if not set(self.experimental_context_windows).issubset(
+        if not set(self.high_resource_context_options).issubset(
             self.allowed_context_windows
         ):
             raise ValueError(
-                "experimental_context_windows must be allowed context presets"
+                "high_resource_context_options must be allowed context presets"
             )
         if self.maximum_context_window < max(self.allowed_context_windows):
             raise ValueError(
@@ -294,7 +294,7 @@ def build_llama_cpp_profile(
         default_context_window=runtime.default_context_window,
         maximum_context_window=runtime.maximum_context_window,
         allowed_context_windows=runtime.allowed_context_windows,
-        experimental_context_windows=runtime.experimental_context_windows,
+        high_resource_context_options=runtime.high_resource_context_options,
         supported_reasoning_modes=runtime.supported_reasoning_modes,
         default_reasoning_mode=runtime.default_reasoning_mode,
         reasoning_mode=resolved_reasoning,
@@ -315,18 +315,19 @@ def build_llama_cpp_profile(
 def _runtime_config(
     *,
     allowed_context_windows: tuple[int, ...],
-    experimental_context_windows: tuple[int, ...],
+    high_resource_context_options: tuple[int, ...],
     supported_reasoning_modes: tuple[LocalReasoningMode, ...],
     default_context_window: int,
     maximum_context_window: int,
     runtime_model_ids: dict[int, str],
     resource_limits: tuple[float, float],
+    high_resource_context_window: int = 32768,
 ) -> LlamaCppRuntimeConfig:
     """Create a compact immutable-in-practice runtime data entry."""
     return LlamaCppRuntimeConfig(
         default_temperature=0.2,
         allowed_context_windows=allowed_context_windows,
-        experimental_context_windows=experimental_context_windows,
+        high_resource_context_options=high_resource_context_options,
         supported_reasoning_modes=supported_reasoning_modes,
         default_context_window=default_context_window,
         maximum_context_window=maximum_context_window,
@@ -336,29 +337,30 @@ def _runtime_config(
         generation_timeout=int(LLAMA_CPP_REQUEST_TIMEOUT_SECONDS),
         ram_limit=resource_limits[0],
         cpu_limit=resource_limits[1],
-        high_resource_context_window=32768,
+        high_resource_context_window=high_resource_context_window,
         parallel_tool_calls=True,
     )
 
 
 LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
     "apodemus": _runtime_config(
-        allowed_context_windows=(4096, 8192, 16384, 32768),
-        experimental_context_windows=(32768,),
+        allowed_context_windows=(4096, 16384, 32768, 131072),
+        high_resource_context_options=(131072,),
         supported_reasoning_modes=("none", "focused"),
-        default_context_window=8192,
+        default_context_window=16384,
         maximum_context_window=131072,
         runtime_model_ids={
             4096: "apodemus-4k",
-            8192: "apodemus-8k",
             16384: "apodemus-16k",
             32768: "apodemus-32k",
+            131072: "apodemus-132k",
         },
         resource_limits=_resource_limits("apodemus"),
+        high_resource_context_window=131072,
     ),
     "neotoma": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 65536),
-        experimental_context_windows=(),
+        high_resource_context_options=(),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
         maximum_context_window=262144,

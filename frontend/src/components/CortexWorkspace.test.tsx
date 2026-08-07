@@ -8,13 +8,13 @@ import { CortexWorkspace } from './CortexWorkspace'
 import type { AgentStatus, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 
 const panthera: AgentStatus = {
-  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '7.4', runtime: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', context_window: null, context_window_options: null, context_window_experimental_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '7.4', runtime: 'cloud', tier: 'balanced', stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
 }
 const neofelis: AgentStatus = { ...panthera, key: 'neofelis', display_name: 'Apex Neofelis', configured_model: 'gemini-3.6-flash', provider: 'gemini', sort_order: 2, capabilities: ['Research', 'Google Search', 'Google Maps'], native_tools: { google_search: true, google_maps: true } }
 const acinonyx: AgentStatus = { ...neofelis, key: 'acinonyx', display_name: 'Apex Acinonyx', configured_model: 'gemini-3.5-flash-lite', sort_order: 0, capabilities: ['Privacy sandbox', 'Masked context'], pricing: { ...neofelis.pricing, billing_basis: 'free_tier', input_per_million: 0, output_per_million: 0 } }
 const mus: AgentStatus = { ...panthera, key: 'mus', display_name: 'Apex Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', runtime: 'local', sort_order: 5, capabilities: ['Larger model', 'Primary local'], effort_options: null, default_effort: null, reasoning_mode: 'none', reasoning_mode_options: ['none'], default_reasoning_mode: 'none', status: 'available', status_source: 'runtime', active: false, pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
-const apodemus: AgentStatus = { ...mus, key: 'apodemus', display_name: 'Apex Apodemus', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', sort_order: 6, stability: 'preview', capabilities: ['Local llama.cpp'], context_window: 8192, context_window_options: [4096, 8192, 16384, 32768], context_window_experimental_options: [32768], default_context_window: 8192, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none' }
-const neotoma: AgentStatus = { ...apodemus, key: 'neotoma', display_name: 'Apex Neotoma', configured_model: 'Qwen3.5-4B-Q4_K_M.gguf', sort_order: 7, context_window: 16384, context_window_options: [4096, 16384, 32768, 65536], context_window_experimental_options: [], default_context_window: 16384 }
+const apodemus: AgentStatus = { ...mus, key: 'apodemus', display_name: 'Apex Apodemus', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', sort_order: 6, stability: 'preview', capabilities: ['Local llama.cpp'], context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none' }
+const neotoma: AgentStatus = { ...apodemus, key: 'neotoma', display_name: 'Apex Neotoma', configured_model: 'Qwen3.5-4B-Q4_K_M.gguf', sort_order: 7, context_window: 16384, context_window_options: [4096, 16384, 32768, 65536], context_window_high_resource_options: [], default_context_window: 16384 }
 const toolCatalog: ToolCatalog = {
   agent: 'panthera',
   groups: [{
@@ -292,9 +292,11 @@ describe('CortexWorkspace', () => {
     )
     const contextSelect = screen.getByLabelText('Context window')
     expect(contextSelect).toBeEnabled()
-    expect(contextSelect).toHaveValue('8192')
+    expect(contextSelect).toHaveValue('16384')
+    expect(screen.getByRole('option', { name: '132K High resource' })).toBeInTheDocument()
     await user.selectOptions(contextSelect, '32768')
     expect(onLocalContextWindowChange).toHaveBeenCalledWith('apodemus', 32768)
+    expect(screen.queryByText('32K High resource')).not.toBeInTheDocument()
 
     rerender(
       <CortexWorkspace

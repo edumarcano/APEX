@@ -118,8 +118,8 @@ function LocalContextControl({
         {options.map((option) => (
           <option key={option} value={option}>
             {formatContextWindowLabel(option) ?? String(option)}
-            {agent.context_window_experimental_options?.includes(option)
-              ? ' Experimental'
+            {agent.context_window_high_resource_options?.includes(option)
+              ? ' High resource'
               : ''}
           </option>
         ))}

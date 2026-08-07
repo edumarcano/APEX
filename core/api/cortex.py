@@ -358,9 +358,9 @@ def build_agent_statuses() -> list[AgentStatus]:
                         if hasattr(profile, "allowed_context_windows")
                         else None
                     ),
-                    context_window_experimental_options=(
-                        list(profile.experimental_context_windows)
-                        if hasattr(profile, "experimental_context_windows")
+                    context_window_high_resource_options=(
+                        list(profile.high_resource_context_options)
+                        if hasattr(profile, "high_resource_context_options")
                         else None
                     ),
                     default_context_window=(
@@ -443,7 +443,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                 effort_options=effort_options,
                 context_window=None,
                 context_window_options=None,
-                context_window_experimental_options=None,
+                context_window_high_resource_options=None,
                 default_context_window=None,
                 reasoning_mode=None,
                 reasoning_mode_options=None,

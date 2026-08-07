@@ -671,7 +671,9 @@ def _normalize_ask_apex(
             result["local_reasoning_modes"] = normalized_reasoning_modes
 
     if "apodemus_context_window" in migrated:
-        context_window = migrated["apodemus_context_window"]
+        context_window = _migrate_apodemus_context_window(
+            migrated["apodemus_context_window"]
+        )
         runtime = LLAMA_CPP_RUNTIME_CONFIGS["apodemus"]
         if isinstance(context_window, bool):
             _record_error(
@@ -741,18 +743,34 @@ def _normalize_local_context_windows(
                 f"ask_apex.local_context_windows has unsupported Agent {agent_key!r}",
             )
             continue
+        normalized_agent_key = agent_key.strip().lower()
+        context_window = _migrate_apodemus_context_window(
+            context_window,
+            agent_key=normalized_agent_key,
+        )
         if (
             isinstance(context_window, int)
             and not isinstance(context_window, bool)
             and context_window in runtime.allowed_context_windows
         ):
-            normalized[agent_key.strip().lower()] = context_window
+            normalized[normalized_agent_key] = context_window
             continue
         _record_error(
             errors,
             f"ask_apex.local_context_windows[{agent_key!r}] is not a supported preset",
         )
     return normalized
+
+
+def _migrate_apodemus_context_window(
+    context_window: Any,
+    *,
+    agent_key: str = "apodemus",
+) -> Any:
+    """Migrate the retired Apodemus 8K preference to the new 16K default."""
+    if agent_key == "apodemus" and context_window == 8192:
+        return 16384
+    return context_window
 
 
 def _normalize_local_reasoning_modes(
@@ -1125,6 +1143,10 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     if isinstance(configured_context_windows, dict):
         for agent_key, context_window in configured_context_windows.items():
             runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
+            context_window = _migrate_apodemus_context_window(
+                context_window,
+                agent_key=agent_key,
+            )
             if (
                 runtime_config is not None
                 and isinstance(context_window, int)

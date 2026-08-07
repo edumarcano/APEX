@@ -32,6 +32,7 @@ describe('agents helpers', () => {
   it('formats known context windows compactly', () => {
     expect(formatContextWindowLabel(8192)).toBe('8K')
     expect(formatContextWindowLabel(32768)).toBe('32K')
+    expect(formatContextWindowLabel(131072)).toBe('132K')
     expect(formatContextWindowLabel(null)).toBeNull()
   })
 })
