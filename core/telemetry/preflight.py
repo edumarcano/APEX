@@ -42,6 +42,7 @@ from core.telemetry.models import (
     PreflightWarning,
     PreflightWarningCode,
 )
+from core.synthesis.models import APODEMUS_BRIEFING_CONTEXT_WINDOW
 from core.telemetry.service import get_telemetry_service
 
 load_dotenv(dotenv_path=ENV_PATH)
@@ -81,7 +82,9 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_BRIEFING_MODES = frozenset({"panthera", "mus", "sorex", "structured_digest"})
+_BRIEFING_MODES = frozenset(
+    {"panthera", "mus", "sorex", "apodemus", "structured_digest"}
+)
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
 )
@@ -133,6 +136,8 @@ def _loaded_model_matches(loaded_model: object, model_name: str) -> bool:
 
 def _evaluate_local_agent_blockers(
     agent_key: str,
+    *,
+    context_window: int | None = None,
 ) -> tuple[list[PreflightBlocker], bool]:
     """Return local blockers and whether execution would require a cold load."""
     blockers: list[PreflightBlocker] = []
@@ -143,7 +148,11 @@ def _evaluate_local_agent_blockers(
     agent = build_concrete_agent(
         agent_key,
         native_effort=None,
-        local_context_window=local_context_window_for_agent(agent_key),
+        local_context_window=(
+            context_window
+            if context_window is not None
+            else local_context_window_for_agent(agent_key)
+        ),
         local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
     )
     backend = get_local_runtime_backend(agent.provider)
@@ -363,7 +372,18 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
 
     cold_local_load = False
     if local_agent and agent is not None:
-        local_blockers, cold_local_load = _evaluate_local_agent_blockers(agent)
+        local_context_window = (
+            APODEMUS_BRIEFING_CONTEXT_WINDOW
+            if (
+                agent == "apodemus"
+                and request.operation in {"activate_with_briefing", "generate_briefing"}
+            )
+            else None
+        )
+        local_blockers, cold_local_load = _evaluate_local_agent_blockers(
+            agent,
+            context_window=local_context_window,
+        )
         blockers.extend(local_blockers)
 
     warnings.extend(_power_warnings(cold_local_load=cold_local_load))
@@ -382,7 +402,15 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         profile = build_concrete_agent(
             agent,
             native_effort=None,
-            local_context_window=local_context_window_for_agent(agent),
+            local_context_window=(
+                APODEMUS_BRIEFING_CONTEXT_WINDOW
+                if (
+                    agent == "apodemus"
+                    and request.operation
+                    in {"activate_with_briefing", "generate_briefing"}
+                )
+                else local_context_window_for_agent(agent)
+            ),
             local_reasoning_mode=local_reasoning_mode_for_agent(agent),
         )
         if getattr(profile, "high_resource", False):

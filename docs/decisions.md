@@ -118,7 +118,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Decision.** Connectors normalize into typed results, and briefing models receive a sanitized, bounded `SynthesisInput` marked as untrusted data.
 
-**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, Ollama, and deterministic output.
+**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, local Ollama/llama.cpp Agents, and deterministic output.
 
 **Trade-off.** Every new synthesis-relevant fact requires deliberate schema work. That maintenance is preferable to silently expanding model disclosure.
 
@@ -140,7 +140,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Mus, Sorex, and Structured Digest rather than one opaque automatic selector.
+**Decision.** The HUD offers Panthera, Mus, Sorex, Apodemus, and Structured Digest rather than one opaque automatic selector.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
 
@@ -214,13 +214,13 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry; llama.cpp runtime data provides conservative total completion headroom for native thinking. Model-specific sampling remains unchanged until benchmark evidence supports it.
 
-### Exclude Apodemus from briefing modes initially
+### Keep Apodemus as an explicit briefing mode
 
-**Decision.** The first Apodemus release supports interactive local Agents only; briefing modes remain Panthera, Mus, Sorex, and Structured Digest.
+**Decision.** Apodemus is available as an explicit briefing synthesis mode, but it is not part of Panthera's automatic fallback chain.
 
-**Why.** I want briefing fallback and synthesis contracts to stay stable until llama.cpp behavior is proven for that path.
+**Why.** Apodemus uses the same provider-neutral local synthesis contract as Ollama while preserving explicit user intent. Cold loads use a dedicated 16K context policy, and resident llama.cpp aliases are reused rather than silently targeting a different context.
 
-**Trade-off.** Gemma-backed briefings wait for a later integration.
+**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute Mus or Sorex behind the user's selection.
 
 ## Security
 

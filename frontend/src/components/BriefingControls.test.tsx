@@ -11,7 +11,7 @@ function profile(
   status: AgentAvailabilityStatus = 'available',
   reason: string | null = null,
 ): AgentStatus {
-  const mode = key === 'sorex' || key === 'mus' ? 'local' : 'cloud'
+  const mode = key === 'panthera' ? 'cloud' : 'local'
   return {
     key,
     display_name: `Apex ${key}`,
@@ -20,7 +20,7 @@ function profile(
     sort_order: 0,
     capabilities: [],
     native_tools: {},
-    provider: mode === 'cloud' ? 'openai' : 'ollama',
+    provider: mode === 'cloud' ? 'openai' : key === 'apodemus' ? 'llama_cpp' : 'ollama',
     version: '7.4',
     runtime: mode,
     tier: 'stable',
@@ -51,6 +51,7 @@ const AVAILABLE_PROFILES = [
   profile('panthera'),
   profile('sorex'),
   profile('mus'),
+  profile('apodemus'),
 ]
 
 function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSelector>> = {}) {
@@ -77,12 +78,13 @@ describe('BriefingModeSelector', () => {
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
     expect(screen.getAllByLabelText('Panthera agent mark')).toHaveLength(2)
     expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
-    expect(screen.getAllByText('No provider token charge')).toHaveLength(2)
+    expect(screen.getAllByText('No provider token charge')).toHaveLength(3)
     expect(screen.getByText('No model cost')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
     expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
     expect(within(listbox).getByText('Full briefing · balanced local synthesis')).toBeVisible()
+    expect(within(listbox).getByText('Full briefing · efficient llama.cpp synthesis')).toBeVisible()
     expect(within(listbox).getByText('Structured facts · no model or synthesis')).toBeVisible()
   })
 
@@ -99,7 +101,7 @@ describe('BriefingModeSelector', () => {
     })
 
     await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
-    expect(screen.getByRole('option', { name: /mus/i })).toBeDisabled()
+    expect(screen.getByRole('option', { name: /^Mus\b/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured_digest')

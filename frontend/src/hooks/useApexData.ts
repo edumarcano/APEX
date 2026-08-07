@@ -118,6 +118,7 @@ const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'gemini',
   'ollama',
+  'llama_cpp',
   'openai',
   'xai',
   'raw',
@@ -127,6 +128,7 @@ const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'panthera',
   'mus',
   'sorex',
+  'apodemus',
 ]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
@@ -685,6 +687,7 @@ export function useApexData(): UseApexDataReturn {
                 'panthera',
                 'mus',
                 'sorex',
+                'apodemus',
                 'structured_digest',
               ] as const) ?? undefined
               voiceMode = parseEnum(body.voice_mode, ['off', 'manual', 'automatic'] as const) ?? undefined

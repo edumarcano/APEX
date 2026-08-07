@@ -184,7 +184,7 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 { "mode": "panthera" }
 ```
 
-The body is optional. Valid modes are `panthera`, `mus`, `sorex`, and `structured_digest`.
+The body is optional. Valid modes are `panthera`, `mus`, `sorex`, `apodemus`, and `structured_digest`.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.

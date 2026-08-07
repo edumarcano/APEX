@@ -14,7 +14,7 @@ export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
-export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'apodemus' | 'structured_digest'
 export type LocalContextWindows = Record<string, number>
 export type LocalReasoningModes = Record<string, LocalReasoningMode>
 

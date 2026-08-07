@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `11`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `13`.
 
 | Group | Editable values |
 |---|---|
@@ -49,7 +49,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Ask APEX | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
-| Briefing | Panthera, Mus, Sorex, or Structured Digest mode selected in the Home command rail |
+| Briefing | Panthera, Mus, Sorex, Apodemus, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
@@ -131,7 +131,7 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 |---|---|---|
 | `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
 | `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
-| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent with selectable context |
+| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent and explicit briefing synthesizer with selectable context |
 | `neotoma` — Neotoma 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus and Neotoma.
@@ -222,7 +222,7 @@ Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.l
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus or Sorex briefing request falls directly to Structured Digest on failure.
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus, Sorex, or Apodemus briefing request falls directly to Structured Digest on failure; it never silently substitutes another local Agent. Apodemus cold-load briefing synthesis uses the dedicated 16K context, while an already-resident Apodemus load reuses its actual configured context alias.
 
 ## Voice
 

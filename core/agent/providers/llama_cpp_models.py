@@ -250,6 +250,18 @@ def llama_cpp_runtime_model_id(agent_key: str, context_window: int) -> str:
     return runtime.runtime_model_ids[resolved_context]
 
 
+def llama_cpp_context_window_for_runtime_model_id(
+    agent_key: str,
+    runtime_model_id: str,
+) -> int | None:
+    """Return the configured context for a resident llama.cpp router alias."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    for context_window, model_id in runtime.runtime_model_ids.items():
+        if model_id == runtime_model_id:
+            return context_window
+    return None
+
+
 def resolve_llama_cpp_reasoning_mode(
     agent_key: str,
     value: str | None,

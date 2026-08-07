@@ -11,8 +11,8 @@ export interface PipelineState {
   synthesis?: SynthesisLiveState | null
 }
 
-export type SynthesisProvider = 'gemini' | 'ollama' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'mus' | 'sorex'
+export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
+export type SynthesisAgent = 'panthera' | 'mus' | 'sorex' | 'apodemus'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -308,7 +308,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'apodemus' | 'structured_digest'
 
 export type PreflightOperation =
   | 'activate'
@@ -435,7 +435,7 @@ export interface ApexDataState {
   system_load_throttled: boolean
   defaultAgent?: AgentKey
   agentInitialSelection?: AgentInitialSelection
-  briefingDefaultMode?: 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+  briefingDefaultMode?: BriefingMode
   voiceMode?: 'off' | 'manual' | 'automatic'
   askApexEnabled?: boolean
   marketEnabled: boolean

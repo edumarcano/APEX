@@ -130,7 +130,7 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` synthesizes from an existing process-current snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Ollama receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and local Ollama or llama.cpp Agents receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
@@ -139,9 +139,10 @@ The current briefing modes are:
 | Panthera | OpenAI | `gpt-5.6-luna` at fixed Light effort |
 | Mus | Ollama | `qwen3:4b-instruct` |
 | Sorex | Ollama | `qwen3:1.7b` |
+| Apodemus | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local Agent. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local Agent. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest; Apodemus is intentionally not part of that automatic fallback chain. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
 
 Production generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no production write.
 

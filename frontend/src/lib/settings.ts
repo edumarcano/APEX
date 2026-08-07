@@ -129,6 +129,7 @@ const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
   'mus',
   'sorex',
+  'apodemus',
   'structured_digest',
 ]
 
