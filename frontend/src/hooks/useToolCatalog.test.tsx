@@ -196,4 +196,70 @@ describe('useToolCatalog per-Agent hydration', () => {
     expect(hook.result.current.selectedToolNames).toEqual([])
     expect(hook.result.current.activeToolProfileId).toBe('no_tools')
   })
+
+  it('ignores a stale Agent refresh while hydrating the newly selected Agent', async () => {
+    type CatalogResponse = { ok: boolean; json: () => Promise<unknown> }
+    const pendingResponses: Array<{
+      agent: AgentKey
+      resolve: (response: CatalogResponse) => void
+    }> = []
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const agent = new URL(String(input)).searchParams.get('agent') as AgentKey
+      return new Promise<CatalogResponse>((resolve) => {
+        pendingResponses.push({ agent, resolve })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const hook = renderHook(
+      ({ agent }: { agent: AgentKey }) => useToolCatalog(agent),
+      { initialProps: { agent: 'panthera' as AgentKey } },
+    )
+    await waitFor(() => expect(pendingResponses).toHaveLength(1))
+    pendingResponses[0].resolve({
+      ok: true,
+      json: async () => catalogFor('panthera'),
+    })
+    await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
+
+    const stalePantheraRefresh = hook.result.current.refreshCatalog
+    act(() => {
+      void stalePantheraRefresh()
+    })
+    await waitFor(() => expect(pendingResponses).toHaveLength(2))
+
+    hook.rerender({ agent: 'mus' })
+    await waitFor(() => {
+      expect(pendingResponses).toHaveLength(3)
+      expect(hook.result.current.catalog).toBeNull()
+      expect(hook.result.current.selectionReady).toBe(false)
+    })
+
+    act(() => {
+      void stalePantheraRefresh()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    const musResponse = pendingResponses.find((request) => request.agent === 'mus')
+    const oldPantheraResponse = pendingResponses[1]
+    musResponse?.resolve({
+      ok: true,
+      json: async () => catalogFor('mus'),
+    })
+    await waitFor(() => {
+      expect(hook.result.current.catalog?.agent).toBe('mus')
+      expect(hook.result.current.selectionReady).toBe(true)
+    })
+
+    oldPantheraResponse.resolve({
+      ok: true,
+      json: async () => catalogFor('panthera'),
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(hook.result.current.catalog?.agent).toBe('mus')
+    expect(hook.result.current.selectionReady).toBe(true)
+  })
 })

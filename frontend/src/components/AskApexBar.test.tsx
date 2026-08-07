@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -89,7 +89,7 @@ const overflowPreflight: ToolPreflightEstimate = {
 }
 
 function renderBar(
-  onSubmit = vi.fn(),
+  onSubmit = vi.fn().mockResolvedValue(true),
   overrides: Partial<ComponentProps<typeof AskApexBar>> = {},
 ): ReturnType<typeof render> {
   return render(
@@ -128,11 +128,65 @@ describe('AskApexBar unified tool selection', () => {
 
   it('does not submit while the per-Agent selection is hydrating', () => {
     const onSubmit = vi.fn()
-    renderBar(onSubmit, { selectionReady: false })
+    renderBar(onSubmit, { selectionReady: false, draftPrompt: 'Keep while hydrating' })
 
     const input = screen.getByLabelText('Ask APEX query')
     expect(input).toBeDisabled()
+    expect(input).toHaveValue('Keep while hydrating')
     expect(screen.getByRole('button', { name: 'Send query' })).toBeDisabled()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('keeps the draft when the parent rejects the submission attempt', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(false)
+    renderBar(onSubmit)
+
+    const input = screen.getByLabelText('Ask APEX query')
+    fireEvent.change(input, { target: { value: 'Keep this draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(input).toHaveValue('Keep this draft')
+  })
+
+  it('keeps the draft when the parent reports a catalog mismatch', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(false)
+    renderBar(onSubmit, {
+      catalog: { ...catalog, agent: 'panthera' },
+    })
+
+    const input = screen.getByLabelText('Ask APEX query')
+    fireEvent.change(input, { target: { value: 'Wait for the active catalog' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(input).toHaveValue('Wait for the active catalog')
+  })
+
+  it('clears the draft exactly once after dispatch is accepted', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true)
+    const onDraftChange = vi.fn()
+    renderBar(onSubmit, { onDraftChange })
+
+    const input = screen.getByLabelText('Ask APEX query')
+    fireEvent.change(input, { target: { value: 'Dispatch this draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
+
+    await waitFor(() => expect(input).toHaveValue(''))
+    expect(onDraftChange).toHaveBeenLastCalledWith('')
+    expect(onDraftChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps editing available but blocks a second send during submission preparation', () => {
+    const onSubmit = vi.fn().mockResolvedValue(true)
+    renderBar(onSubmit, { submissionPending: true })
+
+    const input = screen.getByLabelText('Ask APEX query')
+    expect(input).toBeEnabled()
+    fireEvent.change(input, { target: { value: 'Wait for preparation' } })
+
+    expect(input).toHaveValue('Wait for preparation')
+    expect(screen.getByRole('button', { name: 'Preparing query' })).toBeDisabled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 

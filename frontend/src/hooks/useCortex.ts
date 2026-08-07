@@ -986,8 +986,10 @@ export function useCortex(
   const clearCortexSession = useCallback((agent?: AgentKey): void => {
     const target = agent ?? activeAgent
     if (isAcinonyxAgent(target)) {
+      acinonyxHistoryRef.current = []
       setAcinonyxHistory([])
     } else {
+      productionHistoryRef.current = []
       setProductionHistory([])
     }
     setCortexLatestTrace([])
@@ -996,6 +998,8 @@ export function useCortex(
   }, [activeAgent])
 
   const resetCortexSession = useCallback((): void => {
+    productionHistoryRef.current = []
+    acinonyxHistoryRef.current = []
     setProductionHistory([])
     setAcinonyxHistory([])
     setCortexLatestTrace([])

@@ -158,6 +158,8 @@ export default function App(): ReactElement {
   const [apodemusContextWindow, setApodemusContextWindow] = useState<ApodemusContextWindow>(8192)
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [draftPrompt, setDraftPrompt] = useState('')
+  const [submissionPending, setSubmissionPending] = useState(false)
+  const submissionPendingRef = useRef(false)
   const [toolProfileFeedback, setToolProfileFeedback] = useState<string | null>(null)
   const [toolProfileError, setToolProfileError] = useState<string | null>(null)
   const [cortexSessionId, setCortexSessionId] = useState(() =>
@@ -166,6 +168,10 @@ export default function App(): ReactElement {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
+  const activeAgentRef = useRef(activeAgent)
+  useEffect(() => {
+    activeAgentRef.current = activeAgent
+  }, [activeAgent])
 
   const { diagnostics, status: diagnosticsStatus } = useSystemDiagnostics()
   const apexData = useApexData()
@@ -280,6 +286,7 @@ export default function App(): ReactElement {
         agentInitialSelection: selection,
         marketEnabled: response.settings.features.market,
       })
+      activeAgentRef.current = selection.agent
       setAgent(selection.agent)
       if (isCloudSettingsAgentKey(selection.agent)) {
         setCloudAgent(selection.agent)
@@ -734,24 +741,42 @@ export default function App(): ReactElement {
       agent: AgentKey,
       selectedToolNames: string[],
       toolProfileId: string | null,
-    ): Promise<void> => {
-      if (!toolCatalogState.selectionReady || toolCatalogState.catalog?.agent !== agent) {
-        return
+    ): Promise<boolean> => {
+      if (submissionPendingRef.current) return false
+      submissionPendingRef.current = true
+      setSubmissionPending(true)
+      try {
+        if (
+          activeAgentRef.current !== agent ||
+          !toolCatalogState.selectionReady ||
+          toolCatalogState.catalog?.agent !== agent
+        ) {
+          return false
+        }
+        const resolution = await preflight.requestOperation('cortex_query', {
+          synthesis_agent: agent,
+          involves_cloud: isCloudAgentKey(agent, agentsStatus),
+        })
+        if (
+          resolution !== 'proceed' ||
+          activeAgentRef.current !== agent ||
+          !toolCatalogState.selectionReady ||
+          toolCatalogState.catalog?.agent !== agent
+        ) {
+          return false
+        }
+        void queryAgent(prompt, agent, {
+          snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+          selectedToolNames,
+          toolProfileId,
+          effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
+          sessionId: cortexSessionId,
+        })
+        return true
+      } finally {
+        submissionPendingRef.current = false
+        setSubmissionPending(false)
       }
-      const resolution = await preflight.requestOperation('cortex_query', {
-        synthesis_agent: agent,
-        involves_cloud: isCloudAgentKey(agent, agentsStatus),
-      })
-      if (resolution !== 'proceed') {
-        return
-      }
-      await queryAgent(prompt, agent, {
-        snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-        selectedToolNames,
-        toolProfileId,
-        effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
-        sessionId: cortexSessionId,
-      })
     },
     [
       preflight,
@@ -786,7 +811,6 @@ export default function App(): ReactElement {
         if (parsed) {
           handleSettingsApplied(parsed, selectedAgent)
           await refreshAgentsStatus()
-          await toolCatalogState.refreshCatalog()
         }
         return parsed !== null
       } catch {
@@ -794,7 +818,7 @@ export default function App(): ReactElement {
         return false
       }
     },
-    [devModeActive, handleSettingsApplied, refreshAgentsStatus, toolCatalogState],
+    [devModeActive, handleSettingsApplied, refreshAgentsStatus],
   )
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
@@ -957,6 +981,7 @@ export default function App(): ReactElement {
   }, [persistBriefingMode])
 
   const handleAgentChange = useCallback((agent: AgentKey): void => {
+    activeAgentRef.current = agent
     setAgent(agent)
     if (agent === 'acinonyx') {
       void persistAskApexSettings({ runtime: 'cloud', effort: cloudEffort }, agent)
@@ -1013,9 +1038,17 @@ export default function App(): ReactElement {
     setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
   }, [activeAgent, clearCortexSession])
 
-  const handleHomeSubmit = useCallback((query: string, agent: AgentKey, selectedToolNames: string[], toolProfileId: string | null): void => {
-    setWorkspace('cortex')
-    void queryAgentWithContext(query, agent, selectedToolNames, toolProfileId)
+  const handleHomeSubmit = useCallback(async (
+    query: string,
+    agent: AgentKey,
+    selectedToolNames: string[],
+    toolProfileId: string | null,
+  ): Promise<boolean> => {
+    const accepted = await queryAgentWithContext(query, agent, selectedToolNames, toolProfileId)
+    if (accepted) {
+      setWorkspace('cortex')
+    }
+    return accepted
   }, [queryAgentWithContext])
 
   return (
@@ -1236,6 +1269,7 @@ export default function App(): ReactElement {
                   selectedToolNames={toolCatalogState.selectedToolNames}
                   activeToolProfileId={toolCatalogState.activeToolProfileId}
                   selectionReady={toolCatalogState.selectionReady}
+                  submissionPending={submissionPending}
                   onToolSelectionChange={toolCatalogState.setSelectedToolNames}
                   onToolProfileChange={toolCatalogState.applyToolProfile}
                   toolPreflight={toolPreflightState.estimate}
@@ -1439,6 +1473,7 @@ export default function App(): ReactElement {
             selectedToolNames={toolCatalogState.selectedToolNames}
             activeToolProfileId={toolCatalogState.activeToolProfileId}
             selectionReady={toolCatalogState.selectionReady}
+            submissionPending={submissionPending}
             onToolSelectionChange={toolCatalogState.setSelectedToolNames}
             onToolProfileChange={toolCatalogState.applyToolProfile}
             toolPreflight={toolPreflightState.estimate}

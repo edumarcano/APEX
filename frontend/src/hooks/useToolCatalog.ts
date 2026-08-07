@@ -226,7 +226,12 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
   const [selectionReady, setSelectionReady] = useState(false)
   const pendingSelection = useRef<PendingSelection | null>(null)
   const hydratedAgent = useRef<AgentKey | null>(null)
-  const requestSequence = useRef(0)
+  const activeAgentRef = useRef(activeAgent)
+  const requestGenerations = useRef(new Map<AgentKey, number>())
+
+  useEffect(() => {
+    activeAgentRef.current = activeAgent
+  }, [activeAgent])
 
   const setSelection = useCallback(
     (names: string[], profileId: string | null = null): void => {
@@ -241,26 +246,32 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
   )
 
   const refreshCatalog = useCallback(async (): Promise<void> => {
-    const requestId = ++requestSequence.current
+    const requestedAgent = activeAgent
+    if (activeAgentRef.current !== requestedAgent) return
+    const requestId = (requestGenerations.current.get(requestedAgent) ?? 0) + 1
+    requestGenerations.current.set(requestedAgent, requestId)
+    const isCurrentRequest = (): boolean =>
+      activeAgentRef.current === requestedAgent &&
+      requestGenerations.current.get(requestedAgent) === requestId
     setIsLoading(true)
     setError(null)
     try {
-      const response = await fetch(API_ENDPOINTS.cortexToolCatalog(activeAgent))
+      const response = await fetch(API_ENDPOINTS.cortexToolCatalog(requestedAgent))
       if (!response.ok) {
         throw new Error(`Tool catalog unavailable (${response.status})`)
       }
-      const parsed = parseCatalog(await response.json(), activeAgent)
+      const parsed = parseCatalog(await response.json(), requestedAgent)
       if (!parsed) throw new Error('APEX returned an invalid tool catalog.')
-      if (requestSequence.current === requestId) {
+      if (isCurrentRequest()) {
         setCatalog(parsed)
       }
     } catch (fetchError) {
-      if (requestSequence.current === requestId) {
+      if (isCurrentRequest()) {
         setError(fetchError instanceof Error ? fetchError.message : 'Tool catalog unavailable.')
         setCatalog(null)
       }
     } finally {
-      if (requestSequence.current === requestId) setIsLoading(false)
+      if (isCurrentRequest()) setIsLoading(false)
     }
   }, [activeAgent])
 
@@ -355,9 +366,13 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
     [catalog, setSelection],
   )
 
+  const effectiveCatalog = catalog?.agent === activeAgent ? catalog : null
+  const effectiveSelectionReady =
+    selectionReady && effectiveCatalog !== null
+
   return {
-    catalog,
-    selectionReady,
+    catalog: effectiveCatalog,
+    selectionReady: effectiveSelectionReady,
     isLoading,
     error,
     selectedToolNames,

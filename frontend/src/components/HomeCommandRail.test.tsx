@@ -63,7 +63,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     verifyingCloudAgent: null,
     onAgentChange: vi.fn(),
     onVerifyCloudAgent: vi.fn(async () => true),
-    onAgentSubmit: vi.fn(),
+    onAgentSubmit: vi.fn().mockResolvedValue(true),
     toolCatalog,
     selectedToolNames: [],
     activeToolProfileId: null,
@@ -144,7 +144,7 @@ describe('HomeCommandRail', () => {
   })
 
   it('submits with the active Agent while keeping the composer free of a second selector', async () => {
-    const onAgentSubmit = vi.fn()
+    const onAgentSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     renderRail({ onAgentSubmit })
 

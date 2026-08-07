@@ -87,7 +87,7 @@ const toolCatalog: ToolCatalog = {
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, onToolSelectionChange: vi.fn(), onToolProfileChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), apodemusContextWindow: 8192, onApodemusContextChange: vi.fn(), onSubmit: vi.fn(), onNewSession: vi.fn(), ...overrides,
+    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, onToolSelectionChange: vi.fn(), onToolProfileChange: vi.fn(), isQuerying: false, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), apodemusContextWindow: 8192, onApodemusContextChange: vi.fn(), onSubmit: vi.fn().mockResolvedValue(true), onNewSession: vi.fn(), ...overrides,
   }
 }
 
@@ -107,7 +107,7 @@ describe('CortexWorkspace', () => {
   })
 
   it('offers empty-canvas prompt chips through the active profile submission path', async () => {
-    const onSubmit = vi.fn()
+    const onSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     render(<CortexWorkspace {...workspaceProps({ onSubmit })} />)
 
@@ -127,7 +127,7 @@ describe('CortexWorkspace', () => {
   })
 
   it('submits the footer with the chosen tool set on every request', async () => {
-    const onSubmit = vi.fn()
+    const onSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     function Harness(): ReactElement {
       const [selected, setSelected] = useState<string[]>([])

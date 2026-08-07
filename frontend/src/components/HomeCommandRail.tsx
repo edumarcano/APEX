@@ -30,11 +30,12 @@ interface HomeCommandRailProps {
     agent: AgentKey,
     selectedToolNames: string[],
     toolProfileId: string | null,
-  ) => void
+  ) => Promise<boolean>
   toolCatalog?: ToolCatalog | null
   selectedToolNames?: string[]
   activeToolProfileId?: string | null
   selectionReady?: boolean
+  submissionPending?: boolean
   onToolSelectionChange?: (names: string[]) => void
   onToolProfileChange?: (profileId: string) => void
   toolPreflight?: ToolPreflightEstimate | null
@@ -84,6 +85,7 @@ export function HomeCommandRail({
   selectedToolNames = [],
   activeToolProfileId = null,
   selectionReady = false,
+  submissionPending = false,
   onToolSelectionChange = () => undefined,
   onToolProfileChange = () => undefined,
   toolPreflight = null,
@@ -153,7 +155,7 @@ export function HomeCommandRail({
                   onChange={onAgentChange}
                   agentsStatus={agentsStatus}
                   agentsStatusHydrated={agentsStatusHydrated}
-                  isQuerying={isCortexQuerying}
+                  isQuerying={isCortexQuerying || submissionPending}
                   verifyingAgent={verifyingCloudAgent}
                   onVerify={onVerifyCloudAgent}
                 />
@@ -168,6 +170,7 @@ export function HomeCommandRail({
                   selectedToolNames={selectedToolNames}
                   activeToolProfileId={activeToolProfileId}
                   selectionReady={selectionReady}
+                  submissionPending={submissionPending}
                   onToolSelectionChange={onToolSelectionChange}
                   onToolProfileChange={onToolProfileChange}
                   toolPreflight={toolPreflight}
