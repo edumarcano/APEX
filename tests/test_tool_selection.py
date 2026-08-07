@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -316,6 +317,31 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         )
         self.assertFalse(weather.available)
         self.assertIn("not configured", weather.unavailable_reason or "")
+
+    def test_weather_is_selectable_with_configured_healthy_cached_availability(
+        self,
+    ) -> None:
+        healthy_snapshot = SimpleNamespace(
+            modules={
+                "weather": SimpleNamespace(status="healthy", reason_code="ok"),
+            }
+        )
+        with (
+            patch.dict(
+                "os.environ",
+                {"OPENWEATHER_API_KEY": "test-weather-key"},
+                clear=False,
+            ),
+            patch("core.telemetry.service.get_telemetry_service") as get_service,
+        ):
+            get_service.return_value.latest.return_value = healthy_snapshot
+            selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
+
+        self.assertEqual(
+            selection.diagnostics.offered_tool_names,
+            ["get_weather_forecast"],
+        )
+        self.assertEqual(selection.diagnostics.rejected_tools, [])
 
     def test_custom_profile_persists_explicit_stale_references(self) -> None:
         with tempfile.TemporaryDirectory(prefix="apex_tool_profiles_") as directory:
