@@ -16,7 +16,10 @@ from core.agent.catalog import build_concrete_agent
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
-from core.agent.tool_schemas import project_descriptor_for_agent
+from core.agent.tool_schemas import (
+    _COMPACT_BRAVE_SEARCH_SCHEMA,
+    project_descriptor_for_agent,
+)
 from core.agent.tool_profiles import resolve_profile_names
 from core.agent.tool_selection import resolve_selected_tools
 from core.agent.types import AgentMessage, AgentQueryRequest
@@ -39,6 +42,27 @@ from core.settings.models import (
     ToolProfilesPatch,
 )
 from core.settings.store import RuntimeSettingsStore
+
+
+def _brave_descriptor() -> CapabilityDescriptor:
+    return CapabilityDescriptor(
+        name="brave_brave_web_search",
+        title="Brave Search",
+        description="Search the full public web.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "remote_option": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+        origin="mcp",
+        risk="read",
+        expose_to_agent=True,
+        expose_to_mcp_server=False,
+        expose_to_client_display=True,
+    )
 
 
 class _AnswerProvider:
@@ -171,27 +195,53 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         )
 
     def test_local_projection_is_shared_by_selection_and_model_schema(self) -> None:
+        descriptor = _brave_descriptor()
+        projected = project_descriptor_for_agent("mus", descriptor)
+        self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
+        self.assertIn("Read-only", projected.description)
+        self.assertIn("without asking for confirmation", projected.description)
+        self.assertIn("remote_option", descriptor.input_schema["properties"])
+
+    def test_local_read_tools_get_standard_no_confirmation_guidance(self) -> None:
         descriptor = CapabilityDescriptor(
-            name="brave_brave_web_search",
-            title="Brave Search",
-            description="Verbose " * 100,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "remote_option": {"type": "string"},
-                },
-                "required": ["query"],
-            },
-            origin="mcp",
+            name="get_upcoming_calendar_events",
+            title="Calendar",
+            description="Retrieve upcoming events.",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
             risk="read",
             expose_to_agent=True,
             expose_to_mcp_server=False,
             expose_to_client_display=True,
         )
-        projected = project_descriptor_for_agent("mus", descriptor)
-        self.assertEqual(set(projected.input_schema["properties"]), {"query", "count"})
-        self.assertIn("remote_option", descriptor.input_schema["properties"])
+
+        projected = project_descriptor_for_agent("apodemus", descriptor)
+        self.assertIn("Read-only", projected.description)
+        self.assertIn("without asking for confirmation", projected.description)
+        self.assertIn("Retrieve upcoming events.", projected.description)
+
+        cloud_projection = project_descriptor_for_agent("panthera", descriptor)
+        self.assertEqual(cloud_projection.description, descriptor.description)
+
+    def test_brave_projection_is_compact_only_for_sorex_and_mus(self) -> None:
+        descriptor = _brave_descriptor()
+
+        for agent_key in ("sorex", "mus"):
+            with self.subTest(agent=agent_key):
+                projected = project_descriptor_for_agent(agent_key, descriptor)
+                self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
+                self.assertIn("Read-only", projected.description)
+                self.assertIn("Search the public web", projected.description)
+
+        apodemus = project_descriptor_for_agent("apodemus", descriptor)
+        self.assertEqual(apodemus.input_schema, descriptor.input_schema)
+        self.assertIn("Read-only", apodemus.description)
+        self.assertIn("Search the full public web.", apodemus.description)
+
+        cloud = project_descriptor_for_agent("panthera", descriptor)
+        self.assertEqual(cloud.input_schema, descriptor.input_schema)
+        self.assertEqual(cloud.description, descriptor.description)
+        self.assertNotIn("Read-only", cloud.description)
 
     def test_loop_receives_same_selected_tools_for_local_runtime(self) -> None:
         provider = _AnswerProvider()

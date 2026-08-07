@@ -61,6 +61,10 @@ _COMPACT_BRAVE_SEARCH_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+_LOCAL_READ_ONLY_TOOL_GUIDANCE = (
+    "Read-only; use directly when needed without asking for confirmation."
+)
+
 
 def project_descriptor_for_agent(
     agent_key: str,
@@ -68,15 +72,17 @@ def project_descriptor_for_agent(
 ) -> CapabilityDescriptor:
     """Return an Agent-specific model schema without mutating registry state.
 
-    Local models benefit from a compact Brave search contract.  The projection
-    belongs to the shared schema boundary so every local Agent, catalog view,
-    preflight estimate, and provider turn uses the same descriptor.
+    Local models benefit from a compact Brave search contract and explicit
+    read-only guidance. The projection belongs to the shared schema boundary so
+    every Agent, catalog view, preflight estimate, and provider turn uses the
+    same descriptor.
     """
+    projected = descriptor
     if (
-        agent_key in {"sorex", "mus", "apodemus"}
+        agent_key in {"sorex", "mus"}
         and descriptor.name == "brave_brave_web_search"
     ):
-        return descriptor.model_copy(
+        projected = descriptor.model_copy(
             update={
                 "description": (
                     "Search the public web for current information. Use a concise "
@@ -85,7 +91,17 @@ def project_descriptor_for_agent(
                 "input_schema": _COMPACT_BRAVE_SEARCH_SCHEMA,
             }
         )
-    return descriptor
+
+    if agent_key in {"sorex", "mus", "apodemus"} and projected.risk == "read":
+        projected = projected.model_copy(
+            update={
+                "description": (
+                    f"{_LOCAL_READ_ONLY_TOOL_GUIDANCE} "
+                    f"{projected.description}"
+                )
+            }
+        )
+    return projected
 
 
 def estimate_json_tokens(

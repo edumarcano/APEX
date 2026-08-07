@@ -252,6 +252,22 @@ class PromptConfigurationTests(unittest.TestCase):
         ):
             self.assertNotIn("You are APEX", prompt)
 
+    def test_local_agent_prompt_covers_complete_tool_use_and_natural_tone(self) -> None:
+        prompt = config.LOCAL_AGENT_SYSTEM_PROMPT.lower()
+
+        for concept in (
+            "complete",
+            "multiple tools",
+            "continue calling",
+            "do not ask",
+            "read-only",
+            "clarifying question",
+            "natural",
+            "conversational",
+        ):
+            with self.subTest(concept=concept):
+                self.assertIn(concept, prompt)
+
     def test_missing_prompt_configuration_is_not_replaced_by_embedded_text(self) -> None:
         with self.assertRaises(RuntimeError):
             config._required_prompt("", key="agent_system_prompt")
