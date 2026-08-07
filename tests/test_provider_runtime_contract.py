@@ -87,6 +87,10 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(neotoma.api_model, "Qwen3.5-4B-Q4_K_M.gguf")
         self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))
         self.assertEqual(neotoma.maximum_context_window, 262144)
+        self.assertEqual(apodemus.reasoning_mode, "none")
+        self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
+        self.assertEqual(neotoma.reasoning_mode, "none")
+        self.assertEqual(neotoma.supported_reasoning_modes, ("none", "focused"))
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
         self.assertFalse(apodemus.high_resource)
@@ -116,6 +120,14 @@ class ProviderContractTests(unittest.TestCase):
                 LocalModelRef(provider="ollama", model="unknown-model")
             )
         )
+
+    def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
+        profile = build_concrete_agent(
+            "apodemus",
+            native_effort=None,
+            local_reasoning_mode="focused",
+        )
+        self.assertEqual(profile.reasoning_mode, "focused")
 
     def test_agent_loop_follows_local_policy_for_non_ollama_local_profile(self) -> None:
         class FakeLocalProfile:

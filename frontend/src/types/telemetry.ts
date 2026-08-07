@@ -1,4 +1,5 @@
 export type TtsEngine = 'google' | 'kokoro' | 'pyttsx3'
+export type LocalReasoningMode = 'none' | 'focused'
 
 export interface PipelineState {
   step: number
@@ -243,6 +244,9 @@ export interface AgentStatus {
   context_window_options: number[] | null
   context_window_experimental_options: number[] | null
   default_context_window: number | null
+  reasoning_mode: LocalReasoningMode | null
+  reasoning_mode_options: LocalReasoningMode[] | null
+  default_reasoning_mode: LocalReasoningMode | null
   status: AgentAvailabilityStatus
   status_source: AgentStatusSource
   status_checked_at: string | null

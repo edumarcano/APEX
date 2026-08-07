@@ -33,6 +33,7 @@ from core.agent.catalog import (
     is_agent_visible,
     agent_has_credentials,
     local_context_window_for_agent,
+    local_reasoning_mode_for_agent,
     resolve_effort,
     runtime_agent_order,
 )
@@ -291,6 +292,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                 key,
                 native_effort=None,
                 local_context_window=local_context_window_for_agent(key),
+                local_reasoning_mode=local_reasoning_mode_for_agent(key),
             )
             assert is_local_profile(profile)
             backend = get_local_runtime_backend(profile.provider)
@@ -366,6 +368,21 @@ def build_agent_statuses() -> list[AgentStatus]:
                         if hasattr(profile, "default_context_window")
                         else None
                     ),
+                    reasoning_mode=(
+                        profile.reasoning_mode
+                        if hasattr(profile, "reasoning_mode")
+                        else None
+                    ),
+                    reasoning_mode_options=(
+                        list(profile.supported_reasoning_modes)
+                        if hasattr(profile, "supported_reasoning_modes")
+                        else None
+                    ),
+                    default_reasoning_mode=(
+                        profile.default_reasoning_mode
+                        if hasattr(profile, "default_reasoning_mode")
+                        else None
+                    ),
                     default_effort=spec.default_effort,
                     status=agent_status,
                     status_source="runtime",
@@ -428,6 +445,9 @@ def build_agent_statuses() -> list[AgentStatus]:
                 context_window_options=None,
                 context_window_experimental_options=None,
                 default_context_window=None,
+                reasoning_mode=None,
+                reasoning_mode_options=None,
+                default_reasoning_mode=None,
                 default_effort=spec.default_effort,
                 status=agent_status,
                 status_source=status_source,
@@ -570,6 +590,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
         agent_key,
         native_effort=None,
         local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
     )
     assert is_local_profile(profile)
     backend = get_local_runtime_backend(profile.provider)
@@ -993,6 +1014,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         agent_key,
         native_effort=resolved_native_effort,
         local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         neofelis_google_search_enabled=settings.ask_apex.neofelis_google_search_enabled,
         neofelis_google_maps_enabled=settings.ask_apex.neofelis_google_maps_enabled,
         delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
@@ -1075,6 +1097,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         agent_key,
         native_effort=resolved_native_effort,
         local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         neofelis_google_search_enabled=(
             settings.ask_apex.neofelis_google_search_enabled
         ),

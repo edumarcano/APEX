@@ -21,6 +21,7 @@ from core.agent.providers.ollama_models import (
 )
 from core.agent.providers.responses_api import ResponsesModelProfile
 from core.agent.tool_policies import hosted_tools_for_agent
+from core.agent.types import LocalReasoningMode
 from core.config import (
     AGENT_SYSTEM_PROMPT,
     GEMINI_AGENT_MAX_TOOL_CALLS,
@@ -408,6 +409,7 @@ def build_concrete_agent(
     *,
     native_effort: NativeEffort | None,
     local_context_window: int | None = None,
+    local_reasoning_mode: LocalReasoningMode | None = None,
     neofelis_google_search_enabled: bool = True,
     neofelis_google_maps_enabled: bool = True,
     delphinus_x_search_enabled: bool = True,
@@ -439,6 +441,9 @@ def build_concrete_agent(
         )
     if spec.provider == "ollama":
         runtime = OLLAMA_RUNTIME_CONFIGS[agent_key]
+        resolved_reasoning_mode = _resolve_local_reasoning_mode(
+            agent_key, local_reasoning_mode
+        )
         return OllamaModelProfile(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
@@ -454,6 +459,9 @@ def build_concrete_agent(
             num_thread=runtime.num_thread,
             generation_timeout=runtime.generation_timeout,
             think=runtime.think,
+            supported_reasoning_modes=runtime.supported_reasoning_modes,
+            default_reasoning_mode=runtime.default_reasoning_mode,
+            reasoning_mode=resolved_reasoning_mode,
             ram_limit=runtime.ram_limit,
             cpu_limit=runtime.cpu_limit,
             high_resource=agent_key in OLLAMA_HIGH_RESOURCE_AGENTS,
@@ -462,6 +470,9 @@ def build_concrete_agent(
             ),
         )
     if spec.provider == "llama_cpp":
+        resolved_reasoning_mode = _resolve_local_reasoning_mode(
+            agent_key, local_reasoning_mode
+        )
         return build_llama_cpp_profile(
             agent_key,
             display_name=spec.display_name,
@@ -475,6 +486,7 @@ def build_concrete_agent(
                 agent_key, LOCAL_AGENT_SYSTEM_PROMPT
             ),
             context_window=local_context_window,
+            reasoning_mode=resolved_reasoning_mode,
         )
     return ResponsesModelProfile(
         provider=spec.provider,  # type: ignore[arg-type]
@@ -560,6 +572,55 @@ def local_context_window_for_agent(agent_key: str) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
+
+
+def local_reasoning_modes_for_agent(
+    agent_key: str,
+) -> tuple[LocalReasoningMode, ...]:
+    """Return provider-declared reasoning modes for a local Agent."""
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or spec.runtime != "local":
+        return ()
+    if spec.provider == "llama_cpp":
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
+    elif spec.provider == "ollama":
+        runtime = OLLAMA_RUNTIME_CONFIGS.get(agent_key)
+    else:
+        return ()
+    if runtime is None:
+        return ()
+    return runtime.supported_reasoning_modes
+
+
+def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
+    """Return the persisted reasoning mode, safely resolved to capabilities."""
+    supported = local_reasoning_modes_for_agent(agent_key)
+    if not supported:
+        return None
+    from core.settings import get_settings_store
+
+    value = get_settings_store().get_snapshot().ask_apex.local_reasoning_modes.get(
+        agent_key
+    )
+    if value in supported:
+        return value
+    if "none" in supported:
+        return "none"
+    return supported[0]
+
+
+def _resolve_local_reasoning_mode(
+    agent_key: str,
+    requested: LocalReasoningMode | None,
+) -> LocalReasoningMode:
+    """Resolve an explicit or persisted mode against provider capabilities."""
+    supported = local_reasoning_modes_for_agent(agent_key)
+    if requested in supported:
+        return requested  # type: ignore[return-value]
+    persisted = local_reasoning_mode_for_agent(agent_key)
+    if persisted is not None:
+        return persisted
+    return "none"
 
 
 def is_cloud_agent_key(agent_key: str) -> bool:

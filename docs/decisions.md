@@ -206,13 +206,13 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Trade-off.** Adding a new context requires a router preset and settings migration work. The model maximum of 131072 tokens stays metadata only.
 
-### Keep Apodemus reasoning off
+### Make local reasoning capability-driven and private
 
-**Decision.** Server presets and every Apodemus request disable reasoning (`reasoning_effort: "none"`), and hidden reasoning fields or think-style tags are discarded.
+**Decision.** Local reasoning preferences are persisted per Agent and default to `none`. Apodemus and Neotoma expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"` while `Focused` omits that field so the model template can use native reasoning. Hidden reasoning fields and think-style tags are discarded before display.
 
-**Why.** I want Apodemus for efficient tool-driven local work, not extended hidden deliberation.
+**Why.** Local models do not share the cloud Agents' graded effort contract. A provider-neutral capability list keeps the HUD honest while allowing model-native reasoning where the runtime supports it.
 
-**Trade-off.** Some model behaviors that rely on internal reasoning traces are unavailable.
+**Trade-off.** Focused mode has no APEX-controlled reasoning budget yet, and model-specific sampling remains unchanged until benchmark evidence supports it.
 
 ### Exclude Apodemus from briefing modes initially
 

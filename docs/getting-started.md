@@ -154,6 +154,8 @@ llama.cpp is not required to start APEX. When you want Apex Apodemus or Apex Neo
 4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
 5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 
+Apodemus and Neotoma default to request-level `None` reasoning. Their Cortex Reasoning control can select `Focused` without unloading the model; hidden reasoning is discarded before display.
+
 A manual smoke script is available when a router is running:
 
 ```powershell

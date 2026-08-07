@@ -70,18 +70,18 @@ Returns boot-time HUD values such as Ask APEX enablement, the effective Agent an
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `11`.
+Returns the resolved settings envelope. The current contract version is `12`.
 
 ```json
 {
-  "schema_version": 11,
+  "schema_version": 12,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
     "modules": { "football": false, "f1": true },
     "football": { "teams": [] },
     "market": { "symbols": [] },
-    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "local_context_windows": { "apodemus": 8192, "neotoma": 16384 }, "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "local_context_windows": { "apodemus": 8192, "neotoma": 16384 }, "local_reasoning_modes": { "sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none" }, "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
@@ -113,6 +113,8 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 ```
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
+
+`ask_apex.local_reasoning_modes` accepts `none` or `focused` for llama.cpp Agents and only `none` for Mus and Sorex. `focused` is request-level and does not trigger a local model unload/reload; unsupported Agent/mode combinations return `422`.
 
 Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
@@ -295,11 +297,11 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
-Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context options and default when applicable, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
+Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
 The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), Apodemus (`gemma-4-E2B-Q4_K_M.gguf` through llama.cpp), and Neotoma (`Qwen3.5-4B-Q4_K_M.gguf` through llama.cpp).
 
-Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Local Agents with selectable contexts also publish their selected context, options, default, and experimental-option metadata. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Local Agents with selectable contexts or reasoning modes publish their selected value, options, and default metadata. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 

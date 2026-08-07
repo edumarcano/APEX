@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
+from core.agent.types import LocalReasoningMode
+
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
 LocalSettingsAgent = Literal["sorex", "mus", "apodemus", "neotoma"]
 AgentRuntime = Literal["cloud", "local"]
@@ -21,6 +23,7 @@ VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
 VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"sorex", "mus", "apodemus", "neotoma"}
 )
+VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "mus", "sorex", "structured_digest"}
@@ -29,7 +32,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 11
+SETTINGS_SCHEMA_VERSION: int = 12
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -65,6 +68,27 @@ def _validate_local_context_windows(
             raise ValueError(
                 f"Unsupported local context preset for Agent {agent_key!r}: "
                 f"{context_window!r}"
+            )
+    return value
+
+
+def _default_local_reasoning_modes() -> dict[str, LocalReasoningMode]:
+    """Keep every registered local Agent explicitly in the safe default mode."""
+    return {agent_key: "none" for agent_key in VALID_LOCAL_SETTINGS_AGENTS}
+
+
+def _validate_local_reasoning_modes(
+    value: dict[str, LocalReasoningMode],
+) -> dict[str, LocalReasoningMode]:
+    """Validate reasoning preferences against provider-declared capabilities."""
+    from core.agent.catalog import local_reasoning_modes_for_agent
+
+    for agent_key, reasoning_mode in value.items():
+        supported = local_reasoning_modes_for_agent(agent_key)
+        if reasoning_mode not in supported:
+            raise ValueError(
+                f"Unsupported local reasoning mode for Agent {agent_key!r}: "
+                f"{reasoning_mode!r}"
             )
     return value
 
@@ -129,6 +153,9 @@ class AskApexSettings(BaseModel):
     local_context_windows: dict[str, StrictInt] = Field(
         default_factory=_default_local_context_windows
     )
+    local_reasoning_modes: dict[str, LocalReasoningMode] = Field(
+        default_factory=_default_local_reasoning_modes
+    )
     neofelis_google_search_enabled: bool = True
     neofelis_google_maps_enabled: bool = True
     delphinus_x_search_enabled: bool = True
@@ -136,6 +163,9 @@ class AskApexSettings(BaseModel):
 
     _validate_context_windows = field_validator("local_context_windows")(
         _validate_local_context_windows
+    )
+    _validate_reasoning_modes = field_validator("local_reasoning_modes")(
+        _validate_local_reasoning_modes
     )
 
 
@@ -304,6 +334,7 @@ class AskApexPatch(BaseModel):
     effort: CloudEffort | None = None
     local_agent: LocalSettingsAgent | None = None
     local_context_windows: dict[str, StrictInt] | None = None
+    local_reasoning_modes: dict[str, LocalReasoningMode] | None = None
     neofelis_google_search_enabled: bool | None = None
     neofelis_google_maps_enabled: bool | None = None
     delphinus_x_search_enabled: bool | None = None
@@ -311,6 +342,9 @@ class AskApexPatch(BaseModel):
 
     _validate_context_windows = field_validator("local_context_windows")(
         _validate_local_context_windows
+    )
+    _validate_reasoning_modes = field_validator("local_reasoning_modes")(
+        _validate_local_reasoning_modes
     )
 
 

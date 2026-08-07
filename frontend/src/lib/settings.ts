@@ -27,6 +27,7 @@ import type {
   ToolProfileSettings,
   LlamaCppServerStatusResponse,
   LocalContextWindows,
+  LocalReasoningModes,
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
@@ -101,6 +102,7 @@ export function resolveAppliedAgentSelection(
 const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
   'effort',
   'local_context_windows',
+  'local_reasoning_modes',
   'neofelis_google_search_enabled',
   'neofelis_google_maps_enabled',
   'delphinus_x_search_enabled',
@@ -176,6 +178,23 @@ function parseLocalContextWindows(value: unknown): LocalContextWindows | null {
     return null
   }
   return Object.fromEntries(entries) as LocalContextWindows
+}
+
+function parseLocalReasoningModes(value: unknown): LocalReasoningModes | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const entries = Object.entries(value)
+  if (
+    !entries.every(
+      ([agent, reasoningMode]) =>
+        agent.trim().length > 0 &&
+        (reasoningMode === 'none' || reasoningMode === 'focused'),
+    )
+  ) {
+    return null
+  }
+  return Object.fromEntries(entries) as LocalReasoningModes
 }
 
 function isAgentRuntime(value: unknown): value is AgentRuntime {
@@ -432,6 +451,12 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!localContextWindows) {
     return null
   }
+  const localReasoningModes = parseLocalReasoningModes(
+    value.ask_apex.local_reasoning_modes,
+  )
+  if (!localReasoningModes) {
+    return null
+  }
   if (typeof value.ask_apex.neofelis_google_search_enabled !== 'boolean') {
     return null
   }
@@ -469,6 +494,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       effort: value.ask_apex.effort,
       local_agent: value.ask_apex.local_agent,
       local_context_windows: localContextWindows,
+      local_reasoning_modes: localReasoningModes,
       neofelis_google_search_enabled: value.ask_apex.neofelis_google_search_enabled,
       neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
       delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
@@ -506,6 +532,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     ask_apex: {
       ...settings.ask_apex,
       local_context_windows: { ...settings.ask_apex.local_context_windows },
+      local_reasoning_modes: { ...settings.ask_apex.local_reasoning_modes },
     },
     ...(settings.tool_profiles
       ? {

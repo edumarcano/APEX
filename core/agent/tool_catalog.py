@@ -532,12 +532,14 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         from core.agent.catalog import (
             build_concrete_agent,
             local_context_window_for_agent,
+            local_reasoning_mode_for_agent,
         )
 
         profile = build_concrete_agent(
             agent_key,
             native_effort=None,
             local_context_window=local_context_window_for_agent(agent_key),
+            local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         )
         context_window = profile.context_window
         reserved_response_tokens = profile.final_answer_max_tokens

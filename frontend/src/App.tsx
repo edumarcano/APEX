@@ -62,6 +62,7 @@ import type {
   AgentKey,
   CloudEffort,
   CloudSettingsAgent,
+  LocalReasoningMode,
   LocalSettingsAgent,
 } from './types/telemetry'
 import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
@@ -1079,6 +1080,28 @@ export default function App(): ReactElement {
     )
   }, [agentsStatus, persistAskApexSettings])
 
+  const handleLocalReasoningModeChange = useCallback((
+    agent: LocalSettingsAgent,
+    reasoningMode: LocalReasoningMode,
+  ): void => {
+    const reasoningModes: Record<string, LocalReasoningMode> = {}
+    for (const status of agentsStatus) {
+      if (!status.reasoning_mode_options?.length) {
+        continue
+      }
+      const selected = status.reasoning_mode ?? status.default_reasoning_mode
+      if (selected !== null && selected !== undefined) {
+        reasoningModes[status.key] = selected
+      }
+    }
+    reasoningModes[agent] = reasoningMode
+    void persistAskApexSettings(
+      { local_reasoning_modes: reasoningModes },
+      agent,
+      { refreshToolCatalog: false },
+    )
+  }, [agentsStatus, persistAskApexSettings])
+
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession(activeAgent)
     setSnapshotAttached(false)
@@ -1554,6 +1577,7 @@ export default function App(): ReactElement {
             onDelphinusXSearchChange={handleDelphinusXSearchChange}
             onOrcinusXSearchChange={handleOrcinusXSearchChange}
             onLocalContextWindowChange={handleLocalContextWindowChange}
+            onLocalReasoningModeChange={handleLocalReasoningModeChange}
             onSubmit={handleHomeSubmit}
             onNewSession={handleNewCortexSession}
           />

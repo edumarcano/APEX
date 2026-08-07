@@ -236,7 +236,7 @@ function settingsResponse(
   contextWindow = 8192,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 11,
+    schema_version: 12,
     settings: {
       user_designation: '',
       features: {
@@ -259,6 +259,12 @@ function settingsResponse(
         local_context_windows: {
           apodemus: contextWindow,
           neotoma: 16384,
+        },
+        local_reasoning_modes: {
+          sorex: 'none',
+          mus: 'none',
+          apodemus: 'none',
+          neotoma: 'none',
         },
         neofelis_google_search_enabled: googleSearchEnabled,
         neofelis_google_maps_enabled: false,

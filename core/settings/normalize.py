@@ -589,6 +589,7 @@ def _normalize_ask_apex(
         "effort",
         "local_agent",
         "local_context_windows",
+        "local_reasoning_modes",
         "apodemus_context_window",
         "neofelis_google_search_enabled",
         "neofelis_google_maps_enabled",
@@ -659,6 +660,15 @@ def _normalize_ask_apex(
         )
         if normalized_context_windows is not None:
             result["local_context_windows"] = normalized_context_windows
+
+    if "local_reasoning_modes" in migrated:
+        normalized_reasoning_modes = _normalize_local_reasoning_modes(
+            migrated["local_reasoning_modes"],
+            layer_name,
+            errors,
+        )
+        if normalized_reasoning_modes is not None:
+            result["local_reasoning_modes"] = normalized_reasoning_modes
 
     if "apodemus_context_window" in migrated:
         context_window = migrated["apodemus_context_window"]
@@ -741,6 +751,48 @@ def _normalize_local_context_windows(
         _record_error(
             errors,
             f"ask_apex.local_context_windows[{agent_key!r}] is not a supported preset",
+        )
+    return normalized
+
+
+def _normalize_local_reasoning_modes(
+    value: Any,
+    layer_name: str,
+    errors: NormalizationIssues | None,
+) -> dict[str, str] | None:
+    """Normalize local reasoning preferences using provider capabilities."""
+    if not isinstance(value, dict):
+        _record_error(errors, "ask_apex.local_reasoning_modes must be an object")
+        _LOGGER.warning(
+            "ask_apex.local_reasoning_modes in %s must be an object; ignoring.",
+            layer_name,
+        )
+        return None
+
+    from core.agent.catalog import local_reasoning_modes_for_agent
+
+    normalized: dict[str, str] = {}
+    for agent_key, reasoning_mode in value.items():
+        if not isinstance(agent_key, str):
+            _record_error(
+                errors,
+                "ask_apex.local_reasoning_modes keys must be Agent names",
+            )
+            continue
+        normalized_agent_key = agent_key.strip().lower()
+        supported = local_reasoning_modes_for_agent(normalized_agent_key)
+        if not supported:
+            _record_error(
+                errors,
+                f"ask_apex.local_reasoning_modes has unsupported Agent {agent_key!r}",
+            )
+            continue
+        if reasoning_mode in supported:
+            normalized[normalized_agent_key] = reasoning_mode
+            continue
+        _record_error(
+            errors,
+            f"ask_apex.local_reasoning_modes[{agent_key!r}] is not supported",
         )
     return normalized
 
@@ -1080,6 +1132,23 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
                 and context_window in runtime_config.allowed_context_windows
             ):
                 local_context_windows[agent_key] = context_window
+    local_reasoning_modes = {
+        agent_key: "none" for agent_key in VALID_LOCAL_SETTINGS_AGENTS
+    }
+    configured_reasoning_modes = ask_apex.get("local_reasoning_modes", {})
+    if isinstance(configured_reasoning_modes, dict):
+        for agent_key, reasoning_mode in configured_reasoning_modes.items():
+            if (
+                isinstance(agent_key, str)
+                and reasoning_mode in {"none", "focused"}
+            ):
+                from core.agent.catalog import local_reasoning_modes_for_agent
+
+                normalized_agent_key = agent_key.strip().lower()
+                if reasoning_mode in local_reasoning_modes_for_agent(
+                    normalized_agent_key
+                ):
+                    local_reasoning_modes[normalized_agent_key] = reasoning_mode
     ask_apex_settings = AskApexSettings(
         enabled=bool(ask_apex.get("enabled", True))
         if "enabled" in ask_apex
@@ -1089,6 +1158,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         effort=effort,  # type: ignore[arg-type]
         local_agent=local_agent,  # type: ignore[arg-type]
         local_context_windows=local_context_windows,
+        local_reasoning_modes=local_reasoning_modes,
         neofelis_google_search_enabled=bool(
             ask_apex.get("neofelis_google_search_enabled", True)
         ),
@@ -1243,6 +1313,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "local_context_windows": dict(
                 snapshot.ask_apex.local_context_windows
             ),
+            "local_reasoning_modes": dict(snapshot.ask_apex.local_reasoning_modes),
             "neofelis_google_search_enabled": (
                 snapshot.ask_apex.neofelis_google_search_enabled
             ),

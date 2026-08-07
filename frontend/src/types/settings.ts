@@ -3,8 +3,11 @@ import type {
   CloudEffort,
   CloudSettingsAgent,
   LocalSettingsAgent,
+  LocalReasoningMode,
   TtsEngine,
 } from './telemetry'
+
+export type { LocalReasoningMode } from './telemetry'
 import type { McpProviderId } from '../lib/mcpProviders'
 
 export type { McpProviderId } from '../lib/mcpProviders'
@@ -13,6 +16,7 @@ export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
 export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
 export type LocalContextWindows = Record<string, number>
+export type LocalReasoningModes = Record<string, LocalReasoningMode>
 
 export interface LlamaCppSettings {
   enabled: boolean
@@ -57,6 +61,7 @@ export interface AskApexSettings {
   effort: CloudEffort
   local_agent: LocalSettingsAgent
   local_context_windows: LocalContextWindows
+  local_reasoning_modes: LocalReasoningModes
   neofelis_google_search_enabled: boolean
   neofelis_google_maps_enabled: boolean
   delphinus_x_search_enabled: boolean
@@ -144,6 +149,7 @@ export interface AskApexPatch {
   effort?: CloudEffort
   local_agent?: LocalSettingsAgent
   local_context_windows?: LocalContextWindows
+  local_reasoning_modes?: LocalReasoningModes
   neofelis_google_search_enabled?: boolean
   neofelis_google_maps_enabled?: boolean
   delphinus_x_search_enabled?: boolean

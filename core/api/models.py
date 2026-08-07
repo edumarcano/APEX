@@ -11,6 +11,7 @@ from core.agent.types import (
     AgentKey,
     AgentMessage,
     CostEstimate,
+    LocalReasoningMode,
     TokenUsage,
     ToolProfileMetadata,
 )
@@ -429,6 +430,18 @@ class AgentStatus(BaseModel):
     default_context_window: int | None = Field(
         default=None,
         description="Default local context preset when no preference is stored.",
+    )
+    reasoning_mode: LocalReasoningMode | None = Field(
+        default=None,
+        description="Currently selected local reasoning mode, when configurable.",
+    )
+    reasoning_mode_options: list[LocalReasoningMode] | None = Field(
+        default=None,
+        description="Selectable local reasoning modes; null for fixed-mode Agents.",
+    )
+    default_reasoning_mode: LocalReasoningMode | None = Field(
+        default=None,
+        description="Default local reasoning mode when no preference is stored.",
     )
     default_effort: Literal["light", "focused", "extended"] | None = Field(
         default=None,

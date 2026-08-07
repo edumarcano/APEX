@@ -31,12 +31,17 @@ def _load_fixture(name: str) -> dict:
     return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _apodemus_profile(*, context_window: int = 8192):
+def _apodemus_profile(
+    *,
+    context_window: int = 8192,
+    reasoning_mode: str | None = None,
+):
     _apex, native = resolve_effort("apodemus", None)
     return build_concrete_agent(
         "apodemus",
         native_effort=native,
         local_context_window=context_window,
+        local_reasoning_mode=reasoning_mode,
     )
 
 
@@ -120,6 +125,20 @@ class LlamaCppProviderTests(unittest.TestCase):
             _apodemus_profile(),
         )
         self.assertIsNone(result.message.content)
+
+    @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
+    @patch("core.agent.providers.llama_cpp._post_chat")
+    def test_focused_reasoning_omits_reasoning_effort(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = _load_fixture("basic_answer.json")
+        LlamaCppProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            _apodemus_profile(reasoning_mode="focused"),
+        )
+        payload = mock_post.call_args.args[0]
+        self.assertNotIn("reasoning_effort", payload)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
     @patch("core.agent.providers.llama_cpp._post_chat")

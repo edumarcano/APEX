@@ -389,6 +389,27 @@ class SettingsStorePatchTests(unittest.TestCase):
             {"apodemus": 32768, "neotoma": 65536},
         )
 
+    def test_local_reasoning_mode_patch_values(self) -> None:
+        patch = SettingsPatch.model_validate(
+            {
+                "ask_apex": {
+                    "local_reasoning_modes": {
+                        "mus": "none",
+                        "apodemus": "focused",
+                        "neotoma": "none",
+                    }
+                }
+            }
+        )
+        self.assertEqual(
+            patch.ask_apex.local_reasoning_modes,
+            {"mus": "none", "apodemus": "focused", "neotoma": "none"},
+        )
+        with self.assertRaises(ValidationError):
+            SettingsPatch.model_validate(
+                {"ask_apex": {"local_reasoning_modes": {"mus": "focused"}}}
+            )
+
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
         store = self._store()
         before = store.get_snapshot()

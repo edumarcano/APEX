@@ -181,7 +181,7 @@ version = 1
 
 [*]
 jinja = true
-reasoning = off
+reasoning = auto
 parallel = 1
 
 [apodemus-4k]
@@ -210,7 +210,13 @@ Installed aliases come only from the router's `/models` list. A missing `apodemu
 
 `ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `8192`, `16384`, or `32768` and defaults to `8192`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
 
-Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; neither maximum is an exposed preset. Reasoning stays off for both llama.cpp Agents (`reasoning_effort: "none"` on every request).
+Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; neither maximum is an exposed preset.
+
+#### Local reasoning preferences
+
+`ask_apex.local_reasoning_modes` stores an independent reasoning preference for each local Agent. All local Agents default to `none`; Mus and Sorex currently expose only `none`, while Apodemus and Neotoma expose `none` and `focused`. The Cortex inspector shows the Reasoning selector only when the active Agent advertises both modes, and a change applies to the next response without unloading the resident model.
+
+For llama.cpp, `none` sends `reasoning_effort: "none"` and `focused` omits that request field so the model template can use its native reasoning behavior. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
 Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf` and `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`.
 

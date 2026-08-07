@@ -25,6 +25,7 @@ from core.agent.catalog import (
     is_cloud_agent_key,
     is_local_agent_key,
     local_context_window_for_agent,
+    local_reasoning_mode_for_agent,
     local_agent_keys,
     resolve_agent_selection,
 )
@@ -143,6 +144,7 @@ def _evaluate_local_agent_blockers(
         agent_key,
         native_effort=None,
         local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
     )
     backend = get_local_runtime_backend(agent.provider)
 
@@ -381,6 +383,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             agent,
             native_effort=None,
             local_context_window=local_context_window_for_agent(agent),
+            local_reasoning_mode=local_reasoning_mode_for_agent(agent),
         )
         if getattr(profile, "high_resource", False):
             warnings.append(_warning("high_resource_local_agent"))

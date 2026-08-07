@@ -8,6 +8,7 @@ import type {
   LocalLoadedModelStatus,
   LocalSettingsAgent,
   LocalContextUsage,
+  LocalReasoningMode,
   AgentAvailabilityStatus,
   AgentPricingMetadata,
   AgentStatusSource,
@@ -179,6 +180,10 @@ function isCloudEffort(value: unknown): value is CloudEffort {
   return typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
 }
 
+function isLocalReasoningMode(value: unknown): value is LocalReasoningMode {
+  return value === 'none' || value === 'focused'
+}
+
 function isAgentStability(value: unknown): value is AgentStability {
   return (
     typeof value === 'string' &&
@@ -214,6 +219,17 @@ function parseCloudEffortList(value: unknown): CloudEffort[] | null {
     return null
   }
   const parsed = value.filter(isCloudEffort)
+  return parsed.length === value.length ? parsed : null
+}
+
+function parseLocalReasoningModeList(value: unknown): LocalReasoningMode[] | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (!Array.isArray(value)) {
+    return null
+  }
+  const parsed = value.filter(isLocalReasoningMode)
   return parsed.length === value.length ? parsed : null
 }
 
@@ -411,6 +427,42 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   ) {
     return null
   }
+  const reasoningMode =
+    record.reasoning_mode === undefined || record.reasoning_mode === null
+      ? null
+      : isLocalReasoningMode(record.reasoning_mode)
+        ? record.reasoning_mode
+        : null
+  if (
+    record.reasoning_mode !== undefined &&
+    record.reasoning_mode !== null &&
+    reasoningMode === null
+  ) {
+    return null
+  }
+  const reasoningModeOptions = parseLocalReasoningModeList(
+    record.reasoning_mode_options,
+  )
+  if (
+    record.reasoning_mode_options !== undefined &&
+    record.reasoning_mode_options !== null &&
+    reasoningModeOptions === null
+  ) {
+    return null
+  }
+  const defaultReasoningMode =
+    record.default_reasoning_mode === undefined || record.default_reasoning_mode === null
+      ? null
+      : isLocalReasoningMode(record.default_reasoning_mode)
+        ? record.default_reasoning_mode
+        : null
+  if (
+    record.default_reasoning_mode !== undefined &&
+    record.default_reasoning_mode !== null &&
+    defaultReasoningMode === null
+  ) {
+    return null
+  }
 
   return {
     key,
@@ -431,6 +483,9 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     context_window_options: contextWindowOptions,
     context_window_experimental_options: contextWindowExperimentalOptions,
     default_context_window: defaultContextWindow,
+    reasoning_mode: reasoningMode,
+    reasoning_mode_options: reasoningModeOptions,
+    default_reasoning_mode: defaultReasoningMode,
     status,
     status_source: isAgentStatusSource(record.status_source) ? record.status_source : 'configuration',
     status_checked_at: parseNullableString(record.status_checked_at),

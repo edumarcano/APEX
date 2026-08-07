@@ -34,6 +34,12 @@ export const BASE_SETTINGS: RuntimeSettings = {
       apodemus: 8192,
       neotoma: 16384,
     },
+    local_reasoning_modes: {
+      sorex: 'none',
+      mus: 'none',
+      apodemus: 'none',
+      neotoma: 'none',
+    },
     neofelis_google_search_enabled: true,
     neofelis_google_maps_enabled: true,
     delphinus_x_search_enabled: true,
@@ -68,7 +74,7 @@ export function buildSettingsResponse(
   settings: RuntimeSettings = BASE_SETTINGS,
 ): SettingsResponse {
   return {
-    schema_version: 11,
+    schema_version: 12,
     settings,
     local_file_present: false,
     local_override_active: false,

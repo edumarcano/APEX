@@ -309,8 +309,9 @@ def _build_payload(
         "stream": False,
         "temperature": profile.default_temperature,
         "max_tokens": max_tokens,
-        "reasoning_effort": "none",
     }
+    if profile.reasoning_mode == "none":
+        payload["reasoning_effort"] = "none"
     if tools:
         payload["tools"] = [descriptor_to_openai_schema(tool) for tool in tools]
         payload["tool_choice"] = "auto"

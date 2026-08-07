@@ -44,13 +44,14 @@ describe('assistant boot hydration', () => {
     })
   })
 
-  it('keeps effort, context window, and native-tool preferences while filtering DEV_MODE profile fields', () => {
+  it('keeps effort, local reasoning, context, and native-tool preferences while filtering DEV_MODE profile fields', () => {
     expect(filterAskApexSettingsForDevMode({
       runtime: 'cloud',
       cloud_agent: 'neofelis',
       local_agent: 'mus',
       effort: 'extended',
       local_context_windows: { apodemus: 32768, neotoma: 16384 },
+      local_reasoning_modes: { mus: 'none', apodemus: 'focused' },
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
@@ -58,6 +59,7 @@ describe('assistant boot hydration', () => {
     })).toEqual({
       effort: 'extended',
       local_context_windows: { apodemus: 32768, neotoma: 16384 },
+      local_reasoning_modes: { mus: 'none', apodemus: 'focused' },
       neofelis_google_search_enabled: false,
       neofelis_google_maps_enabled: true,
       delphinus_x_search_enabled: false,
@@ -83,6 +85,7 @@ describe('settings response parsing', () => {
     ['cloud effort', ['settings', 'ask_apex', 'effort'], 'invalid'],
     ['local profile', ['settings', 'ask_apex', 'local_agent'], 'invalid'],
     ['local context windows', ['settings', 'ask_apex', 'local_context_windows'], null],
+    ['local reasoning modes', ['settings', 'ask_apex', 'local_reasoning_modes'], null],
     ['neofelis google search', ['settings', 'ask_apex', 'neofelis_google_search_enabled'], null],
     ['neofelis google maps', ['settings', 'ask_apex', 'neofelis_google_maps_enabled'], null],
     ['delphinus x search', ['settings', 'ask_apex', 'delphinus_x_search_enabled'], null],
@@ -135,6 +138,9 @@ describe('settings editing utilities', () => {
     expect(clone.ask_apex).not.toBe(BASE_SETTINGS.ask_apex)
     expect(clone.ask_apex.local_context_windows).not.toBe(
       BASE_SETTINGS.ask_apex.local_context_windows,
+    )
+    expect(clone.ask_apex.local_reasoning_modes).not.toBe(
+      BASE_SETTINGS.ask_apex.local_reasoning_modes,
     )
     expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
@@ -226,6 +232,24 @@ describe('settings editing utilities', () => {
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: {
         local_context_windows: { apodemus: 8192, neotoma: 65536 },
+      },
+    })
+  })
+
+  it('persists local reasoning modes through ask_apex patch', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.ask_apex.local_reasoning_modes = {
+      ...draft.ask_apex.local_reasoning_modes,
+      apodemus: 'focused',
+    }
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      ask_apex: {
+        local_reasoning_modes: {
+          sorex: 'none',
+          mus: 'none',
+          apodemus: 'focused',
+          neotoma: 'none',
+        },
       },
     })
   })

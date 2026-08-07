@@ -43,6 +43,12 @@
       "apodemus": 8192,
       "neotoma": 16384
     },
+    "local_reasoning_modes": {
+      "sorex": "none",
+      "mus": "none",
+      "apodemus": "none",
+      "neotoma": "none"
+    },
     "max_session_messages": 6
   },
   "gemini": {

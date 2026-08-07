@@ -7,6 +7,7 @@ import type {
   AgentKey,
   CloudEffort,
   LocalContextUsage,
+  LocalReasoningMode,
   LocalSettingsAgent,
   ToolCatalog,
   ToolPreflightEstimate,
@@ -73,6 +74,10 @@ interface CortexWorkspaceProps {
     agent: LocalSettingsAgent,
     contextWindow: number,
   ) => void
+  onLocalReasoningModeChange: (
+    agent: LocalSettingsAgent,
+    reasoningMode: LocalReasoningMode,
+  ) => void
   onSubmit: (
     query: string,
     agent: AgentKey,
@@ -122,6 +127,43 @@ function LocalContextControl({
       <p className="text-[11px] leading-relaxed text-zinc-500">
         Applies the next time {agent.display_name} loads. Unload {agent.display_name} first to
         switch context on a resident model.
+      </p>
+    </section>
+  )
+}
+
+function LocalReasoningControl({
+  agent,
+  disabled,
+  onChange,
+}: {
+  agent: AgentStatus
+  disabled: boolean
+  onChange: (reasoningMode: LocalReasoningMode) => void
+}): ReactElement {
+  const options = agent.reasoning_mode_options ?? []
+  const selectedReasoningMode =
+    agent.reasoning_mode ?? agent.default_reasoning_mode ?? options[0]
+  return (
+    <section className="space-y-2" aria-label={`${agent.display_name} reasoning`}>
+      <label htmlFor={`cortex-${agent.key}-reasoning`} className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+        Reasoning
+      </label>
+      <select
+        id={`cortex-${agent.key}-reasoning`}
+        value={selectedReasoningMode}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as LocalReasoningMode)}
+        className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option === 'none' ? 'None' : 'Focused'}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] leading-relaxed text-zinc-500">
+        Applies to the next response. Hidden reasoning is not shown in Cortex.
       </p>
     </section>
   )
@@ -254,7 +296,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={promptChipsEnabled ? (query) => { void props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) } : null} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} submissionPending={props.submissionPending} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying || Boolean(props.submissionPending)} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
         {!local ? <CloudControls {...props} /> : null}
-        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{activeStatus.context_window_options?.length ? <LocalContextControl agent={activeStatus} disabled={localContextLocked} onChange={(contextWindow) => props.onLocalContextWindowChange(activeStatus.key as LocalSettingsAgent, contextWindow)} /> : null}</> : null}
+        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={(reasoningMode) => props.onLocalReasoningModeChange(activeStatus.key as LocalSettingsAgent, reasoningMode)} /> : null}{activeStatus.context_window_options?.length ? <LocalContextControl agent={activeStatus} disabled={localContextLocked} onChange={(contextWindow) => props.onLocalContextWindowChange(activeStatus.key as LocalSettingsAgent, contextWindow)} /> : null}</> : null}
         <ContextControl {...props} />
       </aside>
     </div>

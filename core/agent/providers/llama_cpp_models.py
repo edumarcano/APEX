@@ -11,6 +11,7 @@ from core.config import (
     LLAMA_CPP_RESOURCE_GATES,
     LOCAL_AGENT_SYSTEM_PROMPT,
 )
+from core.agent.types import LocalReasoningMode
 
 
 class LlamaCppRuntimeConfig(BaseModel):
@@ -27,6 +28,13 @@ class LlamaCppRuntimeConfig(BaseModel):
     )
     experimental_context_windows: tuple[int, ...] = Field(
         description="Context presets that receive an experimental UI label."
+    )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        description="Provider-supported local reasoning modes for this Agent."
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        default="none",
+        description="Reasoning mode used when no persisted preference exists.",
     )
     maximum_context_window: int = Field(
         description="Native model context metadata, not an exposed preset."
@@ -52,9 +60,6 @@ class LlamaCppRuntimeConfig(BaseModel):
     high_resource_context_window: int = Field(
         description="Smallest context preset that receives the high-resource warning."
     )
-    reasoning_mode: Literal["off"] = Field(
-        description="Reasoning behavior for this checkpoint's llama.cpp profiles."
-    )
     parallel_tool_calls: bool = Field(
         description="Whether the provider may emit multiple structured tool calls."
     )
@@ -79,8 +84,14 @@ class LlamaCppRuntimeConfig(BaseModel):
             raise ValueError(
                 "experimental_context_windows must be allowed context presets"
             )
-        if self.reasoning_mode != "off":
-            raise ValueError("llama.cpp reasoning_mode must remain off")
+        if not self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must not be empty")
+        if "none" not in self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must include 'none'")
+        if self.default_reasoning_mode not in self.supported_reasoning_modes:
+            raise ValueError(
+                "default_reasoning_mode must be a supported reasoning mode"
+            )
         return self
 
 
@@ -127,6 +138,15 @@ class LlamaCppModelProfile(BaseModel):
     experimental_context_windows: tuple[int, ...] = Field(
         description="Context presets that receive an experimental UI label."
     )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        description="Provider-supported local reasoning modes for this Agent."
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        description="Reasoning mode used when no persisted preference exists."
+    )
+    reasoning_mode: LocalReasoningMode = Field(
+        description="Resolved reasoning mode for the next provider request."
+    )
     runtime_model_id: str = Field(
         description="Resolved llama.cpp router alias used for load and residency checks."
     )
@@ -148,9 +168,6 @@ class LlamaCppModelProfile(BaseModel):
     high_resource: bool = Field(
         default=False,
         description="Whether cold loads of this Agent warrant a high-resource warning.",
-    )
-    reasoning_mode: Literal["off"] = Field(
-        description="Reasoning behavior for this llama.cpp runtime profile.",
     )
     parallel_tool_calls: bool = Field(
         description="Whether the provider may emit multiple structured tool calls.",
@@ -182,8 +199,16 @@ class LlamaCppModelProfile(BaseModel):
             )
         if not self.runtime_model_id.strip():
             raise ValueError("runtime_model_id must not be empty")
-        if self.reasoning_mode != "off":
-            raise ValueError("llama.cpp reasoning_mode must remain off")
+        if not self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must not be empty")
+        if "none" not in self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must include 'none'")
+        if self.default_reasoning_mode not in self.supported_reasoning_modes:
+            raise ValueError(
+                "default_reasoning_mode must be a supported reasoning mode"
+            )
+        if self.reasoning_mode not in self.supported_reasoning_modes:
+            raise ValueError("reasoning_mode must be a supported reasoning mode")
         return self
 
 
@@ -218,6 +243,21 @@ def llama_cpp_runtime_model_id(agent_key: str, context_window: int) -> str:
     return runtime.runtime_model_ids[resolved_context]
 
 
+def resolve_llama_cpp_reasoning_mode(
+    agent_key: str,
+    value: str | None,
+) -> LocalReasoningMode:
+    """Resolve a persisted reasoning preference against runtime capabilities."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    if value is None:
+        return runtime.default_reasoning_mode
+    if value not in runtime.supported_reasoning_modes:
+        raise ValueError(
+            f"Unsupported llama.cpp reasoning mode for {agent_key}: {value!r}"
+        )
+    return value  # type: ignore[return-value]
+
+
 def _resource_limits(agent_key: str) -> tuple[float, float]:
     """Return configured resource gates without embedding Agent conditionals."""
     return LLAMA_CPP_RESOURCE_GATES.get(agent_key, (82.0, 92.0))
@@ -235,10 +275,12 @@ def build_llama_cpp_profile(
     max_tool_calls: int,
     system_instruction: str,
     context_window: int | None = None,
+    reasoning_mode: LocalReasoningMode | None = None,
 ) -> LlamaCppModelProfile:
     """Build one concrete profile from the registered Agent runtime data."""
     runtime = llama_cpp_runtime_config(agent_key)
     resolved_context = resolve_llama_cpp_context_window(agent_key, context_window)
+    resolved_reasoning = resolve_llama_cpp_reasoning_mode(agent_key, reasoning_mode)
     return LlamaCppModelProfile(
         display_name=display_name,
         agent_version=agent_version,
@@ -253,6 +295,9 @@ def build_llama_cpp_profile(
         maximum_context_window=runtime.maximum_context_window,
         allowed_context_windows=runtime.allowed_context_windows,
         experimental_context_windows=runtime.experimental_context_windows,
+        supported_reasoning_modes=runtime.supported_reasoning_modes,
+        default_reasoning_mode=runtime.default_reasoning_mode,
+        reasoning_mode=resolved_reasoning,
         runtime_model_id=llama_cpp_runtime_model_id(agent_key, resolved_context),
         tool_select_max_tokens=runtime.tool_select_max_tokens,
         final_answer_max_tokens=runtime.final_answer_max_tokens,
@@ -262,7 +307,6 @@ def build_llama_cpp_profile(
         high_resource=(
             resolved_context >= runtime.high_resource_context_window
         ),
-        reasoning_mode=runtime.reasoning_mode,
         parallel_tool_calls=runtime.parallel_tool_calls,
         system_instruction=system_instruction or LOCAL_AGENT_SYSTEM_PROMPT,
     )
@@ -272,6 +316,7 @@ def _runtime_config(
     *,
     allowed_context_windows: tuple[int, ...],
     experimental_context_windows: tuple[int, ...],
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...],
     default_context_window: int,
     maximum_context_window: int,
     runtime_model_ids: dict[int, str],
@@ -282,6 +327,7 @@ def _runtime_config(
         default_temperature=0.2,
         allowed_context_windows=allowed_context_windows,
         experimental_context_windows=experimental_context_windows,
+        supported_reasoning_modes=supported_reasoning_modes,
         default_context_window=default_context_window,
         maximum_context_window=maximum_context_window,
         runtime_model_ids=runtime_model_ids,
@@ -291,7 +337,6 @@ def _runtime_config(
         ram_limit=resource_limits[0],
         cpu_limit=resource_limits[1],
         high_resource_context_window=32768,
-        reasoning_mode="off",
         parallel_tool_calls=True,
     )
 
@@ -300,6 +345,7 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
     "apodemus": _runtime_config(
         allowed_context_windows=(4096, 8192, 16384, 32768),
         experimental_context_windows=(32768,),
+        supported_reasoning_modes=("none", "focused"),
         default_context_window=8192,
         maximum_context_window=131072,
         runtime_model_ids={
@@ -313,6 +359,7 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
     "neotoma": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 65536),
         experimental_context_windows=(),
+        supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
         maximum_context_window=262144,
         runtime_model_ids={
