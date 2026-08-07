@@ -134,7 +134,11 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         )
 
     def test_exact_local_selection_is_the_only_offered_descriptor(self) -> None:
-        selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
+        with patch(
+            "core.agent.tool_catalog._native_availability",
+            return_value=(True, None),
+        ):
+            selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
         self.assertEqual(
             selection.diagnostics.offered_tool_names,
             ["get_weather_forecast"],
@@ -190,29 +194,37 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
     def test_loop_receives_same_selected_tools_for_local_runtime(self) -> None:
         provider = _AnswerProvider()
-        selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
-        response = run_agent_loop(
-            AgentQueryRequest(
-                prompt="Forecast",
-                agent="sorex",
-                selected_tool_names=["get_weather_forecast"],
-            ),
-            provider,
-            build_concrete_agent("sorex", native_effort=None),
-            selected_tools=list(selection.descriptors),
-            tool_selection=selection.diagnostics,
-        )
+        with patch(
+            "core.agent.tool_catalog._native_availability",
+            return_value=(True, None),
+        ):
+            selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
+            response = run_agent_loop(
+                AgentQueryRequest(
+                    prompt="Forecast",
+                    agent="sorex",
+                    selected_tool_names=["get_weather_forecast"],
+                ),
+                provider,
+                build_concrete_agent("sorex", native_effort=None),
+                selected_tools=list(selection.descriptors),
+                tool_selection=selection.diagnostics,
+            )
         self.assertEqual(provider.tool_names, [["get_weather_forecast"]])
         self.assertEqual(response.offered_tool_names, ["get_weather_forecast"])
 
     def test_preflight_uses_selected_schema_estimate_and_local_capacity(self) -> None:
-        result = build_tool_preflight(
-            ToolPreflightRequest(
-                agent="sorex",
-                prompt="Give me a short answer.",
-                selected_tool_names=["get_weather_forecast"],
+        with patch(
+            "core.agent.tool_catalog._native_availability",
+            return_value=(True, None),
+        ):
+            result = build_tool_preflight(
+                ToolPreflightRequest(
+                    agent="sorex",
+                    prompt="Give me a short answer.",
+                    selected_tool_names=["get_weather_forecast"],
+                )
             )
-        )
         self.assertTrue(result.breakdown.is_estimate)
         self.assertGreater(result.breakdown.selected_tool_schemas, 0)
         self.assertIsNotNone(result.breakdown.configured_context_window)
