@@ -204,7 +204,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. The 132K preset is explicitly high-resource, while the model maximum of 131072 tokens remains metadata-aligned with that preset.
+**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the model maximum metadata remains separate from selectable presets where it exceeds the exposed policy.
 
 ### Make local reasoning capability-driven and private
 

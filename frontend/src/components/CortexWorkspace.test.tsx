@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps, ReactElement } from 'react'
 import { useState } from 'react'
@@ -14,7 +14,7 @@ const neofelis: AgentStatus = { ...panthera, key: 'neofelis', display_name: 'Ape
 const acinonyx: AgentStatus = { ...neofelis, key: 'acinonyx', display_name: 'Apex Acinonyx', configured_model: 'gemini-3.5-flash-lite', sort_order: 0, capabilities: ['Privacy sandbox', 'Masked context'], pricing: { ...neofelis.pricing, billing_basis: 'free_tier', input_per_million: 0, output_per_million: 0 } }
 const mus: AgentStatus = { ...panthera, key: 'mus', display_name: 'Apex Mus', configured_model: 'qwen3:4b-instruct', provider: 'ollama', runtime: 'local', sort_order: 5, capabilities: ['Larger model', 'Primary local'], effort_options: null, default_effort: null, reasoning_mode: 'none', reasoning_mode_options: ['none'], default_reasoning_mode: 'none', status: 'available', status_source: 'runtime', active: false, pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
 const apodemus: AgentStatus = { ...mus, key: 'apodemus', display_name: 'Apex Apodemus', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', sort_order: 6, stability: 'preview', capabilities: ['Local llama.cpp'], context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none' }
-const neotoma: AgentStatus = { ...apodemus, key: 'neotoma', display_name: 'Apex Neotoma', configured_model: 'Qwen3.5-4B-Q4_K_M.gguf', sort_order: 7, context_window: 16384, context_window_options: [4096, 16384, 32768, 65536], context_window_high_resource_options: [], default_context_window: 16384 }
+const neotoma: AgentStatus = { ...apodemus, key: 'neotoma', display_name: 'Apex Neotoma', configured_model: 'Qwen3.5-4B-Q4_K_M.gguf', sort_order: 7, context_window: 16384, context_window_options: [4096, 16384, 32768, 65536], context_window_high_resource_options: [65536], default_context_window: 16384 }
 const toolCatalog: ToolCatalog = {
   agent: 'panthera',
   groups: [{
@@ -309,6 +309,7 @@ describe('CortexWorkspace', () => {
     )
     const neotomaContextSelect = screen.getByLabelText('Context window')
     expect(neotomaContextSelect).toHaveValue('16384')
+    expect(screen.getByRole('option', { name: '64K High resource' })).toBeInTheDocument()
     await user.selectOptions(neotomaContextSelect, '65536')
     expect(onLocalContextWindowChange).toHaveBeenCalledWith('neotoma', 65536)
   })
@@ -341,6 +342,120 @@ describe('CortexWorkspace', () => {
     expect(reasoningSelect).toHaveValue('none')
     await user.selectOptions(reasoningSelect, 'focused')
     expect(onLocalReasoningModeChange).toHaveBeenCalledWith('apodemus', 'focused')
+  })
+
+  it('optimistically updates local selectors and rolls back context and reasoning on persistence failure', async () => {
+    const user = userEvent.setup()
+    let rejectContext!: (persisted: boolean) => void
+    let rejectReasoning!: (persisted: boolean) => void
+    const contextPersistence = new Promise<boolean>((resolve) => {
+      rejectContext = resolve
+    })
+    const reasoningPersistence = new Promise<boolean>((resolve) => {
+      rejectReasoning = resolve
+    })
+    const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
+    const onLocalReasoningModeChange = vi.fn().mockReturnValue(reasoningPersistence)
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [apodemus],
+          onLocalContextWindowChange,
+          onLocalReasoningModeChange,
+        })}
+      />,
+    )
+
+    const contextSelect = screen.getByLabelText('Context window')
+    const reasoningSelect = screen.getByLabelText('Reasoning')
+    await user.selectOptions(contextSelect, '32768')
+    await user.selectOptions(reasoningSelect, 'focused')
+    expect(contextSelect).toHaveValue('32768')
+    expect(reasoningSelect).toHaveValue('focused')
+
+    rejectContext(false)
+    rejectReasoning(false)
+    await waitFor(() => {
+      expect(contextSelect).toHaveValue('16384')
+      expect(reasoningSelect).toHaveValue('none')
+    })
+  })
+
+  it('reconciles optimistic local selections with refreshed authoritative Agent status', async () => {
+    const user = userEvent.setup()
+    let resolveContext!: (persisted: boolean) => void
+    const contextPersistence = new Promise<boolean>((resolve) => {
+      resolveContext = resolve
+    })
+    const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
+    const { rerender } = render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [apodemus],
+          onLocalContextWindowChange,
+        })}
+      />,
+    )
+
+    const contextSelect = screen.getByLabelText('Context window')
+    await user.selectOptions(contextSelect, '32768')
+    expect(contextSelect).toHaveValue('32768')
+    resolveContext(true)
+    expect(contextSelect).toHaveValue('32768')
+    rerender(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [{ ...apodemus, context_window: 32768 }],
+          onLocalContextWindowChange,
+        })}
+      />,
+    )
+    await waitFor(() => expect(contextSelect).toHaveValue('32768'))
+  })
+
+  it('keeps the optimistic context selection after persistence succeeds until authority catches up', async () => {
+    const user = userEvent.setup()
+    let resolveContext!: (persisted: boolean) => void
+    const contextPersistence = new Promise<boolean>((resolve) => {
+      resolveContext = resolve
+    })
+    const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
+    const { rerender } = render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [apodemus],
+          onLocalContextWindowChange,
+        })}
+      />,
+    )
+
+    const contextSelect = screen.getByLabelText('Context window')
+    await user.selectOptions(contextSelect, '32768')
+    expect(contextSelect).toBeDisabled()
+    resolveContext(true)
+    await waitFor(() => expect(contextSelect).toBeEnabled())
+    expect(contextSelect).toHaveValue('32768')
+
+    // Stale authority must not snap the selector back, and the control must
+    // remain usable for another change even before refreshed status catches up.
+    rerender(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'apodemus',
+          agentsStatus: [apodemus],
+          onLocalContextWindowChange,
+        })}
+      />,
+    )
+    expect(contextSelect).toHaveValue('32768')
+    expect(contextSelect).toBeEnabled()
+    onLocalContextWindowChange.mockResolvedValue(true)
+    await user.selectOptions(contextSelect, '4096')
+    await waitFor(() => expect(contextSelect).toHaveValue('4096'))
   })
 
   it('disables local context selection during generation or loading', () => {

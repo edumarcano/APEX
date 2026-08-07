@@ -817,9 +817,15 @@ export function useCortex(
   // every query state transition.
   const isCortexQueryingRef = useRef(false)
 
+  const agentsStatusFetchGenerationRef = useRef(0)
+
   const fetchAgentsStatus = useCallback(async (): Promise<void> => {
+    const generation = ++agentsStatusFetchGenerationRef.current
     try {
       const response = await fetch(AGENT_PROFILES_ENDPOINT)
+      if (generation !== agentsStatusFetchGenerationRef.current) {
+        return
+      }
       if (!response.ok) {
         console.warn(
           `[useCortex] Agent status fetch failed (${response.status}); retaining prior state.`,
@@ -829,9 +835,15 @@ export function useCortex(
 
       const body: unknown = await response.json()
       const parsed = parseAgentStatusList(body)
+      if (generation !== agentsStatusFetchGenerationRef.current) {
+        return
+      }
       setAgentsStatus(parsed)
       setAgentsStatusHydrated(true)
     } catch (fetchError) {
+      if (generation !== agentsStatusFetchGenerationRef.current) {
+        return
+      }
       const message =
         fetchError instanceof Error ? fetchError.message : 'Unknown agent fetch error'
       console.warn(`[useCortex] Agent status fetch error: ${message}`)

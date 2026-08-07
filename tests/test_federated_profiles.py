@@ -510,6 +510,7 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         )
         self.assertEqual(neotoma.default_context_window, 16384)
         self.assertEqual(neotoma.context_window, 16384)
+        self.assertEqual(neotoma.context_window_high_resource_options, [65536])
         self.assertEqual(neotoma.reasoning_mode_options, ["none", "focused"])
         self.assertEqual(neotoma.default_reasoning_mode, "none")
         self.assertEqual(neotoma.reasoning_mode, "none")

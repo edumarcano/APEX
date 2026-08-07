@@ -96,6 +96,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(neotoma.api_model, "Qwen3.5-4B-Q4_K_M.gguf")
         self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))
         self.assertEqual(neotoma.maximum_context_window, 262144)
+        self.assertEqual(neotoma.high_resource_context_options, (65536,))
         self.assertEqual(apodemus.reasoning_mode, "none")
         self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
         self.assertEqual(neotoma.reasoning_mode, "none")
@@ -103,6 +104,14 @@ class ProviderContractTests(unittest.TestCase):
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
         self.assertFalse(apodemus.high_resource)
+        self.assertTrue(
+            build_concrete_agent(
+                "neotoma",
+                native_effort=None,
+                local_context_window=65536,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
         self.assertTrue(is_local_inference_provider("ollama"))
         self.assertTrue(is_local_inference_provider("llama_cpp"))
         self.assertFalse(is_local_inference_provider("openai"))

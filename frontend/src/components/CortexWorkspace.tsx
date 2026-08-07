@@ -73,11 +73,11 @@ interface CortexWorkspaceProps {
   onLocalContextWindowChange: (
     agent: LocalSettingsAgent,
     contextWindow: number,
-  ) => void
+  ) => Promise<boolean>
   onLocalReasoningModeChange: (
     agent: LocalSettingsAgent,
     reasoningMode: LocalReasoningMode,
-  ) => void
+  ) => Promise<boolean>
   onSubmit: (
     query: string,
     agent: AgentKey,
@@ -98,11 +98,46 @@ function LocalContextControl({
 }: {
   agent: AgentStatus
   disabled: boolean
-  onChange: (contextWindow: number) => void
+  onChange: (contextWindow: number) => Promise<boolean>
 }): ReactElement {
   const options = agent.context_window_options ?? []
-  const selectedContextWindow =
+  const authoritativeContextWindow =
     agent.context_window ?? agent.default_context_window ?? options[0]
+  const [selectedContextWindow, setSelectedContextWindow] = useState(
+    authoritativeContextWindow,
+  )
+  const [pendingTarget, setPendingTarget] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (pendingTarget !== null) {
+      if (authoritativeContextWindow === pendingTarget) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear the write barrier once refreshed authority matches the optimistic selection.
+        setPendingTarget(null)
+        setSelectedContextWindow(authoritativeContextWindow)
+      }
+      return
+    }
+    setSelectedContextWindow(authoritativeContextWindow)
+  }, [authoritativeContextWindow, pendingTarget])
+  const handleChange = async (contextWindow: number): Promise<void> => {
+    const rollbackContextWindow =
+      pendingTarget ?? authoritativeContextWindow
+    setSelectedContextWindow(contextWindow)
+    setPendingTarget(contextWindow)
+    setSaving(true)
+    try {
+      const persisted = await onChange(contextWindow)
+      if (!persisted) {
+        setPendingTarget(null)
+        setSelectedContextWindow(rollbackContextWindow)
+      }
+    } catch {
+      setPendingTarget(null)
+      setSelectedContextWindow(rollbackContextWindow)
+    } finally {
+      setSaving(false)
+    }
+  }
   return (
     <section className="space-y-2" aria-label={`${agent.display_name} context window`}>
       <label htmlFor={`cortex-${agent.key}-context`} className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
@@ -110,9 +145,11 @@ function LocalContextControl({
       </label>
       <select
         id={`cortex-${agent.key}-context`}
-        value={String(selectedContextWindow)}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
+        value={String(selectedContextWindow ?? '')}
+        disabled={disabled || saving}
+        onChange={(event) => {
+          void handleChange(Number(event.target.value))
+        }}
         className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
       >
         {options.map((option) => (
@@ -139,11 +176,48 @@ function LocalReasoningControl({
 }: {
   agent: AgentStatus
   disabled: boolean
-  onChange: (reasoningMode: LocalReasoningMode) => void
+  onChange: (reasoningMode: LocalReasoningMode) => Promise<boolean>
 }): ReactElement {
   const options = agent.reasoning_mode_options ?? []
-  const selectedReasoningMode =
+  const authoritativeReasoningMode =
     agent.reasoning_mode ?? agent.default_reasoning_mode ?? options[0]
+  const [selectedReasoningMode, setSelectedReasoningMode] = useState(
+    authoritativeReasoningMode,
+  )
+  const [pendingTarget, setPendingTarget] = useState<LocalReasoningMode | null>(
+    null,
+  )
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (pendingTarget !== null) {
+      if (authoritativeReasoningMode === pendingTarget) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear the write barrier once refreshed authority matches the optimistic selection.
+        setPendingTarget(null)
+        setSelectedReasoningMode(authoritativeReasoningMode)
+      }
+      return
+    }
+    setSelectedReasoningMode(authoritativeReasoningMode)
+  }, [authoritativeReasoningMode, pendingTarget])
+  const handleChange = async (reasoningMode: LocalReasoningMode): Promise<void> => {
+    const rollbackReasoningMode =
+      pendingTarget ?? authoritativeReasoningMode
+    setSelectedReasoningMode(reasoningMode)
+    setPendingTarget(reasoningMode)
+    setSaving(true)
+    try {
+      const persisted = await onChange(reasoningMode)
+      if (!persisted) {
+        setPendingTarget(null)
+        setSelectedReasoningMode(rollbackReasoningMode)
+      }
+    } catch {
+      setPendingTarget(null)
+      setSelectedReasoningMode(rollbackReasoningMode)
+    } finally {
+      setSaving(false)
+    }
+  }
   return (
     <section className="space-y-2" aria-label={`${agent.display_name} reasoning`}>
       <label htmlFor={`cortex-${agent.key}-reasoning`} className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
@@ -152,8 +226,10 @@ function LocalReasoningControl({
       <select
         id={`cortex-${agent.key}-reasoning`}
         value={selectedReasoningMode}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value as LocalReasoningMode)}
+        disabled={disabled || saving}
+        onChange={(event) => {
+          void handleChange(event.target.value as LocalReasoningMode)
+        }}
         className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
       >
         {options.map((option) => (
@@ -296,7 +372,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={promptChipsEnabled ? (query) => { void props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) } : null} />{props.askApexEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AskApexBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} submissionPending={props.submissionPending} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Ask APEX is disabled in Settings.</footer>}</div>
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying || Boolean(props.submissionPending)} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
         {!local ? <CloudControls {...props} /> : null}
-        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={(reasoningMode) => props.onLocalReasoningModeChange(activeStatus.key as LocalSettingsAgent, reasoningMode)} /> : null}{activeStatus.context_window_options?.length ? <LocalContextControl agent={activeStatus} disabled={localContextLocked} onChange={(contextWindow) => props.onLocalContextWindowChange(activeStatus.key as LocalSettingsAgent, contextWindow)} /> : null}</> : null}
+        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl key={`${activeStatus.key}-reasoning`} agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={(reasoningMode) => props.onLocalReasoningModeChange(activeStatus.key as LocalSettingsAgent, reasoningMode)} /> : null}{activeStatus.context_window_options?.length ? <LocalContextControl key={`${activeStatus.key}-context`} agent={activeStatus} disabled={localContextLocked} onChange={(contextWindow) => props.onLocalContextWindowChange(activeStatus.key as LocalSettingsAgent, contextWindow)} /> : null}</> : null}
         <ContextControl {...props} />
       </aside>
     </div>

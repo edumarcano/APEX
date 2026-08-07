@@ -266,7 +266,7 @@ Apodemus is not a briefing mode in the initial release. Its role is interactive 
 
 *Neotoma* is a genus of pack rats and woodrats.
 
-Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Qwen3.5 4B (`Qwen3.5-4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and 64K context presets and a 16K default. Its native model maximum is 262K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
+Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Qwen3.5 4B (`Qwen3.5-4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and high-resource 64K context presets and a 16K default. Its native model maximum is 262K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
 
 Neotoma is not a briefing mode. Its role is interactive Ask APEX and Cortex local execution alongside the other local Agents.
 

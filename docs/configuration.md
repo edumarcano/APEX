@@ -208,7 +208,7 @@ Installed aliases come only from the router's `/models` list. A missing `apodemu
 
 #### Local context preferences
 
-`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. Apodemus's `131072` preset is marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
+`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. Apodemus's `131072` and Neotoma's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
 
 Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; Neotoma's maximum is not an exposed preset.
 

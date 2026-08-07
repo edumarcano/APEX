@@ -1061,7 +1061,7 @@ export default function App(): ReactElement {
   const handleLocalContextWindowChange = useCallback((
     agent: LocalSettingsAgent,
     contextWindow: number,
-  ): void => {
+  ): Promise<boolean> => {
     const contextWindows: Record<string, number> = {}
     for (const status of agentsStatus) {
       if (!status.context_window_options?.length) {
@@ -1073,7 +1073,7 @@ export default function App(): ReactElement {
       }
     }
     contextWindows[agent] = contextWindow
-    void persistAskApexSettings(
+    return persistAskApexSettings(
       { local_context_windows: contextWindows },
       agent,
       { refreshToolCatalog: true },
@@ -1083,7 +1083,7 @@ export default function App(): ReactElement {
   const handleLocalReasoningModeChange = useCallback((
     agent: LocalSettingsAgent,
     reasoningMode: LocalReasoningMode,
-  ): void => {
+  ): Promise<boolean> => {
     const reasoningModes: Record<string, LocalReasoningMode> = {}
     for (const status of agentsStatus) {
       if (!status.reasoning_mode_options?.length) {
@@ -1095,7 +1095,7 @@ export default function App(): ReactElement {
       }
     }
     reasoningModes[agent] = reasoningMode
-    void persistAskApexSettings(
+    return persistAskApexSettings(
       { local_reasoning_modes: reasoningModes },
       agent,
       { refreshToolCatalog: false },

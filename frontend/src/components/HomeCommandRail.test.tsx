@@ -27,7 +27,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     default_effort: local ? null : 'focused',
     context_window: key === 'apodemus' ? 16384 : key === 'neotoma' ? 16384 : null,
     context_window_options: key === 'apodemus' ? [4096, 16384, 32768, 131072] : key === 'neotoma' ? [4096, 16384, 32768, 65536] : null,
-    context_window_high_resource_options: key === 'apodemus' ? [131072] : key === 'neotoma' ? [] : null,
+    context_window_high_resource_options: key === 'apodemus' ? [131072] : key === 'neotoma' ? [65536] : null,
     default_context_window: key === 'apodemus' ? 16384 : key === 'neotoma' ? 16384 : null,
     reasoning_mode: key === 'apodemus' || key === 'neotoma' ? 'none' : local ? 'none' : null,
     reasoning_mode_options: key === 'apodemus' || key === 'neotoma' ? ['none', 'focused'] : local ? ['none'] : null,

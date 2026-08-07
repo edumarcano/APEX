@@ -57,9 +57,6 @@ class LlamaCppRuntimeConfig(BaseModel):
     cpu_limit: float = Field(
         description="Maximum host CPU utilization percentage before load is gated."
     )
-    high_resource_context_window: int = Field(
-        description="Smallest context preset that receives the high-resource warning."
-    )
     parallel_tool_calls: bool = Field(
         description="Whether the provider may emit multiple structured tool calls."
     )
@@ -304,9 +301,7 @@ def build_llama_cpp_profile(
         generation_timeout=runtime.generation_timeout,
         ram_limit=runtime.ram_limit,
         cpu_limit=runtime.cpu_limit,
-        high_resource=(
-            resolved_context >= runtime.high_resource_context_window
-        ),
+        high_resource=resolved_context in runtime.high_resource_context_options,
         parallel_tool_calls=runtime.parallel_tool_calls,
         system_instruction=system_instruction or LOCAL_AGENT_SYSTEM_PROMPT,
     )
@@ -321,7 +316,6 @@ def _runtime_config(
     maximum_context_window: int,
     runtime_model_ids: dict[int, str],
     resource_limits: tuple[float, float],
-    high_resource_context_window: int = 32768,
 ) -> LlamaCppRuntimeConfig:
     """Create a compact immutable-in-practice runtime data entry."""
     return LlamaCppRuntimeConfig(
@@ -337,7 +331,6 @@ def _runtime_config(
         generation_timeout=int(LLAMA_CPP_REQUEST_TIMEOUT_SECONDS),
         ram_limit=resource_limits[0],
         cpu_limit=resource_limits[1],
-        high_resource_context_window=high_resource_context_window,
         parallel_tool_calls=True,
     )
 
@@ -356,11 +349,10 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
             131072: "apodemus-132k",
         },
         resource_limits=_resource_limits("apodemus"),
-        high_resource_context_window=131072,
     ),
     "neotoma": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 65536),
-        high_resource_context_options=(),
+        high_resource_context_options=(65536,),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
         maximum_context_window=262144,
