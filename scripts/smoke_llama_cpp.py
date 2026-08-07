@@ -50,6 +50,7 @@ def _chat(
         "temperature": 0.2,
         "max_tokens": 256,
         "reasoning_effort": "none",
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     if tools:
         payload["tools"] = tools

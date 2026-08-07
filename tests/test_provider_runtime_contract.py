@@ -101,9 +101,41 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
         self.assertEqual(neotoma.reasoning_mode, "none")
         self.assertEqual(neotoma.supported_reasoning_modes, ("none", "focused"))
+        self.assertEqual(
+            (apodemus.tool_select_max_tokens, apodemus.final_answer_max_tokens),
+            (256, 768),
+        )
+        self.assertEqual(
+            (neotoma.tool_select_max_tokens, neotoma.final_answer_max_tokens),
+            (256, 768),
+        )
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
         self.assertFalse(apodemus.high_resource)
+        self.assertFalse(
+            build_concrete_agent(
+                "apodemus",
+                native_effort=None,
+                local_context_window=32768,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
+        self.assertTrue(
+            build_concrete_agent(
+                "apodemus",
+                native_effort=None,
+                local_context_window=131072,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
+        self.assertFalse(
+            build_concrete_agent(
+                "neotoma",
+                native_effort=None,
+                local_context_window=32768,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
         self.assertTrue(
             build_concrete_agent(
                 "neotoma",
@@ -146,6 +178,19 @@ class ProviderContractTests(unittest.TestCase):
             local_reasoning_mode="focused",
         )
         self.assertEqual(profile.reasoning_mode, "focused")
+
+    def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
+        for agent_key in ("apodemus", "neotoma"):
+            with self.subTest(agent=agent_key):
+                profile = build_concrete_agent(
+                    agent_key,
+                    native_effort=None,
+                    local_reasoning_mode="focused",
+                )
+                self.assertEqual(
+                    (profile.tool_select_max_tokens, profile.final_answer_max_tokens),
+                    (1536, 1536),
+                )
 
     def test_agent_loop_follows_local_policy_for_non_ollama_local_profile(self) -> None:
         class FakeLocalProfile:

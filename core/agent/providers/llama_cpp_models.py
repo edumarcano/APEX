@@ -48,6 +48,16 @@ class LlamaCppRuntimeConfig(BaseModel):
     final_answer_max_tokens: int = Field(
         description="Token ceiling for the final text response."
     )
+    focused_tool_select_max_tokens: int = Field(
+        description=(
+            "Completion ceiling for tool selection when native reasoning is enabled."
+        )
+    )
+    focused_final_answer_max_tokens: int = Field(
+        description=(
+            "Completion ceiling for final answers when native reasoning is enabled."
+        )
+    )
     generation_timeout: int = Field(
         description="Hard timeout in seconds for a single model generation call."
     )
@@ -278,6 +288,12 @@ def build_llama_cpp_profile(
     runtime = llama_cpp_runtime_config(agent_key)
     resolved_context = resolve_llama_cpp_context_window(agent_key, context_window)
     resolved_reasoning = resolve_llama_cpp_reasoning_mode(agent_key, reasoning_mode)
+    if resolved_reasoning == "focused":
+        tool_select_max_tokens = runtime.focused_tool_select_max_tokens
+        final_answer_max_tokens = runtime.focused_final_answer_max_tokens
+    else:
+        tool_select_max_tokens = runtime.tool_select_max_tokens
+        final_answer_max_tokens = runtime.final_answer_max_tokens
     return LlamaCppModelProfile(
         display_name=display_name,
         agent_version=agent_version,
@@ -296,8 +312,8 @@ def build_llama_cpp_profile(
         default_reasoning_mode=runtime.default_reasoning_mode,
         reasoning_mode=resolved_reasoning,
         runtime_model_id=llama_cpp_runtime_model_id(agent_key, resolved_context),
-        tool_select_max_tokens=runtime.tool_select_max_tokens,
-        final_answer_max_tokens=runtime.final_answer_max_tokens,
+        tool_select_max_tokens=tool_select_max_tokens,
+        final_answer_max_tokens=final_answer_max_tokens,
         generation_timeout=runtime.generation_timeout,
         ram_limit=runtime.ram_limit,
         cpu_limit=runtime.cpu_limit,
@@ -316,6 +332,10 @@ def _runtime_config(
     maximum_context_window: int,
     runtime_model_ids: dict[int, str],
     resource_limits: tuple[float, float],
+    tool_select_max_tokens: int,
+    final_answer_max_tokens: int,
+    focused_tool_select_max_tokens: int,
+    focused_final_answer_max_tokens: int,
 ) -> LlamaCppRuntimeConfig:
     """Create a compact immutable-in-practice runtime data entry."""
     return LlamaCppRuntimeConfig(
@@ -326,8 +346,10 @@ def _runtime_config(
         default_context_window=default_context_window,
         maximum_context_window=maximum_context_window,
         runtime_model_ids=runtime_model_ids,
-        tool_select_max_tokens=256,
-        final_answer_max_tokens=768,
+        tool_select_max_tokens=tool_select_max_tokens,
+        final_answer_max_tokens=final_answer_max_tokens,
+        focused_tool_select_max_tokens=focused_tool_select_max_tokens,
+        focused_final_answer_max_tokens=focused_final_answer_max_tokens,
         generation_timeout=int(LLAMA_CPP_REQUEST_TIMEOUT_SECONDS),
         ram_limit=resource_limits[0],
         cpu_limit=resource_limits[1],
@@ -349,6 +371,10 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
             131072: "apodemus-132k",
         },
         resource_limits=_resource_limits("apodemus"),
+        tool_select_max_tokens=256,
+        final_answer_max_tokens=768,
+        focused_tool_select_max_tokens=1536,
+        focused_final_answer_max_tokens=1536,
     ),
     "neotoma": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 65536),
@@ -363,5 +389,9 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
             65536: "neotoma-64k",
         },
         resource_limits=_resource_limits("neotoma"),
+        tool_select_max_tokens=256,
+        final_answer_max_tokens=768,
+        focused_tool_select_max_tokens=1536,
+        focused_final_answer_max_tokens=1536,
     ),
 }

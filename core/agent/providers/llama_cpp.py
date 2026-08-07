@@ -309,6 +309,9 @@ def _build_payload(
         "stream": False,
         "temperature": profile.default_temperature,
         "max_tokens": max_tokens,
+        "chat_template_kwargs": {
+            "enable_thinking": profile.reasoning_mode == "focused",
+        },
     }
     if profile.reasoning_mode == "none":
         payload["reasoning_effort"] = "none"

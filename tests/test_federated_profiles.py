@@ -484,6 +484,14 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
             mock.patch("core.api.cortex.is_dev_mode", return_value=False),
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
+            mock.patch(
+                "core.api.cortex.local_context_window_for_agent",
+                return_value=None,
+            ),
+            mock.patch(
+                "core.api.cortex.local_reasoning_mode_for_agent",
+                return_value="none",
+            ),
             mock.patch("core.api.cortex.get_settings_store") as store,
         ):
             store.return_value.get_snapshot.return_value = settings

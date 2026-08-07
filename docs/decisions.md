@@ -212,7 +212,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Why.** Local models do not share the cloud Agents' graded effort contract. A provider-neutral capability list keeps the HUD honest while allowing model-native reasoning where the runtime supports it.
 
-**Trade-off.** Focused mode has no APEX-controlled reasoning budget yet, and model-specific sampling remains unchanged until benchmark evidence supports it.
+**Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry; llama.cpp runtime data provides conservative total completion headroom for native thinking. Model-specific sampling remains unchanged until benchmark evidence supports it.
 
 ### Exclude Apodemus from briefing modes initially
 

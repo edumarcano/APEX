@@ -31,17 +31,30 @@ def _load_fixture(name: str) -> dict:
     return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
 
 
+def _llama_profile(
+    *,
+    agent_key: str = "apodemus",
+    context_window: int = 16384,
+    reasoning_mode: str | None = "none",
+):
+    _apex, native = resolve_effort(agent_key, None)
+    return build_concrete_agent(
+        agent_key,
+        native_effort=native,
+        local_context_window=context_window,
+        local_reasoning_mode=reasoning_mode,
+    )
+
+
 def _apodemus_profile(
     *,
     context_window: int = 16384,
     reasoning_mode: str | None = "none",
 ):
-    _apex, native = resolve_effort("apodemus", None)
-    return build_concrete_agent(
-        "apodemus",
-        native_effort=native,
-        local_context_window=context_window,
-        local_reasoning_mode=reasoning_mode,
+    return _llama_profile(
+        agent_key="apodemus",
+        context_window=context_window,
+        reasoning_mode=reasoning_mode,
     )
 
 
@@ -101,6 +114,11 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertIsNone(result.message.tool_calls)
         payload = mock_post.call_args.args[0]
         self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertEqual(
+            payload["chat_template_kwargs"],
+            {"enable_thinking": False},
+        )
+        self.assertEqual(payload["max_tokens"], 768)
         self.assertEqual(payload["temperature"], 0.2)
         self.assertFalse(payload["stream"])
         self.assertIn(SECURITY_BOUNDARY_DIRECTIVE, payload["messages"][0]["content"])
@@ -138,6 +156,59 @@ class LlamaCppProviderTests(unittest.TestCase):
             _apodemus_profile(reasoning_mode="focused"),
         )
         payload = mock_post.call_args.args[0]
+        self.assertNotIn("reasoning_effort", payload)
+        self.assertEqual(
+            payload["chat_template_kwargs"],
+            {"enable_thinking": True},
+        )
+        self.assertEqual(payload["max_tokens"], 1536)
+
+    @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
+    @patch("core.agent.providers.llama_cpp._post_chat")
+    def test_reasoning_payload_is_explicit_for_both_llama_agents(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = _load_fixture("basic_answer.json")
+
+        for agent_key in ("apodemus", "neotoma"):
+            for reasoning_mode, enabled in (("none", False), ("focused", True)):
+                with self.subTest(agent=agent_key, reasoning_mode=reasoning_mode):
+                    mock_post.reset_mock()
+                    LlamaCppProvider().generate_turn(
+                        [AgentMessage(role="user", content="Hi")],
+                        [],
+                        _llama_profile(
+                            agent_key=agent_key,
+                            reasoning_mode=reasoning_mode,
+                        ),
+                    )
+                    payload = mock_post.call_args.args[0]
+                    self.assertEqual(
+                        payload["chat_template_kwargs"],
+                        {"enable_thinking": enabled},
+                    )
+                    if enabled:
+                        self.assertNotIn("reasoning_effort", payload)
+                    else:
+                        self.assertEqual(payload["reasoning_effort"], "none")
+
+    @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
+    @patch("core.agent.providers.llama_cpp._post_chat")
+    def test_focused_tool_selection_receives_reasoning_headroom(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = _load_fixture("basic_answer.json")
+        LlamaCppProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [_descriptor()],
+            _apodemus_profile(reasoning_mode="focused"),
+        )
+        payload = mock_post.call_args.args[0]
+        self.assertEqual(payload["max_tokens"], 1536)
+        self.assertEqual(
+            payload["chat_template_kwargs"],
+            {"enable_thinking": True},
+        )
         self.assertNotIn("reasoning_effort", payload)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
