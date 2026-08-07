@@ -11,7 +11,12 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useMemo, useState, type ReactElement } from 'react'
+import {
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+} from 'react'
 
 import type {
   ToolCatalog,
@@ -124,6 +129,8 @@ export function ToolsSelector({
   onSetDefaultProfile,
 }: ToolsSelectorProps): ReactElement {
   const [open, setOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [profileMenuIndex, setProfileMenuIndex] = useState(0)
   const [search, setSearch] = useState('')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(),
@@ -132,6 +139,22 @@ export function ToolsSelector({
   const selectedTokens = selectedTokenTotal(catalog, selectedToolNames)
   const activeProfile = catalog?.profiles.find(
     (profile) => profile.id === activeToolProfileId,
+  )
+  const profileOptions = [
+    {
+      id: 'custom',
+      name: 'Custom',
+      description: 'Manual tool selection',
+    },
+    ...(catalog?.profiles.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      description: profile.description,
+    })) ?? []),
+  ]
+  const activeProfileOptionIndex = Math.max(
+    0,
+    profileOptions.findIndex((profile) => profile.id === (activeToolProfileId ?? 'custom')),
   )
   const selectedUnavailableNames = selectedToolNames.filter((name) => {
     const tool = catalog?.tools.find((item) => item.name === name)
@@ -199,6 +222,43 @@ export function ToolsSelector({
     if (name?.trim()) onRenameProfile?.(activeToolProfileId, name.trim())
   }
 
+  const selectProfile = (profileId: string): void => {
+    setProfileMenuOpen(false)
+    if (profileId !== 'custom') {
+      onProfileChange(profileId)
+    } else {
+      onSelectionChange([...selectedToolNames])
+    }
+  }
+
+  const handleProfileKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    const currentIndex = Math.min(profileMenuIndex, profileOptions.length - 1)
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      const baseIndex = profileMenuOpen ? currentIndex : activeProfileOptionIndex
+      setProfileMenuIndex(
+        Math.max(0, Math.min(profileOptions.length - 1, baseIndex + direction)),
+      )
+      setProfileMenuOpen(true)
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      setProfileMenuIndex(event.key === 'Home' ? 0 : profileOptions.length - 1)
+      setProfileMenuOpen(true)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      if (!profileMenuOpen) {
+        setProfileMenuIndex(activeProfileOptionIndex)
+        setProfileMenuOpen(true)
+      } else {
+        selectProfile(profileOptions[currentIndex]?.id ?? 'custom')
+      }
+    } else if (event.key === 'Escape' && profileMenuOpen) {
+      event.preventDefault()
+      setProfileMenuOpen(false)
+    }
+  }
+
   return (
     <div className="relative shrink-0">
       <button
@@ -208,7 +268,10 @@ export function ToolsSelector({
         aria-controls="apex-tools-selector-panel"
         aria-label={`Tools: ${activeProfile?.name ?? 'Custom'}, ${selectedToolNames.length} selected, ${formatTokens(selectedTokens)} schema tokens`}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setProfileMenuOpen(false)
+          setOpen((current) => !current)
+        }}
       >
         <span>Tools</span>
         <span className="normal-case tracking-normal text-zinc-300">
@@ -244,7 +307,10 @@ export function ToolsSelector({
             </div>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setProfileMenuOpen(false)
+                setOpen(false)
+              }}
               className="rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white"
               aria-label="Close tools selector"
             >
@@ -256,26 +322,73 @@ export function ToolsSelector({
             <label className="sr-only" htmlFor="apex-tool-profile">
               Tool profile
             </label>
-            <select
-              id="apex-tool-profile"
-              aria-label="Tool profile"
-              value={activeToolProfileId ?? 'custom'}
-              onChange={(event) => {
-                if (event.target.value !== 'custom') {
-                  onProfileChange(event.target.value)
-                } else {
-                  onSelectionChange([...selectedToolNames])
-                }
-              }}
-              className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 font-mono text-[11px] text-zinc-200 outline-none focus:border-[#7EB3FF]"
-            >
-              <option value="custom">Custom</option>
-              {catalog?.profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative min-w-0">
+              <button
+                id="apex-tool-profile"
+                type="button"
+                role="combobox"
+                aria-expanded={profileMenuOpen}
+                aria-controls="apex-tool-profile-options"
+                aria-haspopup="listbox"
+                aria-label="Tool profile"
+                onClick={() => {
+                  setProfileMenuIndex(activeProfileOptionIndex)
+                  setProfileMenuOpen((current) => !current)
+                }}
+                onKeyDown={handleProfileKeyDown}
+                className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-left font-mono text-[11px] text-zinc-200 transition-colors hover:border-[#7EB3FF]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-zinc-100">
+                    {activeProfile?.name ?? 'Custom'}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[9px] text-zinc-500">
+                    {activeProfile?.description ?? 'Manual tool selection'}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={`size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${profileMenuOpen ? 'rotate-180' : ''}`}
+                  aria-hidden
+                />
+              </button>
+              {profileMenuOpen ? (
+                <div
+                  id="apex-tool-profile-options"
+                  role="listbox"
+                  aria-label="Select tool profile"
+                  className="hud-corner-brackets hud-glass hud-glass-solid absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 rounded-xl border border-white/10 p-2 shadow-2xl"
+                >
+                  <span className="hud-corner-bl" aria-hidden />
+                  <span className="hud-corner-br" aria-hidden />
+                  {profileOptions.map((profile, index) => {
+                    const selectedProfile = profile.id === (activeToolProfileId ?? 'custom')
+                    const highlighted = index === profileMenuIndex
+                    return (
+                      <button
+                        key={profile.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selectedProfile}
+                        onClick={() => selectProfile(profile.id)}
+                        className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none ${highlighted ? 'bg-[#0F4DB8]/15' : ''} ${selectedProfile ? 'ring-1 ring-[#0F4DB8]/30' : ''} hover:bg-[#0F4DB8]/15`}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-100">
+                            {profile.name}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
+                            {profile.description}
+                          </span>
+                        </span>
+                        {selectedProfile ? (
+                          <Check className="mt-0.5 size-3.5 shrink-0 text-[#39FF88]" aria-hidden />
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
             <div className="flex items-center gap-1">
               <button type="button" onClick={saveProfile} disabled={!onSaveProfile} className="rounded-md border border-white/10 p-2 text-zinc-400 hover:border-white/25 hover:text-white disabled:opacity-35" aria-label="Save current tool profile" title="Save current profile"><Save className="size-3.5" aria-hidden /></button>
               <button type="button" onClick={duplicateProfile} disabled={!activeToolProfileId || !onDuplicateProfile} className="rounded-md border border-white/10 p-2 text-zinc-400 hover:border-white/25 hover:text-white disabled:opacity-35" aria-label="Duplicate tool profile" title="Duplicate profile"><Copy className="size-3.5" aria-hidden /></button>

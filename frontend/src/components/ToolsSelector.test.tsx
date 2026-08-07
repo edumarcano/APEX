@@ -209,7 +209,8 @@ describe('ToolsSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /Tools:/ }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Tool profile' }), 'all_allowed')
+    await user.click(screen.getByRole('combobox', { name: 'Tool profile' }))
+    await user.click(screen.getByRole('option', { name: /All APEX Tools/ }))
     expect(onProfileChange).toHaveBeenCalledWith('all_allowed')
   })
 
