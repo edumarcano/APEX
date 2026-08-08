@@ -20,6 +20,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -93,6 +95,8 @@ _DEFAULT_REPETITIONS = 3
 _COOLDOWN_SECONDS = 1.0
 _RESOURCE_SAMPLE_INTERVAL_SECONDS = 0.1
 _RESIDENT_STATES = frozenset({"loading", "loaded"})
+_APEX_LIVE_URL = "http://127.0.0.1:8000/api/v1/health/live"
+_BENCHMARK_LOCK_PATH = ROOT / "benchmarks" / ".benchmark.lock"
 
 
 class BenchmarkFailure(RuntimeError):
@@ -154,6 +158,7 @@ class FixtureInvocation:
     name: str
     arguments: dict[str, Any]
     schema_valid: bool
+    expected_error: bool = False
 
 
 def _windows_commit_snapshot() -> tuple[int | None, int | None, float | None]:
@@ -352,7 +357,7 @@ def build_resource_record(
     samples: Sequence[MemorySnapshot],
 ) -> dict[str, Any]:
     """Serialize resource observations, retaining nulls for unavailable data."""
-    observations = tuple(samples) or (baseline, final)
+    observations = (baseline, *samples, final)
     minimum_available = _minimum(
         snapshot.available_ram_bytes for snapshot in observations
     )
@@ -780,6 +785,12 @@ class FixtureDispatcher:
 
         fixture_errors = self.case.get("fixture_errors", {})
         if isinstance(fixture_errors, dict) and name in fixture_errors:
+            self.invocations[-1] = FixtureInvocation(
+                name=name,
+                arguments=copy.deepcopy(arguments),
+                schema_valid=True,
+                expected_error=True,
+            )
             raise CapabilityError(
                 CapabilityErrorCategory.UPSTREAM_FAILURE,
                 "Synthetic benchmark fixture failure.",
@@ -841,10 +852,10 @@ def _response_metrics(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": usage.total_tokens if usage is not None else None,
-        "prompt_tokens_per_second": (
+        "effective_input_tokens_per_second": (
             round(prompt_tps, 3) if prompt_tps is not None else None
         ),
-        "generation_tokens_per_second": (
+        "effective_output_tokens_per_second": (
             round(generation_tps, 3) if generation_tps is not None else None
         ),
         "success": response.error is None and bool(response.answer.strip()),
@@ -939,7 +950,14 @@ def score_tool_case(
 
     schema_validity = valid_call_count == total_call_count
     required_selection_correct = expected_tools.issubset(attempted_tools)
-    completed_required_tools = expected_tools.issubset(successful_tools)
+    expected_error_tools = {
+        invocation.name
+        for invocation in dispatcher.invocations
+        if invocation.expected_error
+    }
+    completed_required_tools = expected_tools.issubset(
+        successful_tools | (expected_error_tools & set(case.get("fixture_errors", {})))
+    )
     answer = response.answer.strip().lower()
     final_answer_produced = response.error is None and bool(answer)
     facts = [
@@ -1178,6 +1196,7 @@ class BenchmarkRunner:
                 "Local runtime remained resident after unload verification: "
                 f"{formatted}."
             )
+        self._sleep(self.cooldown_seconds)
 
     def _prepare_configuration(
         self,
@@ -1272,6 +1291,21 @@ class BenchmarkRunner:
             raise BenchmarkFailure(
                 f"Runtime did not report {configuration.runtime_alias!r} as loaded."
             )
+        reported_contexts = {
+            row.get("context_window")
+            for row in target_rows
+            if isinstance(row.get("context_window"), int)
+        }
+        if reported_contexts and configuration.context not in reported_contexts:
+            raise BenchmarkFailure(
+                f"Runtime reported context {sorted(reported_contexts)} for "
+                f"{configuration.runtime_alias!r}, requested {configuration.context}."
+            )
+        if not reported_contexts:
+            _LOGGER.warning(
+                "Runtime did not expose context_window for %s; context was not verified.",
+                configuration.runtime_alias,
+            )
 
     def _run_performance(
         self,
@@ -1307,13 +1341,13 @@ class BenchmarkRunner:
                 records,
                 "completion_tokens",
             ),
-            "median_prompt_tokens_per_second": _median_metric(
+            "median_effective_input_tokens_per_second": _median_metric(
                 records,
-                "prompt_tokens_per_second",
+                "effective_input_tokens_per_second",
             ),
-            "median_generation_tokens_per_second": _median_metric(
+            "median_effective_output_tokens_per_second": _median_metric(
                 records,
-                "generation_tokens_per_second",
+                "effective_output_tokens_per_second",
             ),
             "requests": records,
         }
@@ -1592,6 +1626,33 @@ def _default_output_path() -> Path:
     return ROOT / "benchmarks" / "results" / f"{stamp}.json"
 
 
+def _apex_is_running() -> bool:
+    try:
+        with urllib.request.urlopen(_APEX_LIVE_URL, timeout=0.5) as response:
+            return 200 <= response.status < 300
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+class _BenchmarkLock:
+    def __enter__(self) -> "_BenchmarkLock":
+        try:
+            self._fd = os.open(
+                _BENCHMARK_LOCK_PATH,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            )
+        except FileExistsError as exc:
+            raise BenchmarkAbort(
+                f"Another benchmark command is already running ({_BENCHMARK_LOCK_PATH})."
+            ) from exc
+        os.write(self._fd, str(os.getpid()).encode("ascii"))
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        os.close(self._fd)
+        _BENCHMARK_LOCK_PATH.unlink(missing_ok=True)
+
+
 def render_markdown(result: Mapping[str, Any]) -> str:
     """Render a compact human-readable companion report."""
     system = result.get("system", {})
@@ -1620,7 +1681,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         [
             "## Performance",
             "",
-            "| Agent | Provider | Context | Reasoning | Load | Median latency | Generation | Peak private memory | Commit delta | Failures |",
+            "| Agent | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
             "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1639,7 +1700,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
                     performance.get("median_latency_seconds")
                 ),
                 generation=_display_throughput(
-                    performance.get("median_generation_tokens_per_second")
+                    performance.get("median_effective_output_tokens_per_second")
                 ),
                 private=_display_bytes(
                     resources.get("provider_process_private_peak_bytes")
@@ -1733,7 +1794,7 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
         f"Repetitions: {result.get('repetitions', '?')}",
         "",
         "PERFORMANCE",
-        "Agent / context              Load       Median latency   Generation   Failures",
+        "Agent / context              Load       Median latency   Effective output   Failures",
     ]
     for run in result.get("runs", []):
         performance = run.get("performance") or {}
@@ -1741,7 +1802,7 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
             f"{str(run.get('agent', '?')) + ' ' + str(run.get('context', '?')):28}"
             f"{_display_seconds(run.get('load_seconds')):11}"
             f"{_display_seconds(performance.get('median_latency_seconds')):18}"
-            f"{_display_throughput(performance.get('median_generation_tokens_per_second')):13}"
+            f"{_display_throughput(performance.get('median_effective_output_tokens_per_second')):19}"
             f"{performance.get('failures', '—')}"
         )
 
@@ -1817,6 +1878,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.repetitions < 1:
         parser.error("--repetitions must be at least 1.")
+    if _apex_is_running():
+        parser.error(
+            "APEX is running at /api/v1/health/live; stop the normal APEX process "
+            "before benchmarking local models."
+        )
 
     try:
         configurations = build_configurations(
@@ -1828,16 +1894,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             runtime_alias=args.runtime_alias,
         )
         cases = load_benchmark_cases()
-        result = BenchmarkRunner(
-            configurations,
-            cases,
-            repetitions=args.repetitions,
-        ).run()
+        with _BenchmarkLock():
+            if _apex_is_running():
+                raise BenchmarkAbort(
+                    "APEX started while preparing the benchmark; refusing to run."
+                )
+            result = BenchmarkRunner(
+                configurations,
+                cases,
+                repetitions=args.repetitions,
+            ).run()
         json_path, markdown_path = write_results(
             result,
             args.output or _default_output_path(),
         )
-    except ValueError as exc:
+    except (ValueError, BenchmarkAbort) as exc:
         parser.error(str(exc))
 
     print(render_terminal_summary(result))

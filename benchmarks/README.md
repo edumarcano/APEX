@@ -64,10 +64,17 @@ or provider, and verifies the runtime state after every unload. If unload or
 residency cannot be verified, the command stops rather than moving to another
 model. Reasoning changes reuse a resident alias because they do not change the
 runtime model configuration.
+The command refuses to run while `/api/v1/health/live` reports a running APEX
+process, and a lock file prevents concurrent benchmark commands. After verified
+unload it waits for host memory state to settle. When llama.cpp reports a
+context window, the requested context must match; unavailable reporting emits
+a warning.
 
 Each configuration receives one warmup request that is excluded from measured
 performance results. The performance prompts record latency, normalized token
-counts, and measured token rates when the provider returns usage data. Resource
+counts, and effective token rates when the provider returns usage data. These
+rates use total provider wall time and are not native generation throughput.
+Resource
 records use available physical RAM, Windows commit charge when available, and
 provider-process working set/private memory when the process can be identified.
 System memory deltas are the preferred cross-model comparison; process values
@@ -80,6 +87,9 @@ calls weather, calendar, F1, reminders, or other live connectors. Scores are
 separate rates for task success, required tool selection, schema validity,
 multi-tool completion, unnecessary tool calls, and failures. There is no
 LLM-as-judge or weighted overall score.
+The benchmark measures configured APEX Agents as shipped, including their
+Agent-specific identity instructions; it is not a neutral underlying-model
+test.
 
 ## Results
 
