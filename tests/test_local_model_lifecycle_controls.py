@@ -295,7 +295,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.get_status_snapshot.return_value = snapshot
 
         settings = mock.Mock()
-        settings.ask_apex.apodemus_context_window = 8192
+        settings.ask_apex.local_context_windows = {"apodemus": 16384, "neotoma": 16384}
 
         with (
             mock.patch(
@@ -336,12 +336,12 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-8k"],
+            "installed_models": ["apodemus-16k"],
             "loaded_models": [
                 {
                     "provider": "llama_cpp",
-                    "name": "apodemus-8k",
-                    "model": "apodemus-8k",
+                    "name": "apodemus-16k",
+                    "model": "apodemus-16k",
                     "state": "failed",
                     "context_window": None,
                     "size_bytes": None,
@@ -362,7 +362,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.get_status_snapshot.return_value = snapshot
 
         settings = mock.Mock()
-        settings.ask_apex.apodemus_context_window = 8192
+        settings.ask_apex.local_context_windows = {"apodemus": 16384, "neotoma": 16384}
 
         with (
             mock.patch(
@@ -416,7 +416,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend.enabled = True
         settings = mock.Mock()
         settings.ask_apex.enabled = True
-        settings.ask_apex.apodemus_context_window = 8192
+        settings.ask_apex.local_context_windows = {"apodemus": 16384, "neotoma": 16384}
         settings.user_designation = ""
         missing = {
             "provider": "llama_cpp",
@@ -441,7 +441,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 query_agent(AgentQueryRequest(prompt="hello", agent="apodemus"))
 
         self.assertEqual(raised.exception.status_code, 503)
-        self.assertIn("apodemus-8k", raised.exception.detail)
+        self.assertIn("apodemus-16k", raised.exception.detail)
         self.assertIn("llama.cpp", raised.exception.detail)
         self.assertNotIn("Ollama", raised.exception.detail)
         switch.assert_not_called()

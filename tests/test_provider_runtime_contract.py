@@ -43,7 +43,13 @@ from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCa
 
 def _concrete_profile(key: str):
     _apex, native = resolve_effort(key, None)
-    return build_concrete_agent(key, native_effort=native)
+    return build_concrete_agent(
+        key,
+        native_effort=native,
+        local_reasoning_mode=(
+            "none" if key in {"sorex", "mus", "apodemus", "neotoma"} else None
+        ),
+    )
 
 
 class ProviderContractTests(unittest.TestCase):
@@ -72,24 +78,78 @@ class ProviderContractTests(unittest.TestCase):
         sorex = _concrete_profile("sorex")
         mus = _concrete_profile("mus")
         apodemus = _concrete_profile("apodemus")
+        neotoma = _concrete_profile("neotoma")
         self.assertTrue(isinstance(sorex, LocalModelProfile))
         self.assertTrue(isinstance(mus, LocalModelProfile))
         self.assertTrue(isinstance(apodemus, LocalModelProfile))
+        self.assertTrue(isinstance(neotoma, LocalModelProfile))
         self.assertEqual(resolve_inference_provider(sorex), "ollama")
         self.assertEqual(resolve_inference_provider(apodemus), "llama_cpp")
         self.assertEqual(sorex.runtime_model_id, sorex.api_model)
         self.assertEqual(mus.runtime_model_id, mus.api_model)
-        self.assertEqual(apodemus.runtime_model_id, "apodemus-8k")
+        self.assertEqual(apodemus.runtime_model_id, "apodemus-16k")
         self.assertEqual(apodemus.api_model, "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(apodemus.allowed_context_windows, (4096, 16384, 32768, 131072))
+        self.assertEqual(apodemus.default_context_window, 16384)
+        self.assertEqual(apodemus.high_resource_context_options, (131072,))
+        self.assertEqual(neotoma.runtime_model_id, "neotoma-16k")
+        self.assertEqual(neotoma.api_model, "Qwen3.5-4B-Q4_K_M.gguf")
+        self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))
+        self.assertEqual(neotoma.maximum_context_window, 262144)
+        self.assertEqual(neotoma.high_resource_context_options, (65536,))
+        self.assertEqual(apodemus.reasoning_mode, "none")
+        self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
+        self.assertEqual(neotoma.reasoning_mode, "none")
+        self.assertEqual(neotoma.supported_reasoning_modes, ("none", "focused"))
+        self.assertEqual(
+            (apodemus.tool_select_max_tokens, apodemus.final_answer_max_tokens),
+            (256, 768),
+        )
+        self.assertEqual(
+            (neotoma.tool_select_max_tokens, neotoma.final_answer_max_tokens),
+            (256, 768),
+        )
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
         self.assertFalse(apodemus.high_resource)
+        self.assertFalse(
+            build_concrete_agent(
+                "apodemus",
+                native_effort=None,
+                local_context_window=32768,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
+        self.assertTrue(
+            build_concrete_agent(
+                "apodemus",
+                native_effort=None,
+                local_context_window=131072,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
+        self.assertFalse(
+            build_concrete_agent(
+                "neotoma",
+                native_effort=None,
+                local_context_window=32768,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
+        self.assertTrue(
+            build_concrete_agent(
+                "neotoma",
+                native_effort=None,
+                local_context_window=65536,
+                local_reasoning_mode="none",
+            ).high_resource
+        )
         self.assertTrue(is_local_inference_provider("ollama"))
         self.assertTrue(is_local_inference_provider("llama_cpp"))
         self.assertFalse(is_local_inference_provider("openai"))
 
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
-        for agent_key in ("sorex", "mus", "apodemus"):
+        for agent_key in ("sorex", "mus", "apodemus", "neotoma"):
             profile = build_concrete_agent(agent_key, native_effort=None)
             self.assertTrue(is_local_profile(profile))
             selected = local_model_ref_for_agent(agent_key)
@@ -100,15 +160,37 @@ class ProviderContractTests(unittest.TestCase):
 
         known = known_local_model_refs()
         expected = set()
-        for agent_key in ("sorex", "mus", "apodemus"):
+        for agent_key in ("sorex", "mus", "apodemus", "neotoma"):
             expected.update(local_model_refs_for_agent(agent_key))
         self.assertEqual(known, frozenset(expected))
         self.assertEqual(len(local_model_refs_for_agent("apodemus")), 4)
+        self.assertEqual(len(local_model_refs_for_agent("neotoma")), 4)
         self.assertIsNone(
             agent_key_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")
             )
         )
+
+    def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
+        profile = build_concrete_agent(
+            "apodemus",
+            native_effort=None,
+            local_reasoning_mode="focused",
+        )
+        self.assertEqual(profile.reasoning_mode, "focused")
+
+    def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
+        for agent_key in ("apodemus", "neotoma"):
+            with self.subTest(agent=agent_key):
+                profile = build_concrete_agent(
+                    agent_key,
+                    native_effort=None,
+                    local_reasoning_mode="focused",
+                )
+                self.assertEqual(
+                    (profile.tool_select_max_tokens, profile.final_answer_max_tokens),
+                    (1536, 1536),
+                )
 
     def test_agent_loop_follows_local_policy_for_non_ollama_local_profile(self) -> None:
         class FakeLocalProfile:
@@ -731,11 +813,11 @@ class PublicRosterTests(unittest.TestCase):
         self.assertIn("xai", providers)
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"},
-            {"sorex", "mus", "apodemus"},
+            {"sorex", "mus", "apodemus", "neotoma"},
         )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "llama_cpp"},
-            {"apodemus"},
+            {"apodemus", "neotoma"},
         )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},

@@ -118,7 +118,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Decision.** Connectors normalize into typed results, and briefing models receive a sanitized, bounded `SynthesisInput` marked as untrusted data.
 
-**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, Ollama, and deterministic output.
+**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, local Ollama/llama.cpp Agents, and deterministic output.
 
 **Trade-off.** Every new synthesis-relevant fact requires deliberate schema work. That maintenance is preferable to silently expanding model disclosure.
 
@@ -140,7 +140,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Mus, Sorex, and Structured Digest rather than one opaque automatic selector.
+**Decision.** The HUD offers Panthera, Mus, Sorex, Apodemus, and Structured Digest rather than one opaque automatic selector.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
 
@@ -168,7 +168,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, and Apodemus.
+**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, Apodemus, and Neotoma.
 
 **Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
 
@@ -200,27 +200,27 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use stable runtime aliases for Apodemus context presets
 
-**Decision.** Apodemus loads through aliases such as `apodemus-8k` instead of exposing raw GGUF paths or an arbitrary context slider.
+**Decision.** Apodemus loads through aliases such as `apodemus-16k` and `apodemus-132k` instead of exposing raw GGUF paths or an arbitrary context slider.
 
 **Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. The model maximum of 131072 tokens stays metadata only.
+**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the model maximum metadata remains separate from selectable presets where it exceeds the exposed policy.
 
-### Keep Apodemus reasoning off
+### Make local reasoning capability-driven and private
 
-**Decision.** Server presets and every Apodemus request disable reasoning (`reasoning_effort: "none"`), and hidden reasoning fields or think-style tags are discarded.
+**Decision.** Local reasoning preferences are persisted per Agent and default to `none`. Apodemus and Neotoma expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"` while `Focused` omits that field so the model template can use native reasoning. Hidden reasoning fields and think-style tags are discarded before display.
 
-**Why.** I want Apodemus for efficient tool-driven local work, not extended hidden deliberation.
+**Why.** Local models do not share the cloud Agents' graded effort contract. A provider-neutral capability list keeps the HUD honest while allowing model-native reasoning where the runtime supports it.
 
-**Trade-off.** Some model behaviors that rely on internal reasoning traces are unavailable.
+**Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry; llama.cpp runtime data provides conservative total completion headroom for native thinking. Model-specific sampling remains unchanged until benchmark evidence supports it.
 
-### Exclude Apodemus from briefing modes initially
+### Keep Apodemus as an explicit briefing mode
 
-**Decision.** The first Apodemus release supports interactive local Agents only; briefing modes remain Panthera, Mus, Sorex, and Structured Digest.
+**Decision.** Apodemus is available as an explicit briefing synthesis mode, but it is not part of Panthera's automatic fallback chain.
 
-**Why.** I want briefing fallback and synthesis contracts to stay stable until llama.cpp behavior is proven for that path.
+**Why.** Apodemus uses the same provider-neutral local synthesis contract as Ollama while preserving explicit user intent. Cold loads use a dedicated 16K context policy, and resident llama.cpp aliases are reused rather than silently targeting a different context.
 
-**Trade-off.** Gemma-backed briefings wait for a later integration.
+**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute Mus or Sorex behind the user's selection.
 
 ## Security
 

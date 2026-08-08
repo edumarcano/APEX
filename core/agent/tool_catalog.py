@@ -300,16 +300,9 @@ def _default_profile(agent_key: str) -> tuple[str, str]:
 
 def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
     """Build the complete provider-neutral catalog for one Apex Agent."""
-    if agent_key not in {
-        "acinonyx",
-        "panthera",
-        "neofelis",
-        "delphinus",
-        "orcinus",
-        "sorex",
-        "mus",
-        "apodemus",
-    }:
+    from core.agent.catalog import AGENT_SPECS
+
+    if agent_key not in AGENT_SPECS:
         raise ValueError(f"Unknown Agent: {agent_key!r}")
 
     from core.settings import get_settings_store
@@ -535,18 +528,18 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
 
     context_window: int | None = None
     reserved_response_tokens: int | None = None
-    if agent_key in {"sorex", "mus", "apodemus"}:
-        from core.agent.catalog import build_concrete_agent
+    if AGENT_SPECS[agent_key].runtime == "local":
+        from core.agent.catalog import (
+            build_concrete_agent,
+            local_context_window_for_agent,
+            local_reasoning_mode_for_agent,
+        )
 
-        local_context_window = None
-        if agent_key == "apodemus":
-            from core.settings import get_settings_store
-
-            local_context_window = (
-                get_settings_store().get_snapshot().ask_apex.apodemus_context_window
-            )
         profile = build_concrete_agent(
-            agent_key, native_effort=None, local_context_window=local_context_window
+            agent_key,
+            native_effort=None,
+            local_context_window=local_context_window_for_agent(agent_key),
+            local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         )
         context_window = profile.context_window
         reserved_response_tokens = profile.final_answer_max_tokens

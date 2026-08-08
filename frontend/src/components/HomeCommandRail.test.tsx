@@ -8,23 +8,30 @@ import type { AgentStatus, AgentKey, ToolCatalog } from '../types/telemetry'
 import { HomeCommandRail } from './HomeCommandRail'
 
 function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
-  const local = key === 'mus' || key === 'sorex' || key === 'apodemus'
+  const local = key === 'mus' || key === 'sorex' || key === 'apodemus' || key === 'neotoma'
   return {
     key,
     display_name: `Apex ${key.slice(0, 1).toUpperCase()}${key.slice(1)}`,
     description: `${key} profile.`,
     configured_model:
-      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
+      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : key === 'neotoma' ? 'Qwen3.5-4B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
     sort_order: key === 'panthera' ? 1 : 2,
     capabilities: [],
     native_tools: {},
-    provider: key === 'apodemus' ? 'llama_cpp' : local ? 'ollama' : 'openai',
+    provider: key === 'apodemus' || key === 'neotoma' ? 'llama_cpp' : local ? 'ollama' : 'openai',
     version: '7.4',
     runtime: local ? 'local' : 'cloud',
     tier: 'stable',
-    stability: key === 'apodemus' ? 'preview' : 'stable',
+    stability: key === 'apodemus' || key === 'neotoma' ? 'preview' : 'stable',
     effort_options: local ? null : ['light', 'focused', 'extended'],
     default_effort: local ? null : 'focused',
+    context_window: key === 'apodemus' ? 16384 : key === 'neotoma' ? 16384 : null,
+    context_window_options: key === 'apodemus' ? [4096, 16384, 32768, 131072] : key === 'neotoma' ? [4096, 16384, 32768, 65536] : null,
+    context_window_high_resource_options: key === 'apodemus' ? [131072] : key === 'neotoma' ? [65536] : null,
+    default_context_window: key === 'apodemus' ? 16384 : key === 'neotoma' ? 16384 : null,
+    reasoning_mode: key === 'apodemus' || key === 'neotoma' ? 'none' : local ? 'none' : null,
+    reasoning_mode_options: key === 'apodemus' || key === 'neotoma' ? ['none', 'focused'] : local ? ['none'] : null,
+    default_reasoning_mode: key === 'apodemus' || key === 'neotoma' ? 'none' : local ? 'none' : null,
     status,
     status_source: local ? 'runtime' : 'configuration',
     status_checked_at: null,
@@ -181,10 +188,10 @@ describe('HomeCommandRail', () => {
       display_name: 'Apex Apodemus',
       loaded_model: {
         provider: 'llama_cpp' as const,
-        name: 'apodemus-8k',
-        model: 'apodemus-8k',
+        name: 'apodemus-16k',
+        model: 'apodemus-16k',
         state: 'loaded' as const,
-        context_window: 8192,
+        context_window: 16384,
         size_bytes: null,
         size_vram_bytes: null,
         processor: null,
@@ -194,7 +201,7 @@ describe('HomeCommandRail', () => {
     }
     renderRail({ activeLocalModel: activeApodemus })
 
-    expect(screen.getByText('Apodemus · llama.cpp · 8K · Loaded')).toBeVisible()
+    expect(screen.getByText('Apodemus · llama.cpp · 16K · Loaded')).toBeVisible()
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {

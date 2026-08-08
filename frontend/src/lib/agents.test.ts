@@ -9,9 +9,10 @@ import {
 } from './agents'
 
 describe('agents helpers', () => {
-  it('includes Apodemus among local Agents', () => {
-    expect(LOCAL_AGENT_KEYS).toEqual(['sorex', 'mus', 'apodemus'])
+  it('includes llama.cpp Agents among local Agents', () => {
+    expect(LOCAL_AGENT_KEYS).toEqual(['sorex', 'mus', 'apodemus', 'neotoma'])
     expect(isLocalAgentKey('apodemus')).toBe(true)
+    expect(isLocalAgentKey('neotoma')).toBe(true)
     expect(isLocalAgentKey('panthera')).toBe(false)
   })
 
@@ -31,6 +32,7 @@ describe('agents helpers', () => {
   it('formats known context windows compactly', () => {
     expect(formatContextWindowLabel(8192)).toBe('8K')
     expect(formatContextWindowLabel(32768)).toBe('32K')
+    expect(formatContextWindowLabel(131072)).toBe('132K')
     expect(formatContextWindowLabel(null)).toBeNull()
   })
 })

@@ -10,7 +10,6 @@ import type {
   TtsEngine,
 } from '../types/telemetry'
 import type {
-  ApodemusContextWindow,
   BriefingMode,
   FeaturesSettings,
   FootballSettings,
@@ -27,6 +26,8 @@ import type {
   ToolProfilesSettings,
   ToolProfileSettings,
   LlamaCppServerStatusResponse,
+  LocalContextWindows,
+  LocalReasoningModes,
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
@@ -43,13 +44,7 @@ const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = [
   'sorex',
   'mus',
   'apodemus',
-]
-
-const VALID_APODEMUS_CONTEXT_WINDOWS: readonly ApodemusContextWindow[] = [
-  4096,
-  8192,
-  16384,
-  32768,
+  'neotoma',
 ]
 
 export { isLocalAgentKey } from './agents'
@@ -106,7 +101,8 @@ export function resolveAppliedAgentSelection(
 
 const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
   'effort',
-  'apodemus_context_window',
+  'local_context_windows',
+  'local_reasoning_modes',
   'neofelis_google_search_enabled',
   'neofelis_google_maps_enabled',
   'delphinus_x_search_enabled',
@@ -133,6 +129,7 @@ const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
   'mus',
   'sorex',
+  'apodemus',
   'structured_digest',
 ]
 
@@ -165,11 +162,40 @@ function isLocalSettingsAgent(value: unknown): value is LocalSettingsAgent {
   )
 }
 
-function isApodemusContextWindow(value: unknown): value is ApodemusContextWindow {
-  return (
-    typeof value === 'number' &&
-    (VALID_APODEMUS_CONTEXT_WINDOWS as readonly number[]).includes(value)
-  )
+function parseLocalContextWindows(value: unknown): LocalContextWindows | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const entries = Object.entries(value)
+  if (
+    !entries.every(
+      ([agent, contextWindow]) =>
+        agent.trim().length > 0 &&
+        typeof contextWindow === 'number' &&
+        Number.isInteger(contextWindow) &&
+        contextWindow > 0,
+    )
+  ) {
+    return null
+  }
+  return Object.fromEntries(entries) as LocalContextWindows
+}
+
+function parseLocalReasoningModes(value: unknown): LocalReasoningModes | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const entries = Object.entries(value)
+  if (
+    !entries.every(
+      ([agent, reasoningMode]) =>
+        agent.trim().length > 0 &&
+        (reasoningMode === 'none' || reasoningMode === 'focused'),
+    )
+  ) {
+    return null
+  }
+  return Object.fromEntries(entries) as LocalReasoningModes
 }
 
 function isAgentRuntime(value: unknown): value is AgentRuntime {
@@ -420,7 +446,16 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (!isLocalSettingsAgent(value.ask_apex.local_agent)) {
     return null
   }
-  if (!isApodemusContextWindow(value.ask_apex.apodemus_context_window)) {
+  const localContextWindows = parseLocalContextWindows(
+    value.ask_apex.local_context_windows,
+  )
+  if (!localContextWindows) {
+    return null
+  }
+  const localReasoningModes = parseLocalReasoningModes(
+    value.ask_apex.local_reasoning_modes,
+  )
+  if (!localReasoningModes) {
     return null
   }
   if (typeof value.ask_apex.neofelis_google_search_enabled !== 'boolean') {
@@ -459,7 +494,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       cloud_agent: value.ask_apex.cloud_agent,
       effort: value.ask_apex.effort,
       local_agent: value.ask_apex.local_agent,
-      apodemus_context_window: value.ask_apex.apodemus_context_window,
+      local_context_windows: localContextWindows,
+      local_reasoning_modes: localReasoningModes,
       neofelis_google_search_enabled: value.ask_apex.neofelis_google_search_enabled,
       neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
       delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
@@ -494,7 +530,11 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     market: {
       symbols: [...settings.market.symbols],
     },
-    ask_apex: { ...settings.ask_apex },
+    ask_apex: {
+      ...settings.ask_apex,
+      local_context_windows: { ...settings.ask_apex.local_context_windows },
+      local_reasoning_modes: { ...settings.ask_apex.local_reasoning_modes },
+    },
     ...(settings.tool_profiles
       ? {
           tool_profiles: {
@@ -570,7 +610,10 @@ function diffSection<T extends object>(
   let dirty = false
 
   for (const key of Object.keys(draft) as Array<keyof T>) {
-    if (draft[key] !== baseline[key]) {
+    if (
+      draft[key] !== baseline[key] &&
+      JSON.stringify(draft[key]) !== JSON.stringify(baseline[key])
+    ) {
       patch[key] = draft[key]
       dirty = true
     }

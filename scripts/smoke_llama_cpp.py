@@ -50,6 +50,7 @@ def _chat(
         "temperature": 0.2,
         "max_tokens": 256,
         "reasoning_effort": "none",
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     if tools:
         payload["tools"] = tools
@@ -344,7 +345,7 @@ def _print_table(results: list[CheckResult]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Optional llama.cpp smoke checks for Apex Apodemus."
+        description="Optional llama.cpp smoke checks for Apex local Agents."
     )
     parser.add_argument(
         "--host",
@@ -353,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--model",
-        default="apodemus-8k",
+        default="apodemus-16k",
         help="Runtime alias to exercise",
     )
     parser.add_argument(

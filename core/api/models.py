@@ -11,6 +11,7 @@ from core.agent.types import (
     AgentKey,
     AgentMessage,
     CostEstimate,
+    LocalReasoningMode,
     TokenUsage,
     ToolProfileMetadata,
 )
@@ -40,14 +41,16 @@ class RuntimeMetadata(BaseModel):
         description="Active briefing synthesis backend (dev config or production default).",
     )
     briefing_mode: (
-        Literal["panthera", "mus", "sorex", "structured_digest"] | None
+        Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"] | None
     ) = Field(
         default=None,
         description="Explicit briefing mode used for this run.",
     )
     # Gemini remains accepted here so historical briefing ledger rows parse.
-    synthesis_provider: Literal["gemini", "ollama", "raw", "demo", "openai"] | None = None
-    synthesis_agent: Literal["panthera", "mus", "sorex"] | None = None
+    synthesis_provider: (
+        Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"] | None
+    ) = None
+    synthesis_agent: Literal["panthera", "mus", "sorex", "apodemus"] | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -414,6 +417,34 @@ class AgentStatus(BaseModel):
         default=None,
         description="Selectable APEX effort tiers; null for fixed-effort local Agents.",
     )
+    context_window: int | None = Field(
+        default=None,
+        description="Currently selected local context preset, when configurable.",
+    )
+    context_window_options: list[int] | None = Field(
+        default=None,
+        description="Selectable local context presets; null for fixed-context Agents.",
+    )
+    context_window_high_resource_options: list[int] | None = Field(
+        default=None,
+        description="Selectable local context presets that carry a high-resource label.",
+    )
+    default_context_window: int | None = Field(
+        default=None,
+        description="Default local context preset when no preference is stored.",
+    )
+    reasoning_mode: LocalReasoningMode | None = Field(
+        default=None,
+        description="Currently selected local reasoning mode, when configurable.",
+    )
+    reasoning_mode_options: list[LocalReasoningMode] | None = Field(
+        default=None,
+        description="Selectable local reasoning modes; null for fixed-mode Agents.",
+    )
+    default_reasoning_mode: LocalReasoningMode | None = Field(
+        default=None,
+        description="Default local reasoning mode when no preference is stored.",
+    )
     default_effort: Literal["light", "focused", "extended"] | None = Field(
         default=None,
         description="Default APEX effort tier for this Agent.",
@@ -523,7 +554,7 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["mus", "sorex", "apodemus"] = Field(
+    agent: Literal["mus", "sorex", "apodemus", "neotoma"] = Field(
         description="Local Apex Agent to pre-warm in local runtime memory."
     )
 
@@ -533,7 +564,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["mus", "sorex", "apodemus"] = Field(
+    agent: Literal["mus", "sorex", "apodemus", "neotoma"] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 
@@ -555,8 +586,8 @@ class BriefingHistoryRecord(BaseModel):
 
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
-    provider: Literal["ollama", "raw", "demo", "openai"] | None = None
-    agent: Literal["panthera", "mus", "sorex"] | None = None
+    provider: Literal["ollama", "llama_cpp", "raw", "demo", "openai"] | None = None
+    agent: Literal["panthera", "mus", "sorex", "apodemus"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
@@ -653,7 +684,7 @@ class VoiceSpeakResponse(BaseModel):
 
 
 class BriefingTriggerRequest(BaseModel):
-    mode: Literal["panthera", "mus", "sorex", "structured_digest"] | None = Field(
+    mode: Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"] | None = Field(
         default=None,
         description="Optional briefing mode override; omitted requests use the saved default.",
     )
@@ -665,7 +696,7 @@ class BriefingGenerateRequest(BaseModel):
         min_length=1,
         description="Process-current telemetry snapshot identity to synthesize from.",
     )
-    mode: Literal["panthera", "mus", "sorex", "structured_digest"] = Field(
+    mode: Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
     )

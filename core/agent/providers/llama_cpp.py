@@ -1,4 +1,4 @@
-"""llama.cpp OpenAI-compatible Chat Completions provider for Apex Apodemus."""
+"""llama.cpp OpenAI-compatible Chat Completions provider for Apex local Agents."""
 
 from __future__ import annotations
 
@@ -309,8 +309,12 @@ def _build_payload(
         "stream": False,
         "temperature": profile.default_temperature,
         "max_tokens": max_tokens,
-        "reasoning_effort": "none",
+        "chat_template_kwargs": {
+            "enable_thinking": profile.reasoning_mode == "focused",
+        },
     }
+    if profile.reasoning_mode == "none":
+        payload["reasoning_effort"] = "none"
     if tools:
         payload["tools"] = [descriptor_to_openai_schema(tool) for tool in tools]
         payload["tool_choice"] = "auto"

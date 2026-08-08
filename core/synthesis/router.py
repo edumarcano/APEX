@@ -25,8 +25,15 @@ from core.agent.local_runtime.coordinator import (
     switch_local_model,
     try_begin_local_execution,
 )
-from core.agent.local_runtime.registry import get_local_runtime_backend
-from core.agent.types import AgentMessage
+from core.agent.local_runtime.registry import (
+    get_local_runtime_backend,
+    iter_local_runtime_backends,
+)
+from core.agent.providers.llama_cpp import LlamaCppProvider
+from core.agent.providers.llama_cpp_models import (
+    llama_cpp_context_window_for_runtime_model_id,
+)
+from core.agent.types import AgentMessage, LocalReasoningMode
 from core.config import (
     LOCAL_FALLBACK_GRACE_SECONDS,
     LOCAL_PRIMARY_GRACE_SECONDS,
@@ -39,6 +46,7 @@ from core.synthesis.formatting import (
     wrap_untrusted_payload,
 )
 from core.synthesis.models import (
+    APODEMUS_BRIEFING_CONTEXT_WINDOW,
     LOCAL_BRIEFING_AGENTS,
     BriefingMode,
     SynthesisInput,
@@ -49,6 +57,8 @@ from core.settings import get_settings_store
 
 _LOGGER = logging.getLogger(__name__)
 
+_LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS = 512
+
 
 StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
@@ -56,6 +66,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 @dataclass
 class WarmupHandle:
     agent_key: str = "mus"
+    model_ref: LocalModelRef | None = None
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
     reason: str | None = None
@@ -68,41 +79,39 @@ class WarmupHandle:
         return int(((end or time.monotonic()) - self.started_at) * 1000)
 
 
-def _agent_key_for_model(model_name: str | None) -> str | None:
-    for key, spec in AGENT_SPECS.items():
-        if spec.runtime == "local" and spec.api_model == model_name:
-            return key
-    return None
+def resident_local_model_ref() -> LocalModelRef | None:
+    """Return the provider-qualified resident APEX model, when one is known."""
+    return get_active_local_model()
 
 
 def resident_agent_key() -> str | None:
-    tracked = get_active_local_model()
-    if tracked is not None:
-        key = agent_key_for_local_model_ref(tracked)
-        if key:
-            return key
-    ollama = get_local_runtime_backend("ollama")
-    if not ollama.enabled:
-        return None
-    snapshot = get_provider_snapshot("ollama")
-    for model in snapshot["loaded_models"]:
-        for value in (model["model"], model["name"]):
-            key = _agent_key_for_model(value)
-            if key:
-                return key
-    return None
+    tracked = resident_local_model_ref()
+    return agent_key_for_local_model_ref(tracked) if tracked is not None else None
 
 
 def _has_unrecognized_resident_model() -> bool:
-    ollama = get_local_runtime_backend("ollama")
-    if not ollama.enabled:
-        return False
-    snapshot = get_provider_snapshot("ollama")
-    return bool(snapshot["loaded_models"]) and resident_agent_key() is None
+    """Return whether an enabled local backend reports an unknown resident model."""
+    for backend in iter_local_runtime_backends(enabled_only=True):
+        snapshot = get_provider_snapshot(backend.provider)
+        if not snapshot["reachable"]:
+            continue
+        for model in snapshot["loaded_models"]:
+            if model["state"] != "loaded":
+                continue
+            recognized = any(
+                agent_key_for_local_model_ref(
+                    LocalModelRef(provider=backend.provider, model=value)
+                )
+                is not None
+                for value in (model["model"], model["name"])
+            )
+            if not recognized:
+                return True
+    return False
 
 
 def _system_prompt_for_agent(agent_key: str) -> str:
-    """Sorex keeps its local prompt; Mus uses the primary briefing contract."""
+    """Sorex keeps its compact prompt; other local briefing Agents use primary."""
     if agent_key == "sorex":
         return OLLAMA_SYNTHESIS_PROMPT
     return PRIMARY_SYNTHESIS_PROMPT
@@ -121,14 +130,36 @@ class SynthesisRouter:
     ) -> None:
         self._state_callback(phase, provider, agent, reason)
 
-    def start_agent_warmup(self, agent_key: str) -> WarmupHandle:
+    def start_agent_warmup(
+        self,
+        agent_key: str,
+        *,
+        context_window: int | None = None,
+        reasoning_mode: LocalReasoningMode | None = None,
+    ) -> WarmupHandle:
         handle = WarmupHandle(agent_key=agent_key)
         if agent_key not in LOCAL_BRIEFING_AGENTS:
             handle.reason = "local_agent_invalid"
             handle.finished_at = time.monotonic()
             handle.event.set()
             return handle
-        if not get_local_runtime_backend("ollama").enabled:
+        if agent_key == "apodemus":
+            context_window = context_window or APODEMUS_BRIEFING_CONTEXT_WINDOW
+            reasoning_mode = reasoning_mode or "none"
+        try:
+            agent = build_concrete_agent(
+                agent_key,
+                native_effort=None,
+                local_context_window=context_window,
+                local_reasoning_mode=reasoning_mode,
+            )
+            backend = get_local_runtime_backend(agent.provider)
+        except Exception:
+            handle.reason = "local_warmup_failed"
+            handle.finished_at = time.monotonic()
+            handle.event.set()
+            return handle
+        if not backend.enabled:
             handle.reason = "local_disabled"
             handle.finished_at = time.monotonic()
             handle.event.set()
@@ -144,12 +175,11 @@ class SynthesisRouter:
             handle.event.set()
             return handle
 
-        self._state("loading", "ollama", agent_key, None)
+        self._state("loading", agent.provider, agent_key, None)
 
         def worker() -> None:
             try:
-                agent = build_concrete_agent(agent_key, native_effort=None)
-                snapshot = get_provider_snapshot("ollama")
+                snapshot = get_provider_snapshot(agent.provider)
                 if not snapshot["reachable"]:
                     handle.reason = "local_unreachable"
                     return
@@ -159,6 +189,7 @@ class SynthesisRouter:
                 model_ref = LocalModelRef(
                     provider=agent.provider, model=agent.runtime_model_id
                 )
+                handle.model_ref = model_ref
                 if not is_local_model_ready(model_ref):
                     allowed, gate_reason = check_resource_gate(
                         agent.ram_limit, agent.cpu_limit
@@ -198,9 +229,15 @@ class SynthesisRouter:
             return None
         resident = resident_agent_key()
         if resident == mode:
-            self._state("ready", "ollama", resident, None)
+            self._state("ready", AGENT_SPECS[mode].provider, resident, None)
             return None
         # Explicit local selection (or legacy local→acinonyx) warms the selected agent.
+        if mode == "apodemus":
+            return self.start_agent_warmup(
+                mode,
+                context_window=APODEMUS_BRIEFING_CONTEXT_WINDOW,
+                reasoning_mode="none",
+            )
         return self.start_agent_warmup(mode)
 
     def _raw(
@@ -254,34 +291,71 @@ class SynthesisRouter:
             ),
         )
 
-    def _ollama(
-        self, source: SynthesisInput, agent_key: str, warmup_ms: int | None
+    def _local_profile_for_synthesis(
+        self,
+        agent_key: str,
+        *,
+        resident_ref: LocalModelRef | None = None,
+    ):
+        """Build the provider profile for the selected local briefing Agent."""
+        context_window: int | None = None
+        if AGENT_SPECS[agent_key].provider == "llama_cpp":
+            context_window = APODEMUS_BRIEFING_CONTEXT_WINDOW
+            if resident_ref is not None and resident_ref.provider == "llama_cpp":
+                context_window = (
+                    llama_cpp_context_window_for_runtime_model_id(
+                        agent_key, resident_ref.model
+                    )
+                    or context_window
+                )
+        user_designation = get_settings_store().get_snapshot().user_designation
+        system_instruction = compose_agent_system_instruction(
+            agent_key,
+            _system_prompt_for_agent(agent_key),
+            user_designation=user_designation,
+        )
+        if agent_key == "sorex" and user_designation:
+            normalized_designation = " ".join(user_designation.split())[:80]
+            system_instruction += (
+                "\n\nIn the ===SPEECH=== section, address the user as "
+                f'"{normalized_designation}" exactly once. Keep the address natural.'
+            )
+        return build_concrete_agent(
+            agent_key,
+            native_effort=None,
+            local_context_window=context_window,
+            local_reasoning_mode="none",
+        ).model_copy(
+            update={
+                "final_answer_max_tokens": _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS,
+                "system_instruction": system_instruction,
+            }
+        )
+
+    def _local(
+        self,
+        source: SynthesisInput,
+        agent_key: str,
+        warmup_ms: int | None,
+        *,
+        resident_ref: LocalModelRef | None = None,
     ) -> SynthesisResult:
         if not try_begin_local_execution():
             raise RuntimeError("local_busy")
         started = time.monotonic()
         try:
-            user_designation = get_settings_store().get_snapshot().user_designation
-            system_instruction = compose_agent_system_instruction(
-                agent_key,
-                _system_prompt_for_agent(agent_key),
-                user_designation=user_designation,
+            effective_ref = resident_ref or resident_local_model_ref()
+            agent = self._local_profile_for_synthesis(
+                agent_key, resident_ref=effective_ref
             )
-            if agent_key == "sorex" and user_designation:
-                normalized_designation = " ".join(user_designation.split())[:80]
-                system_instruction += (
-                    "\n\nIn the ===SPEECH=== section, address the user as "
-                    f'"{normalized_designation}" exactly once. Keep the address natural.'
-                )
-            agent = build_concrete_agent(agent_key, native_effort=None).model_copy(
-                update={
-                    "final_answer_max_tokens": 512,
-                    "think": False,
-                    "system_instruction": system_instruction,
-                }
-            )
-            self._state("generating", "ollama", agent_key, None)
-            turn = OllamaProvider().generate_turn(
+            if agent.provider == "ollama":
+                provider = OllamaProvider()
+            elif agent.provider == "llama_cpp":
+                provider = LlamaCppProvider()
+            else:
+                raise RuntimeError("local_provider_invalid")
+            self._state("generating", agent.provider, agent_key, None)
+            turn = provider.generate_turn(
                 [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
                 [],
                 agent,
@@ -290,7 +364,7 @@ class SynthesisRouter:
             return SynthesisResult(
                 briefing=briefing,
                 insights=insights,
-                provider="ollama",
+                provider=agent.provider,  # type: ignore[arg-type]
                 agent=agent_key,  # type: ignore[arg-type]
                 warmup_ms=warmup_ms,
                 generation_ms=int((time.monotonic() - started) * 1000),
@@ -300,7 +374,7 @@ class SynthesisRouter:
                 cost_estimate=estimate_inference_cost(
                     model=turn.resolved_model,
                     configured_model=agent.api_model,
-                    provider="ollama",
+                    provider=agent.provider,
                     usage=turn.usage,
                     hosted_tool_events=turn.provider_tool_events,
                 ),
@@ -316,9 +390,17 @@ class SynthesisRouter:
     ) -> SynthesisResult:
         """Honor an explicitly selected local Agent; never silently substitute another."""
         resident = resident_agent_key()
+        resident_ref = (
+            resident_local_model_ref() if resident == agent_key else None
+        )
         if resident == agent_key:
             try:
-                result = self._ollama(source, agent_key, None)
+                result = self._local(
+                    source,
+                    agent_key,
+                    None,
+                    resident_ref=resident_ref,
+                )
                 self._state("complete", result.provider, result.agent, None)
                 return result
             except Exception as exc:
@@ -337,9 +419,14 @@ class SynthesisRouter:
             return self._raw(
                 source, warmup.reason or "local_warmup_failed", warmup.elapsed_ms
             )
-        self._state("ready", "ollama", agent_key, None)
+        self._state("ready", AGENT_SPECS[agent_key].provider, agent_key, None)
         try:
-            result = self._ollama(source, agent_key, warmup.elapsed_ms)
+            result = self._local(
+                source,
+                agent_key,
+                warmup.elapsed_ms,
+                resident_ref=warmup.model_ref,
+            )
             self._state("complete", result.provider, result.agent, None)
             return result
         except Exception as exc:
@@ -385,9 +472,21 @@ class SynthesisRouter:
         self, source: SynthesisInput, agent_key: str
     ) -> tuple[SynthesisResult | None, str]:
         """Attempt one ordered local fallback without substituting agents."""
-        if resident_agent_key() == agent_key:
+        resident = resident_agent_key()
+        resident_ref = (
+            resident_local_model_ref() if resident == agent_key else None
+        )
+        if resident == agent_key:
             try:
-                return self._ollama(source, agent_key, None), ""
+                return (
+                    self._local(
+                        source,
+                        agent_key,
+                        None,
+                        resident_ref=resident_ref,
+                    ),
+                    "",
+                )
             except Exception as exc:
                 return None, (
                     str(exc)
@@ -400,9 +499,17 @@ class SynthesisRouter:
             return None, "local_warmup_timeout"
         if not warmup.success:
             return None, warmup.reason or "local_warmup_failed"
-        self._state("ready", "ollama", agent_key, None)
+        self._state("ready", AGENT_SPECS[agent_key].provider, agent_key, None)
         try:
-            return self._ollama(source, agent_key, warmup.elapsed_ms), ""
+            return (
+                self._local(
+                    source,
+                    agent_key,
+                    warmup.elapsed_ms,
+                    resident_ref=warmup.model_ref,
+                ),
+                "",
+            )
         except Exception as exc:
             return None, (
                 str(exc)

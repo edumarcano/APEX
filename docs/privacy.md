@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Mus and Sorex send it to Ollama | Production transcript/digest in SQLite | Mus, Sorex, or Structured Digest |
+| Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Mus and Sorex send it to Ollama; Apodemus sends it to the local llama.cpp router | Production transcript/digest in SQLite | Mus, Sorex, Apodemus, or Structured Digest |
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
@@ -26,12 +26,15 @@ flowchart LR
         DB[("SQLite")]
         OLLAMA["Ollama host
 loopback by default"]
+        LLAMA["llama.cpp router
+loopback by default"]
         LOCAL_TTS["pyttsx3 / Kokoro"]
 
         BROWSER --> API
         API --> SNAPSHOT
         API --> DB
         API --> OLLAMA
+        API --> LLAMA
         API --> LOCAL_TTS
     end
 
@@ -50,7 +53,7 @@ loopback by default"]
 
 External paths exist only when the corresponding connector, provider, speech engine, or MCP integration is enabled.
 
-APEX treats Ollama as local by default; configuring a remote Ollama host moves that model traffic outside the machine boundary.
+APEX treats Ollama and llama.cpp as local by default; configuring a remote local-runtime host moves that model traffic outside the machine boundary.
 
 ## Local service boundary
 
@@ -64,7 +67,7 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing orchestration selects bounded weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts for `SynthesisInput`. Text is normalized, stripped of control characters and markup, truncated per field, serialized to a fixed bound, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera and Ollama receive the same selected facts. Concatenated display telemetry, Agent tools, and Agent history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
+Panthera and the local Ollama or llama.cpp provider receive the same selected facts. Concatenated display telemetry, Agent tools, and Agent history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
 
 The markers and validation reduce prompt-injection risk. They do not make model output an authorization boundary, and model prose must never authorize an action.
 
@@ -80,7 +83,7 @@ Selecting a local briefing Agent or Structured Digest avoids sending briefing sy
 
 ## Interactive Agent data
 
-Interactive Agent work is separate from briefing synthesis. A cloud Agent sends the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local Agent sends the applicable categories to the configured Ollama host, which defaults to loopback but can be changed. The designation is stored only in gitignored `config.local.json` and is omitted when empty.
+Interactive Agent work is separate from briefing synthesis. A cloud Agent sends the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local Agent sends the applicable categories to its configured Ollama or llama.cpp host, which defaults to loopback but can be changed. The designation is stored only in gitignored `config.local.json` and is omitted when empty.
 
 An explicit cloud access verification sends only the configured model identifier and credential to the provider's metadata endpoint. It sends no prompt, history, HUD context, provider tool call, or credential value back to the browser. APEX stores only a sanitized availability category and timestamp; it does not expose or log raw provider messages.
 

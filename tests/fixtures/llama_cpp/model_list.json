@@ -2,7 +2,7 @@
   "object": "list",
   "data": [
     {
-      "id": "apodemus-8k",
+      "id": "apodemus-132k",
       "object": "model",
       "owned_by": "llamacpp",
       "created": 0,
@@ -15,7 +15,7 @@
           "-m",
           "gemma-4-E2B-Q4_K_M.gguf",
           "-ctx",
-          "8192"
+          "131072"
         ]
       }
     },

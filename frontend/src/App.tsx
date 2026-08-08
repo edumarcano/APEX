@@ -62,8 +62,10 @@ import type {
   AgentKey,
   CloudEffort,
   CloudSettingsAgent,
+  LocalReasoningMode,
+  LocalSettingsAgent,
 } from './types/telemetry'
-import type { ApodemusContextWindow, BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
+import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
 
 interface ParsedEmail {
   subject: string
@@ -111,6 +113,7 @@ const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
   'mus',
   'sorex',
+  'apodemus',
   'structured_digest',
 ]
 
@@ -159,7 +162,6 @@ export default function App(): ReactElement {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
   const [cloudAgent, setCloudAgent] = useState<CloudSettingsAgent>('panthera')
-  const [apodemusContextWindow, setApodemusContextWindow] = useState<ApodemusContextWindow>(8192)
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
@@ -302,7 +304,6 @@ export default function App(): ReactElement {
         setBriefingMode(response.settings.briefing.default_mode)
       }
       setVoiceMode(response.settings.voice.mode)
-      setApodemusContextWindow(response.settings.ask_apex.apodemus_context_window)
     },
     [activeAgent, applyBootSettings],
   )
@@ -338,15 +339,6 @@ export default function App(): ReactElement {
           }
           if (values.effort === 'light' || values.effort === 'focused' || values.effort === 'extended') {
             setCloudEffort(values.effort)
-          }
-          const contextWindow = values.apodemus_context_window
-          if (
-            contextWindow === 4096 ||
-            contextWindow === 8192 ||
-            contextWindow === 16384 ||
-            contextWindow === 32768
-          ) {
-            setApodemusContextWindow(contextWindow)
           }
         }
         const briefing = settingsValues.briefing
@@ -1067,20 +1059,49 @@ export default function App(): ReactElement {
     )
   }, [activeAgent, persistAskApexSettings])
 
-  const handleApodemusContextChange = useCallback((contextWindow: ApodemusContextWindow): void => {
-    const previous = apodemusContextWindow
-    setApodemusContextWindow(contextWindow)
-    void (async (): Promise<void> => {
-      const persisted = await persistAskApexSettings(
-        { apodemus_context_window: contextWindow },
-        activeAgent,
-        { refreshToolCatalog: true },
-      )
-      if (!persisted) {
-        setApodemusContextWindow(previous)
+  const handleLocalContextWindowChange = useCallback((
+    agent: LocalSettingsAgent,
+    contextWindow: number,
+  ): Promise<boolean> => {
+    const contextWindows: Record<string, number> = {}
+    for (const status of agentsStatus) {
+      if (!status.context_window_options?.length) {
+        continue
       }
-    })()
-  }, [activeAgent, apodemusContextWindow, persistAskApexSettings])
+      const selected = status.context_window ?? status.default_context_window
+      if (selected !== null && selected !== undefined) {
+        contextWindows[status.key] = selected
+      }
+    }
+    contextWindows[agent] = contextWindow
+    return persistAskApexSettings(
+      { local_context_windows: contextWindows },
+      agent,
+      { refreshToolCatalog: true },
+    )
+  }, [agentsStatus, persistAskApexSettings])
+
+  const handleLocalReasoningModeChange = useCallback((
+    agent: LocalSettingsAgent,
+    reasoningMode: LocalReasoningMode,
+  ): Promise<boolean> => {
+    const reasoningModes: Record<string, LocalReasoningMode> = {}
+    for (const status of agentsStatus) {
+      if (!status.reasoning_mode_options?.length) {
+        continue
+      }
+      const selected = status.reasoning_mode ?? status.default_reasoning_mode
+      if (selected !== null && selected !== undefined) {
+        reasoningModes[status.key] = selected
+      }
+    }
+    reasoningModes[agent] = reasoningMode
+    return persistAskApexSettings(
+      { local_reasoning_modes: reasoningModes },
+      agent,
+      { refreshToolCatalog: false },
+    )
+  }, [agentsStatus, persistAskApexSettings])
 
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession(activeAgent)
@@ -1556,8 +1577,8 @@ export default function App(): ReactElement {
             onGoogleMapsChange={handleGoogleMapsChange}
             onDelphinusXSearchChange={handleDelphinusXSearchChange}
             onOrcinusXSearchChange={handleOrcinusXSearchChange}
-            apodemusContextWindow={apodemusContextWindow}
-            onApodemusContextChange={handleApodemusContextChange}
+            onLocalContextWindowChange={handleLocalContextWindowChange}
+            onLocalReasoningModeChange={handleLocalReasoningModeChange}
             onSubmit={handleHomeSubmit}
             onNewSession={handleNewCortexSession}
           />

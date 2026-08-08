@@ -41,6 +41,7 @@ const CLOUD_OPTIONS: readonly BriefingOption[] = [
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
   { key: 'sorex', label: 'Sorex', description: 'Quick briefing · limited telemetry' },
   { key: 'mus', label: 'Mus', description: 'Full briefing · balanced local synthesis' },
+  { key: 'apodemus', label: 'Apodemus', description: 'Full briefing · efficient llama.cpp synthesis' },
   {
     key: 'structured_digest',
     label: 'Structured Digest',
@@ -62,6 +63,7 @@ const MODE_LABELS: Record<BriefingMode, string> = {
   panthera: 'Panthera',
   sorex: 'Sorex',
   mus: 'Mus',
+  apodemus: 'Apodemus',
   structured_digest: 'Structured Digest',
 }
 
@@ -135,7 +137,11 @@ function compactRate(value: number): string {
 function modeCost(mode: BriefingMode, agents: AgentStatus[]): string {
   if (mode === 'structured_digest') return 'No model cost'
   const agent = agents.find((entry) => entry.key === mode)
-  if (!agent) return mode === 'mus' || mode === 'sorex' ? 'No provider token charge' : 'Pricing unavailable'
+  if (!agent) {
+    return mode === 'mus' || mode === 'sorex' || mode === 'apodemus'
+      ? 'No provider token charge'
+      : 'Pricing unavailable'
+  }
   if (agent.pricing.billing_basis === 'local') return 'No provider token charge'
   return `In ${compactRate(agent.pricing.input_per_million)} · Out ${compactRate(agent.pricing.output_per_million)} / 1M`
 }

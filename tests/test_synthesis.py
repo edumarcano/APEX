@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
+from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.settings.models import RuntimeSettingsSnapshot
@@ -80,11 +81,11 @@ class FormattingTests(unittest.TestCase):
 class RoutingTests(unittest.TestCase):
     def test_explicit_raw_calls_no_provider(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_panthera") as panthera, patch.object(router, "_ollama") as ollama:
+        with patch.object(router, "_panthera") as panthera, patch.object(router, "_local") as local:
             result = router.synthesize(sample_input(), "raw")
         self.assertEqual(result.provider, "raw")
         panthera.assert_not_called()
-        ollama.assert_not_called()
+        local.assert_not_called()
 
     def test_panthera_success(self) -> None:
         router = SynthesisRouter()
@@ -175,7 +176,7 @@ class RoutingTests(unittest.TestCase):
             result = router.synthesize(sample_input(), "local", handle)
         self.assertEqual(result.fallback_reason, "local_model_missing")
 
-    def test_ollama_generation_has_no_tools_history_or_thinking(self) -> None:
+    def test_local_generation_has_no_tools_history_or_thinking(self) -> None:
         router = SynthesisRouter()
         response = ProviderTurnResult(
             message=AgentMessage(
@@ -192,7 +193,7 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
-            result = router._ollama(sample_input(), "mus", None)
+            result = router._local(sample_input(), "mus", None)
         messages, tools, profile = generate.call_args.args
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
@@ -219,14 +220,14 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
-            router._ollama(sample_input(), "sorex", None)
+            router._local(sample_input(), "sorex", None)
             self.assertTrue(
                 generate.call_args.args[2].system_instruction.startswith("You are Apex Sorex")
             )
             self.assertIn(
                 "SOREX_PROMPT", generate.call_args.args[2].system_instruction
             )
-            router._ollama(sample_input(), "mus", None)
+            router._local(sample_input(), "mus", None)
             self.assertTrue(
                 generate.call_args.args[2].system_instruction.startswith("You are Apex Mus")
             )
@@ -253,7 +254,7 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
             get_settings_store.return_value.get_snapshot.return_value = settings
-            router._ollama(sample_input(), "sorex", None)
+            router._local(sample_input(), "sorex", None)
 
         instruction = generate.call_args.args[2].system_instruction
         self.assertIn(
@@ -261,6 +262,230 @@ class RoutingTests(unittest.TestCase):
             instruction,
         )
         self.assertIn("Keep the address natural.", instruction)
+
+    def test_explicit_apodemus_synthesis_uses_llama_cpp_at_16k(self) -> None:
+        router = SynthesisRouter()
+        response = ProviderTurnResult(
+            message=AgentMessage(
+                role="agent",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            ),
+            resolved_model="apodemus-16k",
+        )
+        handle = WarmupHandle(
+            agent_key="apodemus",
+            model_ref=LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+            success=True,
+        )
+        handle.event.set()
+        states: list[tuple[object, ...]] = []
+        router = SynthesisRouter(lambda *args: states.append(args))
+        with patch(
+            "core.synthesis.router.resident_agent_key", return_value=None
+        ), patch.object(
+            router, "start_agent_warmup", return_value=handle
+        ), patch(
+            "core.synthesis.router.try_begin_local_execution", return_value=True
+        ), patch("core.synthesis.router.end_local_execution"), patch(
+            "core.synthesis.router.LlamaCppProvider.generate_turn",
+            return_value=response,
+        ) as generate:
+            result = router.synthesize_mode(sample_input(), "apodemus")
+
+        messages, tools, profile = generate.call_args.args
+        self.assertEqual(result.provider, "llama_cpp")
+        self.assertEqual(result.agent, "apodemus")
+        self.assertEqual(result.resolved_model, "apodemus-16k")
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(tools, [])
+        self.assertEqual(profile.runtime_model_id, "apodemus-16k")
+        self.assertEqual(profile.context_window, 16_384)
+        self.assertEqual(profile.reasoning_mode, "none")
+        self.assertEqual(profile.final_answer_max_tokens, 512)
+        self.assertIn(("generating", "llama_cpp", "apodemus", None), states)
+
+    def test_resident_apodemus_reuses_the_actual_context_alias(self) -> None:
+        router = SynthesisRouter()
+        resident = LocalModelRef(provider="llama_cpp", model="apodemus-4k")
+        response = ProviderTurnResult(
+            message=AgentMessage(
+                role="agent",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            ),
+            resolved_model="apodemus-4k",
+        )
+        with patch(
+            "core.synthesis.router.resident_agent_key", return_value="apodemus"
+        ), patch(
+            "core.synthesis.router.resident_local_model_ref",
+            return_value=resident,
+        ), patch(
+            "core.synthesis.router.try_begin_local_execution", return_value=True
+        ), patch("core.synthesis.router.end_local_execution"), patch(
+            "core.synthesis.router.LlamaCppProvider.generate_turn",
+            return_value=response,
+        ) as generate, patch.object(router, "start_agent_warmup") as warmup:
+            result = router.synthesize_mode(sample_input(), "apodemus")
+
+        profile = generate.call_args.args[2]
+        self.assertEqual(result.provider, "llama_cpp")
+        self.assertEqual(profile.runtime_model_id, "apodemus-4k")
+        self.assertEqual(profile.context_window, 4096)
+        warmup.assert_not_called()
+
+    def test_explicit_apodemus_failure_falls_to_structured_digest(self) -> None:
+        router = SynthesisRouter()
+        handle = WarmupHandle(
+            agent_key="apodemus",
+            model_ref=LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+            success=True,
+        )
+        handle.event.set()
+        with patch(
+            "core.synthesis.router.resident_agent_key", return_value=None
+        ), patch.object(
+            router, "start_agent_warmup", return_value=handle
+        ), patch(
+            "core.synthesis.router.try_begin_local_execution", return_value=True
+        ), patch("core.synthesis.router.end_local_execution"), patch(
+            "core.synthesis.router.LlamaCppProvider.generate_turn",
+            side_effect=RuntimeError("router unavailable"),
+        ):
+            result = router.synthesize_mode(sample_input(), "apodemus")
+
+        self.assertEqual(result.provider, "raw")
+        self.assertEqual(result.fallback_reason, "local_generation_failed")
+        self.assertNotIn("mus", result.fallback_steps)
+        self.assertNotIn("sorex", result.fallback_steps)
+
+    def test_apodemus_cold_warmup_uses_llama_cpp_provider_and_16k(self) -> None:
+        router = SynthesisRouter()
+        backend = MagicMock()
+        backend.enabled = True
+        snapshot = {
+            "provider": "llama_cpp",
+            "reachable": True,
+            "installed_models": ["apodemus-16k"],
+            "loaded_models": [],
+            "sampled_at": 0.0,
+        }
+        with patch(
+            "core.synthesis.router.get_local_runtime_backend",
+            return_value=backend,
+        ), patch(
+            "core.synthesis.router._has_unrecognized_resident_model",
+            return_value=False,
+        ), patch(
+            "core.synthesis.router.try_begin_local_execution", return_value=True
+        ), patch(
+            "core.synthesis.router.get_provider_snapshot",
+            return_value=snapshot,
+        ), patch(
+            "core.synthesis.router.is_local_model_ready", return_value=False
+        ), patch(
+            "core.synthesis.router.check_resource_gate",
+            return_value=(True, None),
+        ), patch(
+            "core.synthesis.router.switch_local_model", return_value=True
+        ) as switch_model, patch("core.synthesis.router.end_local_execution"):
+            handle = router.start_agent_warmup("apodemus")
+            self.assertTrue(handle.event.wait(1.0))
+
+        self.assertTrue(handle.success)
+        self.assertEqual(
+            handle.model_ref,
+            LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+        )
+        loaded_profile = switch_model.call_args.args[0]
+        self.assertEqual(loaded_profile.context_window, 16_384)
+        self.assertEqual(loaded_profile.reasoning_mode, "none")
+
+    def test_apodemus_warmup_reports_disabled_runtime(self) -> None:
+        router = SynthesisRouter()
+        backend = MagicMock()
+        backend.enabled = False
+        with patch(
+            "core.synthesis.router.get_local_runtime_backend",
+            return_value=backend,
+        ):
+            handle = router.start_agent_warmup("apodemus")
+        self.assertEqual(handle.reason, "local_disabled")
+        self.assertTrue(handle.event.is_set())
+
+    def test_apodemus_warmup_reports_unreachable_or_missing_alias(self) -> None:
+        router = SynthesisRouter()
+        backend = MagicMock()
+        backend.enabled = True
+        for snapshot, reason in (
+            (
+                {
+                    "provider": "llama_cpp",
+                    "reachable": False,
+                    "installed_models": [],
+                    "loaded_models": [],
+                    "sampled_at": 0.0,
+                },
+                "local_unreachable",
+            ),
+            (
+                {
+                    "provider": "llama_cpp",
+                    "reachable": True,
+                    "installed_models": [],
+                    "loaded_models": [],
+                    "sampled_at": 0.0,
+                },
+                "local_model_missing",
+            ),
+        ):
+            with self.subTest(reason=reason), patch(
+                "core.synthesis.router.get_local_runtime_backend",
+                return_value=backend,
+            ), patch(
+                "core.synthesis.router._has_unrecognized_resident_model",
+                return_value=False,
+            ), patch(
+                "core.synthesis.router.try_begin_local_execution",
+                return_value=True,
+            ), patch(
+                "core.synthesis.router.get_provider_snapshot",
+                return_value=snapshot,
+            ), patch("core.synthesis.router.end_local_execution"):
+                handle = router.start_agent_warmup("apodemus")
+                self.assertTrue(handle.event.wait(1.0))
+            self.assertEqual(handle.reason, reason)
+
+    def test_apodemus_warmup_reports_resource_gate(self) -> None:
+        router = SynthesisRouter()
+        backend = MagicMock()
+        backend.enabled = True
+        snapshot = {
+            "provider": "llama_cpp",
+            "reachable": True,
+            "installed_models": ["apodemus-16k"],
+            "loaded_models": [],
+            "sampled_at": 0.0,
+        }
+        with patch(
+            "core.synthesis.router.get_local_runtime_backend",
+            return_value=backend,
+        ), patch(
+            "core.synthesis.router._has_unrecognized_resident_model",
+            return_value=False,
+        ), patch(
+            "core.synthesis.router.try_begin_local_execution", return_value=True
+        ), patch(
+            "core.synthesis.router.get_provider_snapshot",
+            return_value=snapshot,
+        ), patch(
+            "core.synthesis.router.is_local_model_ready", return_value=False
+        ), patch(
+            "core.synthesis.router.check_resource_gate",
+            return_value=(False, "insufficient_ram"),
+        ), patch("core.synthesis.router.end_local_execution"):
+            handle = router.start_agent_warmup("apodemus")
+            self.assertTrue(handle.event.wait(1.0))
+        self.assertEqual(handle.reason, "local_insufficient_ram")
 
     def test_legacy_local_strategy_resolves_to_mus(self) -> None:
         from core.synthesis.models import strategy_to_briefing_mode
@@ -275,19 +500,24 @@ class RoutingTests(unittest.TestCase):
         handle.event.set()
         expected = SynthesisResult(briefing="Capable.", provider="ollama", agent="mus")
         with patch("core.synthesis.router.resident_agent_key", return_value="sorex"), patch.object(
-            router, "_ollama", return_value=expected
+            router, "_local", return_value=expected
         ) as ollama:
             result = router.synthesize_mode(sample_input(), "mus", handle)
         self.assertEqual(result.agent, "mus")
-        ollama.assert_called_once_with(unittest.mock.ANY, "mus", handle.elapsed_ms)
+        ollama.assert_called_once_with(
+            unittest.mock.ANY,
+            "mus",
+            handle.elapsed_ms,
+            resident_ref=None,
+        )
 
     def test_structured_digest_mode(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_panthera") as panthera, patch.object(router, "_ollama") as ollama:
+        with patch.object(router, "_panthera") as panthera, patch.object(router, "_local") as local:
             result = router.synthesize_mode(sample_input(), "structured_digest")
         self.assertEqual(result.provider, "raw")
         panthera.assert_not_called()
-        ollama.assert_not_called()
+        local.assert_not_called()
 
     def test_prepare_local_warms_mus(self) -> None:
         router = SynthesisRouter()

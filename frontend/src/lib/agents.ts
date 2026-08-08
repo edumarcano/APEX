@@ -5,7 +5,7 @@ import type {
   LocalSettingsAgent,
 } from '../types/telemetry'
 
-export const LOCAL_AGENT_KEYS = ['sorex', 'mus', 'apodemus'] as const
+export const LOCAL_AGENT_KEYS = ['sorex', 'mus', 'apodemus', 'neotoma'] as const
 
 const CLOUD_SETTINGS_AGENT_KEYS = [
   'panthera',
@@ -15,7 +15,12 @@ const CLOUD_SETTINGS_AGENT_KEYS = [
 ] as const satisfies readonly CloudSettingsAgent[]
 
 export function isLocalAgentKey(value: unknown): value is LocalSettingsAgent {
-  return value === 'sorex' || value === 'mus' || value === 'apodemus'
+  return (
+    value === 'sorex' ||
+    value === 'mus' ||
+    value === 'apodemus' ||
+    value === 'neotoma'
+  )
 }
 
 export function isCloudAgentKey(
@@ -65,6 +70,9 @@ export function formatContextWindowLabel(
 ): string | null {
   if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens <= 0) {
     return null
+  }
+  if (tokens === 131072) {
+    return '132K'
   }
   if (tokens % 1024 === 0) {
     return `${tokens / 1024}K`

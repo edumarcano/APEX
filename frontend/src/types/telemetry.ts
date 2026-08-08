@@ -1,4 +1,5 @@
 export type TtsEngine = 'google' | 'kokoro' | 'pyttsx3'
+export type LocalReasoningMode = 'none' | 'focused'
 
 export interface PipelineState {
   step: number
@@ -10,8 +11,8 @@ export interface PipelineState {
   synthesis?: SynthesisLiveState | null
 }
 
-export type SynthesisProvider = 'gemini' | 'ollama' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'mus' | 'sorex'
+export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
+export type SynthesisAgent = 'panthera' | 'mus' | 'sorex' | 'apodemus'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -72,7 +73,7 @@ export type WeatherConditionArchetype =
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus'
+export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus' | 'neotoma'
 
 export type CloudAgent = CloudSettingsAgent
 
@@ -239,6 +240,13 @@ export interface AgentStatus {
   stability: AgentStability
   effort_options: CloudEffort[] | null
   default_effort: CloudEffort | null
+  context_window: number | null
+  context_window_options: number[] | null
+  context_window_high_resource_options: number[] | null
+  default_context_window: number | null
+  reasoning_mode: LocalReasoningMode | null
+  reasoning_mode_options: LocalReasoningMode[] | null
+  default_reasoning_mode: LocalReasoningMode | null
   status: AgentAvailabilityStatus
   status_source: AgentStatusSource
   status_checked_at: string | null
@@ -300,7 +308,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'apodemus' | 'structured_digest'
 
 export type PreflightOperation =
   | 'activate'
@@ -427,7 +435,7 @@ export interface ApexDataState {
   system_load_throttled: boolean
   defaultAgent?: AgentKey
   agentInitialSelection?: AgentInitialSelection
-  briefingDefaultMode?: 'panthera' | 'mus' | 'sorex' | 'structured_digest'
+  briefingDefaultMode?: BriefingMode
   voiceMode?: 'off' | 'manual' | 'automatic'
   askApexEnabled?: boolean
   marketEnabled: boolean

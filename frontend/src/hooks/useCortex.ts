@@ -8,6 +8,7 @@ import type {
   LocalLoadedModelStatus,
   LocalSettingsAgent,
   LocalContextUsage,
+  LocalReasoningMode,
   AgentAvailabilityStatus,
   AgentPricingMetadata,
   AgentStatusSource,
@@ -113,6 +114,7 @@ const VALID_AGENT_KEYS: readonly AgentKey[] = [
   'sorex',
   'mus',
   'apodemus',
+  'neotoma',
   'acinonyx',
 ]
 
@@ -178,6 +180,10 @@ function isCloudEffort(value: unknown): value is CloudEffort {
   return typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
 }
 
+function isLocalReasoningMode(value: unknown): value is LocalReasoningMode {
+  return value === 'none' || value === 'focused'
+}
+
 function isAgentStability(value: unknown): value is AgentStability {
   return (
     typeof value === 'string' &&
@@ -213,6 +219,17 @@ function parseCloudEffortList(value: unknown): CloudEffort[] | null {
     return null
   }
   const parsed = value.filter(isCloudEffort)
+  return parsed.length === value.length ? parsed : null
+}
+
+function parseLocalReasoningModeList(value: unknown): LocalReasoningMode[] | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (!Array.isArray(value)) {
+    return null
+  }
+  const parsed = value.filter(isLocalReasoningMode)
   return parsed.length === value.length ? parsed : null
 }
 
@@ -355,6 +372,97 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   ) {
     return null
   }
+  const contextWindow = parseNullableFiniteNumber(record.context_window)
+  if (
+    record.context_window !== undefined &&
+    record.context_window !== null &&
+    contextWindow === null
+  ) {
+    return null
+  }
+  const contextWindowOptions =
+    record.context_window_options === undefined || record.context_window_options === null
+      ? null
+      : Array.isArray(record.context_window_options) &&
+          record.context_window_options.every(
+            (value) =>
+              typeof value === 'number' &&
+              Number.isInteger(value) &&
+              value > 0,
+          )
+        ? record.context_window_options
+        : null
+  if (
+    record.context_window_options !== undefined &&
+    record.context_window_options !== null &&
+    contextWindowOptions === null
+  ) {
+    return null
+  }
+  const contextWindowHighResourceOptions =
+    record.context_window_high_resource_options === undefined ||
+    record.context_window_high_resource_options === null
+      ? null
+      : Array.isArray(record.context_window_high_resource_options) &&
+          record.context_window_high_resource_options.every(
+            (value) =>
+              typeof value === 'number' &&
+              Number.isInteger(value) &&
+              value > 0,
+          )
+        ? record.context_window_high_resource_options
+        : null
+  if (
+    record.context_window_high_resource_options !== undefined &&
+    record.context_window_high_resource_options !== null &&
+    contextWindowHighResourceOptions === null
+  ) {
+    return null
+  }
+  const defaultContextWindow = parseNullableFiniteNumber(record.default_context_window)
+  if (
+    record.default_context_window !== undefined &&
+    record.default_context_window !== null &&
+    defaultContextWindow === null
+  ) {
+    return null
+  }
+  const reasoningMode =
+    record.reasoning_mode === undefined || record.reasoning_mode === null
+      ? null
+      : isLocalReasoningMode(record.reasoning_mode)
+        ? record.reasoning_mode
+        : null
+  if (
+    record.reasoning_mode !== undefined &&
+    record.reasoning_mode !== null &&
+    reasoningMode === null
+  ) {
+    return null
+  }
+  const reasoningModeOptions = parseLocalReasoningModeList(
+    record.reasoning_mode_options,
+  )
+  if (
+    record.reasoning_mode_options !== undefined &&
+    record.reasoning_mode_options !== null &&
+    reasoningModeOptions === null
+  ) {
+    return null
+  }
+  const defaultReasoningMode =
+    record.default_reasoning_mode === undefined || record.default_reasoning_mode === null
+      ? null
+      : isLocalReasoningMode(record.default_reasoning_mode)
+        ? record.default_reasoning_mode
+        : null
+  if (
+    record.default_reasoning_mode !== undefined &&
+    record.default_reasoning_mode !== null &&
+    defaultReasoningMode === null
+  ) {
+    return null
+  }
 
   return {
     key,
@@ -371,6 +479,13 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     stability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
+    context_window: contextWindow,
+    context_window_options: contextWindowOptions,
+    context_window_high_resource_options: contextWindowHighResourceOptions,
+    default_context_window: defaultContextWindow,
+    reasoning_mode: reasoningMode,
+    reasoning_mode_options: reasoningModeOptions,
+    default_reasoning_mode: defaultReasoningMode,
     status,
     status_source: isAgentStatusSource(record.status_source) ? record.status_source : 'configuration',
     status_checked_at: parseNullableString(record.status_checked_at),
@@ -702,9 +817,15 @@ export function useCortex(
   // every query state transition.
   const isCortexQueryingRef = useRef(false)
 
+  const agentsStatusFetchGenerationRef = useRef(0)
+
   const fetchAgentsStatus = useCallback(async (): Promise<void> => {
+    const generation = ++agentsStatusFetchGenerationRef.current
     try {
       const response = await fetch(AGENT_PROFILES_ENDPOINT)
+      if (generation !== agentsStatusFetchGenerationRef.current) {
+        return
+      }
       if (!response.ok) {
         console.warn(
           `[useCortex] Agent status fetch failed (${response.status}); retaining prior state.`,
@@ -714,9 +835,15 @@ export function useCortex(
 
       const body: unknown = await response.json()
       const parsed = parseAgentStatusList(body)
+      if (generation !== agentsStatusFetchGenerationRef.current) {
+        return
+      }
       setAgentsStatus(parsed)
       setAgentsStatusHydrated(true)
     } catch (fetchError) {
+      if (generation !== agentsStatusFetchGenerationRef.current) {
+        return
+      }
       const message =
         fetchError instanceof Error ? fetchError.message : 'Unknown agent fetch error'
       console.warn(`[useCortex] Agent status fetch error: ${message}`)

@@ -32,6 +32,8 @@ from core.agent.catalog import (
     credential_missing_message,
     is_agent_visible,
     agent_has_credentials,
+    local_context_window_for_agent,
+    local_reasoning_mode_for_agent,
     resolve_effort,
     runtime_agent_order,
 )
@@ -108,16 +110,6 @@ _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "insufficient_ram": "Current memory pressure exceeds threshold",
     "cpu_overloaded": "Current CPU utilization exceeds threshold",
 }
-
-
-def _local_context_window_for_agent(agent_key: str) -> int | None:
-    """Return the stored Apodemus context preference for local profile builds."""
-    if agent_key != "apodemus":
-        return None
-    value = get_settings_store().get_snapshot().ask_apex.apodemus_context_window
-    if isinstance(value, int) and not isinstance(value, bool):
-        return value
-    return 8192
 
 
 def _local_provider_label(provider: str) -> str:
@@ -299,7 +291,8 @@ def build_agent_statuses() -> list[AgentStatus]:
             profile = build_concrete_agent(
                 key,
                 native_effort=None,
-                local_context_window=_local_context_window_for_agent(key),
+                local_context_window=local_context_window_for_agent(key),
+                local_reasoning_mode=local_reasoning_mode_for_agent(key),
             )
             assert is_local_profile(profile)
             backend = get_local_runtime_backend(profile.provider)
@@ -355,6 +348,41 @@ def build_agent_statuses() -> list[AgentStatus]:
                     tier=spec.tier,
                     stability=spec.stability,
                     effort_options=effort_options,
+                    context_window=(
+                        profile.context_window
+                        if hasattr(profile, "allowed_context_windows")
+                        else None
+                    ),
+                    context_window_options=(
+                        list(profile.allowed_context_windows)
+                        if hasattr(profile, "allowed_context_windows")
+                        else None
+                    ),
+                    context_window_high_resource_options=(
+                        list(profile.high_resource_context_options)
+                        if hasattr(profile, "high_resource_context_options")
+                        else None
+                    ),
+                    default_context_window=(
+                        profile.default_context_window
+                        if hasattr(profile, "default_context_window")
+                        else None
+                    ),
+                    reasoning_mode=(
+                        profile.reasoning_mode
+                        if hasattr(profile, "reasoning_mode")
+                        else None
+                    ),
+                    reasoning_mode_options=(
+                        list(profile.supported_reasoning_modes)
+                        if hasattr(profile, "supported_reasoning_modes")
+                        else None
+                    ),
+                    default_reasoning_mode=(
+                        profile.default_reasoning_mode
+                        if hasattr(profile, "default_reasoning_mode")
+                        else None
+                    ),
                     default_effort=spec.default_effort,
                     status=agent_status,
                     status_source="runtime",
@@ -413,6 +441,13 @@ def build_agent_statuses() -> list[AgentStatus]:
                 tier=spec.tier,
                 stability=spec.stability,
                 effort_options=effort_options,
+                context_window=None,
+                context_window_options=None,
+                context_window_high_resource_options=None,
+                default_context_window=None,
+                reasoning_mode=None,
+                reasoning_mode_options=None,
+                default_reasoning_mode=None,
                 default_effort=spec.default_effort,
                 status=agent_status,
                 status_source=status_source,
@@ -554,7 +589,8 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
     profile = build_concrete_agent(
         agent_key,
         native_effort=None,
-        local_context_window=_local_context_window_for_agent(agent_key),
+        local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
     )
     assert is_local_profile(profile)
     backend = get_local_runtime_backend(profile.provider)
@@ -977,7 +1013,8 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     profile = build_concrete_agent(
         agent_key,
         native_effort=resolved_native_effort,
-        local_context_window=_local_context_window_for_agent(agent_key),
+        local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         neofelis_google_search_enabled=settings.ask_apex.neofelis_google_search_enabled,
         neofelis_google_maps_enabled=settings.ask_apex.neofelis_google_maps_enabled,
         delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
@@ -1059,7 +1096,8 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     profile = build_concrete_agent(
         agent_key,
         native_effort=resolved_native_effort,
-        local_context_window=_local_context_window_for_agent(agent_key),
+        local_context_window=local_context_window_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         neofelis_google_search_enabled=(
             settings.ask_apex.neofelis_google_search_enabled
         ),

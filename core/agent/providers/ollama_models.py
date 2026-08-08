@@ -2,6 +2,7 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
+from core.agent.types import LocalReasoningMode
 from core.config import (
     LOCAL_AGENT_SYSTEM_PROMPT,
     MUS_CPU_LIMIT,
@@ -55,6 +56,18 @@ class OllamaModelProfile(BaseModel):
         default=False,
         description="Whether to enable Ollama's local reasoning and chain-of-thought phase.",
     )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        default=("none",),
+        description="Provider-supported local reasoning modes for this Agent.",
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        default="none",
+        description="Reasoning mode used when no persisted preference exists.",
+    )
+    reasoning_mode: LocalReasoningMode = Field(
+        default="none",
+        description="Resolved reasoning mode for the next provider request.",
+    )
     ram_limit: float = Field(
         description="Maximum host RAM utilization percentage before load is gated."
     )
@@ -101,6 +114,14 @@ class OllamaRuntimeConfig(BaseModel):
     think: bool = Field(
         default=False,
         description="Whether to enable Ollama's local reasoning and chain-of-thought phase.",
+    )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        default=("none",),
+        description="Provider-supported local reasoning modes for this Agent.",
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        default="none",
+        description="Reasoning mode used when no persisted preference exists.",
     )
     ram_limit: float = Field(
         description="Maximum host RAM utilization percentage before load is gated."

@@ -6,15 +6,17 @@ from pydantic import BaseModel, Field
 
 from core.agent.types import CostEstimate, TokenUsage
 
-SynthesisProvider = Literal["gemini", "ollama", "raw", "demo", "openai"]
-SynthesisAgent = Literal["panthera", "mus", "sorex"]
-BriefingMode = Literal["panthera", "mus", "sorex", "structured_digest"]
+APODEMUS_BRIEFING_CONTEXT_WINDOW = 16_384
+
+SynthesisProvider = Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"]
+SynthesisAgent = Literal["panthera", "mus", "sorex", "apodemus"]
+BriefingMode = Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
 
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "mus", "sorex", "structured_digest"}
+    {"panthera", "mus", "sorex", "apodemus", "structured_digest"}
 )
-LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"mus", "sorex"})
+LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"mus", "sorex", "apodemus"})
 
 _LEGACY_BRIEFING_MODES: frozenset[str] = frozenset(
     {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}

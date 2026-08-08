@@ -60,7 +60,7 @@ def main() -> int:
             continue
         warmup_ms = int((time.monotonic() - started) * 1000)
         try:
-            result = SynthesisRouter()._ollama(source, key, warmup_ms)
+            result = SynthesisRouter()._local(source, key, warmup_ms)
             print(
                 f"[SMOKE][PASS] {key}: warmup={warmup_ms}ms "
                 f"generation={result.generation_ms}ms briefing={result.briefing!r}"

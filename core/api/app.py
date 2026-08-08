@@ -52,7 +52,8 @@ async def _app_lifespan(_app: FastAPI):
             )
         except Exception:
             _LOGGER.exception(
-                "Managed llama.cpp startup failed; continuing APEX boot without Apodemus"
+                "Managed llama.cpp startup failed; continuing APEX boot without local "
+                "llama.cpp Agents"
             )
 
     asyncio.create_task(_managed_llama_startup())

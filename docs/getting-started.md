@@ -144,20 +144,22 @@ These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instea
 
 ## Optional llama.cpp path
 
-llama.cpp is not required to start APEX. When you want Apex Apodemus:
+llama.cpp is not required to start APEX. When you want Apex Apodemus or Apex Neotoma:
 
 1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
-2. Copy [`docs/examples/llama-cpp-apodemus.preset.ini`](examples/llama-cpp-apodemus.preset.ini) to a machine-local path, set the GGUF placeholder, and keep that copy untracked.
+2. Copy [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini) to a machine-local path, set the GGUF placeholders, and keep that copy untracked.
 3. Choose a mode:
    - **External:** start the router yourself with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-and-managed-router-modes).
    - **Managed:** in Runtime Settings, enable llama.cpp, turn on Manage server automatically, and set the executable and preset paths. APEX starts the router only when the configured loopback URL is unreachable.
 4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
 5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 
+Apodemus and Neotoma default to request-level `None` reasoning. Their Cortex Reasoning control can select `Focused` without unloading the model; hidden reasoning is discarded before display.
+
 A manual smoke script is available when a router is running:
 
 ```powershell
-uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-8k --load --unload
+uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-16k --load --unload
 ```
 
 ## First-run expectations

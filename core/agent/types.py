@@ -29,7 +29,9 @@ AgentKey: TypeAlias = Literal[
     "sorex",
     "mus",
     "apodemus",
+    "neotoma",
 ]
+LocalReasoningMode: TypeAlias = Literal["none", "focused"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 
 CostCompleteness = Literal["complete", "partial", "unavailable"]

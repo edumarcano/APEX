@@ -127,12 +127,19 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
             self.local_path,
             {
                 "schema_version": 8,
-                "ask_apex": {"apodemus_context_window": 16384},
+                "ask_apex": {"apodemus_context_window": 8192},
             },
         )
         store = self._store()
         snap = store.get_snapshot()
-        self.assertEqual(snap.ask_apex.apodemus_context_window, 16384)
+        self.assertEqual(
+            snap.ask_apex.local_context_windows,
+            {"apodemus": 16384, "neotoma": 16384},
+        )
+        self.assertEqual(
+            snap.ask_apex.local_reasoning_modes,
+            {"sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none"},
+        )
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
 

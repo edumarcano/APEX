@@ -2,7 +2,7 @@
   "id": "chatcmpl-fixture-single-tool",
   "object": "chat.completion",
   "created": 1710000001,
-  "model": "apodemus-8k",
+  "model": "apodemus-16k",
   "choices": [
     {
       "index": 0,

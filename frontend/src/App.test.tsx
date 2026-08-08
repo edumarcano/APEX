@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -48,37 +48,72 @@ vi.mock('./components/SystemDiagnostics', () => ({
 vi.mock('./components/CortexWorkspace', () => ({
   CortexWorkspace: ({
     activeAgent,
-    apodemusContextWindow,
-    onApodemusContextChange,
+    onLocalContextWindowChange,
     onGoogleSearchChange,
     toolCatalog,
   }: {
     activeAgent: AgentKey
-    apodemusContextWindow: number
-    onApodemusContextChange: (contextWindow: number) => void
+    onLocalContextWindowChange: (agent: AgentKey, contextWindow: number) => Promise<boolean>
     onGoogleSearchChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
-  }) => (
-    <div>
-      <output data-testid="active-agent">{activeAgent}</output>
-      <output data-testid="provider-hosted-tools">
-        {toolCatalog?.provider_hosted_tools.join(',') ?? ''}
-      </output>
-      <output data-testid="catalog-context-window">
-        {toolCatalog?.context_window ?? ''}
-      </output>
-      <output data-testid="apodemus-context-window">{apodemusContextWindow}</output>
-      {activeAgent === 'apodemus' ? (
-        <button type="button" onClick={() => onApodemusContextChange(32768)}>
-          Increase Apodemus Context
-        </button>
-      ) : (
-        <button type="button" onClick={() => onGoogleSearchChange(true)}>
-          Enable Google Search
-        </button>
-      )}
-    </div>
-  ),
+  }) => {
+    const authoritativeContextWindow = toolCatalog?.context_window ?? null
+    const [selectedContextWindow, setSelectedContextWindow] = useState(authoritativeContextWindow)
+    const [pendingTarget, setPendingTarget] = useState<number | null>(null)
+    useEffect(() => {
+      if (pendingTarget !== null) {
+        if (authoritativeContextWindow === pendingTarget) {
+          setPendingTarget(null)
+          setSelectedContextWindow(authoritativeContextWindow)
+        }
+        return
+      }
+      setSelectedContextWindow(authoritativeContextWindow)
+    }, [authoritativeContextWindow, pendingTarget])
+    const handleContextWindowChange = async (contextWindow: number): Promise<void> => {
+      const rollbackContextWindow =
+        pendingTarget ?? authoritativeContextWindow
+      setSelectedContextWindow(contextWindow)
+      setPendingTarget(contextWindow)
+      try {
+        const persisted = await onLocalContextWindowChange(activeAgent, contextWindow)
+        if (!persisted) {
+          setPendingTarget(null)
+          setSelectedContextWindow(rollbackContextWindow)
+        }
+      } catch {
+        setPendingTarget(null)
+        setSelectedContextWindow(rollbackContextWindow)
+      }
+    }
+    return (
+      <div>
+        <output data-testid="active-agent">{activeAgent}</output>
+        <output data-testid="provider-hosted-tools">
+          {toolCatalog?.provider_hosted_tools.join(',') ?? ''}
+        </output>
+        <output data-testid="catalog-context-window">
+          {toolCatalog?.context_window ?? ''}
+        </output>
+        {activeAgent === 'apodemus' || activeAgent === 'neotoma' ? (
+          <select
+            aria-label="Local context window"
+            value={String(selectedContextWindow ?? '')}
+            onChange={(event) => {
+              void handleContextWindowChange(Number(event.target.value))
+            }}
+          >
+            <option value="16384">16K</option>
+            <option value="32768">32K</option>
+          </select>
+        ) : (
+          <button type="button" onClick={() => onGoogleSearchChange(true)}>
+            Enable Google Search
+          </button>
+        )}
+      </div>
+    )
+  },
 }))
 
 vi.mock('./hooks/useApexData', () => ({
@@ -91,7 +126,7 @@ vi.mock('./hooks/useApexData', () => ({
     marketEnabled: false,
     defaultAgent: appMocks.initialAgent,
     agentInitialSelection: {
-      runtime: appMocks.initialAgent === 'apodemus' ? 'local' : 'cloud',
+      runtime: appMocks.initialAgent === 'apodemus' || appMocks.initialAgent === 'neotoma' ? 'local' : 'cloud',
       agent: appMocks.initialAgent,
       effort: 'focused',
     },
@@ -133,8 +168,8 @@ vi.mock('./hooks/useCortex', () => ({
     agentsStatus: [{
       key: appMocks.initialAgent,
       display_name: `Apex ${appMocks.initialAgent}`,
-      runtime: appMocks.initialAgent === 'apodemus' ? 'local' : 'cloud',
-      status: appMocks.initialAgent === 'apodemus' ? 'available' : 'configured',
+      runtime: appMocks.initialAgent === 'apodemus' || appMocks.initialAgent === 'neotoma' ? 'local' : 'cloud',
+      status: appMocks.initialAgent === 'apodemus' || appMocks.initialAgent === 'neotoma' ? 'available' : 'configured',
       active: true,
       loading: false,
       loaded_model: null,
@@ -210,7 +245,7 @@ function deferred<T>(): Deferred<T> {
 function catalogFor(
   agent: AgentKey,
   googleSearchEnabled = false,
-  contextWindow = 8192,
+  contextWindow = 16384,
 ): ToolCatalog {
   return {
     agent,
@@ -228,18 +263,18 @@ function catalogFor(
     default_profile_name: 'No APEX Tools',
     default_selected_tool_names: [],
     provider_hosted_tools: googleSearchEnabled ? ['google_search'] : [],
-    context_window: agent === 'apodemus' ? contextWindow : null,
-    reserved_response_tokens: agent === 'apodemus' ? 512 : null,
+    context_window: agent === 'apodemus' || agent === 'neotoma' ? contextWindow : null,
+    reserved_response_tokens: agent === 'apodemus' || agent === 'neotoma' ? 512 : null,
   }
 }
 
 function settingsResponse(
   agent: AgentKey,
   googleSearchEnabled = false,
-  contextWindow = 8192,
+  contextWindow = 16384,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 1,
+    schema_version: 13,
     settings: {
       user_designation: '',
       features: {
@@ -255,11 +290,20 @@ function settingsResponse(
       market: { symbols: [] },
       ask_apex: {
         enabled: true,
-        runtime: agent === 'apodemus' ? 'local' : 'cloud',
+        runtime: agent === 'apodemus' || agent === 'neotoma' ? 'local' : 'cloud',
         cloud_agent: 'neofelis',
         effort: 'focused',
-        local_agent: agent === 'apodemus' ? 'apodemus' : 'mus',
-        apodemus_context_window: contextWindow,
+        local_agent: agent === 'apodemus' || agent === 'neotoma' ? agent : 'mus',
+        local_context_windows: {
+          apodemus: contextWindow,
+          neotoma: 16384,
+        },
+        local_reasoning_modes: {
+          sorex: 'none',
+          mus: 'none',
+          apodemus: 'none',
+          neotoma: 'none',
+        },
         neofelis_google_search_enabled: googleSearchEnabled,
         neofelis_google_maps_enabled: false,
         delphinus_x_search_enabled: false,
@@ -364,7 +408,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const refreshedContextWindow =
-            agent === 'apodemus' && apodemusCatalogRequests++ > 0 ? 32768 : 8192
+            agent === 'apodemus' && apodemusCatalogRequests++ > 0 ? 32768 : 16384
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, false, refreshedContextWindow)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -383,10 +427,12 @@ describe('App catalog-affecting settings', () => {
     await waitFor(() => expect(catalogRequests).toContain('apodemus'))
     await waitFor(() => {
       expect(screen.getByTestId('active-agent')).toHaveTextContent('apodemus')
-      expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('8192')
+      expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('16384')
     })
 
-    await user.click(screen.getByRole('button', { name: 'Increase Apodemus Context' }))
+    const contextSelect = screen.getByRole('combobox', { name: 'Local context window' })
+    await user.selectOptions(contextSelect, '32768')
+    expect(contextSelect).toHaveValue('32768')
     expect(catalogRequests.filter((agent) => agent === 'apodemus')).toHaveLength(1)
 
     settingsPatch.resolve(settingsResponse('apodemus', false, 32768))
@@ -395,5 +441,39 @@ describe('App catalog-affecting settings', () => {
       expect(catalogRequests.filter((agent) => agent === 'apodemus')).toHaveLength(2)
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('32768')
     })
+  })
+
+  it('rolls the Apodemus context selector back when persistence fails', async () => {
+    appMocks.initialAgent = 'apodemus'
+    const user = userEvent.setup()
+    const settingsPatch = deferred<Response>()
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = new URL(String(input))
+        if (url.pathname.endsWith('/cortex/tool-catalog')) {
+          return Promise.resolve(new Response(
+            JSON.stringify(catalogFor('apodemus')),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ))
+        }
+        if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
+          return settingsPatch.promise
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }))
+      }),
+    )
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    const contextSelect = await screen.findByRole('combobox', { name: 'Local context window' })
+    expect(contextSelect).toHaveValue('16384')
+    await user.selectOptions(contextSelect, '32768')
+    expect(contextSelect).toHaveValue('32768')
+
+    settingsPatch.resolve(new Response('{}', { status: 500 }))
+    await waitFor(() => expect(contextSelect).toHaveValue('16384'))
   })
 })

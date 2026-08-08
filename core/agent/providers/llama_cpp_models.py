@@ -1,4 +1,4 @@
-"""Apex Apodemus profile and runtime configuration for llama.cpp."""
+"""Generic Apex local-agent profiles and runtime configuration for llama.cpp."""
 
 from __future__ import annotations
 
@@ -7,55 +7,103 @@ from typing import ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from core.config import (
-    APODEMUS_CPU_LIMIT,
-    APODEMUS_RAM_LIMIT,
     LLAMA_CPP_REQUEST_TIMEOUT_SECONDS,
+    LLAMA_CPP_RESOURCE_GATES,
     LOCAL_AGENT_SYSTEM_PROMPT,
 )
-
-APODEMUS_ALLOWED_CONTEXT_WINDOWS: tuple[int, ...] = (4096, 8192, 16384, 32768)
-APODEMUS_DEFAULT_CONTEXT_WINDOW: int = 8192
-APODEMUS_MAX_CONTEXT_WINDOW: int = 131072
-
-APODEMUS_DEFAULT_TEMPERATURE: float = 0.2
-APODEMUS_MAX_TOOL_TURNS: int = 3
-APODEMUS_MAX_TOOL_CALLS: int = 4
-APODEMUS_TOOL_SELECT_MAX_TOKENS: int = 256
-APODEMUS_FINAL_ANSWER_MAX_TOKENS: int = 768
-
-APODEMUS_RUNTIME_MODEL_IDS: dict[int, str] = {
-    4096: "apodemus-4k",
-    8192: "apodemus-8k",
-    16384: "apodemus-16k",
-    32768: "apodemus-32k",
-}
-
-APODEMUS_CONFIGURED_MODEL: str = "gemma-4-E2B-Q4_K_M.gguf"
+from core.agent.types import LocalReasoningMode
 
 
-def apodemus_runtime_model_id(context_window: int) -> str:
-    """Return the stable llama.cpp router alias for a selectable context."""
-    try:
-        return APODEMUS_RUNTIME_MODEL_IDS[context_window]
-    except KeyError as exc:
-        raise ValueError(
-            f"Unsupported Apodemus context window: {context_window!r}"
-        ) from exc
+class LlamaCppRuntimeConfig(BaseModel):
+    """Data-driven runtime capabilities for one registered llama.cpp Agent."""
 
+    default_temperature: float = Field(
+        description="Sampling temperature used by this local runtime profile."
+    )
+    allowed_context_windows: tuple[int, ...] = Field(
+        description="Discrete context presets exposed by the HUD."
+    )
+    default_context_window: int = Field(
+        description="Context preset used when no persisted preference exists."
+    )
+    high_resource_context_options: tuple[int, ...] = Field(
+        description="Context presets that receive a high-resource UI label."
+    )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        description="Provider-supported local reasoning modes for this Agent."
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        default="none",
+        description="Reasoning mode used when no persisted preference exists.",
+    )
+    maximum_context_window: int = Field(
+        description="Native model context metadata, not an exposed preset."
+    )
+    runtime_model_ids: dict[int, str] = Field(
+        description="Context-window-to-router-alias mapping for this Agent."
+    )
+    tool_select_max_tokens: int = Field(
+        description="Token ceiling when the model is selecting a tool."
+    )
+    final_answer_max_tokens: int = Field(
+        description="Token ceiling for the final text response."
+    )
+    focused_tool_select_max_tokens: int = Field(
+        description=(
+            "Completion ceiling for tool selection when native reasoning is enabled."
+        )
+    )
+    focused_final_answer_max_tokens: int = Field(
+        description=(
+            "Completion ceiling for final answers when native reasoning is enabled."
+        )
+    )
+    generation_timeout: int = Field(
+        description="Hard timeout in seconds for a single model generation call."
+    )
+    ram_limit: float = Field(
+        description="Maximum host RAM utilization percentage before load is gated."
+    )
+    cpu_limit: float = Field(
+        description="Maximum host CPU utilization percentage before load is gated."
+    )
+    parallel_tool_calls: bool = Field(
+        description="Whether the provider may emit multiple structured tool calls."
+    )
 
-def resolve_apodemus_context_window(value: int | None) -> int:
-    """Resolve an Apodemus context preference, defaulting to 8K."""
-    if value is None:
-        return APODEMUS_DEFAULT_CONTEXT_WINDOW
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"Unsupported Apodemus context window: {value!r}")
-    if value not in APODEMUS_ALLOWED_CONTEXT_WINDOWS:
-        raise ValueError(f"Unsupported Apodemus context window: {value!r}")
-    return value
+    @model_validator(mode="after")
+    def _validate_runtime_contract(self) -> LlamaCppRuntimeConfig:
+        if self.default_context_window not in self.allowed_context_windows:
+            raise ValueError(
+                "default_context_window must be one of allowed_context_windows"
+            )
+        if self.maximum_context_window < max(self.allowed_context_windows):
+            raise ValueError(
+                "maximum_context_window must be at least every allowed context value"
+            )
+        if set(self.runtime_model_ids) != set(self.allowed_context_windows):
+            raise ValueError(
+                "runtime_model_ids must provide exactly one alias per allowed context"
+            )
+        if not set(self.high_resource_context_options).issubset(
+            self.allowed_context_windows
+        ):
+            raise ValueError(
+                "high_resource_context_options must be allowed context presets"
+            )
+        if not self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must not be empty")
+        if "none" not in self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must include 'none'")
+        if self.default_reasoning_mode not in self.supported_reasoning_modes:
+            raise ValueError(
+                "default_reasoning_mode must be a supported reasoning mode"
+            )
+        return self
 
 
 class LlamaCppModelProfile(BaseModel):
-    """Concrete runtime profile for Apex Apodemus through llama.cpp."""
+    """Concrete runtime profile for a registered Agent through llama.cpp."""
 
     provider: ClassVar[Literal["llama_cpp"]] = "llama_cpp"
     runtime: ClassVar[Literal["local"]] = "local"
@@ -74,7 +122,6 @@ class LlamaCppModelProfile(BaseModel):
         description="Release stage classification of the target model."
     )
     default_temperature: float = Field(
-        default=APODEMUS_DEFAULT_TEMPERATURE,
         description="Lower temperature values minimize tool-calling hallucinations.",
     )
     max_tool_turns: int = Field(
@@ -86,13 +133,29 @@ class LlamaCppModelProfile(BaseModel):
     context_window: int = Field(
         description="Selected input token context window for this load."
     )
+    default_context_window: int = Field(
+        description="Context preset used when no persisted preference exists."
+    )
     maximum_context_window: int = Field(
-        default=APODEMUS_MAX_CONTEXT_WINDOW,
         description="Model maximum context metadata; not a selectable preset.",
     )
     allowed_context_windows: tuple[int, ...] = Field(
-        default=APODEMUS_ALLOWED_CONTEXT_WINDOWS,
         description="Discrete selectable context presets for this Agent.",
+    )
+    high_resource_context_options: tuple[int, ...] = Field(
+        description="Context presets that receive a high-resource UI label."
+    )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        description="Provider-supported local reasoning modes for this Agent."
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        description="Reasoning mode used when no persisted preference exists."
+    )
+    reasoning_mode: LocalReasoningMode = Field(
+        description="Resolved reasoning mode for the next provider request."
+    )
+    runtime_model_id: str = Field(
+        description="Resolved llama.cpp router alias used for load and residency checks."
     )
     tool_select_max_tokens: int = Field(
         description="Token ceiling when the model is selecting a tool."
@@ -113,12 +176,7 @@ class LlamaCppModelProfile(BaseModel):
         default=False,
         description="Whether cold loads of this Agent warrant a high-resource warning.",
     )
-    reasoning_mode: Literal["off"] = Field(
-        default="off",
-        description="Apodemus keeps reasoning disabled as part of its runtime contract.",
-    )
     parallel_tool_calls: bool = Field(
-        default=True,
         description="Whether the provider may emit multiple structured tool calls.",
     )
     system_instruction: str = Field(
@@ -132,21 +190,100 @@ class LlamaCppModelProfile(BaseModel):
                 f"context_window {self.context_window} is not in "
                 f"allowed_context_windows {self.allowed_context_windows}"
             )
+        if self.default_context_window not in self.allowed_context_windows:
+            raise ValueError(
+                "default_context_window must be one of allowed_context_windows"
+            )
+        if not set(self.high_resource_context_options).issubset(
+            self.allowed_context_windows
+        ):
+            raise ValueError(
+                "high_resource_context_options must be allowed context presets"
+            )
         if self.maximum_context_window < max(self.allowed_context_windows):
             raise ValueError(
                 "maximum_context_window must be at least every allowed context value"
             )
-        if self.reasoning_mode != "off":
-            raise ValueError("Apodemus reasoning_mode must remain off")
+        if not self.runtime_model_id.strip():
+            raise ValueError("runtime_model_id must not be empty")
+        if not self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must not be empty")
+        if "none" not in self.supported_reasoning_modes:
+            raise ValueError("supported_reasoning_modes must include 'none'")
+        if self.default_reasoning_mode not in self.supported_reasoning_modes:
+            raise ValueError(
+                "default_reasoning_mode must be a supported reasoning mode"
+            )
+        if self.reasoning_mode not in self.supported_reasoning_modes:
+            raise ValueError("reasoning_mode must be a supported reasoning mode")
         return self
 
-    @property
-    def runtime_model_id(self) -> str:
-        """Provider runtime identifier used for load, unload, and residency checks."""
-        return apodemus_runtime_model_id(self.context_window)
+
+def llama_cpp_runtime_config(agent_key: str) -> LlamaCppRuntimeConfig:
+    """Return the registered llama.cpp runtime configuration for an Agent."""
+    try:
+        return LLAMA_CPP_RUNTIME_CONFIGS[agent_key]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported llama.cpp Agent: {agent_key!r}") from exc
 
 
-def build_apodemus_profile(
+def resolve_llama_cpp_context_window(agent_key: str, value: int | None) -> int:
+    """Resolve a persisted context preference using the Agent's runtime data."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    if value is None:
+        return runtime.default_context_window
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(
+            f"Unsupported llama.cpp context window for {agent_key}: {value!r}"
+        )
+    if value not in runtime.allowed_context_windows:
+        raise ValueError(
+            f"Unsupported llama.cpp context window for {agent_key}: {value!r}"
+        )
+    return value
+
+
+def llama_cpp_runtime_model_id(agent_key: str, context_window: int) -> str:
+    """Return the stable router alias for an Agent's selected context."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    resolved_context = resolve_llama_cpp_context_window(agent_key, context_window)
+    return runtime.runtime_model_ids[resolved_context]
+
+
+def llama_cpp_context_window_for_runtime_model_id(
+    agent_key: str,
+    runtime_model_id: str,
+) -> int | None:
+    """Return the configured context for a resident llama.cpp router alias."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    for context_window, model_id in runtime.runtime_model_ids.items():
+        if model_id == runtime_model_id:
+            return context_window
+    return None
+
+
+def resolve_llama_cpp_reasoning_mode(
+    agent_key: str,
+    value: str | None,
+) -> LocalReasoningMode:
+    """Resolve a persisted reasoning preference against runtime capabilities."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    if value is None:
+        return runtime.default_reasoning_mode
+    if value not in runtime.supported_reasoning_modes:
+        raise ValueError(
+            f"Unsupported llama.cpp reasoning mode for {agent_key}: {value!r}"
+        )
+    return value  # type: ignore[return-value]
+
+
+def _resource_limits(agent_key: str) -> tuple[float, float]:
+    """Return configured resource gates without embedding Agent conditionals."""
+    return LLAMA_CPP_RESOURCE_GATES.get(agent_key, (82.0, 92.0))
+
+
+def build_llama_cpp_profile(
+    agent_key: str,
     *,
     display_name: str,
     agent_version: str,
@@ -157,28 +294,116 @@ def build_apodemus_profile(
     max_tool_calls: int,
     system_instruction: str,
     context_window: int | None = None,
+    reasoning_mode: LocalReasoningMode | None = None,
 ) -> LlamaCppModelProfile:
-    """Build a concrete Apodemus profile for the selected context preset."""
-    resolved_context = resolve_apodemus_context_window(context_window)
+    """Build one concrete profile from the registered Agent runtime data."""
+    runtime = llama_cpp_runtime_config(agent_key)
+    resolved_context = resolve_llama_cpp_context_window(agent_key, context_window)
+    resolved_reasoning = resolve_llama_cpp_reasoning_mode(agent_key, reasoning_mode)
+    if resolved_reasoning == "focused":
+        tool_select_max_tokens = runtime.focused_tool_select_max_tokens
+        final_answer_max_tokens = runtime.focused_final_answer_max_tokens
+    else:
+        tool_select_max_tokens = runtime.tool_select_max_tokens
+        final_answer_max_tokens = runtime.final_answer_max_tokens
     return LlamaCppModelProfile(
         display_name=display_name,
         agent_version=agent_version,
         api_model=api_model,
         tier=tier,
         stability=stability,
-        default_temperature=APODEMUS_DEFAULT_TEMPERATURE,
+        default_temperature=runtime.default_temperature,
         max_tool_turns=max_tool_turns,
         max_tool_calls=max_tool_calls,
         context_window=resolved_context,
-        maximum_context_window=APODEMUS_MAX_CONTEXT_WINDOW,
-        allowed_context_windows=APODEMUS_ALLOWED_CONTEXT_WINDOWS,
-        tool_select_max_tokens=APODEMUS_TOOL_SELECT_MAX_TOKENS,
-        final_answer_max_tokens=APODEMUS_FINAL_ANSWER_MAX_TOKENS,
-        generation_timeout=int(LLAMA_CPP_REQUEST_TIMEOUT_SECONDS),
-        ram_limit=APODEMUS_RAM_LIMIT,
-        cpu_limit=APODEMUS_CPU_LIMIT,
-        high_resource=resolved_context >= 32768,
-        reasoning_mode="off",
-        parallel_tool_calls=True,
+        default_context_window=runtime.default_context_window,
+        maximum_context_window=runtime.maximum_context_window,
+        allowed_context_windows=runtime.allowed_context_windows,
+        high_resource_context_options=runtime.high_resource_context_options,
+        supported_reasoning_modes=runtime.supported_reasoning_modes,
+        default_reasoning_mode=runtime.default_reasoning_mode,
+        reasoning_mode=resolved_reasoning,
+        runtime_model_id=llama_cpp_runtime_model_id(agent_key, resolved_context),
+        tool_select_max_tokens=tool_select_max_tokens,
+        final_answer_max_tokens=final_answer_max_tokens,
+        generation_timeout=runtime.generation_timeout,
+        ram_limit=runtime.ram_limit,
+        cpu_limit=runtime.cpu_limit,
+        high_resource=resolved_context in runtime.high_resource_context_options,
+        parallel_tool_calls=runtime.parallel_tool_calls,
         system_instruction=system_instruction or LOCAL_AGENT_SYSTEM_PROMPT,
     )
+
+
+def _runtime_config(
+    *,
+    allowed_context_windows: tuple[int, ...],
+    high_resource_context_options: tuple[int, ...],
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...],
+    default_context_window: int,
+    maximum_context_window: int,
+    runtime_model_ids: dict[int, str],
+    resource_limits: tuple[float, float],
+    tool_select_max_tokens: int,
+    final_answer_max_tokens: int,
+    focused_tool_select_max_tokens: int,
+    focused_final_answer_max_tokens: int,
+) -> LlamaCppRuntimeConfig:
+    """Create a compact immutable-in-practice runtime data entry."""
+    return LlamaCppRuntimeConfig(
+        default_temperature=0.2,
+        allowed_context_windows=allowed_context_windows,
+        high_resource_context_options=high_resource_context_options,
+        supported_reasoning_modes=supported_reasoning_modes,
+        default_context_window=default_context_window,
+        maximum_context_window=maximum_context_window,
+        runtime_model_ids=runtime_model_ids,
+        tool_select_max_tokens=tool_select_max_tokens,
+        final_answer_max_tokens=final_answer_max_tokens,
+        focused_tool_select_max_tokens=focused_tool_select_max_tokens,
+        focused_final_answer_max_tokens=focused_final_answer_max_tokens,
+        generation_timeout=int(LLAMA_CPP_REQUEST_TIMEOUT_SECONDS),
+        ram_limit=resource_limits[0],
+        cpu_limit=resource_limits[1],
+        parallel_tool_calls=True,
+    )
+
+
+LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
+    "apodemus": _runtime_config(
+        allowed_context_windows=(4096, 16384, 32768, 131072),
+        high_resource_context_options=(131072,),
+        supported_reasoning_modes=("none", "focused"),
+        default_context_window=16384,
+        maximum_context_window=131072,
+        runtime_model_ids={
+            4096: "apodemus-4k",
+            16384: "apodemus-16k",
+            32768: "apodemus-32k",
+            131072: "apodemus-132k",
+        },
+        resource_limits=_resource_limits("apodemus"),
+        tool_select_max_tokens=256,
+        final_answer_max_tokens=768,
+        focused_tool_select_max_tokens=1536,
+        focused_final_answer_max_tokens=1536,
+    ),
+    "neotoma": _runtime_config(
+        allowed_context_windows=(4096, 16384, 32768, 65536),
+        high_resource_context_options=(65536,),
+        supported_reasoning_modes=("none", "focused"),
+        default_context_window=16384,
+        maximum_context_window=262144,
+        runtime_model_ids={
+            4096: "neotoma-4k",
+            16384: "neotoma-16k",
+            32768: "neotoma-32k",
+            65536: "neotoma-64k",
+        },
+        resource_limits=_resource_limits("neotoma"),
+        tool_select_max_tokens=256,
+        final_answer_max_tokens=768,
+        focused_tool_select_max_tokens=1536,
+        focused_final_answer_max_tokens=1536,
+    ),
+}
