@@ -20,7 +20,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Why.** I want to change normal preferences from the HUD without modifying tracked defaults or restarting the process.
 
-**Trade-off.** Invalid local configuration must fail as one layer rather than partially applying. The store validates the full overlay and publishes it only after a transactional file replacement succeeds.
+**Trade-off.** Invalid editable runtime settings reject the local layer as a unit, except MCP configuration: malformed optional MCP fields or providers fail closed independently so one integration cannot invalidate unrelated local preferences. Successful settings writes still use transactional replacement before the new snapshot is published.
 
 ## Backend and API
 

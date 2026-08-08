@@ -233,7 +233,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     "sorex": AgentSpec(
         key="sorex",
         display_name="Apex Sorex",
-        description="Lightweight on-device fallback for quick tasks on constrained systems.",
+        description="Lightweight local development Agent for evaluating constrained-system workflows.",
         identity_instruction=(
             "You are Apex Sorex, an Apex Agent powered by "
             "Qwen3 1.7B through Ollama."
@@ -248,14 +248,14 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_calls=3,
         tier="lightweight",
         stability="stable",
-        capability_tags=("Lightweight", "Fast fallback", "Constrained local"),
+        capability_tags=("Lightweight", "Development", "Constrained local"),
         dev_only=True,
         supports_effort=False,
     ),
     "mus": AgentSpec(
         key="mus",
         display_name="Apex Mus",
-        description="Private on-device generalist for capable offline work without cloud processing.",
+        description="Local development generalist for evaluating capable offline work without cloud processing.",
         identity_instruction=(
             "You are Apex Mus, an Apex Agent powered by "
             "Qwen3 4B Instruct through Ollama."
@@ -270,7 +270,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_calls=4,
         tier="balanced",
         stability="stable",
-        capability_tags=("Larger model", "Primary local"),
+        capability_tags=("Larger model", "Development local"),
         dev_only=True,
         supports_effort=False,
     ),

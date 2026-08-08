@@ -53,7 +53,7 @@ loopback by default"]
 
 External paths exist only when the corresponding connector, provider, speech engine, or MCP integration is enabled.
 
-APEX treats Ollama and llama.cpp as local by default; configuring a remote local-runtime host moves that model traffic outside the machine boundary.
+APEX treats Ollama and llama.cpp as local by default. Ollama may be configured with a remote host, which moves that model traffic outside the machine boundary; APEX requires the llama.cpp router host to remain loopback-only.
 
 ## Local service boundary
 

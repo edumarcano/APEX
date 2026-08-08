@@ -104,7 +104,9 @@ FastAPI's lifespan initializes the database and Microsoft To Do services, starts
 | `useTelemetrySnapshot` | Current process-local telemetry snapshot and refresh state |
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useCortex` | Browser-held conversation, Agent status, explicit tool-selection diagnostics, and tool cards |
+| `useCortex` | Browser-held conversation, Agent status, query submission, tool traces, and returned tool cards |
+| `useToolCatalog` | Agent-specific tool catalog, profile application, and session-persistent selection |
+| `useToolPreflight` | Debounced next-request tool and context token estimates |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 

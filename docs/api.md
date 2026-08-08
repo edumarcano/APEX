@@ -82,6 +82,7 @@ Returns the resolved settings envelope. The current contract version is `13`.
     "football": { "teams": [] },
     "market": { "symbols": [] },
     "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "apodemus", "local_context_windows": { "apodemus": 16384, "neotoma": 16384, "unnamed-experimental-agent": 16384 }, "local_reasoning_modes": { "sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none", "unnamed-experimental-agent": "none" }, "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "tool_profiles": { "custom_profiles": [], "default_profile_by_agent": {} },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
@@ -95,13 +96,13 @@ Returns the resolved settings envelope. The current contract version is `13`.
 }
 ```
 
-`football.teams` and `market.symbols` are returned in the resolved settings snapshot and are patchable through Runtime Settings. OpenAPI contains the complete shape.
+`football.teams`, `market.symbols`, and `tool_profiles` are returned in the resolved settings snapshot. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults. The generic settings patch continues to accept the complete `tool_profiles` group for contract compatibility.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Ask APEX, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Ask APEX, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -369,7 +370,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, and Neotoma use up to 3/4 respectively. The last model turn is answer-only.
+Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 3/4 respectively. The last model turn is answer-only.
 
 ## Markets and MCP
 

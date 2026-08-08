@@ -1,4 +1,4 @@
-"""Characterization coverage for DEV_MODE, DEMO_MODE, gate, and synthesis fallback."""
+"""Characterization coverage for DEV_MODE, DEMO_MODE, and synthesis fallback."""
 
 from __future__ import annotations
 
@@ -44,62 +44,6 @@ class ConfigEnvParsingTests(unittest.TestCase):
         self.assertEqual(config._parse_dev_tts_playback(None), "pyttsx3")
         self.assertEqual(config._parse_dev_tts_playback("google"), "google")
         self.assertEqual(config._parse_dev_tts_playback("bad"), "pyttsx3")
-
-
-class ScannerGateModeTests(unittest.TestCase):
-    def test_dev_mode_bypasses_production_gate(self) -> None:
-        from core import scanner
-
-        with mock.patch.object(scanner.database, "initialize_db"), mock.patch.object(
-            scanner, "is_dev_mode", return_value=True
-        ), mock.patch.object(
-            scanner, "_enforce_production_gate"
-        ) as production_gate:
-            self.assertTrue(scanner.should_run())
-        production_gate.assert_not_called()
-
-    def test_startup_gate_disabled_bypasses_checks(self) -> None:
-        from core import scanner
-
-        with mock.patch.object(scanner.database, "initialize_db"), mock.patch.object(
-            scanner, "is_dev_mode", return_value=False
-        ), mock.patch.object(
-            scanner, "ENABLE_STARTUP_GATE", False
-        ), mock.patch.object(
-            scanner, "_enforce_production_gate"
-        ) as production_gate:
-            self.assertTrue(scanner.should_run())
-        production_gate.assert_not_called()
-
-    def test_production_gate_enforced_when_enabled(self) -> None:
-        from core import scanner
-
-        with mock.patch.object(scanner.database, "initialize_db"), mock.patch.object(
-            scanner, "is_dev_mode", return_value=False
-        ), mock.patch.object(
-            scanner, "ENABLE_STARTUP_GATE", True
-        ), mock.patch.object(
-            scanner, "_enforce_production_gate", return_value=False
-        ) as production_gate:
-            self.assertFalse(scanner.should_run())
-        production_gate.assert_called_once()
-
-    def test_production_gate_requires_ssid_power_and_cooldown(self) -> None:
-        from core import scanner
-
-        with mock.patch.object(scanner, "get_current_ssid", return_value="HomeNet"), mock.patch.dict(
-            os.environ, {"HOME_SSID": "HomeNet"}, clear=False
-        ), mock.patch.object(
-            scanner, "check_power", return_value=True
-        ), mock.patch.object(
-            scanner.database, "get_last_run", return_value=None
-        ):
-            self.assertTrue(scanner._enforce_production_gate())
-
-        with mock.patch.object(scanner, "get_current_ssid", return_value="Other"), mock.patch.dict(
-            os.environ, {"HOME_SSID": "HomeNet"}, clear=False
-        ), mock.patch.object(scanner, "check_power", return_value=True):
-            self.assertFalse(scanner._enforce_production_gate())
 
 
 class BrainFallbackShapeTests(unittest.TestCase):

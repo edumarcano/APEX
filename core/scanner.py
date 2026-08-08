@@ -1,18 +1,9 @@
 import logging
 import os
 import subprocess
-from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import psutil
-from dotenv import load_dotenv
-
-from core import database
-from core.config import ENABLE_STARTUP_GATE, ENV_PATH, is_dev_mode
-
-load_dotenv(dotenv_path=ENV_PATH)
-
-COOLDOWN_SECONDS = 3600
 CPU_THROTTLE_LIMIT = 80.0
 RAM_THROTTLE_LIMIT = 85.0
 _LOGGER = logging.getLogger(__name__)
@@ -147,64 +138,6 @@ def is_system_throttled() -> bool:
         return False
 
 
-def _enforce_production_gate() -> bool:
-    """Run Wi-Fi, AC power, and cooldown checks when the startup gate is enabled."""
-    current_wifi = get_current_ssid()
-    target_wifi = os.getenv("HOME_SSID")
-    is_plugged = check_power()
-
-    if not target_wifi or current_wifi != target_wifi:
-        _LOGGER.warning("Checks failed. Unauthorized WiFi connection detected.")
-        return False
-    if not is_plugged:
-        _LOGGER.warning("Checks failed. AC power not detected.")
-        return False
-
-    last_successful_run = database.get_last_run()
-    cooldown_period = timedelta(seconds=COOLDOWN_SECONDS)
-    now = datetime.now(timezone.utc)
-
-    on_cooldown = (
-        last_successful_run is not None
-        and (now - last_successful_run.astimezone(timezone.utc)) < cooldown_period
-    )
-
-    if on_cooldown:
-        elapsed = now - last_successful_run.astimezone(timezone.utc)
-        _LOGGER.warning(
-            "Checks failed. System still on cooldown. Time since last run: %s",
-            elapsed,
-        )
-        return False
-
-    return True
-
-
-def should_run() -> bool:
-    """
-    Checks if the computer should run.
-    Returns:
-        bool: True if the computer should run, False otherwise.
-    """
-    database.initialize_db()
-
-    if is_dev_mode():
-        _LOGGER.info(
-            "DEV_MODE active — bypassing Wi-Fi SSID validation, "
-            "AC power connectivity check, and execution cooldown."
-        )
-        return True
-
-    if not ENABLE_STARTUP_GATE:
-        _LOGGER.info(
-            "Production setup with ENABLE_STARTUP_GATE=false — "
-            "skipping Wi-Fi SSID validation, AC power connectivity check, "
-            "and execution cooldown. Live API pipelines remain enabled."
-        )
-        return True
-
-    return _enforce_production_gate()
-
 
 if __name__ == "__main__":
     vitals = sample_system_vitals()
@@ -218,8 +151,3 @@ if __name__ == "__main__":
     )
     throttled = is_system_throttled()
     print(f"[SCANNER]: Hardware throttle active: {throttled}")
-
-    if should_run():
-        print("[SCANNER]: Checks passed.")
-    else:
-        print("[SCANNER]: Checks failed.")
