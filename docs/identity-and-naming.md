@@ -135,6 +135,8 @@ The registered family shares one Cortex operating layer across cloud-hosted and 
 
 DEV_MODE visibility does not necessarily indicate instability. Some Agents have established identities and technically stable implementations but are currently hidden from the primary roster because APEX does not yet provide enough Agent-specific functionality to make their roles meaningfully distinct in normal use. They remain available in DEV_MODE for development, evaluation, and future capability work. Stability answers whether an Agent works reliably; visibility answers whether its current role earns space in the product.
 
+Some DEV_MODE-only Agents retain intended future product roles that APEX does not yet fully support, while others remain registered primarily for development, comparison, or historical continuity.
+
 ```mermaid
 flowchart TB
     ENGINE["Cortex Engine<br/>Shared execution, tools, context, and observability"]
@@ -203,7 +205,7 @@ That relationship is reflected in APEX. Neofelis is adjacent to Panthera, but it
 
 Apex Neofelis specializes in using the distinctive capabilities of its underlying model. It currently uses Gemini 3.6 Flash and focuses on Google Search, Google Maps, and a one-million-token context window without a separate long-context surcharge in the current pricing configuration. The underlying model may support multimodal work, but current APEX requests are text- and tool-based.
 
-The name represents a smaller and more specialized relative of the Panthera group. Neofelis remains a registered development/specialized Agent whose particular Google integrations or long-context capabilities can be evaluated in DEV_MODE; it is not a normal user-facing alternative to Panthera.
+The name represents a smaller and more specialized relative of the Panthera group. Neofelis remains a registered development/specialized Agent whose intended product role is Google-centered research and long-context work. APEX does not yet provide enough Agent-specific research capability to make that specialization meaningfully distinct in the normal roster, so Neofelis remains available through DEV_MODE.
 
 Its identity should therefore be understood as a specialized branch, not simply a weaker or stronger Panthera.
 
@@ -219,7 +221,7 @@ Apex Delphinus specializes in live and social information retrieval. Its current
 
 Like Neofelis, Delphinus is defined by a specific capability rather than broad everyday coverage.
 
-Apex Delphinus is a registered development/specialized Agent. It provides access to the X-centered capability set at a lower cost than Orcinus. That cost and capability distinction is preserved for development and specialization, but Delphinus is not part of the normal user-facing roster.
+Apex Delphinus is a registered development/specialized Agent whose intended product role is live and social information work. Its lower-cost X-centered capability remains distinct from Orcinus, but APEX does not yet provide enough workflow support around that specialization to justify surfacing Delphinus in the normal roster.
 
 ## Apex Orcinus
 
@@ -229,7 +231,7 @@ Apex Delphinus is a registered development/specialized Agent. It provides access
 
 That makes Orcinus a direct larger counterpart to Delphinus within the APEX naming system.
 
-Apex Orcinus is a registered development/specialized Agent. It currently has the same general X-centered capability family as Delphinus, including live and social information retrieval. Its underlying model provides stronger intelligence and reasoning, particularly for deeper analysis and extended investigations, but at a higher cost.
+Apex Orcinus is a registered development/specialized Agent whose intended product role is deeper investigation and reasoning over live information. It currently has the same general X-centered capability family as Delphinus, including live and social information retrieval. Its underlying model provides stronger intelligence and reasoning, particularly for deeper analysis and extended investigations, but at a higher cost. APEX does not yet provide enough differentiated investigation workflow capability for that role to justify a primary roster slot.
 
 Delphinus was introduced because many requests can benefit from X integration without requiring Orcinus-level reasoning. The two registered development Agents therefore preserve different cost and capability points around a related set of tools.
 
