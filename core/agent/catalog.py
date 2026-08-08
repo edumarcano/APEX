@@ -81,7 +81,7 @@ VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
 VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"sorex", "mus", "apodemus", "neotoma"}
+    {"sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"}
 )
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
@@ -145,7 +145,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="fast",
-        stability="stable",
+        stability="experimental",
         capability_tags=("Privacy sandbox", "Masked context"),
         dev_only=True,
     ),
@@ -188,6 +188,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="advanced",
         stability="stable",
         capability_tags=("Research", "Google Search", "Google Maps"),
+        dev_only=True,
     ),
     "delphinus": AgentSpec(
         key="delphinus",
@@ -207,6 +208,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="balanced",
         stability="stable",
         capability_tags=("Balanced", "X Search"),
+        dev_only=True,
     ),
     "orcinus": AgentSpec(
         key="orcinus",
@@ -226,6 +228,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="advanced",
         stability="stable",
         capability_tags=("Deep reasoning", "Extended analysis", "X Search"),
+        dev_only=True,
     ),
     "sorex": AgentSpec(
         key="sorex",
@@ -246,6 +249,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="lightweight",
         stability="stable",
         capability_tags=("Lightweight", "Fast fallback", "Constrained local"),
+        dev_only=True,
         supports_effort=False,
     ),
     "mus": AgentSpec(
@@ -267,13 +271,14 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="balanced",
         stability="stable",
         capability_tags=("Larger model", "Primary local"),
+        dev_only=True,
         supports_effort=False,
     ),
     "apodemus": AgentSpec(
         key="apodemus",
         display_name="Apex Apodemus",
         description=(
-            "Preview private local Agent for efficient tool-driven work through llama.cpp."
+            "Stable private local Agent for efficient tool-driven work through llama.cpp."
         ),
         identity_instruction=(
             "You are Apex Apodemus, an Apex Agent powered by "
@@ -288,7 +293,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_turns=3,
         max_tool_calls=4,
         tier="balanced",
-        stability="preview",
+        stability="stable",
         capability_tags=("Efficient local", "Selectable context"),
         supports_effort=False,
     ),
@@ -313,6 +318,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="balanced",
         stability="preview",
         capability_tags=("Generalist local", "Selectable context"),
+        dev_only=False,
         supports_effort=False,
     ),
     "unnamed-experimental-agent": AgentSpec(

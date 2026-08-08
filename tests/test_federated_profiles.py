@@ -444,11 +444,10 @@ class AcinonyxPolicyTests(unittest.TestCase):
 
 
 class DemoRosterTests(unittest.TestCase):
-    def test_runtime_roster_hides_dev_only_acinonyx_outside_dev(self) -> None:
+    def test_runtime_roster_hides_dev_only_agents_outside_dev(self) -> None:
         visible = runtime_agent_order(dev_mode=False)
         self.assertNotIn("acinonyx", visible)
-        self.assertIn("panthera", visible)
-        self.assertIn("sorex", visible)
+        self.assertEqual(visible, ("panthera", "apodemus", "neotoma"))
 
     def test_demo_agent_query_rejects_hidden_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
@@ -486,7 +485,7 @@ class ProfileStatusMetadataTests(unittest.TestCase):
                 return_value=None,
             ),
             mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
-            mock.patch("core.api.cortex.is_dev_mode", return_value=False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
             mock.patch(
                 "core.api.cortex.local_context_window_for_agent",

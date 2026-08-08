@@ -262,7 +262,7 @@ Mice and shrews are not especially close taxonomic counterparts. Their relations
 
 Apodemus belongs to the same small-mammal local group as Sorex and Mus. The name positions it as an efficient local relative rather than a cloud-scale Agent.
 
-Apex Apodemus is a preview local Agent that runs through a llama.cpp HTTP router (external or APEX-managed). It is intended for private, on-device work that benefits from structured tool use, with a selectable context window of 4K, 16K, 32K, or high-resource 132K tokens. Its configured model is Gemma 4 E2B (`gemma-4-E2B-Q4_K_M.gguf`). Its local reasoning control supports None and Focused, with None as the safe default; Focused uses the model template's native reasoning without exposing hidden reasoning in Cortex.
+Apex Apodemus is a stable local Agent that runs through a llama.cpp HTTP router (external or APEX-managed). It is intended for private, on-device work that benefits from structured tool use, with a selectable context window of 4K, 16K, 32K, or high-resource 132K tokens. Its configured model is Gemma 4 E2B (`gemma-4-E2B-Q4_K_M.gguf`). Its local reasoning control supports None and Focused, with None as the safe default; Focused uses the model template's native reasoning without exposing hidden reasoning in Cortex.
 
 Apodemus is also an explicit briefing mode. Its briefing path uses the shared local synthesis lifecycle and llama.cpp provider while keeping the Agent's selectable context policy for interactive Cortex work.
 

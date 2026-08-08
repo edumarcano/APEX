@@ -553,7 +553,7 @@ class ProfileAndPersistenceTests(unittest.TestCase):
                 for key in ("acinonyx", "neofelis")
             },
             {
-                "acinonyx": ("gemini-3.5-flash-lite", "stable"),
+                "acinonyx": ("gemini-3.5-flash-lite", "experimental"),
                 "neofelis": ("gemini-3.6-flash", "stable"),
             },
         )

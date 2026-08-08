@@ -39,7 +39,15 @@ class CloudAgentVerificationTests(unittest.TestCase):
         self.assertEqual(runtime_agent_order(dev_mode=True)[0], "acinonyx")
         self.assertIn("unnamed-experimental-agent", runtime_agent_order(dev_mode=True))
         self.assertNotIn("unnamed-experimental-agent", runtime_agent_order(dev_mode=False))
-        self.assertEqual(runtime_agent_order(dev_mode=False), ("panthera", "neofelis", "delphinus", "orcinus", "mus", "apodemus", "neotoma", "sorex"))
+        self.assertEqual(
+            runtime_agent_order(dev_mode=False),
+            ("panthera", "apodemus", "neotoma"),
+        )
+        self.assertTrue(AGENT_SPECS["acinonyx"].dev_only)
+        self.assertEqual(AGENT_SPECS["acinonyx"].stability, "experimental")
+        self.assertEqual(AGENT_SPECS["apodemus"].stability, "stable")
+        for key in ("neofelis", "delphinus", "orcinus", "mus", "sorex"):
+            self.assertTrue(AGENT_SPECS[key].dev_only)
 
     def test_non_generative_probe_is_cached_as_verified(self) -> None:
         with (
