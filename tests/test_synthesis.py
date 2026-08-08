@@ -9,7 +9,6 @@ from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
-from core.settings.models import RuntimeSettingsSnapshot
 from core.synthesis.formatting import compact_payload, deterministic_fallback, parse_model_output
 from core.synthesis.models import CalendarFact, F1Fact, NewsFact, SynthesisInput, SynthesisResult
 from core.synthesis.router import SynthesisRouter, WarmupHandle
@@ -123,23 +122,23 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, "gpt-5.6-luna")
         self.assertEqual(result.provider_ms, 123.4)
 
-    def test_panthera_falls_back_to_mus_before_sorex(self) -> None:
+    def test_panthera_falls_back_to_apodemus(self) -> None:
         router = SynthesisRouter()
-        expected = SynthesisResult(briefing="Local.", provider="ollama", agent="mus")
+        expected = SynthesisResult(briefing="Local.", provider="llama_cpp", agent="apodemus")
         with patch.object(router, "_panthera", side_effect=RuntimeError("openai_error")), patch.object(
             router, "_try_panthera_local_fallback", return_value=(expected, "")
         ) as local_fallback:
             result = router.synthesize(sample_input(), "cloud")
-        self.assertEqual(result.agent, "mus")
+        self.assertEqual(result.agent, "apodemus")
         self.assertEqual(result.fallback_reason, "openai_error")
-        local_fallback.assert_called_once_with(unittest.mock.ANY, "mus")
+        local_fallback.assert_called_once_with(unittest.mock.ANY, "apodemus")
 
-    def test_panthera_exhausts_mus_and_sorex_before_structured_digest(self) -> None:
+    def test_panthera_falls_back_to_structured_digest_after_apodemus(self) -> None:
         router = SynthesisRouter()
         with patch.object(router, "_panthera", side_effect=RuntimeError("openai_unavailable")), patch.object(
             router,
             "_try_panthera_local_fallback",
-            side_effect=[(None, "local_model_missing"), (None, "local_insufficient_ram")],
+            return_value=(None, "local_insufficient_ram"),
         ) as local_fallback:
             result = router.synthesize_mode(sample_input(), "panthera")
         self.assertEqual(result.provider, "raw")
@@ -148,14 +147,11 @@ class RoutingTests(unittest.TestCase):
             result.fallback_steps,
             [
                 "panthera:openai_unavailable",
-                "mus:local_model_missing",
-                "sorex:local_insufficient_ram",
+                "apodemus:local_insufficient_ram",
                 "structured_digest:resolved",
             ],
         )
-        self.assertEqual(
-            [call.args[1] for call in local_fallback.call_args_list], ["mus", "sorex"]
-        )
+        local_fallback.assert_called_once_with(unittest.mock.ANY, "apodemus")
 
     def test_late_warmup_returns_raw_without_cancelling_worker(self) -> None:
         router = SynthesisRouter()
@@ -187,81 +183,19 @@ class RoutingTests(unittest.TestCase):
         with patch("core.synthesis.router.try_begin_local_execution", return_value=True), patch(
             "core.synthesis.router.end_local_execution"
         ), patch(
-            "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
+            "core.synthesis.router.LlamaCppProvider.generate_turn", return_value=response
         ) as generate, patch(
             "core.synthesis.router.PRIMARY_SYNTHESIS_PROMPT", "PRIMARY_PROMPT"
-        ), patch(
-            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
         ):
-            result = router._local(sample_input(), "mus", None)
+            result = router._local(sample_input(), "apodemus", None)
         messages, tools, profile = generate.call_args.args
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
-        self.assertFalse(profile.think)
+        self.assertEqual(profile.reasoning_mode, "none")
         self.assertEqual(profile.final_answer_max_tokens, 512)
-        self.assertTrue(profile.system_instruction.startswith("You are Apex Mus"))
+        self.assertTrue(profile.system_instruction.startswith("You are Apex Apodemus"))
         self.assertIn("PRIMARY_PROMPT", profile.system_instruction)
-        self.assertEqual(result.agent, "mus")
-
-    def test_sorex_uses_local_prompt_mus_uses_primary_prompt(self) -> None:
-        router = SynthesisRouter()
-        response = ProviderTurnResult(
-            message=AgentMessage(
-                role="agent",
-                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
-            )
-        )
-        with patch("core.synthesis.router.try_begin_local_execution", return_value=True), patch(
-            "core.synthesis.router.end_local_execution"
-        ), patch(
-            "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
-        ) as generate, patch(
-            "core.synthesis.router.PRIMARY_SYNTHESIS_PROMPT", "PRIMARY_PROMPT"
-        ), patch(
-            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
-        ):
-            router._local(sample_input(), "sorex", None)
-            self.assertTrue(
-                generate.call_args.args[2].system_instruction.startswith("You are Apex Sorex")
-            )
-            self.assertIn(
-                "SOREX_PROMPT", generate.call_args.args[2].system_instruction
-            )
-            router._local(sample_input(), "mus", None)
-            self.assertTrue(
-                generate.call_args.args[2].system_instruction.startswith("You are Apex Mus")
-            )
-            self.assertIn(
-                "PRIMARY_PROMPT", generate.call_args.args[2].system_instruction
-            )
-
-    def test_sorex_briefing_requires_the_user_designation_in_speech(self) -> None:
-        router = SynthesisRouter()
-        response = ProviderTurnResult(
-            message=AgentMessage(
-                role="agent",
-                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
-            )
-        )
-        settings = RuntimeSettingsSnapshot(user_designation="Chief")
-        with patch(
-            "core.synthesis.router.get_settings_store"
-        ) as get_settings_store, patch(
-            "core.synthesis.router.try_begin_local_execution", return_value=True
-        ), patch("core.synthesis.router.end_local_execution"), patch(
-            "core.synthesis.router.OllamaProvider.generate_turn", return_value=response
-        ) as generate, patch(
-            "core.synthesis.router.OLLAMA_SYNTHESIS_PROMPT", "SOREX_PROMPT"
-        ):
-            get_settings_store.return_value.get_snapshot.return_value = settings
-            router._local(sample_input(), "sorex", None)
-
-        instruction = generate.call_args.args[2].system_instruction
-        self.assertIn(
-            'In the ===SPEECH=== section, address the user as "Chief" exactly once.',
-            instruction,
-        )
-        self.assertIn("Keep the address natural.", instruction)
+        self.assertEqual(result.agent, "apodemus")
 
     def test_explicit_apodemus_synthesis_uses_llama_cpp_at_16k(self) -> None:
         router = SynthesisRouter()
@@ -355,6 +289,7 @@ class RoutingTests(unittest.TestCase):
 
         self.assertEqual(result.provider, "raw")
         self.assertEqual(result.fallback_reason, "local_generation_failed")
+        self.assertEqual(result.fallback_steps, ["structured_digest:resolved"])
         self.assertNotIn("mus", result.fallback_steps)
         self.assertNotIn("sorex", result.fallback_steps)
 
@@ -487,29 +422,14 @@ class RoutingTests(unittest.TestCase):
             self.assertTrue(handle.event.wait(1.0))
         self.assertEqual(handle.reason, "local_insufficient_ram")
 
-    def test_legacy_local_strategy_resolves_to_mus(self) -> None:
+    def test_local_synthesis_strategy_resolves_to_apodemus(self) -> None:
         from core.synthesis.models import strategy_to_briefing_mode
 
-        self.assertEqual(strategy_to_briefing_mode("local"), "mus")
+        self.assertEqual(strategy_to_briefing_mode("local"), "apodemus")
         self.assertEqual(strategy_to_briefing_mode("cloud"), "panthera")
         self.assertEqual(strategy_to_briefing_mode("raw"), "structured_digest")
-
-    def test_explicit_mus_mode_does_not_reuse_resident_sorex(self) -> None:
-        router = SynthesisRouter()
-        handle = WarmupHandle(agent_key="mus", success=True)
-        handle.event.set()
-        expected = SynthesisResult(briefing="Capable.", provider="ollama", agent="mus")
-        with patch("core.synthesis.router.resident_agent_key", return_value="sorex"), patch.object(
-            router, "_local", return_value=expected
-        ) as ollama:
-            result = router.synthesize_mode(sample_input(), "mus", handle)
-        self.assertEqual(result.agent, "mus")
-        ollama.assert_called_once_with(
-            unittest.mock.ANY,
-            "mus",
-            handle.elapsed_ms,
-            resident_ref=None,
-        )
+        self.assertEqual(strategy_to_briefing_mode("mus"), "panthera")
+        self.assertEqual(strategy_to_briefing_mode("sorex"), "panthera")
 
     def test_structured_digest_mode(self) -> None:
         router = SynthesisRouter()
@@ -519,7 +439,7 @@ class RoutingTests(unittest.TestCase):
         panthera.assert_not_called()
         local.assert_not_called()
 
-    def test_prepare_local_warms_mus(self) -> None:
+    def test_prepare_local_warms_apodemus(self) -> None:
         router = SynthesisRouter()
         with patch("core.synthesis.router.resident_agent_key", return_value=None), patch(
             "core.synthesis.router.get_local_runtime_backend"
@@ -528,7 +448,7 @@ class RoutingTests(unittest.TestCase):
             handle = router.prepare("local")
         self.assertIsNotNone(handle)
         assert handle is not None
-        self.assertEqual(handle.agent_key, "mus")
+        self.assertEqual(handle.agent_key, "apodemus")
         self.assertEqual(handle.reason, "local_disabled")
         self.assertTrue(handle.event.is_set())
 

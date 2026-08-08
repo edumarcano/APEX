@@ -54,7 +54,6 @@ __all__ = [
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
     "PRIMARY_SYNTHESIS_PROMPT",
-    "OLLAMA_SYNTHESIS_PROMPT",
     "LOCAL_PRIMARY_GRACE_SECONDS",
     "LOCAL_FALLBACK_GRACE_SECONDS",
     "PRIMARY_TTS",
@@ -212,7 +211,7 @@ except (OSError, json.JSONDecodeError) as exc:
 _synthesis_cfg = _CONFIG_DATA.get("synthesis", {})
 if not isinstance(_synthesis_cfg, dict):
     _LOGGER.warning(
-        'Config key "synthesis" must be a JSON object; required prompts are unavailable.'
+        'Config key "synthesis" must be a JSON object; the required prompt is unavailable.'
     )
     _synthesis_cfg = {}
 
@@ -234,10 +233,6 @@ def _required_prompt(value: object, *, key: str) -> str:
 PRIMARY_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
     _synthesis_cfg.get("primary_system_prompt"),
     key="synthesis.primary_system_prompt",
-)
-OLLAMA_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
-    _synthesis_cfg.get("ollama_system_prompt"),
-    key="synthesis.ollama_system_prompt",
 )
 
 

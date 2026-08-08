@@ -18,7 +18,7 @@ LocalSettingsAgent = Literal[
 ]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
-BriefingMode = Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"]
+BriefingMode = Literal["panthera", "apodemus", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
@@ -32,7 +32,7 @@ VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "mus", "sorex", "apodemus", "structured_digest"}
+    {"panthera", "apodemus", "structured_digest"}
 )
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})

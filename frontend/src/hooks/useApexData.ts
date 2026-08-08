@@ -126,8 +126,6 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
 ]
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'panthera',
-  'mus',
-  'sorex',
   'apodemus',
 ]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
@@ -685,8 +683,6 @@ export function useApexData(): UseApexDataReturn {
               }
               briefingDefaultMode = parseEnum(body.briefing_default_mode, [
                 'panthera',
-                'mus',
-                'sorex',
                 'apodemus',
                 'structured_digest',
               ] as const) ?? undefined

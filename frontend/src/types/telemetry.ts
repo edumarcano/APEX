@@ -12,7 +12,7 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'mus' | 'sorex' | 'apodemus'
+export type SynthesisAgent = 'panthera' | 'apodemus'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -313,7 +313,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'apodemus' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'apodemus' | 'structured_digest'
 
 export type PreflightOperation =
   | 'activate'

@@ -40,9 +40,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
-    briefing_mode: (
-        Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"] | None
-    ) = Field(
+    briefing_mode: Literal["panthera", "apodemus", "structured_digest"] | None = Field(
         default=None,
         description="Explicit briefing mode used for this run.",
     )
@@ -50,7 +48,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_provider: (
         Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"] | None
     ) = None
-    synthesis_agent: Literal["panthera", "mus", "sorex", "apodemus"] | None = None
+    synthesis_agent: Literal["panthera", "apodemus"] | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -599,7 +597,7 @@ class BriefingHistoryRecord(BaseModel):
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
     provider: Literal["ollama", "llama_cpp", "raw", "demo", "openai"] | None = None
-    agent: Literal["panthera", "mus", "sorex", "apodemus"] | None = None
+    agent: Literal["panthera", "apodemus"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
@@ -696,7 +694,7 @@ class VoiceSpeakResponse(BaseModel):
 
 
 class BriefingTriggerRequest(BaseModel):
-    mode: Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"] | None = Field(
+    mode: Literal["panthera", "apodemus", "structured_digest"] | None = Field(
         default=None,
         description="Optional briefing mode override; omitted requests use the saved default.",
     )
@@ -708,7 +706,7 @@ class BriefingGenerateRequest(BaseModel):
         min_length=1,
         description="Process-current telemetry snapshot identity to synthesize from.",
     )
-    mode: Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"] = Field(
+    mode: Literal["panthera", "apodemus", "structured_digest"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
     )

@@ -246,7 +246,7 @@ class PromptConfigurationTests(unittest.TestCase):
         self.assertNotIn("system_prompt", config._CONFIG_DATA)
         self.assertIn("primary_system_prompt", synthesis)
         self.assertEqual(config.PRIMARY_SYNTHESIS_PROMPT, synthesis["primary_system_prompt"])
-        self.assertEqual(config.OLLAMA_SYNTHESIS_PROMPT, synthesis["ollama_system_prompt"])
+        self.assertNotIn("ollama_system_prompt", synthesis)
         self.assertEqual(config.AGENT_SYSTEM_PROMPT, config._CONFIG_DATA["agent_system_prompt"])
         self.assertEqual(
             config.LOCAL_AGENT_SYSTEM_PROMPT,
@@ -254,7 +254,6 @@ class PromptConfigurationTests(unittest.TestCase):
         )
         for prompt in (
             synthesis["primary_system_prompt"],
-            synthesis["ollama_system_prompt"],
             config._CONFIG_DATA["agent_system_prompt"],
             config._CONFIG_DATA["local_agent_system_prompt"],
         ):
@@ -284,8 +283,10 @@ class PromptConfigurationTests(unittest.TestCase):
 class LocalEffortRejectionTests(unittest.TestCase):
     def test_local_agent_rejects_effort_with_400(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
-            "core.api.cortex.get_settings_store"
-        ) as store_mock:
+            "core.api.cortex.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
+        ), mock.patch("core.api.cortex.get_settings_store") as store_mock:
             store_mock.return_value.get_snapshot.return_value.ask_apex.enabled = True
             with self.assertRaises(HTTPException) as ctx:
                 query_agent(

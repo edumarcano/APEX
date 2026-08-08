@@ -45,7 +45,7 @@ export type BriefingPipelineState = {
 
 export type UseBriefingPipelineReturn = BriefingPipelineState & {
   triggerSynthesis: (mode?: BriefingMode) => Promise<void>
-  generateFromSnapshot: (snapshotId: string, mode: string) => Promise<void>
+  generateFromSnapshot: (snapshotId: string, mode: BriefingMode) => Promise<void>
   resetBriefing: () => void
 }
 
@@ -60,8 +60,6 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
 ]
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'panthera',
-  'mus',
-  'sorex',
   'apodemus',
 ]
 
@@ -365,7 +363,7 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
   }, [runBriefingRequest])
 
   const generateFromSnapshot = useCallback(
-    async (snapshotId: string, mode: string): Promise<void> => {
+    async (snapshotId: string, mode: BriefingMode): Promise<void> => {
       await runBriefingRequest(API_ENDPOINTS.briefingsGenerate, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

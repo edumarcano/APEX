@@ -140,7 +140,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Mus, Sorex, Apodemus, and Structured Digest rather than one opaque automatic selector.
+**Decision.** The HUD offers Panthera, Apodemus, and Structured Digest rather than one opaque automatic selector.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
 
@@ -216,11 +216,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Keep Apodemus as an explicit briefing mode
 
-**Decision.** Apodemus is available as an explicit briefing synthesis mode, but it is not part of Panthera's automatic fallback chain.
+**Decision.** Apodemus is available as an explicit briefing synthesis mode and is Panthera's only local fallback before Structured Digest.
 
 **Why.** Apodemus uses the same provider-neutral local synthesis contract as Ollama while preserving explicit user intent. Cold loads use a dedicated 16K context policy, and resident llama.cpp aliases are reused rather than silently targeting a different context.
 
-**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute Mus or Sorex behind the user's selection.
+**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute another local Agent behind the user's selection.
 
 ## Security
 

@@ -57,10 +57,10 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
 const apodemus = agent({
   key: 'apodemus',
   display_name: 'Apex Apodemus',
-  description: 'Preview private local Agent for efficient tool-driven work through llama.cpp.',
+  description: 'Stable private local Agent for efficient tool-driven work through llama.cpp.',
   configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
   sort_order: 6,
-  stability: 'preview',
+  stability: 'stable',
   capabilities: ['Efficient local', 'Tool use', 'Selectable context'],
   provider: 'llama_cpp',
   runtime: 'local',
@@ -82,16 +82,18 @@ const apodemus = agent({
   },
 })
 
-const previewCloud = agent({
-  key: 'acinonyx',
-  display_name: 'Apex Acinonyx',
-  description: 'Experimental cloud profile.',
-  configured_model: 'gemini-3.6-flash',
-  sort_order: 2,
+const previewLocal = agent({
+  key: 'neotoma',
+  display_name: 'Apex Neotoma',
+  description: 'Preview generalist local Agent.',
+  configured_model: 'Qwen3.5-4B-Q4_K_M.gguf',
+  sort_order: 7,
   stability: 'preview',
-  provider: 'gemini',
-  capabilities: ['Privacy sandbox'],
-  status: 'configured',
+  provider: 'llama_cpp',
+  runtime: 'local',
+  capabilities: ['Generalist local'],
+  status: 'available',
+  status_source: 'runtime',
 })
 
 describe('AgentSelector', () => {
@@ -122,9 +124,9 @@ describe('AgentSelector', () => {
     const user = userEvent.setup()
     render(
       <AgentSelector
-        activeAgent="apodemus"
+        activeAgent="neotoma"
         onChange={vi.fn()}
-        agentsStatus={[agent(), previewCloud, apodemus]}
+        agentsStatus={[agent(), previewLocal, apodemus]}
         agentsStatusHydrated
         isQuerying={false}
         verifyingAgent={null}
@@ -138,8 +140,8 @@ describe('AgentSelector', () => {
     expect(screen.getAllByText('Preview')).toHaveLength(2)
 
     await user.click(screen.getByRole('tab', { name: 'Cloud agents' }))
-    expect(screen.getByRole('button', { name: 'Use Apex Acinonyx' })).toBeVisible()
-    expect(screen.getAllByText('Preview')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Use Apex Panthera' })).toBeVisible()
+    expect(screen.getAllByText('Preview')).toHaveLength(1)
   })
 
   it('omits preview badges for stable agents', () => {
@@ -161,9 +163,9 @@ describe('AgentSelector', () => {
   it('shows preview badge on the home presentation trigger', () => {
     render(
       <AgentSelector
-        activeAgent="apodemus"
+        activeAgent="neotoma"
         onChange={vi.fn()}
-        agentsStatus={[apodemus]}
+        agentsStatus={[previewLocal]}
         agentsStatusHydrated
         isQuerying={false}
         verifyingAgent={null}
@@ -172,7 +174,33 @@ describe('AgentSelector', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Agent Apodemus, Available, Preview' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Agent Neotoma, Available, Preview' })).toBeVisible()
     expect(screen.getByText('Preview')).toBeVisible()
+  })
+
+  it('shows experimental stability badges for any agent marked experimental', () => {
+    const experimental = agent({
+      key: 'acinonyx',
+      display_name: 'Apex Acinonyx',
+      description: 'Experimental cloud profile.',
+      configured_model: 'gemini-3.5-flash-lite',
+      sort_order: 0,
+      stability: 'experimental',
+      provider: 'gemini',
+      capabilities: ['Privacy sandbox'],
+    })
+    render(
+      <AgentSelector
+        activeAgent="acinonyx"
+        onChange={vi.fn()}
+        agentsStatus={[experimental]}
+        agentsStatusHydrated
+        isQuerying={false}
+        verifyingAgent={null}
+        onVerify={vi.fn(async () => true)}
+      />,
+    )
+
+    expect(screen.getByText('Experimental')).toBeVisible()
   })
 })

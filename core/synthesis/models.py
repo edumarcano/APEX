@@ -9,18 +9,14 @@ from core.agent.types import CostEstimate, TokenUsage
 APODEMUS_BRIEFING_CONTEXT_WINDOW = 16_384
 
 SynthesisProvider = Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"]
-SynthesisAgent = Literal["panthera", "mus", "sorex", "apodemus"]
-BriefingMode = Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"]
+SynthesisAgent = Literal["panthera", "apodemus"]
+BriefingMode = Literal["panthera", "apodemus", "structured_digest"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
 
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "mus", "sorex", "apodemus", "structured_digest"}
+    {"panthera", "apodemus", "structured_digest"}
 )
-LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"mus", "sorex", "apodemus"})
-
-_LEGACY_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"comet", "lynx", "acinonyx", "neofelis", "structured_digest"}
-)
+LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"apodemus"})
 
 
 def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
@@ -29,15 +25,13 @@ def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
     if normalized == "raw":
         return "structured_digest"
     if normalized == "local":
-        return "mus"
+        return "apodemus"
     if normalized == "cloud":
         return "panthera"
     if normalized == "comet":
         return "panthera"
-    if normalized == "lynx":
-        return "sorex"
-    if normalized in {"acinonyx", "neofelis"}:
-        return "mus"
+    if normalized in {"lynx", "acinonyx", "neofelis"}:
+        return "apodemus"
     if normalized in VALID_BRIEFING_MODES:
         return normalized  # type: ignore[return-value]
     return "panthera"

@@ -254,7 +254,7 @@ class AdversarialSynthesisTests(unittest.TestCase):
         ), patch.object(
             router,
             "_try_panthera_local_fallback",
-            side_effect=[(None, "local_generation_failed"), (None, "local_generation_failed")],
+            return_value=(None, "local_generation_failed"),
         ), self.assertLogs("core.synthesis.router", level="ERROR") as captured:
             result = router.synthesize(sample_input(), "cloud")
 

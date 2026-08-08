@@ -49,7 +49,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Ask APEX | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
-| Briefing | Panthera, Mus, Sorex, Apodemus, or Structured Digest mode selected in the Home command rail |
+| Briefing | Panthera, Apodemus, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
@@ -79,8 +79,8 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
 - `raw` — deterministic output without a model call
-- `local` — selected local behavior with deterministic fallback
-- `cloud` — configured cloud briefing path with eligible local and deterministic fallback
+- `local` — Apodemus synthesis with deterministic fallback
+- `cloud` — Panthera with Apodemus and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -224,7 +224,7 @@ Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.l
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus, Sorex, or Apodemus briefing request falls directly to Structured Digest on failure; it never silently substitutes another local Agent. Apodemus cold-load briefing synthesis uses the dedicated 16K context, while an already-resident Apodemus load reuses its actual configured context alias.
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Apodemus once before returning Structured Digest. An explicit Apodemus briefing request falls directly to Structured Digest on failure; it never silently substitutes another local Agent. Apodemus cold-load briefing synthesis uses the dedicated 16K context, while an already-resident Apodemus load reuses its actual configured context alias.
 
 ## Voice
 

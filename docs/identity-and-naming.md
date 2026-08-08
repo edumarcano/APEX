@@ -151,7 +151,7 @@ flowchart LR
 
     LOCAL --> SOREX["Sorex 1.0<br/>Lightweight local Agent<br/>Ollama"]
     LOCAL --> MUS["Mus 1.0<br/>Local generalist<br/>Ollama"]
-    LOCAL --> APODEMUS["Apodemus 1.0<br/>Efficient local preview<br/>llama.cpp"]
+    LOCAL --> APODEMUS["Apodemus 1.0<br/>Efficient stable local Agent<br/>llama.cpp"]
     LOCAL --> NEOTOMA["Neotoma 1.0<br/>Generalist local preview<br/>llama.cpp"]
 
     DEVELOPMENT["Technical development targets<br/>Outside the animal Agent family"]

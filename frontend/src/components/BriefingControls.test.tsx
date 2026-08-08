@@ -49,8 +49,6 @@ function profile(
 
 const AVAILABLE_PROFILES = [
   profile('panthera'),
-  profile('sorex'),
-  profile('mus'),
   profile('apodemus'),
 ]
 
@@ -78,14 +76,15 @@ describe('BriefingModeSelector', () => {
     expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
     expect(screen.getAllByLabelText('Panthera agent mark')).toHaveLength(2)
     expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
-    expect(screen.getAllByText('No provider token charge')).toHaveLength(3)
+    expect(screen.getAllByText('No provider token charge')).toHaveLength(1)
     expect(screen.getByText('No model cost')).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
     expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
-    expect(within(listbox).getByText('Full briefing · balanced local synthesis')).toBeVisible()
     expect(within(listbox).getByText('Full briefing · efficient llama.cpp synthesis')).toBeVisible()
     expect(within(listbox).getByText('Structured facts · no model or synthesis')).toBeVisible()
+    expect(within(listbox).queryByRole('option', { name: /^Mus\b/i })).not.toBeInTheDocument()
+    expect(within(listbox).queryByRole('option', { name: /^Sorex\b/i })).not.toBeInTheDocument()
   })
 
   it('blocks unavailable model modes but always allows Structured Digest', async () => {
@@ -95,13 +94,12 @@ describe('BriefingModeSelector', () => {
       onChange: onModeChange,
       agents: [
         profile('panthera'),
-        profile('sorex'),
-        profile('mus', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
+        profile('apodemus', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
       ],
     })
 
     await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
-    expect(screen.getByRole('option', { name: /^Mus\b/i })).toBeDisabled()
+    expect(screen.getByRole('option', { name: /^Apodemus\b/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured_digest')

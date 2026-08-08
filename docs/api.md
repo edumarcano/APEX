@@ -184,7 +184,7 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 { "mode": "panthera" }
 ```
 
-The body is optional. Valid modes are `panthera`, `mus`, `sorex`, `apodemus`, and `structured_digest`.
+The body is optional. Valid modes are `panthera`, `apodemus`, and `structured_digest`.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.
@@ -297,7 +297,7 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
-Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
+Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Outside `DEV_MODE`, the response contains exactly Panthera, Apodemus, and Neotoma; `DEV_MODE` includes the complete registered catalog, with Acinonyx first.
 
 The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), Apodemus (`gemma-4-E2B-Q4_K_M.gguf` through llama.cpp), Neotoma (`Qwen3.5-4B-Q4_K_M.gguf` through llama.cpp), and the development-only Unnamed Experimental Agent (`gemma-4-E4B-Q4_K_M.gguf` through llama.cpp).
 

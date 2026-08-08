@@ -144,8 +144,10 @@ class CloudAgentVerificationTests(unittest.TestCase):
         verify.assert_not_called()
 
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
-            "core.api.cortex.verify_cloud_agent"
-        ) as verify:
+            "core.api.cortex.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
+        ), mock.patch("core.api.cortex.verify_cloud_agent") as verify:
             with self.assertRaises(HTTPException) as local_error:
                 verify_cloud_agent_endpoint("mus")
         self.assertEqual(local_error.exception.status_code, 400)

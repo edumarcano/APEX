@@ -134,20 +134,38 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(boot.status_code, 200)
         self.assertFalse(boot.json()["market_enabled"])
 
-    def test_briefing_default_mode_patch_persists_and_is_restored_on_boot(self) -> None:
+    def test_apodemus_briefing_default_mode_persists_and_is_restored_on_boot(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"briefing": {"default_mode": "sorex"}},
+            json={"briefing": {"default_mode": "apodemus"}},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "sorex")
+        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "apodemus")
 
         boot = self.client.get("/api/v1/config")
         self.assertEqual(boot.status_code, 200)
-        self.assertEqual(boot.json()["briefing_default_mode"], "sorex")
+        self.assertEqual(boot.json()["briefing_default_mode"], "apodemus")
 
         reloaded = self.client.get("/api/v1/settings")
-        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "sorex")
+        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "apodemus")
+
+    def test_removed_ollama_briefing_modes_are_rejected(self) -> None:
+        for mode in ("mus", "sorex"):
+            with self.subTest(mode=mode):
+                response = self.client.patch(
+                    "/api/v1/settings",
+                    json={"briefing": {"default_mode": mode}},
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_dev_local_synthesis_reports_apodemus(self) -> None:
+        with mock.patch("core.api.routers.system.is_dev_mode", return_value=True), mock.patch(
+            "core.api.routers.system.DEV_AI_SYNTHESIS", "local"
+        ), mock.patch("core.api.routers.system.DEMO_MODE", False):
+            response = self.client.get("/api/v1/config")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["synthesis_agent"], "apodemus")
 
     def test_partial_patch_persists_and_returns_resolved(self) -> None:
         response = self.client.patch(

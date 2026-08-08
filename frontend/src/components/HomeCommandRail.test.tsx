@@ -22,7 +22,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     version: '7.4',
     runtime: local ? 'local' : 'cloud',
     tier: 'stable',
-    stability: key === 'unnamed-experimental-agent' ? 'experimental' : key === 'apodemus' || key === 'neotoma' ? 'preview' : 'stable',
+    stability: key === 'unnamed-experimental-agent' ? 'experimental' : key === 'neotoma' ? 'preview' : 'stable',
     effort_options: local ? null : ['light', 'focused', 'extended'],
     default_effort: local ? null : 'focused',
     context_window: key === 'apodemus' || key === 'neotoma' || key === 'unnamed-experimental-agent' ? 16384 : null,

@@ -128,8 +128,6 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extend
 
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
-  'mus',
-  'sorex',
   'apodemus',
   'structured_digest',
 ]

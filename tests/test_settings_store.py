@@ -211,14 +211,14 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(assistant.delphinus_x_search_enabled)
         self.assertFalse(assistant.orcinus_x_search_enabled)
 
-    def test_schema6_briefing_mode_survives_reload(self) -> None:
+    def test_apodemus_briefing_mode_survives_reload(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(briefing=BriefingPatch(default_mode="sorex"))
+            SettingsPatch(briefing=BriefingPatch(default_mode="apodemus"))
         )
 
-        self.assertEqual(store.get_snapshot().briefing.default_mode, "sorex")
-        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "sorex")
+        self.assertEqual(store.get_snapshot().briefing.default_mode, "apodemus")
+        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "apodemus")
 
     def test_immutable_snapshot(self) -> None:
         store = self._store()
@@ -364,6 +364,11 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch.model_validate({"features": {"weather": True, "xyz": True}})
         with self.assertRaises(ValidationError):
             SettingsPatch.model_validate({"unknown_root": {"a": 1}})
+
+    def test_removed_ollama_briefing_modes_are_invalid_patch_values(self) -> None:
+        for mode in ("mus", "sorex"):
+            with self.subTest(mode=mode), self.assertRaises(ValidationError):
+                SettingsPatch.model_validate({"briefing": {"default_mode": mode}})
 
     def test_local_agents_are_valid_patch_values(self) -> None:
         for profile in ("sorex", "mus", "apodemus", "neotoma"):
