@@ -37,61 +37,15 @@ class RefreshInProgressError(RuntimeError):
 def _demo_snapshot() -> TelemetrySnapshot:
     """Build a typed static snapshot from DEMO_MODE mock telemetry."""
     # Lazy import avoids a circular dependency with core.api.
-    from core.api.demo import load_mock_telemetry
+    from core.api.demo import load_demo_bundle_or_raise
 
-    telemetry, digest = load_mock_telemetry()
-    modules: dict[str, TelemetryModuleEntry] = {}
-    health_by_name = {
-        entry.name: entry for entry in digest.connector_health
-    }
-
-    display_by_name = {
-        "weather": telemetry.weather,
-        "news": telemetry.news,
-        "email": telemetry.email,
-        "calendar": telemetry.calendar,
-        "reminders": telemetry.reminders,
-        "f1": telemetry.sports,
-        "football": "",
-    }
-
-    for name in CONNECTOR_NAMES:
-        health = health_by_name.get(name)
-        if health is not None:
-            modules[name] = TelemetryModuleEntry(
-                name=name,
-                status=health.status,
-                freshness=health.freshness,
-                reason_code=health.reason_code,
-                observed_at=health.observed_at or utc_now_iso(),
-                display_text=display_by_name.get(name, ""),
-                data={},
-            )
-        else:
-            modules[name] = TelemetryModuleEntry.from_connector_result(
-                disabled_result(name)
-            )
-
-    report = compute_sync_health(
-        {
-            name: (
-                None
-                if entry.status == "disabled"
-                else entry.to_connector_result()
-            )
-            for name, entry in modules.items()
-        }
-    )
+    bundle = load_demo_bundle_or_raise()
     return TelemetrySnapshot(
-        modules=modules,
-        sync_health_score=(
-            digest.sync_health_score
-            if digest.sync_health_score is not None
-            else report.sync_health_score
-        ),
-        connector_health=list(digest.connector_health) or report.connector_health,
-        failed_connectors=list(digest.failed_connectors),
-        collected_at=utc_now_iso(),
+        modules=bundle.modules,
+        sync_health_score=bundle.digest.sync_health_score or 100.0,
+        connector_health=list(bundle.digest.connector_health),
+        failed_connectors=list(bundle.digest.failed_connectors),
+        collected_at=bundle.collected_at,
     )
 
 

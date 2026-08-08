@@ -1,35 +1,142 @@
 {
   "metadata": {
-    "demo_mode_active": true
+    "demo_mode_active": true,
+    "scenario": "weekday_ops",
+    "location_label": "Simulation City"
   },
-  "weather": "Current temperature is 72 degrees with clear sky.",
-  "sports": "F1_DATA:{\"raceName\":\"Simulation Grand Prix\",\"round\":\"08\",\"country\":\"Monaco\",\"raceDateTimeEST\":\"Sunday, June 01 at 3:00 PM EDT\",\"relativeWeek\":\"This week\",\"sprintScheduled\":false,\"sprintDateTimeEST\":\"Unscheduled\"}",
-  "news": "[NEWS TELEMETRY]\n[Artificial Intelligence] Global markets steady amid tech sector rally | [Global Events] Space shuttle departs on historic deep-orbit voyage",
-  "email": "Email Telemetry: 2 unread primary emails. Most recent: 'Project APEX Demo' at 9:00 AM",
-  "calendar": "Calendar Telemetry (7d): 'Demo Presentation' at 2026-06-06T15:00:00 | 'AI Workshop' at 2026-06-07T10:00:00",
-  "reminders": "Pending Reminders: Review demo script, charge laptop",
-  "digest": {
-    "weather_archetype": "clear_day",
-    "unread_emails_count": 2,
-    "upcoming_events_count": 1,
-    "f1_sprint_active": false,
-    "reminders_pending_count": 2,
-    "sync_health_score": 100.0,
-    "connector_health": [
-      {"name": "weather", "status": "healthy", "freshness": "live", "reason_code": "ok"},
-      {"name": "news", "status": "healthy", "freshness": "live", "reason_code": "ok"},
-      {"name": "email", "status": "healthy", "freshness": "live", "reason_code": "ok"},
-      {"name": "calendar", "status": "healthy", "freshness": "live", "reason_code": "ok"},
-      {"name": "f1", "status": "healthy", "freshness": "fresh_cache", "reason_code": "ok"},
-      {"name": "football", "status": "healthy", "freshness": "fresh_cache", "reason_code": "ok"},
-      {"name": "reminders", "status": "healthy", "freshness": "live", "reason_code": "ok"}
-    ],
-    "confidence_score": 100.0,
-    "failed_connectors": [],
-    "insights": [
-      "Demo sandbox environment synchronized.",
-      "Calendar: Presentation starting at 3:00 PM.",
-      "Sports: GP scheduled for Sunday."
-    ]
+  "insights": [
+    "Demo sandbox environment synchronized.",
+    "Operations telemetry is simulated and privacy-safe."
+  ],
+  "modules": {
+    "weather": {
+      "status": "healthy",
+      "freshness": "live",
+      "reason_code": "ok",
+      "observed_at_offset": "now-2m",
+      "data": {
+        "temp_f": 72,
+        "condition": "clear sky",
+        "archetype": "clear_day",
+        "location": "Simulation City"
+      }
+    },
+    "news": {
+      "status": "degraded",
+      "freshness": "live",
+      "reason_code": "partial_failure",
+      "observed_at_offset": "now-5m",
+      "data": {
+        "headlines": [
+          {
+            "topic": "Artificial Intelligence",
+            "headline": "Enterprise teams accelerate local inference adoption"
+          },
+          {
+            "topic": "Global Events",
+            "headline": "Regional transit authorities report smooth morning operations"
+          }
+        ]
+      }
+    },
+    "email": {
+      "status": "healthy",
+      "freshness": "live",
+      "reason_code": "ok",
+      "observed_at_offset": "now-1m",
+      "data": {
+        "count": 3,
+        "emails": [
+          {
+            "subject": "Quarterly planning follow-up",
+            "received_offset": "now-22m"
+          },
+          {
+            "subject": "APEX demo walkthrough",
+            "received_offset": "now-48m"
+          },
+          {
+            "subject": "Budget review thread",
+            "received_offset": "now-2h"
+          }
+        ]
+      }
+    },
+    "calendar": {
+      "status": "healthy",
+      "freshness": "live",
+      "reason_code": "ok",
+      "observed_at_offset": "now-3m",
+      "data": {
+        "window_days": 7,
+        "events": [
+          {
+            "summary": "Product review",
+            "start_offset": "now+4h",
+            "end_offset": "now+5h"
+          },
+          {
+            "summary": "Design sync",
+            "start_offset": "now+1d2h",
+            "end_offset": "now+1d3h"
+          },
+          {
+            "summary": "Roadmap checkpoint",
+            "start_offset": "now+3d",
+            "all_day": true
+          }
+        ]
+      }
+    },
+    "f1": {
+      "status": "healthy",
+      "freshness": "fresh_cache",
+      "reason_code": "ok",
+      "observed_at_offset": "now-45m",
+      "data": {
+        "cache_refreshed": false,
+        "f1_map": {
+          "raceName": "Dutch Grand Prix",
+          "round": "14",
+          "country": "Netherlands",
+          "race_start_offset": "next_sunday+15h",
+          "sprintScheduled": false
+        }
+      }
+    },
+    "football": {
+      "status": "healthy",
+      "freshness": "fresh_cache",
+      "reason_code": "ok",
+      "observed_at_offset": "now-20m",
+      "data": {
+        "configured_team_count": 1,
+        "fixtures": [
+          {
+            "fixture_id": "demo-fixture-001",
+            "team_id": 81,
+            "team": "Barcelona",
+            "opponent": "Real Madrid",
+            "home_or_away": "home",
+            "competition_id": 2021,
+            "competition": "La Liga",
+            "kickoff_offset": "now+2d18h"
+          }
+        ]
+      }
+    },
+    "reminders": {
+      "status": "healthy",
+      "freshness": "live",
+      "reason_code": "ok",
+      "observed_at_offset": "now-30s",
+      "data": {
+        "notes": [
+          "Review demo script",
+          "Charge laptop",
+          "Send stakeholder recap"
+        ]
+      }
+    }
   }
 }
