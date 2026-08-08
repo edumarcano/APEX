@@ -46,7 +46,7 @@ class SchemaMigrationTests(unittest.TestCase):
                 self.assertEqual(migrated["effort"], "focused")
                 self.assertEqual(migrated["local_agent"], "apodemus")
 
-    def test_legacy_local_agents_map_to_local_mus(self) -> None:
+    def test_legacy_local_agents_map_to_local_apodemus(self) -> None:
         for legacy in ("lynx", "acinonyx", "neofelis"):
             with self.subTest(legacy=legacy):
                 migrated = migrate_schema7_ask_apex({"default_profile": legacy})
@@ -313,6 +313,17 @@ class LocalEffortRejectionTests(unittest.TestCase):
 
 
 class AcinonyxPolicyTests(unittest.TestCase):
+    def test_acinonyx_query_route_is_hard_dev_mode_only(self) -> None:
+        from core.api.app import app
+
+        client = TestClient(app, raise_server_exceptions=True)
+        with mock.patch("core.api.routers.cortex.is_dev_mode", return_value=False):
+            response = client.post(
+                "/api/v1/cortex/query",
+                json={"prompt": "hello", "agent": "acinonyx"},
+            )
+        self.assertEqual(response.status_code, 404)
+
     def test_acinonyx_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
 

@@ -167,10 +167,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
             ),
             mock.patch("core.api.cortex.is_dev_mode", return_value=True),
             mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
-            mock.patch.dict(
-                "os.environ",
-                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
-            ),
+            mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
         ):
             profiles = build_agent_statuses()
         cloud = [entry for entry in profiles if entry.provider == "gemini"]

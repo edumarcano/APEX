@@ -765,7 +765,7 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
             migrated["cloud_effort"] = "focused"
             migrated["local_profile"] = "apodemus"
         elif normalized in _SCHEMA5_LOCAL_PROFILES:
-            # Plan: every old local selection becomes Local/Mus while retaining
+            # Plan: every old local selection becomes Local/Apodemus while retaining
             # Panthera/Focused as the saved cloud choice.
             migrated["mode"] = "local"
             migrated["local_profile"] = "apodemus"
