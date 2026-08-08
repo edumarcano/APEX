@@ -57,6 +57,7 @@ def public_document_paths(root: Path) -> list[Path]:
         root / "CHANGELOG.md",
         root / ".env.example",
         root / "frontend" / "README.md",
+        root / "benchmarks" / "README.md",
     ]
     paths.extend(sorted((root / "docs").rglob("*.md")))
     return [path for path in paths if path.is_file()]

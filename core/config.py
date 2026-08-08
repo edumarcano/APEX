@@ -46,7 +46,6 @@ __all__ = [
     "DEMO_TTS",
     "DEV_AI_SYNTHESIS",
     "DEV_TTS_PLAYBACK",
-    "ENABLE_STARTUP_GATE",
     "ENV_PATH",
     "FEATURE_CALENDAR",
     "FEATURE_EMAIL",
@@ -174,12 +173,6 @@ DEMO_MODE: Final[bool] = _parse_env_bool(
 
 DEMO_TTS: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
     os.getenv("DEMO_TTS"),
-)
-
-ENABLE_STARTUP_GATE: Final[bool] = _parse_env_bool(
-    os.getenv("ENABLE_STARTUP_GATE"),
-    key="ENABLE_STARTUP_GATE",
-    default=True,
 )
 
 

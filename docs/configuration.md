@@ -49,12 +49,15 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Ask APEX | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
+| Tool profiles | Saved custom tool profiles and per-Agent defaults; edited through Cortex Tools and persisted in `config.local.json` |
 | Briefing | Panthera, Apodemus, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
 
 Prompt text remains exclusively in tracked `config.json`; it is not editable through Runtime Settings. Ollama host and resource gates, llama.cpp resource gates and timeouts, router presets, MCP endpoints and allowlists, credentials, and environment modes remain file-configured.
+
+`tool_profiles` is part of the resolved settings snapshot and local overlay. Cortex owns the profile editing workflow through the dedicated tool-profile routes; the generic settings patch accepts the complete group only as a lower-level compatibility contract.
 
 ### When changes take effect
 
@@ -136,6 +139,8 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Outside DEV_MODE, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; DEV_MODE also surfaces the registered development Agents. Ollama serves Mus and Sorex; llama.cpp serves Apodemus, Neotoma, and the development-only Unnamed Experimental Agent.
+
+For repeatable local Agent and candidate-model comparisons, see [Local Model Benchmarking](../benchmarks/README.md). Benchmark results remain machine-specific and gitignored.
 
 #### llama.cpp configuration
 

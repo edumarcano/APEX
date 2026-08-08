@@ -80,13 +80,20 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(snap.ask_apex.runtime, "cloud")
         self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
         self.assertEqual(snap.ask_apex.effort, "focused")
-        self.assertEqual(snap.ask_apex.local_agent, "mus")
+        self.assertEqual(snap.ask_apex.local_agent, "apodemus")
         self.assertEqual(snap.user_designation, "")
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "female")
         self.assertFalse(store.local_file_present)
         self.assertFalse(store.local_override_active)
         self.assertIsNone(store.load_warning)
+
+    def test_invalid_local_agent_falls_back_to_apodemus(self) -> None:
+        self.base["ask_apex"]["local_agent"] = "not-an-agent"
+        _write_json(self.config_path, self.base)
+        self.assertEqual(
+            self._store().get_snapshot().ask_apex.local_agent, "apodemus"
+        )
 
     def test_base_plus_local_loading(self) -> None:
         _write_json(

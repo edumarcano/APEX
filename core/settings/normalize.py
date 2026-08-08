@@ -1132,9 +1132,9 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     effort = ask_apex.get("effort", "focused")
     if effort not in VALID_CLOUD_EFFORTS:
         effort = "focused"
-    local_agent = ask_apex.get("local_agent", "mus")
+    local_agent = ask_apex.get("local_agent", "apodemus")
     if local_agent not in VALID_LOCAL_SETTINGS_AGENTS:
-        local_agent = "mus"
+        local_agent = "apodemus"
     local_context_windows = {
         agent_key: runtime.default_context_window
         for agent_key, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items()

@@ -135,6 +135,7 @@ Use Apodemus through llama.cpp or Structured Digest to avoid OpenAI disclosure f
 | [Roadmap](docs/roadmap.md) | Follow APEX's product and architectural evolution and its planned direction |
 | [Changelog](CHANGELOG.md) | Review the detailed record of released changes |
 | [Frontend Guide](frontend/README.md) | Work specifically in the React/TypeScript application |
+| [Local Model Benchmarking](benchmarks/README.md) | Compare local Agents and one-off llama.cpp candidates with the developer benchmark utility |
 
 Run the documentation consistency check after editing public docs:
 
