@@ -168,11 +168,19 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, Apodemus, and Neotoma.
+**Decision.** Cortex exposes named Apex Agents rather than raw provider model IDs. The normal roster shows Panthera, Apodemus, and Neotoma, while the wider registered Agent family remains available in `DEV_MODE`.
 
-**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
+**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each permanent Agent identity can survive model changes as long as its role and operating contract remain coherent.
 
-**Trade-off.** Agent documentation must remain synchronized with current model mappings and stability labels.
+**Trade-off.** Agent documentation must remain synchronized with current model mappings, stability labels, and visibility policy.
+
+### Separate Agent visibility from Agent stability
+
+**Decision.** APEX treats Agent visibility and Agent stability as independent concerns. The normal product roster is intentionally limited to Panthera, Apodemus, and Neotoma, while other registered Agents remain available only in `DEV_MODE`.
+
+**Why.** Some Agents already have established genus identities, stable implementations, and defined intended roles, but APEX does not yet expose enough Agent-specific capability to make those roles meaningfully distinct in normal use. Keeping them in the primary selector would make the roster appear broader than the product's actual capabilities. Restricting them to `DEV_MODE` preserves their implementation and identity without implying that they currently justify a dedicated product slot.
+
+**Trade-off.** A stable Agent may be absent from the normal UI, so stability can no longer be interpreted as product visibility. Documentation, tests, and catalog metadata must distinguish technical maturity from roster placement. An Agent can return to the primary roster when APEX provides enough differentiated functionality to support its intended role.
 
 ### Keep Agent sessions stateless on the server
 
