@@ -8,7 +8,7 @@ For the meanings and design rationale behind these terms, see
 [Identity and Naming](identity-and-naming.md).
 
 - **APEX** is the standalone product and operational entity.
-- **Apex Agents** are specialized workers such as Apex Panthera and Apex Mus.
+- **Apex Agents** are specialized workers such as Apex Panthera and Apex Apodemus.
 - **Cortex Engine** is the backend subsystem that executes, orchestrates, tools, sessions, and manages model lifecycle.
 - **Cortex workspace** is the interface for operating and configuring Apex Agents.
 - **Home workspace** presents telemetry, briefings, connector health, and compact Ask APEX access.
@@ -34,7 +34,7 @@ flowchart TB
     Browser --> Voice["Voice delivery"]
 
     Telemetry --> Connectors["Local + external connectors"]
-    Briefing --> Models["OpenAI · Ollama · Structured Digest"]
+    Briefing --> Models["OpenAI · llama.cpp · Structured Digest"]
     Cortex --> Capabilities["Native + approved MCP capabilities"]
     API --> SQLite["SQLite reminders + briefing ledger"]
 ```
@@ -43,7 +43,7 @@ flowchart TB
 |---|---|---|---|---|
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
-| Briefing | Current snapshot or full trigger | Briefing orchestration | Production briefing ledger | Panthera/OpenAI, selected Ollama mode, or Structured Digest |
+| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Apodemus/llama.cpp, or Structured Digest |
 | Cortex query | User prompt | Browser history plus backend turn execution | No chat-session store | Selected Agent and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
@@ -65,7 +65,7 @@ flowchart LR
     CONNECTORS --> SNAPSHOT["Process-current telemetry snapshot"]
 
     SNAPSHOT --> BRIEF
-    BRIEF --> SYNTHESIS["Panthera, Ollama, or Structured Digest"]
+    BRIEF --> SYNTHESIS["Panthera, Apodemus, or Structured Digest"]
     SYNTHESIS --> LEDGER[("SQLite briefing ledger")]
 
     ASK --> CORTEX["Cortex Engine"]
@@ -86,11 +86,11 @@ The launcher gives each child a different environment:
 - **FastAPI** receives the backend environment, including connector and provider credentials.
 - **Static server and browser** receive only process essentials such as `PATH`, `SYSTEMROOT`, temporary directories, and `PYTHONPATH`.
 
-The launcher polls `GET /api/v1/health/ready` and frontend HTTP availability at 500 ms intervals. Readiness loads the runtime settings snapshot and performs a lightweight SQLite query; it intentionally excludes optional connectors, MCP providers, Gemini, and Ollama. A timeout, bind conflict, or early child exit prevents browser launch and tears both children down.
+The launcher polls `GET /api/v1/health/ready` and frontend HTTP availability at 500 ms intervals. Readiness loads the runtime settings snapshot and performs a lightweight SQLite query; it intentionally excludes optional connectors, MCP providers, optional model providers, and local runtimes. A timeout, bind conflict, or early child exit prevents browser launch and tears both children down.
 
 When Chrome or Edge is launched with a process handle, closing the kiosk window stops both servers. The default-browser fallback has no process handle and relies on `Ctrl+C`.
 
-FastAPI's lifespan initializes the database and Microsoft To Do services, starts the Ollama idle-model monitor when local inference is enabled, and owns one MCP client manager. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting.
+FastAPI's lifespan initializes the database and Microsoft To Do services, starts the provider-neutral local-runtime idle-model monitor whenever a local backend is enabled, and owns one MCP client manager. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting.
 
 ## Frontend state ownership
 
@@ -130,25 +130,23 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` synthesizes from an existing process-current snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and local Ollama or llama.cpp Agents receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Apodemus/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
 | Panthera | OpenAI | `gpt-5.6-luna` at fixed Light effort |
-| Mus | Ollama | `qwen3:4b-instruct` |
-| Sorex | Ollama | `qwen3:1.7b` |
 | Apodemus | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local Agent. The Panthera path can fall back to an eligible Mus, then Sorex, then Structured Digest; Apodemus is intentionally not part of that automatic fallback chain. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local Agent. The Panthera path falls back to Apodemus once, then Structured Digest; an explicit Apodemus failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
 
-Production generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no production write.
+Normal-mode generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no normal-mode write.
 
 ### Full trigger compatibility path
 
-`POST /api/v1/trigger` remains the one-call orchestration path. It force-refreshes telemetry, synthesizes with the requested or configured mode, persists the production result, and applies automatic voice-delivery rules.
+`POST /api/v1/trigger` remains the one-call orchestration path. It force-refreshes telemetry, synthesizes with the requested or configured mode, persists the normal-mode result, and applies automatic voice-delivery rules.
 
 This path exposes a four-stage compatibility status (`GATE`, `COLLECTION`, `SYNTHESIS`, `DELIVERY`) through `GET /api/v1/status`. The frontend polls every 500 ms while a full run or speech is active. Pipeline state resets after audio finishes so `is_speaking` remains accurate for the whole delivery.
 
@@ -180,7 +178,7 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 
 Each non-demo Agent request begins with the selected Agent's immutable identity instruction, followed by prompt behavior loaded exclusively from `config.json`, an optional user designation from the local runtime settings snapshot, scoped context, and the security boundary. Agent identity describes the active Agent and its model; it does not grant capabilities or override tool and privacy policy.
 
-Production cloud Agents receive the APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+Panthera, Neofelis, Delphinus, and Orcinus receive the general APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced restricted development allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, selectable local context and reasoning metadata, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
 
@@ -188,7 +186,7 @@ The Home command rail owns the visible briefing-mode selector. It persists `brie
 
 ### Local Agents and explicit tool selection
 
-Local Agent requests use Sorex, Mus, Apodemus, or Neotoma. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+The normal local roster consists of Apodemus and Neotoma. Sorex, Mus, and the Unnamed Experimental Agent are development roster entries surfaced only in `DEV_MODE`. All use the same local runtime path; the experimental target is a separate technical target outside the genus-based Agent family. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
 Local and cloud queries use the same explicit capability descriptor list. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for cloud Agents and No APEX Tools for local Agents. The resolver intersects selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns structured per-tool failures instead of silently dropping a request. Generic local context preflight is a warning-only estimate; the provider serializes the actual request, trims complete older interactions, and applies its template allowance and safety margin before deciding whether the current interaction fits. Provider-hosted Google and X grounding remains outside these schema profiles and is controlled separately.
 
@@ -262,15 +260,15 @@ Delivery mode controls orchestration:
 
 - `off` disables speech.
 - `manual` exposes Speak/Replay for an existing transcript.
-- `automatic` starts delivery after successful production briefing generation.
+- `automatic` starts delivery after successful normal-mode briefing generation.
 
 ## Persistence
 
 `core/database.py` owns SQLite transactions and readiness probing. `apex_memory.db` stores:
 
-- production run timestamps;
+- normal-mode run timestamps;
 - active and dismissed reminders;
-- the most recent 50 production briefings;
+- the most recent 50 normal-mode briefings;
 - structured digests and runtime metadata, including `run_id` and snapshot identity.
 
 New timestamps are timezone-aware UTC. Legacy timezone-naive run timestamps remain readable as local wall-clock values without a destructive migration. Database writes use transactions; failed writes do not publish partial state.

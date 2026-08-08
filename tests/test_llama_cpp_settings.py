@@ -134,11 +134,21 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         snap = store.get_snapshot()
         self.assertEqual(
             snap.ask_apex.local_context_windows,
-            {"apodemus": 16384, "neotoma": 16384},
+            {
+                "apodemus": 16384,
+                "neotoma": 16384,
+                "unnamed-experimental-agent": 16384,
+            },
         )
         self.assertEqual(
             snap.ask_apex.local_reasoning_modes,
-            {"sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none"},
+            {
+                "sorex": "none",
+                "mus": "none",
+                "apodemus": "none",
+                "neotoma": "none",
+                "unnamed-experimental-agent": "none",
+            },
         )
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")

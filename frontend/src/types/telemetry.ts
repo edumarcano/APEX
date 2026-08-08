@@ -12,7 +12,7 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'mus' | 'sorex' | 'apodemus'
+export type SynthesisAgent = 'panthera' | 'apodemus'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -73,7 +73,12 @@ export type WeatherConditionArchetype =
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus' | 'neotoma'
+export type LocalSettingsAgent =
+  | 'sorex'
+  | 'mus'
+  | 'apodemus'
+  | 'neotoma'
+  | 'unnamed-experimental-agent'
 
 export type CloudAgent = CloudSettingsAgent
 
@@ -193,7 +198,7 @@ export type AgentAvailabilityStatus =
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
-export type AgentStability = 'stable' | 'preview'
+export type AgentStability = 'stable' | 'preview' | 'experimental'
 export type AgentStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
 
 export interface AgentPricingMetadata {
@@ -308,7 +313,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'mus' | 'sorex' | 'apodemus' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'apodemus' | 'structured_digest'
 
 export type PreflightOperation =
   | 'activate'

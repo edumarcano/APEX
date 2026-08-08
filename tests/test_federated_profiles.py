@@ -19,6 +19,7 @@ from core.agent.catalog import (
     agent_has_credentials,
     resolve_effort,
     resolve_agent_selection,
+    is_agent_visible,
     runtime_agent_order,
 )
 from core.agent.capabilities import CapabilityDescriptor
@@ -43,14 +44,14 @@ class SchemaMigrationTests(unittest.TestCase):
                 self.assertEqual(migrated["runtime"], "cloud")
                 self.assertEqual(migrated["cloud_agent"], "panthera")
                 self.assertEqual(migrated["effort"], "focused")
-                self.assertEqual(migrated["local_agent"], "mus")
+                self.assertEqual(migrated["local_agent"], "apodemus")
 
-    def test_legacy_local_agents_map_to_local_mus(self) -> None:
+    def test_legacy_local_agents_map_to_local_apodemus(self) -> None:
         for legacy in ("lynx", "acinonyx", "neofelis"):
             with self.subTest(legacy=legacy):
                 migrated = migrate_schema7_ask_apex({"default_profile": legacy})
                 self.assertEqual(migrated["runtime"], "local")
-                self.assertEqual(migrated["local_agent"], "mus")
+                self.assertEqual(migrated["local_agent"], "apodemus")
                 self.assertEqual(migrated["cloud_agent"], "panthera")
                 self.assertEqual(migrated["effort"], "focused")
 
@@ -87,14 +88,26 @@ class AssistantSelectionTests(unittest.TestCase):
         mode, profile, effort = resolve_agent_selection(
             assistant, dev_mode=False
         )
-        self.assertEqual((mode, profile, effort), ("cloud", "neofelis", "extended"))
+        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "extended"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
         assistant = AskApexSettings(runtime="local", local_agent="sorex")
         mode, profile, effort = resolve_agent_selection(
             assistant, dev_mode=False
         )
-        self.assertEqual((mode, profile, effort), ("local", "sorex", None))
+        self.assertEqual((mode, profile, effort), ("local", "apodemus", None))
+
+    def test_hidden_local_agent_falls_back_outside_dev_mode(self) -> None:
+        assistant = AskApexSettings(runtime="local", local_agent="mus")
+        self.assertEqual(
+            resolve_agent_selection(assistant, dev_mode=False),
+            ("local", "apodemus", None),
+        )
+
+    def test_dev_mode_keeps_mus_selectable(self) -> None:
+        assistant = AskApexSettings(runtime="local", local_agent="mus")
+        self.assertTrue(is_agent_visible("mus", dev_mode=True))
+        self.assertEqual(assistant.local_agent, "mus")
 
 
 class CredentialIsolationTests(unittest.TestCase):
@@ -158,6 +171,10 @@ class ProfileIdentityTests(unittest.TestCase):
         "neotoma": (
             "You are Apex Neotoma, an Apex Agent powered by "
             "Qwen3.5 4B through llama.cpp."
+        ),
+        "unnamed-experimental-agent": (
+            "You are Unnamed Experimental Agent, a technical APEX development "
+            "target powered by Gemma 4 E4B through llama.cpp."
         ),
     }
 
@@ -242,7 +259,7 @@ class PromptConfigurationTests(unittest.TestCase):
         self.assertNotIn("system_prompt", config._CONFIG_DATA)
         self.assertIn("primary_system_prompt", synthesis)
         self.assertEqual(config.PRIMARY_SYNTHESIS_PROMPT, synthesis["primary_system_prompt"])
-        self.assertEqual(config.OLLAMA_SYNTHESIS_PROMPT, synthesis["ollama_system_prompt"])
+        self.assertNotIn("ollama_system_prompt", synthesis)
         self.assertEqual(config.AGENT_SYSTEM_PROMPT, config._CONFIG_DATA["agent_system_prompt"])
         self.assertEqual(
             config.LOCAL_AGENT_SYSTEM_PROMPT,
@@ -250,7 +267,6 @@ class PromptConfigurationTests(unittest.TestCase):
         )
         for prompt in (
             synthesis["primary_system_prompt"],
-            synthesis["ollama_system_prompt"],
             config._CONFIG_DATA["agent_system_prompt"],
             config._CONFIG_DATA["local_agent_system_prompt"],
         ):
@@ -280,8 +296,10 @@ class PromptConfigurationTests(unittest.TestCase):
 class LocalEffortRejectionTests(unittest.TestCase):
     def test_local_agent_rejects_effort_with_400(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
-            "core.api.cortex.get_settings_store"
-        ) as store_mock:
+            "core.api.cortex.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
+        ), mock.patch("core.api.cortex.get_settings_store") as store_mock:
             store_mock.return_value.get_snapshot.return_value.ask_apex.enabled = True
             with self.assertRaises(HTTPException) as ctx:
                 query_agent(
@@ -295,6 +313,17 @@ class LocalEffortRejectionTests(unittest.TestCase):
 
 
 class AcinonyxPolicyTests(unittest.TestCase):
+    def test_acinonyx_query_route_is_hard_dev_mode_only(self) -> None:
+        from core.api.app import app
+
+        client = TestClient(app, raise_server_exceptions=True)
+        with mock.patch("core.api.routers.cortex.is_dev_mode", return_value=False):
+            response = client.post(
+                "/api/v1/cortex/query",
+                json={"prompt": "hello", "agent": "acinonyx"},
+            )
+        self.assertEqual(response.status_code, 404)
+
     def test_acinonyx_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
 
@@ -440,11 +469,10 @@ class AcinonyxPolicyTests(unittest.TestCase):
 
 
 class DemoRosterTests(unittest.TestCase):
-    def test_runtime_roster_hides_dev_only_acinonyx_outside_dev(self) -> None:
+    def test_runtime_roster_hides_dev_only_agents_outside_dev(self) -> None:
         visible = runtime_agent_order(dev_mode=False)
         self.assertNotIn("acinonyx", visible)
-        self.assertIn("panthera", visible)
-        self.assertIn("sorex", visible)
+        self.assertEqual(visible, ("panthera", "apodemus", "neotoma"))
 
     def test_demo_agent_query_rejects_hidden_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
@@ -482,7 +510,7 @@ class ProfileStatusMetadataTests(unittest.TestCase):
                 return_value=None,
             ),
             mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
-            mock.patch("core.api.cortex.is_dev_mode", return_value=False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
             mock.patch(
                 "core.api.cortex.local_context_window_for_agent",

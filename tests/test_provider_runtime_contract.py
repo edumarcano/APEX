@@ -47,7 +47,16 @@ def _concrete_profile(key: str):
         key,
         native_effort=native,
         local_reasoning_mode=(
-            "none" if key in {"sorex", "mus", "apodemus", "neotoma"} else None
+            "none"
+            if key
+            in {
+                "sorex",
+                "mus",
+                "apodemus",
+                "neotoma",
+                "unnamed-experimental-agent",
+            }
+            else None
         ),
     )
 
@@ -79,10 +88,12 @@ class ProviderContractTests(unittest.TestCase):
         mus = _concrete_profile("mus")
         apodemus = _concrete_profile("apodemus")
         neotoma = _concrete_profile("neotoma")
+        experimental = _concrete_profile("unnamed-experimental-agent")
         self.assertTrue(isinstance(sorex, LocalModelProfile))
         self.assertTrue(isinstance(mus, LocalModelProfile))
         self.assertTrue(isinstance(apodemus, LocalModelProfile))
         self.assertTrue(isinstance(neotoma, LocalModelProfile))
+        self.assertTrue(isinstance(experimental, LocalModelProfile))
         self.assertEqual(resolve_inference_provider(sorex), "ollama")
         self.assertEqual(resolve_inference_provider(apodemus), "llama_cpp")
         self.assertEqual(sorex.runtime_model_id, sorex.api_model)
@@ -97,10 +108,30 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))
         self.assertEqual(neotoma.maximum_context_window, 262144)
         self.assertEqual(neotoma.high_resource_context_options, (65536,))
+        self.assertEqual(
+            experimental.runtime_model_id,
+            "unnamed-experimental-agent-16k",
+        )
+        self.assertEqual(
+            experimental.api_model,
+            "gemma-4-E4B-Q4_K_M.gguf",
+        )
+        self.assertEqual(
+            experimental.allowed_context_windows,
+            (4096, 16384, 32768),
+        )
+        self.assertEqual(experimental.default_context_window, 16384)
+        self.assertGreater(experimental.maximum_context_window, 32768)
+        self.assertEqual(experimental.high_resource_context_options, ())
         self.assertEqual(apodemus.reasoning_mode, "none")
         self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
         self.assertEqual(neotoma.reasoning_mode, "none")
         self.assertEqual(neotoma.supported_reasoning_modes, ("none", "focused"))
+        self.assertEqual(experimental.reasoning_mode, "none")
+        self.assertEqual(
+            experimental.supported_reasoning_modes,
+            ("none", "focused"),
+        )
         self.assertEqual(
             (apodemus.tool_select_max_tokens, apodemus.final_answer_max_tokens),
             (256, 768),
@@ -109,9 +140,14 @@ class ProviderContractTests(unittest.TestCase):
             (neotoma.tool_select_max_tokens, neotoma.final_answer_max_tokens),
             (256, 768),
         )
+        self.assertEqual(
+            (experimental.tool_select_max_tokens, experimental.final_answer_max_tokens),
+            (256, 768),
+        )
         self.assertFalse(sorex.high_resource)
         self.assertTrue(mus.high_resource)
         self.assertFalse(apodemus.high_resource)
+        self.assertFalse(experimental.high_resource)
         self.assertFalse(
             build_concrete_agent(
                 "apodemus",
@@ -149,7 +185,13 @@ class ProviderContractTests(unittest.TestCase):
         self.assertFalse(is_local_inference_provider("openai"))
 
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
-        for agent_key in ("sorex", "mus", "apodemus", "neotoma"):
+        for agent_key in (
+            "sorex",
+            "mus",
+            "apodemus",
+            "neotoma",
+            "unnamed-experimental-agent",
+        ):
             profile = build_concrete_agent(agent_key, native_effort=None)
             self.assertTrue(is_local_profile(profile))
             selected = local_model_ref_for_agent(agent_key)
@@ -160,11 +202,18 @@ class ProviderContractTests(unittest.TestCase):
 
         known = known_local_model_refs()
         expected = set()
-        for agent_key in ("sorex", "mus", "apodemus", "neotoma"):
+        for agent_key in (
+            "sorex",
+            "mus",
+            "apodemus",
+            "neotoma",
+            "unnamed-experimental-agent",
+        ):
             expected.update(local_model_refs_for_agent(agent_key))
         self.assertEqual(known, frozenset(expected))
         self.assertEqual(len(local_model_refs_for_agent("apodemus")), 4)
         self.assertEqual(len(local_model_refs_for_agent("neotoma")), 4)
+        self.assertEqual(len(local_model_refs_for_agent("unnamed-experimental-agent")), 3)
         self.assertIsNone(
             agent_key_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")
@@ -180,7 +229,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(profile.reasoning_mode, "focused")
 
     def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
-        for agent_key in ("apodemus", "neotoma"):
+        for agent_key in ("apodemus", "neotoma", "unnamed-experimental-agent"):
             with self.subTest(agent=agent_key):
                 profile = build_concrete_agent(
                     agent_key,
@@ -813,11 +862,17 @@ class PublicRosterTests(unittest.TestCase):
         self.assertIn("xai", providers)
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"},
-            {"sorex", "mus", "apodemus", "neotoma"},
+            {
+                "sorex",
+                "mus",
+                "apodemus",
+                "neotoma",
+                "unnamed-experimental-agent",
+            },
         )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "llama_cpp"},
-            {"apodemus", "neotoma"},
+            {"apodemus", "neotoma", "unnamed-experimental-agent"},
         )
         self.assertEqual(
             {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},

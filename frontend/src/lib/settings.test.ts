@@ -91,6 +91,8 @@ describe('settings response parsing', () => {
     ['delphinus x search', ['settings', 'ask_apex', 'delphinus_x_search_enabled'], null],
     ['orcinus x search', ['settings', 'ask_apex', 'orcinus_x_search_enabled'], null],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
+    ['removed Mus briefing mode', ['settings', 'briefing', 'default_mode'], 'mus'],
+    ['removed Sorex briefing mode', ['settings', 'briefing', 'default_mode'], 'sorex'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
     ['voice mode', ['settings', 'voice', 'mode'], 'invalid'],
@@ -181,7 +183,7 @@ describe('settings editing utilities', () => {
       ...draft.ask_apex.local_context_windows,
       apodemus: 32768,
     }
-    draft.briefing.default_mode = 'mus'
+    draft.briefing.default_mode = 'apodemus'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
     draft.mcp.enabled = true
@@ -193,9 +195,13 @@ describe('settings editing utilities', () => {
       ask_apex: {
         runtime: 'local',
         local_agent: 'sorex',
-        local_context_windows: { apodemus: 32768, neotoma: 16384 },
+        local_context_windows: {
+          apodemus: 32768,
+          neotoma: 16384,
+          'unnamed-experimental-agent': 16384,
+        },
       },
-      briefing: { default_mode: 'mus' },
+      briefing: { default_mode: 'apodemus' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
         enabled: true,
@@ -231,7 +237,11 @@ describe('settings editing utilities', () => {
     }
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: {
-        local_context_windows: { apodemus: 16384, neotoma: 65536 },
+        local_context_windows: {
+          apodemus: 16384,
+          neotoma: 65536,
+          'unnamed-experimental-agent': 16384,
+        },
       },
     })
   })
@@ -249,6 +259,7 @@ describe('settings editing utilities', () => {
           mus: 'none',
           apodemus: 'focused',
           neotoma: 'none',
+          'unnamed-experimental-agent': 'none',
         },
       },
     })
@@ -263,7 +274,11 @@ describe('settings editing utilities', () => {
     draft.llama_cpp.enabled = true
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: {
-        local_context_windows: { apodemus: 32768, neotoma: 16384 },
+        local_context_windows: {
+          apodemus: 32768,
+          neotoma: 16384,
+          'unnamed-experimental-agent': 16384,
+        },
       },
       llama_cpp: { enabled: true },
     })

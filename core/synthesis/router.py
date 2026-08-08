@@ -37,7 +37,6 @@ from core.agent.types import AgentMessage, LocalReasoningMode
 from core.config import (
     LOCAL_FALLBACK_GRACE_SECONDS,
     LOCAL_PRIMARY_GRACE_SECONDS,
-    OLLAMA_SYNTHESIS_PROMPT,
     PRIMARY_SYNTHESIS_PROMPT,
 )
 from core.synthesis.formatting import (
@@ -65,7 +64,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
 @dataclass
 class WarmupHandle:
-    agent_key: str = "mus"
+    agent_key: str = "apodemus"
     model_ref: LocalModelRef | None = None
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
@@ -108,13 +107,6 @@ def _has_unrecognized_resident_model() -> bool:
             if not recognized:
                 return True
     return False
-
-
-def _system_prompt_for_agent(agent_key: str) -> str:
-    """Sorex keeps its compact prompt; other local briefing Agents use primary."""
-    if agent_key == "sorex":
-        return OLLAMA_SYNTHESIS_PROMPT
-    return PRIMARY_SYNTHESIS_PROMPT
 
 
 class SynthesisRouter:
@@ -210,14 +202,6 @@ class SynthesisRouter:
         threading.Thread(target=worker, daemon=True, name="apex-synthesis-warmup").start()
         return handle
 
-    def start_sorex_warmup(self) -> WarmupHandle:
-        """Warm Sorex for cloud-fallback paths."""
-        return self.start_agent_warmup("sorex")
-
-    def start_lynx_warmup(self) -> WarmupHandle:
-        """Compatibility alias for legacy callers."""
-        return self.start_sorex_warmup()
-
     def prepare(self, strategy: str) -> WarmupHandle | None:
         mode = strategy_to_briefing_mode(strategy)
         return self.prepare_mode(mode)
@@ -231,7 +215,7 @@ class SynthesisRouter:
         if resident == mode:
             self._state("ready", AGENT_SPECS[mode].provider, resident, None)
             return None
-        # Explicit local selection (or legacy local→acinonyx) warms the selected agent.
+        # Explicit local selection warms the selected Agent.
         if mode == "apodemus":
             return self.start_agent_warmup(
                 mode,
@@ -252,6 +236,16 @@ class SynthesisRouter:
             fallback_reason=reason,
             warmup_ms=warmup_ms,
         )
+
+    def _structured_digest_fallback(
+        self,
+        source: SynthesisInput,
+        reason: str,
+        warmup_ms: int | None = None,
+    ) -> SynthesisResult:
+        result = self._raw(source, reason, warmup_ms)
+        result.fallback_steps = ["structured_digest:resolved"]
+        return result
 
     def _panthera(self, source: SynthesisInput) -> SynthesisResult:
         """Synthesize with the fixed-Light Panthera briefing agent."""
@@ -311,15 +305,9 @@ class SynthesisRouter:
         user_designation = get_settings_store().get_snapshot().user_designation
         system_instruction = compose_agent_system_instruction(
             agent_key,
-            _system_prompt_for_agent(agent_key),
+            PRIMARY_SYNTHESIS_PROMPT,
             user_designation=user_designation,
         )
-        if agent_key == "sorex" and user_designation:
-            normalized_designation = " ".join(user_designation.split())[:80]
-            system_instruction += (
-                "\n\nIn the ===SPEECH=== section, address the user as "
-                f'"{normalized_designation}" exactly once. Keep the address natural.'
-            )
         return build_concrete_agent(
             agent_key,
             native_effort=None,
@@ -405,7 +393,7 @@ class SynthesisRouter:
                 return result
             except Exception as exc:
                 reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-                return self._raw(source, reason)
+                return self._structured_digest_fallback(source, reason)
 
         if warmup is None:
             warmup = self.start_agent_warmup(agent_key)
@@ -414,9 +402,11 @@ class SynthesisRouter:
             warmup = self.start_agent_warmup(agent_key)
 
         if not warmup.event.wait(LOCAL_PRIMARY_GRACE_SECONDS):
-            return self._raw(source, "local_warmup_timeout", warmup.elapsed_ms)
+            return self._structured_digest_fallback(
+                source, "local_warmup_timeout", warmup.elapsed_ms
+            )
         if not warmup.success:
-            return self._raw(
+            return self._structured_digest_fallback(
                 source, warmup.reason or "local_warmup_failed", warmup.elapsed_ms
             )
         self._state("ready", AGENT_SPECS[agent_key].provider, agent_key, None)
@@ -431,10 +421,10 @@ class SynthesisRouter:
             return result
         except Exception as exc:
             reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-            return self._raw(source, reason, warmup.elapsed_ms)
+            return self._structured_digest_fallback(source, reason, warmup.elapsed_ms)
 
     def _synthesize_panthera(self, source: SynthesisInput) -> SynthesisResult:
-        """Route Panthera failure through Mus, Sorex, then Structured Digest."""
+        """Route Panthera failure through Apodemus, then Structured Digest."""
         fallback_steps: list[str] = []
         try:
             result = self._panthera(source)
@@ -442,14 +432,14 @@ class SynthesisRouter:
             return result
         except Exception as exc:
             _LOGGER.error(
-                "Panthera briefing synthesis failed; falling back to local/raw. "
+                "Panthera briefing synthesis failed; falling back to Apodemus/Structured Digest. "
                 "error_type=%s",
                 type(exc).__name__,
             )
             reason = str(exc) if str(exc).startswith("openai_") else "openai_error"
             fallback_steps.append(f"panthera:{reason}")
 
-        for agent_key in ("mus", "sorex"):
+        for agent_key in ("apodemus",):
             result, local_reason = self._try_panthera_local_fallback(source, agent_key)
             if result is not None:
                 fallback_steps.append(f"{agent_key}:resolved")

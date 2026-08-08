@@ -171,7 +171,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             provider="openai",
             agent="panthera",
             resolved_model="gpt-5.6-luna",
-            fallback_steps=["panthera:openai_timeout", "mus:local_model_missing"],
+            fallback_steps=["panthera:openai_timeout", "apodemus:local_model_missing"],
             provider_ms=321.5,
             usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
             cost_estimate=CostEstimate(
@@ -205,17 +205,25 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             stale = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": "stale", "mode": "mus"},
+                json={"snapshot_id": "stale", "mode": "apodemus"},
             )
             response = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": snap.snapshot_id, "mode": "mus"},
+                json={"snapshot_id": snap.snapshot_id, "mode": "apodemus"},
             )
         self.assertEqual(stale.status_code, 409)
         self.assertEqual(response.status_code, 200)
         metadata = response.json()["metadata"]
         self.assertEqual(metadata["snapshot_id"], "demo-current")
-        self.assertEqual(metadata["briefing_mode"], "mus")
+        self.assertEqual(metadata["briefing_mode"], "apodemus")
+
+    def test_removed_ollama_briefing_modes_are_rejected(self) -> None:
+        snap = self._seed_snapshot("briefing-mode-validation")
+        response = self.client.post(
+            "/api/v1/briefings/generate",
+            json={"snapshot_id": snap.snapshot_id, "mode": "mus"},
+        )
+        self.assertEqual(response.status_code, 422)
 
     def test_voice_off_returns_403(self) -> None:
         self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="off")))

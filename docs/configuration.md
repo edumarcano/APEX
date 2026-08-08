@@ -49,7 +49,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Ask APEX | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
-| Briefing | Panthera, Mus, Sorex, Apodemus, or Structured Digest mode selected in the Home command rail |
+| Briefing | Panthera, Apodemus, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
@@ -68,25 +68,25 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 
 ## Runtime modes
 
-### Production
+### Normal mode
 
-With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors, persists production briefing history, and uses the selected cloud, local, or deterministic briefing mode. Operational preflight can warn about network policy, power, refresh frequency, and local-model resources; credentials and unavailable runtime resources remain blockers.
+With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors, persists normal-mode briefing history, and uses the selected cloud, local, or deterministic briefing mode. Operational preflight can warn about network policy, power, refresh frequency, and local-model resources; credentials and unavailable runtime resources remain blockers.
 
 ### Development
 
-`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and production run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or Acinonyx context use.
+`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and normal-mode run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or Acinonyx context use.
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
 - `raw` — deterministic output without a model call
-- `local` — selected local behavior with deterministic fallback
-- `cloud` — configured cloud briefing path with eligible local and deterministic fallback
+- `local` — Apodemus synthesis with deterministic fallback
+- `cloud` — Panthera with Apodemus and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
 ### Demo
 
-`DEMO_MODE=true` takes priority over the normal trigger path. It uses static telemetry, briefing history, reminders, market data, and deterministic Agent responses. It skips live connectors and production database writes. `DEMO_TTS` selects the optional demo speech engine.
+`DEMO_MODE=true` takes priority over the normal trigger path. It uses static telemetry, briefing history, reminders, market data, and deterministic Agent responses. It skips live connectors and normal-mode database writes. `DEMO_TTS` selects the optional demo speech engine.
 
 `DEV_MODE` and `DEMO_MODE` are independent environment flags, but demo behavior wins where their paths overlap.
 
@@ -131,10 +131,11 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 |---|---|---|
 | `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
 | `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
-| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Preview efficient local Agent and explicit briefing synthesizer with selectable context |
+| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
 | `neotoma` — Neotoma 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
+| `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Ollama serves Mus and Sorex; llama.cpp serves Apodemus and Neotoma.
+`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Outside DEV_MODE, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; DEV_MODE also surfaces the registered development Agents. Ollama serves Mus and Sorex; llama.cpp serves Apodemus, Neotoma, and the development-only Unnamed Experimental Agent.
 
 #### llama.cpp configuration
 
@@ -150,6 +151,7 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
 | `llama_cpp.resource_gates.apodemus` | RAM/CPU limits | No | Cold-load gates for Apodemus |
 | `llama_cpp.resource_gates.neotoma` | RAM/CPU limits | No | Cold-load gates for Neotoma |
+| `llama_cpp.resource_gates.unnamed-experimental-agent` | RAM/CPU limits | No | Cold-load gates for the development-only evaluation target |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 
@@ -174,7 +176,7 @@ APEX does not install, bundle, or update llama.cpp, and it does not download mod
 - **External mode** (`managed: false`): you start `llama-server` yourself. APEX only talks to the configured loopback URL over HTTP.
 - **Managed mode** (`managed: true`): when llama.cpp is enabled and the router is unreachable, APEX starts your installed executable with the configured preset. If the router is already reachable, APEX uses it as an external server and does not spawn a duplicate process. APEX terminates only a child process it launched, never an externally started server.
 
-Configure Apodemus and Neotoma aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git.
+Configure Apodemus, Neotoma, and Unnamed Experimental Agent aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git.
 
 ```ini
 version = 1
@@ -208,21 +210,21 @@ Installed aliases come only from the router's `/models` list. A missing `apodemu
 
 #### Local context preferences
 
-`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`. Apodemus's `131072` and Neotoma's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
+`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; Unnamed Experimental Agent accepts `4096`, `16384`, or `32768` and defaults to `16384`. Apodemus's `131072` and Neotoma's `65536` presets are marked high-resource in Cortex; none of the Unnamed Experimental Agent presets are currently marked high-resource. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
 
-Apodemus model maximum metadata is `131072`, and Neotoma model maximum metadata is `262144`; Neotoma's maximum is not an exposed preset.
+Apodemus model maximum metadata is `131072`, Neotoma model maximum metadata is `262144`, and Unnamed Experimental Agent model maximum metadata is `131072`; the larger native maxima are not fully exposed as presets.
 
 #### Local reasoning preferences
 
-`ask_apex.local_reasoning_modes` stores an independent reasoning preference for each local Agent. All local Agents default to `none`; Mus and Sorex currently expose only `none`, while Apodemus and Neotoma expose `none` and `focused`. The Cortex inspector shows the Reasoning selector only when the active Agent advertises both modes, and a change applies to the next response without unloading the resident model.
+`ask_apex.local_reasoning_modes` stores an independent reasoning preference for each local Agent. All local Agents default to `none`; Mus and Sorex currently expose only `none`, while Apodemus, Neotoma, and Unnamed Experimental Agent expose `none` and `focused`. The Cortex inspector shows the Reasoning selector only when the active Agent advertises both modes, and a change applies to the next response without unloading the resident model.
 
 For llama.cpp, `none` sends `reasoning_effort: "none"` with `chat_template_kwargs.enable_thinking` set to `false`; `focused` omits that request field and sets `enable_thinking` to `true` so the model template can use its native reasoning behavior. Focused llama.cpp profiles use a larger model-configured completion ceiling because native thinking consumes the same completion budget as the visible answer. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
-Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Retired Apodemus `8K` preferences migrate to `16K`. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf` and `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`.
+Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Retired Apodemus `8K` preferences migrate to `16K`. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf`, `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`, and `unnamed-experimental-agent -> gemma-4-E4B-Q4_K_M.gguf`.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries an installed, reachable, resource-admissible Mus, then Sorex, before returning Structured Digest. An explicit Mus, Sorex, or Apodemus briefing request falls directly to Structured Digest on failure; it never silently substitutes another local Agent. Apodemus cold-load briefing synthesis uses the dedicated 16K context, while an already-resident Apodemus load reuses its actual configured context alias.
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Apodemus once before returning Structured Digest. An explicit Apodemus briefing request falls directly to Structured Digest on failure; it never silently substitutes another local Agent. Apodemus cold-load briefing synthesis uses the dedicated 16K context, while an already-resident Apodemus load reuses its actual configured context alias.
 
 ## Voice
 

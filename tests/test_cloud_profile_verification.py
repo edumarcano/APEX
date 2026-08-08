@@ -37,7 +37,17 @@ class CloudAgentVerificationTests(unittest.TestCase):
         self.assertEqual(AGENT_SPECS["acinonyx"].capability_tags, ("Privacy sandbox", "Masked context"))
         self.assertEqual(AGENT_SPECS["orcinus"].capability_tags, ("Deep reasoning", "Extended analysis", "X Search"))
         self.assertEqual(runtime_agent_order(dev_mode=True)[0], "acinonyx")
-        self.assertEqual(runtime_agent_order(dev_mode=False), ("panthera", "neofelis", "delphinus", "orcinus", "mus", "apodemus", "neotoma", "sorex"))
+        self.assertIn("unnamed-experimental-agent", runtime_agent_order(dev_mode=True))
+        self.assertNotIn("unnamed-experimental-agent", runtime_agent_order(dev_mode=False))
+        self.assertEqual(
+            runtime_agent_order(dev_mode=False),
+            ("panthera", "apodemus", "neotoma"),
+        )
+        self.assertTrue(AGENT_SPECS["acinonyx"].dev_only)
+        self.assertEqual(AGENT_SPECS["acinonyx"].stability, "experimental")
+        self.assertEqual(AGENT_SPECS["apodemus"].stability, "stable")
+        for key in ("neofelis", "delphinus", "orcinus", "mus", "sorex"):
+            self.assertTrue(AGENT_SPECS[key].dev_only)
 
     def test_non_generative_probe_is_cached_as_verified(self) -> None:
         with (
@@ -134,8 +144,10 @@ class CloudAgentVerificationTests(unittest.TestCase):
         verify.assert_not_called()
 
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
-            "core.api.cortex.verify_cloud_agent"
-        ) as verify:
+            "core.api.cortex.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
+        ), mock.patch("core.api.cortex.verify_cloud_agent") as verify:
             with self.assertRaises(HTTPException) as local_error:
                 verify_cloud_agent_endpoint("mus")
         self.assertEqual(local_error.exception.status_code, 400)

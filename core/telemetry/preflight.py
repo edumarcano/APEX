@@ -42,7 +42,7 @@ from core.telemetry.models import (
     PreflightWarning,
     PreflightWarningCode,
 )
-from core.synthesis.models import APODEMUS_BRIEFING_CONTEXT_WINDOW
+from core.synthesis.models import APODEMUS_BRIEFING_CONTEXT_WINDOW, VALID_BRIEFING_MODES
 from core.telemetry.service import get_telemetry_service
 
 load_dotenv(dotenv_path=ENV_PATH)
@@ -82,9 +82,7 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_BRIEFING_MODES = frozenset(
-    {"panthera", "mus", "sorex", "apodemus", "structured_digest"}
-)
+_BRIEFING_MODES = VALID_BRIEFING_MODES
 _CONNECTOR_OPERATIONS = frozenset(
     {"activate", "activate_with_briefing", "refresh_telemetry"}
 )

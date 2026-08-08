@@ -276,6 +276,8 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         with patch(
             "core.agent.tool_catalog._native_availability",
             return_value=(True, None),
+        ), patch("core.api.cortex.is_dev_mode", return_value=True), patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
@@ -298,26 +300,32 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             AgentMessage(role="user", content="A third prior question"),
             AgentMessage(role="agent", content="A third prior answer " * 1_500),
         ]
-        result = build_tool_preflight(
-            ToolPreflightRequest(
-                agent="mus",
-                prompt="Current question",
-                history=history,
+        with patch("core.api.cortex.is_dev_mode", return_value=True), patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
+        ):
+            result = build_tool_preflight(
+                ToolPreflightRequest(
+                    agent="mus",
+                    prompt="Current question",
+                    history=history,
+                )
             )
-        )
 
         self.assertTrue(result.can_proceed)
         self.assertLess(result.breakdown.remaining_estimated_capacity or 0, 0)
         self.assertIn("warning only", result.warning or "")
 
     def test_preflight_includes_typed_prompt_and_returns_rejections_in_response(self) -> None:
-        result = build_tool_preflight(
-            ToolPreflightRequest(
-                agent="sorex",
-                prompt="This typed prompt must be counted.",
-                selected_tool_names=["not_registered"],
+        with patch("core.api.cortex.is_dev_mode", return_value=True), patch(
+            "core.agent.catalog.is_dev_mode", return_value=True
+        ):
+            result = build_tool_preflight(
+                ToolPreflightRequest(
+                    agent="sorex",
+                    prompt="This typed prompt must be counted.",
+                    selected_tool_names=["not_registered"],
+                )
             )
-        )
         self.assertFalse(result.can_proceed)
         self.assertGreater(result.breakdown.current_prompt, 0)
         self.assertEqual(result.selection.rejected_tool_names, ["not_registered"])

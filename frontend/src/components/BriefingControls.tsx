@@ -39,8 +39,6 @@ const CLOUD_OPTIONS: readonly BriefingOption[] = [
 ]
 
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'sorex', label: 'Sorex', description: 'Quick briefing · limited telemetry' },
-  { key: 'mus', label: 'Mus', description: 'Full briefing · balanced local synthesis' },
   { key: 'apodemus', label: 'Apodemus', description: 'Full briefing · efficient llama.cpp synthesis' },
   {
     key: 'structured_digest',
@@ -61,8 +59,6 @@ const SECTIONS: readonly {
 
 const MODE_LABELS: Record<BriefingMode, string> = {
   panthera: 'Panthera',
-  sorex: 'Sorex',
-  mus: 'Mus',
   apodemus: 'Apodemus',
   structured_digest: 'Structured Digest',
 }
@@ -138,7 +134,7 @@ function modeCost(mode: BriefingMode, agents: AgentStatus[]): string {
   if (mode === 'structured_digest') return 'No model cost'
   const agent = agents.find((entry) => entry.key === mode)
   if (!agent) {
-    return mode === 'mus' || mode === 'sorex' || mode === 'apodemus'
+    return mode === 'apodemus'
       ? 'No provider token charge'
       : 'Pricing unavailable'
   }

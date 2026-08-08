@@ -115,6 +115,7 @@ const VALID_AGENT_KEYS: readonly AgentKey[] = [
   'mus',
   'apodemus',
   'neotoma',
+  'unnamed-experimental-agent',
   'acinonyx',
 ]
 
@@ -151,7 +152,11 @@ const VALID_AGENT_RUNTIMES: readonly AgentStatus['runtime'][] = ['cloud', 'local
 
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
 
-const VALID_AGENT_STABILITY: readonly AgentStability[] = ['stable', 'preview']
+const VALID_AGENT_STABILITY: readonly AgentStability[] = [
+  'stable',
+  'preview',
+  'experimental',
+]
 const VALID_AGENT_STATUS_SOURCES: readonly AgentStatusSource[] = ['configuration', 'verification', 'request', 'runtime']
 
 function isAgentKey(value: unknown): value is AgentKey {

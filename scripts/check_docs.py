@@ -30,6 +30,9 @@ ROUTE_HEADING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SCHEMA_VERSION_PATTERN = re.compile(r'"schema_version"\s*:\s*(\d+)')
+API_CONTRACT_VERSION_PATTERN = re.compile(
+    r"\bcontract\s+version\s+(?:is\s+)?`?(\d+)`?", re.IGNORECASE
+)
 RELEASE_HEADING_PATTERN = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b", re.MULTILINE)
 
 
@@ -242,6 +245,45 @@ def check_schema_versions(
     return issues
 
 
+def check_api_contract_version(
+    api_path: Path,
+    expected_version: int,
+    contents: Mapping[Path, str] | None = None,
+) -> list[DocumentationIssue]:
+    """Keep the human-readable API contract version aligned with settings."""
+    text = contents.get(api_path, "") if contents is not None else api_path.read_text(
+        encoding="utf-8"
+    )
+    matches = [
+        (line_number, match)
+        for line_number, line in lines_outside_fences(text)
+        for match in API_CONTRACT_VERSION_PATTERN.finditer(line)
+    ]
+    if not matches:
+        return [
+            DocumentationIssue(
+                api_path,
+                1,
+                "contract version",
+                f"API contract version statement should be {expected_version}",
+            )
+        ]
+
+    issues: list[DocumentationIssue] = []
+    for line_number, match in matches:
+        found = int(match.group(1))
+        if found != expected_version:
+            issues.append(
+                DocumentationIssue(
+                    api_path,
+                    line_number,
+                    str(found),
+                    f"API contract version should be {expected_version}",
+                )
+            )
+    return issues
+
+
 def check_agent_profiles(
     paths: Iterable[Path],
     expected_profiles: Mapping[str, str],
@@ -405,11 +447,16 @@ PROVIDER_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
-def check_default_briefing_provider(root: Path) -> list[DocumentationIssue]:
-    """Keep the README briefing diagram aligned with the configured default."""
+def check_default_briefing_provider(
+    root: Path,
+    *,
+    readme_text: str | None = None,
+) -> list[DocumentationIssue]:
+    """Keep README briefing paths aligned with the current synthesis contract."""
     import json
 
     from core.agent.catalog import AGENT_SPECS
+    from core.synthesis.models import VALID_BRIEFING_MODES
 
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     default_mode = config.get("briefing", {}).get("default_mode", "panthera")
@@ -420,20 +467,81 @@ def check_default_briefing_provider(root: Path) -> list[DocumentationIssue]:
         expected = "Structured Digest"
 
     readme_path = root / "README.md"
-    readme = readme_path.read_text(encoding="utf-8")
+    readme = (
+        readme_text
+        if readme_text is not None
+        else readme_path.read_text(encoding="utf-8")
+    )
     diagram = re.search(
         r'^\s*B\s+-->\s+M\["([^"]+)"\]\s*$', readme, re.MULTILINE
     )
-    if diagram is not None and expected in diagram.group(1):
-        return []
-    return [
-        DocumentationIssue(
-            readme_path,
-            1,
-            expected,
-            "briefing diagram omits the configured default provider",
+    issues: list[DocumentationIssue] = []
+    if diagram is None:
+        issues.append(
+            DocumentationIssue(
+                readme_path,
+                1,
+                "briefing diagram",
+                "briefing diagram is missing its synthesis path label",
+            )
         )
-    ]
+    else:
+        diagram_label = diagram.group(1)
+        diagram_line = readme.count("\n", 0, diagram.start()) + 1
+        if expected not in diagram_label:
+            issues.append(
+                DocumentationIssue(
+                    readme_path,
+                    diagram_line,
+                    expected,
+                    "briefing diagram omits the configured default provider",
+                )
+            )
+
+        expected_paths = {
+            "Structured Digest"
+            if mode == "structured_digest"
+            else PROVIDER_DISPLAY_NAMES[AGENT_SPECS[mode].provider]
+            for mode in VALID_BRIEFING_MODES
+        }
+        for provider in sorted(expected_paths):
+            if provider not in diagram_label:
+                issues.append(
+                    DocumentationIssue(
+                        readme_path,
+                        diagram_line,
+                        provider,
+                        "briefing diagram omits a supported synthesis path",
+                    )
+                )
+        if re.search(r"\bollama\b", diagram_label, re.IGNORECASE):
+            issues.append(
+                DocumentationIssue(
+                    readme_path,
+                    diagram_line,
+                    "Ollama",
+                    "obsolete Ollama briefing provider is documented",
+                )
+            )
+
+    briefing_section_match = re.search(
+        r"(?ms)^###\s+Produces briefings on my terms\s*$.*?(?=^###\s|\Z)",
+        readme,
+    )
+    if briefing_section_match is not None:
+        section = briefing_section_match.group(0)
+        section_start_line = readme.count("\n", 0, briefing_section_match.start()) + 1
+        for line_number, line in enumerate(section.splitlines(), start=1):
+            if re.search(r"\bollama\b", line, re.IGNORECASE):
+                issues.append(
+                    DocumentationIssue(
+                        readme_path,
+                        section_start_line + line_number - 1,
+                        "Ollama",
+                        "obsolete Ollama briefing provider is documented",
+                    )
+                )
+    return issues
 
 
 def public_openapi_routes() -> set[tuple[str, str]]:
@@ -524,6 +632,7 @@ def run(root: Path = ROOT) -> list[DocumentationIssue]:
     issues.extend(check_links(paths, root))
     issues.extend(check_routes(api_path, public_openapi_routes()))
     issues.extend(check_schema_versions(contract_paths, SETTINGS_SCHEMA_VERSION))
+    issues.extend(check_api_contract_version(api_path, SETTINGS_SCHEMA_VERSION))
     issues.extend(check_agent_profiles(contract_paths, current_agent_profiles()))
     issues.extend(check_agent_versions(contract_paths, current_agent_versions()))
     issues.extend(check_cors_example(root))

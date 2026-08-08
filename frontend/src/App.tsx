@@ -111,8 +111,6 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
 
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
-  'mus',
-  'sorex',
   'apodemus',
   'structured_digest',
 ]
@@ -394,7 +392,9 @@ export default function App(): ReactElement {
   )
   const isLocalModelLoading =
     loadingLocalAgent !== null ||
-    (liveSynthesis?.provider === 'ollama' && liveSynthesis.loading)
+    (liveSynthesis?.loading === true &&
+      (liveSynthesis.provider === 'llama_cpp' ||
+        (liveSynthesis.agent !== undefined && isLocalAgentKey(liveSynthesis.agent))))
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??

@@ -473,6 +473,8 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
             mock.patch("core.api.cortex.get_idle_unload_remaining_seconds", return_value=60),
             mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
+            mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
             mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}

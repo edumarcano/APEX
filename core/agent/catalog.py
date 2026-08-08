@@ -44,6 +44,7 @@ AgentKey: TypeAlias = Literal[
     "mus",
     "apodemus",
     "neotoma",
+    "unnamed-experimental-agent",
 ]
 CloudAgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
@@ -51,7 +52,13 @@ CloudAgentKey: TypeAlias = Literal[
 CloudSettingsAgentKey: TypeAlias = Literal[
     "panthera", "neofelis", "delphinus", "orcinus"
 ]
-LocalAgentKey: TypeAlias = Literal["sorex", "mus", "apodemus", "neotoma"]
+LocalAgentKey: TypeAlias = Literal[
+    "sorex",
+    "mus",
+    "apodemus",
+    "neotoma",
+    "unnamed-experimental-agent",
+]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
@@ -67,13 +74,14 @@ VALID_AGENT_KEYS: frozenset[str] = frozenset(
         "mus",
         "apodemus",
         "neotoma",
+        "unnamed-experimental-agent",
     }
 )
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
 VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"sorex", "mus", "apodemus", "neotoma"}
+    {"sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"}
 )
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
@@ -113,7 +121,7 @@ class AgentSpec:
     max_tool_turns: int
     max_tool_calls: int
     tier: str
-    stability: Literal["stable", "preview"]
+    stability: Literal["stable", "preview", "experimental"]
     capability_tags: tuple[str, ...]
     dev_only: bool = False
     supports_effort: bool = True
@@ -137,7 +145,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         tier="fast",
-        stability="stable",
+        stability="experimental",
         capability_tags=("Privacy sandbox", "Masked context"),
         dev_only=True,
     ),
@@ -180,6 +188,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="advanced",
         stability="stable",
         capability_tags=("Research", "Google Search", "Google Maps"),
+        dev_only=True,
     ),
     "delphinus": AgentSpec(
         key="delphinus",
@@ -199,6 +208,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="balanced",
         stability="stable",
         capability_tags=("Balanced", "X Search"),
+        dev_only=True,
     ),
     "orcinus": AgentSpec(
         key="orcinus",
@@ -218,6 +228,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="advanced",
         stability="stable",
         capability_tags=("Deep reasoning", "Extended analysis", "X Search"),
+        dev_only=True,
     ),
     "sorex": AgentSpec(
         key="sorex",
@@ -238,6 +249,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="lightweight",
         stability="stable",
         capability_tags=("Lightweight", "Fast fallback", "Constrained local"),
+        dev_only=True,
         supports_effort=False,
     ),
     "mus": AgentSpec(
@@ -259,13 +271,14 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="balanced",
         stability="stable",
         capability_tags=("Larger model", "Primary local"),
+        dev_only=True,
         supports_effort=False,
     ),
     "apodemus": AgentSpec(
         key="apodemus",
         display_name="Apex Apodemus",
         description=(
-            "Preview private local Agent for efficient tool-driven work through llama.cpp."
+            "Stable private local Agent for efficient tool-driven work through llama.cpp."
         ),
         identity_instruction=(
             "You are Apex Apodemus, an Apex Agent powered by "
@@ -280,7 +293,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         max_tool_turns=3,
         max_tool_calls=4,
         tier="balanced",
-        stability="preview",
+        stability="stable",
         capability_tags=("Efficient local", "Selectable context"),
         supports_effort=False,
     ),
@@ -305,6 +318,32 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         tier="balanced",
         stability="preview",
         capability_tags=("Generalist local", "Selectable context"),
+        dev_only=False,
+        supports_effort=False,
+    ),
+    "unnamed-experimental-agent": AgentSpec(
+        key="unnamed-experimental-agent",
+        display_name="Unnamed Experimental Agent",
+        description=(
+            "Development-only technical target for evaluating candidate local "
+            "models through llama.cpp."
+        ),
+        identity_instruction=(
+            "You are Unnamed Experimental Agent, a technical APEX development "
+            "target powered by Gemma 4 E4B through llama.cpp."
+        ),
+        agent_version="1.0",
+        provider="llama_cpp",
+        runtime="local",
+        api_model="gemma-4-E4B-Q4_K_M.gguf",
+        default_effort=None,
+        credential_env=None,
+        max_tool_turns=3,
+        max_tool_calls=4,
+        tier="balanced",
+        stability="experimental",
+        capability_tags=("Experimental local", "Selectable context"),
+        dev_only=True,
         supports_effort=False,
     ),
 }
@@ -318,6 +357,7 @@ _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
     "mus",
     "apodemus",
     "neotoma",
+    "unnamed-experimental-agent",
     "sorex",
 )
 
@@ -710,7 +750,7 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
         "mode": "cloud",
         "cloud_profile": "panthera",
         "cloud_effort": "focused",
-        "local_profile": "mus",
+        "local_profile": "apodemus",
         "neofelis_google_search_enabled": bool(
             raw.get("neofelis_google_search_enabled", True)
         ),
@@ -723,12 +763,12 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
             migrated["mode"] = "cloud"
             migrated["cloud_profile"] = "panthera"
             migrated["cloud_effort"] = "focused"
-            migrated["local_profile"] = "mus"
+            migrated["local_profile"] = "apodemus"
         elif normalized in _SCHEMA5_LOCAL_PROFILES:
-            # Plan: every old local selection becomes Local/Mus while retaining
+            # Plan: every old local selection becomes Local/Apodemus while retaining
             # Panthera/Focused as the saved cloud choice.
             migrated["mode"] = "local"
-            migrated["local_profile"] = "mus"
+            migrated["local_profile"] = "apodemus"
             migrated["cloud_profile"] = "panthera"
             migrated["cloud_effort"] = "focused"
 
@@ -779,8 +819,12 @@ def resolve_agent_selection(
 
     runtime = getattr(ask_apex, "runtime", "cloud")
     if runtime == "local":
-        agent = getattr(ask_apex, "local_agent", "mus")
+        agent = getattr(ask_apex, "local_agent", "apodemus")
+        if not dev_active and not is_agent_visible(agent, dev_mode=False):
+            agent = "apodemus"
         return "local", agent, None
     agent = getattr(ask_apex, "cloud_agent", "panthera")
+    if not dev_active and not is_agent_visible(agent, dev_mode=False):
+        agent = "panthera"
     effort = getattr(ask_apex, "effort", "focused")
     return "cloud", agent, effort

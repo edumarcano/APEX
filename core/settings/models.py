@@ -9,10 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from core.agent.types import LocalReasoningMode
 
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal["sorex", "mus", "apodemus", "neotoma"]
+LocalSettingsAgent = Literal[
+    "sorex",
+    "mus",
+    "apodemus",
+    "neotoma",
+    "unnamed-experimental-agent",
+]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
-BriefingMode = Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"]
+BriefingMode = Literal["panthera", "apodemus", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
@@ -21,12 +27,12 @@ VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
 VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"sorex", "mus", "apodemus", "neotoma"}
+    {"sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"}
 )
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "mus", "sorex", "apodemus", "structured_digest"}
+    {"panthera", "apodemus", "structured_digest"}
 )
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
@@ -149,7 +155,7 @@ class AskApexSettings(BaseModel):
     runtime: AgentRuntime = "cloud"
     cloud_agent: CloudSettingsAgent = "panthera"
     effort: CloudEffort = "focused"
-    local_agent: LocalSettingsAgent = "mus"
+    local_agent: LocalSettingsAgent = "apodemus"
     local_context_windows: dict[str, StrictInt] = Field(
         default_factory=_default_local_context_windows
     )

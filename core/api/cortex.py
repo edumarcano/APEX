@@ -1003,7 +1003,7 @@ def _estimate_agent_request(
 def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
     """Build an Agent-specific estimate without making a provider call."""
     agent_key = payload.agent
-    if agent_key not in AGENT_SPECS or not is_agent_visible(agent_key):
+    if agent_key not in AGENT_SPECS:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_key!r} is not available.",
@@ -1074,12 +1074,6 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown Agent: {agent_key!r}",
-        )
-
-    if not is_agent_visible(agent_key):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_key!r} is not available.",
         )
 
     spec = AGENT_SPECS[agent_key]

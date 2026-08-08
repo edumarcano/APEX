@@ -30,6 +30,7 @@ AgentKey: TypeAlias = Literal[
     "mus",
     "apodemus",
     "neotoma",
+    "unnamed-experimental-agent",
 ]
 LocalReasoningMode: TypeAlias = Literal["none", "focused"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]

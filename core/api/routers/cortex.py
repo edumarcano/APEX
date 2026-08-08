@@ -42,9 +42,19 @@ from core.api.models import (
     ToolPreflightRequest,
     ToolProfilesResponse,
 )
+from core.config import is_dev_mode
 
 router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+def _ensure_agent_api_access(agent_key: str) -> None:
+    """Keep Acinonyx unavailable through public API routes outside DEV_MODE."""
+    if agent_key == "acinonyx" and not is_dev_mode():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requested Agent is not available.",
+        )
 
 
 def _normalize_profile_id(value: str) -> str:
@@ -85,6 +95,7 @@ def _normalize_profile_name(value: str) -> str:
 )
 def tool_catalog(agent: AgentKey = "panthera") -> ToolCatalogResponse:
     """Return the resolved selector catalog for one Apex Agent."""
+    _ensure_agent_api_access(agent)
     return build_tool_catalog(agent)
 
 
@@ -94,6 +105,7 @@ def tool_catalog(agent: AgentKey = "panthera") -> ToolCatalogResponse:
 )
 def tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
     """Estimate the next request using model-facing selected tool schemas."""
+    _ensure_agent_api_access(payload.agent)
     return build_tool_preflight(payload)
 
 
@@ -302,6 +314,7 @@ def list_agents() -> list[AgentStatus]:
 )
 def verify_agent(agent_key: str) -> CloudAgentVerificationResponse:
     """Verify configured cloud credentials and model access without inference."""
+    _ensure_agent_api_access(agent_key)
     return verify_cloud_agent_endpoint(agent_key)
 
 
@@ -348,4 +361,5 @@ def cortex_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     switch (503 on load failure). Already-loaded target models bypass the
     resource gate because their memory footprint is already present.
     """
+    _ensure_agent_api_access(payload.agent)
     return query_agent(payload)

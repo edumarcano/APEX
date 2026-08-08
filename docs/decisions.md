@@ -26,7 +26,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Use SQLite instead of a flat file
 
-**Decision.** Reminders, production runs, and briefing history use SQLite.
+**Decision.** Reminders, normal-mode runs, and briefing history use SQLite.
 
 **Why.** The data has identity, ordering, lifecycle, and transactional requirements that outgrew ad hoc JSON or text files. SQLite keeps those properties local without adding a service.
 
@@ -118,7 +118,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Decision.** Connectors normalize into typed results, and briefing models receive a sanitized, bounded `SynthesisInput` marked as untrusted data.
 
-**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, local Ollama/llama.cpp Agents, and deterministic output.
+**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, Apodemus through llama.cpp, and deterministic output.
 
 **Trade-off.** Every new synthesis-relevant fact requires deliberate schema work. That maintenance is preferable to silently expanding model disclosure.
 
@@ -140,7 +140,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Mus, Sorex, Apodemus, and Structured Digest rather than one opaque automatic selector.
+**Decision.** The HUD offers Panthera, Apodemus, and Structured Digest rather than one opaque automatic selector.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
 
@@ -168,11 +168,21 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex controls expose the Apex Agents family: Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, Apodemus, and Neotoma.
+**Decision.** Cortex exposes named Apex Agents rather than raw provider model IDs. The normal roster shows Panthera, Apodemus, and Neotoma, while the wider registered Agent family is surfaced in `DEV_MODE`.
 
-**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each current Agent begins at `1.0` because this is the first version of its current named product identity. Agent versions evolve independently.
+**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each permanent Agent identity can survive model changes as long as its role and operating contract remain coherent.
 
-**Trade-off.** Agent documentation must remain synchronized with current model mappings and stability labels.
+**Trade-off.** Agent documentation must remain synchronized with current model mappings, stability labels, and visibility policy.
+
+### Separate Agent visibility from Agent stability
+
+**Decision.** APEX treats Agent visibility and Agent stability as independent concerns. The normal product roster is intentionally limited to Panthera, Apodemus, and Neotoma, while other registered Agents are hidden from the normal roster.
+
+The `dev_only` flag controls roster visibility; it does not itself prevent explicit execution by registered key. Acinonyx has a separate hard `DEV_MODE` boundary on its public Cortex routes.
+
+**Why.** Some Agents already have established genus identities, stable implementations, and defined intended roles, but APEX does not yet expose enough Agent-specific capability to make those roles meaningfully distinct in normal use. Keeping them in the primary selector would make the roster appear broader than the product's actual capabilities. Restricting them to `DEV_MODE` preserves their implementation and identity without implying that they currently justify a dedicated product slot.
+
+**Trade-off.** A stable Agent may be absent from the normal UI, so stability can no longer be interpreted as product visibility. Documentation, tests, and catalog metadata must distinguish technical maturity from roster placement. An Agent can return to the primary roster when APEX provides enough differentiated functionality to support its intended role.
 
 ### Keep Agent sessions stateless on the server
 
@@ -198,17 +208,17 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Trade-off.** APEX never installs, bundles, or updates llama.cpp and never downloads model weights. Managed mode accepts only loopback hosts, terminates only processes APEX launched, and exposes sanitized status without local filesystem paths outside Runtime Settings.
 
-### Use stable runtime aliases for Apodemus context presets
+### Use stable runtime aliases for llama.cpp Agents
 
-**Decision.** Apodemus loads through aliases such as `apodemus-16k` and `apodemus-132k` instead of exposing raw GGUF paths or an arbitrary context slider.
+**Decision.** Apodemus, Neotoma, and the Unnamed Experimental Agent load through stable llama.cpp runtime aliases instead of exposing raw GGUF paths or an arbitrary context slider.
 
-**Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while the configured weight remains `gemma-4-E2B-Q4_K_M.gguf`.
+**Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while each configured weight remains behind a stable Agent-specific alias.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the model maximum metadata remains separate from selectable presets where it exceeds the exposed policy.
+**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the Unnamed Experimental Agent remains limited to its smaller evaluation presets. Model maximum metadata remains separate from selectable presets where it exceeds the exposed policy.
 
 ### Make local reasoning capability-driven and private
 
-**Decision.** Local reasoning preferences are persisted per Agent and default to `none`. Apodemus and Neotoma expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"` while `Focused` omits that field so the model template can use native reasoning. Hidden reasoning fields and think-style tags are discarded before display.
+**Decision.** Local reasoning preferences are persisted per Agent and default to `none`. Apodemus, Neotoma, and the Unnamed Experimental Agent expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"` while `Focused` omits that field so the model template can use native reasoning. Hidden reasoning fields and think-style tags are discarded before display.
 
 **Why.** Local models do not share the cloud Agents' graded effort contract. A provider-neutral capability list keeps the HUD honest while allowing model-native reasoning where the runtime supports it.
 
@@ -216,11 +226,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 ### Keep Apodemus as an explicit briefing mode
 
-**Decision.** Apodemus is available as an explicit briefing synthesis mode, but it is not part of Panthera's automatic fallback chain.
+**Decision.** Apodemus is available as an explicit briefing synthesis mode and is Panthera's only local fallback before Structured Digest.
 
 **Why.** Apodemus uses the same provider-neutral local synthesis contract as Ollama while preserving explicit user intent. Cold loads use a dedicated 16K context policy, and resident llama.cpp aliases are reused rather than silently targeting a different context.
 
-**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute Mus or Sorex behind the user's selection.
+**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute another local Agent behind the user's selection.
 
 ## Security
 
