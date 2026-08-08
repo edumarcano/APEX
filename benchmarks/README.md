@@ -68,7 +68,8 @@ The command refuses to run while `/api/v1/health/live` reports a running APEX
 process, and a lock file prevents concurrent benchmark commands. After verified
 unload it waits for host memory state to settle. When llama.cpp reports a
 context window, the requested context must match; unavailable reporting emits
-a warning.
+a warning. The lock is removed on normal exit; if the process is forcibly
+terminated, remove `benchmarks/.benchmark.lock` manually before retrying.
 
 Each configuration receives one warmup request that is excluded from measured
 performance results. The performance prompts record latency, normalized token

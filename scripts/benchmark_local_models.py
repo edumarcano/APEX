@@ -1433,9 +1433,11 @@ class BenchmarkRunner:
             run["load_seconds"] = (
                 0.0 if reused else round(time.perf_counter() - load_started, 4)
             )
-            self._verify_target_resident(configuration)
+            # switch_local_model succeeded, so the benchmark owns the target
+            # even if post-load verification rejects its reported state.
             self._owned_model = True
             self._owned_ref = configuration.runtime_ref
+            self._verify_target_resident(configuration)
 
             provider = _provider_for_profile(configuration.profile)
             warmup_started = time.perf_counter()

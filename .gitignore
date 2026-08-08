@@ -31,3 +31,4 @@ weights/
 .local-plans/
 benchmarks/results/*.json
 benchmarks/results/*.md
+benchmarks/.benchmark.lock
