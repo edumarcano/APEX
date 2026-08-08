@@ -6,6 +6,7 @@ from pathlib import Path
 from scripts.check_docs import (
     ROOT,
     check_agent_profiles,
+    check_api_contract_version,
     check_cors_example,
     check_default_briefing_provider,
     check_frontend_owner_names,
@@ -69,6 +70,16 @@ class DocumentationCheckerTests(unittest.TestCase):
 
         self.assertEqual(len(issues), 1)
         self.assertIn("should be 5", issues[0].reason)
+
+    def test_reports_prose_api_contract_version_mismatch(self) -> None:
+        source = Path("virtual-api.md")
+        issues = check_api_contract_version(
+            source, 13, {source: "The current contract version is `12`.\n"}
+        )
+
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].target, "12")
+        self.assertIn("should be 13", issues[0].reason)
 
     def test_reports_unknown_gemini_model(self) -> None:
         source = Path("virtual-readme.md")
@@ -136,6 +147,22 @@ class DocumentationCheckerTests(unittest.TestCase):
 
     def test_readme_names_the_default_briefing_provider(self) -> None:
         self.assertEqual(check_default_briefing_provider(ROOT), [])
+
+    def test_readme_briefing_check_rejects_ollama_and_missing_paths(self) -> None:
+        issues = check_default_briefing_provider(
+            ROOT,
+            readme_text=(
+                "### Produces briefings on my terms\n"
+                "A briefing can use Mus through Ollama.\n\n"
+                "```mermaid\n"
+                'B --> M["OpenAI · Ollama"]\n'
+                "```\n"
+            ),
+        )
+
+        reasons = {issue.reason for issue in issues}
+        self.assertIn("obsolete Ollama briefing provider is documented", reasons)
+        self.assertIn("briefing diagram omits a supported synthesis path", reasons)
 
     def test_complete_documentation_contract(self) -> None:
         self.assertEqual(run(ROOT), [])
