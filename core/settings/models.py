@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from core.agent.types import LocalReasoningMode
 
 CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal["sorex", "mus", "apodemus", "neotoma"]
+LocalSettingsAgent = Literal[
+    "sorex",
+    "mus",
+    "apodemus",
+    "neotoma",
+    "unnamed-experimental-agent",
+]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
 BriefingMode = Literal["panthera", "mus", "sorex", "apodemus", "structured_digest"]
@@ -21,7 +27,7 @@ VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
     {"panthera", "neofelis", "delphinus", "orcinus"}
 )
 VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"sorex", "mus", "apodemus", "neotoma"}
+    {"sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"}
 )
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})

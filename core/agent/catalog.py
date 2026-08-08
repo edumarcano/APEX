@@ -44,6 +44,7 @@ AgentKey: TypeAlias = Literal[
     "mus",
     "apodemus",
     "neotoma",
+    "unnamed-experimental-agent",
 ]
 CloudAgentKey: TypeAlias = Literal[
     "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
@@ -51,7 +52,13 @@ CloudAgentKey: TypeAlias = Literal[
 CloudSettingsAgentKey: TypeAlias = Literal[
     "panthera", "neofelis", "delphinus", "orcinus"
 ]
-LocalAgentKey: TypeAlias = Literal["sorex", "mus", "apodemus", "neotoma"]
+LocalAgentKey: TypeAlias = Literal[
+    "sorex",
+    "mus",
+    "apodemus",
+    "neotoma",
+    "unnamed-experimental-agent",
+]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
@@ -67,6 +74,7 @@ VALID_AGENT_KEYS: frozenset[str] = frozenset(
         "mus",
         "apodemus",
         "neotoma",
+        "unnamed-experimental-agent",
     }
 )
 VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
@@ -113,7 +121,7 @@ class AgentSpec:
     max_tool_turns: int
     max_tool_calls: int
     tier: str
-    stability: Literal["stable", "preview"]
+    stability: Literal["stable", "preview", "experimental"]
     capability_tags: tuple[str, ...]
     dev_only: bool = False
     supports_effort: bool = True
@@ -307,6 +315,31 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         capability_tags=("Generalist local", "Selectable context"),
         supports_effort=False,
     ),
+    "unnamed-experimental-agent": AgentSpec(
+        key="unnamed-experimental-agent",
+        display_name="Unnamed Experimental Agent",
+        description=(
+            "Development-only technical target for evaluating candidate local "
+            "models through llama.cpp."
+        ),
+        identity_instruction=(
+            "You are Unnamed Experimental Agent, a technical APEX development "
+            "target powered by Gemma 4 E4B through llama.cpp."
+        ),
+        agent_version="1.0",
+        provider="llama_cpp",
+        runtime="local",
+        api_model="gemma-4-E4B-Q4_K_M.gguf",
+        default_effort=None,
+        credential_env=None,
+        max_tool_turns=3,
+        max_tool_calls=4,
+        tier="balanced",
+        stability="experimental",
+        capability_tags=("Experimental local", "Selectable context"),
+        dev_only=True,
+        supports_effort=False,
+    ),
 }
 
 _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
@@ -318,6 +351,7 @@ _RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
     "mus",
     "apodemus",
     "neotoma",
+    "unnamed-experimental-agent",
     "sorex",
 )
 

@@ -410,7 +410,7 @@ class AgentStatus(BaseModel):
         description="Whether this Agent runs in the cloud or locally.",
     )
     tier: str = Field(description="Agent performance tier label.")
-    stability: Literal["stable", "preview"] = Field(
+    stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification for this Agent.",
     )
     effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
@@ -554,7 +554,13 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["mus", "sorex", "apodemus", "neotoma"] = Field(
+    agent: Literal[
+        "mus",
+        "sorex",
+        "apodemus",
+        "neotoma",
+        "unnamed-experimental-agent",
+    ] = Field(
         description="Local Apex Agent to pre-warm in local runtime memory."
     )
 
@@ -564,7 +570,13 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["mus", "sorex", "apodemus", "neotoma"] = Field(
+    agent: Literal[
+        "mus",
+        "sorex",
+        "apodemus",
+        "neotoma",
+        "unnamed-experimental-agent",
+    ] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 

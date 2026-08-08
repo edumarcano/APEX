@@ -14,7 +14,7 @@ class GeminiModelProfile(BaseModel):
     tier: Literal["fast", "balanced", "advanced"] = Field(
         description="Computational performance classification."
     )
-    stability: Literal["stable", "preview"] = Field(
+    stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )
     thinking_level: GeminiThinkingLevel = Field(

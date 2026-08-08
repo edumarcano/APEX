@@ -679,6 +679,10 @@ try:
     for _profile, _profile_gate in (
         ("apodemus", _llama_resource_gates.get("apodemus")),
         ("neotoma", _llama_resource_gates.get("neotoma")),
+        (
+            "unnamed-experimental-agent",
+            _llama_resource_gates.get("unnamed-experimental-agent"),
+        ),
     ):
         _llama_cpp_resource_limits[_profile] = _parse_resource_gate(
             _profile_gate,
@@ -704,6 +708,10 @@ except Exception as exc:
     LLAMA_CPP_RESOURCE_GATES = {
         "apodemus": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
         "neotoma": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+        "unnamed-experimental-agent": (
+            _DEFAULT_LLAMA_CPP_RAM,
+            _DEFAULT_LLAMA_CPP_CPU,
+        ),
     }
     APODEMUS_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
     APODEMUS_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]

@@ -45,6 +45,7 @@ const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = [
   'mus',
   'apodemus',
   'neotoma',
+  'unnamed-experimental-agent',
 ]
 
 export { isLocalAgentKey } from './agents'

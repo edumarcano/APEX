@@ -125,7 +125,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
 | Local inference (Ollama) | Ollama plus the desired Qwen3 model tags |
-| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with Apodemus aliases |
+| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with Apodemus, Neotoma, and development-target aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.Read` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
@@ -144,7 +144,7 @@ These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instea
 
 ## Optional llama.cpp path
 
-llama.cpp is not required to start APEX. When you want Apex Apodemus or Apex Neotoma:
+llama.cpp is not required to start APEX. When you want Apex Apodemus, Apex Neotoma, or the development-only Unnamed Experimental Agent:
 
 1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
 2. Copy [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini) to a machine-local path, set the GGUF placeholders, and keep that copy untracked.
@@ -154,7 +154,7 @@ llama.cpp is not required to start APEX. When you want Apex Apodemus or Apex Neo
 4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
 5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 
-Apodemus and Neotoma default to request-level `None` reasoning. Their Cortex Reasoning control can select `Focused` without unloading the model; hidden reasoning is discarded before display.
+Apodemus, Neotoma, and Unnamed Experimental Agent default to request-level `None` reasoning. Their Cortex Reasoning control can select `Focused` without unloading the model; hidden reasoning is discarded before display.
 
 A manual smoke script is available when a router is running:
 

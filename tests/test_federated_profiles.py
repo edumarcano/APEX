@@ -159,6 +159,10 @@ class ProfileIdentityTests(unittest.TestCase):
             "You are Apex Neotoma, an Apex Agent powered by "
             "Qwen3.5 4B through llama.cpp."
         ),
+        "unnamed-experimental-agent": (
+            "You are Unnamed Experimental Agent, a technical APEX development "
+            "target powered by Gemma 4 E4B through llama.cpp."
+        ),
     }
 
     def test_every_profile_has_the_expected_immutable_identity(self) -> None:

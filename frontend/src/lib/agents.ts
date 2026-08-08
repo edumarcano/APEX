@@ -5,7 +5,13 @@ import type {
   LocalSettingsAgent,
 } from '../types/telemetry'
 
-export const LOCAL_AGENT_KEYS = ['sorex', 'mus', 'apodemus', 'neotoma'] as const
+export const LOCAL_AGENT_KEYS = [
+  'sorex',
+  'mus',
+  'apodemus',
+  'neotoma',
+  'unnamed-experimental-agent',
+] as const
 
 const CLOUD_SETTINGS_AGENT_KEYS = [
   'panthera',
@@ -19,7 +25,8 @@ export function isLocalAgentKey(value: unknown): value is LocalSettingsAgent {
     value === 'sorex' ||
     value === 'mus' ||
     value === 'apodemus' ||
-    value === 'neotoma'
+    value === 'neotoma' ||
+    value === 'unnamed-experimental-agent'
   )
 }
 

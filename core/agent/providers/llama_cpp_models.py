@@ -118,7 +118,7 @@ class LlamaCppModelProfile(BaseModel):
     tier: Literal["lightweight", "balanced", "capable"] = Field(
         description="Computational performance classification for local inference."
     )
-    stability: Literal["stable", "preview"] = Field(
+    stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )
     default_temperature: float = Field(
@@ -289,7 +289,7 @@ def build_llama_cpp_profile(
     agent_version: str,
     api_model: str,
     tier: Literal["lightweight", "balanced", "capable"],
-    stability: Literal["stable", "preview"],
+    stability: Literal["stable", "preview", "experimental"],
     max_tool_turns: int,
     max_tool_calls: int,
     system_instruction: str,
@@ -401,6 +401,23 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
             65536: "neotoma-64k",
         },
         resource_limits=_resource_limits("neotoma"),
+        tool_select_max_tokens=256,
+        final_answer_max_tokens=768,
+        focused_tool_select_max_tokens=1536,
+        focused_final_answer_max_tokens=1536,
+    ),
+    "unnamed-experimental-agent": _runtime_config(
+        allowed_context_windows=(4096, 16384, 32768),
+        high_resource_context_options=(),
+        supported_reasoning_modes=("none", "focused"),
+        default_context_window=16384,
+        maximum_context_window=32768,
+        runtime_model_ids={
+            4096: "unnamed-experimental-agent-4k",
+            16384: "unnamed-experimental-agent-16k",
+            32768: "unnamed-experimental-agent-32k",
+        },
+        resource_limits=_resource_limits("unnamed-experimental-agent"),
         tool_select_max_tokens=256,
         final_answer_max_tokens=768,
         focused_tool_select_max_tokens=1536,

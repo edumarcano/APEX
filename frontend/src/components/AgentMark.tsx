@@ -24,6 +24,7 @@ const AGENT_MARKS: Record<AgentKey, { icon: LucideIcon; label: string; className
   apodemus: { icon: Cpu, label: 'Apodemus agent mark', className: 'border-orange-200/30 bg-orange-500/15 text-orange-100' },
   neotoma: { icon: CircleDot, label: 'Neotoma agent mark', className: 'border-lime-300/25 bg-lime-400/10 text-lime-200' },
   sorex: { icon: Zap, label: 'Sorex agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
+  'unnamed-experimental-agent': { icon: FlaskConical, label: 'Unnamed Experimental Agent technical mark', className: 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200' },
 }
 
 interface AgentMarkProps {

@@ -170,7 +170,7 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         mock_post.return_value = _load_fixture("basic_answer.json")
 
-        for agent_key in ("apodemus", "neotoma"):
+        for agent_key in ("apodemus", "neotoma", "unnamed-experimental-agent"):
             for reasoning_mode, enabled in (("none", False), ("focused", True)):
                 with self.subTest(agent=agent_key, reasoning_mode=reasoning_mode):
                     mock_post.reset_mock()

@@ -10,9 +10,16 @@ import {
 
 describe('agents helpers', () => {
   it('includes llama.cpp Agents among local Agents', () => {
-    expect(LOCAL_AGENT_KEYS).toEqual(['sorex', 'mus', 'apodemus', 'neotoma'])
+    expect(LOCAL_AGENT_KEYS).toEqual([
+      'sorex',
+      'mus',
+      'apodemus',
+      'neotoma',
+      'unnamed-experimental-agent',
+    ])
     expect(isLocalAgentKey('apodemus')).toBe(true)
     expect(isLocalAgentKey('neotoma')).toBe(true)
+    expect(isLocalAgentKey('unnamed-experimental-agent')).toBe(true)
     expect(isLocalAgentKey('panthera')).toBe(false)
   })
 

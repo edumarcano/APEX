@@ -73,7 +73,12 @@ export type WeatherConditionArchetype =
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent = 'sorex' | 'mus' | 'apodemus' | 'neotoma'
+export type LocalSettingsAgent =
+  | 'sorex'
+  | 'mus'
+  | 'apodemus'
+  | 'neotoma'
+  | 'unnamed-experimental-agent'
 
 export type CloudAgent = CloudSettingsAgent
 
@@ -193,7 +198,7 @@ export type AgentAvailabilityStatus =
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
-export type AgentStability = 'stable' | 'preview'
+export type AgentStability = 'stable' | 'preview' | 'experimental'
 export type AgentStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
 
 export interface AgentPricingMetadata {

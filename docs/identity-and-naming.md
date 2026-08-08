@@ -153,6 +153,10 @@ flowchart LR
     LOCAL --> MUS["Mus 1.0<br/>Local generalist<br/>Ollama"]
     LOCAL --> APODEMUS["Apodemus 1.0<br/>Efficient local preview<br/>llama.cpp"]
     LOCAL --> NEOTOMA["Neotoma 1.0<br/>Generalist local preview<br/>llama.cpp"]
+
+    DEVELOPMENT["Technical development targets<br/>Outside the animal Agent family"]
+    ENGINE --> DEVELOPMENT
+    DEVELOPMENT --> EXPERIMENTAL["Unnamed Experimental Agent 1.0<br/>Gemma 4 E4B evaluation target<br/>llama.cpp"]
 ```
 
 Every Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role.
@@ -269,6 +273,12 @@ Apodemus is also an explicit briefing mode. Its briefing path uses the shared lo
 Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Qwen3.5 4B (`Qwen3.5-4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and high-resource 64K context presets and a 16K default. Its native model maximum is 262K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
 
 Neotoma is not a briefing mode. Its role is interactive Ask APEX and Cortex local execution alongside the other local Agents.
+
+## Unnamed Experimental Agent
+
+Unnamed Experimental Agent is a development-only technical target for evaluating candidate local models. It is deliberately outside the animal Agent family: its name carries no animal identity, lore, or Apex prefix. It uses the same generic llama.cpp provider and local runtime coordinator as Apodemus and Neotoma, with Gemma 4 E4B (`gemma-4-E4B-Q4_K_M.gguf`) behind 4K, 16K, and 32K aliases.
+
+Its Cortex controls expose None and Focused reasoning, defaulting to None. None disables native thinking explicitly; Focused enables the model template's native thinking, while the provider strips hidden reasoning before returning the answer. The target is fully registered for development use but hidden from the normal Agent catalog.
 
 ## The Agent family is not permanent
 

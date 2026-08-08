@@ -33,12 +33,14 @@ export const BASE_SETTINGS: RuntimeSettings = {
     local_context_windows: {
       apodemus: 16384,
       neotoma: 16384,
+      'unnamed-experimental-agent': 16384,
     },
     local_reasoning_modes: {
       sorex: 'none',
       mus: 'none',
       apodemus: 'none',
       neotoma: 'none',
+      'unnamed-experimental-agent': 'none',
     },
     neofelis_google_search_enabled: true,
     neofelis_google_maps_enabled: true,

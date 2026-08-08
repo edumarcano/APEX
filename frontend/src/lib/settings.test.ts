@@ -193,7 +193,11 @@ describe('settings editing utilities', () => {
       ask_apex: {
         runtime: 'local',
         local_agent: 'sorex',
-        local_context_windows: { apodemus: 32768, neotoma: 16384 },
+        local_context_windows: {
+          apodemus: 32768,
+          neotoma: 16384,
+          'unnamed-experimental-agent': 16384,
+        },
       },
       briefing: { default_mode: 'mus' },
       voice: { gender: 'male', mode: 'manual' },
@@ -231,7 +235,11 @@ describe('settings editing utilities', () => {
     }
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: {
-        local_context_windows: { apodemus: 16384, neotoma: 65536 },
+        local_context_windows: {
+          apodemus: 16384,
+          neotoma: 65536,
+          'unnamed-experimental-agent': 16384,
+        },
       },
     })
   })
@@ -249,6 +257,7 @@ describe('settings editing utilities', () => {
           mus: 'none',
           apodemus: 'focused',
           neotoma: 'none',
+          'unnamed-experimental-agent': 'none',
         },
       },
     })
@@ -263,7 +272,11 @@ describe('settings editing utilities', () => {
     draft.llama_cpp.enabled = true
     expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
       ask_apex: {
-        local_context_windows: { apodemus: 32768, neotoma: 16384 },
+        local_context_windows: {
+          apodemus: 32768,
+          neotoma: 16384,
+          'unnamed-experimental-agent': 16384,
+        },
       },
       llama_cpp: { enabled: true },
     })

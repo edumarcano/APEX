@@ -81,7 +81,7 @@ Returns the resolved settings envelope. The current contract version is `12`.
     "modules": { "football": false, "f1": true },
     "football": { "teams": [] },
     "market": { "symbols": [] },
-    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "local_context_windows": { "apodemus": 16384, "neotoma": 16384 }, "local_reasoning_modes": { "sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none" }, "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "mus", "local_context_windows": { "apodemus": 16384, "neotoma": 16384, "unnamed-experimental-agent": 16384 }, "local_reasoning_modes": { "sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none", "unnamed-experimental-agent": "none" }, "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
@@ -299,7 +299,7 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Acinonyx appears first only in development mode.
 
-The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), Apodemus (`gemma-4-E2B-Q4_K_M.gguf` through llama.cpp), and Neotoma (`Qwen3.5-4B-Q4_K_M.gguf` through llama.cpp).
+The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), Apodemus (`gemma-4-E2B-Q4_K_M.gguf` through llama.cpp), Neotoma (`Qwen3.5-4B-Q4_K_M.gguf` through llama.cpp), and the development-only Unnamed Experimental Agent (`gemma-4-E4B-Q4_K_M.gguf` through llama.cpp).
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Local Agents with selectable contexts or reasoning modes publish their selected value, options, and default metadata. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
@@ -320,7 +320,7 @@ Pre-warms one installed local Agent before a request:
 { "agent": "mus" }
 ```
 
-`agent` may be `mus`, `sorex`, `apodemus`, or `neotoma`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
+`agent` may be `mus`, `sorex`, `apodemus`, `neotoma`, or `unnamed-experimental-agent`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
 
 - `403` — demo mode disallows model calls.
 - `409` — a local generation or lifecycle action is active.

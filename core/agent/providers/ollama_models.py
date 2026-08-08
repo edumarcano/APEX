@@ -23,7 +23,7 @@ class OllamaModelProfile(BaseModel):
     tier: Literal["lightweight", "balanced", "capable"] = Field(
         description="Computational performance classification for local inference."
     )
-    stability: Literal["stable", "preview"] = Field(
+    stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )
     default_temperature: float = Field(

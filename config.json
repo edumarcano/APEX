@@ -83,6 +83,10 @@
       "neotoma": {
         "ram_limit": 80.0,
         "cpu_limit": 90.0
+      },
+      "unnamed-experimental-agent": {
+        "ram_limit": 82.0,
+        "cpu_limit": 92.0
       }
     }
   },
