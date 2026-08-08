@@ -3,6 +3,98 @@
 ---
 
 
+## v1.19.0 — Apex Agents & Cortex Workspace
+
+**Released:** August 8, 2026
+
+This release establishes Apex Agents as APEX's provider-neutral intelligence abstraction, unifies cloud and local runtime behavior behind a shared catalog and execution contract, and expands local inference to a second provider family. Ten named Agents now span five inference providers: Gemini, OpenAI, xAI, Ollama, and llama.cpp. Each Agent carries its own identity instruction, capability tags, tool and grounding policies, effort levels, and stability classification, replacing the earlier profile-per-model scheme. The Cortex Workspace replaces ConsoleTray as the primary interaction surface, adding a per-Agent tool catalog with grouped selector, real-time token-budget preflight, saveable tool profiles with per-Agent defaults, and Markdown-rendered responses. A provider-neutral local runtime coordinator manages model lifecycle across Ollama and llama.cpp through a shared contract, while a new llama.cpp provider family introduces managed-server and external-server modes with a process supervisor, context-window aliases, and a dedicated benchmarking utility. Inference cost estimation, token usage tracking, provider-hosted tool billing, and cloud credential verification round out the runtime. Market symbols and football teams become runtime-editable from the Settings panel, briefing synthesis routes through Panthera by default, and the documentation set gains a canonical identity-and-naming reference, refreshed screenshots, and Mermaid architecture diagrams.
+
+---
+
+### What's New
+
+- Replaced the per-model profile scheme with a federated Apex Agent catalog (`core/agent/catalog.py`): ten named Agents — Acinonyx, Panthera, Neofelis, Delphinus, Orcinus, Sorex, Mus, Apodemus, Neotoma, and an unnamed experimental target — each with a static `AgentSpec` carrying identity instruction, provider, runtime, API model, default effort, credential reference, tier, stability, capability tags, and DEV_MODE visibility.
+- Added five inference providers behind a shared `ProviderTurnResult` contract (`core/agent/providers/contract.py`): Gemini (`gemini`), OpenAI Responses API (`openai`), xAI (`xai`), Ollama (`ollama`), and llama.cpp (`llama_cpp`); the OpenAI adapter powers Panthera (GPT-5.6 Luna) and the xAI adapter powers Delphinus (Grok 4.3) and Orcinus (Grok 4.5).
+- Added the Cortex Workspace (`CortexWorkspace.tsx`), replacing ConsoleTray as the dedicated Agent interaction surface with a per-Agent tool catalog, grouped tool selector, real-time token-budget preflight, Markdown-rendered responses via `react-markdown` and `remark-gfm`, and Home Command Rail for compact activation and briefing controls.
+- Added a tool catalog and selection system (`core/agent/tool_catalog.py`, `core/agent/tool_selection.py`): the catalog joins registered capabilities with MCP configuration and runtime state into grouped families, and the selection pipeline intersects per-Agent policy, tool profiles, and runtime availability into a resolved set with diagnostic failure codes for each rejected tool.
+- Added saveable tool profiles with per-Agent defaults (`core/agent/tool_profiles.py`): built-in profiles (All Tools, Core APEX, Conversation Only) and settings-backed custom profiles that persist to `config.local.json`; each Agent can have an independently assigned default profile. CRUD and default-assignment endpoints under `/api/v1/cortex/tool-profiles`.
+- Added real-time tool-budget preflight (`/api/v1/cortex/tool-preflight`): given an Agent and selected tools, returns the projected model-facing JSON schema token count and prompt-budget impact before submission.
+- Added per-Agent tool and grounding policies (`core/agent/tool_policies.py`): Neofelis receives optional Google Search and Google Maps grounding; Delphinus and Orcinus receive optional X Search; Acinonyx runs in a non-personal sandbox with a masked briefing context allowlist.
+- Added inference cost estimation and token usage tracking (`core/agent/pricing.py`): a versioned pricing registry covers Gemini, OpenAI, and xAI token rates alongside provider-hosted tool billing (Google Search, Google Maps, X Search); `CostEstimate` with currency, completeness status, and breakdown accompanies every Agent response.
+- Added a provider-neutral local runtime coordinator (`core/agent/local_runtime/`): a shared `LocalRuntimeBackend` protocol and coordinator manage model lifecycle, resource gating, idle-unload, and status snapshots across Ollama and llama.cpp through a provider registry, replacing the previous Ollama-specific lifecycle coupling.
+- Added a llama.cpp provider family (`core/agent/providers/llama_cpp*.py`): an OpenAI-compatible chat client, process supervisor for managed-server mode, lifecycle manager with coordinated load/unload, model registry with four context-window aliases per model (4K/8K/16K/32K), and reasoning-mode support; Apex Apodemus (Gemma 4 E2B) and Apex Neotoma (Qwen3.5 4B) run through this provider.
+- Added a llama.cpp managed-server supervisor (`core/agent/providers/llama_cpp_supervisor.py`): APEX starts, monitors, and stops a `llama-server` router process when the configured loopback URL is unreachable; external-server mode connects to a user-managed instance without process ownership.
+- Added a local model benchmarking utility (`scripts/benchmark_local_models.py`): measures prompt evaluation and generation throughput across installed models and context configurations with structured output for comparing local Agent candidates.
+- Added cloud Agent credential verification (`core/agent/providers/cloud_verification.py`): a non-inference probe validates API key validity, model access, and billing status for Gemini, OpenAI, and xAI Agents; exposed via `POST /api/v1/agents/{agent_key}/verify`.
+- Added Apex effort levels (`light`, `focused`, `extended`) mapped to provider-native thinking and reasoning levels; cloud Agents support effort selection while local Agents bypass it.
+- Made market ticker symbols and football teams runtime-editable from the Settings panel via new `MarketPatch` and `FootballPatch` settings groups; `MARKET_SYMBOLS` is no longer read from `.env` and factory defaults are empty lists.
+- Routed briefing synthesis through Panthera by default with Apodemus → Structured Digest fallback, replacing the previous Gemini-first cloud path; briefing metadata now includes resolved model, fallback chain, timing, usage, and cost.
+- Added DEV_MODE-only Agent visibility: Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, and Mus are hidden from the production UI and rejected by public API routes outside DEV_MODE; Panthera, Apodemus, and Neotoma are the user-facing roster.
+- Separated the APEX logo shell and atmosphere into independent visual states (`logoVisualState.ts`), restoring reactive behavior during local model loading and improving visual feedback across activation and inference states.
+- Polished demo-mode fixture data and layout for documentation screenshots; expanded `core/mock/demo_fixture.py` with structured telemetry, market, and Agent catalog simulation.
+
+### Architecture Changes
+
+- Added `core/agent/catalog.py` as the single source of truth for all Agent metadata, replacing per-provider profile resolution with a unified `AgentSpec` registry, display-order control, effort resolution, and model-profile factory functions.
+- Added `core/agent/providers/contract.py` with `InferenceProvider`, `ProviderTurnResult`, `ProviderToolEvent`, and `ToolTraceOrigin` as the shared adapter interface; all five provider adapters normalize messages, tool calls, usage, citations, hosted tool events, and retry counts into this contract.
+- Added `core/agent/providers/responses_api.py` (OpenAI Responses API adapter) and `core/agent/providers/xai_provider.py` (xAI adapter) as thin wrappers over the Responses API contract, with provider-specific tool configuration, citation extraction, and bounded retries (`core/agent/providers/retries.py`).
+- Added `core/agent/local_runtime/` (`contract.py`, `coordinator.py`, `registry.py`): the coordinator owns model switching, resource-gate evaluation, idle-unload scheduling, and cross-provider activity tracking; backends register through a provider registry and implement `LocalRuntimeBackend`.
+- Refactored `core/agent/providers/ollama_lifecycle.py` to implement the `LocalRuntimeBackend` protocol, decoupling Ollama model lifecycle from the coordinator and agent loop.
+- Added `core/agent/tool_catalog.py`, `core/agent/tool_selection.py`, `core/agent/tool_policies.py`, and `core/agent/tool_profiles.py` as the layered tool-selection architecture: catalog → policy intersection → profile filtering → schema projection → preflight estimation.
+- Added `core/agent/pricing.py` with a versioned pricing registry, `ModelTokenRates`, `HostedToolRate`, and `estimate_inference_cost()`; the agent loop aggregates per-turn usage into a response-level `CostEstimate` with completeness tracking.
+- Added `core/agent/sandbox_context.py` for Acinonyx's masked development briefing context with a personal-data allowlist.
+- Replaced `core/api/routers/assistant.py` and `core/api/assistant.py` with `core/api/routers/cortex.py` and `core/api/cortex.py`, consolidating Agent queries, catalog, tool profiles, local model lifecycle, and cloud verification into a single Cortex router.
+- Extended `core/agent/loop.py` with unified tool selection, per-turn usage aggregation, cost accumulation, provider tool-event collection, and effort-level threading through provider calls.
+- Extended `core/settings/normalize.py` with migration normalizers from schema versions 5 through 13, covering Agent key migration from legacy profile names, llama.cpp settings hydration, tool profile persistence, market/football patchability, and effort/context-window defaults.
+- Removed `core/agent/local_commands.py`, `core/api/routers/assistant.py`, `core/api/assistant.py`, `frontend/src/components/ConsoleTray.tsx`, `frontend/src/components/CloudProfileSelector.tsx`, `frontend/src/components/LocalCommandSelector.tsx`, `frontend/src/hooks/useApexAssistant.ts`, `frontend/src/hooks/useLocalCommands.ts`, `frontend/src/lib/consoleActivity.ts`, and `scripts/smoke_comet_thinking.py`.
+
+### API Changes
+
+- Added `POST /api/v1/cortex/query`, replacing `POST /api/v1/agent/query` as the primary Agent execution endpoint; the request now requires an `agent` key (Agent identity), accepts optional `effort`, `tool_scope` (profile ID), `selected_tools` (explicit tool list), and `context_alias` (llama.cpp context window); the response includes `usage`, `cost`, `citations`, `tool_events`, `resolved_model`, and enriched `tool_outputs` with trace origin.
+- Added `GET /api/v1/agents`, returning `AgentStatus` for all visible Agents with runtime, provider, tier, stability, capability tags, availability status, verification state, credential diagnostics, and local model state.
+- Added `POST /api/v1/agents/{agent_key}/verify` for non-inference cloud credential and model-access verification.
+- Added `GET /api/v1/cortex/tool-catalog?agent=<key>`, returning the resolved tool catalog for one Agent with grouped families, per-tool metadata (description, risk, origin, token estimate, availability, failure reasons), provider-hosted tools, and MCP server groups.
+- Added `POST /api/v1/cortex/tool-preflight`, returning estimated prompt token impact for a given Agent and tool selection.
+- Added `GET /api/v1/cortex/tool-profiles`, `POST /api/v1/cortex/tool-profiles`, `PATCH /api/v1/cortex/tool-profiles/{profile_id}`, `DELETE /api/v1/cortex/tool-profiles/{profile_id}`, and `POST /api/v1/cortex/tool-profiles/default` for custom tool profile CRUD and per-Agent default assignment.
+- Added `POST /api/v1/cortex/local-model/load` for pre-warming a specific local Agent model through the coordinator.
+- Moved `POST /api/v1/cortex/local-model/unload` to the Cortex router namespace; legacy `POST /api/v1/local-model/unload` and `POST /api/v1/agent/local/unload` remain as compatibility aliases.
+- Added `GET /api/v1/llama-cpp/status` returning llama.cpp server state, ownership, loaded models, and installed model list; added `POST /api/v1/llama-cpp/start` and `POST /api/v1/llama-cpp/stop` for managed-server lifecycle control.
+- Extended `PATCH /api/v1/settings` with `market.symbols`, `football.teams`, `llama_cpp.*`, `cortex.default_agent`, `cortex.default_cloud_effort`, `cortex.local_context_windows`, and `tool_profiles.*` patchable groups.
+- Bumped the settings contract from schema version 5 to 13; `GET /api/v1/settings` now also returns `cortex`, `llama_cpp`, and `tool_profiles` sections alongside existing domains.
+- Added `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, and `LLAMA_CPP_API_KEY` to `.env.example`; removed `MARKET_SYMBOLS` and `ENABLE_STARTUP_GATE`; commented all machine-specific placeholder values.
+
+### Frontend Changes
+
+- Replaced `ConsoleTray.tsx` and `CloudProfileSelector.tsx` with `CortexWorkspace.tsx`, `AgentSelector.tsx`, `ToolsSelector.tsx`, and `HomeCommandRail.tsx`; replaced `useApexAssistant.ts` and `useLocalCommands.ts` with `useCortex.ts`.
+- Added `ToolsSelector.tsx` with grouped tool families, per-tool toggles with token estimates, search filtering, tool profile selection and management (save, duplicate, rename, delete, restore, set default), and collapsible MCP server groups.
+- Added `AgentSelector.tsx` with cloud/local runtime sections, live availability gating, credential status indicators, effort-level controls, context-window selector for llama.cpp Agents, and DEV_MODE badge.
+- Added `useCortex.ts` as the unified Cortex state manager covering Agent selection, tool catalog polling, tool selection, tool preflight, tool profile management, prompt drafting, query submission, history, and session lifecycle.
+- Added `useToolCatalog.ts` and `useToolPreflight.ts` hooks for catalog polling and preflight estimation with debounced updates.
+- Added `useLlamaCppStatus.ts` hook for llama.cpp server status polling and `AgentMark.tsx` for inline Agent identity badges.
+- Added `HomeCommandRail.tsx` (replacing ConsoleTray-era inline controls) with compact Start APEX, Start with Briefing, and Generate Briefing actions.
+- Extended `SettingsPanel.tsx` with llama.cpp server controls, market symbol and football team list editors (`SettingsListEditors.tsx`), Agent default and effort selectors, and context-window configuration.
+- Extended `SystemDiagnostics.tsx` with llama.cpp server status, cost summary display, and enriched Agent-level synthesis metadata.
+- Renamed `AssistantToolCards.tsx` to `CortexToolCards.tsx`; added rendering for cost estimates, citations, and provider tool events.
+- Added `logoVisualState.ts` and `logoVisualState.test.ts` for independent shell and atmosphere visual state derivation.
+- Extended `types/telemetry.ts` with `AgentKey`, `AgentStatus`, `ToolCatalog`, `ToolCatalogGroup`, `ToolCatalogTool`, `ToolPreflightEstimate`, `ToolProfileMetadata`, `CostEstimate`, `TokenUsage`, `Citation`, `LocalContextUsage`, `LocalReasoningMode`, `CloudEffort`, and `LlamaCppServerStatus` types.
+- Extended `lib/settings.ts` with Agent, llama.cpp, tool profile, market, and football parsing, diffing, and patch helpers; added `lib/agents.ts` for Agent display utilities and `lib/agentDisplay.ts` for identifier formatting.
+- Added regression coverage across `App.test.tsx`, `CortexSubmission.integration.test.tsx`, `CortexWorkspace.test.tsx`, `AgentSelector.test.tsx`, `ToolsSelector.test.tsx`, `HomeCommandRail.test.tsx`, `useCortex.test.tsx`, `useToolCatalog.test.tsx`, `useToolPreflight.test.tsx`, and `usePreflight.test.tsx`.
+
+### Documentation Updates
+
+- Added `docs/identity-and-naming.md` as the canonical reference for APEX product vocabulary, Agent taxonomy, naming rationale, and logo meaning; all ten Agents are documented with identity, provider, description, and visibility.
+- Replaced stale screenshot assets with `apex-home.png`, `apex-standby.png`, `apex-cortex.png`, and `apex-logo.png`.
+- Added Mermaid architecture diagrams to `docs/architecture.md`, `docs/configuration.md`, `docs/privacy.md`, and `docs/identity-and-naming.md`.
+- Documented the Apex Agent catalog, federated provider model, inference cost tracking, tool catalog and selection system, tool profiles, llama.cpp provider and managed-server lifecycle, and local runtime coordinator in `docs/api.md` and `docs/architecture.md`.
+- Updated `docs/configuration.md` and `docs/getting-started.md` for the multi-provider credential model, llama.cpp setup, Agent selection, and runtime-editable market/football settings.
+- Updated `docs/privacy.md` for multi-provider data handling, llama.cpp local execution boundary, and tool-profile persistence.
+- Updated `docs/decisions.md` with records covering Agent identity design, provider federation, tool-selection architecture, effort-level mapping, and local runtime coordinator rationale.
+- Updated `docs/design-system.md` with Cortex Workspace, tool selector, Agent selector, and Home Command Rail conventions.
+- Updated `README.md` and `frontend/README.md` for the Apex Agents model, Cortex Workspace, and multi-provider setup.
+- Marked v1.19.0 Complete and added planned v1.19.1, v1.20.0, and long-range milestones through v2.2.0 in `docs/roadmap.md`.
+
+---
+
 ## v1.18.0 — Cortex: MCP Client Foundation & Read-Only Integrations
 
 **Released:** August 1, 2026
