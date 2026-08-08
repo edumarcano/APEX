@@ -401,7 +401,7 @@ class SettingsApiTests(unittest.TestCase):
             response = self.client.get("/api/v1/config")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["default_agent"], "sorex")
+        self.assertEqual(payload["default_agent"], "apodemus")
         self.assertFalse(payload["ask_apex_enabled"])
         self.assertIn("max_session_messages", payload)
         self.assertIn("dev_mode_active", payload)
@@ -426,7 +426,7 @@ class SettingsApiTests(unittest.TestCase):
         )
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()
-        self.assertEqual(config_payload["default_agent"], "neofelis")
+        self.assertEqual(config_payload["default_agent"], "panthera")
 
 
 class SettingsApiVoicePatchSmokeTests(unittest.TestCase):

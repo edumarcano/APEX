@@ -392,7 +392,9 @@ export default function App(): ReactElement {
   )
   const isLocalModelLoading =
     loadingLocalAgent !== null ||
-    (liveSynthesis?.provider === 'ollama' && liveSynthesis.loading)
+    (liveSynthesis?.loading === true &&
+      (liveSynthesis.provider === 'llama_cpp' ||
+        (liveSynthesis.agent !== undefined && isLocalAgentKey(liveSynthesis.agent))))
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??

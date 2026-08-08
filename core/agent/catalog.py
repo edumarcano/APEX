@@ -750,7 +750,7 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
         "mode": "cloud",
         "cloud_profile": "panthera",
         "cloud_effort": "focused",
-        "local_profile": "mus",
+        "local_profile": "apodemus",
         "neofelis_google_search_enabled": bool(
             raw.get("neofelis_google_search_enabled", True)
         ),
@@ -763,12 +763,12 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
             migrated["mode"] = "cloud"
             migrated["cloud_profile"] = "panthera"
             migrated["cloud_effort"] = "focused"
-            migrated["local_profile"] = "mus"
+            migrated["local_profile"] = "apodemus"
         elif normalized in _SCHEMA5_LOCAL_PROFILES:
             # Plan: every old local selection becomes Local/Mus while retaining
             # Panthera/Focused as the saved cloud choice.
             migrated["mode"] = "local"
-            migrated["local_profile"] = "mus"
+            migrated["local_profile"] = "apodemus"
             migrated["cloud_profile"] = "panthera"
             migrated["cloud_effort"] = "focused"
 
@@ -819,8 +819,12 @@ def resolve_agent_selection(
 
     runtime = getattr(ask_apex, "runtime", "cloud")
     if runtime == "local":
-        agent = getattr(ask_apex, "local_agent", "mus")
+        agent = getattr(ask_apex, "local_agent", "apodemus")
+        if not dev_active and not is_agent_visible(agent, dev_mode=False):
+            agent = "apodemus"
         return "local", agent, None
     agent = getattr(ask_apex, "cloud_agent", "panthera")
+    if not dev_active and not is_agent_visible(agent, dev_mode=False):
+        agent = "panthera"
     effort = getattr(ask_apex, "effort", "focused")
     return "cloud", agent, effort

@@ -29,7 +29,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     runtime: 'cloud',
     cloud_agent: 'panthera',
     effort: 'focused',
-    local_agent: 'mus',
+    local_agent: 'apodemus',
     local_context_windows: {
       apodemus: 16384,
       neotoma: 16384,

@@ -157,9 +157,9 @@ class SettingsStoreLoadTests(unittest.TestCase):
 
     def test_local_agent_profile_loading(self) -> None:
         expectations = {
-            "lynx": ("local", "mus"),
-            "acinonyx": ("local", "mus"),
-            "neofelis": ("local", "mus"),
+            "lynx": ("local", "apodemus"),
+            "acinonyx": ("local", "apodemus"),
+            "neofelis": ("local", "apodemus"),
         }
         for profile, (mode, local_agent) in expectations.items():
             with self.subTest(agent=profile):

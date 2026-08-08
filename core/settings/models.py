@@ -155,7 +155,7 @@ class AskApexSettings(BaseModel):
     runtime: AgentRuntime = "cloud"
     cloud_agent: CloudSettingsAgent = "panthera"
     effort: CloudEffort = "focused"
-    local_agent: LocalSettingsAgent = "mus"
+    local_agent: LocalSettingsAgent = "apodemus"
     local_context_windows: dict[str, StrictInt] = Field(
         default_factory=_default_local_context_windows
     )

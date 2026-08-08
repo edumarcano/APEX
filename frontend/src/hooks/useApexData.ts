@@ -734,7 +734,7 @@ export function useApexData(): UseApexDataReturn {
                     : synthesisStrategy === 'demo'
                       ? 'demo'
                       : synthesisStrategy === 'local'
-                        ? 'ollama'
+                        ? 'llama_cpp'
                         : prev.synthesisProvider,
                 data: prev.data
                   ? {
@@ -785,7 +785,7 @@ export function useApexData(): UseApexDataReturn {
                 : synthesisStrategy === 'demo'
                   ? 'demo'
                   : synthesisStrategy === 'local'
-                    ? 'ollama'
+                    ? 'llama_cpp'
                     : prev.synthesisProvider,
             data: prev.data
               ? {

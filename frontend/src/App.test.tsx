@@ -293,7 +293,7 @@ function settingsResponse(
         runtime: agent === 'apodemus' || agent === 'neotoma' ? 'local' : 'cloud',
         cloud_agent: 'neofelis',
         effort: 'focused',
-        local_agent: agent === 'apodemus' || agent === 'neotoma' ? agent : 'mus',
+          local_agent: agent === 'apodemus' || agent === 'neotoma' ? agent : 'apodemus',
         local_context_windows: {
           apodemus: contextWindow,
           neotoma: 16384,

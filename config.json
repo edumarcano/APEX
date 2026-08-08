@@ -33,7 +33,7 @@
     "runtime": "cloud",
     "cloud_agent": "panthera",
     "effort": "focused",
-    "local_agent": "mus",
+    "local_agent": "apodemus",
     "neofelis_google_search_enabled": true,
     "neofelis_google_maps_enabled": true,
     "delphinus_x_search_enabled": true,

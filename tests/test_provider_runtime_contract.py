@@ -121,6 +121,7 @@ class ProviderContractTests(unittest.TestCase):
             (4096, 16384, 32768),
         )
         self.assertEqual(experimental.default_context_window, 16384)
+        self.assertGreater(experimental.maximum_context_window, 32768)
         self.assertEqual(experimental.high_resource_context_options, ())
         self.assertEqual(apodemus.reasoning_mode, "none")
         self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
