@@ -2,39 +2,89 @@
   "responses": [
     {
       "keywords": ["weather", "forecast", "temp"],
-      "answer": "Under APEX simulation, the 3-day weather forecast for Miami, FL indicates consistent light rain with high temperatures in the low 90s:\n\n* July 1: High 91\u00b0F, Low 80\u00b0F. Light rain.\n* July 2: High 90\u00b0F, Low 77\u00b0F. Light rain.\n* July 3: High 94\u00b0F, Low 84\u00b0F. Light rain.",
+      "answer": "The five-day outlook for Simulation City is generally stable. Current conditions are clear at 72\u00b0F, with a brief chance of light rain in the middle of the window:\n\n* Today: High 84\u00b0F, Low 70\u00b0F — Clear\n* Tomorrow: High 86\u00b0F, Low 71\u00b0F — Mostly clear\n* Monday: High 82\u00b0F, Low 69\u00b0F — Partly cloudy\n* Tuesday: High 79\u00b0F, Low 67\u00b0F — Light rain\n* Wednesday: High 81\u00b0F, Low 68\u00b0F — Clearing",
       "tool_trace": [
         {
           "name": "get_weather_forecast",
           "status": "ok",
-          "duration_ms": 115.4
+          "duration_ms": 118.6
         }
       ],
       "tool_outputs": [
         {
           "name": "get_weather_forecast",
           "status": "ok",
-          "duration_ms": 115.4,
+          "duration_ms": 118.6,
           "output": {
-            "location": "Miami, FL",
+            "location": "Simulation City",
             "forecast": [
               {
-                "date": "2026-07-01",
-                "temp_max": 91.0,
-                "temp_min": 80.0,
+                "date": "2026-08-08",
+                "temp_max": 84.0,
+                "temp_min": 70.0,
+                "condition": "clear sky"
+              },
+              {
+                "date": "2026-08-09",
+                "temp_max": 86.0,
+                "temp_min": 71.0,
+                "condition": "mostly clear"
+              },
+              {
+                "date": "2026-08-10",
+                "temp_max": 82.0,
+                "temp_min": 69.0,
+                "condition": "partly cloudy"
+              },
+              {
+                "date": "2026-08-11",
+                "temp_max": 79.0,
+                "temp_min": 67.0,
                 "condition": "light rain"
               },
               {
-                "date": "2026-07-02",
-                "temp_max": 90.0,
-                "temp_min": 77.0,
-                "condition": "light rain"
+                "date": "2026-08-12",
+                "temp_max": 81.0,
+                "temp_min": 68.0,
+                "condition": "clearing"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "keywords": ["calendar", "schedule", "event"],
+      "answer": "Schedule check complete. Three events are on the next fourteen-day calendar horizon:\n\n* Product review — today at 4:00 PM UTC\n* Design sync — tomorrow at 2:00 PM UTC\n* Roadmap checkpoint — Tuesday, all day\n\nNo overlapping events were returned.",
+      "tool_trace": [
+        {
+          "name": "get_upcoming_calendar_events",
+          "status": "ok",
+          "duration_ms": 126.3
+        }
+      ],
+      "tool_outputs": [
+        {
+          "name": "get_upcoming_calendar_events",
+          "status": "ok",
+          "duration_ms": 126.3,
+          "output": {
+            "days_queried": 14,
+            "events": [
+              {
+                "summary": "Product review",
+                "start": "2026-08-08T16:00:00+00:00",
+                "end": "2026-08-08T17:00:00+00:00"
               },
               {
-                "date": "2026-07-03",
-                "temp_max": 94.0,
-                "temp_min": 84.0,
-                "condition": "light rain"
+                "summary": "Design sync",
+                "start": "2026-08-09T14:00:00+00:00",
+                "end": "2026-08-09T15:00:00+00:00"
+              },
+              {
+                "summary": "Roadmap checkpoint",
+                "start": "2026-08-11",
+                "all_day": true
               }
             ]
           }
@@ -43,22 +93,22 @@
     },
     {
       "keywords": ["f1", "standings", "championship"],
-      "answer": "APEX simulation data shows Max Verstappen leading the driver standings with 110 points. The next scheduled race is the Monaco Simulation Grand Prix running this week.",
+      "answer": "Max Verstappen leads the 2026 driver standings with 110 points and three wins. The next race on the demo calendar is the Dutch Grand Prix at Zandvoort, scheduled for next Sunday at 11:00 AM EDT.",
       "tool_trace": [
         {
           "name": "get_f1_driver_standings",
           "status": "ok",
-          "duration_ms": 142.1
+          "duration_ms": 143.8
         }
       ],
       "tool_outputs": [
         {
           "name": "get_f1_driver_standings",
           "status": "ok",
-          "duration_ms": 142.1,
+          "duration_ms": 143.8,
           "output": {
             "season": "2026",
-            "round": "99",
+            "round": "14",
             "standings": [
               {
                 "position": 1,
@@ -67,6 +117,38 @@
                 "driver_name": "Max Verstappen",
                 "driver_code": "VER",
                 "team": "Red Bull"
+              },
+              {
+                "position": 2,
+                "points": 104.0,
+                "wins": 2,
+                "driver_name": "Lando Norris",
+                "driver_code": "NOR",
+                "team": "McLaren"
+              },
+              {
+                "position": 3,
+                "points": 98.0,
+                "wins": 2,
+                "driver_name": "Charles Leclerc",
+                "driver_code": "LEC",
+                "team": "Ferrari"
+              },
+              {
+                "position": 4,
+                "points": 86.0,
+                "wins": 1,
+                "driver_name": "Oscar Piastri",
+                "driver_code": "PIA",
+                "team": "McLaren"
+              },
+              {
+                "position": 5,
+                "points": 73.0,
+                "wins": 1,
+                "driver_name": "George Russell",
+                "driver_code": "RUS",
+                "team": "Mercedes"
               }
             ]
           }
@@ -75,35 +157,89 @@
     },
     {
       "keywords": ["reminder", "task"],
-      "answer": "You have 2 pending reminders in the active ledger:\n\n* Review APEX demo script\n* Charge backup operations hardware",
+      "answer": "Three active reminders are in the local ledger:\n\n* Review demo script\n* Charge laptop\n* Send stakeholder recap\n\nNo reminder is marked complete in this snapshot.",
       "tool_trace": [
         {
           "name": "get_active_reminders",
           "status": "ok",
-          "duration_ms": 94.2
+          "duration_ms": 97.5
         }
       ],
       "tool_outputs": [
         {
           "name": "get_active_reminders",
           "status": "ok",
-          "duration_ms": 94.2,
+          "duration_ms": 97.5,
           "output": [
             {
               "id": 1,
-              "note": "Review APEX demo script"
+              "note": "Review demo script"
             },
             {
               "id": 2,
-              "note": "Charge backup operations hardware"
+              "note": "Charge laptop"
+            },
+            {
+              "id": 3,
+              "note": "Send stakeholder recap"
             }
           ]
+        }
+      ]
+    },
+    {
+      "keywords": ["briefings", "briefing history", "compare", "changes"],
+      "answer": "Briefing history review complete. Across the three most recent runs, conditions moved from light rain at 61\u00b0F to partly cloudy at 68\u00b0F and then clear skies at 72\u00b0F. Unread email volume peaked at three in the middle run, while connector health improved from 78% to 100% in the latest record. The current demo snapshot is the most stable of the sequence.",
+      "tool_trace": [
+        {
+          "name": "get_briefing_history",
+          "status": "ok",
+          "duration_ms": 88.9
+        }
+      ],
+      "tool_outputs": [
+        {
+          "name": "get_briefing_history",
+          "status": "ok",
+          "duration_ms": 88.9,
+          "output": {
+            "limit_requested": 5,
+            "briefings": [
+              {
+                "id": 3,
+                "timestamp": "2026-06-08T08:15:00",
+                "briefing": "APEX simulation controls are operational. Atmospheric sensors report seventy-two degrees with clear skies. Inbox has two unread primary messages, and the next calendar item, Demo Presentation, begins at three PM.",
+                "insights": [
+                  "Clear conditions returned.",
+                  "Connector sync health was nominal."
+                ]
+              },
+              {
+                "id": 2,
+                "timestamp": "2026-06-07T07:30:00",
+                "briefing": "Morning briefing. Overnight precipitation cleared; current conditions are partly cloudy at sixty-eight degrees. Three unread emails require attention, including a budget review thread. Sprint qualifying for the Monaco Grand Prix is scheduled this afternoon.",
+                "insights": [
+                  "News connector reported a partial failure.",
+                  "Unread email volume increased."
+                ]
+              },
+              {
+                "id": 1,
+                "timestamp": "2026-06-06T06:45:00",
+                "briefing": "System status nominal. Light rain expected through mid-morning with temperatures near sixty-one degrees. Calendar is clear until afternoon stand-up. One reminder pending: submit quarterly metrics before end of day.",
+                "insights": [
+                  "Email and calendar connectors were unavailable.",
+                  "Light rain was expected through mid-morning."
+                ]
+              }
+            ]
+          }
         }
       ]
     }
   ],
   "fallback": {
-    "answer": "APEX simulation is fully operational. I have verified your local database registers and ambient HUD context. Let me know if you would like me to simulate a weather forecast or F1 standings query.",
+    "answer": "APEX simulation is online, but no matching operation was found in the demo response set. Try a forecast, schedule, F1 standings, reminder, or briefing-history query.",
     "tool_trace": []
   }
 }

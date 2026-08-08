@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
@@ -13,9 +15,9 @@ from core.agent.types import (
     AgentQueryResponse,
     ToolSelectionDiagnostics,
 )
-from core.api.models import DigestPayload, TelemetryPayload, parse_digest_payload
+from core.api.models import DigestPayload, TelemetryPayload
+from core.mock.demo_fixture import DemoBundle, DemoFixtureError, load_demo_bundle
 
-_MOCK_TELEMETRY_PATH = Path(__file__).resolve().parent.parent / "mock" / "telemetry.json"
 _MOCK_ASSISTANT_PATH = Path(__file__).resolve().parent.parent / "mock" / "assistant.json"
 
 
@@ -111,34 +113,21 @@ def _validate_mock_agent_response(
     }
 
 
+def load_demo_bundle_or_raise() -> DemoBundle:
+    """Load the normalized DEMO_MODE bundle or raise an HTTP 500."""
+    try:
+        return load_demo_bundle()
+    except DemoFixtureError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from None
+
+
 def load_mock_telemetry() -> tuple[TelemetryPayload, DigestPayload]:
     """Load static demo telemetry and digest from ``core/mock/telemetry.json``."""
-    try:
-        with open(_MOCK_TELEMETRY_PATH, encoding="utf-8") as mock_file:
-            payload = json.load(mock_file)
-    except (OSError, json.JSONDecodeError):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo telemetry payload unavailable.",
-        ) from None
-
-    if not isinstance(payload, dict):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo telemetry payload must be a JSON object.",
-        )
-
-    digest = parse_digest_payload(payload.get("digest"))
-
-    try:
-        telemetry = TelemetryPayload(**payload)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo telemetry payload failed schema validation.",
-        ) from None
-
-    return telemetry, digest
+    bundle = load_demo_bundle_or_raise()
+    return bundle.telemetry, bundle.digest
 
 
 def load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -177,15 +166,14 @@ def load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
 
 def mock_briefing_history() -> list[dict[str, Any]]:
     """Static briefing ledger for DEMO_MODE history responses."""
-    greeting = _demo_greeting()
     return [
         {
             "id": 3,
             "timestamp": "2026-06-08T08:15:00",
             "briefing": (
-                f"{greeting} APEX simulation controls are operational. "
+                "APEX simulation controls are operational. "
                 "Atmospheric sensors report seventy-two degrees with clear skies. "
-                "Your inbox has two unread primary messages, and your next calendar item, "
+                "Inbox has two unread primary messages, and the next calendar item, "
                 "Demo Presentation, begins at three PM."
             ),
             "digest": {
@@ -246,21 +234,120 @@ def mock_briefing_history() -> list[dict[str, Any]]:
 
 def build_demo_briefing(telemetry: TelemetryPayload) -> str:
     """Compose a deterministic briefing string from mock telemetry fields."""
+    bundle = load_demo_bundle_or_raise()
+    # Keep the legacy signature for compatibility callers that pass telemetry only.
+    _ = telemetry
+    weather = bundle.modules["weather"].data
+    email = bundle.modules["email"].data
+    calendar = bundle.modules["calendar"].data
+    f1_map = bundle.modules["f1"].data.get("f1_map", {})
+    reminders = bundle.modules["reminders"].data
+
+    temp_f = weather.get("temp_f")
+    condition = weather.get("condition", "current conditions")
+    weather_clause = (
+        f"Atmospheric sensors report {temp_f} degrees with {condition}."
+        if temp_f is not None
+        else f"Atmospheric sensors report {condition}."
+    )
+
+    email_count = int(email.get("count", 0) or 0)
+    email_clause = (
+        f"Inbox has {email_count} unread primary message"
+        f"{'s' if email_count != 1 else ''}."
+        if email_count
+        else "Inbox has no unread primary messages."
+    )
+
+    events = calendar.get("events") if isinstance(calendar.get("events"), list) else []
+    if events and isinstance(events[0], dict):
+        next_event = events[0]
+        event_time = _format_demo_event_time(
+            next_event,
+            now=datetime.fromisoformat(bundle.collected_at),
+        )
+        calendar_clause = (
+            f"Next calendar item is {next_event.get('summary', 'an event')}, "
+            f"scheduled for {event_time}."
+        )
+    else:
+        calendar_clause = "Calendar is clear for the next seven days."
+
+    sports_clause = ""
+    if isinstance(f1_map, dict) and f1_map.get("relativeWeek") == "This week":
+        race_name = f1_map.get("raceName", "the upcoming Grand Prix")
+        race_time = f1_map.get("raceDateTimeEST", "later this week")
+        sports_clause = (
+            f"F1 status: {race_name} is scheduled for this week, with the main race on {race_time}. "
+        )
+
+    reminder_count = int(reminders.get("count", 0) or 0)
+    reminder_clause = (
+        f"{reminder_count} reminder{'s' if reminder_count != 1 else ''} remain pending."
+        if reminder_count
+        else "No reminders are pending."
+    )
+
+    health_score = bundle.digest.sync_health_score
+    health_clause = (
+        "Connector sync health is nominal."
+        if health_score is not None and health_score >= 95.0
+        else "Connector sync health reports minor degradation."
+    )
+
     return (
-        f"{_demo_greeting()} APEX simulation controls are operational. "
-        "Atmospheric sensors report seventy-two degrees with clear skies. "
-        "The Monaco Grand Prix is scheduled for this week, with the main race running on Sunday. "
-        "Your inbox has two unread primary messages, and your next calendar item, "
-        "Demo Presentation, begins at three PM. All local databases are fully synchronized."
+        "APEX simulation controls are operational. "
+        f"{weather_clause} {sports_clause}{email_clause} {calendar_clause} "
+        f"{reminder_clause} {health_clause}"
     )
 
 
-def _demo_greeting() -> str:
-    """Return a demo greeting using the optional local user designation."""
-    from core.settings import get_settings_store
+def _format_demo_event_time(event: dict[str, Any], *, now: datetime) -> str:
+    """Render a normalized demo calendar timestamp as natural briefing text."""
+    raw_start = event.get("start")
+    if not isinstance(raw_start, str) or not raw_start.strip():
+        return "the scheduled time"
 
-    designation = get_settings_store().get_snapshot().user_designation
-    return f"Greetings {designation}." if designation else "Greetings."
+    time_zone_name = event.get("time_zone")
+    try:
+        event_zone = ZoneInfo(time_zone_name) if isinstance(time_zone_name, str) else timezone.utc
+    except (KeyError, ValueError):
+        event_zone = timezone.utc
+
+    if event.get("all_day") is True:
+        try:
+            event_date = date.fromisoformat(raw_start)
+        except ValueError:
+            return raw_start
+        local_now = now.astimezone(event_zone).date()
+        if event_date == local_now:
+            return "today (all day)"
+        return f"{_natural_date_label(event_date, local_now=local_now)} (all day)"
+
+    try:
+        event_start = datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+    except ValueError:
+        return raw_start
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=timezone.utc)
+    event_start = event_start.astimezone(event_zone)
+    local_now = now.astimezone(event_zone)
+    if event_start.date() == local_now.date():
+        day_label = "today"
+    elif (event_start.date() - local_now.date()).days == 1:
+        day_label = "tomorrow"
+    else:
+        day_label = _natural_date_label(event_start.date(), local_now=local_now.date())
+    time_label = event_start.strftime("%I:%M %p").lstrip("0")
+    zone_label = event_start.tzname() or str(event_zone)
+    return f"{day_label} at {time_label} {zone_label}"
+
+
+def _natural_date_label(value: date, *, local_now: date) -> str:
+    """Format a calendar date without platform-specific ``%-d`` directives."""
+    if value.year == local_now.year:
+        return f"{value.strftime('%A, %B')} {value.day}"
+    return f"{value.strftime('%A, %B')} {value.day}, {value.year}"
 
 
 def run_demo_agent_query(

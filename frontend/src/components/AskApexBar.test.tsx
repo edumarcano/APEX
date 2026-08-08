@@ -116,6 +116,22 @@ function renderBar(
 }
 
 describe('AskApexBar unified tool selection', () => {
+  it('uses an icon-only tools trigger in Home', () => {
+    renderBar(vi.fn(), { presentation: 'home' })
+
+    const selector = screen.getByRole('button', { name: /Tools:/ })
+    expect(selector).toHaveClass('size-8')
+    expect(selector.textContent).toBe('')
+  })
+
+  it('keeps the tools summary text in Cortex', () => {
+    renderBar()
+
+    const selector = screen.getByRole('button', { name: /Tools:/ })
+    expect(selector).toHaveTextContent('Tools')
+    expect(selector).toHaveTextContent('Custom')
+  })
+
   it('submits the exact current names and profile ID', () => {
     const onSubmit = vi.fn()
     renderBar(onSubmit)
