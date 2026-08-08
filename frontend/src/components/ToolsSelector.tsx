@@ -27,6 +27,7 @@ import type {
 } from '../types/telemetry'
 
 interface ToolsSelectorProps {
+  compact?: boolean
   catalog: ToolCatalog | null
   selectedToolNames: string[]
   activeToolProfileId: string | null
@@ -111,6 +112,7 @@ function Utilization({
 }
 
 export function ToolsSelector({
+  compact = false,
   catalog,
   selectedToolNames,
   activeToolProfileId,
@@ -279,7 +281,9 @@ export function ToolsSelector({
     <div ref={selectorRef} className="relative shrink-0">
       <button
         type="button"
-        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/10 px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-purple-100 transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/20 disabled:cursor-not-allowed disabled:opacity-45"
+        className={compact
+          ? 'inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-1.5 text-purple-100 transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/20 disabled:cursor-not-allowed disabled:opacity-45'
+          : 'inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/10 px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-purple-100 transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/20 disabled:cursor-not-allowed disabled:opacity-45'}
         aria-expanded={open}
         aria-controls="apex-tools-selector-panel"
         aria-label={`Tools: ${activeProfile?.name ?? 'Custom'}, ${selectedToolNames.length} selected, ${formatTokens(selectedTokens)} schema tokens`}
@@ -289,10 +293,14 @@ export function ToolsSelector({
           setOpen((current) => !current)
         }}
       >
-        <span>Tools</span>
-        <span className="normal-case tracking-normal text-zinc-300">
-          {activeProfile?.name ?? 'Custom'} · {selectedToolNames.length} · {formatTokens(selectedTokens)}
-        </span>
+        {!compact ? (
+          <>
+            <span>Tools</span>
+            <span className="normal-case tracking-normal text-zinc-300">
+              {activeProfile?.name ?? 'Custom'} · {selectedToolNames.length} · {formatTokens(selectedTokens)}
+            </span>
+          </>
+        ) : null}
         {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
       </button>
       {open ? (

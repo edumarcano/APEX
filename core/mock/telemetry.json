@@ -21,6 +21,7 @@
       {"name": "email", "status": "healthy", "freshness": "live", "reason_code": "ok"},
       {"name": "calendar", "status": "healthy", "freshness": "live", "reason_code": "ok"},
       {"name": "f1", "status": "healthy", "freshness": "fresh_cache", "reason_code": "ok"},
+      {"name": "football", "status": "healthy", "freshness": "fresh_cache", "reason_code": "ok"},
       {"name": "reminders", "status": "healthy", "freshness": "live", "reason_code": "ok"}
     ],
     "confidence_score": 100.0,
