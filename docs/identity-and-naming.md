@@ -2,7 +2,7 @@
 
 This document explains the meaning behind the main names used throughout APEX. It is intended both as an introduction for someone unfamiliar with the project and as a record of the identity and naming rationale for the full registered Apex Agent family, including Agents that are not currently user-facing.
 
-An Agent being documented here does not mean that it is visible in the normal product UI. The current primary/user-facing roster is Apex Panthera, Apex Apodemus, and Apex Neotoma. Other named Agents remain documented because they still exist as development, legacy, specialized, or experimental identities. DEV_MODE exposes the wider development roster for testing and evaluation.
+An Agent being documented here does not mean that it is visible in the normal product UI. The current primary/user-facing roster is Apex Panthera, Apex Apodemus, and Apex Neotoma. Other named Agents remain documented because they still exist as development, legacy, specialized, or experimental identities. DEV_MODE surfaces the wider development roster for testing and evaluation.
 
 The naming system combines product terminology with biological metaphors. Those metaphors help communicate differences in scale, purpose, and capability, but they are not intended as a strict scientific classification or permanent ranking.
 
@@ -120,7 +120,7 @@ The model is therefore one part of an Agent’s implementation, not necessarily 
 
 The version attached to an Apex Agent belongs to that named Agent identity. It is not the APEX application version, a shared Cortex contract version, or the version of the underlying provider model.
 
-Each current Agent begins at `1.0` because this is the first stable version of its current product identity. A newly introduced Agent also begins at `1.0`.
+Each current Agent begins at `1.0` as the initial version of its current product identity.
 
 Agent versions evolve independently:
 
@@ -131,41 +131,45 @@ The version is intended as a concise indicator of meaningful Agent evolution rat
 
 ## The registered Agent family
 
-The registered family shares one Cortex operating layer across cloud-hosted and local Agents, while each Agent occupies a distinct product role or development purpose. The normal product roster is intentionally smaller than the full catalog: Primary Agents are Panthera, Apodemus, and Neotoma. DEV_MODE exposes the wider development roster, while the other identities remain registered and documented without being normal user-facing alternatives.
+The registered family shares one Cortex operating layer across cloud-hosted and local Agents, while each Agent occupies a distinct product role or development purpose. The normal product roster is intentionally smaller than the full catalog: Primary Agents are Panthera, Apodemus, and Neotoma. DEV_MODE surfaces the wider development roster, while the other identities remain registered and documented without being normal user-facing alternatives.
 
-DEV_MODE visibility does not necessarily indicate instability. Some Agents have established identities and technically stable implementations but are currently hidden from the primary roster because APEX does not yet provide enough Agent-specific functionality to make their roles meaningfully distinct in normal use. They remain available in DEV_MODE for development, evaluation, and future capability work. Stability answers whether an Agent works reliably; visibility answers whether its current role earns space in the product.
+DEV_MODE visibility does not necessarily indicate instability. Some Agents have established identities and technically stable implementations but are currently hidden from the primary roster because APEX does not yet provide enough Agent-specific functionality to make their roles meaningfully distinct in normal use. They remain surfaced in the DEV_MODE roster for development, evaluation, and future capability work. Stability answers whether an Agent works reliably; visibility answers whether its current role earns space in the product.
 
 Some DEV_MODE-only Agents retain intended future product roles that APEX does not yet fully support, while others remain registered primarily for development, comparison, or historical continuity.
 
 ```mermaid
 flowchart TB
     ENGINE["Cortex Engine<br/>Shared execution, tools, context, and observability"]
-    FAMILY["Registered Apex Agent family<br/>Visibility varies by roster and mode"]
+    FAMILY["Registered Apex Agent family"]
 
-    PRIMARY["Primary Agents<br/>Normal product roster"]
-    DEVELOPMENT["Development Agents<br/>DEV_MODE only"]
-    TARGETS["Technical development targets<br/>DEV_MODE only; outside the genus-based naming family"]
+    PRIMARY["Primary roster<br/>Normal product UI"]
+    DEV["Development roster<br/>DEV_MODE"]
+    EXP["Technical development target<br/>Outside genus identity"]
 
     ENGINE --> FAMILY
     FAMILY --> PRIMARY
-    FAMILY --> DEVELOPMENT
-    FAMILY --> TARGETS
+    FAMILY --> DEV
+    FAMILY --> EXP
 
-    PRIMARY --> PANTHERA["Panthera 1.0<br/>Everyday generalist<br/>OpenAI<br/>Stable"]
-    PRIMARY --> APODEMUS["Apodemus 1.0<br/>Efficient stable local Agent<br/>llama.cpp<br/>Stable"]
-    PRIMARY --> NEOTOMA["Neotoma 1.0<br/>Generalist local preview<br/>llama.cpp<br/>Preview"]
+    PRIMARY --> PANTHERA["Panthera<br/>Cloud generalist · Stable"]
+    PRIMARY --> APODEMUS["Apodemus<br/>Efficient local · Stable"]
+    PRIMARY --> NEOTOMA["Neotoma<br/>Capable local · Preview"]
 
-    DEVELOPMENT --> ACINONYX["Acinonyx 1.0<br/>Fast development sandbox<br/>Gemini<br/>Experimental"]
-    DEVELOPMENT --> NEOFELIS["Neofelis 1.0<br/>Google-specialized Agent<br/>Gemini<br/>Stable"]
-    DEVELOPMENT --> DELPHINUS["Delphinus 1.0<br/>Live-information specialist<br/>xAI<br/>Stable"]
-    DEVELOPMENT --> ORCINUS["Orcinus 1.0<br/>Extended reasoning specialist<br/>xAI<br/>Stable"]
-    DEVELOPMENT --> SOREX["Sorex 1.0<br/>Lightweight local development Agent<br/>Ollama<br/>Stable"]
-    DEVELOPMENT --> MUS["Mus 1.0<br/>Local development generalist<br/>Ollama<br/>Stable"]
+    DEV --> CLOUDDEV["Cloud specialists"]
+    DEV --> LOCALDEV["Local development Agents"]
 
-    TARGETS --> EXPERIMENTAL["Unnamed Experimental Agent 1.0<br/>Gemma 4 E4B evaluation target<br/>llama.cpp<br/>Experimental"]
+    CLOUDDEV --> ACINONYX["Acinonyx<br/>Privacy sandbox · Experimental"]
+    CLOUDDEV --> NEOFELIS["Neofelis<br/>Google research · Stable"]
+    CLOUDDEV --> DELPHINUS["Delphinus<br/>Live information · Stable"]
+    CLOUDDEV --> ORCINUS["Orcinus<br/>Deep live investigation · Stable"]
+
+    LOCALDEV --> SOREX["Sorex<br/>Lightweight local · Stable"]
+    LOCALDEV --> MUS["Mus<br/>Local generalist · Stable"]
+
+    EXP --> UNNAMED["Unnamed Experimental Agent<br/>Candidate model evaluation · Experimental"]
 ```
 
-Every registered Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role. Only the Primary Agents belong to the normal user-facing roster; DEV_MODE makes the Development Agents and technical target available for development work.
+Every registered Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role. Only the Primary Agents belong to the normal user-facing roster; DEV_MODE surfaces the Development Agents and technical target in the development roster.
 
 These roles describe current product intent. They should not be read as a precise biological hierarchy or permanent capability ranking.
 
@@ -205,7 +209,7 @@ That relationship is reflected in APEX. Neofelis is adjacent to Panthera, but it
 
 Apex Neofelis specializes in using the distinctive capabilities of its underlying model. It currently uses Gemini 3.6 Flash and focuses on Google Search, Google Maps, and a one-million-token context window without a separate long-context surcharge in the current pricing configuration. The underlying model may support multimodal work, but current APEX requests are text- and tool-based.
 
-The name represents a smaller and more specialized relative of the Panthera group. Neofelis remains a registered development/specialized Agent whose intended product role is Google-centered research and long-context work. APEX does not yet provide enough Agent-specific research capability to make that specialization meaningfully distinct in the normal roster, so Neofelis remains available through DEV_MODE.
+The name represents a smaller and more specialized relative of the Panthera group. Neofelis remains a registered development/specialized Agent whose intended product role is Google-centered research and long-context work. APEX does not yet provide enough Agent-specific research capability to make that specialization meaningfully distinct in the normal roster, so Neofelis remains surfaced through DEV_MODE.
 
 Its identity should therefore be understood as a specialized branch, not simply a weaker or stronger Panthera.
 

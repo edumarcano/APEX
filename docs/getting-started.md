@@ -141,6 +141,7 @@ ollama pull qwen3:4b-instruct
 ```
 
 These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instead of failing at selection time.
+Sorex and Mus are retained development Agents and are surfaced in the Agent roster only in `DEV_MODE`.
 
 ## Optional llama.cpp path
 
@@ -169,7 +170,7 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ap
 - **Start with Briefing** activates Home, refreshes telemetry, and synthesizes with the selected briefing mode.
 - Ask APEX becomes available after activation when it is enabled in Settings.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
-- Production briefings and reminders persist to `apex_memory.db`; demo briefings do not.
+- Normal-mode briefings and reminders persist to `apex_memory.db`; demo briefings do not.
 
 ## Troubleshooting
 

@@ -32,7 +32,7 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 ### Produces briefings on my terms
 
-A briefing can use Panthera through OpenAI, Mus or Sorex through Ollama, or a deterministic Structured Digest. All routes receive the same sanitized, size-bounded facts; a provider failure ends in a useful model-free result instead of a blank screen.
+A briefing can use Panthera through OpenAI, Apodemus through llama.cpp, or a deterministic Structured Digest. Panthera falls back to Apodemus and then Structured Digest; an explicit Apodemus request falls directly to Structured Digest. All routes receive the same sanitized, size-bounded facts, and a provider failure ends in a useful model-free result instead of a blank screen.
 
 ### Operates Apex Agents
 
@@ -59,9 +59,9 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
-- **Cloud, local, and deterministic execution** — OpenAI, Gemini, xAI, and Ollama power distinct Agent paths, with Structured Digest as the final model-free briefing fallback.
+- **Cloud, local, and deterministic execution** — OpenAI, Gemini, and xAI power cloud Agent paths; Ollama supports development local Agents, while llama.cpp backs the primary local Agents. Structured Digest is the final model-free briefing fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
-- **Durable personal state** — SQLite persists reminders and the last 50 production briefings, while browser-held Agent conversations disappear on reload.
+- **Durable personal state** — SQLite persists reminders and the last 50 normal-mode briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
 - **Privacy-aware process isolation** — the backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -76,7 +76,7 @@ flowchart LR
     HUD --> A["Ask APEX"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["OpenAI · Ollama · Structured Digest"]
+    B --> M["Panthera/OpenAI · Apodemus/llama.cpp · Structured Digest"]
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```
@@ -91,7 +91,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
 | Cloud reasoning | OpenAI, Gemini, and xAI Apex Agents; see Configuration for current model IDs |
-| Local reasoning | Ollama with Qwen3 models |
+| Local Agent infrastructure | Ollama with Qwen3 development Agents; llama.cpp with Apodemus and Neotoma as the primary local Agents |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
 | Validation | unittest, Vitest, ESLint, TypeScript, Vite build |
@@ -118,7 +118,7 @@ Demo mode bypasses live connectors and model calls, does not write briefing hist
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-Use a local Ollama briefing mode or Structured Digest to avoid OpenAI disclosure for briefing synthesis. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+Use Apodemus through llama.cpp or Structured Digest to avoid OpenAI disclosure for briefing synthesis. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 

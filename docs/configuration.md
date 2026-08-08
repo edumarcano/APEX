@@ -68,13 +68,13 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 
 ## Runtime modes
 
-### Production
+### Normal mode
 
-With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors, persists production briefing history, and uses the selected cloud, local, or deterministic briefing mode. Operational preflight can warn about network policy, power, refresh frequency, and local-model resources; credentials and unavailable runtime resources remain blockers.
+With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors, persists normal-mode briefing history, and uses the selected cloud, local, or deterministic briefing mode. Operational preflight can warn about network policy, power, refresh frequency, and local-model resources; credentials and unavailable runtime resources remain blockers.
 
 ### Development
 
-`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and production run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or Acinonyx context use.
+`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and normal-mode run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or Acinonyx context use.
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
@@ -86,7 +86,7 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 ### Demo
 
-`DEMO_MODE=true` takes priority over the normal trigger path. It uses static telemetry, briefing history, reminders, market data, and deterministic Agent responses. It skips live connectors and production database writes. `DEMO_TTS` selects the optional demo speech engine.
+`DEMO_MODE=true` takes priority over the normal trigger path. It uses static telemetry, briefing history, reminders, market data, and deterministic Agent responses. It skips live connectors and normal-mode database writes. `DEMO_TTS` selects the optional demo speech engine.
 
 `DEV_MODE` and `DEMO_MODE` are independent environment flags, but demo behavior wins where their paths overlap.
 
@@ -135,7 +135,7 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `neotoma` — Neotoma 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
 | `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Outside DEV_MODE, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; DEV_MODE also exposes the registered development Agents. Ollama serves Mus and Sorex; llama.cpp serves Apodemus, Neotoma, and the development-only Unnamed Experimental Agent.
+`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Outside DEV_MODE, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; DEV_MODE also surfaces the registered development Agents. Ollama serves Mus and Sorex; llama.cpp serves Apodemus, Neotoma, and the development-only Unnamed Experimental Agent.
 
 #### llama.cpp configuration
 

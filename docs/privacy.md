@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Apodemus sends it to the local llama.cpp router | Production transcript/digest in SQLite | Panthera, Apodemus, or Structured Digest |
+| Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Apodemus sends it to the local llama.cpp router | Normal-mode transcript/digest in SQLite | Apodemus or Structured Digest |
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
@@ -67,7 +67,7 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing orchestration selects bounded weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts for `SynthesisInput`. Text is normalized, stripped of control characters and markup, truncated per field, serialized to a fixed bound, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera and the local Ollama or llama.cpp provider receive the same selected facts. Concatenated display telemetry, Agent tools, and Agent history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
+Panthera through OpenAI and Apodemus through llama.cpp receive the same selected facts. There is no Ollama briefing path. Concatenated display telemetry, Agent tools, and Agent history are excluded. Generated output is bounded and validated before use; invalid output ends in deterministic synthesis from the typed input.
 
 The markers and validation reduce prompt-injection risk. They do not make model output an authorization boundary, and model prose must never authorize an action.
 
@@ -91,7 +91,7 @@ HUD context is never implicit. A briefing is attached only through an explicit v
 
 Conversation history exists in the browser tab and is lost on reload. The backend has no chat-session store. Local context budgeting can omit old complete interactions and reports counts, never prompt or tool-result content.
 
-Acinonyx is a development-only Gemini sandbox with a browser history partition separate from production Agents. The backend rejects cross-partition history and saved briefing records. Acinonyx can receive only weather, Formula 1, Brave Search, Alpha Vantage, and the process-current development briefing after the backend has masked email subjects, calendar details, and reminder text. It never receives full telemetry, Gmail, Calendar, reminders, Microsoft To Do, briefing history, GitHub/private MCP, files, images, or production conversation history.
+Acinonyx is a development-only Gemini sandbox with a browser history partition separate from normal-mode Agents. The backend rejects cross-partition history and saved briefing records. Acinonyx can receive only weather, Formula 1, Brave Search, Alpha Vantage, and the process-current development briefing after the backend has masked email subjects, calendar details, and reminder text. It never receives full telemetry, Gmail, Calendar, reminders, Microsoft To Do, briefing history, GitHub/private MCP, files, images, or normal-mode conversation history.
 
 ### Native personal-data tools
 
@@ -111,7 +111,7 @@ Runtime Settings exposes only preset enablement. It never returns or accepts cre
 
 ## Local persistence
 
-`apex_memory.db` stores production run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
+`apex_memory.db` stores normal-mode run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
 
 The database is not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, local settings, and model weights are gitignored.
 
@@ -125,8 +125,8 @@ Public Agent failures use stable messages instead of raw third-party exceptions.
 
 ## Runtime modes
 
-- `DEMO_MODE=true` uses static mock data, skips live connectors, and does not write production briefing history.
+- `DEMO_MODE=true` uses static mock data, skips live connectors, and does not write normal-mode briefing history.
 - `DEV_MODE=true` can still collect Gmail, Calendar, and reminders, but returned personal text is masked before briefing synthesis or Acinonyx context use.
-- Production mode calls only enabled connectors. Disabling a connector skips its request and excludes it from briefing input and Sync Health.
+- Normal mode calls only enabled connectors. Disabling a connector skips its request and excludes it from briefing input and Sync Health.
 
 See [Configuration](configuration.md) for exact mode ownership and [Architecture](architecture.md) for the process and trust model.

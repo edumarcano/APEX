@@ -162,6 +162,8 @@ The Cortex inspector is the detailed Agent-configuration surface. Show one selec
 
 Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its Agent-selection button.
 
+Stability is a reusable catalog treatment: **Preview** uses amber, **Experimental** uses cyan, and **Stable** has no stability badge. Apply these semantics wherever Agent catalog stability is shown; do not infer stability from the provider, runtime, or Agent mark.
+
 The Tools control is shared by cloud and local Agents. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only prompt exposure; MCP settings remain a separate authority boundary.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
