@@ -605,5 +605,5 @@ The long-term objective of APEX is to evolve through six distinct stages into a 
 
 APEX is currently in **Phase IV: Interactive Intelligence**.
 
-**Active milestone:**  
+**Active milestone:**
 [v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents-cortex-workspace)
