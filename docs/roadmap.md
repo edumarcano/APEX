@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Current Phase:** [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence)
-**Active Milestone:** [v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents--cortex-workspace)
+**Active Milestone:** [v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents-cortex-workspace)
 **Current Initiative:** [Cortex Initiative](#cortex-initiative)
 
-**Next Milestone:** [v1.19.1 - Runtime Reliability & Maintenance](#v1191---runtime-reliability--maintenance)
+**Next Milestone:** [v1.19.1 - Runtime Reliability & Maintenance](#v1191---runtime-reliability-maintenance)
 
 ### Navigation
 
@@ -21,7 +21,7 @@
 [Phase III: Cognitive Interface](#phase-iii-cognitive-interface) ·
 [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence) ·
 [Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime) ·
-[Phase VI: Platform Consolidation & Physical Integration](#phase-vi-platform-consolidation--physical-integration)
+[Phase VI: Platform Consolidation & Physical Integration](#phase-vi-platform-consolidation-physical-integration)
 
 ---
 
@@ -105,7 +105,7 @@ Establish the first official APEX platform release through a FastAPI backend, st
 **Core Focus:**
 Migrating APEX from a traditional Python interface into a scalable React/Vite intelligence HUD.
 
-[Back to Current Focus](#current-focus) · [Back to Roadmap Navigation](#roadmap-navigation)
+[Back to Current Focus](#current-focus) · [Back to Roadmap Navigation](#navigation)
 
 ---
 
@@ -606,4 +606,4 @@ The long-term objective of APEX is to evolve through six distinct stages into a 
 APEX is currently in **Phase IV: Interactive Intelligence**.
 
 **Active milestone:**  
-[v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents--cortex-workspace)
+[v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents-cortex-workspace)
