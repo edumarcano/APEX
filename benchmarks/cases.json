@@ -1,0 +1,347 @@
+{
+  "version": 0,
+  "performance": [
+    {
+      "id": "short_generation",
+      "prompt": "In one short sentence, explain why a local model benchmark should use a warmup request."
+    },
+    {
+      "id": "long_generation",
+      "prompt": "Write a concise explanation of how a developer should compare local language models. Cover latency, token throughput, memory use, context size, and tool reliability in approximately 180 to 240 words."
+    },
+    {
+      "id": "prompt_evaluation",
+      "prompt": "Read this synthetic engineering note and answer only with the component name that owns the unload decision.\n\nSynthetic note: APEX has a provider-neutral local runtime coordinator. A provider backend reports installed aliases and loaded model state. The coordinator owns the single local execution slot, checks host resource gates before a cold load, and switches between known model aliases. Provider backends perform HTTP lifecycle requests and verify state after load or unload. The benchmark utility records timing and memory observations but does not own provider HTTP details. The HUD may request a manual unload, but the coordinator still verifies the provider result. Question: which component owns the unload decision?"
+    }
+  ],
+  "tool_cases": [
+    {
+      "id": "explain_without_tools",
+      "category": "no_tool",
+      "prompt": "Explain in two sentences why a benchmark should keep its prompts versioned.",
+      "tools": [],
+      "expected_tools": [],
+      "required_answer_facts": [
+        "versioned"
+      ],
+      "fixtures": {}
+    },
+    {
+      "id": "simple_calculation_without_tools",
+      "category": "no_tool",
+      "prompt": "Calculate 37 multiplied by 6 and show the arithmetic briefly.",
+      "tools": [],
+      "expected_tools": [],
+      "required_answer_facts": [
+        "222"
+      ],
+      "fixtures": {}
+    },
+    {
+      "id": "unsupported_action_without_tools",
+      "category": "no_tool",
+      "prompt": "Send an email to the benchmark operator saying that this run is complete.",
+      "tools": [],
+      "expected_tools": [],
+      "required_answer_facts": [
+        "cannot"
+      ],
+      "fixtures": {}
+    },
+    {
+      "id": "weather_lookup",
+      "category": "single_tool",
+      "prompt": "What's the weather tomorrow?",
+      "tools": [
+        "get_weather_forecast"
+      ],
+      "expected_tools": [
+        "get_weather_forecast"
+      ],
+      "required_answer_facts": [
+        "heavy rain",
+        "58"
+      ],
+      "fixtures": {
+        "get_weather_forecast": {
+          "location": "Synthetic City",
+          "forecast": [
+            {
+              "date": "tomorrow",
+              "condition": "Heavy rain",
+              "temp_max": 58,
+              "temp_min": 46
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "calendar_lookup",
+      "category": "single_tool",
+      "prompt": "What do I have scheduled tomorrow?",
+      "tools": [
+        "get_upcoming_calendar_events"
+      ],
+      "expected_tools": [
+        "get_upcoming_calendar_events"
+      ],
+      "required_answer_facts": [
+        "outdoor training",
+        "10:00"
+      ],
+      "fixtures": {
+        "get_upcoming_calendar_events": {
+          "days_queried": 1,
+          "events": [
+            {
+              "summary": "Outdoor training",
+              "start": "10:00 AM"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "reminder_lookup",
+      "category": "single_tool",
+      "prompt": "What active reminder should I handle first?",
+      "tools": [
+        "get_active_reminders"
+      ],
+      "expected_tools": [
+        "get_active_reminders"
+      ],
+      "required_answer_facts": [
+        "renew passport"
+      ],
+      "fixtures": {
+        "get_active_reminders": [
+          {
+            "id": 1,
+            "note": "Renew passport"
+          },
+          {
+            "id": 2,
+            "note": "Review benchmark results"
+          }
+        ]
+      }
+    },
+    {
+      "id": "f1_schedule_lookup",
+      "category": "single_tool",
+      "prompt": "When is the next race on the Formula 1 schedule?",
+      "tools": [
+        "get_f1_season_calendar"
+      ],
+      "expected_tools": [
+        "get_f1_season_calendar"
+      ],
+      "required_answer_facts": [
+        "synthetic grand prix",
+        "july 19"
+      ],
+      "fixtures": {
+        "get_f1_season_calendar": {
+          "season": "2026",
+          "calendar": [
+            {
+              "round": 12,
+              "raceName": "Synthetic Grand Prix",
+              "country": "Synthetic Republic",
+              "date": "July 19",
+              "time": "14:00"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "weather_calendar_conflict",
+      "category": "multi_tool",
+      "prompt": "Does tomorrow's weather conflict with anything on my calendar?",
+      "tools": [
+        "get_weather_forecast",
+        "get_upcoming_calendar_events"
+      ],
+      "expected_tools": [
+        "get_weather_forecast",
+        "get_upcoming_calendar_events"
+      ],
+      "required_answer_facts": [
+        "heavy rain",
+        "outdoor training"
+      ],
+      "fixtures": {
+        "get_weather_forecast": {
+          "location": "Synthetic City",
+          "forecast": [
+            {
+              "date": "tomorrow",
+              "condition": "Heavy rain",
+              "temp_max": 58,
+              "temp_min": 46
+            }
+          ]
+        },
+        "get_upcoming_calendar_events": {
+          "days_queried": 1,
+          "events": [
+            {
+              "summary": "Outdoor training",
+              "start": "10:00 AM"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "reminder_calendar_planning",
+      "category": "multi_tool",
+      "prompt": "Check my active reminders and tomorrow's calendar, then tell me whether I have time to renew my passport.",
+      "tools": [
+        "get_active_reminders",
+        "get_upcoming_calendar_events"
+      ],
+      "expected_tools": [
+        "get_active_reminders",
+        "get_upcoming_calendar_events"
+      ],
+      "required_answer_facts": [
+        "renew passport",
+        "dentist"
+      ],
+      "fixtures": {
+        "get_active_reminders": [
+          {
+            "id": 1,
+            "note": "Renew passport"
+          }
+        ],
+        "get_upcoming_calendar_events": {
+          "days_queried": 1,
+          "events": [
+            {
+              "summary": "Dentist appointment",
+              "start": "09:00 AM"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "weather_and_f1",
+      "category": "multi_tool",
+      "prompt": "Look up tomorrow's weather and the next Formula 1 race, then summarize both facts.",
+      "tools": [
+        "get_weather_forecast",
+        "get_f1_season_calendar"
+      ],
+      "expected_tools": [
+        "get_weather_forecast",
+        "get_f1_season_calendar"
+      ],
+      "required_answer_facts": [
+        "heavy rain",
+        "synthetic grand prix"
+      ],
+      "fixtures": {
+        "get_weather_forecast": {
+          "location": "Synthetic City",
+          "forecast": [
+            {
+              "date": "tomorrow",
+              "condition": "Heavy rain",
+              "temp_max": 58,
+              "temp_min": 46
+            }
+          ]
+        },
+        "get_f1_season_calendar": {
+          "season": "2026",
+          "calendar": [
+            {
+              "round": 12,
+              "raceName": "Synthetic Grand Prix",
+              "country": "Synthetic Republic",
+              "date": "July 19",
+              "time": "14:00"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "second_lookup_after_first",
+      "category": "multi_tool",
+      "prompt": "Use my active reminders to understand what needs attention, then check whether tomorrow's calendar has a suitable time for it.",
+      "tools": [
+        "get_active_reminders",
+        "get_upcoming_calendar_events"
+      ],
+      "expected_tools": [
+        "get_active_reminders",
+        "get_upcoming_calendar_events"
+      ],
+      "required_answer_facts": [
+        "renew passport",
+        "10:00"
+      ],
+      "fixtures": {
+        "get_active_reminders": [
+          {
+            "id": 1,
+            "note": "Renew passport"
+          }
+        ],
+        "get_upcoming_calendar_events": {
+          "days_queried": 1,
+          "events": [
+            {
+              "summary": "Open planning block",
+              "start": "10:00 AM"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "irrelevant_tool_available",
+      "category": "restraint",
+      "prompt": "Explain in two sentences how Earth's seasons are caused. Do not look anything up.",
+      "tools": [
+        "get_weather_forecast"
+      ],
+      "expected_tools": [],
+      "required_answer_facts": [
+        "axial tilt",
+        "orbit"
+      ],
+      "fixtures": {
+        "get_weather_forecast": {
+          "location": "Synthetic City",
+          "forecast": []
+        }
+      }
+    },
+    {
+      "id": "fixture_error_recovery",
+      "category": "restraint",
+      "prompt": "What's the weather tomorrow? If the weather service is unavailable, say so clearly.",
+      "tools": [
+        "get_weather_forecast"
+      ],
+      "expected_tools": [
+        "get_weather_forecast"
+      ],
+      "required_answer_facts": [
+        "unavailable"
+      ],
+      "fixture_errors": {
+        "get_weather_forecast": "Synthetic weather service outage."
+      },
+      "fixtures": {}
+    }
+  ]
+}

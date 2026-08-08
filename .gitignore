@@ -29,3 +29,6 @@ weights/
 *.wav
 *.mp3
 .local-plans/
+benchmarks/results/*.json
+benchmarks/results/*.md
+benchmarks/.benchmark.lock
