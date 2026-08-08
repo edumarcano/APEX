@@ -37,3 +37,5 @@ jobs:
           git add .github/workflows/v119-final-reconcile.yml .github/workflows/v119-repair.yml
           git commit -m "chore: repair reconciliation runner"
           git push origin HEAD:docs/v1.19-final-reconciliation
+
+# Trigger after creation.
