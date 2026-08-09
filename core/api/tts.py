@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from core import speaker
+from core import scanner, speaker
 
 _MOJIBAKE_TOKEN_PATTERN = re.compile(r"\S*(?:Ãƒ|Ã‚|Ã…|â€|Ã°)\S*")
 
