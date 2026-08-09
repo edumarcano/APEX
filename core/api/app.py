@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client
+from clients.http_sessions import ConnectorHttpSessions, set_connector_http_sessions
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
@@ -69,29 +70,43 @@ async def _app_lifespan(_app: FastAPI):
     if mcp_config.enabled:
         _LOGGER.info("Started MCP client runtime")
 
-    yield
-
-    if mcp_manager is not None:
-        await mcp_manager.shutdown()
-        set_mcp_manager(None)
-        _LOGGER.info("Stopped MCP client runtime")
-
+    connector_sessions = ConnectorHttpSessions()
+    set_connector_http_sessions(connector_sessions)
     try:
-        await asyncio.to_thread(llama_supervisor.shutdown_owned)
-    except Exception:
-        _LOGGER.exception("Error while stopping owned llama.cpp process")
-
-    await microsoft_auth.shutdown()
-    microsoft_todo_client.close()
-    set_microsoft_todo_client(None)
-    set_microsoft_auth_service(None)
-
-    if idle_model_task is not None:
-        idle_model_task.cancel()
+        yield
+    finally:
         try:
-            await idle_model_task
-        except asyncio.CancelledError:
-            pass
+            if mcp_manager is not None:
+                try:
+                    await mcp_manager.shutdown()
+                finally:
+                    set_mcp_manager(None)
+                    _LOGGER.info("Stopped MCP client runtime")
+        finally:
+            try:
+                try:
+                    await asyncio.to_thread(llama_supervisor.shutdown_owned)
+                except Exception:
+                    _LOGGER.exception("Error while stopping owned llama.cpp process")
+            finally:
+                try:
+                    await microsoft_auth.shutdown()
+                finally:
+                    try:
+                        microsoft_todo_client.close()
+                    finally:
+                        set_microsoft_todo_client(None)
+                        set_microsoft_auth_service(None)
+                        try:
+                            connector_sessions.close()
+                        finally:
+                            set_connector_http_sessions(None)
+                            if idle_model_task is not None:
+                                idle_model_task.cancel()
+                                try:
+                                    await idle_model_task
+                                except asyncio.CancelledError:
+                                    pass
 
 
 app = FastAPI(title="APEX API", lifespan=_app_lifespan)

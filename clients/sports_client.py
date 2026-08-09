@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
 
+from clients.http_sessions import get_connector_http_session
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings import get_settings_store
 
@@ -165,7 +166,12 @@ def collect_f1() -> ConnectorResult:
             f1_map = cached_map
             freshness = "fresh_cache"
         else:
-            response = requests.get(f1_url, timeout=10)
+            session = get_connector_http_session("sports")
+            response = (
+                session.get(f1_url, timeout=10)
+                if session is not None
+                else requests.get(f1_url, timeout=10)
+            )
             response.raise_for_status()
             f1_data = response.json()
             races = f1_data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
@@ -346,10 +352,15 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
             fresh_cache_used = True
             continue
         try:
-            response = requests.get(
-                f"https://api.football-data.org/v4/teams/{team.id}/matches?status=SCHEDULED&limit=1",
-                headers=headers,
-                timeout=10,
+            url = (
+                "https://api.football-data.org/v4/teams/"
+                f"{team.id}/matches?status=SCHEDULED&limit=1"
+            )
+            session = get_connector_http_session("sports")
+            response = (
+                session.get(url, headers=headers, timeout=10)
+                if session is not None
+                else requests.get(url, headers=headers, timeout=10)
             )
             if response.status_code == 429:
                 raise RuntimeError("throttled")
@@ -420,7 +431,12 @@ def fetch_f1_driver_standings() -> Dict[str, Any]:
     url = "https://api.jolpi.ca/ergast/f1/current/driverStandings.json"
 
     try:
-        response = requests.get(url, timeout=10)
+        session = get_connector_http_session("sports")
+        response = (
+            session.get(url, timeout=10)
+            if session is not None
+            else requests.get(url, timeout=10)
+        )
         response.raise_for_status()
         data = response.json()
 
@@ -468,7 +484,12 @@ def fetch_f1_season_calendar() -> Dict[str, Any]:
     url = "https://api.jolpi.ca/ergast/f1/current.json"
 
     try:
-        response = requests.get(url, timeout=10)
+        session = get_connector_http_session("sports")
+        response = (
+            session.get(url, timeout=10)
+            if session is not None
+            else requests.get(url, timeout=10)
+        )
         response.raise_for_status()
         data = response.json()
 

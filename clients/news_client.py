@@ -10,6 +10,7 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+from clients.http_sessions import get_connector_http_session
 from core.connectors.models import ConnectorResult, utc_now_iso
 
 load_dotenv()
@@ -44,7 +45,12 @@ def collect_news() -> ConnectorResult:
                 f"https://gnews.io/api/v4/search"
                 f"?q={topic}&lang=en&max=1&apikey={api_key}"
             )
-            response = requests.get(url, timeout=5)
+            session = get_connector_http_session("news")
+            response = (
+                session.get(url, timeout=5)
+                if session is not None
+                else requests.get(url, timeout=5)
+            )
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
