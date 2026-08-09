@@ -37,7 +37,7 @@ class SpeakerAdmissionTests(unittest.TestCase):
         virtual_memory: MagicMock,
         _cpu_percent: MagicMock,
     ) -> None:
-        virtual_memory.return_value.percent = 90.0
+        virtual_memory.return_value.percent = 95.0
         allowed, reason, throttled = speaker._admit_kokoro()
         self.assertEqual((allowed, reason, throttled), (False, "kokoro_ram_pressure", True))
 

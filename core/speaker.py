@@ -44,7 +44,7 @@ _READINESS: dict[str, dict[str, Any]] = {
 
 ResolvedTtsEngine = Literal["google", "kokoro", "pyttsx3"]
 
-KOKORO_RAM_LIMIT = 90.0
+KOKORO_RAM_LIMIT = 95.0
 KOKORO_CPU_LIMIT = 80.0
 KOKORO_CPU_RECOVERY_SECONDS = 3.0
 KOKORO_CPU_SAMPLE_SECONDS = 0.1

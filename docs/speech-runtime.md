@@ -41,7 +41,7 @@ Speech is synthesized one chunk ahead of playback: the first chunk is synthesize
 
 Kokoro uses speech-specific admission rather than the generic APEX system-throttle boolean:
 
-- RAM at or above 90% causes an immediate local pyttsx3 fallback.
+- RAM at or above 95% causes an immediate local pyttsx3 fallback.
 - CPU above 80% is treated as potentially transient. APEX waits for a short bounded recovery window and requires stable samples at or below the threshold before starting Kokoro.
 - Sustained CPU pressure through the recovery window falls back to local pyttsx3.
 
