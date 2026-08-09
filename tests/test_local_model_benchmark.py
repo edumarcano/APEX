@@ -163,6 +163,10 @@ class BenchmarkUtilityTests(unittest.TestCase):
         runner._owned_model = False
         runner._owned_ref = None
         runner._unload_known_residents = lambda: events.append("unload")
+        runner.resource_recovery_timeout_seconds = 5.0
+        runner.resource_recovery_poll_seconds = 0.5
+        runner.resource_recovery_stable_samples = 2
+        runner._sleep = lambda _seconds: None
 
         with (
             mock.patch.object(
@@ -190,6 +194,85 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertFalse(reused)
         self.assertEqual(events, ["before", "unload"])
         self.assertEqual(inspect.call_count, 2)
+
+    def test_resource_recovery_requires_consecutive_open_samples(self) -> None:
+        profile = SimpleNamespace(
+            provider="llama_cpp",
+            runtime_model_id="neotoma-16k",
+            context_window=16384,
+            reasoning_mode="none",
+            ram_limit=90.0,
+            cpu_limit=95.0,
+        )
+        configuration = benchmark.BenchmarkConfiguration(
+            agent="neotoma",
+            provider="llama_cpp",
+            model="model.gguf",
+            runtime_alias="neotoma-16k",
+            context=16384,
+            reasoning="none",
+            profile=profile,
+            agent_key="neotoma",
+            tool_projection_agent="neotoma",
+        )
+        runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
+        runner.resource_recovery_timeout_seconds = 5.0
+        runner.resource_recovery_poll_seconds = 0.5
+        runner.resource_recovery_stable_samples = 2
+        sleeps: list[float] = []
+        runner._sleep = sleeps.append
+
+        with mock.patch.object(
+            benchmark,
+            "check_resource_gate",
+            side_effect=[
+                (False, "memory pressure"),
+                (True, None),
+                (False, "memory pressure"),
+                (True, None),
+                (True, None),
+            ],
+        ) as gate:
+            recovered, reason = runner._wait_for_resource_recovery(configuration)
+
+        self.assertTrue(recovered)
+        self.assertIsNone(reason)
+        self.assertEqual(gate.call_count, 5)
+        self.assertEqual(sleeps, [0.5, 0.5, 0.5, 0.5])
+
+    def test_resource_blocked_is_distinct_from_model_failure(self) -> None:
+        profile = SimpleNamespace(
+            provider="llama_cpp",
+            runtime_model_id="neotoma-16k",
+            context_window=16384,
+            reasoning_mode="none",
+            ram_limit=90.0,
+            cpu_limit=95.0,
+        )
+        configuration = benchmark.BenchmarkConfiguration(
+            agent="neotoma",
+            provider="llama_cpp",
+            model="model.gguf",
+            runtime_alias="neotoma-16k",
+            context=16384,
+            reasoning="none",
+            profile=profile,
+            agent_key="neotoma",
+            tool_projection_agent="neotoma",
+        )
+        runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
+        runner._prepare_configuration = mock.Mock(
+            side_effect=benchmark.ResourceBlocked("host resources did not recover")
+        )
+        runner._resource_sampler_factory = mock.Mock()
+        runner._capture = mock.Mock()
+
+        result = runner._run_configuration(configuration)
+
+        self.assertEqual(result["status"], "resource_blocked")
+        self.assertIn("did not recover", result["error"])
+        self.assertIsNone(result["load_seconds"])
+        runner._resource_sampler_factory.assert_not_called()
 
     def test_resource_record_preserves_unavailable_metrics(self) -> None:
         record = benchmark.build_resource_record(
