@@ -489,6 +489,8 @@ def _play_audio_bytes(data: bytes) -> None:
                 pygame.mixer.music.stop()
                 raise RuntimeError("speech_cancelled")
             pygame.time.wait(_PLAYBACK_POLL_MS)
+        if _CANCEL_EVENT.is_set():
+            raise RuntimeError("speech_cancelled")
     finally:
         pygame.mixer.music.stop()
         unload = getattr(pygame.mixer.music, "unload", None)
