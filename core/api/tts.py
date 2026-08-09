@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import re
+
 from core import speaker
+
+_MOJIBAKE_TOKEN_PATTERN = re.compile(r"\S*(?:Ãƒ|Ã‚|Ã…|â€|Ã°)\S*")
 
 
 def resolve_tts_diagnostics(
@@ -18,8 +22,15 @@ def resolve_tts_diagnostics(
 
 
 def clean_for_tts(text: str) -> str:
-    """Compatibility wrapper for callers not yet migrated to ``speaker.prepare_text``."""
-    return speaker.prepare_text(text)
+    """Compatibility wrapper used by reminders until the v1.20 migration.
+
+    Speech delivery itself uses ``speaker.prepare_text`` directly and preserves
+    valid Unicode. This shim additionally drops obvious mojibake tokens so the
+    pre-v1.20 reminder path retains its historical corruption cleanup without
+    restoring the old ASCII-only policy.
+    """
+    cleaned = speaker.prepare_text(text)
+    return re.sub(r"\s+", " ", _MOJIBAKE_TOKEN_PATTERN.sub(" ", cleaned)).strip()
 
 
 # Compatibility aliases for callers and tests that used private names.
