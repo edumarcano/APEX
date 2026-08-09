@@ -9,6 +9,7 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+from clients.http_sessions import get_connector_http_session
 from core.connectors.models import ConnectorResult, utc_now_iso
 
 load_dotenv()
@@ -51,7 +52,12 @@ def collect_weather() -> ConnectorResult:
     )
 
     try:
-        response = requests.get(url, timeout=10.0)
+        session = get_connector_http_session("weather")
+        response = (
+            session.get(url, timeout=10.0)
+            if session is not None
+            else requests.get(url, timeout=10.0)
+        )
         payload = response.json()
 
         if response.status_code == 200:
@@ -125,7 +131,12 @@ def fetch_weather_forecast(days: int = 5) -> dict[str, Any]:
     )
 
     try:
-        response = requests.get(url, timeout=10.0)
+        session = get_connector_http_session("weather")
+        response = (
+            session.get(url, timeout=10.0)
+            if session is not None
+            else requests.get(url, timeout=10.0)
+        )
         data = response.json()
 
         if response.status_code != 200:

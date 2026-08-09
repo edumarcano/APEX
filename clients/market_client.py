@@ -14,6 +14,7 @@ from typing import Any, Literal
 import requests
 from dotenv import load_dotenv
 
+from clients.http_sessions import get_connector_http_session
 from core.config import DEMO_MODE
 from core.settings import get_settings_store
 
@@ -152,11 +153,19 @@ def _is_entry_fresh(fetched_at: str | None, ttl: timedelta) -> bool:
 
 def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, str | None]:
     try:
-        response = requests.get(
-            _ALPHA_VANTAGE_BASE,
-            params=params,
-            timeout=_REQUEST_TIMEOUT_SECONDS,
-        )
+        session = get_connector_http_session("market")
+        if session is None:
+            response = requests.get(
+                _ALPHA_VANTAGE_BASE,
+                params=params,
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
+        else:
+            response = session.get(
+                _ALPHA_VANTAGE_BASE,
+                params=params,
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
         response.raise_for_status()
         payload = response.json()
     except requests.Timeout:
