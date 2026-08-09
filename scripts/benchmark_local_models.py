@@ -93,6 +93,9 @@ _LOGGER = logging.getLogger(__name__)
 _CASES_PATH = ROOT / "benchmarks" / "cases.json"
 _DEFAULT_REPETITIONS = 3
 _COOLDOWN_SECONDS = 1.0
+_RESOURCE_RECOVERY_TIMEOUT_SECONDS = 30.0
+_RESOURCE_RECOVERY_POLL_SECONDS = 0.5
+_RESOURCE_RECOVERY_STABLE_SAMPLES = 2
 _RESOURCE_SAMPLE_INTERVAL_SECONDS = 0.1
 _RESIDENT_STATES = frozenset({"loading", "loaded"})
 _APEX_LIVE_URL = "http://127.0.0.1:8000/api/v1/health/live"
@@ -101,6 +104,10 @@ _BENCHMARK_LOCK_PATH = ROOT / "benchmarks" / ".benchmark.lock"
 
 class BenchmarkFailure(RuntimeError):
     """A configuration failed without making the runtime unsafe to continue."""
+
+
+class ResourceBlocked(BenchmarkFailure):
+    """A configuration was not run because host resources did not recover."""
 
 
 class BenchmarkAbort(RuntimeError):
@@ -1052,12 +1059,21 @@ class BenchmarkRunner:
         *,
         repetitions: int = _DEFAULT_REPETITIONS,
         cooldown_seconds: float = _COOLDOWN_SECONDS,
+        resource_recovery_timeout_seconds: float = _RESOURCE_RECOVERY_TIMEOUT_SECONDS,
+        resource_recovery_poll_seconds: float = _RESOURCE_RECOVERY_POLL_SECONDS,
+        resource_recovery_stable_samples: int = _RESOURCE_RECOVERY_STABLE_SAMPLES,
         sleep: Callable[[float], None] = time.sleep,
         capture: Callable[[str | None], MemorySnapshot] = capture_memory,
         resource_sampler_factory: Callable[..., ResourceSampler] = ResourceSampler,
     ) -> None:
         if repetitions < 1:
             raise ValueError("Repetitions must be at least 1.")
+        if resource_recovery_timeout_seconds < 0:
+            raise ValueError("Resource recovery timeout must not be negative.")
+        if resource_recovery_poll_seconds <= 0:
+            raise ValueError("Resource recovery poll interval must be positive.")
+        if resource_recovery_stable_samples < 1:
+            raise ValueError("Resource recovery stable samples must be at least 1.")
         self.configurations = tuple(configurations)
         self.cases = {
             "performance": [dict(case) for case in cases.get("performance", ())],
@@ -1065,6 +1081,9 @@ class BenchmarkRunner:
         }
         self.repetitions = repetitions
         self.cooldown_seconds = max(0.0, cooldown_seconds)
+        self.resource_recovery_timeout_seconds = resource_recovery_timeout_seconds
+        self.resource_recovery_poll_seconds = resource_recovery_poll_seconds
+        self.resource_recovery_stable_samples = resource_recovery_stable_samples
         self._sleep = sleep
         self._capture = capture
         self._resource_sampler_factory = resource_sampler_factory
@@ -1153,6 +1172,35 @@ class BenchmarkRunner:
         )
         return response, time.perf_counter() - started
 
+    def _wait_for_resource_recovery(
+        self,
+        configuration: BenchmarkConfiguration,
+    ) -> tuple[bool, str | None]:
+        """Wait for the next model's resource gate to be stably open."""
+        poll_seconds = self.resource_recovery_poll_seconds
+        max_checks = max(
+            self.resource_recovery_stable_samples,
+            int(self.resource_recovery_timeout_seconds / poll_seconds) + 1,
+        )
+        consecutive_open = 0
+        last_reason: str | None = None
+        for index in range(max_checks):
+            gate_open, gate_reason = check_resource_gate(
+                configuration.profile.ram_limit,
+                configuration.profile.cpu_limit,
+            )
+            if gate_open:
+                consecutive_open += 1
+                last_reason = None
+                if consecutive_open >= self.resource_recovery_stable_samples:
+                    return True, None
+            else:
+                consecutive_open = 0
+                last_reason = gate_reason
+            if index + 1 < max_checks:
+                self._sleep(poll_seconds)
+        return False, last_reason or "resource gate did not remain stable after unload"
+
     def _unload_known_residents(self) -> None:
         """Unload only recognized models, then verify an empty runtime."""
         _, residents = inspect_runtime_residents(self._allowed_refs)
@@ -1219,8 +1267,10 @@ class BenchmarkRunner:
             and self._owned_ref == target
             and residents == frozenset({target})
         )
+        transitioned = False
         if residents and not reused:
             self._unload_known_residents()
+            transitioned = True
             snapshots, residents = inspect_runtime_residents(
                 self._allowed_refs,
                 required_provider=configuration.provider,
@@ -1243,17 +1293,21 @@ class BenchmarkRunner:
                 f"in {configuration.provider}."
             )
 
-        baseline = self._capture(configuration.provider)
         if not reused:
-            gate_open, gate_reason = check_resource_gate(
-                configuration.profile.ram_limit,
-                configuration.profile.cpu_limit,
-            )
+            if transitioned:
+                gate_open, gate_reason = self._wait_for_resource_recovery(configuration)
+            else:
+                gate_open, gate_reason = check_resource_gate(
+                    configuration.profile.ram_limit,
+                    configuration.profile.cpu_limit,
+                )
             if not gate_open:
-                raise BenchmarkFailure(
-                    f"Host resource gate blocked {configuration.runtime_alias!r}"
+                raise ResourceBlocked(
+                    f"Host resources did not recover enough for "
+                    f"{configuration.runtime_alias!r}"
                     f" ({gate_reason or 'resource pressure'})."
                 )
+        baseline = self._capture(configuration.provider)
         return reused, baseline
 
     def _verify_target_resident(
@@ -1465,6 +1519,9 @@ class BenchmarkRunner:
             if exc.partial_run is None:
                 exc.partial_run = run
             raise
+        except ResourceBlocked as exc:
+            run["status"] = "resource_blocked"
+            run["error"] = str(exc)
         except BenchmarkFailure as exc:
             run["status"] = "failed"
             run["error"] = str(exc)
@@ -1589,6 +1646,9 @@ class BenchmarkRunner:
         result["failed_runs"] = sum(
             run.get("status") == "failed" for run in result["runs"]
         )
+        result["resource_blocked_runs"] = sum(
+            run.get("status") == "resource_blocked" for run in result["runs"]
+        )
         return result
 
 
@@ -1683,17 +1743,18 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         [
             "## Performance",
             "",
-            "| Agent | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
-            "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Agent | Status | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
+            "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for run in runs:
         performance = run.get("performance") or {}
         resources = run.get("resources") or {}
         lines.append(
-            "| {agent} | {provider} | {context} | {reasoning} | {load} | {latency} | "
+            "| {agent} | {status} | {provider} | {context} | {reasoning} | {load} | {latency} | "
             "{generation} | {private} | {commit} | {failures} |".format(
                 agent=run.get("agent", "?"),
+                status=run.get("status", "?"),
                 provider=run.get("provider", "?"),
                 context=run.get("context", "?"),
                 reasoning=run.get("reasoning", "?"),
@@ -1796,12 +1857,13 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
         f"Repetitions: {result.get('repetitions', '?')}",
         "",
         "PERFORMANCE",
-        "Agent / context              Load       Median latency   Effective output   Failures",
+        "Agent / context              Status             Load       Median latency   Effective output   Failures",
     ]
     for run in result.get("runs", []):
         performance = run.get("performance") or {}
         lines.append(
             f"{str(run.get('agent', '?')) + ' ' + str(run.get('context', '?')):28}"
+            f"{str(run.get('status', '?')):19}"
             f"{_display_seconds(run.get('load_seconds')):11}"
             f"{_display_seconds(performance.get('median_latency_seconds')):18}"
             f"{_display_throughput(performance.get('median_effective_output_tokens_per_second')):19}"
@@ -1821,6 +1883,14 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
         )
     if result.get("aborted"):
         lines.extend(["", f"ABORTED: {result.get('abort_reason')}"])
+    if result.get("resource_blocked_runs", 0):
+        lines.extend(
+            [
+                "",
+                f"RESOURCE BLOCKED: {result.get('resource_blocked_runs')} configuration(s) "
+                "were not benchmarked because host resources did not recover in time.",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -1916,7 +1986,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(render_terminal_summary(result))
     print(f"\nJSON: {json_path}")
     print(f"Markdown: {markdown_path}")
-    return 1 if result.get("aborted") or result.get("failed_runs", 0) else 0
+    return 1 if (
+        result.get("aborted")
+        or result.get("failed_runs", 0)
+        or result.get("resource_blocked_runs", 0)
+    ) else 0
 
 
 if __name__ == "__main__":
