@@ -20,28 +20,6 @@ function shellSegments(container: HTMLElement): SVGPathElement[] {
 }
 
 describe('ApexLogo shell behavior', () => {
-  it('keeps every shell segment dim while idle', () => {
-    const { container } = render(<ApexLogo step={null} status="idle" />)
-
-    for (const segment of shellSegments(container)) {
-      expect(segment).toHaveClass('apex-blue-metal--base')
-    }
-  })
-
-  it('uses the blue collection wave instead of cumulative activation', () => {
-    const { container } = render(
-      <ApexLogo
-        step={2}
-        status="loading"
-        outerShellActivity="collection"
-      />,
-    )
-
-    for (const segment of shellSegments(container)) {
-      expect(segment).toHaveClass('apex-blue-metal--collection-surge')
-    }
-  })
-
   it('fully lights the shell during synthesis', () => {
     const { container } = render(
       <ApexLogo

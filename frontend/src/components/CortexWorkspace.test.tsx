@@ -113,6 +113,9 @@ describe('CortexWorkspace', () => {
 
     const logo = container.querySelector('[data-slot="cortex-logo"]')
     expect(logo).toBeInTheDocument()
+    const mark = logo?.firstElementChild
+    expect(mark).toHaveAttribute('aria-hidden', 'true')
+    expect(mark).toHaveClass('h-8', 'w-auto')
     expect(logo?.querySelector('#blue-crown-top')).toHaveClass('apex-blue-metal--active')
   })
 
