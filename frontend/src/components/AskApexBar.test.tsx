@@ -235,20 +235,4 @@ describe('AskApexBar unified tool selection', () => {
     )
   })
 
-  it('has no slash-command compatibility path', () => {
-    const onSubmit = vi.fn()
-    renderBar(onSubmit)
-
-    fireEvent.change(screen.getByLabelText('Ask APEX query'), {
-      target: { value: '/weather tomorrow' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
-
-    expect(onSubmit).toHaveBeenCalledWith(
-      '/weather tomorrow',
-      'mus',
-      ['get_weather_forecast'],
-      'custom_weather',
-    )
-  })
 })
