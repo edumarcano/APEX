@@ -335,7 +335,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
     def test_speak_rejects_empty_after_sanitize(self) -> None:
         response = self.client.post(
             "/api/v1/voice/speak",
-            json={"text": "ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬"},
+            json={"text": "```only code```"},
         )
         self.assertEqual(response.status_code, 400)
 
@@ -344,9 +344,11 @@ class TrySpeakLockTests(unittest.TestCase):
     def test_route_reports_terminal_engine_after_google_fallback(self) -> None:
         from core import speaker
 
-        with mock.patch.object(
-            speaker, "_try_google_tts", return_value=False
-        ), mock.patch.object(speaker, "_speak_pyttsx3_local", return_value=True):
+        with (
+            mock.patch.object(speaker, "chunk_text", return_value=["Fallback test"]),
+            mock.patch.object(speaker, "_speak_streamed", side_effect=RuntimeError("boom")),
+            mock.patch.object(speaker, "_speak_pyttsx3_local", return_value=True),
+        ):
             resolved = speaker._route_tts_playback(  # noqa: SLF001
                 "Fallback test", "google", gender="female"
             )
@@ -356,14 +358,20 @@ class TrySpeakLockTests(unittest.TestCase):
     def test_route_reports_kokoro_when_primary_completes(self) -> None:
         from core import speaker
 
-        with mock.patch.object(speaker, "_speak_kokoro_local"):
+        with (
+            mock.patch.object(
+                speaker, "_admit_kokoro", return_value=(True, None, False)
+            ),
+            mock.patch.object(speaker, "chunk_text", return_value=["Local test"]),
+            mock.patch.object(speaker, "_speak_streamed", return_value=True),
+        ):
             resolved = speaker._route_tts_playback(  # noqa: SLF001
                 "Local test", "kokoro", gender="female"
             )
 
         self.assertEqual(resolved, "kokoro")
 
-    def test_try_speak_returns_false_when_lock_held(self) -> None:
+    def test_try_speak_returns_none_when_lock_held(self) -> None:
         from core import speaker
 
         held = threading.Event()
@@ -378,7 +386,7 @@ class TrySpeakLockTests(unittest.TestCase):
         thread.start()
         self.assertTrue(held.wait(timeout=2))
         try:
-            self.assertFalse(speaker.try_speak("blocked"))
+            self.assertIsNone(speaker.try_speak("blocked"))
         finally:
             release.set()
             thread.join(timeout=2)
