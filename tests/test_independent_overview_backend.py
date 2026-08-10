@@ -341,6 +341,12 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
 
 
 class TrySpeakLockTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from core import speaker
+
+        speaker._CANCEL_EVENT.clear()
+        self.addCleanup(speaker._CANCEL_EVENT.clear)
+
     def test_route_reports_terminal_engine_after_google_fallback(self) -> None:
         from core import speaker
 
