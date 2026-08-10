@@ -194,9 +194,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             return_value=McpRuntimeConfig(enabled=False, servers={}),
         ), mock.patch(
             "core.api.app.MCPClientManager", return_value=manager
-        ), mock.patch("core.api.app.configure_logging"), mock.patch(
-            "core.api.app.database.initialize_db"
-        ), mock.patch(
+        ), mock.patch("core.api.app.database.initialize_db"), mock.patch(
             "core.api.app.get_settings_store"
         ):
             with TestClient(app):
@@ -237,9 +235,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             return_value=McpRuntimeConfig(enabled=False, servers={}),
         ), mock.patch(
             "core.api.app.MCPClientManager", return_value=manager
-        ), mock.patch("core.api.app.configure_logging"), mock.patch(
-            "core.api.app.database.initialize_db"
-        ), mock.patch(
+        ), mock.patch("core.api.app.database.initialize_db"), mock.patch(
             "core.api.app.get_settings_store"
         ):
             with self.assertRaises(RuntimeError):

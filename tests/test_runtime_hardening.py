@@ -38,8 +38,9 @@ class RunIdPropagationTests(unittest.TestCase):
         self.assertIsNone(state.get_state())
 
     def test_logger_includes_run_id_filter(self) -> None:
-        from core.runtime_logging import RunIdFilter
+        from core.runtime_logging import RunIdFilter, configure_logging
 
+        configure_logging()
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,

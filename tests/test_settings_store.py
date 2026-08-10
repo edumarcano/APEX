@@ -57,6 +57,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
                 "primary_tts": "google",
                 "voice_gender": "female",
             },
+            "legacy_prompt": "ignored by settings store",
         }
         _write_json(self.config_path, self.base)
 
