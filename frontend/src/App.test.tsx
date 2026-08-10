@@ -479,9 +479,8 @@ describe('App weather attribution', () => {
       modules: {
         weather: {
           status: 'healthy',
-          data: { temp_f: 72 },
+          data: { temp_f: 72, condition: 'mainly clear' },
           display_text: 'Current temperature is 72 degrees with mainly clear.',
-          condition: 'mainly clear',
         },
       },
     }
