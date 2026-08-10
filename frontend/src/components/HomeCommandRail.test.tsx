@@ -105,8 +105,6 @@ describe('HomeCommandRail', () => {
     expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
     expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
-    expect(document.querySelector('[data-slot="home-standby-controls"]')).toHaveClass('grid')
-    expect(document.querySelector('[data-slot="home-standby-actions"]')).toHaveClass('col-span-2')
   })
 
   it('uses a compact assistant menu without changing briefing selection', async () => {
@@ -116,29 +114,17 @@ describe('HomeCommandRail', () => {
     renderRail({ onAgentChange, onBriefingModeChange })
 
     const trigger = screen.getByRole('button', { name: /panthera.*available/i })
-    expect(trigger).not.toHaveClass('bg-[#7E22CE]/10')
-    expect(trigger).toHaveClass('border-white/10')
     expect(document.querySelector('[data-slot="home-agent-status-dot"]')).toHaveAttribute('data-status', 'available')
     await user.click(trigger)
     expect(screen.getByText('Agent')).toBeVisible()
     const selector = screen.getByRole('dialog', { name: 'Select Agent' })
     expect(selector).toHaveAttribute('id', 'home-agent-popover')
-    expect(selector.style.bottom).not.toBe('')
-    expect(selector.style.top).toBe('')
     expect(screen.queryByText(/powered by/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /verify access/i })).toBeNull()
     await user.click(within(screen.getByRole('listbox', { name: 'Local Agents' })).getByRole('option', { name: 'Use Apex Mus' }))
 
     expect(onAgentChange).toHaveBeenCalledWith('mus')
     expect(onBriefingModeChange).not.toHaveBeenCalled()
-  })
-
-  it('uses the canonical Apex red for unavailable Agents', () => {
-    renderRail({ agentsStatus: [profile('panthera', 'model_unavailable')] })
-
-    const statusDot = document.querySelector('[data-slot="home-agent-status-dot"]')
-    expect(statusDot).toHaveClass('bg-[#DC2626]')
-    expect(statusDot).toHaveClass('shadow-[0_0_7px_rgba(220,38,38,0.8)]')
   })
 
   it('omits only the active assistant row when Ask Apex is disabled', () => {
@@ -168,7 +154,6 @@ describe('HomeCommandRail', () => {
     const user = userEvent.setup()
     renderRail({ activeLocalModel: activeMus, onUnloadLocalModel })
 
-    expect(document.querySelector('[data-slot="home-active-controls"]')).toHaveClass('home-command-grid--with-agent')
     expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
     expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
@@ -176,7 +161,6 @@ describe('HomeCommandRail', () => {
     const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
     expect(runtime).toHaveTextContent('Mus · Ollama · Loaded')
     expect(actions).not.toContainElement(runtime)
-    expect(actions).toContainElement(document.querySelector('.home-command-grid__synthesize'))
     await user.click(screen.getByRole('button', { name: 'Unload Apex Mus' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })

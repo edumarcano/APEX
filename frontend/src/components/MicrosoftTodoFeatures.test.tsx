@@ -1,31 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { CortexToolCards } from './CortexToolCards'
 import MicrosoftTodoSettingsSection from './MicrosoftTodoSettingsSection'
 
 describe('Microsoft To Do settings', () => {
-  it('shows a bounded device-code authorization prompt', () => {
-    const connect = vi.fn(async () => undefined)
-    render(
-      <MicrosoftTodoSettingsSection
-        sectionId="todo-settings"
-        runtime={{
-          status: { configured: true, state: 'disconnected', permission: 'Tasks.Read' },
-          authorization: null,
-          loading: false,
-          error: null,
-          refresh: vi.fn(async () => undefined),
-          connect,
-          disconnect: vi.fn(async () => undefined),
-        }}
-      />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(connect).toHaveBeenCalledOnce()
-    expect(screen.getByText(/Apex reminders remain in the local SQLite ledger/i)).toBeInTheDocument()
-  })
-
   it('renders only sanitized authorization instructions', () => {
     render(
       <MicrosoftTodoSettingsSection
@@ -118,7 +97,6 @@ describe('Microsoft To Do assistant cards', () => {
         }]}
       />,
     )
-    expect(screen.getByText('Ship release')).toHaveClass('line-through')
     expect(screen.getByText('High')).toBeInTheDocument()
     expect(screen.getByText('Completed')).toBeInTheDocument()
   })

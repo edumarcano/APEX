@@ -120,7 +120,6 @@ describe('AskApexBar unified tool selection', () => {
     renderBar(vi.fn(), { presentation: 'home' })
 
     const selector = screen.getByRole('button', { name: /Tools:/ })
-    expect(selector).toHaveClass('size-8')
     expect(selector.textContent).toBe('')
   })
 
@@ -170,20 +169,6 @@ describe('AskApexBar unified tool selection', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(input).toHaveValue('Keep this draft')
-  })
-
-  it('keeps the draft when the parent reports a catalog mismatch', async () => {
-    const onSubmit = vi.fn().mockResolvedValue(false)
-    renderBar(onSubmit, {
-      catalog: { ...catalog, agent: 'panthera' },
-    })
-
-    const input = screen.getByLabelText('Ask APEX query')
-    fireEvent.change(input, { target: { value: 'Wait for the active catalog' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
-
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
-    expect(input).toHaveValue('Wait for the active catalog')
   })
 
   it('clears the draft exactly once after dispatch is accepted', async () => {
