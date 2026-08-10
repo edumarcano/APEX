@@ -10,7 +10,7 @@ description: Prepare and, after explicit approval, execute evidence-based APEX p
 1. Select exactly one phase: feature PR and merge, milestone changelog, or tag and release. Infer it only when unambiguous; do not advance to another phase without an explicit request.
 2. Confirm the comparison base or previous tag and inspect the complete diff, commits, dirty files, changed contracts, affected documentation, and validation evidence. Use commit messages as supporting context, not proof of behavior.
 3. Separate completed behavior from reverted work, plans, local-only state, and unsupported claims. Never claim tests or compatibility that repository evidence does not establish.
-4. Treat local drafting, requested documentation edits, and explicitly requested local commits as authorized. Before any push, PR creation, merge, tag push, or GitHub release publication, show the exact payload and actions and obtain explicit approval.
+4. Treat local drafting, requested documentation edits, and explicitly requested local commits as authorized. Before any merge, tag push, or GitHub release publication, show the exact payload and actions and obtain explicit approval.
 5. Approval covers only the displayed external-action batch. Revalidate immediately before execution and request renewed approval if the branch, PR head, checks, target commit, tag state, release content, or requested actions change.
 
 ## Phase 1: Prepare a feature PR or squash merge
@@ -18,11 +18,11 @@ description: Prepare and, after explicit approval, execute evidence-based APEX p
 1. Compare the feature branch with the selected base from their merge-base. Detect uncommitted or untracked work that would be omitted, secrets or generated files, documentation drift, and missing verification evidence.
 2. Draft distinct artifacts:
    - A conventional PR title.
-   - A reviewer-facing PR body with Summary, Changes, Contract or Architecture Impact, Verification, Risks or Limitations, and Documentation. Omit empty sections rather than inventing content.
+   - A concise reviewer-facing PR body with Summary and Changes. Add sections such as Architecture or Contract Impact, Validation Notes, Risks or Limitations, or Documentation only when they communicate material information that is not already evident from the diff, CI results, or other repository evidence. Do not add boilerplate sections.
    - A concise squash title and optional body describing the complete branch diff for permanent history.
-3. Before pushing a branch or creating a PR, present the branch, base, commits, title, body, and exact actions for approval.
+3. Treat an explicit request to create or update a PR as authorization to push the feature branch and perform the requested PR actions.
 4. Treat later merging as a separate batch. Refresh the PR head, base, reviews, conflicts, and required checks; present the final squash message and merge action for approval.
-5. Perform only a squash merge. Stop when checks fail, conflicts exist, required review is missing, or the reviewed head changes. Verify the resulting base-branch commit after merging.
+5. Default to a squash merge unless the user explicitly requests another merge strategy. Stop when checks fail, conflicts exist, required review is missing, or the reviewed head changes. Verify the resulting base-branch commit after merging.
 6. Do not prepare a milestone changelog, tag, or release in this phase.
 
 ## Phase 2: Draft and commit the milestone changelog
@@ -39,7 +39,7 @@ description: Prepare and, after explicit approval, execute evidence-based APEX p
 1. Require the finalized changelog commit to exist locally on `main`. Default the release target to that commit; accept another explicit target only after warning and verifying that it contains the finalized changelog.
 2. Determine the previous tag. Verify the new tag does not already exist locally or remotely and that the selected target is synchronized with its intended remote state.
 3. Derive both the annotated tag message and GitHub release title exactly from the canonical changelog heading without `## `: `vX.Y.Z — Milestone Name`.
-4. Draft concise, user-facing release notes from the finalized changelog. End the body with exactly these two lines and no content after them:
+4. Draft concise, user-facing release notes from the finalized changelog. Begin the body with the release date. End the body with exactly these two lines and no content after them:
 
 ```markdown
 **Full Changelog**: [https://github.com/edumarcano/APEX/blob/main/CHANGELOG.md#<changelog-anchor>](https://github.com/edumarcano/APEX/blob/main/CHANGELOG.md#<changelog-anchor>)
