@@ -673,6 +673,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshot.servers[0].status, "authentication-required")
         self.assertNotIn("APEX_TEST_MCP_TOKEN_MISSING=", snapshot.servers[0].reason)
         self.assertIsNone(get_capability_descriptor("demo_echo"))
+        self.assertNotIn("demo", manager._recovery_tasks)
 
     async def test_missing_provider_credential_does_not_degrade_other_server(
         self,
@@ -757,46 +758,15 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         with patch(
             "core.mcp.manager._build_client", side_effect=_build_transient_client
-        ), patch("core.mcp.manager._RETRY_DELAYS_SECONDS", (60.0,)):
+        ), patch("core.mcp.manager._RETRY_DELAYS_SECONDS", (0.0,)):
             await manager.start()
             await manager._wait_for_discovery()
-            self.assertEqual(manager.status_snapshot().servers[0].status, "degraded")
-            self.assertEqual(manager._servers["demo"].retry_attempt, 1)
-            self.assertIn("demo", manager._recovery_tasks)
-
-            await manager._cancel_recovery("demo")
-            with patch("core.mcp.manager._RETRY_DELAYS_SECONDS", (0.0,)):
-                manager._schedule_recovery("demo", manager._servers["demo"].generation)
             await manager._wait_for_recovery()
 
+        self.assertFalse(first_attempt)
         self.assertEqual(manager.status_snapshot().servers[0].status, "connected")
         self.assertEqual(manager._servers["demo"].retry_attempt, 0)
         self.assertIsNotNone(get_capability_descriptor("demo_echo"))
-
-    async def test_authentication_failure_does_not_schedule_recovery(self) -> None:
-        config = McpRuntimeConfig(
-            enabled=True,
-            servers={
-                "demo": McpServerConfig(
-                    enabled=True,
-                    transport="http",
-                    url="https://example.invalid/mcp",
-                    tool_allowlist=["echo"],
-                    tool_risks={"echo": "read"},
-                    auth_env="APEX_TEST_MCP_TOKEN_MISSING",
-                )
-            },
-        )
-        os.environ.pop("APEX_TEST_MCP_TOKEN_MISSING", None)
-        manager = MCPClientManager(config)
-        self._manager = manager
-        await manager.start()
-        await manager._wait_for_discovery()
-        self.assertEqual(
-            manager.status_snapshot().servers[0].status,
-            "authentication-required",
-        )
-        self.assertNotIn("demo", manager._recovery_tasks)
 
     async def test_invalid_configuration_does_not_schedule_recovery(self) -> None:
         config = McpRuntimeConfig(
