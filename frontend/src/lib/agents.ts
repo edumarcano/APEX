@@ -55,7 +55,7 @@ export function isLocalAgentStatus(agent: Pick<AgentStatus, 'runtime'>): boolean
   return agent.runtime === 'local'
 }
 
-export function providerDisplayName(provider: AgentStatus['provider']): string {
+export function providerDisplayName(provider: string | null | undefined): string {
   if (provider === 'ollama') {
     return 'Ollama'
   }
@@ -66,9 +66,12 @@ export function providerDisplayName(provider: AgentStatus['provider']): string {
     return 'OpenAI'
   }
   if (provider === 'xai') {
-    return 'xAI'
+    return 'SpaceXAI'
   }
-  return 'Gemini'
+  if (provider === 'gemini') {
+    return 'Google'
+  }
+  return provider || 'Provider'
 }
 
 /** Compact label for known context-window sizes (e.g. 8192 → 8K). */

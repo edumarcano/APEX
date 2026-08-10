@@ -13,7 +13,7 @@ import type {
   ToolPreflightEstimate,
   ToolOutputItem,
 } from '../types/telemetry'
-import { formatContextWindowLabel, isLocalAgentKey } from '../lib/agents'
+import { formatContextWindowLabel, isLocalAgentKey, providerDisplayName } from '../lib/agents'
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -275,7 +275,7 @@ function ResponseMetrics({ metadata }: { metadata: AgentQueryMetadata | undefine
   const { agent, usage, timing, cost, citations, toolSelection } = metadata
   const supplementaryCitations = citations.filter((citation) => citation.source !== 'google_maps')
   return <div className="mt-3 space-y-3">
-    {agent ? <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-white/10 pt-3 font-mono text-[10px] text-zinc-500"><span>{agent.provider ?? 'provider'} / {agent.key}</span><span>{agent.resolvedModel ?? agent.configuredModel ?? 'model unavailable'}</span>{agent.resolvedEffort ? <span>{agent.resolvedEffort} effort</span> : null}{agent.version ? <span>v{agent.version}</span> : null}</div> : null}
+    {agent ? <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-white/10 pt-3 font-mono text-[10px] text-zinc-500"><span>{providerDisplayName(agent.provider)} / {agent.key}</span><span>{agent.resolvedModel ?? agent.configuredModel ?? 'model unavailable'}</span>{agent.resolvedEffort ? <span>{agent.resolvedEffort} effort</span> : null}{agent.version ? <span>v{agent.version}</span> : null}</div> : null}
     {usage || timing || cost ? <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3"><Metric label="Tokens" value={formatNumber(usage?.totalTokens)} detail={`in ${formatNumber(usage?.inputTokens)} · out ${formatNumber(usage?.outputTokens)} · reasoning ${formatNumber(usage?.reasoningTokens)}`} /><Metric label="Latency" value={formatMilliseconds(timing?.totalMs)} detail={`provider ${formatMilliseconds(timing?.providerMs)} · tools ${formatMilliseconds(timing?.apexToolMs)}`} /><Metric label="Estimate" value={formatCurrency(cost?.totalCost, cost?.currency)} detail={`tokens ${formatCurrency(cost?.tokenCost, cost?.currency)} · hosted ${formatCurrency(cost?.hostedToolCost, cost?.currency)}`} /></div> : null}
     {cost?.pricingVersion || cost?.completeness ? <p className="font-mono text-[10px] text-zinc-600">{cost.pricingVersion ?? 'pricing unavailable'} · {cost.completeness ?? 'estimate unavailable'}</p> : null}
     {toolSelection ? <section className="rounded-lg border border-purple-300/15 bg-purple-950/10 p-2.5" aria-label="Resolved tool selection"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Resolved tools</p><p className="mt-1 font-mono text-[10px] text-zinc-400">{toolSelection.active_profile_name ?? 'Custom'} · {toolSelection.offered_tool_names.length} offered · ~{toolSelection.selected_schema_tokens.toLocaleString()} schema tokens</p>{toolSelection.rejected_tools.length > 0 ? <ul className="mt-1 space-y-1 text-[10px] text-red-200">{toolSelection.rejected_tools.map((failure) => <li key={`${failure.name}-${failure.code}`}>{failure.name}: {failure.reason}</li>)}</ul> : null}</section> : null}

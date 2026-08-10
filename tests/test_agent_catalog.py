@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from core.agent.catalog import (
     AGENT_SPECS,
     agent_has_credentials,
+    credential_missing_message,
     resolve_agent_selection,
     is_agent_visible,
     runtime_agent_order,
@@ -82,6 +83,12 @@ class CredentialIsolationTests(unittest.TestCase):
         ):
             self.assertTrue(agent_has_credentials("panthera"))
             self.assertFalse(agent_has_credentials("neofelis"))
+
+    def test_missing_credential_message_uses_provider_display_names(self) -> None:
+        self.assertIn("Google API key", credential_missing_message("neofelis"))
+        self.assertIn("SpaceXAI API key", credential_missing_message("orcinus"))
+        self.assertIn("GEMINI_API_KEY", credential_missing_message("neofelis"))
+        self.assertIn("XAI_API_KEY", credential_missing_message("orcinus"))
 
 
 class DemoRosterTests(unittest.TestCase):

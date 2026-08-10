@@ -59,7 +59,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
-- **Cloud, local, and deterministic execution** — OpenAI, Gemini, and xAI power cloud Agent paths; Ollama supports development local Agents, while llama.cpp backs the primary local Agents. Structured Digest is the final model-free briefing fallback.
+- **Cloud, local, and deterministic execution** — OpenAI, Google, and SpaceXAI power cloud Agent paths through GPT, Gemini, and Grok models; Ollama supports development local Agents, while llama.cpp backs the primary local Agents. Structured Digest is the final model-free briefing fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
 - **Durable personal state** — SQLite persists reminders and the last 50 normal-mode briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
@@ -90,7 +90,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
-| Cloud reasoning | OpenAI, Gemini, and xAI Apex Agents; see Configuration for current model IDs |
+| Cloud reasoning | OpenAI, Google, and SpaceXAI Apex Agents; see Configuration for current model IDs |
 | Local Agent infrastructure | Ollama with Qwen3 development Agents; llama.cpp with Apodemus and Neotoma as the primary local Agents |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |

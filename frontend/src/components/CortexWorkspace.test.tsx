@@ -531,4 +531,26 @@ describe('CortexWorkspace', () => {
     expect(suggestions).toHaveAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox')
     expect(suggestions).toHaveAttribute('srcdoc', '<a href="https://www.google.com/search">Search</a>')
   })
+
+  it('uses display labels rather than raw cloud provider IDs in response metadata', () => {
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          history: [{
+            role: 'agent',
+            content: 'Research complete.',
+            metadata: {
+              agent: {
+                key: 'orcinus', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'extended', resolvedEffort: 'high',
+              },
+              usage: null, timing: null, cost: null, citations: [], grounding: null, toolSelection: null,
+            },
+          }],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('SpaceXAI / orcinus')).toBeInTheDocument()
+    expect(screen.queryByText('xai / orcinus')).not.toBeInTheDocument()
+  })
 })

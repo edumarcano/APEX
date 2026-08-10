@@ -40,7 +40,7 @@ loopback by default"]
 
     subgraph EXTERNAL["External services when enabled"]
         CONNECTORS["Weather, news, mail,<br/>calendar, markets, tasks"]
-        CLOUD_AGENTS["OpenAI, Gemini, xAI"]
+        CLOUD_AGENTS["OpenAI, Google, SpaceXAI"]
         CLOUD_TTS["Google Cloud TTS"]
         MCP["MCP providers"]
     end
@@ -83,7 +83,7 @@ Selecting a local briefing Agent or Structured Digest avoids sending briefing sy
 
 ## Interactive Agent data
 
-Interactive Agent work is separate from briefing synthesis. A cloud Agent sends the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Gemini, or xAI. A local Agent sends the applicable categories to its configured Ollama or llama.cpp host, which defaults to loopback but can be changed. The designation is stored only in gitignored `config.local.json` and is omitted when empty.
+Interactive Agent work is separate from briefing synthesis. A cloud Agent sends the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and invoked tool results to its configured provider: OpenAI, Google, or SpaceXAI. A local Agent sends the applicable categories to its configured Ollama or llama.cpp host, which defaults to loopback but can be changed. The designation is stored only in gitignored `config.local.json` and is omitted when empty.
 
 An explicit cloud access verification sends only the configured model identifier and credential to the provider's metadata endpoint. It sends no prompt, history, HUD context, provider tool call, or credential value back to the browser. APEX stores only a sanitized availability category and timestamp; it does not expose or log raw provider messages.
 
@@ -103,7 +103,7 @@ Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, a
 
 Enabled MCP providers receive arguments selected for an approved tool call. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives web or news search; Alpha Vantage receives market-research parameters.
 
-Neofelis can send a query to provider-hosted Google Search or Google Maps grounding when their settings are enabled. Delphinus and Orcinus can use provider-hosted X Search when their respective setting is enabled. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and xAI general web search is not enabled.
+Neofelis can send a query to provider-hosted Google Search or Google Maps grounding when their settings are enabled. Delphinus and Orcinus can use provider-hosted X Search when their respective setting is enabled. These calls are visible as provider-origin traces and may incur separate provider charges. Panthera receives no OpenAI hosted search, and SpaceXAI general web search is not enabled.
 
 Imported results are untrusted and bounded before model and HUD delivery. The presets are disabled by default, must be allowlisted and locally risk-classified, and are never included in scheduled briefing telemetry.
 
@@ -114,7 +114,7 @@ Runtime Settings exposes only preset enablement. It never returns or accepts cre
 APEX is a personal, non-commercial application. A public source repository does not make its operator a public service, and personal OAuth credentials must remain local. The following provider-specific boundaries still apply when their integrations are enabled:
 
 - Gemini Search returns Google-provided Search Suggestions that APEX displays with the grounded response. Gemini Maps sources display immediately after the supported response, identify Google Maps without translation, retain the provider name, and link to the returned Maps URL. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [Maps grounding requirements](https://ai.google.dev/gemini-api/docs/maps-grounding).
-- xAI personal data requires a Zero Data Retention-enabled API. ZDR is configured for the xAI team rather than per request; APEX users must keep it enabled for the team owning their key. HIPAA Protected Health Information requires both ZDR and an xAI Business Associate Agreement. See the [xAI Enterprise terms](https://x.ai/legal/terms-of-service-enterprise) and [ZDR guidance](https://docs.x.ai/developers/faq/security).
+- SpaceXAI personal data requires a Zero Data Retention-enabled xAI API. ZDR is configured for the xAI team rather than per request; APEX users must keep it enabled for the team owning their key. HIPAA Protected Health Information requires both ZDR and an xAI Business Associate Agreement. See the [xAI Enterprise terms](https://x.ai/legal/terms-of-service-enterprise) and [ZDR guidance](https://docs.x.ai/developers/faq/security).
 - Brave Search results remain transient: they are not part of scheduled briefing telemetry and must not be copied into persistent memory, datasets, or model evaluation/benchmark material. See the [Brave Search API terms](https://api-dashboard.search.brave.com/documentation/resources/terms-of-service).
 - Open-Meteo's free hosted API is limited to non-commercial use and its documented request limits. APEX sends the configured location to Open-Meteo geocoding, then adapts returned temperatures and WMO weather codes into display summaries. The weather HUD and Cortex forecast cards visibly credit Open-Meteo and GeoNames, link to [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and state that APEX adapted the data. See the [Open-Meteo terms](https://open-meteo.com/en/terms), [licence](https://open-meteo.com/en/license), [forecast API](https://open-meteo.com/en/docs), and [geocoding API](https://open-meteo.com/en/docs/geocoding-api). Football fixtures visibly credit the Football-Data.org API. Formula 1 schedule data visibly credits Jolpica and its [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) data license. See the [Football-Data terms](https://www.football-data.org/about) and [Jolpica terms](https://github.com/jolpica/jolpica-f1/blob/main/TERMS.md).
 - GNews Free and Alpha Vantage are for personal or non-commercial use. Do not use their free/personal credentials for commercial activity without the provider's appropriate plan or written agreement. See [GNews pricing](https://gnews.io/pricing) and [Alpha Vantage terms](https://www.alphavantage.co/terms_of_service/).

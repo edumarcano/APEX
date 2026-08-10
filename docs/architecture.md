@@ -170,17 +170,17 @@ Attached context and tool results are separately marked as untrusted model data.
 
 | Agent | Provider and model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 1.0 | Gemini `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
+| Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
 | Panthera 1.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
-| Neofelis 1.0 | Gemini `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Delphinus 1.0 | xAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Orcinus 1.0 | xAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Neofelis 1.0 | Google `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Delphinus 1.0 | SpaceXAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Orcinus 1.0 | SpaceXAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 
 Each non-demo Agent request begins with the selected Agent's immutable identity instruction, followed by prompt behavior loaded exclusively from `config.json`, an optional user designation from the local runtime settings snapshot, scoped context, and the security boundary. Agent identity describes the active Agent and its model; it does not grant capabilities or override tool and privacy policy.
 
-Panthera, Neofelis, Delphinus, and Orcinus receive the general APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; xAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced restricted development allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+Panthera, Neofelis, Delphinus, and Orcinus receive the general APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; SpaceXAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced restricted development allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, selectable local context and reasoning metadata, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
 
