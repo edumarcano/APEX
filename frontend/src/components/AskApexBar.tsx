@@ -20,6 +20,37 @@ import { agentShortName } from '../lib/agentDisplay'
 import { AgentMark } from './AgentMark'
 import { ToolsSelector } from './ToolsSelector'
 
+function CortexQueryRim(): ReactElement {
+  const accentRgb = '168, 85, 247'
+  const dualSweep = `conic-gradient(from 0deg,
+    rgba(${accentRgb}, 0) 0deg,
+    rgba(${accentRgb}, 0.15) 15deg,
+    rgba(${accentRgb}, 0.95) 45deg,
+    rgba(${accentRgb}, 0.15) 75deg,
+    rgba(${accentRgb}, 0) 90deg,
+    rgba(${accentRgb}, 0) 180deg,
+    rgba(${accentRgb}, 0.15) 195deg,
+    rgba(${accentRgb}, 0.95) 225deg,
+    rgba(${accentRgb}, 0.15) 255deg,
+    rgba(${accentRgb}, 0) 270deg,
+    rgba(${accentRgb}, 0) 360deg)`
+  const ringMask = {
+    WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+    WebkitMaskComposite: 'xor',
+    mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+    maskComposite: 'exclude',
+  } as const
+
+  return <div className="pointer-events-none absolute inset-0 z-[25] overflow-hidden rounded-xl" aria-hidden data-slot="cortex-query-rim">
+    <div className="absolute inset-0 rounded-xl" style={{ boxShadow: `inset 0 0 0 1px rgba(${accentRgb}, 0.55), 0 0 18px rgba(${accentRgb}, 0.28)` }} />
+    {[5, 2].map((padding) => <div key={padding} className="absolute inset-0 overflow-hidden rounded-xl" style={{ padding: `${padding}px`, ...ringMask }}>
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="cortex-query-rim__sweep" style={{ width: '200vmax', height: '200vmax', background: dualSweep, opacity: padding === 5 ? 0.55 : 1 }} />
+      </div>
+    </div>)}
+  </div>
+}
+
 function CortexErrorFeedback({ error }: { error: string }): ReactElement | null {
   const [visible, setVisible] = useState(true)
 
@@ -141,8 +172,9 @@ export function AskApexBar({
   const home = presentation === 'home'
   const cortex = presentation === 'cortex'
   const wrapperClassName = 'w-full max-w-full'
-  const cortexStateClassName = isSubmitting || submissionPending
-    ? 'cortex-ask-apex-bar--active border-[#A855F7]/70'
+  const queryActive = isSubmitting || submissionPending
+  const cortexStateClassName = queryActive
+    ? 'border-[#A855F7]/70'
     : cortex && error
       ? 'cortex-ask-apex-bar--error'
       : 'border-white/15'
@@ -157,6 +189,7 @@ export function AskApexBar({
 
   return <div className={wrapperClassName}>
     <form onSubmit={handleSubmit} className={formClassName} aria-label="Ask APEX" aria-busy={isSubmitting || submissionPending}>
+      {cortex && queryActive ? <CortexQueryRim /> : null}
       <div className={`flex items-center gap-3 ${cortex ? 'min-h-12 px-3 py-2 sm:min-h-14 sm:px-4' : 'min-h-10 px-2 py-1'}`}>
         <span className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]" aria-hidden>&gt;_</span>
         <input type="text" value={query} onChange={(event) => { draftRef.current = event.target.value; setLocalQuery(event.target.value); onDraftChange?.(event.target.value) }} onKeyDown={handleInputKeyDown} placeholder="Ask APEX" disabled={editorDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-500 outline-none focus:ring-0" aria-label="Ask APEX query" autoComplete="off" spellCheck={false} />

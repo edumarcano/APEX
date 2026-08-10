@@ -116,6 +116,28 @@ function renderBar(
 }
 
 describe('AskApexBar unified tool selection', () => {
+  it('renders the query rim only while a Cortex query is active', () => {
+    const view = renderBar(vi.fn(), { isSubmitting: true })
+
+    expect(view.container.querySelector('[data-slot="cortex-query-rim"]')).toBeInTheDocument()
+
+    view.rerender(
+      <AskApexBar
+        presentation="cortex"
+        activeAgent="mus"
+        onSubmit={vi.fn()}
+        agentsStatus={[mus]}
+        catalog={catalog}
+        selectedToolNames={['get_weather_forecast']}
+        activeToolProfileId="custom_weather"
+        selectionReady
+        isSubmitting={false}
+      />,
+    )
+
+    expect(view.container.querySelector('[data-slot="cortex-query-rim"]')).not.toBeInTheDocument()
+  })
+
   it('uses an icon-only tools trigger in Home', () => {
     renderBar(vi.fn(), { presentation: 'home' })
 
