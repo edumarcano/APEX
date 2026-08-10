@@ -20,7 +20,7 @@ from core.config import ENV_PATH
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
-from core import database
+from core import database, speaker
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
-    """Start background workers on API boot and cancel them on shutdown."""
+    """Start application-owned runtime resources and release them on shutdown."""
     configure_logging()
     idle_model_task: asyncio.Task[None] | None = None
     mcp_manager: MCPClientManager | None = None
@@ -43,6 +43,7 @@ async def _app_lifespan(_app: FastAPI):
     set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db()
     get_settings_store()
+    speaker.initialize()
 
     llama_supervisor = get_llama_cpp_server_supervisor()
 
@@ -76,37 +77,40 @@ async def _app_lifespan(_app: FastAPI):
         yield
     finally:
         try:
-            if mcp_manager is not None:
-                try:
-                    await mcp_manager.shutdown()
-                finally:
-                    set_mcp_manager(None)
-                    _LOGGER.info("Stopped MCP client runtime")
+            speaker.shutdown()
         finally:
             try:
-                try:
-                    await asyncio.to_thread(llama_supervisor.shutdown_owned)
-                except Exception:
-                    _LOGGER.exception("Error while stopping owned llama.cpp process")
+                if mcp_manager is not None:
+                    try:
+                        await mcp_manager.shutdown()
+                    finally:
+                        set_mcp_manager(None)
+                        _LOGGER.info("Stopped MCP client runtime")
             finally:
                 try:
-                    await microsoft_auth.shutdown()
+                    try:
+                        await asyncio.to_thread(llama_supervisor.shutdown_owned)
+                    except Exception:
+                        _LOGGER.exception("Error while stopping owned llama.cpp process")
                 finally:
                     try:
-                        microsoft_todo_client.close()
+                        await microsoft_auth.shutdown()
                     finally:
-                        set_microsoft_todo_client(None)
-                        set_microsoft_auth_service(None)
                         try:
-                            connector_sessions.close()
+                            microsoft_todo_client.close()
                         finally:
-                            set_connector_http_sessions(None)
-                            if idle_model_task is not None:
-                                idle_model_task.cancel()
-                                try:
-                                    await idle_model_task
-                                except asyncio.CancelledError:
-                                    pass
+                            set_microsoft_todo_client(None)
+                            set_microsoft_auth_service(None)
+                            try:
+                                connector_sessions.close()
+                            finally:
+                                set_connector_http_sessions(None)
+                                if idle_model_task is not None:
+                                    idle_model_task.cancel()
+                                    try:
+                                        await idle_model_task
+                                    except asyncio.CancelledError:
+                                        pass
 
 
 app = FastAPI(title="APEX API", lifespan=_app_lifespan)

@@ -41,6 +41,11 @@ jobs:
       - name: Check public documentation contracts
         run: uv run python scripts/check_docs.py
 
+      - name: Validate optional TTS extras
+        run: |
+          uv sync --locked --all-extras
+          uv run python -c "import google.cloud.texttospeech; import kokoro_onnx; import numpy; import onnxruntime"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
