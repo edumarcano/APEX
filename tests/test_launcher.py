@@ -12,6 +12,11 @@ import launcher
 
 
 class LauncherHelperTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._logging_patch = mock.patch.object(launcher, "configure_logging")
+        self._logging_patch.start()
+        self.addCleanup(self._logging_patch.stop)
+
     def test_sanitized_env_keeps_only_allowlisted_keys(self) -> None:
         with mock.patch.dict(
             os.environ,
