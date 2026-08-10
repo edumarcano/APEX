@@ -358,7 +358,7 @@ Establish Apex Agents as APEX's provider-neutral intelligence abstraction, unify
 
 ## v1.19.1 - Runtime Reliability & Maintenance
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Resolve known backend and speech-runtime technical debt before Cortex begins relying on longer-running, repeated, and increasingly concurrent execution workflows.
