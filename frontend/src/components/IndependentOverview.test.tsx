@@ -7,7 +7,6 @@ import { StandbyActions } from './StandbyActions'
 import { PreflightDialog } from './PreflightDialog'
 import { BriefingDigest } from './BriefingDigest'
 import { TelemetryCard } from './TelemetryCard'
-import { ApexLogo } from './ApexLogo'
 
 describe('StandbyActions', () => {
   it('exposes both activation actions', async () => {
@@ -209,22 +208,6 @@ describe('TelemetryCard refresh and module state', () => {
   })
 })
 
-describe('ApexLogo telemetry collection state', () => {
-  it('surges the core and sequences all blue segments while collecting', () => {
-    const { container, rerender } = render(
-      <ApexLogo step={null} status="success" isTelemetryCollecting outerShellActivity="collection" />,
-    )
-
-    expect(container.querySelector('.apex-core-metal--green-surge')).toBeTruthy()
-    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(7)
-
-    rerender(<ApexLogo step={null} status="success" />)
-    expect(container.querySelector('.apex-core-metal--green-surge')).toBeNull()
-    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(0)
-    expect(container.querySelectorAll('.apex-blue-metal--active')).toHaveLength(7)
-  })
-})
-
 describe('BriefingDigest briefing actions', () => {
   it('keeps generation controls out of the content area', () => {
     render(
@@ -284,28 +267,4 @@ describe('BriefingDigest briefing actions', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Last manual delivery: pyttsx3')
   })
 
-  it('keeps completed blue stages stable during synthesis while retaining the purple core', () => {
-    const { container } = render(
-      <ApexLogo step={3} status="loading" outerShellActivity="synthesis" />,
-    )
-
-    expect(container.querySelector('.apex-core-metal--purple-surge')).toBeTruthy()
-    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(0)
-    expect(container.querySelectorAll('.apex-blue-metal--active')).toHaveLength(6)
-    expect(container.querySelectorAll('.apex-blue-metal--base')).toHaveLength(1)
-  })
-
-  it('uses the rust wave for local loading and restores normal blue segments when loaded', () => {
-    const { container, rerender } = render(
-      <ApexLogo step={3} status="loading" outerShellActivity="local_loading" />,
-    )
-
-    expect(container.querySelector('.apex-core-metal--purple-surge')).toBeTruthy()
-    expect(container.querySelectorAll('.apex-blue-metal--rust-surge')).toHaveLength(7)
-    expect(container.querySelectorAll('.apex-blue-metal--collection-surge')).toHaveLength(0)
-
-    rerender(<ApexLogo step={null} status="success" outerShellActivity="normal" />)
-    expect(container.querySelectorAll('.apex-blue-metal--rust-surge')).toHaveLength(0)
-    expect(container.querySelectorAll('.apex-blue-metal--active')).toHaveLength(7)
-  })
 })

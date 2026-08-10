@@ -253,16 +253,6 @@ describe('SettingsPanel', () => {
     expect(hostInput).toHaveValue('http://localhost:9090')
   })
 
-  it('does not render Apodemus context in Runtime Settings', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
-    renderPanel({ agentsStatusHydrated: true })
-
-    await screen.findByRole('switch', { name: 'Ask APEX enabled' })
-    expect(screen.queryByLabelText('Apodemus context')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Local Runtime' })).not.toBeInTheDocument()
-  })
-
-
   it('edits the optional user designation through local settings', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
@@ -306,7 +296,7 @@ describe('SettingsPanel', () => {
     expect(weather).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('renders the Market toggle with immediate timing and dark selects', async () => {
+  it('surfaces Market enablement in settings and runtime status', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     renderPanel()
 
@@ -318,12 +308,6 @@ describe('SettingsPanel', () => {
     const marketStatus = within(runtimeSection as HTMLElement).getByText('Market').parentElement
     expect(marketStatus).not.toBeNull()
     expect(within(marketStatus as HTMLElement).getByText('Enabled')).toBeVisible()
-    for (const select of screen.getAllByRole('combobox')) {
-      expect(select).toHaveClass('bg-zinc-950', 'text-zinc-100', '[color-scheme:dark]')
-      for (const option of within(select).getAllByRole('option')) {
-        expect(option).toHaveClass('bg-zinc-950', 'text-zinc-100')
-      }
-    }
   })
 
   it('gates MCP providers behind the master toggle and applies them on Save', async () => {

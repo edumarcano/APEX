@@ -97,16 +97,6 @@ describe('CortexWorkspace', () => {
     vi.useRealTimers()
   })
 
-  it('uses the available shell width and keeps the conversation before the right inspector', () => {
-    render(<CortexWorkspace {...workspaceProps()} />)
-    const workspace = screen.getByRole('region', { name: 'Cortex workspace' })
-    const inspector = screen.getByLabelText('Cortex inspector')
-    expect(workspace.className).not.toContain('max-w-7xl')
-    expect(inspector.className).toContain('lg:border-l')
-    expect(inspector.previousElementSibling).toHaveTextContent('APEX is ready')
-    expect(screen.getByText('Panthera')).not.toHaveAttribute('role', 'button')
-  })
-
   it('offers empty-canvas prompt chips through the active profile submission path', async () => {
     const onSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
@@ -176,9 +166,6 @@ describe('CortexWorkspace', () => {
     const profileDialog = screen.getByRole('dialog', { name: 'Select agent' })
     expect(profileDialog).toBeInTheDocument()
     expect(profileDialog).toHaveAttribute('id', 'cortex-agent-popover')
-    expect(profileDialog.className).toContain('top-full')
-    expect(profileDialog.className).toContain('mt-2')
-    expect(profileDialog.className).not.toContain('bottom-full')
     await user.click(screen.getByRole('tab', { name: 'Local agents' }))
     expect(onAgentChange).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Use Apex Mus' }))
@@ -238,15 +225,12 @@ describe('CortexWorkspace', () => {
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {
     const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [mus] })} />)
     expect(screen.getByText('Unloaded')).toBeInTheDocument()
-    expect(document.querySelector('.cortex-lifecycle-status--transitioning')).not.toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [{ ...mus, active: true }] })} />)
     expect(screen.getByText('Loaded')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [{ ...mus, loading: true }] })} />)
     expect(screen.getByText('Loading')).toBeInTheDocument()
-    expect(document.querySelector('.cortex-lifecycle-status--transitioning')).toBeInTheDocument()
-    expect(document.querySelector('.cortex-lifecycle-spinner')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [{ ...mus, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
     expect(screen.getByText('Unavailable')).toBeInTheDocument()
@@ -513,7 +497,6 @@ describe('CortexWorkspace', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Cortex Response Header' })).toBeInTheDocument()
     expect(screen.getByText('bold text')).toBeInTheDocument()
-    expect(screen.getByText('inline code')).toHaveClass('font-mono')
     const link = screen.getByRole('link', { name: 'Documentation Link' })
     expect(link).toHaveAttribute('href', 'https://apex.example/docs')
     expect(link).toHaveAttribute('target', '_blank')

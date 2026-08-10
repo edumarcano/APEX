@@ -31,6 +31,16 @@
 - Documentation or agent-configuration changes: validate referenced paths and metadata, run `uv run python scripts/check_docs.py` for public documentation changes, then run `git diff --check`.
 - Report commands actually run and any validation that could not be completed.
 
+## Test Discipline
+
+- Before adding a test, search existing coverage and identify the primary layer that owns the behavior.
+- Each test must execute production behavior and provide a distinct failure signal. Do not implement the behavior under test inside a mock, fake component, or custom harness.
+- Do not repeat store or domain behavior at API or UI layers unless that boundary adds a distinct transformation, side effect, or failure mode.
+- Avoid exact prose, copied catalog data, fixture counts, generated identifiers, CSS classes, and private implementation snapshots unless a canonical document or public interface defines them as contracts.
+- Use deterministic synchronization for concurrency tests; do not manufacture ordering with sleeps.
+- Preserve focused tests for security, privacy, persistence, migrations, external payloads, lifecycle ownership, resource cleanup, and asynchronous races.
+- When a test's failure signal is ambiguous, retain it until redundancy can be demonstrated.
+
 ## Scoped Guidance
 
 - All documentation and repository communication must follow `docs/agent-guidance/writing.md`.

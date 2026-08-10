@@ -173,30 +173,6 @@ describe('useToolCatalog per-Agent hydration', () => {
     expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
   })
 
-  it('never copies the previous Agent selection into a new Agent session', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        const agent = new URL(String(input)).searchParams.get('agent') as AgentKey
-        return Promise.resolve({
-          ok: true,
-          json: async () => catalogFor(agent),
-        })
-      }),
-    )
-    const hook = renderHook(
-      ({ agent }: { agent: AgentKey }) => useToolCatalog(agent),
-      { initialProps: { agent: 'panthera' as AgentKey } },
-    )
-    await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
-    hook.result.current.setSelectedToolNames(['get_weather_forecast'])
-
-    hook.rerender({ agent: 'mus' })
-    await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
-    expect(hook.result.current.selectedToolNames).toEqual([])
-    expect(hook.result.current.activeToolProfileId).toBe('no_tools')
-  })
-
   it('ignores a stale Agent refresh while hydrating the newly selected Agent', async () => {
     type CatalogResponse = { ok: boolean; json: () => Promise<unknown> }
     const pendingResponses: Array<{

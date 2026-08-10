@@ -142,30 +142,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 503)
 
-    def test_load_with_stale_tracker_still_gates_and_switches(self) -> None:
-        backend = mock.Mock()
-        backend.enabled = True
-        backend.is_model_resident.side_effect = [False, True]
-        with (
-            mock.patch("core.api.cortex.DEMO_MODE", False),
-            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
-            mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
-            mock.patch("core.api.cortex.end_local_execution"),
-            mock.patch(
-                "core.api.cortex.check_resource_gate", return_value=(True, None)
-            ) as gate,
-            mock.patch("core.api.cortex.switch_local_model", return_value=True) as switch,
-            mock.patch(
-                "core.api.cortex.get_provider_snapshot",
-                return_value=_ollama_snapshot("qwen3:4b-instruct"),
-            ),
-        ):
-            response = load_local_model_endpoint("mus")
-
-        self.assertEqual(response.agent, "mus")
-        gate.assert_called_once()
-        switch.assert_called_once()
-
     def test_unload_claims_the_execution_slot_before_requesting_release(self) -> None:
         backend = mock.Mock()
         backend.manual_unload_enabled = True

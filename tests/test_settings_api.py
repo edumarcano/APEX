@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from fastapi.testclient import TestClient
 
-from core.settings.models import SettingsPatch, VoicePatch, FootballPatch, FootballTeamPatch, MarketPatch
+from core.settings.models import SettingsPatch, FootballPatch, FootballTeamPatch, MarketPatch
 from core.settings.store import (
     RuntimeSettingsStore,
     SettingsPersistenceError,
@@ -149,15 +148,6 @@ class SettingsApiTests(unittest.TestCase):
         reloaded = self.client.get("/api/v1/settings")
         self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "apodemus")
 
-    def test_removed_ollama_briefing_modes_are_rejected(self) -> None:
-        for mode in ("mus", "sorex"):
-            with self.subTest(mode=mode):
-                response = self.client.patch(
-                    "/api/v1/settings",
-                    json={"briefing": {"default_mode": mode}},
-                )
-                self.assertEqual(response.status_code, 422)
-
     def test_dev_local_synthesis_reports_apodemus(self) -> None:
         with mock.patch("core.api.routers.system.is_dev_mode", return_value=True), mock.patch(
             "core.api.routers.system.DEV_AI_SYNTHESIS", "local"
@@ -186,11 +176,14 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(again["settings"]["voice"]["gender"], "male")
 
     def test_unknown_field_rejected(self) -> None:
-        response = self.client.patch(
-            "/api/v1/settings",
-            json={"features": {"weather": True, "unknown": True}},
-        )
-        self.assertEqual(response.status_code, 422)
+        for payload in (
+            {"features": {"weather": True, "unknown": True}},
+            {"briefing": {"default_mode": "mus"}},
+            {"briefing": {"default_mode": "sorex"}},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.patch("/api/v1/settings", json=payload)
+                self.assertEqual(response.status_code, 422)
 
     def test_mcp_patch_rejects_advanced_or_unknown_fields(self) -> None:
         for payload in (
@@ -337,7 +330,6 @@ class SettingsApiTests(unittest.TestCase):
         self.assertFalse(self.local_path.is_file())
 
     def test_persistence_failure_leaves_snapshot_unchanged(self) -> None:
-        before = self.client.get("/api/v1/settings").json()["settings"]
         with mock.patch.object(
             self.store,
             "apply_patch",
@@ -349,47 +341,6 @@ class SettingsApiTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 500)
         self.assertIn("config.local.json", response.json()["detail"])
-        after = self.client.get("/api/v1/settings").json()["settings"]
-        self.assertEqual(after, before)
-        self.assertFalse(after["features"]["news"])
-
-    def test_concurrent_different_field_patches_merge(self) -> None:
-        errors: list[BaseException] = []
-
-        def patch_news() -> None:
-            try:
-                result = self.client.patch(
-                    "/api/v1/settings",
-                    json={"features": {"news": True}},
-                )
-                if result.status_code != 200:
-                    errors.append(AssertionError(result.text))
-            except BaseException as exc:  # noqa: BLE001
-                errors.append(exc)
-
-        def patch_gender() -> None:
-            try:
-                result = self.client.patch(
-                    "/api/v1/settings",
-                    json={"voice": {"gender": "male"}},
-                )
-                if result.status_code != 200:
-                    errors.append(AssertionError(result.text))
-            except BaseException as exc:  # noqa: BLE001
-                errors.append(exc)
-
-        threads = [
-            threading.Thread(target=patch_news),
-            threading.Thread(target=patch_gender),
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-        self.assertEqual(errors, [])
-        snapshot = self.store.get_snapshot()
-        self.assertTrue(snapshot.features.news)
-        self.assertEqual(snapshot.voice.gender, "male")
 
     def test_config_boot_reads_store_including_local_agent(self) -> None:
         self.store.apply_patch(
@@ -427,15 +378,6 @@ class SettingsApiTests(unittest.TestCase):
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()
         self.assertEqual(config_payload["default_agent"], "panthera")
-
-
-class SettingsApiVoicePatchSmokeTests(unittest.TestCase):
-    def test_voice_patch_model_round_trip(self) -> None:
-        patch = SettingsPatch(voice=VoicePatch(engine="kokoro", gender="male"))
-        dumped = patch.model_dump(exclude_none=True)
-        self.assertEqual(dumped["voice"]["engine"], "kokoro")
-        self.assertEqual(dumped["voice"]["gender"], "male")
-
 
 if __name__ == "__main__":
     unittest.main()

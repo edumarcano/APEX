@@ -744,7 +744,7 @@ class McpStatusRouteTests(unittest.TestCase):
         with patch("core.api.app.any_local_runtime_enabled", return_value=False), patch(
             "core.api.app.load_mcp_config",
             return_value=McpRuntimeConfig(enabled=False, servers={}),
-        ):
+        ), patch("core.api.app.configure_logging"):
             with TestClient(app) as client:
                 response = client.get("/api/v1/mcp/status")
         self.assertEqual(response.status_code, 200)
@@ -760,7 +760,7 @@ class McpStatusRouteTests(unittest.TestCase):
         with patch("core.api.app.any_local_runtime_enabled", return_value=False), patch(
             "core.api.app.load_mcp_config",
             return_value=McpRuntimeConfig(enabled=False, servers={}),
-        ):
+        ), patch("core.api.app.configure_logging"):
             with TestClient(app) as client:
                 response = client.get("/api/v1/health/ready")
         self.assertEqual(response.status_code, 200)

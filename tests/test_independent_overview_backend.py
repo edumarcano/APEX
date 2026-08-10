@@ -47,7 +47,6 @@ class ProfileBusyStatusTests(unittest.TestCase):
         _write_json(
             self.config_path,
             {
-                "schema_version": 3,
                 "features": {
                     "weather": True,
                     "sports": True,
@@ -58,7 +57,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 },
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
-                "voice": {"engine": "pyttsx3", "gender": "male"},
+                "tts_settings": {"primary_tts": "pyttsx3", "voice_gender": "male"},
             },
         )
         reset_settings_store_for_tests()
@@ -274,7 +273,6 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         _write_json(
             config_path,
             {
-                "schema_version": 3,
                 "features": {
                     "weather": True,
                     "sports": True,
@@ -285,7 +283,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                 },
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
-                "voice": {"engine": "pyttsx3", "gender": "male"},
+                "tts_settings": {"primary_tts": "pyttsx3", "voice_gender": "male"},
             },
         )
         reset_settings_store_for_tests()

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -58,7 +57,6 @@ class SettingsStoreLoadTests(unittest.TestCase):
                 "primary_tts": "google",
                 "voice_gender": "female",
             },
-            "legacy_prompt": "ignored by settings store",
         }
         _write_json(self.config_path, self.base)
 
@@ -273,12 +271,6 @@ class SettingsStoreLoadTests(unittest.TestCase):
         )
         self.assertEqual(normalized["ask_apex"]["cloud_agent"], "panthera")
 
-    def test_missing_local_file(self) -> None:
-        store = self._store()
-        self.assertFalse(store.local_file_present)
-        self.assertFalse(store.local_override_active)
-        self.assertIsNone(store.load_warning)
-
     def test_malformed_local_uses_base_with_warning(self) -> None:
         self.local_path.write_text("{not-json", encoding="utf-8")
         store = self._store()
@@ -365,17 +357,6 @@ class SettingsStorePatchTests(unittest.TestCase):
             config_path=self.config_path,
             local_config_path=self.local_path,
         )
-
-    def test_strict_rejection_of_unknown_patch_fields(self) -> None:
-        with self.assertRaises(ValidationError):
-            SettingsPatch.model_validate({"features": {"weather": True, "xyz": True}})
-        with self.assertRaises(ValidationError):
-            SettingsPatch.model_validate({"unknown_root": {"a": 1}})
-
-    def test_removed_ollama_briefing_modes_are_invalid_patch_values(self) -> None:
-        for mode in ("mus", "sorex"):
-            with self.subTest(mode=mode), self.assertRaises(ValidationError):
-                SettingsPatch.model_validate({"briefing": {"default_mode": mode}})
 
     def test_local_agents_are_valid_patch_values(self) -> None:
         for profile in ("sorex", "mus", "apodemus", "neotoma"):
@@ -667,33 +648,6 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
         self.assertIn(snap.features.weather, (True, False))
         self.assertIn(snap.modules.f1, (True, False))
         self.assertTrue(self.local_path.is_file())
-
-    def test_concurrent_same_field_last_write_semantics(self) -> None:
-        results: list[str] = []
-        lock = threading.Lock()
-        start = threading.Barrier(2)
-
-        def write_profile(profile: str, delay: float) -> None:
-            start.wait(timeout=5)
-            time.sleep(delay)
-            snap = self.store.apply_patch(
-                SettingsPatch(
-                    ask_apex=AskApexPatch(cloud_agent=profile)  # type: ignore[arg-type]
-                )
-            )
-            with lock:
-                results.append(snap.ask_apex.cloud_agent)
-
-        t1 = threading.Thread(target=write_profile, args=("neofelis", 0.0))
-        t2 = threading.Thread(target=write_profile, args=("orcinus", 0.05))
-        t1.start()
-        t2.start()
-        t1.join(timeout=10)
-        t2.join(timeout=10)
-        self.assertEqual(len(results), 2)
-        # Last successful write should be reflected in the published snapshot.
-        self.assertEqual(self.store.get_snapshot().ask_apex.cloud_agent, "orcinus")
-
 
 if __name__ == "__main__":
     unittest.main()

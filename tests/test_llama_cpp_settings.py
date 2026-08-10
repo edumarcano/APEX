@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,7 +49,8 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         )
 
     def test_tracked_defaults_remain_disabled(self) -> None:
-        store = self._store()
+        with self.assertNoLogs("core.settings.normalize", level=logging.WARNING):
+            store = self._store()
         snap = store.get_snapshot()
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
@@ -130,7 +132,8 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                 "ask_apex": {"apodemus_context_window": 8192},
             },
         )
-        store = self._store()
+        with self.assertNoLogs("core.settings.normalize", level=logging.WARNING):
+            store = self._store()
         snap = store.get_snapshot()
         self.assertEqual(
             snap.ask_apex.local_context_windows,

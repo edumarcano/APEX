@@ -64,39 +64,7 @@ function parseStructuredEvent(value: unknown): CalendarDisplayEvent | null {
   }
 }
 
-function parseLegacyCalendar(calendarText: string): CalendarTelemetry {
-  const empty: CalendarTelemetry = {
-    windowDays: 7,
-    items: [],
-    totalCount: 0,
-  }
-  if (!calendarText || calendarText.includes('No upcoming events')) {
-    return empty
-  }
-
-  const stripped = calendarText
-    .replace(/^Calendar Telemetry\s*\((?:48h|7d)\)\s*:\s*/i, '')
-    .trim()
-  if (!stripped || /no upcoming events/i.test(stripped)) {
-    return empty
-  }
-
-  const items = [...stripped.matchAll(/'([^']+)'\s+at\s+([^|]+)/g)].map(
-    (match) => ({
-      summary: match[1],
-      start: match[2].trim(),
-      end: null,
-      allDay: match[2].includes('(All day)'),
-    }),
-  )
-  return {
-    ...empty,
-    items,
-    totalCount: items.length,
-  }
-}
-
-/** Prefer the seven-day structured contract while preserving older snapshots. */
+/** Read the canonical structured seven-day calendar contract. */
 export function resolveCalendarTelemetry(
   module: TelemetryModuleEntry | undefined,
 ): CalendarTelemetry {
@@ -116,16 +84,9 @@ export function resolveCalendarTelemetry(
     }
   }
 
-  if (isRecord(data) && Array.isArray(data.display_events)) {
-    const items = data.display_events
-      .map(parseStructuredEvent)
-      .filter((event): event is CalendarDisplayEvent => event !== null)
-    return {
-      windowDays: nonNegativeInteger(data.window_days) ?? 7,
-      items,
-      totalCount: nonNegativeInteger(data.display_count) ?? items.length,
-    }
+  return {
+    windowDays: 7,
+    items: [],
+    totalCount: 0,
   }
-
-  return parseLegacyCalendar(module?.display_text ?? '')
 }

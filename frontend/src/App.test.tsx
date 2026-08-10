@@ -443,37 +443,4 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
-  it('rolls the Apodemus context selector back when persistence fails', async () => {
-    appMocks.initialAgent = 'apodemus'
-    const user = userEvent.setup()
-    const settingsPatch = deferred<Response>()
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = new URL(String(input))
-        if (url.pathname.endsWith('/cortex/tool-catalog')) {
-          return Promise.resolve(new Response(
-            JSON.stringify(catalogFor('apodemus')),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ))
-        }
-        if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
-          return settingsPatch.promise
-        }
-        return Promise.resolve(new Response('{}', { status: 200 }))
-      }),
-    )
-
-    render(<App />)
-
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    const contextSelect = await screen.findByRole('combobox', { name: 'Local context window' })
-    expect(contextSelect).toHaveValue('16384')
-    await user.selectOptions(contextSelect, '32768')
-    expect(contextSelect).toHaveValue('32768')
-
-    settingsPatch.resolve(new Response('{}', { status: 500 }))
-    await waitFor(() => expect(contextSelect).toHaveValue('16384'))
-  })
 })

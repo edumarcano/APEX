@@ -122,9 +122,6 @@ class DemoSnapshotIntegrationTests(unittest.TestCase):
 
         self.assertIsNotNone(snapshot)
         assert snapshot is not None
-        self.assertEqual(snapshot.modules["weather"].data["temp_f"], 72)
-        self.assertEqual(snapshot.modules["calendar"].data["total_count"], 3)
-        self.assertEqual(snapshot.modules["football"].data["fixtures"][0]["team"], "Barcelona")
         self.assertTrue(snapshot.connector_health)
         self.assertGreater(snapshot.sync_health_score, 90.0)
 

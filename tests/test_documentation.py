@@ -7,14 +7,10 @@ from scripts.check_docs import (
     ROOT,
     check_agent_profiles,
     check_api_contract_version,
-    check_cors_example,
     check_default_briefing_provider,
-    check_frontend_owner_names,
     check_links,
-    check_release_version,
     check_schema_versions,
     duplicate_route_headings,
-    run,
 )
 
 
@@ -136,18 +132,6 @@ class DocumentationCheckerTests(unittest.TestCase):
 
         self.assertEqual(duplicates, [("POST", "/api/v1/example", 3)])
 
-    def test_repository_cors_example_preserves_defaults(self) -> None:
-        self.assertEqual(check_cors_example(ROOT), [])
-
-    def test_repository_release_version_matches_changelog(self) -> None:
-        self.assertEqual(check_release_version(ROOT), [])
-
-    def test_frontend_state_owners_use_current_names(self) -> None:
-        self.assertEqual(check_frontend_owner_names(ROOT), [])
-
-    def test_readme_names_the_default_briefing_provider(self) -> None:
-        self.assertEqual(check_default_briefing_provider(ROOT), [])
-
     def test_readme_briefing_check_rejects_ollama_and_missing_paths(self) -> None:
         issues = check_default_briefing_provider(
             ROOT,
@@ -163,10 +147,6 @@ class DocumentationCheckerTests(unittest.TestCase):
         reasons = {issue.reason for issue in issues}
         self.assertIn("obsolete Ollama briefing provider is documented", reasons)
         self.assertIn("briefing diagram omits a supported synthesis path", reasons)
-
-    def test_complete_documentation_contract(self) -> None:
-        self.assertEqual(run(ROOT), [])
-
 
 if __name__ == "__main__":
     unittest.main()

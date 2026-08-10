@@ -26,11 +26,18 @@ class _NullSampler:
 
 
 class BenchmarkUtilityTests(unittest.TestCase):
-    def test_case_file_has_small_versioned_suite(self) -> None:
+    def test_case_file_has_valid_nonempty_suites(self) -> None:
         cases = benchmark.load_benchmark_cases()
 
-        self.assertEqual(len(cases["performance"]), 3)
-        self.assertEqual(len(cases["tool_cases"]), 13)
+        self.assertTrue(cases["performance"])
+        self.assertTrue(cases["tool_cases"])
+        case_ids = [case["id"] for suite in cases.values() for case in suite]
+        self.assertEqual(len(case_ids), len(set(case_ids)))
+        for case in cases["performance"]:
+            self.assertTrue(case["prompt"].strip())
+        for case in cases["tool_cases"]:
+            self.assertTrue(case["prompt"].strip())
+            self.assertTrue(set(case["expected_tools"]).issubset(case["tools"]))
 
     def test_context_change_requires_reload_but_reasoning_change_does_not(self) -> None:
         same_alias = LocalModelRef(provider="llama_cpp", model="neotoma-16k")
