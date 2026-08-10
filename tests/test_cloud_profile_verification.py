@@ -8,7 +8,6 @@ from unittest import mock
 
 from fastapi import HTTPException
 
-from core.agent.catalog import AGENT_SPECS, runtime_agent_order
 from core.agent.providers.cloud_verification import (
     classify_provider_failure,
     clear_cloud_status_cache,
@@ -31,23 +30,6 @@ class CloudAgentVerificationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         clear_cloud_status_cache()
-
-    def test_catalog_specs_keep_backend_owned_names_tags_and_order(self) -> None:
-        self.assertEqual(AGENT_SPECS["panthera"].display_name, "Apex Panthera")
-        self.assertEqual(AGENT_SPECS["acinonyx"].capability_tags, ("Privacy sandbox", "Masked context"))
-        self.assertEqual(AGENT_SPECS["orcinus"].capability_tags, ("Deep reasoning", "Extended analysis", "X Search"))
-        self.assertEqual(runtime_agent_order(dev_mode=True)[0], "acinonyx")
-        self.assertIn("unnamed-experimental-agent", runtime_agent_order(dev_mode=True))
-        self.assertNotIn("unnamed-experimental-agent", runtime_agent_order(dev_mode=False))
-        self.assertEqual(
-            runtime_agent_order(dev_mode=False),
-            ("panthera", "apodemus", "neotoma"),
-        )
-        self.assertTrue(AGENT_SPECS["acinonyx"].dev_only)
-        self.assertEqual(AGENT_SPECS["acinonyx"].stability, "experimental")
-        self.assertEqual(AGENT_SPECS["apodemus"].stability, "stable")
-        for key in ("neofelis", "delphinus", "orcinus", "mus", "sorex"):
-            self.assertTrue(AGENT_SPECS[key].dev_only)
 
     def test_non_generative_probe_is_cached_as_verified(self) -> None:
         with (

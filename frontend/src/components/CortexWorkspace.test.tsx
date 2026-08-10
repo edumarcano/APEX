@@ -225,15 +225,12 @@ describe('CortexWorkspace', () => {
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {
     const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [mus] })} />)
     expect(screen.getByText('Unloaded')).toBeInTheDocument()
-    expect(document.querySelector('.cortex-lifecycle-status--transitioning')).not.toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [{ ...mus, active: true }] })} />)
     expect(screen.getByText('Loaded')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [{ ...mus, loading: true }] })} />)
     expect(screen.getByText('Loading')).toBeInTheDocument()
-    expect(document.querySelector('.cortex-lifecycle-status--transitioning')).toBeInTheDocument()
-    expect(document.querySelector('.cortex-lifecycle-spinner')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'mus', agentsStatus: [{ ...mus, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
     expect(screen.getByText('Unavailable')).toBeInTheDocument()

@@ -296,7 +296,7 @@ describe('SettingsPanel', () => {
     expect(weather).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('renders the Market toggle with immediate timing and dark selects', async () => {
+  it('surfaces Market enablement in settings and runtime status', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     renderPanel()
 
