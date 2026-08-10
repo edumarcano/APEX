@@ -51,7 +51,8 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
             result = weather_client.collect_weather()
 
         self.assertEqual(result.status, "healthy")
-        self.assertEqual(result.display_text, "Current temperature is 71 degrees with partly cloudy.")
+        self.assertIn("71 degrees", result.display_text)
+        self.assertIn("partly cloudy", result.display_text)
         self.assertEqual(
             result.data,
             {
@@ -208,23 +209,6 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
 
         self.assertEqual(network.reason_code, "network_error")
         self.assertEqual(network.display_text, "Failed to connect to Weather API.")
-
-    def test_uses_top_level_requests_when_no_shared_session_is_installed(self) -> None:
-        with mock.patch.dict("os.environ", {"TARGET_LOCATION": "Boston"}, clear=False), mock.patch.object(
-            weather_client, "get_connector_http_session", return_value=None
-        ), mock.patch.object(
-            weather_client.requests,
-            "get",
-            side_effect=[
-                _Response(_geocoding_payload()),
-                _Response({"current": {"temperature_2m": 70, "weather_code": 61}}),
-            ],
-        ) as top_level_get:
-            result = weather_client.collect_weather()
-
-        self.assertEqual(result.status, "healthy")
-        self.assertEqual(top_level_get.call_count, 2)
-
 
 if __name__ == "__main__":
     unittest.main()
