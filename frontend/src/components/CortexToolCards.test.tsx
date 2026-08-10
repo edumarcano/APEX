@@ -77,6 +77,47 @@ describe('CortexToolCards calendar presentation', () => {
   })
 })
 
+describe('CortexToolCards weather presentation', () => {
+  it('credits Open-Meteo and GeoNames beside a successful forecast', () => {
+    render(
+      <CortexToolCards
+        toolOutputs={[
+          {
+            name: 'get_weather_forecast',
+            status: 'ok',
+            duration_ms: 12,
+            output: {
+              location: 'Boston',
+              forecast: [
+                {
+                  date: '2026-08-10',
+                  temp_max: 81,
+                  temp_min: 66,
+                  condition: 'clear sky',
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'Open-Meteo' })).toHaveAttribute(
+      'href',
+      'https://open-meteo.com/',
+    )
+    expect(screen.getByRole('link', { name: 'GeoNames' })).toHaveAttribute(
+      'href',
+      'https://www.geonames.org/',
+    )
+    expect(screen.getByRole('link', { name: 'CC BY 4.0' })).toHaveAttribute(
+      'href',
+      'https://creativecommons.org/licenses/by/4.0/',
+    )
+    expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
+  })
+})
+
 describe('CortexToolCards Gmail presentation', () => {
   it('renders bounded Gmail search metadata in a dedicated result list', () => {
     render(

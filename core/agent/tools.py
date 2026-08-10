@@ -36,8 +36,7 @@ def _stable_tool_result(
 def get_weather_forecast(days: int = 5) -> dict[str, Any]:
     """Retrieve a multi-day weather forecast for the configured target location.
 
-    Groups OpenWeatherMap 3-hour forecast entries into daily high/low
-    temperature and condition summaries.
+    Returns Open-Meteo daily high/low temperature and condition summaries.
 
     Args:
         days: Number of forecast days to return. Values below 1 are raised to

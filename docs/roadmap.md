@@ -363,7 +363,7 @@ Establish Apex Agents as APEX's provider-neutral intelligence abstraction, unify
 **Objective:**
 Resolve known backend and speech-runtime technical debt before Cortex begins relying on longer-running, repeated, and increasingly concurrent execution workflows.
 
-This milestone includes shared HTTP connection-pool refactoring, asynchronous multi-source request optimization where appropriate, and improvements to Kokoro and speech subsystem lifecycle management, long-text chunking, progressive playback, readiness checks, dependency isolation, Unicode handling, cancellation, fallback behavior, and failure testing.
+This milestone includes shared HTTP connection-pool refactoring, asynchronous multi-source request optimization where appropriate, the Open-Meteo weather-provider migration and attribution hardening, and improvements to Kokoro and speech subsystem lifecycle management, long-text chunking, progressive playback, readiness checks, dependency isolation, Unicode handling, cancellation, fallback behavior, and failure testing.
 
 ---
 

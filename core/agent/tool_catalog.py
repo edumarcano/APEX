@@ -239,10 +239,8 @@ def _native_availability(name: str) -> tuple[bool, str | None]:
             if reason and reason != "ok":
                 return False, f"{connector_name.title()} is unavailable ({reason})."
 
-    if name == "get_weather_forecast" and not os.getenv(
-        "OPENWEATHER_API_KEY", ""
-    ).strip():
-        return False, "Weather is not configured (OPENWEATHER_API_KEY is missing)."
+    if name == "get_weather_forecast" and not os.getenv("TARGET_LOCATION", "").strip():
+        return False, "Weather is not configured (TARGET_LOCATION is missing)."
 
     if name in {"get_upcoming_calendar_events", "search_gmail", "get_gmail_message"}:
         credentials_path = PROJECT_ROOT / "credentials.json"

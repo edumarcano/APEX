@@ -338,7 +338,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(len(group_ids), len(catalog.groups))
 
     def test_native_catalog_uses_configuration_without_authenticating(self) -> None:
-        with patch.dict("os.environ", {"OPENWEATHER_API_KEY": ""}, clear=False):
+        with patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False):
             catalog = build_tool_catalog("panthera")
         weather = next(
             tool for tool in catalog.tools if tool.name == "get_weather_forecast"
@@ -357,7 +357,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         with (
             patch.dict(
                 "os.environ",
-                {"OPENWEATHER_API_KEY": "test-weather-key"},
+                {"TARGET_LOCATION": "Boston"},
                 clear=False,
             ),
             patch("core.telemetry.service.get_telemetry_service") as get_service,
