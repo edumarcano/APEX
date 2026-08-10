@@ -309,16 +309,16 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         key="neotoma",
         display_name="Apex Neotoma",
         description=(
-            "Preview private local Agent for Qwen3.5 4B work through llama.cpp."
+            "Preview private local Agent for Gemma 4 E4B work through llama.cpp."
         ),
         identity_instruction=(
             "You are Apex Neotoma, an Apex Agent powered by "
-            "Qwen3.5 4B through llama.cpp."
+            "Gemma 4 E4B through llama.cpp."
         ),
         agent_version="1.0",
         provider="llama_cpp",
         runtime="local",
-        api_model="Qwen3.5-4B-Q4_K_M.gguf",
+        api_model="gemma-4-E4B-Q4_K_M.gguf",
         default_effort=None,
         credential_env=None,
         max_tool_turns=3,
@@ -338,12 +338,12 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         ),
         identity_instruction=(
             "You are Unnamed Experimental Agent, a technical APEX development "
-            "target powered by Gemma 4 E4B through llama.cpp."
+            "target powered by Qwen3.5 4B through llama.cpp."
         ),
         agent_version="1.0",
         provider="llama_cpp",
         runtime="local",
-        api_model="gemma-4-E4B-Q4_K_M.gguf",
+        api_model="Qwen3.5-4B-Q4_K_M.gguf",
         default_effort=None,
         credential_env=None,
         max_tool_turns=3,

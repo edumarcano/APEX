@@ -86,7 +86,7 @@ const previewLocal = agent({
   key: 'neotoma',
   display_name: 'Apex Neotoma',
   description: 'Preview generalist local Agent.',
-  configured_model: 'Qwen3.5-4B-Q4_K_M.gguf',
+  configured_model: 'gemma-4-E4B-Q4_K_M.gguf',
   sort_order: 7,
   stability: 'preview',
   provider: 'llama_cpp',

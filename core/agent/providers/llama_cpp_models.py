@@ -393,7 +393,7 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
         high_resource_context_options=(65536,),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
-        maximum_context_window=262144,
+        maximum_context_window=131072,
         runtime_model_ids={
             4096: "neotoma-4k",
             16384: "neotoma-16k",
@@ -411,7 +411,7 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
         high_resource_context_options=(),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
-        maximum_context_window=131072,
+        maximum_context_window=262144,
         runtime_model_ids={
             4096: "unnamed-experimental-agent-4k",
             16384: "unnamed-experimental-agent-16k",

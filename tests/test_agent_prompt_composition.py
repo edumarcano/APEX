@@ -29,10 +29,10 @@ class AgentIdentityTests(unittest.TestCase):
         "sorex": "You are Apex Sorex, an Apex Agent powered by Qwen3 1.7B through Ollama.",
         "mus": "You are Apex Mus, an Apex Agent powered by Qwen3 4B Instruct through Ollama.",
         "apodemus": "You are Apex Apodemus, an Apex Agent powered by Gemma 4 E2B through llama.cpp.",
-        "neotoma": "You are Apex Neotoma, an Apex Agent powered by Qwen3.5 4B through llama.cpp.",
+        "neotoma": "You are Apex Neotoma, an Apex Agent powered by Gemma 4 E4B through llama.cpp.",
         "unnamed-experimental-agent": (
             "You are Unnamed Experimental Agent, a technical APEX development "
-            "target powered by Gemma 4 E4B through llama.cpp."
+            "target powered by Qwen3.5 4B through llama.cpp."
         ),
     }
 
