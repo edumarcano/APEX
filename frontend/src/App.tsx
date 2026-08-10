@@ -35,6 +35,7 @@ import { useCortex } from './hooks/useCortex'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useMarketData } from './hooks/useMarketData'
+import { useMcpStatus } from './hooks/useMcpStatus'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
@@ -226,7 +227,20 @@ export default function App(): ReactElement {
     refreshAgentsStatus,
     clearCortexSession,
   } = useCortex(true, activeAgent)
-  const toolCatalogState = useToolCatalog(activeAgent)
+  const mcpRuntime = useMcpStatus(true)
+  const mcpAvailabilityVersion = useMemo(() => {
+    if (!mcpRuntime.status) return null
+    return JSON.stringify({
+      enabled: mcpRuntime.status.enabled,
+      status: mcpRuntime.status.status,
+      servers: mcpRuntime.status.servers.map((server) => ({
+        id: server.id,
+        status: server.status,
+        registered_tools: server.registered_tools,
+      })),
+    })
+  }, [mcpRuntime.status])
+  const toolCatalogState = useToolCatalog(activeAgent, mcpAvailabilityVersion)
   const toolPreflightState = useToolPreflight({
     agent: activeAgent,
     selectedToolNames: toolCatalogState.selectedToolNames,
@@ -1179,6 +1193,7 @@ export default function App(): ReactElement {
           failedConnectors={briefing.failedConnectors}
           hasBriefingEvidence={briefing.status === 'success' || briefing.status === 'error'}
           onApplied={handleSettingsPanelApplied}
+          mcpRuntime={mcpRuntime}
         />
 
         {workspace === 'home' ? (

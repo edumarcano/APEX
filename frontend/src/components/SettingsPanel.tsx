@@ -22,7 +22,7 @@ import {
 } from './SettingsControls'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useLlamaCppStatus } from '../hooks/useLlamaCppStatus'
-import { useMcpStatus } from '../hooks/useMcpStatus'
+import { useMcpStatus, type McpStatusState } from '../hooks/useMcpStatus'
 import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
 import {
@@ -92,6 +92,7 @@ interface SettingsPanelProps {
   failedConnectors: string[]
   hasBriefingEvidence: boolean
   onApplied: (response: SettingsResponse) => void
+  mcpRuntime?: McpStatusState
 }
 
 
@@ -165,6 +166,7 @@ export default function SettingsPanel({
   failedConnectors,
   hasBriefingEvidence,
   onApplied,
+  mcpRuntime: sharedMcpRuntime,
 }: SettingsPanelProps): ReactElement | null {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -180,7 +182,8 @@ export default function SettingsPanel({
     setDraft,
     save,
   } = useSettingsEditor({ open, onApplied })
-  const mcpRuntime = useMcpStatus(open)
+  const polledMcpRuntime = useMcpStatus(open && sharedMcpRuntime === undefined)
+  const mcpRuntime = sharedMcpRuntime ?? polledMcpRuntime
   const llamaCppRuntime = useLlamaCppStatus(open)
 
   const microsoftTodoRuntime = useMicrosoftTodoStatus(open)
