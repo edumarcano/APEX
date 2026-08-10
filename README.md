@@ -12,6 +12,8 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
+APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which lets you work with configured Apex Agents. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to one of the configured Agents.
+
 <p align="center">
   <img
   src="docs/assets/apex-home.png"
@@ -32,11 +34,11 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 ### Produces briefings on my terms
 
-A briefing can use Panthera through OpenAI, Apodemus through llama.cpp, or a deterministic Structured Digest. Panthera falls back to Apodemus and then Structured Digest; an explicit Apodemus request falls directly to Structured Digest. All routes receive the same sanitized, size-bounded facts, and a provider failure ends in a useful model-free result instead of a blank screen.
+A briefing can use a cloud Agent, a local Agent, or Structured Digest, a deterministic briefing that does not use a model. The cloud Agent falls back to the local Agent and then Structured Digest; an explicit local Agent request falls directly to Structured Digest. All routes receive the same sanitized, size-bounded facts, and a provider failure ends in a useful model-free result instead of a blank screen.
 
 ### Operates Apex Agents
 
-Agent queries can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
+Agent queries can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
 
 <p align="center">
   <img
@@ -59,7 +61,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
 - **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
-- **Cloud, local, and deterministic execution** — OpenAI, Google, and SpaceXAI power cloud Agent paths through GPT, Gemini, and Grok models; Ollama supports development local Agents, while llama.cpp backs the primary local Agents. Structured Digest is the final model-free briefing fallback.
+- **Cloud, local, and deterministic execution** — cloud and local Agents support different execution paths, while Structured Digest provides the final model-free briefing fallback.
 - **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
 - **Durable personal state** — SQLite persists reminders and the last 50 normal-mode briefings, while browser-held Agent conversations disappear on reload.
 - **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
@@ -76,7 +78,7 @@ flowchart LR
     HUD --> A["Agent queries"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["Panthera/OpenAI · Apodemus/llama.cpp · Structured Digest"]
+    B --> M["Cloud Agent/OpenAI · Local Agent/llama.cpp · Structured Digest"]
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```
@@ -91,7 +93,7 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
 | Cloud reasoning | OpenAI, Google, and SpaceXAI Apex Agents; see Configuration for current model IDs |
-| Local Agent infrastructure | Ollama with Qwen3 development Agents; llama.cpp with Apodemus and Neotoma as the primary local Agents |
+| Local Agent infrastructure | Ollama with Qwen3 development Agents; llama.cpp with the Apodemus stable local Agent and Neotoma preview local Agent |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
 | Validation | unittest, Vitest, ESLint, TypeScript, Vite build |
@@ -118,7 +120,7 @@ Demo mode bypasses live connectors and model calls, does not write briefing hist
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-Use Apodemus through llama.cpp or Structured Digest to avoid OpenAI disclosure for briefing synthesis. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+Use a local Agent or Structured Digest to avoid sending briefing data to a cloud provider. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 
