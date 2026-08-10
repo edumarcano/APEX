@@ -217,7 +217,10 @@ export interface UseToolCatalogResult {
   refreshCatalog: () => Promise<void>
 }
 
-export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
+export function useToolCatalog(
+  activeAgent: AgentKey,
+  availabilityVersion: string | null = null,
+): UseToolCatalogResult {
   const [catalog, setCatalog] = useState<ToolCatalog | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -228,6 +231,7 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
   const hydratedAgent = useRef<AgentKey | null>(null)
   const activeAgentRef = useRef(activeAgent)
   const requestGenerations = useRef(new Map<AgentKey, number>())
+  const refreshedAvailabilityVersion = useRef<string | null>(null)
 
   useEffect(() => {
     activeAgentRef.current = activeAgent
@@ -286,6 +290,17 @@ export function useToolCatalog(activeAgent: AgentKey): UseToolCatalogResult {
     setActiveToolProfileId(stored?.profileId ?? null)
     void refreshCatalog()
   }, [activeAgent, refreshCatalog])
+
+  useEffect(() => {
+    if (
+      availabilityVersion === null ||
+      refreshedAvailabilityVersion.current === availabilityVersion
+    ) {
+      return
+    }
+    refreshedAvailabilityVersion.current = availabilityVersion
+    void refreshCatalog()
+  }, [availabilityVersion, refreshCatalog])
 
   useEffect(() => {
     if (!catalog || catalog.agent !== activeAgent || hydratedAgent.current === activeAgent) {

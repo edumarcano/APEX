@@ -206,7 +206,7 @@ the same projected descriptors that provider turns receive.
 
 Provider-hosted Search, Maps, and X activity is normalized separately from APEX tool calls. Successful billable uses carry provider-origin traces, citations where available, attributed latency, and versioned cost estimates.
 
-The MCP manager owns provider connection, discovery, registration, reconciliation, and shutdown. Disabling a provider unregisters its capabilities before closing the transport, preventing new calls from entering a connection being torn down.
+The MCP manager owns provider connection, discovery, registration, reconciliation, recovery, and shutdown. Transient connection, discovery, and active-transport failures retire the affected client, unregister its capabilities, and schedule one generation-guarded recovery attempt with bounded backoff. Disabling a provider unregisters its capabilities before closing the transport and cancels pending recovery, preventing new calls from entering a connection being torn down.
 
 ## Local model lifecycle
 

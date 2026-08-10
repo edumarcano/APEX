@@ -173,6 +173,43 @@ describe('useToolCatalog per-Agent hydration', () => {
     expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
   })
 
+  it('refreshes a dynamic profile when MCP runtime availability changes', async () => {
+    const braveTool: ToolCatalogTool = {
+      ...catalogFor('panthera').tools[0],
+      name: 'brave_brave_web_search',
+      label: 'Brave Web Search',
+      origin: 'mcp',
+      source_id: 'brave',
+      apex_family: 'web_search',
+      available: false,
+      unavailable_reason: 'MCP server is recovering.',
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => catalogFor('panthera', [braveTool]),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => catalogFor('panthera', [{ ...braveTool, available: true, unavailable_reason: null }]),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const hook = renderHook(
+      ({ availabilityVersion }: { availabilityVersion: string | null }) =>
+        useToolCatalog('panthera', availabilityVersion),
+      { initialProps: { availabilityVersion: null as string | null } },
+    )
+    await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
+    expect(hook.result.current.selectedToolNames).toEqual([])
+
+    hook.rerender({ availabilityVersion: 'brave:connected' })
+    await waitFor(() => {
+      expect(hook.result.current.selectedToolNames).toEqual(['brave_brave_web_search'])
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores a stale Agent refresh while hydrating the newly selected Agent', async () => {
     type CatalogResponse = { ok: boolean; json: () => Promise<unknown> }
     const pendingResponses: Array<{
