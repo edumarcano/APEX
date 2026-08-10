@@ -29,7 +29,7 @@ const appMocks = vi.hoisted(() => ({
     modules: {
       weather: {
         status: string
-        data: { temp_f: number }
+        data: { temp_f: number; condition?: string }
         display_text: string
       }
     }
@@ -46,9 +46,23 @@ vi.mock('./components/PreflightDialog', () => ({ PreflightDialog: () => null }))
 vi.mock('./components/ReminderListRow', () => ({ ReminderListRow: () => null }))
 vi.mock('./components/ReminderQuickAdd', () => ({ ReminderQuickAdd: () => null }))
 vi.mock('./components/TelemetryCard', () => ({
-  TelemetryCard: ({ title, headerAction }: { title?: string; headerAction?: ReactNode }) => (
-    title === 'Weather' ? <>{headerAction}</> : null
-  ),
+  TelemetryCard: ({
+    title,
+    headerAction,
+    compactValue,
+    children,
+  }: {
+    title?: string
+    headerAction?: ReactNode
+    compactValue?: ReactNode
+    children?: ReactNode
+  }) => title === 'Weather' ? (
+    <>
+      {headerAction}
+      <span data-testid="weather-compact-value">{compactValue}</span>
+      {children}
+    </>
+  ) : null,
 }))
 vi.mock('./components/VoiceSignalGlyph', () => ({ VoiceSignalGlyph: () => null }))
 vi.mock('./components/SettingsPanel', () => ({ default: () => null }))
@@ -466,7 +480,8 @@ describe('App weather attribution', () => {
         weather: {
           status: 'healthy',
           data: { temp_f: 72 },
-          display_text: 'Current temperature is 72 degrees with clear sky.',
+          display_text: 'Current temperature is 72 degrees with mainly clear.',
+          condition: 'mainly clear',
         },
       },
     }
@@ -486,5 +501,6 @@ describe('App weather attribution', () => {
       'https://creativecommons.org/licenses/by/4.0/',
     )
     expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
+    expect(screen.getAllByText('Mainly Clear')).toHaveLength(1)
   })
 })

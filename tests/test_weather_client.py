@@ -42,7 +42,7 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
     ) -> None:
         session = _Session(
             _Response(_geocoding_payload()),
-            _Response({"current": {"temperature_2m": 70.6, "weather_code": 2}}),
+            _Response({"current": {"temperature_2m": 70.6, "weather_code": 2, "is_day": 1}}),
         )
 
         with mock.patch.dict("os.environ", {"TARGET_LOCATION": "Boston"}, clear=False), mock.patch.object(
@@ -74,12 +74,25 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
                 "longitude": -71.0589,
                 "temperature_unit": "fahrenheit",
                 "timezone": "auto",
-                "current": "temperature_2m,weather_code",
+                "current": "temperature_2m,weather_code,is_day",
                 "forecast_days": 1,
             },
         )
         self.assertEqual(session.calls[0][1]["timeout"], 10.0)
         self.assertEqual(session.calls[1][1]["timeout"], 10.0)
+
+    def test_collect_weather_uses_provider_day_night_signal_for_clear_conditions(self) -> None:
+        session = _Session(
+            _Response(_geocoding_payload()),
+            _Response({"current": {"temperature_2m": 58, "weather_code": 1, "is_day": 0}}),
+        )
+
+        with mock.patch.dict("os.environ", {"TARGET_LOCATION": "Boston"}, clear=False), mock.patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            result = weather_client.collect_weather()
+
+        self.assertEqual(result.data["archetype"], "clear_night")
 
     def test_forecast_preserves_daily_contract_and_clamps_requested_days(self) -> None:
         session = _Session(
@@ -135,6 +148,14 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
 
     def test_weather_code_mapping_covers_clear_cloud_fog_rain_snow_and_thunderstorm(self) -> None:
         self.assertEqual(weather_client._weather_condition(0), ("clear sky", "clear_day"))
+        self.assertEqual(
+            weather_client._weather_condition(0, is_day=0),
+            ("clear sky", "clear_night"),
+        )
+        self.assertEqual(
+            weather_client._weather_condition(1, is_day=0),
+            ("mainly clear", "clear_night"),
+        )
         self.assertEqual(weather_client._weather_condition(3), ("overcast", "clouds"))
         self.assertEqual(weather_client._weather_condition(45), ("fog", "clouds"))
         self.assertEqual(weather_client._weather_condition(63), ("moderate rain", "rain"))

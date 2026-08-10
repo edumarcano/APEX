@@ -1238,9 +1238,11 @@ export default function App(): ReactElement {
                   attentionStaggerMs={attentionStagger.weather}
                   className={`min-h-0 ${weatherPanelLayoutClass}`}
                 >
-                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                    {weatherBody}
-                  </p>
+                  {primaryTemperatureF == null ? (
+                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                      {weatherBody}
+                    </p>
+                  ) : null}
                 </TelemetryCard>
 
                 <TelemetryCard

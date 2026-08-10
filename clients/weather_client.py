@@ -98,11 +98,16 @@ def _as_finite_float(value: Any) -> float | None:
     return parsed if math.isfinite(parsed) else None
 
 
-def _weather_condition(value: Any) -> tuple[str, str] | None:
+def _weather_condition(value: Any, *, is_day: Any = None) -> tuple[str, str] | None:
     numeric = _as_finite_float(value)
     if numeric is None or not numeric.is_integer():
         return None
-    return _WMO_CONDITIONS.get(int(numeric), ("unknown conditions", "clouds"))
+    condition = _WMO_CONDITIONS.get(int(numeric), ("unknown conditions", "clouds"))
+    if int(numeric) in {0, 1}:
+        day_flag = _as_finite_float(is_day)
+        if day_flag is not None and day_flag in {0.0, 1.0}:
+            return condition[0], "clear_day" if day_flag == 1.0 else "clear_night"
+    return condition
 
 
 def _resolve_coordinates(location: str) -> tuple[float, float] | None:
@@ -170,7 +175,7 @@ def collect_weather() -> ConnectorResult:
 
         payload = _forecast_payload(
             coordinates,
-            current="temperature_2m,weather_code",
+            current="temperature_2m,weather_code,is_day",
             forecast_days=1,
         )
         current = payload.get("current") if payload is not None else None
@@ -178,7 +183,9 @@ def collect_weather() -> ConnectorResult:
             raise ValueError("Weather provider returned no current conditions.")
 
         temperature = _as_finite_float(current.get("temperature_2m"))
-        condition = _weather_condition(current.get("weather_code"))
+        condition = _weather_condition(
+            current.get("weather_code"), is_day=current.get("is_day")
+        )
         if temperature is None or condition is None:
             raise ValueError("Weather provider current conditions were incomplete.")
 
