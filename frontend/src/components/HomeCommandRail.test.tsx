@@ -14,7 +14,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     display_name: `Apex ${key.slice(0, 1).toUpperCase()}${key.slice(1)}`,
     description: `${key} profile.`,
     configured_model:
-      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : key === 'neotoma' ? 'Qwen3.5-4B-Q4_K_M.gguf' : key === 'unnamed-experimental-agent' ? 'gemma-4-E4B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
+      key === 'apodemus' ? 'gemma-4-E2B-Q4_K_M.gguf' : key === 'neotoma' ? 'gemma-4-E4B-Q4_K_M.gguf' : key === 'unnamed-experimental-agent' ? 'Qwen3.5-4B-Q4_K_M.gguf' : local ? 'qwen3:4b-instruct' : 'gpt-5.6-luna',
     sort_order: key === 'panthera' ? 1 : 2,
     capabilities: [],
     native_tools: {},

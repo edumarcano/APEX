@@ -298,7 +298,7 @@ Apodemus is also independently selectable for briefing synthesis. The current si
 
 *Neotoma* is a genus of pack rats and woodrats.
 
-Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Qwen3.5 4B (`Qwen3.5-4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and high-resource 64K context presets and a 16K default. Its native model maximum is 262K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
+Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Gemma 4 E4B (`gemma-4-E4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and high-resource 64K context presets and a 16K default. Its native model maximum is 131K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
 
 Neotoma is not a briefing mode. Its role is interactive Ask APEX and Cortex local execution alongside the other local Agents.
 
@@ -306,7 +306,7 @@ Neotoma is not a briefing mode. Its role is interactive Ask APEX and Cortex loca
 
 **Status:** Visibility: DEV_MODE only / Stability: Experimental
 
-Unnamed Experimental Agent is a development-only technical target for evaluating candidate local models. It is deliberately outside the genus-based Agent family: its name carries no genus-based identity, lore, or Apex prefix. It uses the same generic llama.cpp provider and local runtime coordinator as Apodemus and Neotoma, with Gemma 4 E4B (`gemma-4-E4B-Q4_K_M.gguf`) behind 4K, 16K, and 32K aliases.
+Unnamed Experimental Agent is a development-only technical target for evaluating candidate local models. It is deliberately outside the genus-based Agent family: its name carries no genus-based identity, lore, or Apex prefix. It uses the same generic llama.cpp provider and local runtime coordinator as Apodemus and Neotoma, with Qwen3.5 4B (`Qwen3.5-4B-Q4_K_M.gguf`) behind 4K, 16K, and 32K aliases. Its native model maximum is 262K tokens, while the experimental Agent exposes only the smaller evaluation presets.
 
 Its Cortex controls expose None and Focused reasoning, defaulting to None. None disables native thinking explicitly; Focused enables the model template's native thinking, while the provider strips hidden reasoning before returning the answer. The target is fully registered for development use but hidden from the normal Agent catalog. The lack of a genus-based identity is intentional: experimental model candidates should not automatically become permanent members of the Apex Agent family. A candidate should receive a permanent genus-based identity only if it graduates into a durable product role.
 

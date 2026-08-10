@@ -137,8 +137,8 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 | `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
 | `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
 | `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
-| `neotoma` — Neotoma 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
-| `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
+| `neotoma` — Neotoma 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
+| `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Outside DEV_MODE, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; DEV_MODE also surfaces the registered development Agents. Ollama serves Mus and Sorex; llama.cpp serves Apodemus, Neotoma, and the development-only Unnamed Experimental Agent.
 
@@ -219,7 +219,7 @@ Installed aliases come only from the router's `/models` list. A missing `apodemu
 
 `ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; Unnamed Experimental Agent accepts `4096`, `16384`, or `32768` and defaults to `16384`. Apodemus's `131072` and Neotoma's `65536` presets are marked high-resource in Cortex; none of the Unnamed Experimental Agent presets are currently marked high-resource. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
 
-Apodemus model maximum metadata is `131072`, Neotoma model maximum metadata is `262144`, and Unnamed Experimental Agent model maximum metadata is `131072`; the larger native maxima are not fully exposed as presets.
+Apodemus and Neotoma model maximum metadata is `131072`, while Unnamed Experimental Agent model maximum metadata is `262144`; the larger native maximum is not fully exposed as a preset.
 
 #### Local reasoning preferences
 
@@ -227,7 +227,7 @@ Apodemus model maximum metadata is `131072`, Neotoma model maximum metadata is `
 
 For llama.cpp, `none` sends `reasoning_effort: "none"` with `chat_template_kwargs.enable_thinking` set to `false`; `focused` omits that request field and sets `enable_thinking` to `true` so the model template can use its native reasoning behavior. Focused llama.cpp profiles use a larger model-configured completion ceiling because native thinking consumes the same completion budget as the visible answer. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
-Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Retired Apodemus `8K` preferences migrate to `16K`. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf`, `neotoma -> Qwen3.5-4B-Q4_K_M.gguf`, and `unnamed-experimental-agent -> gemma-4-E4B-Q4_K_M.gguf`.
+Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Retired Apodemus `8K` preferences migrate to `16K`. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf`, `neotoma -> gemma-4-E4B-Q4_K_M.gguf`, and `unnamed-experimental-agent -> Qwen3.5-4B-Q4_K_M.gguf`.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
