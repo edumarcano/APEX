@@ -38,6 +38,42 @@ _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_NAME_SANITIZE = re.compile(r"[^a-z0-9_]+")
 _OAUTH_KEYRING_SERVICE = "APEX MCP OAuth"
+_RETRY_DELAYS_SECONDS: tuple[float, ...] = (2.0, 5.0, 15.0, 30.0, 60.0)
+_STDIO_RUNTIME_ENVIRONMENT: tuple[str, ...] = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "HOME",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "TMP",
+    "TEMP",
+    "TMPDIR",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "NODE_EXTRA_CA_CERTS",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+)
+_SENSITIVE_EXCEPTION_VALUE = re.compile(
+    r"(?i)(\b(?:authorization|token|access_token|api[_-]?key|password|secret)\b\s*(?:=|:)\s*)([^\s,;&]+)"
+)
+_SENSITIVE_QUERY_VALUE = re.compile(
+    r"(?i)([?&](?:token|access_token|api[_-]?key|key|password|secret)=)([^&#\s]+)"
+)
+_BEARER_VALUE = re.compile(r"(?i)(\bbearer\s+)([^\s,;&]+)")
 _STATUS_PRIORITY: tuple[McpServerStatusValue, ...] = (
     "authentication-required",
     "degraded",
@@ -56,6 +92,7 @@ class _ServerRuntime:
     client: Client[Any] | None = None
     registered_names: list[str] = field(default_factory=list)
     remote_tool_names: dict[str, str] = field(default_factory=dict)
+    retry_attempt: int = 0
 
 
 class MCPClientManager:
@@ -66,6 +103,7 @@ class MCPClientManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._servers: dict[str, _ServerRuntime] = {}
         self._discovery_tasks: dict[str, asyncio.Task[None]] = {}
+        self._recovery_tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = threading.RLock()
         self._reconfigure_lock = asyncio.Lock()
         self._started = False
@@ -135,6 +173,7 @@ class MCPClientManager:
 
             for server_id in changed:
                 await self._cancel_discovery(server_id)
+                await self._cancel_recovery(server_id)
                 await self._teardown_server(server_id)
 
             with self._lock:
@@ -172,12 +211,15 @@ class MCPClientManager:
     async def shutdown(self) -> None:
         """Cancel discovery, close transports, and unregister MCP capabilities."""
         self._shutting_down = True
-        tasks = list(self._discovery_tasks.values())
+        tasks = list(self._discovery_tasks.values()) + list(
+            self._recovery_tasks.values()
+        )
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._discovery_tasks.clear()
+        self._recovery_tasks.clear()
 
         with self._lock:
             server_ids = list(self._servers.keys())
@@ -262,7 +304,9 @@ class MCPClientManager:
                 )
             client = runtime.client
 
-        coro = self._call_tool(client, remote_name, arguments, timeout_seconds)
+        coro = self._call_tool(
+            server_id, client, remote_name, arguments, timeout_seconds
+        )
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         try:
             result = future.result(timeout=timeout_seconds + 1.0)
@@ -308,7 +352,10 @@ class MCPClientManager:
     def _schedule_discovery(self, server_id: str) -> None:
         with self._lock:
             runtime = self._servers.get(server_id)
-            if runtime is None:
+            if runtime is None or not self._is_effectively_enabled(runtime):
+                return
+            existing = self._discovery_tasks.get(server_id)
+            if existing is not None and not existing.done():
                 return
             generation = runtime.generation
             runtime.status = "configured"
@@ -331,11 +378,57 @@ class MCPClientManager:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
 
+    def _schedule_recovery(self, server_id: str, generation: int) -> None:
+        with self._lock:
+            runtime = self._servers.get(server_id)
+            if (
+                runtime is None
+                or not self._is_effectively_enabled(runtime)
+                or runtime.generation != generation
+            ):
+                return
+            existing = self._recovery_tasks.get(server_id)
+            if existing is not None and not existing.done():
+                return
+            delay = _RETRY_DELAYS_SECONDS[
+                min(runtime.retry_attempt, len(_RETRY_DELAYS_SECONDS) - 1)
+            ]
+            runtime.retry_attempt += 1
+
+        task = asyncio.create_task(
+            self._recover_after_delay(server_id, generation, delay),
+            name=f"mcp-recover-{server_id}",
+        )
+        self._recovery_tasks[server_id] = task
+        task.add_done_callback(
+            lambda completed, sid=server_id: self._discard_recovery_task(sid, completed)
+        )
+
+    async def _recover_after_delay(
+        self, server_id: str, generation: int, delay: float
+    ) -> None:
+        await asyncio.sleep(delay)
+        if self._is_current(server_id, generation):
+            self._schedule_discovery(server_id)
+
+    async def _cancel_recovery(self, server_id: str) -> None:
+        task = self._recovery_tasks.pop(server_id, None)
+        if task is None:
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
     def _discard_discovery_task(
         self, server_id: str, task: asyncio.Task[None]
     ) -> None:
         if self._discovery_tasks.get(server_id) is task:
             self._discovery_tasks.pop(server_id, None)
+
+    def _discard_recovery_task(
+        self, server_id: str, task: asyncio.Task[None]
+    ) -> None:
+        if self._recovery_tasks.get(server_id) is task:
+            self._recovery_tasks.pop(server_id, None)
 
     async def _wait_for_discovery(self) -> None:
         """Wait for the currently scheduled discovery tasks (test helper)."""
@@ -343,16 +436,25 @@ class MCPClientManager:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def _wait_for_recovery(self) -> None:
+        """Wait for one recovery cycle and its replacement discovery (test helper)."""
+        tasks = list(self._recovery_tasks.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._wait_for_discovery()
+
     def _is_current(self, server_id: str, generation: int) -> bool:
         with self._lock:
             runtime = self._servers.get(server_id)
             return (
                 not self._shutting_down
-                and self._config.enabled
                 and runtime is not None
-                and runtime.config.enabled
+                and self._is_effectively_enabled(runtime)
                 and runtime.generation == generation
             )
+
+    def _is_effectively_enabled(self, runtime: _ServerRuntime) -> bool:
+        return self._config.enabled and runtime.config.enabled
 
     async def _connect_and_discover(
         self, server_id: str, generation: int | None = None
@@ -379,10 +481,11 @@ class MCPClientManager:
 
         try:
             client = _build_client(config, auth_token=auth_token, headers=headers)
-        except Exception:
+        except Exception as exc:
             _LOGGER.warning(
-                "Failed to configure MCP server %s; marking degraded.",
+                "Failed to configure MCP server %s; marking degraded: %s",
                 server_id,
+                _safe_exception_detail(exc),
             )
             self._set_status(
                 server_id,
@@ -404,6 +507,7 @@ class MCPClientManager:
                 "MCP server connection timed out.",
             )
             await _safe_close(client)
+            self._schedule_recovery(server_id, generation)
             return
         except asyncio.CancelledError:
             await _safe_close(client)
@@ -418,8 +522,9 @@ class MCPClientManager:
                 )
             else:
                 _LOGGER.warning(
-                    "MCP server %s is offline or unreachable.",
+                    "MCP server %s is offline or unreachable: %s",
                     server_id,
+                    _safe_exception_detail(exc),
                 )
                 self._set_status(
                     server_id,
@@ -427,6 +532,8 @@ class MCPClientManager:
                     "MCP server is offline or unreachable.",
                 )
             await _safe_close(client)
+            if category != CapabilityErrorCategory.AUTHENTICATION:
+                self._schedule_recovery(server_id, generation)
             return
 
         if not self._is_current(server_id, generation):
@@ -445,21 +552,33 @@ class MCPClientManager:
                 "MCP tool discovery timed out.",
             )
             await _safe_close(client)
+            self._schedule_recovery(server_id, generation)
             return
         except asyncio.CancelledError:
             await _safe_close(client)
             raise
-        except Exception:
-            _LOGGER.warning(
-                "MCP tool discovery failed for server %s.",
-                server_id,
-            )
-            self._set_status(
-                server_id,
-                "degraded",
-                "MCP tool discovery failed.",
-            )
+        except Exception as exc:
+            category = _classify_connect_error(exc)
+            if category == CapabilityErrorCategory.AUTHENTICATION:
+                self._set_status(
+                    server_id,
+                    "authentication-required",
+                    "MCP server authentication failed.",
+                )
+            else:
+                _LOGGER.warning(
+                    "MCP tool discovery failed for server %s: %s",
+                    server_id,
+                    _safe_exception_detail(exc),
+                )
+                self._set_status(
+                    server_id,
+                    "degraded",
+                    "MCP tool discovery failed.",
+                )
             await _safe_close(client)
+            if category != CapabilityErrorCategory.AUTHENTICATION:
+                self._schedule_recovery(server_id, generation)
             return
 
         if not self._is_current(server_id, generation):
@@ -558,6 +677,7 @@ class MCPClientManager:
                 runtime.client = client
                 runtime.registered_names = registered
                 runtime.remote_tool_names = remote_map
+                runtime.retry_attempt = 0
                 runtime.status = "connected"
                 if not allowlist:
                     runtime.reason = (
@@ -603,6 +723,7 @@ class MCPClientManager:
 
     async def _call_tool(
         self,
+        server_id: str,
         client: Client[Any],
         remote_name: str,
         arguments: dict[str, Any],
@@ -614,12 +735,27 @@ class MCPClientManager:
                 timeout=timeout_seconds,
             )
         except asyncio.TimeoutError as exc:
+            await self._degrade_active_client(
+                server_id,
+                client,
+                "MCP capability invocation timed out.",
+            )
             raise CapabilityError(
                 CapabilityErrorCategory.TIMEOUT,
                 "Capability invocation timed out.",
             ) from exc
         except Exception as exc:
-            raise _map_exception(exc) from exc
+            mapped = _map_exception(exc)
+            if mapped.category in (
+                CapabilityErrorCategory.TIMEOUT,
+                CapabilityErrorCategory.UNAVAILABLE,
+            ):
+                await self._degrade_active_client(
+                    server_id,
+                    client,
+                    "MCP capability transport is unavailable.",
+                )
+            raise mapped from exc
 
         if getattr(result, "is_error", False):
             raise CapabilityError(
@@ -628,6 +764,36 @@ class MCPClientManager:
             )
 
         return _serialize_tool_result(result)
+
+    async def _degrade_active_client(
+        self,
+        server_id: str,
+        client: Client[Any],
+        reason: str,
+    ) -> None:
+        """Retire one failed active client before scheduling its replacement."""
+        with self._lock:
+            runtime = self._servers.get(server_id)
+            if (
+                runtime is None
+                or runtime.client is not client
+                or runtime.status != "connected"
+                or not self._is_effectively_enabled(runtime)
+            ):
+                return
+            registered = list(runtime.registered_names)
+            runtime.generation += 1
+            generation = runtime.generation
+            runtime.client = None
+            runtime.registered_names = []
+            runtime.remote_tool_names = {}
+            runtime.status = "degraded"
+            runtime.reason = reason
+
+        for name in registered:
+            unregister_capability(name)
+        await _safe_close(client)
+        self._schedule_recovery(server_id, generation)
 
     def _set_status(
         self,
@@ -696,9 +862,7 @@ def _build_client(
         raise ValueError("OAuth is supported only for HTTP MCP servers.")
     if not config.command:
         raise ValueError("stdio MCP servers require a command.")
-    env: dict[str, str] | None = None
-    if config.auth_env and auth_token is not None:
-        env = {config.auth_env: auth_token}
+    env = _build_stdio_environment(config, auth_token)
     transport = StdioTransport(
         command=config.command,
         args=list(config.args),
@@ -706,6 +870,26 @@ def _build_client(
         cwd=config.cwd,
     )
     return Client(transport, timeout=config.timeout_seconds)
+
+
+def _build_stdio_environment(
+    config: McpServerConfig, auth_token: str | None
+) -> dict[str, str] | None:
+    """Pass only execution and network settings required by a stdio child process."""
+    if not config.auth_env or auth_token is None:
+        return None
+    env: dict[str, str] = {}
+    seen: set[str] = set()
+    for name in _STDIO_RUNTIME_ENVIRONMENT:
+        canonical_name = name.casefold()
+        if canonical_name in seen:
+            continue
+        value = os.environ.get(name)
+        if value:
+            env[name] = value
+            seen.add(canonical_name)
+    env[config.auth_env] = auth_token
+    return env
 
 
 def _apply_argument_maximums(
@@ -819,6 +1003,17 @@ def _map_exception(exc: Exception) -> CapabilityError:
 
 def _classify_connect_error(exc: Exception) -> CapabilityErrorCategory:
     return _map_exception(exc).category
+
+
+def _safe_exception_detail(exc: Exception) -> str:
+    """Retain useful private diagnostics without emitting credential values."""
+    message = str(exc).strip()
+    if not message:
+        return type(exc).__name__
+    message = _BEARER_VALUE.sub(r"\1<redacted>", message)
+    message = _SENSITIVE_EXCEPTION_VALUE.sub(r"\1<redacted>", message)
+    message = _SENSITIVE_QUERY_VALUE.sub(r"\1<redacted>", message)
+    return f"{type(exc).__name__}: {message[:300]}"
 
 
 def _aggregate_status(

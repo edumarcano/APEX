@@ -31,10 +31,40 @@ from core.agent.tools import register_native_capabilities
 from core.config import CONFIG_PATH
 from core.mcp import empty_mcp_status, set_mcp_manager
 from core.mcp.config import load_mcp_config
-from core.mcp.manager import MCPClientManager, _build_client
+from core.mcp.manager import (
+    MCPClientManager,
+    _build_client,
+    _build_stdio_environment,
+    _safe_exception_detail,
+)
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
 
 _SLOW_TOOL_STARTED = threading.Event()
+
+
+class _UnavailableClient:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def call_tool(self, *args, **kwargs):
+        raise ConnectionError("connection refused")
+
+    async def __aexit__(self, *args) -> None:
+        self.closed = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _ConnectFailingClient:
+    async def __aenter__(self) -> None:
+        raise OSError("connection refused")
+
+    async def __aexit__(self, *args) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
 
 
 def _build_demo_server() -> FastMCP:
@@ -295,6 +325,47 @@ class McpProviderPresetTests(unittest.TestCase):
         self.assertIsInstance(auth, OAuth)
         assert isinstance(auth, OAuth)
         self.assertIsInstance(auth._token_storage, KeyringStore)
+
+    def test_stdio_environment_forwards_runtime_variables_not_unrelated_secrets(
+        self,
+    ) -> None:
+        config = McpServerConfig(
+            enabled=True,
+            transport="stdio",
+            command="npx",
+            auth_env="BRAVE_API_KEY",
+        )
+        with patch.dict(
+            os.environ,
+            {
+                "PATH": "C:\\node",
+                "APPDATA": "C:\\Users\\chief\\AppData\\Roaming",
+                "HTTPS_PROXY": "https://proxy.example",
+                "NODE_EXTRA_CA_CERTS": "C:\\certs\\proxy.pem",
+                "OPENAI_API_KEY": "must-not-reach-child",
+            },
+            clear=True,
+        ):
+            environment = _build_stdio_environment(config, "brave-token")
+        self.assertEqual(
+            environment,
+            {
+                "PATH": "C:\\node",
+                "APPDATA": "C:\\Users\\chief\\AppData\\Roaming",
+                "HTTPS_PROXY": "https://proxy.example",
+                "NODE_EXTRA_CA_CERTS": "C:\\certs\\proxy.pem",
+                "BRAVE_API_KEY": "brave-token",
+            },
+        )
+
+    def test_private_exception_detail_redacts_credential_values(self) -> None:
+        detail = _safe_exception_detail(
+            RuntimeError("Authorization: Bearer sensitive token=abc&api_key=def")
+        )
+        self.assertIn("RuntimeError", detail)
+        self.assertNotIn("sensitive", detail)
+        self.assertNotIn("abc", detail)
+        self.assertNotIn("def", detail)
 
 
 class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -659,6 +730,154 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         snapshot = manager.status_snapshot()
         self.assertEqual(snapshot.servers[0].status, "degraded")
         self.assertIsNone(get_capability_descriptor("offline_echo"))
+
+    async def test_transient_discovery_failure_recovers_and_resets_backoff(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                )
+            },
+        )
+        manager = MCPClientManager(config)
+        self._manager = manager
+        first_attempt = True
+
+        def _build_transient_client(*args, **kwargs):
+            nonlocal first_attempt
+            if first_attempt:
+                first_attempt = False
+                return _ConnectFailingClient()
+            return Client(self._demo_server)
+
+        with patch(
+            "core.mcp.manager._build_client", side_effect=_build_transient_client
+        ), patch("core.mcp.manager._RETRY_DELAYS_SECONDS", (60.0,)):
+            await manager.start()
+            await manager._wait_for_discovery()
+            self.assertEqual(manager.status_snapshot().servers[0].status, "degraded")
+            self.assertEqual(manager._servers["demo"].retry_attempt, 1)
+            self.assertIn("demo", manager._recovery_tasks)
+
+            await manager._cancel_recovery("demo")
+            with patch("core.mcp.manager._RETRY_DELAYS_SECONDS", (0.0,)):
+                manager._schedule_recovery("demo", manager._servers["demo"].generation)
+            await manager._wait_for_recovery()
+
+        self.assertEqual(manager.status_snapshot().servers[0].status, "connected")
+        self.assertEqual(manager._servers["demo"].retry_attempt, 0)
+        self.assertIsNotNone(get_capability_descriptor("demo_echo"))
+
+    async def test_authentication_failure_does_not_schedule_recovery(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                    auth_env="APEX_TEST_MCP_TOKEN_MISSING",
+                )
+            },
+        )
+        os.environ.pop("APEX_TEST_MCP_TOKEN_MISSING", None)
+        manager = MCPClientManager(config)
+        self._manager = manager
+        await manager.start()
+        await manager._wait_for_discovery()
+        self.assertEqual(
+            manager.status_snapshot().servers[0].status,
+            "authentication-required",
+        )
+        self.assertNotIn("demo", manager._recovery_tasks)
+
+    async def test_invalid_configuration_does_not_schedule_recovery(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                )
+            },
+        )
+        manager = MCPClientManager(config)
+        self._manager = manager
+        with patch(
+            "core.mcp.manager._build_client",
+            side_effect=ValueError("invalid transport configuration"),
+        ):
+            await manager.start()
+            await manager._wait_for_discovery()
+        self.assertEqual(manager.status_snapshot().servers[0].status, "degraded")
+        self.assertNotIn("demo", manager._recovery_tasks)
+
+    async def test_runtime_transport_failure_unregisters_and_recovers(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                )
+            },
+        )
+        manager = await self._start_manager(config)
+        failed_client = _UnavailableClient()
+        with manager._lock:
+            manager._servers["demo"].client = failed_client  # type: ignore[assignment]
+
+        with patch("core.mcp.manager._RETRY_DELAYS_SECONDS", (0.0,)), self._patch_inmemory_client():
+            with self.assertRaises(CapabilityError) as raised:
+                await asyncio.to_thread(
+                    invoke_capability,
+                    "demo_echo",
+                    {"msg": "retry"},
+                )
+            await manager._wait_for_recovery()
+
+        self.assertEqual(raised.exception.category, CapabilityErrorCategory.UNAVAILABLE)
+        self.assertTrue(failed_client.closed)
+        self.assertIsNotNone(get_capability_descriptor("demo_echo"))
+        self.assertEqual(manager.status_snapshot().servers[0].status, "connected")
+
+    async def test_disabling_provider_cancels_pending_recovery(self) -> None:
+        config = McpRuntimeConfig(
+            enabled=True,
+            servers={
+                "demo": McpServerConfig(
+                    enabled=True,
+                    transport="http",
+                    url="https://example.invalid/mcp",
+                    tool_allowlist=["echo"],
+                    tool_risks={"echo": "read"},
+                )
+            },
+        )
+        manager = MCPClientManager(config)
+        self._manager = manager
+        with patch(
+            "core.mcp.manager._build_client",
+            return_value=_ConnectFailingClient(),
+        ):
+            await manager.start()
+            await manager._wait_for_discovery()
+            self.assertIn("demo", manager._recovery_tasks)
+            await manager.reconfigure(config.model_copy(update={"enabled": False}))
+
+        self.assertNotIn("demo", manager._recovery_tasks)
+        self.assertEqual(manager.status_snapshot().status, "disabled")
 
     async def test_invoke_allowlisted_tool_through_capability_registry(self) -> None:
         config = McpRuntimeConfig(

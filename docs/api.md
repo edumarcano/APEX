@@ -384,6 +384,8 @@ Returns sanitized global and per-provider MCP status, reasons, transport labels,
 
 An enabled but unavailable provider remains enabled in settings while reporting a degraded or authorization-required state.
 
+The status schema is unchanged while the runtime recovers transient provider failures automatically. A browser failure to retrieve this endpoint is a status-service failure, not evidence that every MCP provider is unavailable.
+
 ## Microsoft To Do authorization
 
 ### GET `/api/v1/microsoft-todo/status`

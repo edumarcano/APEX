@@ -272,6 +272,8 @@ Every imported tool must be allowlisted and assigned a local risk classification
 
 Provider credentials stay in `.env` or the operating-system credential manager. Advanced endpoints, transports, allowlists, timeouts, and custom servers remain in configuration files.
 
+Transient provider connection, discovery, and transport failures recover automatically with bounded backoff while a preset remains enabled. Invalid configuration and explicit authorization failures do not retry; they remain visible as degraded or authorization-required until corrected through the existing configuration or OAuth flow. Runtime Settings does not expose retry controls or reconnect actions.
+
 ## Browser and network boundary
 
 `CUSTOM_BROWSER_PATH` can select a browser executable. The launcher otherwise checks supported Chrome and Edge paths before using the system default.

@@ -33,9 +33,6 @@ function resolveProviderStatus(
   if (!baseline?.enabled || !baseline.servers[provider].enabled) {
     return { value: 'Disabled', tone: 'neutral', tools: [] }
   }
-  if (runtime.unavailable) {
-    return { value: 'Status unavailable', tone: 'warn', tools: [] }
-  }
   const server = runtime.status?.servers.find((item) => item.id === provider)
   if (!server || server.status === 'configured') {
     return { value: 'Connecting', tone: 'neutral', tools: [] }
@@ -67,6 +64,12 @@ export default function McpSettingsSection({
         Approved external tools become available to the selected Agent after Save.
         Credentials remain outside APEX settings.
       </p>
+      {runtime.unavailable ? (
+        <p className="rounded-md border border-amber-400/20 bg-amber-400/5 px-2 py-1 text-[10px] leading-relaxed text-amber-200">
+          MCP status service unavailable. Provider runtime details will return when
+          status polling recovers.
+        </p>
+      ) : null}
       <div className="space-y-2">
         <SettingsToggle
           id="settings-mcp-enabled"
@@ -108,7 +111,7 @@ export default function McpSettingsSection({
                 <p className="px-1 text-[10px] leading-relaxed text-zinc-500">
                   {provider.prerequisite}
                 </p>
-                <div className="px-1">
+                {!runtime.unavailable ? <div className="px-1">
                   <StatusRow
                     label="Active runtime"
                     value={providerRuntime.value}
@@ -119,7 +122,7 @@ export default function McpSettingsSection({
                       {providerRuntime.tools.join(' · ')}
                     </p>
                   ) : null}
-                </div>
+                </div> : null}
               </div>
             )
           })}
