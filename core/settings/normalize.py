@@ -60,6 +60,14 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
     }
 )
 _DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
+_LLAMA_CPP_FILE_ONLY_KEYS: frozenset[str] = frozenset(
+    {
+        "idle_unload_timeout_minutes",
+        "manual_unload_enabled",
+        "request_timeout_seconds",
+        "resource_gates",
+    }
+)
 _LOOPBACK_HOSTNAMES: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
 _TOOL_PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$", re.IGNORECASE)
 
@@ -112,6 +120,8 @@ def normalize_layer(
     )
 
     for key, value in raw.items():
+        if key == "schema_version":
+            continue
         if key not in EDITABLE_ROOT_KEYS:
             if key not in (
                 "synthesis",
@@ -371,7 +381,9 @@ def _normalize_llama_cpp(
         "preset_path",
     }
     for key in value:
-        if key not in editable_keys:
+        if key not in editable_keys and not (
+            layer_name == "config.json" and key in _LLAMA_CPP_FILE_ONLY_KEYS
+        ):
             _LOGGER.warning(
                 "Ignoring non-editable llama_cpp key %r in %s.",
                 key,
