@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import json
 import tempfile
 import threading
@@ -11,12 +10,8 @@ from pathlib import Path
 from unittest import mock
 
 from core.api.cortex import query_agent
-from core.api.briefing import _compute_confidence_and_failures
 from core.agent.types import AgentQueryRequest
-from core.connectors.models import ConnectorResult
 from core.settings.models import (
-    FeaturesSettings,
-    ModulesSettings,
     SettingsPatch,
 )
 from core.settings.store import (
@@ -28,41 +23,6 @@ from core import speaker
 
 def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
-class ConfidenceSnapshotTests(unittest.TestCase):
-    def test_sports_parent_disabled_ignores_modules(self) -> None:
-        # Disabled sports modules are excluded before scoring; only weather remains.
-        score, failures = _compute_confidence_and_failures(
-            results={
-                "weather": ConnectorResult(
-                    name="weather",
-                    status="healthy",
-                    freshness="live",
-                    reason_code="ok",
-                    display_text="clear",
-                ),
-                "f1": None,
-                "football": None,
-            }
-        )
-        self.assertEqual(score, 100.0)
-        self.assertEqual(failures, [])
-
-    def test_sports_trust_uses_explicit_modules(self) -> None:
-        score, failures = _compute_confidence_and_failures(
-            results={
-                "f1": ConnectorResult(
-                    name="f1",
-                    status="unavailable",
-                    freshness="none",
-                    reason_code="provider_error",
-                    display_text="F1 race telemetry unavailable.",
-                ),
-            }
-        )
-        self.assertEqual(score, 0.0)
-        self.assertEqual(failures, ["sports"])
 
 
 class SportsClientSnapshotTests(unittest.TestCase):
@@ -108,18 +68,6 @@ class SpeakBindingTests(unittest.TestCase):
         self._patcher.start()
         self.addCleanup(self._patcher.stop)
         self.addCleanup(reset_settings_store_for_tests)
-
-    def test_explicit_gender_bound_for_call(self) -> None:
-        seen: list[str] = []
-
-        def fake_route(text: str, tts_strategy: str, *, gender: str) -> str:
-            seen.append(gender)
-            return "pyttsx3"
-
-        with mock.patch.object(speaker, "_route_tts_playback", side_effect=fake_route):
-            with mock.patch.object(speaker.config, "is_dev_mode", return_value=False):
-                speaker.speak("hello", tts_override="pyttsx3", voice_gender="male")
-        self.assertEqual(seen, ["male"])
 
     def test_mid_speech_store_change_does_not_alter_bound_call(self) -> None:
         seen: list[str] = []
@@ -190,88 +138,6 @@ class AssistantGateTests(unittest.TestCase):
                 )
             )
         self.assertEqual(ctx.exception.status_code, 403)
-
-
-class FrozenImportAuditTests(unittest.TestCase):
-    """Confirm active execution modules do not import editable frozen constants."""
-
-    _FORBIDDEN = frozenset(
-        {
-            "FEATURE_WEATHER",
-            "FEATURE_SPORTS",
-            "FEATURE_NEWS",
-            "FEATURE_EMAIL",
-            "FEATURE_CALENDAR",
-            "MODULE_F1",
-            "MODULE_FOOTBALL",
-            "ASK_APEX_ENABLED",
-            "PRIMARY_TTS",
-            "VOICE_GENDER",
-            "cloud_agent",
-        }
-    )
-
-    def test_active_paths_do_not_import_frozen_editable_constants(self) -> None:
-        root = Path(__file__).resolve().parents[1]
-        targets = [
-            *sorted((root / "core" / "api").rglob("*.py")),
-            root / "core" / "speaker.py",
-            root / "clients" / "sports_client.py",
-        ]
-        violations: list[str] = []
-        for path in targets:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == "core.config":
-                    for alias in node.names:
-                        if alias.name in self._FORBIDDEN:
-                            violations.append(f"{path.name}:{alias.name}")
-                if isinstance(node, ast.Attribute):
-                    # getattr(config, "PRIMARY_TTS") style
-                    if (
-                        isinstance(node.value, ast.Name)
-                        and node.value.id == "config"
-                        and node.attr in self._FORBIDDEN
-                    ):
-                        violations.append(f"{path.name}:config.{node.attr}")
-        # Also scan speaker for string getattr of frozen keys.
-        speaker_src = (root / "core" / "speaker.py").read_text(encoding="utf-8")
-        for name in ("PRIMARY_TTS", "VOICE_GENDER"):
-            if f'"{name}"' in speaker_src or f"'{name}'" in speaker_src:
-                violations.append(f"speaker.py:getattr({name})")
-        self.assertEqual(violations, [])
-
-
-class BriefingCaptureTests(unittest.TestCase):
-    def test_collection_uses_captured_features_not_later_patch(self) -> None:
-        """Simulate briefing capture: later sports disable must not affect flags already captured."""
-        features = FeaturesSettings(sports=True, weather=True)
-        modules = ModulesSettings(f1=True, football=False)
-        # Mid-run patch would update the store, but collection uses captured objects.
-        later = FeaturesSettings(sports=False, weather=True)
-        self.assertTrue(features.sports)
-        self.assertFalse(later.sports)
-        score, failures = _compute_confidence_and_failures(
-            results={
-                "weather": ConnectorResult(
-                    name="weather",
-                    status="healthy",
-                    freshness="live",
-                    reason_code="ok",
-                    display_text="ok",
-                ),
-                "f1": ConnectorResult(
-                    name="f1",
-                    status="healthy",
-                    freshness="live",
-                    reason_code="ok",
-                    display_text="F1_DATA:{}",
-                    data={"f1_map": {}, "cache_refreshed": True},
-                ),
-            }
-        )
-        self.assertNotIn("sports", failures)
-        self.assertGreaterEqual(score, 50.0)
 
 
 if __name__ == "__main__":

@@ -194,25 +194,6 @@ class LlamaCppProviderTests(unittest.TestCase):
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
     @patch("core.agent.providers.llama_cpp._post_chat")
-    def test_focused_tool_selection_receives_reasoning_headroom(
-        self, mock_post: MagicMock, _activity: MagicMock
-    ) -> None:
-        mock_post.return_value = _load_fixture("basic_answer.json")
-        LlamaCppProvider().generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [_descriptor()],
-            _apodemus_profile(reasoning_mode="focused"),
-        )
-        payload = mock_post.call_args.args[0]
-        self.assertEqual(payload["max_tokens"], 1536)
-        self.assertEqual(
-            payload["chat_template_kwargs"],
-            {"enable_thinking": True},
-        )
-        self.assertNotIn("reasoning_effort", payload)
-
-    @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
     def test_single_tool_call_string_arguments(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:

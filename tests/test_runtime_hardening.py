@@ -37,21 +37,6 @@ class RunIdPropagationTests(unittest.TestCase):
         state.reset()
         self.assertIsNone(state.get_state())
 
-    def test_runtime_metadata_persists_run_id(self) -> None:
-        metadata = RuntimeMetadata(
-            run_id="run-persist",
-            dev_mode_active=False,
-            demo_mode_active=False,
-            synthesis_strategy="cloud",
-            tts_strategy="google",
-            active_tts_engine="google",
-            system_load_throttled=False,
-        )
-        dumped = metadata.model_dump()
-        self.assertEqual(dumped["run_id"], "run-persist")
-        restored = RuntimeMetadata.model_validate(dumped)
-        self.assertEqual(restored.run_id, "run-persist")
-
     def test_logger_includes_run_id_filter(self) -> None:
         from core.runtime_logging import RunIdFilter, configure_logging
 

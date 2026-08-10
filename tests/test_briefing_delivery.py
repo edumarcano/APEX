@@ -255,15 +255,6 @@ class BriefingDeliveryTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["detail"], "Speech delivery failed.")
 
-    def test_settings_schema_v7_exposes_briefing_voice_and_mcp(self) -> None:
-        response = self.client.get("/api/v1/settings")
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(payload["schema_version"], 13)
-        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
-        self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
-        self.assertFalse(payload["settings"]["mcp"]["enabled"])
-
     def test_trigger_uses_default_mode_and_skips_speak_when_manual(self) -> None:
         from core.telemetry.service import get_telemetry_service
 

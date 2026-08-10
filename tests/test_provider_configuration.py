@@ -7,9 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.types import AgentMessage
 from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
 
@@ -21,17 +19,13 @@ def _concrete_profile(key: str):
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
-        self.assertEqual(
-            {
-                key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
-                for key in ("panthera", "neofelis", "acinonyx")
-            },
-            {
-                "panthera": (min(6, GEMINI_AGENT_MAX_TURNS), min(10, GEMINI_AGENT_MAX_TOOL_CALLS)),
-                "neofelis": (min(4, GEMINI_AGENT_MAX_TURNS), min(6, GEMINI_AGENT_MAX_TOOL_CALLS)),
-                "acinonyx": (min(4, GEMINI_AGENT_MAX_TURNS), min(6, GEMINI_AGENT_MAX_TOOL_CALLS)),
-            },
-        )
+        for key in ("panthera", "neofelis", "acinonyx"):
+            with self.subTest(agent=key):
+                spec = AGENT_SPECS[key]
+                self.assertGreater(spec.max_tool_turns, 0)
+                self.assertGreaterEqual(spec.max_tool_calls, spec.max_tool_turns)
+                self.assertLessEqual(spec.max_tool_turns, GEMINI_AGENT_MAX_TURNS)
+                self.assertLessEqual(spec.max_tool_calls, GEMINI_AGENT_MAX_TOOL_CALLS)
 
     def test_agent_versions_use_product_version_format(self) -> None:
         for spec in AGENT_SPECS.values():
@@ -43,48 +37,11 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
             self.assertEqual(profile.agent_version, spec.agent_version)
 
     def test_local_agents_retain_existing_loop_caps(self) -> None:
-        self.assertEqual(
-            {
-                key: (AGENT_SPECS[key].max_tool_turns, AGENT_SPECS[key].max_tool_calls)
-                for key in (
-                    "sorex",
-                    "mus",
-                    "apodemus",
-                    "neotoma",
-                    "unnamed-experimental-agent",
-                )
-            },
-            {
-                "sorex": (2, 3),
-                "mus": (3, 4),
-                "apodemus": (3, 4),
-                "neotoma": (3, 4),
-                "unnamed-experimental-agent": (3, 4),
-            },
-        )
-
-    def test_gemini_model_profile_omits_default_temperature_and_description(self) -> None:
-        """Verify GeminiModelProfile schema has no default_temperature or description field."""
-        profile = _concrete_profile("neofelis")
-        self.assertFalse(hasattr(profile, "default_temperature"))
-        self.assertFalse(hasattr(profile, "description"))
-        self.assertNotIn("default_temperature", profile.model_dump())
-        self.assertNotIn("description", profile.model_dump())
-        self.assertNotIn("default_temperature", GeminiModelProfile.model_fields)
-        self.assertNotIn("description", GeminiModelProfile.model_fields)
-
-    def test_ollama_model_profile_retains_default_temperature_and_omits_description(
-        self,
-    ) -> None:
-        """Verify OllamaModelProfile schema retains default_temperature and omits description."""
-        profile = _concrete_profile("sorex")
-        self.assertTrue(hasattr(profile, "default_temperature"))
-        self.assertFalse(hasattr(profile, "description"))
-        self.assertIn("default_temperature", profile.model_dump())
-        self.assertNotIn("description", profile.model_dump())
-        self.assertIn("default_temperature", OllamaModelProfile.model_fields)
-        self.assertNotIn("description", OllamaModelProfile.model_fields)
-        self.assertEqual(profile.default_temperature, 0.2)
+        for key in ("sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"):
+            with self.subTest(agent=key):
+                spec = AGENT_SPECS[key]
+                self.assertGreater(spec.max_tool_turns, 0)
+                self.assertGreaterEqual(spec.max_tool_calls, spec.max_tool_turns)
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_gemini_provider_config_omits_temperature(

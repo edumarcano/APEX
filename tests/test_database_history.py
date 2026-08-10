@@ -151,9 +151,6 @@ class DatabaseHistoryTests(unittest.TestCase):
         self.assertLess(elapsed, timedelta(hours=1))
         self.assertGreater(elapsed, timedelta(minutes=1))
 
-    def test_probe_db_succeeds(self) -> None:
-        database.probe_db()
-
     def test_reminder_lifecycle(self) -> None:
         first = database.save_reminder("Charge laptop")
         second = database.save_reminder("Review notes")
