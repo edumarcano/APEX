@@ -86,6 +86,14 @@ VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
 VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
 
+_PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
+    "gemini": "Google",
+    "ollama": "Ollama",
+    "llama_cpp": "llama.cpp",
+    "openai": "OpenAI",
+    "xai": "SpaceXAI",
+}
+
 _SCHEMA5_CLOUD_PROFILES: frozenset[str] = frozenset({"comet", "nova", "pulsar"})
 _SCHEMA5_LOCAL_PROFILES: frozenset[str] = frozenset({"lynx", "acinonyx", "neofelis"})
 _SCHEMA5_ALL_PROFILES: frozenset[str] = _SCHEMA5_CLOUD_PROFILES | _SCHEMA5_LOCAL_PROFILES
@@ -431,7 +439,7 @@ def compose_agent_system_instruction(
 def credential_missing_message(agent_key: str) -> str:
     spec = AGENT_SPECS[agent_key]
     env_key = spec.credential_env or "API_KEY"
-    provider_label = spec.provider.upper()
+    provider_label = _PROVIDER_DISPLAY_NAMES[spec.provider]
     return (
         f"APEX is currently unavailable because the {provider_label} "
         f"API key is not configured. Please set {env_key} in your "

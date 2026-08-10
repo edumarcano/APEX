@@ -118,15 +118,15 @@ Weather resolves `TARGET_LOCATION` through Open-Meteo's geocoding service before
 
 | Agent key and display name | Provider and model | Role |
 |---|---|---|
-| `acinonyx` — Acinonyx 1.0 | Gemini `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
+| `acinonyx` — Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
 | `panthera` — Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
-| `neofelis` — Neofelis 1.0 | Gemini `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| `delphinus` — Delphinus 1.0 | xAI `grok-4.3` | Focused xAI cloud Agent with persisted optional X Search |
-| `orcinus` — Orcinus 1.0 | xAI `grok-4.5` | Extended xAI cloud Agent with persisted optional X Search |
+| `neofelis` — Neofelis 1.0 | Google `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
+| `delphinus` — Delphinus 1.0 | SpaceXAI `grok-4.3` | Focused SpaceXAI cloud Agent with persisted optional X Search |
+| `orcinus` — Orcinus 1.0 | SpaceXAI `grok-4.5` | Extended SpaceXAI cloud Agent with persisted optional X Search |
 
 Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
 
-Brave MCP is the general web-search capability for every cloud Agent when connected. Provider-hosted general web search is disabled for OpenAI and xAI. Neofelis's Google Search and Maps controls, and the X Search controls for Delphinus and Orcinus, apply to subsequent requests only.
+Brave MCP is the general web-search capability for every cloud Agent when connected. Provider-hosted general web search is disabled for OpenAI and SpaceXAI. Neofelis's Google Search and Maps controls, and the X Search controls for Delphinus and Orcinus, apply to subsequent requests only.
 
 The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside development mode. Its dedicated free-tier project means APEX reports zero provider token cost for that Agent.
 

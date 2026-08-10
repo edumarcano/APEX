@@ -31,9 +31,11 @@ describe('agents helpers', () => {
     expect(isAgentKey('unknown')).toBe(false)
   })
 
-  it('labels llama.cpp providers for display', () => {
+  it('labels providers for display without changing their technical IDs', () => {
     expect(providerDisplayName('llama_cpp')).toBe('llama.cpp')
     expect(providerDisplayName('ollama')).toBe('Ollama')
+    expect(providerDisplayName('gemini')).toBe('Google')
+    expect(providerDisplayName('xai')).toBe('SpaceXAI')
   })
 
   it('formats known context windows compactly', () => {
