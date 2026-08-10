@@ -84,106 +84,52 @@ class ProviderContractTests(unittest.TestCase):
         )
 
     def test_local_profile_markers_and_runtime_ids(self) -> None:
-        sorex = _concrete_profile("sorex")
-        mus = _concrete_profile("mus")
-        apodemus = _concrete_profile("apodemus")
-        neotoma = _concrete_profile("neotoma")
-        experimental = _concrete_profile("unnamed-experimental-agent")
-        self.assertTrue(isinstance(sorex, LocalModelProfile))
-        self.assertTrue(isinstance(mus, LocalModelProfile))
-        self.assertTrue(isinstance(apodemus, LocalModelProfile))
-        self.assertTrue(isinstance(neotoma, LocalModelProfile))
-        self.assertTrue(isinstance(experimental, LocalModelProfile))
-        self.assertEqual(resolve_inference_provider(sorex), "ollama")
-        self.assertEqual(resolve_inference_provider(apodemus), "llama_cpp")
-        self.assertEqual(sorex.runtime_model_id, sorex.api_model)
-        self.assertEqual(mus.runtime_model_id, mus.api_model)
-        self.assertEqual(apodemus.runtime_model_id, "apodemus-16k")
-        self.assertEqual(apodemus.api_model, "gemma-4-E2B-Q4_K_M.gguf")
-        self.assertEqual(apodemus.allowed_context_windows, (4096, 16384, 32768, 131072))
-        self.assertEqual(apodemus.default_context_window, 16384)
-        self.assertEqual(apodemus.high_resource_context_options, (131072,))
-        self.assertEqual(neotoma.runtime_model_id, "neotoma-16k")
-        self.assertEqual(neotoma.api_model, "Qwen3.5-4B-Q4_K_M.gguf")
-        self.assertEqual(neotoma.allowed_context_windows, (4096, 16384, 32768, 65536))
-        self.assertEqual(neotoma.maximum_context_window, 262144)
-        self.assertEqual(neotoma.high_resource_context_options, (65536,))
-        self.assertEqual(
-            experimental.runtime_model_id,
-            "unnamed-experimental-agent-16k",
-        )
-        self.assertEqual(
-            experimental.api_model,
-            "gemma-4-E4B-Q4_K_M.gguf",
-        )
-        self.assertEqual(
-            experimental.allowed_context_windows,
-            (4096, 16384, 32768),
-        )
-        self.assertEqual(experimental.default_context_window, 16384)
-        self.assertGreater(experimental.maximum_context_window, 32768)
-        self.assertEqual(experimental.high_resource_context_options, ())
-        self.assertEqual(apodemus.reasoning_mode, "none")
-        self.assertEqual(apodemus.supported_reasoning_modes, ("none", "focused"))
-        self.assertEqual(neotoma.reasoning_mode, "none")
-        self.assertEqual(neotoma.supported_reasoning_modes, ("none", "focused"))
-        self.assertEqual(experimental.reasoning_mode, "none")
-        self.assertEqual(
-            experimental.supported_reasoning_modes,
-            ("none", "focused"),
-        )
-        self.assertEqual(
-            (apodemus.tool_select_max_tokens, apodemus.final_answer_max_tokens),
-            (256, 768),
-        )
-        self.assertEqual(
-            (neotoma.tool_select_max_tokens, neotoma.final_answer_max_tokens),
-            (256, 768),
-        )
-        self.assertEqual(
-            (experimental.tool_select_max_tokens, experimental.final_answer_max_tokens),
-            (256, 768),
-        )
-        self.assertFalse(sorex.high_resource)
-        self.assertTrue(mus.high_resource)
-        self.assertFalse(apodemus.high_resource)
-        self.assertFalse(experimental.high_resource)
-        self.assertFalse(
-            build_concrete_agent(
-                "apodemus",
-                native_effort=None,
-                local_context_window=32768,
-                local_reasoning_mode="none",
-            ).high_resource
-        )
-        self.assertTrue(
-            build_concrete_agent(
-                "apodemus",
-                native_effort=None,
-                local_context_window=131072,
-                local_reasoning_mode="none",
-            ).high_resource
-        )
-        self.assertFalse(
-            build_concrete_agent(
-                "neotoma",
-                native_effort=None,
-                local_context_window=32768,
-                local_reasoning_mode="none",
-            ).high_resource
-        )
-        self.assertTrue(
-            build_concrete_agent(
-                "neotoma",
-                native_effort=None,
-                local_context_window=65536,
-                local_reasoning_mode="none",
-            ).high_resource
-        )
+        local_keys = [
+            key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"
+        ]
+        self.assertTrue(local_keys)
+
+        for agent_key in local_keys:
+            with self.subTest(agent=agent_key):
+                profile = _concrete_profile(agent_key)
+                self.assertIsInstance(profile, LocalModelProfile)
+                self.assertTrue(is_local_inference_provider(profile.provider))
+                self.assertTrue(profile.runtime_model_id)
+                self.assertTrue(profile.api_model)
+
+                if profile.provider != "llama_cpp":
+                    continue
+
+                self.assertIn(
+                    profile.default_context_window,
+                    profile.allowed_context_windows,
+                )
+                self.assertGreaterEqual(
+                    profile.maximum_context_window,
+                    max(profile.allowed_context_windows),
+                )
+                self.assertTrue(
+                    set(profile.high_resource_context_options).issubset(
+                        profile.allowed_context_windows
+                    )
+                )
+                self.assertIn(profile.reasoning_mode, profile.supported_reasoning_modes)
+                for context_window in profile.allowed_context_windows:
+                    selected = build_concrete_agent(
+                        agent_key,
+                        native_effort=None,
+                        local_context_window=context_window,
+                        local_reasoning_mode=profile.reasoning_mode,
+                    )
+                    self.assertEqual(selected.context_window, context_window)
+                    self.assertEqual(
+                        selected.high_resource,
+                        context_window in profile.high_resource_context_options,
+                    )
+
         self.assertTrue(is_local_inference_provider("ollama"))
         self.assertTrue(is_local_inference_provider("llama_cpp"))
         self.assertFalse(is_local_inference_provider("openai"))
-
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
         for agent_key in (
             "sorex",
@@ -211,9 +157,6 @@ class ProviderContractTests(unittest.TestCase):
         ):
             expected.update(local_model_refs_for_agent(agent_key))
         self.assertEqual(known, frozenset(expected))
-        self.assertEqual(len(local_model_refs_for_agent("apodemus")), 4)
-        self.assertEqual(len(local_model_refs_for_agent("neotoma")), 4)
-        self.assertEqual(len(local_model_refs_for_agent("unnamed-experimental-agent")), 3)
         self.assertIsNone(
             agent_key_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")

@@ -227,6 +227,18 @@ class AdversarialSynthesisTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_model_output("===SPEECH===\n\n===INSIGHTS===\n- ok")
 
+    def test_parser_repairs_output_limits(self) -> None:
+        speech = " ".join(f"word{i}" for i in range(90))
+        output = (
+            f"===SPEECH===\n{speech}\n===INSIGHTS===\n"
+            "- one two three four five six seven eight nine ten eleven twelve thirteen\n"
+            "- second\n- third\n- fourth"
+        )
+        briefing, insights = parse_model_output(output)
+        self.assertEqual(len(briefing.split()), 75)
+        self.assertEqual(len(insights), 3)
+        self.assertEqual(len(insights[0].split()), 12)
+
     def test_panthera_path_never_receives_raw_telemetry(self) -> None:
         router = SynthesisRouter()
         with patch.object(router, "_panthera") as panthera:

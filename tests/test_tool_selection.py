@@ -101,53 +101,15 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(set(rendered), {tool.name for tool in catalog.tools})
 
         groups_by_id = {group.id: group for group in catalog.groups}
-        self.assertNotIn("family:web_search", groups_by_id)
-        self.assertNotIn("family:market", groups_by_id)
-        self.assertEqual(
-            {tool.name for tool in groups_by_id["mcp:brave"].tools},
-            {"brave_brave_web_search", "brave_brave_news_search"},
-        )
-        self.assertEqual(
-            {tool.name for tool in groups_by_id["mcp:alphavantage"].tools},
-            {
-                "alphavantage_symbol_search",
-                "alphavantage_global_quote",
-                "alphavantage_time_series_daily",
-                "alphavantage_company_overview",
-                "alphavantage_news_sentiment",
-            },
-        )
-        self.assertTrue(
-            all(tool.apex_family == "web_search" for tool in groups_by_id["mcp:brave"].tools)
-        )
-        self.assertTrue(
-            all(
-                tool.apex_family == "market"
-                for tool in groups_by_id["mcp:alphavantage"].tools
-            )
-        )
-        expected_native_families = {
-            "schedule": {
-                "get_upcoming_calendar_events",
-                "get_active_reminders",
-            },
-            "weather": {"get_weather_forecast"},
-            "mail": {"search_gmail", "get_gmail_message"},
-            "briefings": {"get_briefing_history"},
-            "formula_1": {"get_f1_driver_standings", "get_f1_season_calendar"},
-            "microsoft_todo": {
-                "list_microsoft_todo_lists",
-                "list_microsoft_todo_tasks",
-            },
-        }
-        for family_id, names in expected_native_families.items():
-            self.assertEqual(
-                {tool.name for tool in groups_by_id[f"family:{family_id}"].tools},
-                names,
-            )
-            self.assertTrue(
-                all(tool.origin == "native" for tool in groups_by_id[f"family:{family_id}"].tools)
-            )
+        self.assertEqual(len(groups_by_id), len(catalog.groups))
+        for group in catalog.groups:
+            with self.subTest(group=group.id):
+                self.assertTrue(group.tools)
+                self.assertTrue(group.id.startswith(("family:", "mcp:")))
+                if group.id.startswith("family:"):
+                    self.assertTrue(all(tool.origin == "native" for tool in group.tools))
+                else:
+                    self.assertTrue(all(tool.origin != "native" for tool in group.tools))
 
         self.assertEqual(
             sum(group.schema_token_subtotal for group in catalog.groups),

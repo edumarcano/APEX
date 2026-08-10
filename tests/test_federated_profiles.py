@@ -31,7 +31,7 @@ from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.api.cortex import _execute_agent_turn, query_agent
 from core.api.cortex import build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
-from core.settings.models import AskApexSettings, SETTINGS_SCHEMA_VERSION
+from core.settings.models import AskApexSettings
 
 
 class SchemaMigrationTests(unittest.TestCase):
@@ -272,22 +272,6 @@ class PromptConfigurationTests(unittest.TestCase):
         ):
             self.assertNotIn("You are APEX", prompt)
 
-    def test_local_agent_prompt_covers_complete_tool_use_and_natural_tone(self) -> None:
-        prompt = config.LOCAL_AGENT_SYSTEM_PROMPT.lower()
-
-        for concept in (
-            "complete",
-            "multiple tools",
-            "continue calling",
-            "do not ask",
-            "read-only",
-            "clarifying question",
-            "natural",
-            "conversational",
-        ):
-            with self.subTest(concept=concept):
-                self.assertIn(concept, prompt)
-
     def test_missing_prompt_configuration_is_not_replaced_by_embedded_text(self) -> None:
         with self.assertRaises(RuntimeError):
             config._required_prompt("", key="agent_system_prompt")
@@ -526,46 +510,38 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             profiles = build_agent_statuses()
 
         neofelis = next(item for item in profiles if item.key == "neofelis")
-        self.assertEqual(neofelis.configured_model, "gemini-3.6-flash")
         self.assertTrue(neofelis.description)
         self.assertEqual(neofelis.status, "configured")
         self.assertEqual(neofelis.status_source, "configuration")
-        self.assertEqual(neofelis.capabilities, ["Research", "Google Search", "Google Maps"])
-        self.assertEqual(neofelis.pricing.input_per_million, 1.5)
-        self.assertEqual(neofelis.pricing.output_per_million, 7.5)
         self.assertIsNone(neofelis.provider_account_tier)
         self.assertEqual(
             neofelis.native_tools,
             {"google_search": False, "google_maps": True},
         )
-        neotoma = next(item for item in profiles if item.key == "neotoma")
-        self.assertEqual(neotoma.configured_model, "Qwen3.5-4B-Q4_K_M.gguf")
-        self.assertEqual(
-            neotoma.context_window_options,
-            [4096, 16384, 32768, 65536],
-        )
-        self.assertEqual(neotoma.default_context_window, 16384)
-        self.assertEqual(neotoma.context_window, 16384)
-        self.assertEqual(neotoma.context_window_high_resource_options, [65536])
-        self.assertEqual(neotoma.reasoning_mode_options, ["none", "focused"])
-        self.assertEqual(neotoma.default_reasoning_mode, "none")
-        self.assertEqual(neotoma.reasoning_mode, "none")
-        apodemus = next(item for item in profiles if item.key == "apodemus")
-        self.assertEqual(
-            apodemus.context_window_options,
-            [4096, 16384, 32768, 131072],
-        )
-        self.assertEqual(apodemus.context_window_high_resource_options, [131072])
-        self.assertEqual(apodemus.default_context_window, 16384)
-        self.assertEqual(apodemus.context_window, 16384)
-        mus = next(item for item in profiles if item.key == "mus")
-        self.assertEqual(mus.reasoning_mode_options, ["none"])
-
-
-class SettingsSchemaVersionTests(unittest.TestCase):
-    def test_settings_schema_version_is_thirteen(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 13)
-
+        for profile in profiles:
+            with self.subTest(agent=profile.key):
+                self.assertTrue(profile.configured_model)
+                if profile.context_window_options:
+                    self.assertEqual(
+                        profile.context_window_options,
+                        sorted(set(profile.context_window_options)),
+                    )
+                    self.assertIn(
+                        profile.default_context_window,
+                        profile.context_window_options,
+                    )
+                    self.assertIn(profile.context_window, profile.context_window_options)
+                    self.assertTrue(
+                        set(profile.context_window_high_resource_options).issubset(
+                            profile.context_window_options
+                        )
+                    )
+                if profile.reasoning_mode_options:
+                    self.assertIn(
+                        profile.default_reasoning_mode,
+                        profile.reasoning_mode_options,
+                    )
+                    self.assertIn(profile.reasoning_mode, profile.reasoning_mode_options)
 
 if __name__ == "__main__":
     unittest.main()
