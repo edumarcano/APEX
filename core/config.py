@@ -18,7 +18,7 @@ __all__ = [
     "GEMINI_AGENT_MAX_TURNS",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
-    "ASK_APEX_ENABLED",
+    "AGENT_QUERIES_ENABLED",
     "CONFIG_PATH",
     "DEFAULT_CLOUD_AGENT",
     "MAX_SESSION_MESSAGES",
@@ -472,23 +472,23 @@ def _parse_cloud_agent(raw: Any, *, key: str, default: str) -> str:
 
 
 try:
-    _ask_apex_cfg = _CONFIG_DATA.get("ask_apex", {})
-    if not isinstance(_ask_apex_cfg, dict):
+    _agent_settings_cfg = _CONFIG_DATA.get("ask_apex", {})
+    if not isinstance(_agent_settings_cfg, dict):
         _LOGGER.warning('Config key "ask_apex" must be a JSON object; using defaults.')
-        _ask_apex_cfg = {}
+        _agent_settings_cfg = {}
 
-    ASK_APEX_ENABLED: Final[bool] = _parse_config_bool(
-        _ask_apex_cfg.get("enabled"),
+    AGENT_QUERIES_ENABLED: Final[bool] = _parse_config_bool(
+        _agent_settings_cfg.get("enabled"),
         key="ask_apex.enabled",
         default=True,
     )
     DEFAULT_CLOUD_AGENT: Final[str] = _parse_cloud_agent(
-        _ask_apex_cfg.get("cloud_agent"),
+        _agent_settings_cfg.get("cloud_agent"),
         key="ask_apex.cloud_agent",
         default="panthera",
     )
     MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
-        _ask_apex_cfg.get("max_session_messages"),
+        _agent_settings_cfg.get("max_session_messages"),
         key="ask_apex.max_session_messages",
         default=6,
         min_value=2,
@@ -496,7 +496,7 @@ try:
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
-    ASK_APEX_ENABLED = True
+    AGENT_QUERIES_ENABLED = True
     DEFAULT_CLOUD_AGENT = "panthera"
     MAX_SESSION_MESSAGES = 6
 

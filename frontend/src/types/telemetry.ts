@@ -390,7 +390,7 @@ export interface TelemetryPayload {
   connectorHealth: ConnectorHealthEntry[]
   digest?: DigestPayload
   defaultAgent?: AgentKey
-  askApexEnabled?: boolean
+  agentQueriesEnabled?: boolean
   tool_outputs?: ToolOutputItem[]
 }
 
@@ -442,7 +442,7 @@ export interface ApexDataState {
   agentInitialSelection?: AgentInitialSelection
   briefingDefaultMode?: BriefingMode
   voiceMode?: 'off' | 'manual' | 'automatic'
-  askApexEnabled?: boolean
+  agentQueriesEnabled?: boolean
   marketEnabled: boolean
   synthesisStrategy: SynthesisStrategy
   synthesisProvider: SynthesisProvider | null

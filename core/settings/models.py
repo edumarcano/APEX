@@ -146,8 +146,8 @@ class MarketSettings(BaseModel):
     symbols: tuple[str, ...] = ()
 
 
-class AskApexSettings(BaseModel):
-    """Ask APEX enablement, runtime, Agent, and grounding preferences."""
+class AgentSettings(BaseModel):
+    """Agent query enablement, runtime, Agent, and grounding preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -274,7 +274,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
-    ask_apex: AskApexSettings = Field(default_factory=AskApexSettings)
+    ask_apex: AgentSettings = Field(default_factory=AgentSettings)
     tool_profiles: ToolProfilesSettings = Field(default_factory=ToolProfilesSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
@@ -329,8 +329,8 @@ class MarketPatch(BaseModel):
     symbols: list[str] | None = None
 
 
-class AskApexPatch(BaseModel):
-    """Partial Ask APEX patch; unknown fields are rejected."""
+class AgentSettingsPatch(BaseModel):
+    """Partial Agent query settings patch; unknown fields are rejected."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -442,7 +442,7 @@ class SettingsPatch(BaseModel):
     modules: ModulesPatch | None = None
     football: FootballPatch | None = None
     market: MarketPatch | None = None
-    ask_apex: AskApexPatch | None = None
+    ask_apex: AgentSettingsPatch | None = None
     tool_profiles: ToolProfilesPatch | None = None
     briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None

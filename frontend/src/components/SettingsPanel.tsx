@@ -203,7 +203,7 @@ export default function SettingsPanel({
   const featuresTiming = resolveEffectiveTiming('features', timingRuntime)
   const marketTiming = resolveEffectiveTiming('market', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
-  const askApexTiming = resolveEffectiveTiming('ask_apex', timingRuntime)
+  const agentQueriesTiming = resolveEffectiveTiming('agent_queries', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
   const llamaCppTiming = resolveEffectiveTiming('llama_cpp', timingRuntime)
@@ -437,14 +437,14 @@ export default function SettingsPanel({
                 </div>
               </section>
 
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-ask-apex`}>
-                <SectionHeading id={`${titleId}-ask-apex`} title="Ask APEX" />
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-agent-queries`}>
+                <SectionHeading id={`${titleId}-agent-queries`} title="Agent queries" />
                 <div className="space-y-2">
                   <SettingsToggle
-                    id="settings-ask-apex-enabled"
-                    label="Ask APEX enabled"
+                    id="settings-agent-queries-enabled"
+                    label="Agent queries enabled"
                     checked={draft.ask_apex.enabled}
-                    timing={askApexTiming}
+                    timing={agentQueriesTiming}
                     onChange={(next) =>
                       setDraft((prev) => ({
                         ...prev,

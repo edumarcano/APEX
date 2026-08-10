@@ -791,7 +791,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cortex-ask-apex-bar,
+  .agent-query-bar,
   .cortex-error-feedback,
   .cortex-query-spinner,
   .cortex-lifecycle-spinner,

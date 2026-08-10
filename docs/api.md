@@ -66,7 +66,7 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Ask APEX enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective selection; in development mode it can be Acinonyx without changing saved normal-mode preferences.
+Returns boot-time HUD values such as Agent query enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective selection; in development mode it can be Acinonyx without changing saved normal-mode preferences.
 
 ### GET `/api/v1/settings`
 
@@ -102,7 +102,7 @@ Returns the resolved settings envelope. The current contract version is `13`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Ask APEX, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -366,7 +366,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - A provider-authoritative local context overflow is returned as an actionable
   stable response error after history trimming; the generic preflight estimate
   does not block the request.
-- `403` — Ask APEX is disabled.
+- `403` — Agent queries are disabled.
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 

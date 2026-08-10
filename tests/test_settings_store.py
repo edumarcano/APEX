@@ -12,7 +12,7 @@ from unittest import mock
 from pydantic import ValidationError
 
 from core.settings.models import (
-    AskApexPatch,
+    AgentSettingsPatch,
     BriefingPatch,
     FeaturesPatch,
     FootballPatch,
@@ -190,7 +190,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
         )
 
-    def test_partial_schema6_assistant_overlay_preserves_base_selection(self) -> None:
+    def test_partial_schema6_agent_settings_overlay_preserves_base_selection(self) -> None:
         self.base["ask_apex"] = {
             "enabled": True,
             "runtime": "cloud",
@@ -205,16 +205,16 @@ class SettingsStoreLoadTests(unittest.TestCase):
         _write_json(self.config_path, self.base)
         _write_json(self.local_path, {"ask_apex": {"enabled": False}})
 
-        assistant = self._store().get_snapshot().ask_apex
+        agent_settings = self._store().get_snapshot().ask_apex
 
-        self.assertFalse(assistant.enabled)
-        self.assertEqual(assistant.cloud_agent, "orcinus")
-        self.assertEqual(assistant.effort, "extended")
-        self.assertEqual(assistant.local_agent, "sorex")
-        self.assertFalse(assistant.neofelis_google_search_enabled)
-        self.assertFalse(assistant.neofelis_google_maps_enabled)
-        self.assertFalse(assistant.delphinus_x_search_enabled)
-        self.assertFalse(assistant.orcinus_x_search_enabled)
+        self.assertFalse(agent_settings.enabled)
+        self.assertEqual(agent_settings.cloud_agent, "orcinus")
+        self.assertEqual(agent_settings.effort, "extended")
+        self.assertEqual(agent_settings.local_agent, "sorex")
+        self.assertFalse(agent_settings.neofelis_google_search_enabled)
+        self.assertFalse(agent_settings.neofelis_google_maps_enabled)
+        self.assertFalse(agent_settings.delphinus_x_search_enabled)
+        self.assertFalse(agent_settings.orcinus_x_search_enabled)
 
     def test_apodemus_briefing_mode_survives_reload(self) -> None:
         store = self._store()
@@ -530,7 +530,7 @@ class SettingsStorePatchTests(unittest.TestCase):
         ):
             with self.assertRaises(SettingsPersistenceError):
                 store.apply_patch(
-                    SettingsPatch(ask_apex=AskApexPatch(enabled=False))
+                    SettingsPatch(ask_apex=AgentSettingsPatch(enabled=False))
                 )
 
         after = store.get_snapshot()
@@ -552,10 +552,10 @@ class SettingsStorePatchTests(unittest.TestCase):
     def test_same_field_last_successful_write_wins(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(ask_apex=AskApexPatch(cloud_agent="neofelis"))
+            SettingsPatch(ask_apex=AgentSettingsPatch(cloud_agent="neofelis"))
         )
         store.apply_patch(
-            SettingsPatch(ask_apex=AskApexPatch(cloud_agent="orcinus"))
+            SettingsPatch(ask_apex=AgentSettingsPatch(cloud_agent="orcinus"))
         )
         self.assertEqual(
             store.get_snapshot().ask_apex.cloud_agent, "orcinus"

@@ -272,7 +272,7 @@ def build_agent_statuses() -> list[AgentStatus]:
     loading = get_loading_local_model()
     idle_remaining = get_idle_unload_remaining_seconds()
     dev_mode = is_dev_mode()
-    assistant_settings = get_settings_store().get_snapshot().ask_apex
+    agent_settings = get_settings_store().get_snapshot().ask_apex
     vitals = get_system_vitals()
 
     snapshots: dict[str, Any] = {}
@@ -406,16 +406,16 @@ def build_agent_statuses() -> list[AgentStatus]:
         hosted_tools = hosted_tools_for_agent(
             key,
             neofelis_google_search_enabled=(
-                assistant_settings.neofelis_google_search_enabled
+                agent_settings.neofelis_google_search_enabled
             ),
             neofelis_google_maps_enabled=(
-                assistant_settings.neofelis_google_maps_enabled
+                agent_settings.neofelis_google_maps_enabled
             ),
             delphinus_x_search_enabled=(
-                assistant_settings.delphinus_x_search_enabled
+                agent_settings.delphinus_x_search_enabled
             ),
             orcinus_x_search_enabled=(
-                assistant_settings.orcinus_x_search_enabled
+                agent_settings.orcinus_x_search_enabled
             ),
         )
         known_native_tools = {
@@ -1066,7 +1066,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     if not get_settings_store().get_snapshot().ask_apex.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="APEX is currently disabled in system settings.",
+            detail="Agent queries are currently disabled in Settings.",
         )
 
     agent_key = payload.agent

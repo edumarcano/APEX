@@ -89,7 +89,7 @@ const toolCatalog: ToolCatalog = {
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeAgent: 'panthera', cloudEffort: 'focused', askApexEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, onToolSelectionChange: vi.fn(), onToolProfileChange: vi.fn(), isQuerying: false, logoProps: { step: null, status: 'idle' } satisfies Omit<ApexLogoProps, 'className'>, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), onLocalContextWindowChange: vi.fn(), onLocalReasoningModeChange: vi.fn(), onSubmit: vi.fn().mockResolvedValue(true), onNewSession: vi.fn(), ...overrides,
+    activeAgent: 'panthera', cloudEffort: 'focused', agentQueriesEnabled: true, agentsStatus: [panthera], agentsStatusHydrated: true, history: [], latestTrace: [], error: null, contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 }, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, onToolSelectionChange: vi.fn(), onToolProfileChange: vi.fn(), isQuerying: false, logoProps: { step: null, status: 'idle' } satisfies Omit<ApexLogoProps, 'className'>, lifecycleBusy: false, lifecycleActionPending: false, verifyingCloudAgent: null, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onAgentChange: vi.fn(), onEffortChange: vi.fn(), onGoogleSearchChange: vi.fn(), onGoogleMapsChange: vi.fn(), onDelphinusXSearchChange: vi.fn(), onOrcinusXSearchChange: vi.fn(), onLocalContextWindowChange: vi.fn(), onLocalReasoningModeChange: vi.fn(), onSubmit: vi.fn().mockResolvedValue(true), onNewSession: vi.fn(), ...overrides,
   }
 }
 
@@ -157,7 +157,7 @@ describe('CortexWorkspace', () => {
     await user.click(screen.getByRole('button', { name: 'Expand Schedule' }))
     await user.click(screen.getByRole('checkbox', { name: /Reminders/ }))
 
-    const input = screen.getByLabelText('Ask APEX query')
+    const input = screen.getByLabelText('Agent query')
     await user.type(input, 'First request')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
     await user.type(input, 'Second request')

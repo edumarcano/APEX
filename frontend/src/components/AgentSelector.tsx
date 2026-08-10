@@ -245,7 +245,7 @@ export function AgentSelector({
     ? <div ref={popoverRef} id="home-agent-popover" role="dialog" aria-label="Select Agent" style={position ?? undefined} className="fixed z-[100] max-h-[min(62vh,32rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl scrollbar-thin">
         <div className="border-b border-white/10 px-2 pb-2 pt-1">
           <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">Agent</p>
-          <p className="mt-1 text-[10px] text-zinc-500">Applies to your next Ask APEX request.</p>
+          <p className="mt-1 text-[10px] text-zinc-500">Applies to your next Agent query.</p>
         </div>
         {(['cloud', 'local'] as const).map((mode) => {
           const modeAgents = homeAgents.filter((agent) => agent.runtime === mode)

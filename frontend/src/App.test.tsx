@@ -149,7 +149,7 @@ vi.mock('./hooks/useApexData', () => ({
     createReminder: appMocks.createReminder,
     demoModeActive: false,
     devModeActive: false,
-    askApexEnabled: true,
+    agentQueriesEnabled: true,
     marketEnabled: false,
     defaultAgent: appMocks.initialAgent,
     agentInitialSelection: {

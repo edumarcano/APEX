@@ -793,7 +793,7 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def migrate_schema7_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
-    """Convert schema-7 Ask APEX keys to the canonical schema-8 shape."""
+    """Convert schema-7 historical ``ask_apex`` keys to schema-8 shape."""
     legacy = migrate_schema5_ask_apex(raw)
     if "runtime" in legacy:
         return legacy
@@ -816,23 +816,23 @@ def migrate_schema5_briefing(
 
 
 def resolve_agent_selection(
-    ask_apex: Any,
+    agent_settings: Any,
     *,
     dev_mode: bool | None = None,
 ) -> tuple[AgentRuntime, str, ApexEffort | None]:
-    """Resolve effective runtime, Agent, and effort from Ask APEX settings."""
+    """Resolve effective runtime, Agent, and effort from Agent settings."""
     dev_active = is_dev_mode() if dev_mode is None else dev_mode
     if dev_active:
-        return "cloud", "acinonyx", getattr(ask_apex, "effort", "focused")
+        return "cloud", "acinonyx", getattr(agent_settings, "effort", "focused")
 
-    runtime = getattr(ask_apex, "runtime", "cloud")
+    runtime = getattr(agent_settings, "runtime", "cloud")
     if runtime == "local":
-        agent = getattr(ask_apex, "local_agent", "apodemus")
+        agent = getattr(agent_settings, "local_agent", "apodemus")
         if not dev_active and not is_agent_visible(agent, dev_mode=False):
             agent = "apodemus"
         return "local", agent, None
-    agent = getattr(ask_apex, "cloud_agent", "panthera")
+    agent = getattr(agent_settings, "cloud_agent", "panthera")
     if not dev_active and not is_agent_visible(agent, dev_mode=False):
         agent = "panthera"
-    effort = getattr(ask_apex, "effort", "focused")
+    effort = getattr(agent_settings, "effort", "focused")
     return "cloud", agent, effort
