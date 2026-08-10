@@ -299,6 +299,9 @@ class McpProviderPresetTests(unittest.TestCase):
 
 class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
+        loop = asyncio.get_running_loop()
+        self._slow_callback_duration = loop.slow_callback_duration
+        loop.slow_callback_duration = 1.0
         clear_capability_registry_for_tests()
         register_native_capabilities()
         set_mcp_manager(None)
@@ -307,6 +310,7 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
         _SLOW_TOOL_STARTED.clear()
 
     async def asyncTearDown(self) -> None:
+        asyncio.get_running_loop().slow_callback_duration = self._slow_callback_duration
         if self._manager is not None:
             await self._manager.shutdown()
             self._manager = None

@@ -26,7 +26,7 @@
 
 ## Validation
 
-- Python changes: run `uv run python -m unittest discover -s tests` and add focused regression coverage when behavior changes.
+- Python changes: run `uv run python -m unittest discover -s tests -t . -b` and add focused regression coverage when behavior changes.
 - Frontend changes: run `npm test`, `npm run lint`, and `npm run build` from `frontend/`.
 - Documentation or agent-configuration changes: validate referenced paths and metadata, run `uv run python scripts/check_docs.py` for public documentation changes, then run `git diff --check`.
 - Report commands actually run and any validation that could not be completed.

@@ -71,7 +71,7 @@ class BriefingDeliveryTests(unittest.TestCase):
                 },
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
-                "briefing": {"default_mode": "comet"},
+                "briefing": {"default_mode": "panthera"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",
@@ -91,6 +91,7 @@ class BriefingDeliveryTests(unittest.TestCase):
                 "core.api.routers.system.get_settings_store", return_value=self.store
             ),
             mock.patch("core.api.briefing.get_settings_store", return_value=self.store),
+            mock.patch("core.api.app.get_settings_store", return_value=self.store),
             mock.patch("core.api.voice.get_settings_store", return_value=self.store),
             mock.patch(
                 "core.telemetry.service.get_settings_store", return_value=self.store
