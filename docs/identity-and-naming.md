@@ -52,7 +52,7 @@ The main APEX terms describe different parts of the product rather than intercha
 ```text
 APEX
 ├── Home workspace
-│   └── Telemetry, briefings, health, and compact Ask APEX access
+│   └── Telemetry, briefings, health, and compact Agent query access
 └── Cortex
     ├── Cortex workspace
     ├── Cortex Engine
@@ -71,11 +71,11 @@ It includes Home, Cortex, telemetry collection, briefing generation, voice deliv
 
 It presents the current state of the user’s environment through telemetry, briefings, connector health, system status, reminders, and compact controls. The name is intentionally direct: it is the workspace the user returns to for the overall state of APEX.
 
-### Ask APEX
+### Agent queries
 
-**Ask APEX** is the prompt and command surface through which the user makes requests.
+**Agent queries** are the prompt and command surface through which the user makes requests.
 
-Ask APEX is not itself an Agent. A request entered through Ask APEX is handled by the selected Apex Agent through the Cortex Engine.
+An Agent query is not itself an Agent. A request entered through the query surface is handled by the selected Apex Agent through the Cortex Engine.
 
 ### Cortex workspace
 
@@ -300,7 +300,7 @@ Apodemus is also independently selectable for briefing synthesis. The current si
 
 Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Gemma 4 E4B (`gemma-4-E4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and high-resource 64K context presets and a 16K default. Its native model maximum is 131K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
 
-Neotoma is not a briefing mode. Its role is interactive Ask APEX and Cortex local execution alongside the other local Agents.
+Neotoma is not a briefing mode. Its role is interactive Agent queries and Cortex local execution alongside the other local Agents.
 
 ## Unnamed Experimental Agent
 

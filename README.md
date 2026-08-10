@@ -10,7 +10,7 @@
 
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
-Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Ask APEX while keeping the local machine, not a hosted account, at the center of the system.
+Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
 <p align="center">
   <img
@@ -36,7 +36,7 @@ A briefing can use Panthera through OpenAI, Apodemus through llama.cpp, or a det
 
 ### Operates Apex Agents
 
-Ask APEX can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
+Agent queries can direct Apex Agents to query approved read-only capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP providers. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
 
 <p align="center">
   <img
@@ -73,7 +73,7 @@ flowchart LR
     L --> HUD["React HUD · 127.0.0.1:5500"]
     HUD --> T["Telemetry snapshots"]
     HUD --> B["Briefing synthesis"]
-    HUD --> A["Ask APEX"]
+    HUD --> A["Agent queries"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
     B --> M["Panthera/OpenAI · Apodemus/llama.cpp · Structured Digest"]

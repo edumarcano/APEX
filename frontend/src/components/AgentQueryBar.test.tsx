@@ -8,7 +8,7 @@ import type {
   ToolPreflightEstimate,
 } from '../types/telemetry'
 
-import { AskApexBar } from './AskApexBar'
+import { AgentQueryBar } from './AgentQueryBar'
 
 const mus: AgentStatus = {
   key: 'mus',
@@ -97,10 +97,10 @@ const overflowPreflight: ToolPreflightEstimate = {
 
 function renderBar(
   onSubmit = vi.fn().mockResolvedValue(true),
-  overrides: Partial<ComponentProps<typeof AskApexBar>> = {},
+  overrides: Partial<ComponentProps<typeof AgentQueryBar>> = {},
 ): ReturnType<typeof render> {
   return render(
-    <AskApexBar
+    <AgentQueryBar
       presentation="cortex"
       activeAgent="mus"
       onSubmit={onSubmit}
@@ -115,7 +115,7 @@ function renderBar(
   )
 }
 
-describe('AskApexBar unified tool selection', () => {
+describe('AgentQueryBar unified tool selection', () => {
   it.each([
     ['submitting', { isSubmitting: true }],
     ['preparing', { submissionPending: true }],
@@ -153,7 +153,7 @@ describe('AskApexBar unified tool selection', () => {
     const onSubmit = vi.fn()
     renderBar(onSubmit)
 
-    fireEvent.change(screen.getByLabelText('Ask APEX query'), {
+    fireEvent.change(screen.getByLabelText('Agent query'), {
       target: { value: '  Check status  ' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
@@ -170,7 +170,7 @@ describe('AskApexBar unified tool selection', () => {
     const onSubmit = vi.fn()
     renderBar(onSubmit, { selectionReady: false, draftPrompt: 'Keep while hydrating' })
 
-    const input = screen.getByLabelText('Ask APEX query')
+    const input = screen.getByLabelText('Agent query')
     expect(input).toBeDisabled()
     expect(input).toHaveValue('Keep while hydrating')
     expect(screen.getByRole('button', { name: 'Send query' })).toBeDisabled()
@@ -181,7 +181,7 @@ describe('AskApexBar unified tool selection', () => {
     const onSubmit = vi.fn().mockResolvedValue(false)
     renderBar(onSubmit)
 
-    const input = screen.getByLabelText('Ask APEX query')
+    const input = screen.getByLabelText('Agent query')
     fireEvent.change(input, { target: { value: 'Keep this draft' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
 
@@ -194,7 +194,7 @@ describe('AskApexBar unified tool selection', () => {
     const onDraftChange = vi.fn()
     renderBar(onSubmit, { onDraftChange })
 
-    const input = screen.getByLabelText('Ask APEX query')
+    const input = screen.getByLabelText('Agent query')
     fireEvent.change(input, { target: { value: 'Dispatch this draft' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
 
@@ -207,7 +207,7 @@ describe('AskApexBar unified tool selection', () => {
     const onSubmit = vi.fn().mockResolvedValue(true)
     renderBar(onSubmit, { submissionPending: true })
 
-    const input = screen.getByLabelText('Ask APEX query')
+    const input = screen.getByLabelText('Agent query')
     expect(input).toBeEnabled()
     fireEvent.change(input, { target: { value: 'Wait for preparation' } })
 
@@ -220,7 +220,7 @@ describe('AskApexBar unified tool selection', () => {
     const onSubmit = vi.fn()
     const view = renderBar(onSubmit, { toolPreflight: overflowPreflight })
 
-    const input = screen.getByLabelText('Ask APEX query')
+    const input = screen.getByLabelText('Agent query')
     expect(input).toBeEnabled()
     expect(screen.getByRole('button', { name: /Tools:/ })).toBeEnabled()
     fireEvent.change(input, { target: { value: 'Shorten this prompt' } })
@@ -230,7 +230,7 @@ describe('AskApexBar unified tool selection', () => {
     expect(onSubmit).not.toHaveBeenCalled()
 
     view.rerender(
-      <AskApexBar
+      <AgentQueryBar
         presentation="cortex"
         activeAgent="mus"
         onSubmit={onSubmit}

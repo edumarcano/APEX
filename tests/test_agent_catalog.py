@@ -17,46 +17,46 @@ from core.agent.catalog import (
 from core.agent.types import AgentQueryRequest
 from core.api.cortex import build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
-from core.settings.models import AskApexSettings
+from core.settings.models import AgentSettings
 
 
-class AssistantSelectionTests(unittest.TestCase):
+class AgentSelectionTests(unittest.TestCase):
     def test_dev_mode_selects_acinonyx(self) -> None:
-        assistant = AskApexSettings()
+        agent_settings = AgentSettings()
         mode, profile, effort = resolve_agent_selection(
-            assistant, dev_mode=True
+            agent_settings, dev_mode=True
         )
         self.assertEqual((mode, profile, effort), ("cloud", "acinonyx", "focused"))
 
     def test_cloud_settings_resolve_profile_and_effort(self) -> None:
-        assistant = AskApexSettings(
+        agent_settings = AgentSettings(
             runtime="cloud",
             cloud_agent="neofelis",
             effort="extended",
         )
         mode, profile, effort = resolve_agent_selection(
-            assistant, dev_mode=False
+            agent_settings, dev_mode=False
         )
         self.assertEqual((mode, profile, effort), ("cloud", "panthera", "extended"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
-        assistant = AskApexSettings(runtime="local", local_agent="sorex")
+        agent_settings = AgentSettings(runtime="local", local_agent="sorex")
         mode, profile, effort = resolve_agent_selection(
-            assistant, dev_mode=False
+            agent_settings, dev_mode=False
         )
         self.assertEqual((mode, profile, effort), ("local", "apodemus", None))
 
     def test_hidden_local_agent_falls_back_outside_dev_mode(self) -> None:
-        assistant = AskApexSettings(runtime="local", local_agent="mus")
+        agent_settings = AgentSettings(runtime="local", local_agent="mus")
         self.assertEqual(
-            resolve_agent_selection(assistant, dev_mode=False),
+            resolve_agent_selection(agent_settings, dev_mode=False),
             ("local", "apodemus", None),
         )
 
     def test_dev_mode_keeps_mus_selectable(self) -> None:
-        assistant = AskApexSettings(runtime="local", local_agent="mus")
+        agent_settings = AgentSettings(runtime="local", local_agent="mus")
         self.assertTrue(is_agent_visible("mus", dev_mode=True))
-        self.assertEqual(assistant.local_agent, "mus")
+        self.assertEqual(agent_settings.local_agent, "mus")
 
 
 class CredentialIsolationTests(unittest.TestCase):

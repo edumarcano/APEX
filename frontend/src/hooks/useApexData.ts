@@ -37,7 +37,7 @@ export type UseApexDataReturn = ApexDataState & {
   markReminderAsRead: (id: number) => Promise<void>
   triggerSynthesis: () => Promise<void>
   applyBootSettings: (next: {
-    askApexEnabled: boolean
+    agentQueriesEnabled: boolean
     agentInitialSelection: AgentInitialSelection
     marketEnabled: boolean
   }) => void
@@ -270,7 +270,7 @@ export function useApexData(): UseApexDataReturn {
     connectorHealth: [],
     active_tts_engine: 'google',
     system_load_throttled: false,
-    askApexEnabled: true,
+    agentQueriesEnabled: true,
     marketEnabled: true,
     synthesisStrategy: 'cloud',
     synthesisProvider: 'openai',
@@ -302,20 +302,20 @@ export function useApexData(): UseApexDataReturn {
 
   const applyBootSettings = useCallback(
     (next: {
-      askApexEnabled: boolean
+      agentQueriesEnabled: boolean
       agentInitialSelection: AgentInitialSelection
       marketEnabled: boolean
     }): void => {
       setState((prev) => ({
         ...prev,
-        askApexEnabled: next.askApexEnabled,
+        agentQueriesEnabled: next.agentQueriesEnabled,
         defaultAgent: next.agentInitialSelection.agent,
         agentInitialSelection: next.agentInitialSelection,
         marketEnabled: next.marketEnabled,
         data: prev.data
           ? {
               ...prev.data,
-              askApexEnabled: next.askApexEnabled,
+              agentQueriesEnabled: next.agentQueriesEnabled,
               defaultAgent: next.agentInitialSelection.agent,
             }
           : prev.data,
@@ -635,7 +635,7 @@ export function useApexData(): UseApexDataReturn {
 
         let defaultAgent: AgentKey | undefined
         let agentInitialSelection: AgentInitialSelection | undefined
-        let askApexEnabled: boolean | undefined
+        let agentQueriesEnabled: boolean | undefined
         let marketEnabled: boolean | undefined
         let demoModeActive: boolean | undefined
         let devModeActive: boolean | undefined
@@ -670,7 +670,7 @@ export function useApexData(): UseApexDataReturn {
                   : undefined
               }
               if (typeof body.ask_apex_enabled === 'boolean') {
-                askApexEnabled = body.ask_apex_enabled
+                agentQueriesEnabled = body.ask_apex_enabled
               }
               if (typeof body.market_enabled === 'boolean') {
                 marketEnabled = body.market_enabled
@@ -704,7 +704,7 @@ export function useApexData(): UseApexDataReturn {
           if (
             defaultAgent !== undefined ||
             agentInitialSelection !== undefined ||
-            askApexEnabled !== undefined ||
+            agentQueriesEnabled !== undefined ||
             marketEnabled !== undefined ||
             demoModeActive !== undefined ||
             devModeActive !== undefined ||
@@ -721,7 +721,7 @@ export function useApexData(): UseApexDataReturn {
                 ...(agentInitialSelection !== undefined
                   ? { agentInitialSelection }
                   : {}),
-                ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                ...(agentQueriesEnabled !== undefined ? { agentQueriesEnabled } : {}),
                 ...(marketEnabled !== undefined ? { marketEnabled } : {}),
                 ...(briefingDefaultMode !== undefined ? { briefingDefaultMode } : {}),
                 ...(voiceMode !== undefined ? { voiceMode } : {}),
@@ -740,7 +740,7 @@ export function useApexData(): UseApexDataReturn {
                   ? {
                       ...prev.data,
                       defaultAgent,
-                      ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                      ...(agentQueriesEnabled !== undefined ? { agentQueriesEnabled } : {}),
                     }
                   : createStandbyTelemetryPayload([], 'No pending reminders.', defaultAgent),
               }
@@ -772,7 +772,7 @@ export function useApexData(): UseApexDataReturn {
             ...(agentInitialSelection !== undefined
               ? { agentInitialSelection }
               : {}),
-            ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+            ...(agentQueriesEnabled !== undefined ? { agentQueriesEnabled } : {}),
             ...(marketEnabled !== undefined ? { marketEnabled } : {}),
             ...(briefingDefaultMode !== undefined ? { briefingDefaultMode } : {}),
             ...(voiceMode !== undefined ? { voiceMode } : {}),
@@ -793,7 +793,7 @@ export function useApexData(): UseApexDataReturn {
                   activeReminders,
                   reminders,
                   ...(defaultAgent !== undefined ? { defaultAgent } : {}),
-                  ...(askApexEnabled !== undefined ? { askApexEnabled } : {}),
+                  ...(agentQueriesEnabled !== undefined ? { agentQueriesEnabled } : {}),
                 }
               : createStandbyTelemetryPayload(activeReminders, reminders, defaultAgent),
           }

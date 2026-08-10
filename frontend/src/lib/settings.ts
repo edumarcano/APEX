@@ -114,11 +114,11 @@ const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
  * Keep session-only agent selection out of persisted DEV_MODE settings,
  * while allowing effort and grounding preferences to remain configurable.
  */
-export function filterAskApexSettingsForDevMode(
-  ask_apex: Record<string, unknown>,
+export function filterAgentSettingsForDevMode(
+  agentSettings: Record<string, unknown>,
 ): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(ask_apex).filter(([key]) => DEV_MODE_AGENT_SETTINGS_KEYS.has(key)),
+    Object.entries(agentSettings).filter(([key]) => DEV_MODE_AGENT_SETTINGS_KEYS.has(key)),
   )
 }
 
@@ -655,9 +655,9 @@ export function diffSettingsPatch(
     }
   }
 
-  const askApex = diffSection(baseline.ask_apex, draft.ask_apex)
-  if (askApex) {
-    patch.ask_apex = askApex
+  const agentSettings = diffSection(baseline.ask_apex, draft.ask_apex)
+  if (agentSettings) {
+    patch.ask_apex = agentSettings
   }
 
   if (JSON.stringify(baseline.tool_profiles) !== JSON.stringify(draft.tool_profiles)) {
@@ -760,7 +760,7 @@ export function resolveEffectiveTiming(
     return 'Active'
   }
 
-  if (group === 'ask_apex') {
+  if (group === 'agent_queries') {
     return runtime.isCortexQuerying ? 'Applies next response' : 'Active'
   }
 

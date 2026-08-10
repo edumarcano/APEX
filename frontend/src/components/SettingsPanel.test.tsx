@@ -218,7 +218,7 @@ describe('SettingsPanel', () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     renderPanel()
 
-    expect(await screen.findByRole('switch', { name: 'Ask APEX enabled' })).toBeVisible()
+    expect(await screen.findByRole('switch', { name: 'Agent queries enabled' })).toBeVisible()
     expect(screen.queryByLabelText('Agent runtime')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Cloud profile')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Local profile')).not.toBeInTheDocument()
@@ -402,7 +402,7 @@ describe('SettingsPanel', () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     renderPanel()
 
-    await screen.findByRole('switch', { name: 'Ask APEX enabled' })
+    await screen.findByRole('switch', { name: 'Agent queries enabled' })
     expect(screen.queryByLabelText('Default mode')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Briefing' })).not.toBeInTheDocument()
   })

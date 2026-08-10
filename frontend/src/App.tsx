@@ -53,7 +53,7 @@ import {
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { resolveWeatherFromModule } from './lib/weatherTelemetry'
 import {
-  filterAskApexSettingsForDevMode,
+  filterAgentSettingsForDevMode,
   parseSettingsResponse,
   resolveAppliedAgentSelection,
   resolveInitialAgentSelection,
@@ -148,7 +148,7 @@ function isCloudAgentKey(
   return !isLocalAgentKey(agent)
 }
 
-interface PersistAskApexSettingsOptions {
+interface PersistAgentSettingsOptions {
   refreshToolCatalog?: boolean
 }
 
@@ -185,7 +185,7 @@ export default function App(): ReactElement {
     createReminder,
     demoModeActive,
     devModeActive,
-    askApexEnabled,
+    agentQueriesEnabled,
     marketEnabled,
     defaultAgent,
     agentInitialSelection,
@@ -250,7 +250,7 @@ export default function App(): ReactElement {
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
     historyPartition: activeAgent === 'acinonyx' ? 'acinonyx' : 'production',
     enabled: Boolean(
-      askApexEnabled &&
+      agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
       toolCatalogState.selectionReady &&
       toolCatalogState.catalog?.agent === activeAgent,
@@ -300,7 +300,7 @@ export default function App(): ReactElement {
         agentSelectionHydratedRef.current || selectedAgent !== undefined,
       )
       applyBootSettings({
-        askApexEnabled: response.settings.ask_apex.enabled,
+        agentQueriesEnabled: response.settings.ask_apex.enabled,
         agentInitialSelection: selection,
         marketEnabled: response.settings.features.market,
       })
@@ -343,9 +343,9 @@ export default function App(): ReactElement {
         const settings = (body as { settings?: unknown }).settings
         if (!settings || typeof settings !== 'object') return
         const settingsValues = settings as Record<string, unknown>
-        const askApex = settingsValues.ask_apex
-        if (askApex && typeof askApex === 'object') {
-          const values = askApex as Record<string, unknown>
+        const agentSettings = settingsValues.ask_apex
+        if (agentSettings && typeof agentSettings === 'object') {
+          const values = agentSettings as Record<string, unknown>
           if (values.cloud_agent === 'panthera' || values.cloud_agent === 'neofelis' || values.cloud_agent === 'delphinus' || values.cloud_agent === 'orcinus') {
             setCloudAgent(values.cloud_agent)
           }
@@ -811,13 +811,13 @@ export default function App(): ReactElement {
   )
 
   const refreshToolCatalog = toolCatalogState.refreshCatalog
-  const persistAskApexSettings = useCallback(
+  const persistAgentSettings = useCallback(
     async (
-      askApex: Record<string, unknown>,
+      agentSettings: Record<string, unknown>,
       selectedAgent?: AgentKey,
-      options: PersistAskApexSettingsOptions = {},
+      options: PersistAgentSettingsOptions = {},
     ): Promise<boolean> => {
-      const payload = devModeActive ? filterAskApexSettingsForDevMode(askApex) : askApex
+      const payload = devModeActive ? filterAgentSettingsForDevMode(agentSettings) : agentSettings
       if (Object.keys(payload).length === 0) {
         return true
       }
@@ -1016,7 +1016,7 @@ export default function App(): ReactElement {
     activeAgentRef.current = agent
     setAgent(agent)
     if (agent === 'acinonyx') {
-      void persistAskApexSettings(
+      void persistAgentSettings(
         { runtime: 'cloud', effort: cloudEffort },
         agent,
         { refreshToolCatalog: false },
@@ -1024,7 +1024,7 @@ export default function App(): ReactElement {
       return
     }
     if (isLocalAgentKey(agent)) {
-      void persistAskApexSettings(
+      void persistAgentSettings(
         { runtime: 'local', local_agent: agent },
         agent,
         { refreshToolCatalog: false },
@@ -1033,54 +1033,54 @@ export default function App(): ReactElement {
     }
     if (isCloudSettingsAgentKey(agent)) {
       setCloudAgent(agent)
-      void persistAskApexSettings(
+      void persistAgentSettings(
         { runtime: 'cloud', cloud_agent: agent, effort: cloudEffort },
         agent,
         { refreshToolCatalog: false },
       )
     }
-  }, [cloudEffort, persistAskApexSettings])
+  }, [cloudEffort, persistAgentSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
-    void persistAskApexSettings(
+    void persistAgentSettings(
       { runtime: 'cloud', cloud_agent: cloudAgent, effort: effort },
       activeAgent,
       { refreshToolCatalog: false },
     )
-  }, [activeAgent, cloudAgent, persistAskApexSettings])
+  }, [activeAgent, cloudAgent, persistAgentSettings])
 
   const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings(
+    void persistAgentSettings(
       { neofelis_google_search_enabled: enabled },
       activeAgent,
       { refreshToolCatalog: true },
     )
-  }, [activeAgent, persistAskApexSettings])
+  }, [activeAgent, persistAgentSettings])
 
   const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings(
+    void persistAgentSettings(
       { neofelis_google_maps_enabled: enabled },
       activeAgent,
       { refreshToolCatalog: true },
     )
-  }, [activeAgent, persistAskApexSettings])
+  }, [activeAgent, persistAgentSettings])
 
   const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings(
+    void persistAgentSettings(
       { delphinus_x_search_enabled: enabled },
       activeAgent,
       { refreshToolCatalog: true },
     )
-  }, [activeAgent, persistAskApexSettings])
+  }, [activeAgent, persistAgentSettings])
 
   const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAskApexSettings(
+    void persistAgentSettings(
       { orcinus_x_search_enabled: enabled },
       activeAgent,
       { refreshToolCatalog: true },
     )
-  }, [activeAgent, persistAskApexSettings])
+  }, [activeAgent, persistAgentSettings])
 
   const handleLocalContextWindowChange = useCallback((
     agent: LocalSettingsAgent,
@@ -1097,12 +1097,12 @@ export default function App(): ReactElement {
       }
     }
     contextWindows[agent] = contextWindow
-    return persistAskApexSettings(
+    return persistAgentSettings(
       { local_context_windows: contextWindows },
       agent,
       { refreshToolCatalog: true },
     )
-  }, [agentsStatus, persistAskApexSettings])
+  }, [agentsStatus, persistAgentSettings])
 
   const handleLocalReasoningModeChange = useCallback((
     agent: LocalSettingsAgent,
@@ -1119,12 +1119,12 @@ export default function App(): ReactElement {
       }
     }
     reasoningModes[agent] = reasoningMode
-    return persistAskApexSettings(
+    return persistAgentSettings(
       { local_reasoning_modes: reasoningModes },
       agent,
       { refreshToolCatalog: false },
     )
-  }, [agentsStatus, persistAskApexSettings])
+  }, [agentsStatus, persistAgentSettings])
 
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession(activeAgent)
@@ -1388,7 +1388,7 @@ export default function App(): ReactElement {
               <div className="flex w-full min-w-0 max-w-full flex-col items-center">
                 <HomeCommandRail
                   activated={activated}
-                  askApexEnabled={Boolean(askApexEnabled)}
+                  agentQueriesEnabled={Boolean(agentQueriesEnabled)}
                   activeAgent={activeAgent}
                   agentsStatus={agentsStatus}
                   agentsStatusHydrated={agentsStatusHydrated}
@@ -1594,7 +1594,7 @@ export default function App(): ReactElement {
           <CortexWorkspace
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
-            askApexEnabled={Boolean(askApexEnabled)}
+            agentQueriesEnabled={Boolean(agentQueriesEnabled)}
             agentsStatus={agentsStatus}
             agentsStatusHydrated={agentsStatusHydrated}
             history={cortexHistory}

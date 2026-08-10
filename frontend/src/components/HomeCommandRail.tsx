@@ -9,7 +9,7 @@ import type {
   ToolPreflightEstimate,
 } from '../types/telemetry'
 
-import { AskApexBar } from './AskApexBar'
+import { AgentQueryBar } from './AgentQueryBar'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
 import { LocalModelControl } from './LocalModelControl'
 import { AgentSelector } from './AgentSelector'
@@ -17,7 +17,7 @@ import { StandbyActions } from './StandbyActions'
 
 interface HomeCommandRailProps {
   activated: boolean
-  askApexEnabled: boolean
+  agentQueriesEnabled: boolean
   activeAgent: AgentKey
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
@@ -72,7 +72,7 @@ interface HomeCommandRailProps {
 
 export function HomeCommandRail({
   activated,
-  askApexEnabled,
+  agentQueriesEnabled,
   activeAgent,
   agentsStatus,
   agentsStatusHydrated,
@@ -119,7 +119,7 @@ export function HomeCommandRail({
   localLifecycleBusy,
   onUnloadLocalModel,
 }: HomeCommandRailProps): ReactElement {
-  const showAgentControls = activated && askApexEnabled
+  const showAgentControls = activated && agentQueriesEnabled
   return (
     <section
       aria-label="Home command rail"
@@ -161,7 +161,7 @@ export function HomeCommandRail({
                 />
               </div>
               <div className="home-command-grid__agent-composer min-w-0" data-slot="home-agent-composer">
-                <AskApexBar
+                <AgentQueryBar
                   presentation="home"
                   activeAgent={activeAgent}
                   onSubmit={onAgentSubmit}

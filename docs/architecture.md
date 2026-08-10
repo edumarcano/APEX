@@ -11,7 +11,7 @@ For the meanings and design rationale behind these terms, see
 - **Apex Agents** are specialized workers such as Apex Panthera and Apex Apodemus.
 - **Cortex Engine** is the backend subsystem that executes, orchestrates, tools, sessions, and manages model lifecycle.
 - **Cortex workspace** is the interface for operating and configuring Apex Agents.
-- **Home workspace** presents telemetry, briefings, connector health, and compact Ask APEX access.
+- **Home workspace** presents telemetry, briefings, connector health, and a compact Agent query bar.
 
 Home/Cortex switching changes only what is visible. It never cancels active Cortex Engine turns, polling, speech, briefings, or local-model lifecycle work.
 
@@ -30,7 +30,7 @@ flowchart TB
     Browser --> Activation["Activation + preflight"]
     Browser --> Telemetry["Telemetry refresh"]
     Browser --> Briefing["Briefing generation"]
-    Browser --> Cortex["Cortex query from Ask APEX"]
+    Browser --> Cortex["Agent query through Cortex"]
     Browser --> Voice["Voice delivery"]
 
     Telemetry --> Connectors["Local + external connectors"]
@@ -55,7 +55,7 @@ flowchart LR
     USER --> ACTIVATE["Activate Home"]
     USER --> REFRESH["Refresh telemetry"]
     USER --> BRIEF["Generate briefing"]
-    USER --> ASK["Ask an Apex Agent"]
+    USER --> ASK["Submit an Agent query"]
     USER --> SPEAK["Speak transcript"]
 
     ACTIVATE --> PREFLIGHT["Advisory preflight"]

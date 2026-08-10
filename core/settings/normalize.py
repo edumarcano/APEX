@@ -19,7 +19,7 @@ from core.settings.models import (
     VALID_VOICE_ENGINES,
     VALID_VOICE_GENDERS,
     VALID_VOICE_MODES,
-    AskApexSettings,
+    AgentSettings,
     BriefingSettings,
     FeaturesSettings,
     FootballSettings,
@@ -113,10 +113,10 @@ def normalize_layer(
         return {}
 
     normalized: dict[str, Any] = {}
-    ask_apex_raw = raw.get("ask_apex")
+    agent_settings_raw = raw.get("ask_apex")
     schema5_layer = raw.get("schema_version") == 5 or (
-        isinstance(ask_apex_raw, dict)
-        and bool({"default_profile", "default_cloud_profile"} & ask_apex_raw.keys())
+        isinstance(agent_settings_raw, dict)
+        and bool({"default_profile", "default_cloud_profile"} & agent_settings_raw.keys())
     )
 
     for key, value in raw.items():
@@ -164,9 +164,9 @@ def normalize_layer(
             if market is not None:
                 normalized["market"] = market
         elif key == "ask_apex":
-            ask_apex = _normalize_ask_apex(value, layer_name, issues)
-            if ask_apex:
-                normalized["ask_apex"] = ask_apex
+            agent_settings = _normalize_agent_settings(value, layer_name, issues)
+            if agent_settings:
+                normalized["ask_apex"] = agent_settings
         elif key == "tool_profiles":
             tool_profiles = _normalize_tool_profiles(value, layer_name, issues)
             if tool_profiles:
@@ -580,7 +580,7 @@ def _normalize_modules(
     return result
 
 
-def _normalize_ask_apex(
+def _normalize_agent_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
     if not isinstance(value, dict):
@@ -1096,13 +1096,13 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     modules_raw = merged.get("modules") if isinstance(merged.get("modules"), dict) else {}
     football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
     market_raw = merged.get("market") if isinstance(merged.get("market"), dict) else {}
-    ask_apex_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
+    agent_settings_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
     tool_profiles_raw = (
         merged.get("tool_profiles")
         if isinstance(merged.get("tool_profiles"), dict)
         else {}
     )
-    ask_apex = migrate_schema7_ask_apex(ask_apex_raw)
+    agent_settings = migrate_schema7_ask_apex(agent_settings_raw)
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
     mcp_raw = merged.get("mcp") if isinstance(merged.get("mcp"), dict) else {}
     mcp_servers_raw = (
@@ -1135,23 +1135,23 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             if isinstance(symbol, str) and symbol.strip()
         )
     )
-    runtime = ask_apex.get("runtime", "cloud")
+    runtime = agent_settings.get("runtime", "cloud")
     if runtime not in {"cloud", "local"}:
         runtime = "cloud"
-    cloud_agent = ask_apex.get("cloud_agent", "panthera")
+    cloud_agent = agent_settings.get("cloud_agent", "panthera")
     if cloud_agent not in VALID_CLOUD_SETTINGS_AGENTS:
         cloud_agent = "panthera"
-    effort = ask_apex.get("effort", "focused")
+    effort = agent_settings.get("effort", "focused")
     if effort not in VALID_CLOUD_EFFORTS:
         effort = "focused"
-    local_agent = ask_apex.get("local_agent", "apodemus")
+    local_agent = agent_settings.get("local_agent", "apodemus")
     if local_agent not in VALID_LOCAL_SETTINGS_AGENTS:
         local_agent = "apodemus"
     local_context_windows = {
         agent_key: runtime.default_context_window
         for agent_key, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items()
     }
-    configured_context_windows = ask_apex.get("local_context_windows", {})
+    configured_context_windows = agent_settings.get("local_context_windows", {})
     if isinstance(configured_context_windows, dict):
         for agent_key, context_window in configured_context_windows.items():
             runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
@@ -1169,7 +1169,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     local_reasoning_modes = {
         agent_key: "none" for agent_key in VALID_LOCAL_SETTINGS_AGENTS
     }
-    configured_reasoning_modes = ask_apex.get("local_reasoning_modes", {})
+    configured_reasoning_modes = agent_settings.get("local_reasoning_modes", {})
     if isinstance(configured_reasoning_modes, dict):
         for agent_key, reasoning_mode in configured_reasoning_modes.items():
             if (
@@ -1183,9 +1183,9 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
                     normalized_agent_key
                 ):
                     local_reasoning_modes[normalized_agent_key] = reasoning_mode
-    ask_apex_settings = AskApexSettings(
-        enabled=bool(ask_apex.get("enabled", True))
-        if "enabled" in ask_apex
+    agent_settings_snapshot = AgentSettings(
+        enabled=bool(agent_settings.get("enabled", True))
+        if "enabled" in agent_settings
         else True,
         runtime=runtime,  # type: ignore[arg-type]
         cloud_agent=cloud_agent,  # type: ignore[arg-type]
@@ -1194,16 +1194,16 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         local_context_windows=local_context_windows,
         local_reasoning_modes=local_reasoning_modes,
         neofelis_google_search_enabled=bool(
-            ask_apex.get("neofelis_google_search_enabled", True)
+            agent_settings.get("neofelis_google_search_enabled", True)
         ),
         neofelis_google_maps_enabled=bool(
-            ask_apex.get("neofelis_google_maps_enabled", True)
+            agent_settings.get("neofelis_google_maps_enabled", True)
         ),
         delphinus_x_search_enabled=bool(
-            ask_apex.get("delphinus_x_search_enabled", True)
+            agent_settings.get("delphinus_x_search_enabled", True)
         ),
         orcinus_x_search_enabled=bool(
-            ask_apex.get("orcinus_x_search_enabled", True)
+            agent_settings.get("orcinus_x_search_enabled", True)
         ),
     )
     custom_profiles: list[ToolProfile] = []
@@ -1323,7 +1323,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         modules=modules,
         football=football,
         market=market,
-        ask_apex=ask_apex_settings,
+        ask_apex=agent_settings_snapshot,
         tool_profiles=tool_profiles,
         briefing=briefing,
         voice=voice,
@@ -1416,11 +1416,11 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
             "symbols": [symbol.strip().upper() for symbol in patch.market.symbols if symbol.strip()]
         }
     if patch.ask_apex is not None:
-        ask_apex: dict[str, Any] = {}
-        ask_apex_patch = patch.ask_apex.model_dump(exclude_none=True)
-        ask_apex.update(ask_apex_patch)
-        if ask_apex:
-            ondisk["ask_apex"] = ask_apex
+        agent_settings_payload: dict[str, Any] = {}
+        agent_settings_patch = patch.ask_apex.model_dump(exclude_none=True)
+        agent_settings_payload.update(agent_settings_patch)
+        if agent_settings_payload:
+            ondisk["ask_apex"] = agent_settings_payload
     if patch.tool_profiles is not None:
         tool_profiles: dict[str, Any] = {}
         if patch.tool_profiles.custom_profiles is not None:

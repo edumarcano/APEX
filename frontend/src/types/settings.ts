@@ -54,7 +54,7 @@ export interface MarketSettings {
   symbols: string[]
 }
 
-export interface AskApexSettings {
+export interface AgentSettings {
   enabled: boolean
   runtime: AgentRuntime
   cloud_agent: CloudSettingsAgent
@@ -107,7 +107,7 @@ export interface RuntimeSettings {
   modules: ModulesSettings
   football: FootballSettings
   market: MarketSettings
-  ask_apex: AskApexSettings
+  ask_apex: AgentSettings
   tool_profiles?: ToolProfilesSettings
   briefing: BriefingSettings
   voice: VoiceSettings
@@ -142,7 +142,7 @@ export interface MarketPatch {
   symbols?: string[]
 }
 
-export interface AskApexPatch {
+export interface AgentSettingsPatch {
   enabled?: boolean
   runtime?: AgentRuntime
   cloud_agent?: CloudSettingsAgent
@@ -213,7 +213,7 @@ export interface SettingsPatch {
   modules?: ModulesPatch
   football?: FootballPatch
   market?: MarketPatch
-  ask_apex?: AskApexPatch
+  ask_apex?: AgentSettingsPatch
   tool_profiles?: ToolProfilesPatch
   briefing?: BriefingPatch
   voice?: VoicePatch
@@ -243,7 +243,7 @@ export type SettingsTimingFieldGroup =
   | 'market'
   | 'football'
   | 'modules'
-  | 'ask_apex'
+  | 'agent_queries'
   | 'briefing'
   | 'voice'
   | 'mcp'

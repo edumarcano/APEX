@@ -62,7 +62,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
   }
   const props: ComponentProps<typeof HomeCommandRail> = {
     activated: true,
-    askApexEnabled: true,
+    agentQueriesEnabled: true,
     activeAgent: 'panthera',
     agentsStatus: [profile('panthera'), profile('mus'), profile('sorex'), profile('apodemus')],
     agentsStatusHydrated: true,
@@ -127,10 +127,10 @@ describe('HomeCommandRail', () => {
     expect(onBriefingModeChange).not.toHaveBeenCalled()
   })
 
-  it('omits only the active assistant row when Ask Apex is disabled', () => {
-    renderRail({ askApexEnabled: false })
+  it('omits only the active assistant row when Agent queries are disabled', () => {
+    renderRail({ agentQueriesEnabled: false })
 
-    expect(screen.queryByLabelText('Ask APEX')).toBeNull()
+    expect(screen.queryByLabelText('Agent query bar')).toBeNull()
     expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
@@ -142,7 +142,7 @@ describe('HomeCommandRail', () => {
     renderRail({ onAgentSubmit })
 
     expect(screen.queryByLabelText('Active profile Panthera')).toBeNull()
-    await user.type(screen.getByLabelText('Ask APEX query'), 'Summarize my day')
+    await user.type(screen.getByLabelText('Agent query'), 'Summarize my day')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
     expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', [], null)

@@ -48,7 +48,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Football teams | Up to three football-data.org team IDs with display names |
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
-| Ask APEX | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
+| Agent queries | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Tool profiles | Saved custom tool profiles and per-Agent defaults; edited through Cortex Tools and persisted in `config.local.json` |
 | Briefing | Panthera, Apodemus, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
@@ -63,7 +63,7 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 
 - Connector and sports flags are captured when telemetry collection begins.
 - The Home command rail persists the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
-- Ask APEX enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
+- Agent query enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately; symbol changes apply on the next poll.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.

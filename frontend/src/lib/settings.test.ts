@@ -4,7 +4,7 @@ import {
   buildSettingsTimingRuntime,
   cloneRuntimeSettings,
   diffSettingsPatch,
-  filterAskApexSettingsForDevMode,
+  filterAgentSettingsForDevMode,
   isSettingsPatchEmpty,
   parseMcpStatusResponse,
   parseSettingsResponse,
@@ -45,7 +45,7 @@ describe('assistant boot hydration', () => {
   })
 
   it('keeps effort, local reasoning, context, and native-tool preferences while filtering DEV_MODE profile fields', () => {
-    expect(filterAskApexSettingsForDevMode({
+    expect(filterAgentSettingsForDevMode({
       runtime: 'cloud',
       cloud_agent: 'neofelis',
       local_agent: 'mus',
@@ -79,7 +79,7 @@ describe('settings response parsing', () => {
     ['feature boolean', ['settings', 'features', 'weather'], 'yes'],
     ['market boolean', ['settings', 'features', 'market'], 'yes'],
     ['module boolean', ['settings', 'modules', 'f1'], 1],
-    ['assistant boolean', ['settings', 'ask_apex', 'enabled'], null],
+    ['Agent queries enabled', ['settings', 'ask_apex', 'enabled'], null],
     ['Agent runtime', ['settings', 'ask_apex', 'runtime'], 'invalid'],
     ['cloud profile', ['settings', 'ask_apex', 'cloud_agent'], 'invalid'],
     ['cloud effort', ['settings', 'ask_apex', 'effort'], 'invalid'],
@@ -343,7 +343,7 @@ describe('effective timing', () => {
 
     expect(resolveEffectiveTiming('features', runtime)).toBe('Active')
     expect(resolveEffectiveTiming('modules', runtime)).toBe('Active')
-    expect(resolveEffectiveTiming('ask_apex', runtime)).toBe('Active')
+    expect(resolveEffectiveTiming('agent_queries', runtime)).toBe('Active')
     expect(resolveEffectiveTiming('voice', runtime)).toBe('Active')
   })
 
@@ -372,7 +372,7 @@ describe('effective timing', () => {
       isCortexQuerying: true,
     })
 
-    expect(resolveEffectiveTiming('ask_apex', runtime)).toBe(
+    expect(resolveEffectiveTiming('agent_queries', runtime)).toBe(
       'Applies next response',
     )
   })
