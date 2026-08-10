@@ -1199,26 +1199,50 @@ export default function App(): ReactElement {
                   refreshDisabled={isRefreshingAll}
                   statusMessage={weatherStatusMessage}
                   compactValue={weatherBody}
-                  headerAction={weatherModule?.status !== 'disabled' ? (
-                    <a
-                      href="https://openweathermap.org/"
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Weather data provided by OpenWeather"
-                      title="Weather data provided by OpenWeather"
-                      className="flex shrink-0 items-center gap-1.5 text-[10px] text-[color:var(--hud-muted-text)] hover:text-[color:var(--hud-text)]"
+                  headerAction={weatherModule?.status === 'healthy' ? (
+                    <span
+                      className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-1 text-[9px] leading-tight text-[color:var(--hud-muted-text)]"
+                      aria-label="Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX."
                     >
-                      <span>Weather data provided by OpenWeather</span>
-                      <img src="/openweather-logo.png" alt="OpenWeather" className="h-3.5 w-auto" />
-                    </a>
+                      <span>Weather by</span>
+                      <a
+                        href="https://open-meteo.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-[color:var(--hud-text)]"
+                      >
+                        Open-Meteo
+                      </a>
+                      <span>· Location by</span>
+                      <a
+                        href="https://www.geonames.org/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-[color:var(--hud-text)]"
+                      >
+                        GeoNames
+                      </a>
+                      <span>·</span>
+                      <a
+                        href="https://creativecommons.org/licenses/by/4.0/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-[color:var(--hud-text)]"
+                      >
+                        CC BY 4.0
+                      </a>
+                      <span>· adapted by APEX</span>
+                    </span>
                   ) : undefined}
                   attentionTier={attentionTiers.weather}
                   attentionStaggerMs={attentionStagger.weather}
                   className={`min-h-0 ${weatherPanelLayoutClass}`}
                 >
-                  <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                    {weatherBody}
-                  </p>
+                  {primaryTemperatureF == null ? (
+                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
+                      {weatherBody}
+                    </p>
+                  ) : null}
                 </TelemetryCard>
 
                 <TelemetryCard

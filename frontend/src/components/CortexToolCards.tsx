@@ -744,6 +744,36 @@ function WeatherForecastCard({
           ))
         )}
       </ul>
+      <p className="mt-3 text-[10px] leading-relaxed text-zinc-500">
+        Weather by{' '}
+        <a
+          href="https://open-meteo.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#7EB3FF] hover:underline"
+        >
+          Open-Meteo
+        </a>
+        {' · '}Location by{' '}
+        <a
+          href="https://www.geonames.org/"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#7EB3FF] hover:underline"
+        >
+          GeoNames
+        </a>
+        {' · '}
+        <a
+          href="https://creativecommons.org/licenses/by/4.0/"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#7EB3FF] hover:underline"
+        >
+          CC BY 4.0
+        </a>
+        {' · adapted by APEX'}
+      </p>
     </ToolCardFrame>
   )
 }

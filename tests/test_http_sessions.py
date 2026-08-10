@@ -30,13 +30,15 @@ class _Response:
 
 
 class _Session:
-    def __init__(self, response: _Response) -> None:
+    def __init__(self, response: _Response | list[_Response]) -> None:
         self.response = response
         self.calls: list[tuple[str, dict[str, object]]] = []
         self.close_calls = 0
 
     def get(self, url: str, **kwargs: object) -> _Response:
         self.calls.append((url, kwargs))
+        if isinstance(self.response, list):
+            return self.response.pop(0)
         return self.response
 
     def close(self) -> None:
@@ -97,30 +99,37 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
 
     def test_weather_news_and_sports_use_installed_sessions(self) -> None:
         weather_session = _Session(
-            _Response({"main": {"temp": 70}, "weather": [{"description": "clear sky"}]})
+            [
+                _Response({"results": [{"latitude": 42.36, "longitude": -71.06}]}),
+                _Response({"current": {"temperature_2m": 70, "weather_code": 0}}),
+            ]
         )
         with mock.patch.dict(
             "os.environ",
-            {"OPENWEATHER_API_KEY": "weather-key", "TARGET_LOCATION": "Boston"},
+            {"TARGET_LOCATION": "Boston"},
             clear=False,
         ), mock.patch.object(
             weather_client, "get_connector_http_session", return_value=weather_session
         ):
             result = weather_client.collect_weather()
         self.assertEqual(result.status, "healthy")
-        self.assertEqual(len(weather_session.calls), 1)
+        self.assertEqual(len(weather_session.calls), 2)
 
+        fallback_responses = [
+            _Response({"results": [{"latitude": 42.36, "longitude": -71.06}]}),
+            _Response({"current": {"temperature_2m": 70, "weather_code": 0}}),
+        ]
         with mock.patch.dict(
             "os.environ",
-            {"OPENWEATHER_API_KEY": "weather-key", "TARGET_LOCATION": "Boston"},
+            {"TARGET_LOCATION": "Boston"},
             clear=False,
         ), mock.patch.object(
             weather_client, "get_connector_http_session", return_value=None
         ), mock.patch.object(
-            weather_client.requests, "get", return_value=weather_session.response
+            weather_client.requests, "get", side_effect=fallback_responses
         ) as weather_get:
             weather_client.collect_weather()
-        weather_get.assert_called_once()
+        self.assertEqual(weather_get.call_count, 2)
 
         news_session = _Session(_Response({"articles": []}))
         with mock.patch.object(news_client, "api_key", "news-key"), mock.patch.object(

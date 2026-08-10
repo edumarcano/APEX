@@ -25,6 +25,15 @@ const appMocks = vi.hoisted(() => ({
   triggerSynthesis: vi.fn().mockResolvedValue(undefined),
   generateFromSnapshot: vi.fn().mockResolvedValue(undefined),
   speak: vi.fn(),
+  weatherSnapshot: null as {
+    modules: {
+      weather: {
+        status: string
+        data: { temp_f: number; condition?: string }
+        display_text: string
+      }
+    }
+  } | null,
 }))
 
 vi.mock('./components/ApexLogo', () => ({ ApexLogo: () => null }))
@@ -36,7 +45,25 @@ vi.mock('./components/MarketTickerCard', () => ({ MarketTickerCard: () => null }
 vi.mock('./components/PreflightDialog', () => ({ PreflightDialog: () => null }))
 vi.mock('./components/ReminderListRow', () => ({ ReminderListRow: () => null }))
 vi.mock('./components/ReminderQuickAdd', () => ({ ReminderQuickAdd: () => null }))
-vi.mock('./components/TelemetryCard', () => ({ TelemetryCard: () => null }))
+vi.mock('./components/TelemetryCard', () => ({
+  TelemetryCard: ({
+    title,
+    headerAction,
+    compactValue,
+    children,
+  }: {
+    title?: string
+    headerAction?: ReactNode
+    compactValue?: ReactNode
+    children?: ReactNode
+  }) => title === 'Weather' ? (
+    <>
+      {headerAction}
+      <span data-testid="weather-compact-value">{compactValue}</span>
+      {children}
+    </>
+  ) : null,
+}))
 vi.mock('./components/VoiceSignalGlyph', () => ({ VoiceSignalGlyph: () => null }))
 vi.mock('./components/SettingsPanel', () => ({ default: () => null }))
 vi.mock('./components/HomeCommandRail', () => ({ HomeCommandRail: () => null }))
@@ -205,7 +232,7 @@ vi.mock('./hooks/useSystemDiagnostics', () => ({
 }))
 vi.mock('./hooks/useTelemetrySnapshot', () => ({
   useTelemetrySnapshot: () => ({
-    snapshot: null,
+    snapshot: appMocks.weatherSnapshot,
     isRefreshingAll: false,
     refreshingConnectors: new Set<string>(),
     refreshAll: appMocks.refreshAll,
@@ -345,6 +372,7 @@ function settingsResponse(
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'neofelis'
+    appMocks.weatherSnapshot = null
     vi.restoreAllMocks()
   })
 
@@ -443,4 +471,35 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
+})
+
+describe('App weather attribution', () => {
+  it('keeps Open-Meteo, GeoNames, licence, and adaptation credit visible in the weather header', () => {
+    appMocks.weatherSnapshot = {
+      modules: {
+        weather: {
+          status: 'healthy',
+          data: { temp_f: 72, condition: 'mainly clear' },
+          display_text: 'Current temperature is 72 degrees with mainly clear.',
+        },
+      },
+    }
+    render(<App />)
+
+    expect(screen.getByText('Weather by')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open-Meteo' })).toHaveAttribute(
+      'href',
+      'https://open-meteo.com/',
+    )
+    expect(screen.getByRole('link', { name: 'GeoNames' })).toHaveAttribute(
+      'href',
+      'https://www.geonames.org/',
+    )
+    expect(screen.getByRole('link', { name: 'CC BY 4.0' })).toHaveAttribute(
+      'href',
+      'https://creativecommons.org/licenses/by/4.0/',
+    )
+    expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
+    expect(screen.getAllByText('Mainly Clear')).toHaveLength(1)
+  })
 })

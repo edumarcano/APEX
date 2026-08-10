@@ -261,9 +261,7 @@ def _effective_connector_names(
 def _connector_credential_blockers(names: set[str]) -> list[PreflightBlocker]:
     """Return one blocker describing missing configuration for requested connectors."""
     missing: list[str] = []
-    if "weather" in names and (
-        not os.getenv("OPENWEATHER_API_KEY") or not os.getenv("TARGET_LOCATION")
-    ):
+    if "weather" in names and not os.getenv("TARGET_LOCATION"):
         missing.append("weather")
     if "news" in names and not os.getenv("GNEWS_API_KEY"):
         missing.append("news")

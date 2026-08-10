@@ -665,7 +665,7 @@ class TelemetryApiTests(unittest.TestCase):
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch.dict(
             "os.environ",
-            {"OPENWEATHER_API_KEY": "", "TARGET_LOCATION": ""},
+            {"TARGET_LOCATION": ""},
             clear=False,
         ):
             response = self.client.post(
