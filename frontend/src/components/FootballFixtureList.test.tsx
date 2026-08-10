@@ -20,4 +20,11 @@ describe('FootballFixtureList', () => {
     render(<FootballFixtureList hasSnapshot module={module} telemetry={{ configuredTeamCount: 1, fixtures: [] }} />)
     expect(screen.getByText('No upcoming football fixtures.')).toBeInTheDocument()
   })
+
+  it('shows Football-Data attribution whenever the connector has returned a usable module', () => {
+    render(<FootballFixtureList hasSnapshot module={module} telemetry={telemetry} />)
+    const attribution = screen.getByRole('link', { name: 'Football-Data.org API' })
+    expect(attribution).toHaveAttribute('href', 'https://www.football-data.org/')
+    expect(screen.getByText(/Football data provided by the/i)).toBeInTheDocument()
+  })
 })

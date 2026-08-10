@@ -1206,6 +1206,14 @@ export default function App(): ReactElement {
                   <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
                     {weatherBody}
                   </p>
+                  {weatherModule?.status !== 'disabled' ? (
+                    <p className="mt-3 flex items-center gap-1.5 border-t border-white/[0.08] pt-2 text-[10px] text-[color:var(--hud-muted-text)]">
+                      <span>Weather data provided by</span>
+                      <a href="https://openweathermap.org/" target="_blank" rel="noreferrer" aria-label="OpenWeather">
+                        <img src="/openweather-logo.png" alt="OpenWeather" className="h-3.5 w-auto" />
+                      </a>
+                    </p>
+                  ) : null}
                 </TelemetryCard>
 
                 <TelemetryCard

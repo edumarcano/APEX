@@ -17,7 +17,12 @@ from core.agent.sandbox_context import (
     clear_masked_briefing_for_tests,
     publish_masked_briefing,
 )
-from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
+from core.agent.types import (
+    AgentMessage,
+    AgentQueryRequest,
+    GroundingPresentation,
+    ToolCall,
+)
 from core.api.cortex import _build_hud_context
 from core.api.briefing import _mask_dev_personal_results
 from core.connectors.models import ConnectorResult
@@ -56,18 +61,80 @@ class HostedGroundingTests(unittest.TestCase):
                         uri="https://maps.google.com/place", title="A Place"
                     ),
                 ),
+            ],
+            grounding_supports=[
+                SimpleNamespace(
+                    segment=SimpleNamespace(end_index=12),
+                    grounding_chunk_indices=[0, 1],
+                )
+            ],
+            search_entry_point=SimpleNamespace(
+                rendered_content="<a href='https://www.google.com/search'>Search</a>"
+            ),
+        )
+        response = SimpleNamespace(
+            candidates=[SimpleNamespace(grounding_metadata=metadata)]
+        )
+
+        citations, events, grounding, rendered = _parse_grounding(
+            response, "Grounded text."
+        )
+
+        self.assertEqual([item.source for item in citations], ["google_search", "google_maps"])
+        self.assertEqual([item.name for item in events], ["google_search", "google_maps"])
+        self.assertTrue(all(item.status == "ok" for item in events))
+        self.assertTrue(all(item.billable_units == 1 for item in events))
+        self.assertEqual(
+            grounding.search_suggestions_html,
+            "<a href='https://www.google.com/search'>Search</a>",
+        )
+        self.assertEqual(
+            rendered,
+            "Grounded tex [1](https://example.com) [Google Maps: A Place](https://maps.google.com/place)t.",
+        )
+
+    def test_gemini_grounding_ignores_unsafe_source_uris(self) -> None:
+        metadata = SimpleNamespace(
+            grounding_chunks=[
+                SimpleNamespace(
+                    web=SimpleNamespace(uri="javascript:alert(1)", title="Unsafe"),
+                    maps=None,
+                )
             ]
         )
         response = SimpleNamespace(
             candidates=[SimpleNamespace(grounding_metadata=metadata)]
         )
 
-        citations, events = _parse_grounding(response)
+        citations, _events, _grounding, rendered = _parse_grounding(
+            response, "Grounded text."
+        )
 
-        self.assertEqual([item.source for item in citations], ["google_search", "google_maps"])
-        self.assertEqual([item.name for item in events], ["google_search", "google_maps"])
-        self.assertTrue(all(item.status == "ok" for item in events))
-        self.assertTrue(all(item.billable_units == 1 for item in events))
+        self.assertIsNone(citations[0].uri)
+        self.assertEqual(rendered, "Grounded text.")
+
+    def test_agent_loop_returns_grounding_presentation_to_the_client(self) -> None:
+        class Provider:
+            def generate_turn(self, *_args, **_kwargs) -> ProviderTurnResult:
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="Grounded answer."),
+                    grounding=GroundingPresentation(
+                        search_suggestions_html="<div>Search suggestions</div>"
+                    ),
+                )
+
+        _apex, native = resolve_effort("neofelis", None)
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Find current information", agent="neofelis"),
+            Provider(),
+            build_concrete_agent("neofelis", native_effort=native),
+        )
+
+        self.assertEqual(response.answer, "Grounded answer.")
+        self.assertEqual(
+            response.grounding.search_suggestions_html,
+            "<div>Search suggestions</div>",
+        )
 
     @mock.patch("core.agent.providers.responses_api.OpenAI")
     def test_xai_profiles_attach_x_search_without_web_search(

@@ -12,11 +12,15 @@ interface FootballFixtureListProps {
 export function FootballFixtureList({ telemetry, module, hasSnapshot }: FootballFixtureListProps): ReactElement | null {
   if (!module || module.status === 'disabled') return null
   if (module.status === 'unavailable') return null
+  const attribution = <p className="mt-3 border-t border-white/[0.08] pt-2 text-[10px] text-[color:var(--hud-muted-text)]">Football data provided by the <a href="https://www.football-data.org/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Football-Data.org API</a>.</p>
   if (telemetry.fixtures.length === 0) {
     return (
-      <p className="mt-3 text-sm text-[color:var(--hud-muted-text)]">
-        {hasSnapshot ? 'No upcoming football fixtures.' : 'Football unavailable.'}
-      </p>
+      <>
+        <p className="mt-3 text-sm text-[color:var(--hud-muted-text)]">
+          {hasSnapshot ? 'No upcoming football fixtures.' : 'Football unavailable.'}
+        </p>
+        {attribution}
+      </>
     )
   }
   return (
@@ -38,6 +42,7 @@ export function FootballFixtureList({ telemetry, module, hasSnapshot }: Football
           </li>
         ))}
       </ul>
+      {attribution}
     </section>
   )
 }

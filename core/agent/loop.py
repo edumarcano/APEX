@@ -28,6 +28,7 @@ from core.agent.types import (
     AgentQueryRequest,
     AgentQueryResponse,
     Citation,
+    GroundingPresentation,
     LocalContextUsage,
     QueryTiming,
     TokenUsage,
@@ -128,6 +129,7 @@ def run_agent_loop(
     tool_trace: list[dict[str, Any]] = []
     tool_outputs: list[dict[str, Any]] = []
     citations: list[Citation] = []
+    grounding: GroundingPresentation | None = None
     provider_tool_events: list[ProviderToolEvent] = []
     total_tool_executions = 0
     last_model_content: str | None = None
@@ -238,6 +240,7 @@ def run_agent_loop(
             timing=timing,
             cost_estimate=cost_estimate,
             citations=citations,
+            grounding=grounding,
         )
 
     try:
@@ -270,6 +273,8 @@ def run_agent_loop(
                 resolved_model = turn_result.resolved_model
             if turn_result.citations:
                 citations.extend(turn_result.citations)
+            if turn_result.grounding is not None:
+                grounding = turn_result.grounding
             if turn_result.provider_tool_events:
                 provider_tool_events.extend(turn_result.provider_tool_events)
                 for event in turn_result.provider_tool_events:

@@ -1,6 +1,7 @@
 import base64
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from google import genai
 from google.genai import types
@@ -15,7 +16,14 @@ from core.agent.providers.retries import (
     exponential_backoff_seconds,
     fixed_backoff_seconds,
 )
-from core.agent.types import AgentMessage, Citation, TokenUsage, ToolCall, ToolResult
+from core.agent.types import (
+    AgentMessage,
+    Citation,
+    GroundingPresentation,
+    TokenUsage,
+    ToolCall,
+    ToolResult,
+)
 
 def _wrap_untrusted_tool_output(result: ToolResult) -> str:
     return (
@@ -156,19 +164,68 @@ def _parse_gemini_usage(response: Any) -> TokenUsage | None:
     )
 
 
-def _parse_grounding(response: Any) -> tuple[list[Citation], list[ProviderToolEvent]]:
-    """Normalize Gemini Search/Maps grounding without retaining raw payloads."""
+def _safe_grounding_uri(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    parsed = urlparse(value)
+    return value if parsed.scheme in {"http", "https"} and parsed.netloc else None
+
+
+def _markdown_link(label: str, uri: str) -> str:
+    escaped_label = label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+    escaped_uri = uri.replace("\\", "%5C").replace(")", "%29")
+    return f"[{escaped_label}]({escaped_uri})"
+
+
+def _inline_grounding_citations(
+    text: str | None,
+    metadata: Any,
+    links_by_chunk: dict[int, str],
+) -> str | None:
+    """Place provider citations beside the response text they support."""
+    if not text or not links_by_chunk:
+        return text
+
+    insertions: list[tuple[int, str]] = []
+    for support in getattr(metadata, "grounding_supports", None) or []:
+        segment = getattr(support, "segment", None)
+        end_index = getattr(segment, "end_index", None)
+        chunk_indices = getattr(support, "grounding_chunk_indices", None)
+        if not isinstance(end_index, int) or not isinstance(chunk_indices, list):
+            continue
+        if end_index < 0 or end_index > len(text):
+            continue
+        links = [
+            links_by_chunk[index]
+            for index in chunk_indices
+            if isinstance(index, int) and index in links_by_chunk
+        ]
+        if links:
+            insertions.append((end_index, " " + " ".join(links)))
+
+    rendered = text
+    for end_index, citation_text in sorted(insertions, reverse=True):
+        rendered = rendered[:end_index] + citation_text + rendered[end_index:]
+    return rendered
+
+
+def _parse_grounding(
+    response: Any,
+    text: str | None = None,
+) -> tuple[list[Citation], list[ProviderToolEvent], GroundingPresentation | None, str | None]:
+    """Normalize Gemini grounding while retaining required presentation material."""
     candidates = getattr(response, "candidates", None) or []
     if not candidates:
-        return [], []
+        return [], [], None, text
     metadata = getattr(candidates[0], "grounding_metadata", None)
     if metadata is None:
-        return [], []
+        return [], [], None, text
 
     citations: list[Citation] = []
+    links_by_chunk: dict[int, str] = {}
     saw_web = False
     saw_maps = False
-    for chunk in getattr(metadata, "grounding_chunks", None) or []:
+    for index, chunk in enumerate(getattr(metadata, "grounding_chunks", None) or []):
         web = getattr(chunk, "web", None)
         maps = getattr(chunk, "maps", None)
         source = web or maps
@@ -176,15 +233,23 @@ def _parse_grounding(response: Any) -> tuple[list[Citation], list[ProviderToolEv
             continue
         saw_web = saw_web or web is not None
         saw_maps = saw_maps or maps is not None
-        uri = getattr(source, "uri", None)
+        uri = _safe_grounding_uri(getattr(source, "uri", None))
         title = getattr(source, "title", None)
         citations.append(
             Citation(
                 title=title if isinstance(title, str) else None,
-                uri=uri if isinstance(uri, str) else None,
+                uri=uri,
                 source="google_search" if web is not None else "google_maps",
             )
         )
+        if uri is not None:
+            if web is not None:
+                links_by_chunk[index] = _markdown_link(str(index + 1), uri)
+            else:
+                source_name = title if isinstance(title, str) and title else "Source"
+                links_by_chunk[index] = _markdown_link(
+                    f"Google Maps: {source_name}", uri
+                )
 
     if getattr(metadata, "google_maps_widget_context_token", None):
         saw_maps = True
@@ -198,7 +263,16 @@ def _parse_grounding(response: Any) -> tuple[list[Citation], list[ProviderToolEv
         events.append(
             ProviderToolEvent(name="google_maps", status="ok", billable_units=1)
         )
-    return citations, events
+    search_entry_point = getattr(metadata, "search_entry_point", None)
+    rendered_content = getattr(search_entry_point, "rendered_content", None)
+    grounding = (
+        GroundingPresentation(search_suggestions_html=rendered_content)
+        if isinstance(rendered_content, str) and rendered_content.strip()
+        else None
+    )
+    return citations, events, grounding, _inline_grounding_citations(
+        text, metadata, links_by_chunk
+    )
 
 
 def _is_retryable_gemini_error(exc: BaseException) -> bool:
@@ -281,7 +355,11 @@ class GeminiProvider:
         if not isinstance(resolved_model, str):
             resolved_model = profile.api_model
 
-        citations, provider_tool_events = _parse_grounding(response)
+        citations, provider_tool_events, grounding, grounded_content = _parse_grounding(
+            response, message.content
+        )
+        if grounded_content != message.content:
+            message = message.model_copy(update={"content": grounded_content})
         if provider_tool_events:
             share = round(provider_ms / len(provider_tool_events), 2)
             for event in provider_tool_events:
@@ -293,6 +371,7 @@ class GeminiProvider:
             usage=_parse_gemini_usage(response),
             provider_ms=provider_ms,
             citations=citations,
+            grounding=grounding,
             provider_tool_events=provider_tool_events,
             retry_count=retry_count,
         )
