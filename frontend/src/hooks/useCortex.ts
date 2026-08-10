@@ -62,6 +62,10 @@ export interface AgentCitation {
   source: string | null
 }
 
+export interface GroundingPresentation {
+  searchSuggestionsHtml: string | null
+}
+
 export interface AgentQueryMetadata {
   agent: {
     key: AgentKey
@@ -93,6 +97,7 @@ export interface AgentQueryMetadata {
     completeness: string | null
   } | null
   citations: AgentCitation[]
+  grounding: GroundingPresentation | null
   toolSelection: ToolSelectionDiagnostics | null
 }
 
@@ -634,6 +639,13 @@ function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata
         }]
       })
     : []
+  const groundingRecord = record.grounding && typeof record.grounding === 'object'
+    ? record.grounding as Record<string, unknown>
+    : null
+  const searchSuggestionsHtml = groundingRecord
+    ? parseNullableString(groundingRecord.search_suggestions_html)
+    : null
+  const grounding = searchSuggestionsHtml ? { searchSuggestionsHtml } : null
   const toolSelection = parseToolSelection(record.resolved_tool_selection)
 
   if (
@@ -642,6 +654,7 @@ function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata
     !timing &&
     !costRecord &&
     citations.length === 0 &&
+    !grounding &&
     !toolSelection
   ) {
     return undefined
@@ -670,6 +683,7 @@ function parseQueryMetadata(record: Record<string, unknown>): AgentQueryMetadata
       completeness: parseNullableString(costRecord.completeness),
     } : null,
     citations,
+    grounding,
     toolSelection,
   }
 }

@@ -504,4 +504,31 @@ describe('CortexWorkspace', () => {
     expect(screen.getByRole('table')).toBeInTheDocument()
     expect(screen.getByText('Supported')).toBeInTheDocument()
   })
+
+  it('keeps Google Maps sources beside the response and isolates Search Suggestions markup', () => {
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          history: [{
+            role: 'agent',
+            content: 'A grounded answer with [Google Maps: Cafe](https://maps.google.com/cafe).',
+            metadata: {
+              agent: null,
+              usage: null,
+              timing: null,
+              cost: null,
+              citations: [{ title: 'Cafe', uri: 'https://maps.google.com/cafe', snippet: null, source: 'google_maps' }],
+              grounding: { searchSuggestionsHtml: '<a href="https://www.google.com/search">Search</a>' },
+              toolSelection: null,
+            },
+          }],
+        })}
+      />,
+    )
+
+    expect(screen.getByRole('region', { name: 'Google Maps sources' })).toHaveTextContent('Google Maps: Cafe')
+    const suggestions = screen.getByTitle('Google Search suggestions')
+    expect(suggestions).toHaveAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox')
+    expect(suggestions).toHaveAttribute('srcdoc', '<a href="https://www.google.com/search">Search</a>')
+  })
 })

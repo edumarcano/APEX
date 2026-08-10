@@ -2,7 +2,7 @@
 
 APEX is local-first, not entirely offline. This reference separates project-controlled behavior from external provider policy so I can make an informed choice before enabling personal connectors or cloud processing.
 
-> **Provider terms last verified: August 1, 2026.** External terms can change independently of this repository; follow the linked primary sources before relying on a cloud-service claim.
+> **Provider terms last verified: August 9, 2026.** External terms can change independently of this repository; follow the linked primary sources before relying on a cloud-service claim.
 
 ## Data-flow summary
 
@@ -108,6 +108,16 @@ Neofelis can send a query to provider-hosted Google Search or Google Maps ground
 Imported results are untrusted and bounded before model and HUD delivery. The presets are disabled by default, must be allowlisted and locally risk-classified, and are never included in scheduled briefing telemetry.
 
 Runtime Settings exposes only preset enablement. It never returns or accepts credentials, authorization headers, OAuth artifacts, endpoints, subprocess commands, allowlists, or tool-risk classifications. APEX remains an MCP client and exposes no MCP server.
+
+### Provider terms and attribution
+
+APEX is a personal, non-commercial application. A public source repository does not make its operator a public service, and personal OAuth credentials must remain local. The following provider-specific boundaries still apply when their integrations are enabled:
+
+- Gemini Search returns Google-provided Search Suggestions that APEX displays with the grounded response. Gemini Maps sources display immediately after the supported response, identify Google Maps without translation, retain the provider name, and link to the returned Maps URL. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [Maps grounding requirements](https://ai.google.dev/gemini-api/docs/maps-grounding).
+- xAI personal data requires a Zero Data Retention-enabled API. ZDR is configured for the xAI team rather than per request; APEX users must keep it enabled for the team owning their key. HIPAA Protected Health Information requires both ZDR and an xAI Business Associate Agreement. See the [xAI Enterprise terms](https://x.ai/legal/terms-of-service-enterprise) and [ZDR guidance](https://docs.x.ai/developers/faq/security).
+- Brave Search results remain transient: they are not part of scheduled briefing telemetry and must not be copied into persistent memory, datasets, or model evaluation/benchmark material. See the [Brave Search API terms](https://api-dashboard.search.brave.com/documentation/resources/terms-of-service).
+- The weather HUD visibly credits OpenWeather, including its required logo. Football fixtures visibly credit the Football-Data.org API. Formula 1 schedule data visibly credits Jolpica and its [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) data license. See the [OpenWeather attribution guidance](https://docs.openweather.co.uk/faq), [Football-Data terms](https://www.football-data.org/about), and [Jolpica terms](https://github.com/jolpica/jolpica-f1/blob/main/TERMS.md).
+- GNews Free and Alpha Vantage are for personal or non-commercial use. Do not use their free/personal credentials for commercial activity without the provider's appropriate plan or written agreement. See [GNews pricing](https://gnews.io/pricing) and [Alpha Vantage terms](https://www.alphavantage.co/terms_of_service/).
 
 ## Local persistence
 

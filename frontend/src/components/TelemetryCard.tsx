@@ -677,6 +677,7 @@ export function TelemetryCard({
                 </span>
               ) : null}
             </div>
+            <p className="mt-2 border-t border-white/[0.08] pt-2 text-[10px] text-zinc-500">Formula 1 data provided by <a href="https://api.jolpi.ca/ergast/f1/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Jolpica F1 API</a> under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">CC BY-NC-SA 4.0</a>.</p>
           </div>
         ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">

@@ -102,6 +102,18 @@ class Citation(BaseModel):
     )
 
 
+class GroundingPresentation(BaseModel):
+    """Provider-supplied presentation material required beside grounded output."""
+
+    search_suggestions_html: str | None = Field(
+        default=None,
+        description=(
+            "Google-supplied Search Suggestions markup. The client renders this "
+            "only in an isolated sandbox."
+        ),
+    )
+
+
 class CostEstimate(BaseModel):
     """Estimated inference cost derived from the versioned pricing registry."""
 
@@ -392,4 +404,8 @@ class AgentQueryResponse(BaseModel):
     citations: List[Citation] = Field(
         default_factory=list,
         description="Normalized citations from provider-hosted grounding tools.",
+    )
+    grounding: GroundingPresentation | None = Field(
+        default=None,
+        description="Provider-supplied grounding presentation material.",
     )

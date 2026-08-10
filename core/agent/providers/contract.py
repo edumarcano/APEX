@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from core.agent.types import (
     AgentMessage,
     Citation,
+    GroundingPresentation,
     TokenUsage,
 )
 
@@ -64,6 +65,7 @@ class ProviderTurnResult(BaseModel):
     usage: TokenUsage | None = None
     provider_ms: float | None = Field(default=None, ge=0)
     citations: list[Citation] = Field(default_factory=list)
+    grounding: GroundingPresentation | None = None
     provider_tool_events: list[ProviderToolEvent] = Field(default_factory=list)
     retry_count: int = Field(
         default=0,

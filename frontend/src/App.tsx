@@ -1199,6 +1199,19 @@ export default function App(): ReactElement {
                   refreshDisabled={isRefreshingAll}
                   statusMessage={weatherStatusMessage}
                   compactValue={weatherBody}
+                  headerAction={weatherModule?.status !== 'disabled' ? (
+                    <a
+                      href="https://openweathermap.org/"
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Weather data provided by OpenWeather"
+                      title="Weather data provided by OpenWeather"
+                      className="flex shrink-0 items-center gap-1.5 text-[10px] text-[color:var(--hud-muted-text)] hover:text-[color:var(--hud-text)]"
+                    >
+                      <span>Weather data provided by OpenWeather</span>
+                      <img src="/openweather-logo.png" alt="OpenWeather" className="h-3.5 w-auto" />
+                    </a>
+                  ) : undefined}
                   attentionTier={attentionTiers.weather}
                   attentionStaggerMs={attentionStagger.weather}
                   className={`min-h-0 ${weatherPanelLayoutClass}`}
