@@ -116,6 +116,24 @@ function renderBar(
 }
 
 describe('AskApexBar unified tool selection', () => {
+  it.each([
+    ['submitting', { isSubmitting: true }],
+    ['preparing', { submissionPending: true }],
+  ] as const)('renders the query rim while Cortex is %s', (_state, overrides) => {
+    const { container } = renderBar(vi.fn(), overrides)
+
+    expect(container.querySelector('[data-slot="cortex-query-rim"]')).toBeInTheDocument()
+  })
+
+  it('does not render the query rim in Home', () => {
+    const { container } = renderBar(vi.fn(), {
+      presentation: 'home',
+      isSubmitting: true,
+    })
+
+    expect(container.querySelector('[data-slot="cortex-query-rim"]')).not.toBeInTheDocument()
+  })
+
   it('uses an icon-only tools trigger in Home', () => {
     renderBar(vi.fn(), { presentation: 'home' })
 

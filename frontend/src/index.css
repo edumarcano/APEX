@@ -757,22 +757,18 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-@keyframes cortexQueryRim {
-  0%, 100% {
-    box-shadow: 0 0 10px rgba(168, 85, 247, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
-  50% {
-    box-shadow: 0 0 22px rgba(168, 85, 247, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-}
-
 @keyframes cortexLifecyclePulse {
   0%, 100% { opacity: 0.45; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1.25); }
 }
 
-.cortex-ask-apex-bar--active {
-  animation: cortexQueryRim 2.4s ease-in-out infinite;
+.cortex-query-rim__sweep {
+  animation: cortexQueryRimSweep 12s linear infinite;
+  will-change: transform;
+}
+
+@keyframes cortexQueryRimSweep {
+  to { transform: rotate(360deg); }
 }
 
 .cortex-error-feedback {
@@ -796,7 +792,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cortex-ask-apex-bar,
-  .cortex-ask-apex-bar--active,
   .cortex-error-feedback,
   .cortex-query-spinner,
   .cortex-lifecycle-spinner,
@@ -804,15 +799,10 @@
     animation: none !important;
     transition: none !important;
   }
-}
 
-@keyframes borderSpin {
-  100% { transform: rotate(360deg); }
-}
-
-.animate-border-spin-slow {
-  animation: borderSpin 12s linear infinite;
-  will-change: transform;
+  .cortex-query-rim__sweep {
+    animation: none !important;
+  }
 }
 
 @keyframes breathingDormant {
@@ -898,6 +888,30 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .apex-core-metal--breathing-dormant {
+    animation: none;
+    opacity: 0.35;
+    filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.3));
+  }
+
+  .apex-core-metal--green-surge {
+    animation: none;
+    opacity: 0.95;
+    fill: url(#apexGreenMetal);
+    filter: drop-shadow(0 0 14px rgba(57, 255, 136, 0.85));
+  }
+
+  .apex-core-metal--purple-surge {
+    animation: none;
+    opacity: 0.95;
+    fill: url(#apexPurpleMetal);
+    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.85));
+  }
+
+  .apex-core-metal--speaking {
+    animation: none !important;
+  }
+
   .apex-blue-metal--rust-surge {
     animation: none;
     fill: url(#apexBlueMetal);

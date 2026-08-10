@@ -15,7 +15,7 @@ import {
   type ReactElement,
 } from 'react'
 
-import { ApexLogo } from './components/ApexLogo'
+import { ApexLogo, type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
 import { BriefingDigest } from './components/BriefingDigest'
@@ -727,6 +727,15 @@ export default function App(): ReactElement {
         : isRefreshingAll
           ? 'loading'
           : 'success'
+  const cortexLogoProps: Omit<ApexLogoProps, 'className'> = {
+    step: activeStep,
+    status: logoStatus,
+    isSpeaking,
+    reminderPulseCount,
+    isCortexQuerying,
+    isTelemetryCollecting,
+    outerShellActivity,
+  }
 
   const f1ScheduleTelemetryText = f1Module?.display_text?.trim() ?? ''
   const emailInfo = parseEmailTelemetry(emailModule?.display_text ?? '')
@@ -1614,6 +1623,7 @@ export default function App(): ReactElement {
             onRestoreToolProfile={restoreToolProfile}
             onSetDefaultToolProfile={setDefaultToolProfile}
             isQuerying={isCortexQuerying}
+            logoProps={cortexLogoProps}
             lifecycleBusy={localLifecycleBusy}
             lifecycleActionPending={isLocalModelActionPending}
             verifyingCloudAgent={verifyingCloudAgent}
