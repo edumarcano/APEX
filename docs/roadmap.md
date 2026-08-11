@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Current Phase:** [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence)
-**Active Milestone:** [v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents-cortex-workspace)
+**Active Milestone:** [v1.20.0 - Cortex: Verified Personal Actions & Headless Control](#v1200---cortex-verified-personal-actions-headless-control)
 **Current Initiative:** [Cortex Initiative](#cortex-initiative)
 
-**Next Milestone:** [v1.19.1 - Runtime Reliability & Maintenance](#v1191---runtime-reliability-maintenance)
+**Next Milestone:** [v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model-retrieval)
 
 ### Navigation
 
@@ -358,18 +358,16 @@ Establish Apex Agents as APEX's provider-neutral intelligence abstraction, unify
 
 ## v1.19.1 - Runtime Reliability & Maintenance
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Resolve known backend and speech-runtime technical debt before Cortex begins relying on longer-running, repeated, and increasingly concurrent execution workflows.
-
-This milestone includes shared HTTP connection-pool refactoring, asynchronous multi-source request optimization where appropriate, the Open-Meteo weather-provider migration and attribution hardening, and improvements to Kokoro and speech subsystem lifecycle management, long-text chunking, progressive playback, readiness checks, dependency isolation, Unicode handling, cancellation, fallback behavior, and failure testing.
+Improve APEX’s reliability, consistency, and overall polish across its runtime, integrations, Agents, and user experience before the next phase of Cortex development.
 
 ---
 
 ## v1.20.0 - Cortex: Verified Personal Actions & Headless Control
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Establish APEX's native write-capability and verification architecture through approval-gated personal actions, deterministic outcome verification, action auditing, Microsoft To Do reminder migration, and a new APEX CLI capable of operating Cortex without the HUD.
@@ -606,4 +604,4 @@ The long-term objective of APEX is to evolve through six distinct stages into a 
 APEX is currently in **Phase IV: Interactive Intelligence**.
 
 **Active milestone:**
-[v1.19.0 - Apex Agents & Cortex Workspace](#v1190---apex-agents-cortex-workspace)
+[v1.20.0 - Cortex: Verified Personal Actions & Headless Control](#v1200---cortex-verified-personal-actions-headless-control)
