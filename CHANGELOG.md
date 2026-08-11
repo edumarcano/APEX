@@ -3,6 +3,39 @@
 ---
 
 
+## v1.19.1 — Runtime Reliability & Maintenance
+
+**Released:** August 10, 2026
+
+This release improves reliability and consistency across APEX's connector networking, speech delivery, MCP integrations, local Agents, and HUD controls. Shared HTTP sessions reduce repeated connection setup, speech delivery gains lifecycle and readiness management with bounded chunking and cancellation, transient MCP failures recover without masking authentication or configuration errors, weather telemetry moves to Open-Meteo with explicit attribution, and provider, model, query-control, and visual terminology are aligned ahead of v1.20.0.
+
+---
+
+### What's New
+
+- Added lifecycle-owned HTTP sessions for HUD data providers with standalone fallbacks when a shared session is unavailable.
+- Added speech-runtime lifecycle management, readiness diagnostics, sentence-aware chunking, progressive playback, bounded synthesis timeouts, cancellation, resource admission, and direct local fallback behavior.
+- Added automatic recovery for transient MCP connection, discovery, and transport failures while preserving authentication and configuration failure states.
+- Migrated weather telemetry from OpenWeather to Open-Meteo geocoding and WMO forecast normalization, with provider, GeoNames, CC BY 4.0, and adaptation attribution across weather surfaces.
+- Stabilized sequential local-model benchmark runs by waiting for resource recovery, classifying blocked runs separately from model failures, and reporting benchmark status in summaries.
+- Updated local Agent model assignments, canonical provider display names, and user-facing query controls; legacy `ask_apex` wire and persistence keys remain compatible.
+- Added the live Apex Logo to the Cortex header, and aligned its motion states, including reduced-motion fallbacks and focused regression coverage.
+
+### Architecture Changes
+
+- Moved speech subsystem initialization and shutdown into the FastAPI lifespan and kept `core/api/tts.py` as a compatibility shim ahead of the v1.20 reminder migration.
+- Made Google Cloud TTS and Kokoro dependency stacks optional extras while retaining the base local playback dependencies.
+- Consolidated Agent catalog, prompt, query-validation, migration, and runtime-contract coverage while removing duplicate or retired test paths.
+- Preserved provider-grounding and visible attribution requirements across Gemini, weather, football, and Formula 1 integrations.
+
+### Documentation Updates
+
+- Added `docs/speech-runtime.md` covering installation, lifecycle, fallback and privacy behavior, resource admission, chunking, readiness, and cancellation.
+- Updated MCP, provider, weather, local-model benchmark, Agent terminology, and design-system documentation to match the current runtime behavior.
+
+---
+
+
 ## v1.19.0 — Apex Agents & Cortex Workspace
 
 **Released:** August 8, 2026
