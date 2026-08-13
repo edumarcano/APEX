@@ -273,7 +273,15 @@ class MicrosoftTodoTaskMutationVerifier:
             if self._capability_name == "delete_microsoft_todo_task":
                 return VerificationOutcome(True, _MUTATION_CODES[self._capability_name][2], {})
             return VerificationOutcome(False, "microsoft_todo_task_not_found", {})
-        except Exception:
+        except (
+            MicrosoftTodoAuthenticationRequiredError,
+            MicrosoftTodoNotConfiguredError,
+            MicrosoftTodoInvalidInputError,
+            MicrosoftTodoPermissionError,
+            MicrosoftTodoThrottledError,
+            MicrosoftTodoUpstreamError,
+            TimeoutError,
+        ):
             return VerificationOutcome(False, "microsoft_todo_verification_unavailable", {})
 
         if self._capability_name == "delete_microsoft_todo_task":
@@ -298,46 +306,6 @@ class MicrosoftTodoTaskMutationVerifier:
         if mismatches:
             return VerificationOutcome(False, "microsoft_todo_task_mismatch", {"fields": mismatches})
         return VerificationOutcome(True, _MUTATION_CODES[self._capability_name][2], {})
-
-
-class UpdateMicrosoftTodoTaskExecutor(MicrosoftTodoTaskMutationExecutor):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "update_microsoft_todo_task")
-
-
-class UpdateMicrosoftTodoTaskVerifier(MicrosoftTodoTaskMutationVerifier):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "update_microsoft_todo_task")
-
-
-class CompleteMicrosoftTodoTaskExecutor(MicrosoftTodoTaskMutationExecutor):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "complete_microsoft_todo_task")
-
-
-class CompleteMicrosoftTodoTaskVerifier(MicrosoftTodoTaskMutationVerifier):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "complete_microsoft_todo_task")
-
-
-class ReopenMicrosoftTodoTaskExecutor(MicrosoftTodoTaskMutationExecutor):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "reopen_microsoft_todo_task")
-
-
-class ReopenMicrosoftTodoTaskVerifier(MicrosoftTodoTaskMutationVerifier):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "reopen_microsoft_todo_task")
-
-
-class DeleteMicrosoftTodoTaskExecutor(MicrosoftTodoTaskMutationExecutor):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "delete_microsoft_todo_task")
-
-
-class DeleteMicrosoftTodoTaskVerifier(MicrosoftTodoTaskMutationVerifier):
-    def __init__(self, client: MicrosoftTodoClient) -> None:
-        super().__init__(client, "delete_microsoft_todo_task")
 
 
 def _update_request(arguments: Mapping[str, object]) -> TodoTaskPatchRequest:
