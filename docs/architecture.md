@@ -196,7 +196,7 @@ Local and cloud queries use the same explicit capability descriptor list. The br
 
 `core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound. Supported native write and destructive capabilities are validated without invocation and become durable action proposals; only API approval may claim, execute, and independently verify them. Native action availability requires registered executor and verifier handlers. MCP write and destructive tools remain unavailable to Cortex.
 
-Native capabilities are read-only. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
+All currently registered production native capabilities are read-only. The action path is available only to a future native write or destructive capability that registers both handlers. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
 
 The Tools selector exposes only the canonical resolved descriptor list:
 `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP

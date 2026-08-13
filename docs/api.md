@@ -383,9 +383,9 @@ Actions are loopback-only, durable proposals for supported native write capabili
 
 `GET /api/v1/actions` returns newest-first records and accepts repeated `status` filters. `GET /api/v1/actions/{action_id}` also returns audit events. In demo mode the list is empty and detail is unavailable, so demo requests never read the real action ledger.
 
-The approve, reject, and verify routes require `{"expected_version": 0}` with the version currently returned by the API. Approval runs synchronously: it approves a proposal, claims its execution once, and independently verifies the result. A later approval request may resume an already approved action, but restart recovery never replays an interrupted write. Verification retry is available only for `verification_failed` and `outcome_unknown` states and never re-executes the action.
+The approve, reject, and verify routes require `{"expected_version": 0}` with the version currently returned by the API. Approval runs synchronously: it approves a proposal, claims its execution once, and independently verifies the result. A later approval request may resume an already approved action, but restart recovery never replays an interrupted write. Verification retry is available only for `verification_failed` and `outcome_unknown` states and never re-executes the action. In demo mode, detail reads return `404` and mutations return `403`.
 
-- `403` — an action mutation or detail request was made in demo mode.
+- `403` — an action mutation was made in demo mode.
 - `404` — the action does not exist.
 - `409` — the supplied version is stale or the requested lifecycle state is no longer valid.
 - `503` — the local action service is unavailable.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -132,6 +133,12 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(self.handler_calls, 0)
         action = self.service.get(output["action_id"])
         self.assertEqual(dict(action.proposal.arguments), {"count": 4})
+        approved = self.client.post(
+            f"/api/v1/actions/{action.action_id}/approve",
+            json={"expected_version": output["version"]},
+        )
+        self.assertEqual(approved.json()["status"], "verified")
+        self.assertEqual(self.executor.arguments, {"count": 4})
 
     def test_unsupported_native_and_mcp_actions_are_not_selectable(self) -> None:
         for name, origin in (("unsupported_write", "native"), ("remote_write", "mcp")):
@@ -180,13 +187,13 @@ class ActionControlApiTests(unittest.TestCase):
         )
         self.assertEqual(failed.json()["status"], "verification_failed")
         self.verifier.verified = True
-        retried = self.client.post(
-            f"/api/v1/actions/{retryable.action_id}/verify", json={"expected_version": 4}
-        )
+        retried = self.client.post(f"/api/v1/actions/{retryable.action_id}/verify", json={
+            "expected_version": failed.json()["version"],
+        })
         self.assertEqual(retried.json()["status"], "verified")
         self.assertEqual(self.executor.calls, 1)
 
-    def test_stale_and_concurrent_approvals_execute_once(self) -> None:
+    def test_concurrent_approvals_execute_once(self) -> None:
         action = self._propose()
         barrier = threading.Barrier(2)
 
@@ -201,6 +208,30 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(sorted(codes), [200, 409])
         self.assertEqual(self.executor.calls, 1)
 
+    def test_control_errors_are_sanitized(self) -> None:
+        missing = self.client.get("/api/v1/actions/not-an-action")
+        self.assertEqual(missing.status_code, 404)
+
+        action = self._propose()
+        stale = self.client.post(
+            f"/api/v1/actions/{action.action_id}/reject", json={"expected_version": 1}
+        )
+        self.assertEqual(stale.status_code, 409)
+
+        set_action_service(None)
+        unavailable = self.client.get("/api/v1/actions")
+        self.assertEqual(unavailable.status_code, 503)
+        set_action_service(self.service)
+
+        with (
+            self.assertLogs("core.api.routers.actions", level="ERROR") as captured,
+            patch.object(self.service, "expire_due", side_effect=sqlite3.OperationalError("private")),
+        ):
+            failed = self.client.get("/api/v1/actions")
+        self.assertEqual(failed.status_code, 500)
+        self.assertEqual(failed.json()["detail"], "Action persistence failed.")
+        self.assertNotIn("private", " ".join(captured.output))
+
     def test_api_approval_resumes_an_already_approved_action(self) -> None:
         action = self._propose()
         approved = self.service.approve(action.action_id, actor="operator", expected_version=0)
@@ -212,15 +243,25 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(response.json()["status"], "verified")
         self.assertEqual(self.executor.calls, 1)
 
-    def test_missing_version_and_demo_mode_are_rejected(self) -> None:
+    def test_missing_version_and_demo_mode_isolate_the_ledger(self) -> None:
         action = self._propose()
         self.assertEqual(
             self.client.post(f"/api/v1/actions/{action.action_id}/approve", json={}).status_code,
             422,
         )
-        with patch("core.api.routers.actions.DEMO_MODE", True):
+        with (
+            patch("core.api.routers.actions.DEMO_MODE", True),
+            patch("core.api.routers.actions.get_action_service", side_effect=AssertionError),
+        ):
             self.assertEqual(self.client.get("/api/v1/actions").json(), [])
-            self.assertEqual(self.client.get(f"/api/v1/actions/{action.action_id}").status_code, 403)
+            self.assertEqual(self.client.get(f"/api/v1/actions/{action.action_id}").status_code, 404)
+            self.assertEqual(
+                self.client.post(
+                    f"/api/v1/actions/{action.action_id}/approve",
+                    json={"expected_version": 0},
+                ).status_code,
+                403,
+            )
 
 
 if __name__ == "__main__":

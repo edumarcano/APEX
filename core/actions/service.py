@@ -105,9 +105,9 @@ class ActionService:
         """Load one action's authoritative current state."""
         return self._store.get(action_id)
 
-    def list(self) -> list[ActionRecord]:
+    def list(self, *, statuses: tuple[str, ...] | list[str] | None = None) -> list[ActionRecord]:
         """List persisted action records."""
-        return self._store.list()
+        return self._store.list(statuses=statuses)
 
     def events(self, action_id: str):
         """Return the immutable action audit ledger."""

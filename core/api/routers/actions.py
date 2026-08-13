@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 from fastapi import APIRouter, HTTPException, Query
 
 from core.actions.models import ActionEvent, ActionRecord, thaw_json
 from core.actions.runtime import get_action_service
+from core.actions.service import ActionService
 from core.actions.store import (
     ActionConflictError,
     ActionIntegrityError,
@@ -29,7 +31,7 @@ router = APIRouter(tags=["actions"])
 _LOGGER = logging.getLogger(__name__)
 
 
-def _service():
+def _service() -> ActionService:
     service = get_action_service()
     if service is None:
         raise HTTPException(status_code=503, detail="Action service is unavailable.")
@@ -61,11 +63,14 @@ def _event_response(event: ActionEvent) -> ActionEventResponse:
     )
 
 
-def _detail_response(record: ActionRecord) -> ActionDetailResponse:
+def _detail_response(
+    service: ActionService,
+    record: ActionRecord,
+) -> ActionDetailResponse:
     base = _record_response(record)
     return ActionDetailResponse(
         **base.model_dump(),
-        events=[_event_response(event) for event in _service().events(record.action_id)],
+        events=[_event_response(event) for event in service.events(record.action_id)],
     )
 
 
@@ -76,8 +81,8 @@ def _raise_action_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail="Action does not exist.") from exc
     if isinstance(exc, (ActionConflictError, ActionTransitionError)):
         raise HTTPException(status_code=409, detail="Action is no longer in the requested state.") from exc
-    if isinstance(exc, (ActionStoreError, ActionIntegrityError)):
-        _LOGGER.exception("Action persistence failed category=%s", type(exc).__name__)
+    if isinstance(exc, (sqlite3.Error, ActionStoreError, ActionIntegrityError)):
+        _LOGGER.error("Action persistence failed category=%s", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Action persistence failed.") from exc
     raise exc
 
@@ -96,18 +101,19 @@ def list_actions(
     try:
         service = _service()
         service.expire_due()
-        return [_record_response(record) for record in service.store.list(statuses=status_filter)]
+        return [_record_response(record) for record in service.list(statuses=status_filter)]
     except Exception as exc:
         _raise_action_error(exc)
 
 
 @router.get("/api/v1/actions/{action_id}", response_model=ActionDetailResponse)
 def get_action(action_id: str) -> ActionDetailResponse:
-    _require_normal_mode()
+    if DEMO_MODE:
+        raise HTTPException(status_code=404, detail="Action does not exist.")
     try:
         service = _service()
         service.expire_due()
-        return _detail_response(service.get(action_id))
+        return _detail_response(service, service.get(action_id))
     except Exception as exc:
         _raise_action_error(exc)
 
