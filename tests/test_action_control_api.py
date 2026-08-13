@@ -173,6 +173,24 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(self.executor.calls, 1)
         self.assertEqual(self.verifier.calls, 1)
 
+    def test_action_list_limit_is_bounded_and_applies_after_status_filter(self) -> None:
+        older = self._propose()
+        self.client.post(
+            f"/api/v1/actions/{older.action_id}/reject", json={"expected_version": 0}
+        )
+        newer = self._propose()
+
+        limited = self.client.get("/api/v1/actions?limit=1")
+        self.assertEqual(limited.status_code, 200)
+        self.assertEqual([item["action_id"] for item in limited.json()], [newer.action_id])
+
+        proposed = self.client.get("/api/v1/actions?status=proposed&limit=1")
+        self.assertEqual(proposed.status_code, 200)
+        self.assertEqual([item["action_id"] for item in proposed.json()], [newer.action_id])
+
+        self.assertEqual(self.client.get("/api/v1/actions?limit=0").status_code, 422)
+        self.assertEqual(self.client.get("/api/v1/actions?limit=51").status_code, 422)
+
     def test_reject_does_not_execute_and_verify_retry_does_not_reexecute(self) -> None:
         rejected = self._propose()
         response = self.client.post(

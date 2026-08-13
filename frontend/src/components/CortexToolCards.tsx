@@ -167,6 +167,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+interface ActionProposalToolOutput {
+  action_id: string
+  status: 'proposed'
+  version: number
+  risk: 'write' | 'destructive'
+  summary: string
+  target: string
+}
+
+function parseActionProposalToolOutput(value: unknown): ActionProposalToolOutput | null {
+  if (!isRecord(value)) return null
+  if (
+    typeof value.action_id !== 'string' ||
+    value.status !== 'proposed' ||
+    typeof value.version !== 'number' ||
+    !Number.isInteger(value.version) ||
+    (value.risk !== 'write' && value.risk !== 'destructive') ||
+    typeof value.summary !== 'string' ||
+    typeof value.target !== 'string'
+  ) return null
+  return {
+    action_id: value.action_id,
+    status: value.status,
+    version: value.version,
+    risk: value.risk,
+    summary: value.summary,
+    target: value.target,
+  }
+}
+
 function formatToolLabel(name: string): string {
   return name.replace(/^get_/, '').replace(/_/g, ' ')
 }
@@ -682,6 +712,31 @@ export function ErrorFallbackCard({
       <p className="max-h-24 overflow-y-auto pr-1 text-sm leading-relaxed text-red-300/90 scrollbar-thin">
         {truncateText(message, 280)}
       </p>
+    </ToolCardFrame>
+  )
+}
+
+function ActionProposalCard({
+  durationMs,
+  output,
+}: {
+  durationMs: number
+  output: ActionProposalToolOutput
+}): ReactElement {
+  return (
+    <ToolCardFrame
+      title="Action proposed"
+      icon={<ListTodo className="size-3.5" aria-hidden />}
+      durationMs={durationMs}
+      accentClass={output.risk === 'destructive' ? 'text-red-300' : 'text-[#C084FC]'}
+    >
+      <p className="text-sm font-medium text-zinc-100">{output.summary}</p>
+      <p className="mt-1 text-xs text-zinc-400">{output.target}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-wide">
+        <span className={output.risk === 'destructive' ? 'text-red-200' : 'text-[#C084FC]'}>{output.risk}</span>
+        <span className="text-amber-100">Pending approval</span>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-zinc-500">Review this action in the Cortex Actions inspector.</p>
     </ToolCardFrame>
   )
 }
@@ -1352,6 +1407,11 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
         message={resolveErrorMessage(item.output)}
       />
     )
+  }
+
+  const actionProposal = parseActionProposalToolOutput(item.output)
+  if (actionProposal) {
+    return <ActionProposalCard durationMs={item.duration_ms} output={actionProposal} />
   }
 
   const mcpTool = parseMcpToolName(item.name)

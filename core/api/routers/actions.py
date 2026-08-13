@@ -95,13 +95,17 @@ def _require_normal_mode() -> None:
 @router.get("/api/v1/actions", response_model=list[ActionResponse])
 def list_actions(
     status_filter: list[ActionStatusResponse] | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=50),
 ) -> list[ActionResponse]:
     if DEMO_MODE:
         return []
     try:
         service = _service()
         service.expire_due()
-        return [_record_response(record) for record in service.list(statuses=status_filter)]
+        return [
+            _record_response(record)
+            for record in service.list(statuses=status_filter, limit=limit)
+        ]
     except Exception as exc:
         _raise_action_error(exc)
 

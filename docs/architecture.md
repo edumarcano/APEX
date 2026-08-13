@@ -105,12 +105,15 @@ FastAPI's lifespan initializes the database and Microsoft To Do services, starts
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
 | `useCortex` | Browser-held conversation, Agent status, query submission, tool traces, and returned tool cards |
+| `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
 | `useToolCatalog` | Agent-specific tool catalog, profile application, and session-persistent selection |
 | `useToolPreflight` | Debounced next-request tool and context token estimates |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
 The browser holds activation state and Agent history for the tab lifetime. Reloading the page returns the UI to standby and clears conversation history, but it does not erase reminders or persisted briefing history.
+
+When Cortex is visible in normal mode, its inspector owns action review. `useActions` reads the newest 50 durable actions, fetches audit detail only for an expanded item, and polls every five seconds only while the browser tab remains visible. It submits the backend-provided action version for approval, rejection, and verification retry, then refetches authoritative ledger state. Conversation cards only identify newly proposed actions and direct the operator to the inspector; they never resolve an action themselves. Demo mode does not access the action API.
 
 ## Telemetry snapshots
 

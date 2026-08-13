@@ -32,6 +32,7 @@ import { TelemetryCard } from './components/TelemetryCard'
 import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
 import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
+import { useActions } from './hooks/useActions'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useMarketData } from './hooks/useMarketData'
@@ -194,6 +195,7 @@ export default function App(): ReactElement {
     markReminderAsRead,
     applyBootSettings,
   } = apexData
+  const actions = useActions(workspace === 'cortex' && !demoModeActive)
   const { data: marketData, isLoading: isMarketLoading } = useMarketData(
     marketEnabled,
     marketPollKey,
@@ -1643,6 +1645,8 @@ export default function App(): ReactElement {
             onLocalReasoningModeChange={handleLocalReasoningModeChange}
             onSubmit={handleHomeSubmit}
             onNewSession={handleNewCortexSession}
+            actions={actions}
+            demoModeActive={demoModeActive}
           />
         )}
       </div>

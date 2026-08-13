@@ -190,17 +190,26 @@ class ActionStore:
             raise ActionNotFoundError("Action does not exist.")
         return self._record_from_row(row)
 
-    def list(self, *, statuses: Iterable[ActionStatus] | None = None) -> list[ActionRecord]:
+    def list(
+        self,
+        *,
+        statuses: Iterable[ActionStatus] | None = None,
+        limit: int | None = None,
+    ) -> list[ActionRecord]:
         """List actions newest first, optionally filtered by current status."""
+        if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
+            raise ValueError("Action list limit must be a positive integer.")
         selected = list(statuses or [])
         if statuses is not None and not selected:
             return []
         placeholders = ",".join("?" for _ in selected)
         query = "SELECT * FROM actions" + (
             f" WHERE status IN ({placeholders})" if selected else ""
-        ) + " ORDER BY proposed_at DESC, action_id DESC"
+        ) + " ORDER BY proposed_at DESC, action_id DESC" + (
+            " LIMIT ?" if limit is not None else ""
+        )
         with self._connection() as conn:
-            rows = conn.execute(query, selected).fetchall()
+            rows = conn.execute(query, [*selected, limit] if limit is not None else selected).fetchall()
         return [self._record_from_row(row) for row in rows]
 
     def events(self, action_id: str) -> list[ActionEvent]:
