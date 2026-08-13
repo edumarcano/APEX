@@ -31,6 +31,8 @@ _MAX_LISTS = 50
 _MAX_TASKS = 50
 _TIMEOUT_SECONDS = 15
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_DEFAULT_LIST_ALIAS = "Tasks"
+_DEFAULT_LIST_WELL_KNOWN_NAME = "defaultList"
 
 
 class MicrosoftTodoInvalidInputError(ValueError):
@@ -179,6 +181,30 @@ class MicrosoftTodoClient:
 
     def get_status(self) -> MicrosoftTodoAuthStatus:
         return self.auth.status_snapshot()
+
+    def _resolve_list_identifier(self, list_id: str) -> str:
+        """Resolve Graph's default-list alias to its durable list identifier.
+
+        Action proposals ordinarily receive the opaque identifier from
+        ``list_microsoft_todo_lists``. Graph also accepts ``Tasks`` for a
+        create in some accounts, but not for an exact task read. Resolving the
+        single documented default-list alias keeps the create and read-back
+        paths pointed at the same list without treating arbitrary display names
+        as identifiers.
+        """
+        if list_id != _DEFAULT_LIST_ALIAS:
+            return list_id
+        default_list = next(
+            (
+                item
+                for item in self.list_task_lists().lists
+                if item.well_known_name == _DEFAULT_LIST_WELL_KNOWN_NAME
+            ),
+            None,
+        )
+        if default_list is None:
+            raise MicrosoftTodoNotFoundError("The Microsoft To Do list was not found.")
+        return default_list.id
 
     def _request(
         self,
@@ -342,6 +368,7 @@ class MicrosoftTodoClient:
     def get_task(self, list_id: str, task_id: str) -> TodoTask:
         """Read one exact task for future action verification."""
         list_identifier = _validated_identifier(list_id, label="list")
+        list_identifier = self._resolve_list_identifier(list_identifier)
         task_identifier = _validated_identifier(task_id, label="task")
         url = (
             f"{GRAPH_ROOT}/me/todo/lists/{quote(list_identifier, safe='')}/tasks/"
@@ -356,6 +383,7 @@ class MicrosoftTodoClient:
     def create_task(self, list_id: str, request: TodoTaskCreateRequest) -> TodoTask:
         """Create one task without retrying an uncertain Graph write."""
         list_identifier = _validated_identifier(list_id, label="list")
+        list_identifier = self._resolve_list_identifier(list_identifier)
         response = self._request(
             "post",
             f"{GRAPH_ROOT}/me/todo/lists/{quote(list_identifier, safe='')}/tasks",
@@ -377,6 +405,7 @@ class MicrosoftTodoClient:
     ) -> TodoTask:
         """Patch supported fields on one task without retrying an uncertain write."""
         list_identifier = _validated_identifier(list_id, label="list")
+        list_identifier = self._resolve_list_identifier(list_identifier)
         task_identifier = _validated_identifier(task_id, label="task")
         url = (
             f"{GRAPH_ROOT}/me/todo/lists/{quote(list_identifier, safe='')}/tasks/"
@@ -395,6 +424,7 @@ class MicrosoftTodoClient:
     def delete_task(self, list_id: str, task_id: str) -> None:
         """Delete one task; callers must use an exact read to verify absence."""
         list_identifier = _validated_identifier(list_id, label="list")
+        list_identifier = self._resolve_list_identifier(list_identifier)
         task_identifier = _validated_identifier(task_id, label="task")
         url = (
             f"{GRAPH_ROOT}/me/todo/lists/{quote(list_identifier, safe='')}/tasks/"
