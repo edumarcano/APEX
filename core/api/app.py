@@ -15,8 +15,10 @@ from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_tod
 from clients.http_sessions import ConnectorHttpSessions, set_connector_http_sessions
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
-from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
+from core.actions import ActionService, set_action_service
+from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import ENV_PATH
+from core.config import DEMO_MODE
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
@@ -42,6 +44,10 @@ async def _app_lifespan(_app: FastAPI):
     set_microsoft_auth_service(microsoft_auth)
     set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db()
+    if not DEMO_MODE:
+        action_service = ActionService()
+        action_service.recover_interrupted()
+        set_action_service(action_service)
     get_settings_store()
     speaker.initialize()
 
@@ -105,6 +111,7 @@ async def _app_lifespan(_app: FastAPI):
                                 connector_sessions.close()
                             finally:
                                 set_connector_http_sessions(None)
+                                set_action_service(None)
                                 if idle_model_task is not None:
                                     idle_model_task.cancel()
                                     try:
@@ -150,6 +157,7 @@ app.add_middleware(
 app.include_router(system.router)
 app.include_router(briefings.router)
 app.include_router(reminders.router)
+app.include_router(actions.router)
 app.include_router(cortex.router)
 app.include_router(market.router)
 app.include_router(mcp.router)

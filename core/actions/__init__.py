@@ -7,6 +7,7 @@ from core.actions.models import (
     ExecutionOutcome,
     VerificationOutcome,
 )
+from core.actions.runtime import get_action_service, set_action_service
 from core.actions.service import ActionExecutor, ActionService, ActionVerifier
 from core.actions.store import (
     ActionConflictError,
@@ -30,4 +31,6 @@ __all__ = [
     "ActionVerifier",
     "ExecutionOutcome",
     "VerificationOutcome",
+    "get_action_service",
+    "set_action_service",
 ]

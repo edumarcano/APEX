@@ -69,6 +69,13 @@ class ActionService:
         self._executors[capability_name] = executor
         self._verifiers[capability_name] = verifier
 
+    def supports(self, capability_name: str) -> bool:
+        """Return whether a capability has both action execution handlers."""
+        return (
+            capability_name in self._executors
+            and capability_name in self._verifiers
+        )
+
     def propose(
         self,
         *,
@@ -123,6 +130,33 @@ class ActionService:
             now=self._now(),
             expected_version=expected_version,
         )
+
+    def approve_and_execute(
+        self,
+        action_id: str,
+        *,
+        actor: str,
+        expected_version: int,
+    ) -> ActionRecord:
+        """Approve a proposal or resume one approved action exactly once."""
+        action = self.get(action_id)
+        if action.status == "proposed":
+            action = self.approve(
+                action_id,
+                actor=actor,
+                expected_version=expected_version,
+            )
+            if action.status == "expired":
+                return action
+        elif action.status != "approved":
+            from core.actions.store import ActionTransitionError
+
+            raise ActionTransitionError("Action lifecycle transition is not permitted.")
+        elif action.version != expected_version:
+            from core.actions.store import ActionConflictError
+
+            raise ActionConflictError("Action has changed since it was read.")
+        return self.claim_and_execute(action_id, actor="executor")
 
     def claim_and_execute(
         self,

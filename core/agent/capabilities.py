@@ -406,6 +406,27 @@ class CapabilityRegistry:
                 f"Capability '{name}' is not registered.",
             )
 
+        validated = self.validate_arguments(name, arguments)
+        result = _run_handler(
+            entry.handler,
+            validated,
+            entry.descriptor.timeout_seconds,
+        )
+        return _bound_output(result, entry.descriptor.max_output_chars)
+
+    def validate_arguments(
+        self,
+        name: str,
+        arguments: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Normalize and schema-validate arguments without invoking a handler."""
+        with self._lock:
+            entry = self._entries.get(name)
+        if entry is None:
+            raise CapabilityError(
+                CapabilityErrorCategory.UNAVAILABLE,
+                f"Capability '{name}' is not registered.",
+            )
         raw_arguments = arguments or {}
         validated = _validate_and_coerce_arguments(
             name,
@@ -421,12 +442,7 @@ class CapabilityRegistry:
                 CapabilityErrorCategory.INVALID_INPUT,
                 f"Invalid arguments for capability '{name}'{location}.",
             ) from exc
-        result = _run_handler(
-            entry.handler,
-            validated,
-            entry.descriptor.timeout_seconds,
-        )
-        return _bound_output(result, entry.descriptor.max_output_chars)
+        return validated
 
     def contains(self, name: str) -> bool:
         with self._lock:
@@ -495,6 +511,15 @@ def is_client_display_enabled(name: str) -> bool:
 def invoke_capability(name: str, arguments: Mapping[str, Any] | None = None) -> Any:
     _ensure_native_capabilities_loaded()
     return _REGISTRY.invoke(name, arguments)
+
+
+def validate_capability_arguments(
+    name: str,
+    arguments: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate one capability call without performing its side effect."""
+    _ensure_native_capabilities_loaded()
+    return _REGISTRY.validate_arguments(name, arguments)
 
 
 def clear_capability_registry_for_tests() -> None:
