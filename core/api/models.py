@@ -339,7 +339,7 @@ MicrosoftTodoAuthErrorCode = Literal[
 class MicrosoftTodoStatusResponse(BaseModel):
     configured: bool
     state: MicrosoftTodoState
-    permission: Literal["Tasks.Read"] = "Tasks.Read"
+    permission: Literal["Tasks.ReadWrite"] = "Tasks.ReadWrite"
     auth_error_code: MicrosoftTodoAuthErrorCode | None = None
     auth_error_message: str | None = Field(default=None, max_length=240)
 

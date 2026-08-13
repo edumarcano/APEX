@@ -13,7 +13,7 @@ export type MicrosoftTodoState =
 export interface MicrosoftTodoStatus {
   configured: boolean
   state: MicrosoftTodoState
-  permission: 'Tasks.Read'
+  permission: 'Tasks.ReadWrite'
   auth_error_code?: MicrosoftTodoAuthErrorCode | null
   auth_error_message?: string | null
 }
@@ -59,7 +59,7 @@ function parseStatus(value: unknown): MicrosoftTodoStatus | null {
     typeof item.configured !== 'boolean' ||
     typeof item.state !== 'string' ||
     !STATES.includes(item.state as MicrosoftTodoState) ||
-    item.permission !== 'Tasks.Read'
+    item.permission !== 'Tasks.ReadWrite'
   ) return null
   if (
     item.auth_error_code !== undefined &&

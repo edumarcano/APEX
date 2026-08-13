@@ -256,9 +256,9 @@ Changing scopes requires reauthorization. Both files are gitignored and must rem
 
 ## Microsoft To Do
 
-Register a public/native Microsoft Entra application, enable device-code flow, grant delegated `Tasks.Read`, and configure the client ID documented in `.env.example`. The tenant defaults to `common`.
+Register a public/native Microsoft Entra application, enable device-code flow, grant delegated `Tasks.ReadWrite`, and configure the client ID documented in `.env.example`. The tenant defaults to `common`. Existing `Tasks.Read` authorizations must reconnect to grant the expanded permission.
 
-APEX stores the authorization cache through encrypted operating-system persistence unless an explicit machine path is configured. The integration is read-only: it cannot create, update, complete, move, synchronize, or delete Microsoft tasks. SQLite reminders remain authoritative for the HUD and briefings.
+APEX stores the authorization cache through encrypted operating-system persistence unless an explicit machine path is configured. The connector has internal task write primitives, but no Agent capability or API route exposes mutation yet. SQLite reminders remain authoritative for the HUD and briefings.
 
 ## MCP providers
 
