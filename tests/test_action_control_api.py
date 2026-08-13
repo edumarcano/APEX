@@ -130,6 +130,7 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(response.tool_outputs[0]["status"], "ok")
         output = response.tool_outputs[0]["output"]
         self.assertEqual(output["status"], "proposed")
+        self.assertEqual(output["message"], "Action proposed. It has not been executed and requires operator approval.")
         self.assertEqual(self.handler_calls, 0)
         action = self.service.get(output["action_id"])
         self.assertEqual(dict(action.proposal.arguments), {"count": 4})

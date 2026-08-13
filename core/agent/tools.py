@@ -710,8 +710,9 @@ def register_native_capabilities() -> None:
                     "list_id": {
                         "type": "string",
                         "description": "Opaque list identifier returned by list_microsoft_todo_lists.",
-                        "minLength": 1,
+                        "minLength": 16,
                         "maxLength": 512,
+                        "pattern": "^[A-Za-z0-9_+=/-]+$",
                     },
                     "title": {
                         "type": "string",

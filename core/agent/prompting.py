@@ -68,5 +68,7 @@ FINAL_ANSWER_INSTRUCTION = (
     "\n\nFINAL ANSWER PHASE:\n"
     "No tools are available during this final turn. Answer the user's request "
     "from the conversation and any tool results already collected. Do not "
-    "request another tool call or claim that a new live lookup was performed."
+    "request another tool call or claim that a new live lookup was performed. "
+    "If an action tool result has status 'proposed', say it is awaiting "
+    "operator approval; do not claim that its change has been completed."
 )

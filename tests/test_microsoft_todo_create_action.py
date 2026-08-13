@@ -101,18 +101,22 @@ class MicrosoftTodoCreateActionTests(unittest.TestCase):
         self.assertFalse(descriptor.expose_to_mcp_server)
         self.assertEqual(
             validate_capability_arguments(
-                "create_microsoft_todo_task", {"list_id": "list-1", "title": "Study"}
+                "create_microsoft_todo_task", {"list_id": "AQMkADAwATMwMAIt", "title": "Study"}
             )["importance"],
             "normal",
         )
         with self.assertRaises(Exception):
             validate_capability_arguments(
                 "create_microsoft_todo_task",
-                {"list_id": "list-1", "title": "Study", "due": {"date_time": "2026-08-14"}},
-        )
+                {"list_id": "AQMkADAwATMwMAIt", "title": "Study", "due": {"date_time": "2026-08-14"}},
+            )
+        with self.assertRaises(Exception):
+            validate_capability_arguments(
+                "create_microsoft_todo_task", {"list_id": "Tasks", "title": "Study"}
+            )
         with self.assertRaises(CapabilityError):
             invoke_capability(
-                "create_microsoft_todo_task", {"list_id": "list-1", "title": "Study"}
+                "create_microsoft_todo_task", {"list_id": "AQMkADAwATMwMAIt", "title": "Study"}
             )
         for profile_name in ("personal_ops", "daily_planning"):
             self.assertIn("create_microsoft_todo_task", get_tool_profile(profile_name).tool_names)
@@ -181,6 +185,7 @@ class MicrosoftTodoCreateActionTests(unittest.TestCase):
         for error, code in (
             (MicrosoftTodoNotFoundError("x"), "microsoft_todo_task_not_found"),
             (MicrosoftTodoPermissionError("x"), "microsoft_todo_verification_unavailable"),
+            (MicrosoftTodoInvalidInputError("x"), "microsoft_todo_verification_unavailable"),
             (TimeoutError(), "microsoft_todo_verification_unavailable"),
         ):
             outcome = CreateMicrosoftTodoTaskVerifier(_Client(read=error)).verify(

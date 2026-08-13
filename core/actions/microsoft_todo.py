@@ -88,6 +88,7 @@ class CreateMicrosoftTodoTaskVerifier:
         except (
             MicrosoftTodoAuthenticationRequiredError,
             MicrosoftTodoNotConfiguredError,
+            MicrosoftTodoInvalidInputError,
             MicrosoftTodoPermissionError,
             MicrosoftTodoThrottledError,
             MicrosoftTodoUpstreamError,
