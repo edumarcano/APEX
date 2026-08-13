@@ -51,7 +51,7 @@ class _Verifier:
         self.calls = 0
         self.verified = verified
 
-    def verify(self, _action):
+    def verify(self, _action, _execution_evidence):
         self.calls += 1
         return VerificationOutcome(self.verified, "test_verified", {"found": self.verified})
 
