@@ -179,6 +179,17 @@ class ActionKernelTests(unittest.TestCase):
                 expected_version=approved.version - 1,
             )
 
+    def test_pending_action_can_be_rejected(self) -> None:
+        action = self._propose()
+
+        rejected = self.service.reject(action.action_id, actor="operator")
+
+        self.assertEqual(rejected.status, "rejected")
+        self.assertEqual(
+            [event.to_status for event in self.service.events(action.action_id)],
+            ["proposed", "rejected"],
+        )
+
     def test_event_insert_failure_rolls_back_the_state_transition(self) -> None:
         action = self._propose()
         with mock.patch.object(
@@ -243,6 +254,30 @@ class ActionKernelTests(unittest.TestCase):
         self.assertEqual(terminal.status, "execution_failed")
         self.assertEqual(failure_executor.calls, 1)
 
+    def test_verification_failure_can_retry_without_executing_again(self) -> None:
+        executor, verifier = self._register(
+            ExecutionOutcome(True, "write_completed", {}),
+            VerificationOutcome(False, "readback_pending", {}),
+        )
+        action = self._propose()
+        self.service.approve(action.action_id, actor="operator")
+
+        failed = self.service.claim_and_execute(action.action_id, actor="worker")
+        self.assertEqual(failed.status, "verification_failed")
+
+        recovered_verifier = _Verifier(VerificationOutcome(True, "readback_confirmed", {}))
+        self.service.register_handler(
+            "test_write",
+            executor=executor,
+            verifier=recovered_verifier,
+        )
+        recovered = self.service.retry_verification(action.action_id, actor="operator")
+
+        self.assertEqual(recovered.status, "verified")
+        self.assertEqual(executor.calls, 1)
+        self.assertEqual(verifier.calls, 1)
+        self.assertEqual(recovered_verifier.calls, 1)
+
     def test_invalid_handler_outcomes_leave_no_action_in_progress(self) -> None:
         executor = _Executor(object())
         verifier = _Verifier(VerificationOutcome(True, "unused", {}))
@@ -300,23 +335,6 @@ class ActionKernelTests(unittest.TestCase):
         self.assertEqual(statuses[executing.action_id], "outcome_unknown")
         self.assertEqual(statuses[verifying.action_id], "verification_failed")
         self.assertEqual(self.service.get(approved.action_id).status, "approved")
-
-    def test_approval_window_is_configurable(self) -> None:
-        short_lived = ActionService(
-            ActionStore(self.db_path),
-            clock=self.clock,
-            approval_window=timedelta(minutes=5),
-        )
-        action = short_lived.propose(
-            agent_key="panthera",
-            capability_name="test_write",
-            arguments={"title": "Study"},
-            target="Microsoft To Do / Study",
-            risk="write",
-            summary="Create the Study task.",
-        )
-        self.clock.now += timedelta(minutes=5)
-        self.assertEqual(short_lived.approve(action.action_id, actor="operator").status, "expired")
 
     def test_evidence_is_bounded_and_private_exceptions_are_not_persisted(self) -> None:
         with self.assertRaises(ActionValidationError):

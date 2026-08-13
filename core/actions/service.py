@@ -44,13 +44,9 @@ class ActionService:
         store: ActionStore | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
-        approval_window: timedelta = DEFAULT_APPROVAL_WINDOW,
     ) -> None:
         self._store = store or ActionStore()
         self._clock = clock or (lambda: datetime.now(UTC))
-        if approval_window <= timedelta(0):
-            raise ValueError("Approval window must be positive.")
-        self._approval_window = approval_window
         self._executors: dict[str, ActionExecutor] = {}
         self._verifiers: dict[str, ActionVerifier] = {}
         self._store.initialize()
@@ -94,7 +90,7 @@ class ActionService:
             risk=self._proposal_risk(risk),
             summary=summary,
             proposed_at=now,
-            expires_at=now + self._approval_window,
+            expires_at=now + DEFAULT_APPROVAL_WINDOW,
         )
         return self._store.propose(proposal, actor=actor)
 
