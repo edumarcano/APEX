@@ -408,7 +408,7 @@ The status schema is unchanged while the runtime recovers transient provider fai
 
 ### GET `/api/v1/microsoft-todo/status`
 
-Returns whether the integration is configured, its authorization state, the fixed `Tasks.Read` permission, and a bounded authorization error when applicable.
+Returns whether the integration is configured, its authorization state, the fixed `Tasks.ReadWrite` permission, and a bounded authorization error when applicable. Existing read-only grants report authentication required until the user reconnects with the broader delegated permission.
 
 ### POST `/api/v1/microsoft-todo/auth/start`
 

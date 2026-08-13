@@ -10,7 +10,7 @@ describe('Microsoft To Do settings', () => {
       <MicrosoftTodoSettingsSection
         sectionId="todo-settings"
         runtime={{
-          status: { configured: true, state: 'authorizing', permission: 'Tasks.Read' },
+          status: { configured: true, state: 'authorizing', permission: 'Tasks.ReadWrite' },
           authorization: {
             state: 'authorizing',
             verification_uri: 'https://microsoft.com/devicelogin',
@@ -26,6 +26,7 @@ describe('Microsoft To Do settings', () => {
       />,
     )
     expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument()
+    expect(screen.getByText(/no Agent write actions are exposed yet/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open Microsoft sign-in/i })).toHaveAttribute(
       'href',
       'https://microsoft.com/devicelogin',
@@ -41,7 +42,7 @@ describe('Microsoft To Do settings', () => {
           status: {
             configured: true,
             state: 'authentication-required',
-            permission: 'Tasks.Read',
+            permission: 'Tasks.ReadWrite',
             auth_error_code: 'request',
             auth_error_message: 'Microsoft rejected the sign-in request. Check the app registration settings.',
           },

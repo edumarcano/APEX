@@ -22,7 +22,7 @@ from clients.microsoft_todo_models import (
     MicrosoftTodoDeviceAuthorization,
 )
 
-MICROSOFT_TODO_SCOPES = ("Tasks.Read",)
+MICROSOFT_TODO_SCOPES = ("Tasks.ReadWrite",)
 _DEFAULT_TENANT = "common"
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,12 +33,15 @@ _AUTH_FAILURES: dict[str, tuple[MicrosoftTodoAuthErrorCode, str]] = {
     "expired_token": ("expired", "The Microsoft sign-in code has expired. Start a new connection."),
     "invalid_client": ("app-configuration", "Microsoft rejected this app registration. Check its client ID and public-client settings."),
     "unauthorized_client": ("app-configuration", "Microsoft rejected this app registration. Check supported accounts and public-client settings."),
-    "invalid_scope": ("permission", "Microsoft rejected the requested To Do permission. Confirm delegated Tasks.Read is configured."),
+    "invalid_scope": ("permission", "Microsoft rejected the requested To Do permission. Confirm delegated Tasks.ReadWrite is configured."),
     "invalid_request": ("request", "Microsoft rejected the sign-in request. Check the app registration settings."),
 }
 _DEFAULT_AUTH_FAILURE: tuple[MicrosoftTodoAuthErrorCode, str] = (
     "sign-in-failed",
     "Microsoft did not complete sign-in. Start a new connection and try again.",
+)
+_RECONNECT_FOR_WRITE_PERMISSION = (
+    "Reconnect Microsoft To Do to grant Tasks.ReadWrite."
 )
 
 MicrosoftTodoApplicationFactory = Callable[[MicrosoftTodoAuthConfig], tuple[Any, Any]]
@@ -113,8 +116,6 @@ class MicrosoftTodoAuthenticationService:
         if self.config.client_id:
             try:
                 self._initialize_application()
-                if self._application and self._application.get_accounts():
-                    self._state = "connected"
             except Exception:
                 self._state = "degraded"
                 self._auth_error = (
@@ -143,6 +144,42 @@ class MicrosoftTodoAuthenticationService:
                 auth_error_message=self._auth_error[1] if self._auth_error else None,
             )
 
+    async def initialize(self) -> None:
+        """Check the cached delegated grant without blocking the API event loop."""
+        if not self.client_id or self._application is None:
+            return
+        try:
+            await asyncio.to_thread(self._refresh_cached_authorization)
+        except Exception:
+            with self._lock:
+                self._state = "degraded"
+                self._auth_error = (
+                    "initialization-failed",
+                    "Microsoft authentication could not be initialized on this device.",
+                )
+
+    def _refresh_cached_authorization(self) -> None:
+        """Classify the persisted grant once without making status polling interactive."""
+        with self._lock:
+            if self._application is None:
+                self._state = "degraded"
+                return
+            accounts = self._application.get_accounts()
+            if not accounts:
+                self._state = "disconnected"
+                self._auth_error = None
+                return
+            result = self._application.acquire_token_silent(
+                list(MICROSOFT_TODO_SCOPES), account=accounts[0]
+            )
+            token = result.get("access_token") if isinstance(result, dict) else None
+            if isinstance(token, str) and token:
+                self._state = "connected"
+                self._auth_error = None
+                return
+            self._state = "authentication-required"
+            self._auth_error = ("permission", _RECONNECT_FOR_WRITE_PERMISSION)
+
     def acquire_access_token(self) -> str:
         """Return a cached/refreshable token without starting interactive auth."""
         with self._lock:
@@ -157,8 +194,9 @@ class MicrosoftTodoAuthenticationService:
             accounts = self._application.get_accounts()
             if not accounts:
                 self._state = "authentication-required"
+                self._auth_error = ("permission", _RECONNECT_FOR_WRITE_PERMISSION)
                 raise MicrosoftTodoAuthenticationRequiredError(
-                    "Connect Microsoft To Do in Settings."
+                    _RECONNECT_FOR_WRITE_PERMISSION
                 )
             result = self._application.acquire_token_silent(
                 list(MICROSOFT_TODO_SCOPES), account=accounts[0]
@@ -166,17 +204,19 @@ class MicrosoftTodoAuthenticationService:
             token = result.get("access_token") if isinstance(result, dict) else None
             if not isinstance(token, str) or not token:
                 self._state = "authentication-required"
+                self._auth_error = ("permission", _RECONNECT_FOR_WRITE_PERMISSION)
                 raise MicrosoftTodoAuthenticationRequiredError(
-                    "Reconnect Microsoft To Do in Settings."
+                    _RECONNECT_FOR_WRITE_PERMISSION
                 )
             self._state = "connected"
+            self._auth_error = None
             return token
 
     def mark_authentication_required(self) -> None:
         """Reflect a rejected Graph token in the visible connection state."""
         with self._lock:
             self._state = "authentication-required"
-            self._auth_error = None
+            self._auth_error = ("permission", _RECONNECT_FOR_WRITE_PERMISSION)
 
     async def begin_device_authorization(self) -> MicrosoftTodoDeviceAuthorization:
         if not self.client_id:
@@ -214,14 +254,13 @@ class MicrosoftTodoAuthenticationService:
             with self._lock:
                 if self._flow is not flow:
                     return
-                self._state = (
-                    "connected"
-                    if isinstance(result, dict) and result.get("access_token")
-                    else "authentication-required"
-                )
-                if self._state == "connected":
+                if isinstance(result, dict) and result.get("access_token"):
+                    # The just-completed device flow requested exactly
+                    # MICROSOFT_TODO_SCOPES, so its token is authoritative.
+                    self._state = "connected"
                     self._auth_error = None
                 else:
+                    self._state = "authentication-required"
                     self._record_auth_failure(result if isinstance(result, dict) else None)
         except asyncio.CancelledError:
             raise

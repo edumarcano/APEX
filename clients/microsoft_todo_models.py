@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 MicrosoftAuthState = Literal[
     "not-configured",
@@ -38,7 +38,7 @@ class MicrosoftTodoAuthConfig:
 class MicrosoftTodoAuthStatus:
     configured: bool
     state: MicrosoftAuthState
-    permission: Literal["Tasks.Read"] = "Tasks.Read"
+    permission: Literal["Tasks.ReadWrite"] = "Tasks.ReadWrite"
     auth_error_code: MicrosoftTodoAuthErrorCode | None = None
     auth_error_message: str | None = None
 
@@ -61,6 +61,36 @@ class MicrosoftTodoDeviceAuthorization:
 class TodoDateTime:
     date_time: str
     time_zone: str
+
+
+TodoTaskImportance = Literal["low", "normal", "high"]
+TodoTaskStatus = Literal["notStarted", "completed"]
+
+
+class _Unset:
+    """Sentinel that distinguishes an omitted PATCH field from ``null``."""
+
+
+UNSET: Final = _Unset()
+
+
+@dataclass(frozen=True)
+class TodoTaskCreateRequest:
+    """Small, validated create contract for the fields APEX will support."""
+
+    title: str
+    due: TodoDateTime | None = None
+    importance: TodoTaskImportance | None = None
+
+
+@dataclass(frozen=True)
+class TodoTaskPatchRequest:
+    """Sparse task update contract; ``due=None`` deliberately clears a due date."""
+
+    title: str | _Unset = UNSET
+    due: TodoDateTime | None | _Unset = UNSET
+    importance: TodoTaskImportance | _Unset = UNSET
+    status: TodoTaskStatus | _Unset = UNSET
 
 
 @dataclass(frozen=True)

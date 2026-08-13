@@ -79,7 +79,7 @@ function mockSettingsPanelFetches(
       return jsonResponse({
         configured: false,
         state: 'not-configured',
-        permission: 'Tasks.Read',
+        permission: 'Tasks.ReadWrite',
       })
     }
     return jsonResponse({})

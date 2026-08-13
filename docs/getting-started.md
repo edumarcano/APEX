@@ -126,7 +126,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
 | Local inference (Ollama) | Ollama plus the desired Qwen3 model tags |
 | Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with Apodemus, Neotoma, and development-target aliases |
-| Microsoft To Do | Public/native Entra application with delegated `Tasks.Read` |
+| Microsoft To Do | Public/native Entra application with delegated `Tasks.ReadWrite` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
 See [Configuration](configuration.md) for ownership, precedence, modes, Agent names, and provider-specific boundaries.

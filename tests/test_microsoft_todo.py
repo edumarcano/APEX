@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import requests
+
 from clients.microsoft_auth import (
     MICROSOFT_TODO_SCOPES,
     MicrosoftTodoAuthenticationRequiredError,
@@ -18,14 +20,21 @@ from clients.microsoft_auth import (
     set_microsoft_auth_service,
 )
 from clients.microsoft_todo_client import (
+    MicrosoftTodoAmbiguousWriteError,
     MicrosoftTodoClient,
     MicrosoftTodoInvalidInputError,
+    MicrosoftTodoNotFoundError,
+    MicrosoftTodoPermissionError,
+    MicrosoftTodoThrottledError,
     MicrosoftTodoUpstreamError,
 )
 from clients.microsoft_todo_models import (
     MicrosoftTodoAuthConfig,
     MicrosoftTodoAuthStatus,
     MicrosoftTodoDeviceAuthorization,
+    TodoDateTime,
+    TodoTaskCreateRequest,
+    TodoTaskPatchRequest,
     TodoTaskListsResult,
     TodoTasksResult,
 )
@@ -70,8 +79,23 @@ class _Session:
         self.calls = []
 
     def get(self, url, **kwargs):
-        self.calls.append((url, kwargs))
-        return self.responses.pop(0)
+        return self._request("get", url, **kwargs)
+
+    def post(self, url, **kwargs):
+        return self._request("post", url, **kwargs)
+
+    def patch(self, url, **kwargs):
+        return self._request("patch", url, **kwargs)
+
+    def delete(self, url, **kwargs):
+        return self._request("delete", url, **kwargs)
+
+    def _request(self, method, url, **kwargs):
+        self.calls.append((method, url, kwargs))
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class MicrosoftTodoClientTests(unittest.TestCase):
@@ -102,11 +126,11 @@ class MicrosoftTodoClientTests(unittest.TestCase):
         self.assertEqual(tasks.task_count, 1)
         self.assertEqual(tasks.tasks[0].title, "Ship release")
         self.assertEqual(tasks.tasks[0].due.time_zone, "Eastern Standard Time")
-        self.assertTrue(all(call[0].startswith("https://graph.microsoft.com/v1.0/") for call in session.calls))
-        self.assertTrue(all(call[1]["headers"]["Authorization"] == "Bearer test-token" for call in session.calls))
-        self.assertTrue(all("$select" not in call[0] for call in session.calls))
-        self.assertIn("?$top=50", session.calls[0][0])
-        self.assertIn("/tasks?$top=50", session.calls[1][0])
+        self.assertTrue(all(call[1].startswith("https://graph.microsoft.com/v1.0/") for call in session.calls))
+        self.assertTrue(all(call[2]["headers"]["Authorization"] == "Bearer test-token" for call in session.calls))
+        self.assertTrue(all("$select" not in call[1] for call in session.calls))
+        self.assertIn("?$top=50", session.calls[0][1])
+        self.assertIn("/tasks?$top=50", session.calls[1][1])
 
     def test_untrusted_pagination_host_is_rejected(self) -> None:
         client = MicrosoftTodoClient(
@@ -137,9 +161,121 @@ class MicrosoftTodoClientTests(unittest.TestCase):
             client.list_task_lists()
         self.assertTrue(auth.authentication_required)
 
-    def test_client_has_no_write_operations(self) -> None:
-        public = {name for name in dir(MicrosoftTodoClient) if not name.startswith("_")}
-        self.assertEqual(public, {"close", "get_status", "list_task_lists", "list_tasks"})
+    def test_exact_read_uses_documented_request(self) -> None:
+        task = {
+            "id": "task-1", "title": "Ship release", "status": "notStarted",
+            "importance": "normal", "lastModifiedDateTime": "2026-08-12T00:00:00Z",
+        }
+        session = _Session([_Response(task)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertEqual(client.get_task("list-1", "task-1").id, "task-1")
+        self.assertEqual(session.calls[0][0], "get")
+        self.assertTrue(session.calls[0][1].endswith("/lists/list-1/tasks/task-1"))
+
+    def test_create_uses_documented_request(self) -> None:
+        task = {"id": "task-1", "title": "Ship release", "status": "notStarted"}
+        session = _Session([_Response(task, status_code=201)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertEqual(client.create_task("list-1", TodoTaskCreateRequest(
+            title="Ship release",
+            due=TodoDateTime("2026-08-13T09:00:00", "Eastern Standard Time"),
+            importance="high",
+        )).title, "Ship release")
+        self.assertEqual(session.calls[0][0], "post")
+        self.assertEqual(session.calls[0][2]["json"], {
+            "title": "Ship release",
+            "dueDateTime": {
+                "dateTime": "2026-08-13T09:00:00",
+                "timeZone": "Eastern Standard Time",
+            },
+            "importance": "high",
+        })
+
+    def test_patch_uses_documented_request_and_can_clear_due_date(self) -> None:
+        task = {"id": "task-1", "title": "Ship release", "status": "completed"}
+        session = _Session([_Response(task)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertTrue(client.patch_task(
+            "list-1", "task-1", TodoTaskPatchRequest(due=None, status="completed")
+        ).is_completed)
+        self.assertEqual(session.calls[0][0], "patch")
+        self.assertEqual(session.calls[0][2]["json"], {
+            "dueDateTime": None, "status": "completed",
+        })
+
+    def test_delete_accepts_only_no_content(self) -> None:
+        session = _Session([_Response({}, status_code=204)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertIsNone(client.delete_task("list-1", "task-1"))
+        self.assertEqual(session.calls[0][0], "delete")
+
+    def test_write_rejects_invalid_input_before_request(self) -> None:
+        session = _Session([])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.create_task("list-1", TodoTaskCreateRequest(title="\x00invalid"))
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.patch_task("list-1", "task-1", TodoTaskPatchRequest())
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.get_task("list-1", "bad\x00task")
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.get_task(" list-1 ", "task-1")
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.create_task("list-1", TodoTaskCreateRequest(title="bad\u0085title"))
+        self.assertEqual(session.calls, [])
+
+    def test_exact_read_and_writes_classify_graph_responses(self) -> None:
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=404)]))
+        with self.assertRaises(MicrosoftTodoNotFoundError):
+            client.get_task("list-1", "task-1")
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=400)]))
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.create_task("list-1", TodoTaskCreateRequest(title="Study"))
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=403)]))
+        with self.assertRaises(MicrosoftTodoPermissionError):
+            client.create_task("list-1", TodoTaskCreateRequest(title="Study"))
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=429)]))
+        with self.assertRaises(MicrosoftTodoThrottledError):
+            client.patch_task("list-1", "task-1", TodoTaskPatchRequest(status="completed"))
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=503)]))
+        with self.assertRaises(MicrosoftTodoAmbiguousWriteError):
+            client.delete_task("list-1", "task-1")
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=200)]))
+        with self.assertRaises(MicrosoftTodoAmbiguousWriteError):
+            client.delete_task("list-1", "task-1")
+
+        auth = _Auth()
+        client = MicrosoftTodoClient(auth, session=_Session([_Response({}, status_code=401)]))
+        with self.assertRaises(MicrosoftTodoAuthenticationRequiredError):
+            client.get_task("list-1", "task-1")
+        self.assertTrue(auth.authentication_required)
+
+    def test_ambiguous_writes_never_retry_or_expose_response_data(self) -> None:
+        timeout_session = _Session([requests.Timeout("access_token=secret")])
+        client = MicrosoftTodoClient(
+            _Auth(), session=timeout_session
+        )
+        with self.assertRaises(MicrosoftTodoAmbiguousWriteError) as raised:
+            client.create_task("list-1", TodoTaskCreateRequest(title="Study"))
+        self.assertNotIn("secret", str(raised.exception))
+        self.assertEqual(len(timeout_session.calls), 1)
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({"id": "task-1"}, 201)]))
+        with self.assertRaises(MicrosoftTodoAmbiguousWriteError):
+            client.create_task("list-1", TodoTaskCreateRequest(title="Study"))
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({"id": "task-1"})]))
+        with self.assertRaises(MicrosoftTodoUpstreamError):
+            client.get_task("list-1", "task-1")
 
 
 class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
@@ -162,12 +298,14 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(service.status_snapshot().state, "degraded")
         persistence.assert_not_called()
 
-    def test_scope_is_exactly_tasks_read(self) -> None:
-        self.assertEqual(MICROSOFT_TODO_SCOPES, ("Tasks.Read",))
+    def test_scope_is_exactly_tasks_read_write(self) -> None:
+        self.assertEqual(MICROSOFT_TODO_SCOPES, ("Tasks.ReadWrite",))
 
     @staticmethod
-    def _service_for(app: mock.Mock) -> MicrosoftTodoAuthenticationService:
-        app.get_accounts.return_value = []
+    def _service_for(
+        app: mock.Mock, *, accounts: list[dict[str, str]] | None = None
+    ) -> MicrosoftTodoAuthenticationService:
+        app.get_accounts.return_value = [] if accounts is None else accounts
         return MicrosoftTodoAuthenticationService(
             config=MicrosoftTodoAuthConfig(
                 client_id="client",
@@ -176,6 +314,65 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             ),
             application_factory=lambda _config: (app, mock.Mock()),
         )
+
+    async def test_existing_read_only_cache_requires_reconnection(self) -> None:
+        app = mock.Mock()
+        app.acquire_token_silent.return_value = None
+
+        service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+        app.acquire_token_silent.assert_not_called()
+        await service.initialize()
+
+        snapshot = service.status_snapshot()
+        self.assertEqual(snapshot.state, "authentication-required")
+        self.assertEqual(snapshot.auth_error_code, "permission")
+        self.assertIn("Tasks.ReadWrite", snapshot.auth_error_message or "")
+        app.acquire_token_silent.assert_called_once_with(
+            ["Tasks.ReadWrite"], account={"home_account_id": "account"}
+        )
+
+    async def test_cached_write_grant_is_validated_once_at_startup(self) -> None:
+        app = mock.Mock()
+        app.acquire_token_silent.return_value = {"access_token": "token"}
+
+        service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+        app.acquire_token_silent.assert_not_called()
+        await service.initialize()
+
+        self.assertEqual(service.status_snapshot().state, "connected")
+        self.assertEqual(service.status_snapshot().state, "connected")
+        app.acquire_token_silent.assert_called_once_with(
+            ["Tasks.ReadWrite"], account={"home_account_id": "account"}
+        )
+
+    async def test_cached_grant_validation_runs_outside_the_event_loop(self) -> None:
+        app = mock.Mock()
+        app.acquire_token_silent.return_value = {"access_token": "token"}
+        service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+
+        with mock.patch(
+            "clients.microsoft_auth.asyncio.to_thread", new=mock.AsyncMock(
+                side_effect=lambda operation: operation()
+            )
+        ) as to_thread:
+            await service.initialize()
+
+        to_thread.assert_awaited_once_with(service._refresh_cached_authorization)
+
+    async def test_silent_grant_failure_is_sanitized(self) -> None:
+        app = mock.Mock()
+        app.acquire_token_silent.return_value = {
+            "error": "invalid_grant",
+            "error_description": "refresh_token=must-not-leak",
+        }
+        service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+
+        await service.initialize()
+
+        snapshot = service.status_snapshot()
+        self.assertEqual(snapshot.state, "authentication-required")
+        self.assertEqual(snapshot.auth_error_code, "permission")
+        self.assertNotIn("refresh_token", snapshot.auth_error_message or "")
 
 
     async def test_device_flow_returns_only_public_fields(self) -> None:
@@ -195,7 +392,7 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(set(result.to_dict()), {"state", "verification_uri", "user_code", "expires_at"})
         self.assertNotIn("secret", result.to_dict())
-        app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.Read"])
+        app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.ReadWrite"])
 
     async def test_concurrent_starts_share_one_device_flow(self) -> None:
         release_poll = threading.Event()
@@ -218,7 +415,7 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         await service.shutdown()
 
         self.assertEqual(first.user_code, second.user_code)
-        app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.Read"])
+        app.initiate_device_flow.assert_called_once_with(scopes=["Tasks.ReadWrite"])
 
     async def test_device_flow_failure_exposes_only_safe_diagnostic(self) -> None:
         app = mock.Mock()

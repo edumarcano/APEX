@@ -98,7 +98,7 @@ Acinonyx is a development-only Gemini sandbox with a browser history partition s
 
 Gmail tools can search bounded metadata and read one selected plain-text message under `gmail.readonly`. They exclude attachments, embedded resources, active HTML, and raw MIME and cannot send, delete, archive, or label mail.
 
-Microsoft To Do uses delegated `Tasks.Read`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. The integration has no mutation methods, and SQLite reminders remain authoritative.
+Microsoft To Do uses delegated `Tasks.ReadWrite`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. The connector has internal write primitives, but no Agent capability or API route exposes mutation yet, and SQLite reminders remain authoritative.
 
 ## MCP providers
 
