@@ -14,6 +14,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
+| Action kernel | Frozen proposal, lifecycle state, bounded execution and verification evidence | No external service in the action kernel | SQLite action and audit ledger | No action is executed by this branch |
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
@@ -121,7 +122,7 @@ APEX is a personal, non-commercial application. A public source repository does 
 
 ## Local persistence
 
-`apex_memory.db` stores normal-mode run timestamps, reminders, up to 50 recent briefing records, structured digests, and runtime metadata. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
+`apex_memory.db` stores normal-mode run timestamps, reminders, up to 50 recent briefing records, structured digests, runtime metadata, and the durable action ledger. An action record includes the proposing Agent, capability, frozen arguments, target, risk, summary, state, timestamps, and bounded execution or verification evidence; its ordered audit events record state transitions and stable result codes. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
 
 The database is not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, local settings, and model weights are gitignored.
 
@@ -129,7 +130,7 @@ OAuth credential and service-account files remain local and must not be committe
 
 ## Logging
 
-API and launcher logs use module loggers. Briefing `run_id` values correlate pipeline, worker, and persistence events. Operational failures record components, stable categories, and exception types rather than connector payloads, credentials, prompts, or stored briefings.
+API and launcher logs use module loggers. Briefing `run_id` values correlate pipeline, worker, and persistence events. Operational failures record components, stable categories, and exception types rather than connector payloads, credentials, prompts, stored briefings, action arguments, or action evidence. The action ledger persists bounded evidence locally, but action exceptions are reduced to stable categories before either logging or persistence.
 
 Public Agent failures use stable messages instead of raw third-party exceptions. New connectors and providers still require a privacy review because external exception objects are not guaranteed to be safe.
 

@@ -1,4 +1,4 @@
-"""SQLite persistence for runs, reminders, and briefing history."""
+"""SQLite persistence for runs, reminders, briefing history, and actions."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ def _connection() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(DB_NAME, timeout=30.0)
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
         yield conn
     finally:
         conn.close()
@@ -72,6 +73,10 @@ def initialize_db() -> None:
             cursor.execute("PRAGMA table_info(briefings)")
             if "metadata_json" not in {str(row[1]) for row in cursor.fetchall()}:
                 cursor.execute("ALTER TABLE briefings ADD COLUMN metadata_json TEXT")
+            # Local import keeps the action domain independent of global database state.
+            from core.actions.store import initialize_action_schema
+
+            initialize_action_schema(conn)
 
 
 def probe_db() -> None:

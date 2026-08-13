@@ -194,7 +194,7 @@ Local and cloud queries use the same explicit capability descriptor list. The br
 
 ## Capability and MCP boundary
 
-`core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound.
+`core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound. Native capabilities remain read-only while the action kernel establishes the durable approval, audit, execution, and independent-verification model required before a future native write capability can run.
 
 Native capabilities are read-only. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
 
@@ -272,8 +272,11 @@ Delivery mode controls orchestration:
 - active and dismissed reminders;
 - the most recent 50 normal-mode briefings;
 - structured digests and runtime metadata, including `run_id` and snapshot identity.
+- action proposals and their ordered audit events. Action records retain the Agent, capability, frozen arguments, target, risk, summary, state, lightweight proposal checksum, and bounded execution or verification evidence. Normal action operations append audit events; each state change and its matching event commit atomically.
 
 New timestamps are timezone-aware UTC. Legacy timezone-naive run timestamps remain readable as local wall-clock values without a destructive migration. Database writes use transactions; failed writes do not publish partial state.
+
+The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `verified`, with explicit rejected, expired, failed, and unknown-outcome paths. A successful executor result alone is not success: only verifier evidence can transition an action to `verified`. Restart recovery never replays interrupted execution; it marks execution outcomes unknown and interrupted verification failed for an explicit later verification attempt.
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
 
