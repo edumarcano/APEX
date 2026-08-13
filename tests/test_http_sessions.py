@@ -182,6 +182,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         registry = mock.Mock()
         supervisor = mock.Mock()
         auth = mock.Mock()
+        auth.initialize = mock.AsyncMock()
         auth.shutdown = mock.AsyncMock()
         todo_client = mock.Mock()
         manager = mock.Mock()
@@ -211,6 +212,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             with TestClient(app):
                 factory.assert_called_once_with()
                 set_sessions.assert_called_once_with(registry)
+                auth.initialize.assert_awaited_once_with()
 
         registry.close.assert_called_once_with()
         self.assertEqual(
@@ -225,6 +227,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         registry = mock.Mock()
         supervisor = mock.Mock()
         auth = mock.Mock()
+        auth.initialize = mock.AsyncMock()
         auth.shutdown = mock.AsyncMock()
         todo_client = mock.Mock()
         manager = mock.Mock()

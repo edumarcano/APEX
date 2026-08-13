@@ -116,7 +116,6 @@ class MicrosoftTodoAuthenticationService:
         if self.config.client_id:
             try:
                 self._initialize_application()
-                self._refresh_cached_authorization()
             except Exception:
                 self._state = "degraded"
                 self._auth_error = (
@@ -145,26 +144,41 @@ class MicrosoftTodoAuthenticationService:
                 auth_error_message=self._auth_error[1] if self._auth_error else None,
             )
 
+    async def initialize(self) -> None:
+        """Check the cached delegated grant without blocking the API event loop."""
+        if not self.client_id or self._application is None:
+            return
+        try:
+            await asyncio.to_thread(self._refresh_cached_authorization)
+        except Exception:
+            with self._lock:
+                self._state = "degraded"
+                self._auth_error = (
+                    "initialization-failed",
+                    "Microsoft authentication could not be initialized on this device.",
+                )
+
     def _refresh_cached_authorization(self) -> None:
         """Classify the persisted grant once without making status polling interactive."""
-        if self._application is None:
-            self._state = "degraded"
-            return
-        accounts = self._application.get_accounts()
-        if not accounts:
-            self._state = "disconnected"
-            self._auth_error = None
-            return
-        result = self._application.acquire_token_silent(
-            list(MICROSOFT_TODO_SCOPES), account=accounts[0]
-        )
-        token = result.get("access_token") if isinstance(result, dict) else None
-        if isinstance(token, str) and token:
-            self._state = "connected"
-            self._auth_error = None
-            return
-        self._state = "authentication-required"
-        self._auth_error = ("permission", _RECONNECT_FOR_WRITE_PERMISSION)
+        with self._lock:
+            if self._application is None:
+                self._state = "degraded"
+                return
+            accounts = self._application.get_accounts()
+            if not accounts:
+                self._state = "disconnected"
+                self._auth_error = None
+                return
+            result = self._application.acquire_token_silent(
+                list(MICROSOFT_TODO_SCOPES), account=accounts[0]
+            )
+            token = result.get("access_token") if isinstance(result, dict) else None
+            if isinstance(token, str) and token:
+                self._state = "connected"
+                self._auth_error = None
+                return
+            self._state = "authentication-required"
+            self._auth_error = ("permission", _RECONNECT_FOR_WRITE_PERMISSION)
 
     def acquire_access_token(self) -> str:
         """Return a cached/refreshable token without starting interactive auth."""

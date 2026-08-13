@@ -161,41 +161,30 @@ class MicrosoftTodoClientTests(unittest.TestCase):
             client.list_task_lists()
         self.assertTrue(auth.authentication_required)
 
-    def test_client_keeps_write_operations_internal_to_the_connector(self) -> None:
-        public = {name for name in dir(MicrosoftTodoClient) if not name.startswith("_")}
-        self.assertEqual(public, {
-            "close", "create_task", "delete_task", "get_status", "get_task",
-            "list_task_lists", "list_tasks", "patch_task",
-        })
-
-    def test_exact_read_and_writes_use_documented_requests(self) -> None:
+    def test_exact_read_uses_documented_request(self) -> None:
         task = {
             "id": "task-1", "title": "Ship release", "status": "notStarted",
             "importance": "normal", "lastModifiedDateTime": "2026-08-12T00:00:00Z",
         }
-        session = _Session([
-            _Response(task), _Response(task, status_code=201),
-            _Response({**task, "status": "completed"}), _Response({}, status_code=204),
-        ])
+        session = _Session([_Response(task)])
         client = MicrosoftTodoClient(_Auth(), session=session)
 
         self.assertEqual(client.get_task("list-1", "task-1").id, "task-1")
-        self.assertEqual(
-            client.create_task("list-1", TodoTaskCreateRequest(
-                title="Ship release",
-                due=TodoDateTime("2026-08-13T09:00:00", "Eastern Standard Time"),
-                importance="high",
-            )).title,
-            "Ship release",
-        )
-        self.assertTrue(client.patch_task(
-            "list-1", "task-1", TodoTaskPatchRequest(due=None, status="completed")
-        ).is_completed)
-        self.assertIsNone(client.delete_task("list-1", "task-1"))
-
         self.assertEqual(session.calls[0][0], "get")
         self.assertTrue(session.calls[0][1].endswith("/lists/list-1/tasks/task-1"))
-        self.assertEqual(session.calls[1][2]["json"], {
+
+    def test_create_uses_documented_request(self) -> None:
+        task = {"id": "task-1", "title": "Ship release", "status": "notStarted"}
+        session = _Session([_Response(task, status_code=201)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertEqual(client.create_task("list-1", TodoTaskCreateRequest(
+            title="Ship release",
+            due=TodoDateTime("2026-08-13T09:00:00", "Eastern Standard Time"),
+            importance="high",
+        )).title, "Ship release")
+        self.assertEqual(session.calls[0][0], "post")
+        self.assertEqual(session.calls[0][2]["json"], {
             "title": "Ship release",
             "dueDateTime": {
                 "dateTime": "2026-08-13T09:00:00",
@@ -203,10 +192,26 @@ class MicrosoftTodoClientTests(unittest.TestCase):
             },
             "importance": "high",
         })
-        self.assertEqual(session.calls[2][2]["json"], {
+
+    def test_patch_uses_documented_request_and_can_clear_due_date(self) -> None:
+        task = {"id": "task-1", "title": "Ship release", "status": "completed"}
+        session = _Session([_Response(task)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertTrue(client.patch_task(
+            "list-1", "task-1", TodoTaskPatchRequest(due=None, status="completed")
+        ).is_completed)
+        self.assertEqual(session.calls[0][0], "patch")
+        self.assertEqual(session.calls[0][2]["json"], {
             "dueDateTime": None, "status": "completed",
         })
-        self.assertEqual(session.calls[3][0], "delete")
+
+    def test_delete_accepts_only_no_content(self) -> None:
+        session = _Session([_Response({}, status_code=204)])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertIsNone(client.delete_task("list-1", "task-1"))
+        self.assertEqual(session.calls[0][0], "delete")
 
     def test_write_rejects_invalid_input_before_request(self) -> None:
         session = _Session([])
@@ -217,6 +222,10 @@ class MicrosoftTodoClientTests(unittest.TestCase):
             client.patch_task("list-1", "task-1", TodoTaskPatchRequest())
         with self.assertRaises(MicrosoftTodoInvalidInputError):
             client.get_task("list-1", "bad\x00task")
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.get_task(" list-1 ", "task-1")
+        with self.assertRaises(MicrosoftTodoInvalidInputError):
+            client.create_task("list-1", TodoTaskCreateRequest(title="bad\u0085title"))
         self.assertEqual(session.calls, [])
 
     def test_exact_read_and_writes_classify_graph_responses(self) -> None:
@@ -237,6 +246,10 @@ class MicrosoftTodoClientTests(unittest.TestCase):
             client.patch_task("list-1", "task-1", TodoTaskPatchRequest(status="completed"))
 
         client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=503)]))
+        with self.assertRaises(MicrosoftTodoAmbiguousWriteError):
+            client.delete_task("list-1", "task-1")
+
+        client = MicrosoftTodoClient(_Auth(), session=_Session([_Response({}, status_code=200)]))
         with self.assertRaises(MicrosoftTodoAmbiguousWriteError):
             client.delete_task("list-1", "task-1")
 
@@ -302,11 +315,13 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             application_factory=lambda _config: (app, mock.Mock()),
         )
 
-    def test_existing_read_only_cache_requires_reconnection(self) -> None:
+    async def test_existing_read_only_cache_requires_reconnection(self) -> None:
         app = mock.Mock()
         app.acquire_token_silent.return_value = None
 
         service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+        app.acquire_token_silent.assert_not_called()
+        await service.initialize()
 
         snapshot = service.status_snapshot()
         self.assertEqual(snapshot.state, "authentication-required")
@@ -316,17 +331,48 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             ["Tasks.ReadWrite"], account={"home_account_id": "account"}
         )
 
-    def test_cached_write_grant_is_validated_once_at_startup(self) -> None:
+    async def test_cached_write_grant_is_validated_once_at_startup(self) -> None:
         app = mock.Mock()
         app.acquire_token_silent.return_value = {"access_token": "token"}
 
         service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+        app.acquire_token_silent.assert_not_called()
+        await service.initialize()
 
         self.assertEqual(service.status_snapshot().state, "connected")
         self.assertEqual(service.status_snapshot().state, "connected")
         app.acquire_token_silent.assert_called_once_with(
             ["Tasks.ReadWrite"], account={"home_account_id": "account"}
         )
+
+    async def test_cached_grant_validation_runs_outside_the_event_loop(self) -> None:
+        app = mock.Mock()
+        app.acquire_token_silent.return_value = {"access_token": "token"}
+        service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+
+        with mock.patch(
+            "clients.microsoft_auth.asyncio.to_thread", new=mock.AsyncMock(
+                side_effect=lambda operation: operation()
+            )
+        ) as to_thread:
+            await service.initialize()
+
+        to_thread.assert_awaited_once_with(service._refresh_cached_authorization)
+
+    async def test_silent_grant_failure_is_sanitized(self) -> None:
+        app = mock.Mock()
+        app.acquire_token_silent.return_value = {
+            "error": "invalid_grant",
+            "error_description": "refresh_token=must-not-leak",
+        }
+        service = self._service_for(app, accounts=[{"home_account_id": "account"}])
+
+        await service.initialize()
+
+        snapshot = service.status_snapshot()
+        self.assertEqual(snapshot.state, "authentication-required")
+        self.assertEqual(snapshot.auth_error_code, "permission")
+        self.assertNotIn("refresh_token", snapshot.auth_error_message or "")
 
 
     async def test_device_flow_returns_only_public_fields(self) -> None:

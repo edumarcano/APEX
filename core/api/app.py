@@ -40,6 +40,7 @@ async def _app_lifespan(_app: FastAPI):
     idle_model_task: asyncio.Task[None] | None = None
     mcp_manager: MCPClientManager | None = None
     microsoft_auth = MicrosoftTodoAuthenticationService()
+    await microsoft_auth.initialize()
     microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
     set_microsoft_auth_service(microsoft_auth)
     set_microsoft_todo_client(microsoft_todo_client)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -99,13 +100,22 @@ def _normalize_task(value: Any) -> TodoTask | None:
 def _validated_text(value: Any, *, field: str, limit: int) -> str:
     if not isinstance(value, str) or not value.strip():
         raise MicrosoftTodoInvalidInputError(f"A non-blank {field} is required.")
-    if _CONTROL_CHARS.search(value) or len(value) > limit:
+    if (
+        _CONTROL_CHARS.search(value)
+        or any(unicodedata.category(character) == "Cc" for character in value)
+        or len(value) > limit
+    ):
         raise MicrosoftTodoInvalidInputError(f"The {field} is invalid.")
     return value
 
 
 def _validated_identifier(value: Any, *, label: str) -> str:
-    return _validated_text(value, field=f"To Do {label} identifier", limit=512)
+    identifier = _validated_text(value, field=f"To Do {label} identifier", limit=512)
+    if identifier != identifier.strip():
+        raise MicrosoftTodoInvalidInputError(
+            f"The To Do {label} identifier is invalid."
+        )
+    return identifier
 
 
 def _graph_date_time(value: TodoDateTime) -> dict[str, str]:
