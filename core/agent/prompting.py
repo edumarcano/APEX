@@ -32,10 +32,10 @@ def build_tool_access_instruction(
             "for APEX-managed tool calls. Do not claim to have used, or request, "
             "an APEX-managed or MCP tool whose schema is not attached."
         )
-        read_only_authority = (
-            " Every attached APEX-managed or MCP tool has passed the Agent "
-            "read-only policy gate and may be used directly without asking for "
-            "confirmation when needed to fulfill the request."
+        tool_authority = (
+            " Attached read tools may be used directly when needed. An attached "
+            "native write tool creates a durable proposal only; its change "
+            "requires separate local operator approval."
         )
     else:
         availability = (
@@ -43,7 +43,7 @@ def build_tool_access_instruction(
             "Provider-hosted grounding is controlled separately and is not "
             "represented by this selector."
         )
-        read_only_authority = ""
+        tool_authority = ""
     if hosted:
         hosted_access = (
             " Provider-hosted grounding is enabled separately for this turn "
@@ -57,7 +57,7 @@ def build_tool_access_instruction(
         )
     return (
         "\n\nTOOL ACCESS INSTRUCTION:\n"
-        f"{availability}{read_only_authority}{hosted_access} "
+        f"{availability}{tool_authority}{hosted_access} "
         "Selected APEX/MCP tools do not change "
         "MCP authorization, server enablement, authentication, or persistent "
         "tool allowlists."

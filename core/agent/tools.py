@@ -710,22 +710,32 @@ def register_native_capabilities() -> None:
                     "list_id": {
                         "type": "string",
                         "description": "Opaque list identifier returned by list_microsoft_todo_lists.",
-                        "minLength": 16,
                         "maxLength": 512,
-                        "pattern": "^[A-Za-z0-9_+=/-]+$",
+                        "pattern": ".*\\S.*",
                     },
                     "title": {
                         "type": "string",
                         "description": "Title for the new task.",
                         "minLength": 1,
                         "maxLength": 500,
+                        "pattern": ".*\\S.*",
                     },
                     "due": {
                         "type": "object",
                         "description": "Optional due date and timezone for the task.",
                         "properties": {
-                            "date_time": {"type": "string", "minLength": 1, "maxLength": 64},
-                            "time_zone": {"type": "string", "minLength": 1, "maxLength": 64},
+                            "date_time": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "pattern": ".*\\S.*",
+                            },
+                            "time_zone": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "pattern": ".*\\S.*",
+                            },
                         },
                         "required": ["date_time", "time_zone"],
                         "additionalProperties": False,

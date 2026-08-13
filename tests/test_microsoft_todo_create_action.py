@@ -105,15 +105,22 @@ class MicrosoftTodoCreateActionTests(unittest.TestCase):
             )["importance"],
             "normal",
         )
-        with self.assertRaises(Exception):
+        self.assertEqual(
             validate_capability_arguments(
                 "create_microsoft_todo_task",
-                {"list_id": "AQMkADAwATMwMAIt", "title": "Study", "due": {"date_time": "2026-08-14"}},
-            )
-        with self.assertRaises(Exception):
-            validate_capability_arguments(
-                "create_microsoft_todo_task", {"list_id": "Tasks", "title": "Study"}
-            )
+                {"list_id": "AQMk.AD-Aw_ATMwMAIt", "title": "Study"},
+            )["list_id"],
+            "AQMk.AD-Aw_ATMwMAIt",
+        )
+        for arguments in (
+            {"list_id": "AQMkADAwATMwMAIt", "title": "Study", "due": {"date_time": "2026-08-14"}},
+            {"list_id": "AQMkADAwATMwMAIt", "title": "   "},
+            {"list_id": "AQMkADAwATMwMAIt", "title": "Study", "due": {"date_time": " ", "time_zone": "UTC"}},
+            {"list_id": "AQMkADAwATMwMAIt", "title": "Study", "due": {"date_time": "2026-08-14", "time_zone": "  "}},
+        ):
+            with self.assertRaises(CapabilityError) as raised:
+                validate_capability_arguments("create_microsoft_todo_task", arguments)
+            self.assertEqual(raised.exception.category.value, "invalid-input")
         with self.assertRaises(CapabilityError):
             invoke_capability(
                 "create_microsoft_todo_task", {"list_id": "AQMkADAwATMwMAIt", "title": "Study"}
@@ -151,6 +158,39 @@ class MicrosoftTodoCreateActionTests(unittest.TestCase):
         self.assertEqual(recovered.status, "verified")
         self.assertEqual(len(client.creates), 1)
         self.assertEqual(client.reads, [("list-1", "task-1"), ("list-1", "task-1")])
+
+    def test_restart_recovery_reuses_persisted_evidence_without_creating_again(self) -> None:
+        client = _Client()
+        self._register(client)
+        action = self._action()
+        approved = self.service.approve(action.action_id, actor="operator")
+        self.service.store.claim_execution(
+            action.action_id, actor="executor", now=approved.updated_at
+        )
+        self.service.store.begin_verification(
+            action.action_id,
+            actor="executor",
+            code="microsoft_todo_task_created",
+            evidence={"list_id": "list-1", "task_id": "task-1"},
+            now=approved.updated_at,
+        )
+
+        recovered_service = ActionService(self.service.store)
+        recovered_service.register_handler(
+            "create_microsoft_todo_task",
+            executor=CreateMicrosoftTodoTaskExecutor(client),
+            verifier=CreateMicrosoftTodoTaskVerifier(client),
+        )
+        recovered_service.recover_interrupted()
+        failed = recovered_service.get(action.action_id)
+        self.assertEqual(failed.status, "verification_failed")
+
+        verified = recovered_service.retry_verification(
+            action.action_id, actor="operator", expected_version=failed.version
+        )
+        self.assertEqual(verified.status, "verified")
+        self.assertEqual(client.creates, [])
+        self.assertEqual(client.reads, [("list-1", "task-1")])
 
     def test_executor_classifies_known_and_ambiguous_failures(self) -> None:
         expected = [

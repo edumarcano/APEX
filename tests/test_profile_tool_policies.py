@@ -160,19 +160,22 @@ class HostedGroundingTests(unittest.TestCase):
 
 
 class ToolAccessInstructionTests(unittest.TestCase):
-    def test_attached_apex_tools_are_described_as_preapproved_read_only(self) -> None:
+    def test_attached_apex_tools_distinguish_reads_from_approval_gated_writes(self) -> None:
         instruction = build_tool_access_instruction(
             ["get_weather_forecast"],
             hosted_tool_names=["google_search"],
         )
 
         self.assertIn(
-            "Every attached APEX-managed or MCP tool has passed the Agent "
-            "read-only policy gate",
+            "Attached read tools may be used directly when needed.",
             instruction,
         )
         self.assertIn(
-            "may be used directly without asking for confirmation",
+            "native write tool creates a durable proposal only",
+            instruction,
+        )
+        self.assertIn(
+            "requires separate local operator approval",
             instruction,
         )
         self.assertIn(
@@ -186,12 +189,11 @@ class ToolAccessInstructionTests(unittest.TestCase):
 
         self.assertIn("No APEX-managed or MCP tool schemas", instruction)
         self.assertNotIn(
-            "Every attached APEX-managed or MCP tool has passed the Agent "
-            "read-only policy gate",
+            "Attached read tools may be used directly when needed.",
             instruction,
         )
         self.assertNotIn(
-            "may be used directly without asking for confirmation",
+            "requires separate local operator approval",
             instruction,
         )
 
