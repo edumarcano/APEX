@@ -153,6 +153,12 @@ class ActionService:
                 action.action_id,
             )
             return self._unknown_execution(action, "executor_exception")
+        if not isinstance(outcome, ExecutionOutcome):
+            _LOGGER.warning(
+                "Action execution failed action_id=%s category=invalid_executor_outcome",
+                action.action_id,
+            )
+            return self._unknown_execution(action, "invalid_executor_outcome")
         if outcome.succeeded is None:
             return self._unknown_execution(action, outcome.code, evidence=outcome.evidence)
         if outcome.succeeded is False:
@@ -210,6 +216,12 @@ class ActionService:
                 action.action_id,
             )
             return self._verification_failed(action, "verifier_exception")
+        if not isinstance(outcome, VerificationOutcome):
+            _LOGGER.warning(
+                "Action verification failed action_id=%s category=invalid_verifier_outcome",
+                action.action_id,
+            )
+            return self._verification_failed(action, "invalid_verifier_outcome")
         if outcome.verified:
             return self._store.transition(
                 action.action_id,

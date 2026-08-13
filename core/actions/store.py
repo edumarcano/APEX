@@ -55,6 +55,10 @@ class ActionConflictError(ActionStoreError):
     """Raised when a versioned transition loses a concurrent update race."""
 
 
+class ActionIntegrityError(ActionStoreError):
+    """Raised when an action's persisted proposal no longer matches its checksum."""
+
+
 def initialize_action_schema(conn: sqlite3.Connection) -> None:
     """Create the additive action tables if they do not already exist.
 
@@ -330,7 +334,11 @@ class ActionStore:
                 risk=str(row["risk"]), summary=str(row["summary"]),  # type: ignore[arg-type]
                 proposed_at=timestamp_from_storage(str(row["proposed_at"])), expires_at=timestamp_from_storage(str(row["expires_at"])),
             )
+            if proposal_hash_for(proposal) != str(row["proposal_hash"]):
+                raise ActionIntegrityError("Stored action proposal checksum does not match.")
             return ActionRecord(action_id=str(row["action_id"]), proposal=proposal, status=str(row["status"]), version=int(row["version"]), updated_at=timestamp_from_storage(str(row["updated_at"])))  # type: ignore[arg-type]
+        except ActionIntegrityError:
+            raise
         except (ActionValidationError, TypeError, ValueError) as exc:
             raise ActionStoreError("Stored action record is invalid.") from exc
 

@@ -10,6 +10,7 @@ from core.actions.models import (
 from core.actions.service import ActionExecutor, ActionService, ActionVerifier
 from core.actions.store import (
     ActionConflictError,
+    ActionIntegrityError,
     ActionNotFoundError,
     ActionStore,
     ActionTransitionError,
@@ -19,6 +20,7 @@ __all__ = [
     "ActionConflictError",
     "ActionEvent",
     "ActionExecutor",
+    "ActionIntegrityError",
     "ActionNotFoundError",
     "ActionProposal",
     "ActionRecord",

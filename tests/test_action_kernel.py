@@ -14,6 +14,7 @@ from unittest import mock
 from core import database
 from core.actions import (
     ActionConflictError,
+    ActionIntegrityError,
     ActionService,
     ActionStore,
     ActionTransitionError,
@@ -32,7 +33,7 @@ class _Clock:
 
 
 class _Executor:
-    def __init__(self, outcome: ExecutionOutcome | Exception) -> None:
+    def __init__(self, outcome: object | Exception) -> None:
         self.outcome = outcome
         self.calls = 0
         self.arguments: object | None = None
@@ -46,7 +47,7 @@ class _Executor:
 
 
 class _Verifier:
-    def __init__(self, outcome: VerificationOutcome | Exception) -> None:
+    def __init__(self, outcome: object | Exception) -> None:
         self.outcome = outcome
         self.calls = 0
 
@@ -112,6 +113,30 @@ class ActionKernelTests(unittest.TestCase):
         source["nested"]["value"] = 2
         self.assertEqual(frozen.proposal.arguments["title"], "Original")
         self.assertEqual(frozen.proposal.arguments["nested"]["value"], 1)
+
+    def test_corrupted_proposal_is_rejected_before_execution(self) -> None:
+        action = self._propose()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute(
+                "UPDATE actions SET arguments_json = ? WHERE action_id = ?",
+                ('{"title":"Tampered"}', action.action_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with self.assertRaises(ActionIntegrityError):
+            self.service.approve(action.action_id, actor="operator")
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT status, version FROM actions WHERE action_id = ?",
+                (action.action_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row, ("proposed", 0))
 
     def test_allowed_lifecycle_records_ordered_audit_history(self) -> None:
         executor, verifier = self._register(
@@ -217,6 +242,27 @@ class ActionKernelTests(unittest.TestCase):
         terminal = self.service.claim_and_execute(failed.action_id, actor="worker")
         self.assertEqual(terminal.status, "execution_failed")
         self.assertEqual(failure_executor.calls, 1)
+
+    def test_invalid_handler_outcomes_leave_no_action_in_progress(self) -> None:
+        executor = _Executor(object())
+        verifier = _Verifier(VerificationOutcome(True, "unused", {}))
+        self.service.register_handler("test_write", executor=executor, verifier=verifier)
+        action = self._propose()
+        self.service.approve(action.action_id, actor="operator")
+        self.assertEqual(
+            self.service.claim_and_execute(action.action_id, actor="worker").status,
+            "outcome_unknown",
+        )
+
+        executor = _Executor(ExecutionOutcome(True, "write_completed", {}))
+        verifier = _Verifier(object())
+        self.service.register_handler("test_write", executor=executor, verifier=verifier)
+        action = self._propose()
+        self.service.approve(action.action_id, actor="operator")
+        self.assertEqual(
+            self.service.claim_and_execute(action.action_id, actor="worker").status,
+            "verification_failed",
+        )
 
     def test_expiry_boundary_and_restart_recovery_do_not_retry_execution(self) -> None:
         expired = self._propose()
