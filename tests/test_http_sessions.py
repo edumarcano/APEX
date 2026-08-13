@@ -204,7 +204,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             with TestClient(app):
                 pass
 
-        action_service.register_handler.assert_called_once()
+        self.assertEqual(action_service.register_handler.call_count, 5)
         action_service.recover_interrupted.assert_called_once_with()
         self.assertEqual(
             set_action_service.call_args_list,
