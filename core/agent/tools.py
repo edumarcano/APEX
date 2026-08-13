@@ -337,6 +337,14 @@ def create_microsoft_todo_task(**_arguments: Any) -> None:
     )
 
 
+def _reject_microsoft_todo_task_mutation(**_arguments: Any) -> None:
+    """Reject direct invocation; approved actions own task mutations."""
+    raise CapabilityError(
+        CapabilityErrorCategory.UNAVAILABLE,
+        "Microsoft To Do task mutation requires action approval.",
+    )
+
+
 def get_active_reminders() -> list[dict[str, Any]]:
     """Retrieve all pending (unread) reminders from the APEX task ledger.
 
@@ -759,6 +767,85 @@ def register_native_capabilities() -> None:
         ),
         create_microsoft_todo_task,
     )
+    task_target_properties = {
+        "list_id": {
+            "type": "string",
+            "description": "Opaque list identifier returned by list_microsoft_todo_lists.",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": ".*\\S.*",
+        },
+        "task_id": {
+            "type": "string",
+            "description": "Opaque task identifier returned by list_microsoft_todo_tasks.",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": ".*\\S.*",
+        },
+        "last_modified_at": {
+            "type": "string",
+            "description": "Observed task timestamp returned by list_microsoft_todo_tasks.",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": ".*\\S.*",
+        },
+    }
+    update_properties = {
+        **task_target_properties,
+        "title": {
+            "type": "string", "minLength": 1, "maxLength": 500,
+            "pattern": ".*\\S.*", "description": "Replacement task title.",
+        },
+        "due": {
+            "type": ["object", "null"],
+            "description": "Replacement due date/timezone, or null to remove it.",
+            "properties": {
+                "date_time": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*"},
+                "time_zone": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*"},
+            },
+            "required": ["date_time", "time_zone"],
+            "additionalProperties": False,
+        },
+        "importance": {"type": "string", "enum": ["low", "normal", "high"]},
+    }
+    action_common = {
+        "origin": "native",
+        "expose_to_agent": True,
+        "expose_to_mcp_server": False,
+        "expose_to_client_display": True,
+        "timeout_seconds": _NATIVE_TIMEOUT_SECONDS,
+        "max_output_chars": _NATIVE_MAX_OUTPUT_CHARS,
+    }
+    register_capability(
+        CapabilityDescriptor(
+            name="update_microsoft_todo_task",
+            title="Update Microsoft To Do Task",
+            description="Propose a bounded update to one observed Microsoft To Do task.",
+            input_schema={
+                "type": "object", "properties": update_properties,
+                "required": list(task_target_properties), "additionalProperties": False,
+                "anyOf": [{"required": [field]} for field in ("title", "due", "importance")],
+            },
+            risk="write", **action_common,
+        ),
+        _reject_microsoft_todo_task_mutation,
+    )
+    for name, title, risk, description in (
+        ("complete_microsoft_todo_task", "Complete Microsoft To Do Task", "write", "Propose completion of one observed Microsoft To Do task."),
+        ("reopen_microsoft_todo_task", "Reopen Microsoft To Do Task", "write", "Propose reopening one observed Microsoft To Do task."),
+        ("delete_microsoft_todo_task", "Delete Microsoft To Do Task", "destructive", "Propose deletion of one observed Microsoft To Do task."),
+    ):
+        register_capability(
+            CapabilityDescriptor(
+                name=name, title=title, description=description,
+                input_schema={
+                    "type": "object", "properties": task_target_properties,
+                    "required": list(task_target_properties), "additionalProperties": False,
+                },
+                risk=risk, **action_common,
+            ),
+            _reject_microsoft_todo_task_mutation,
+        )
 
 
 register_native_capabilities()

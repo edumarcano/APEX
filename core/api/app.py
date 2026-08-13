@@ -19,6 +19,8 @@ from core.actions import ActionService, set_action_service
 from core.actions.microsoft_todo import (
     CreateMicrosoftTodoTaskExecutor,
     CreateMicrosoftTodoTaskVerifier,
+    MicrosoftTodoTaskMutationExecutor,
+    MicrosoftTodoTaskMutationVerifier,
 )
 from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import ENV_PATH
@@ -56,6 +58,21 @@ async def _app_lifespan(_app: FastAPI):
             executor=CreateMicrosoftTodoTaskExecutor(microsoft_todo_client),
             verifier=CreateMicrosoftTodoTaskVerifier(microsoft_todo_client),
         )
+        for capability_name in (
+            "update_microsoft_todo_task",
+            "complete_microsoft_todo_task",
+            "reopen_microsoft_todo_task",
+            "delete_microsoft_todo_task",
+        ):
+            action_service.register_handler(
+                capability_name,
+                executor=MicrosoftTodoTaskMutationExecutor(
+                    microsoft_todo_client, capability_name
+                ),
+                verifier=MicrosoftTodoTaskMutationVerifier(
+                    microsoft_todo_client, capability_name
+                ),
+            )
         action_service.recover_interrupted()
         set_action_service(action_service)
     get_settings_store()

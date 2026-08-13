@@ -204,8 +204,32 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             with TestClient(app):
                 pass
 
-        action_service.register_handler.assert_called_once()
-        action_service.recover_interrupted.assert_called_once_with()
+        self.assertEqual(
+            [call.args[0] for call in action_service.register_handler.call_args_list],
+            [
+                "create_microsoft_todo_task",
+                "update_microsoft_todo_task",
+                "complete_microsoft_todo_task",
+                "reopen_microsoft_todo_task",
+                "delete_microsoft_todo_task",
+            ],
+        )
+        self.assertEqual(
+            action_service.mock_calls[:6],
+            [
+                mock.call.register_handler(
+                    name, executor=mock.ANY, verifier=mock.ANY
+                )
+                for name in (
+                    "create_microsoft_todo_task",
+                    "update_microsoft_todo_task",
+                    "complete_microsoft_todo_task",
+                    "reopen_microsoft_todo_task",
+                    "delete_microsoft_todo_task",
+                )
+            ]
+            + [mock.call.recover_interrupted()],
+        )
         self.assertEqual(
             set_action_service.call_args_list,
             [mock.call(action_service), mock.call(None)],

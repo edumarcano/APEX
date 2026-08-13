@@ -18,7 +18,12 @@ from clients.microsoft_todo_client import (
     MicrosoftTodoThrottledError,
     MicrosoftTodoUpstreamError,
 )
-from clients.microsoft_todo_models import TodoDateTime, TodoTaskCreateRequest
+from clients.microsoft_todo_models import (
+    UNSET,
+    TodoDateTime,
+    TodoTaskCreateRequest,
+    TodoTaskPatchRequest,
+)
 from core.actions.models import ActionRecord, ExecutionOutcome, VerificationOutcome
 
 
@@ -153,3 +158,180 @@ def _matches_due(actual: TodoDateTime | None, expected: Any) -> bool:
     except MicrosoftTodoInvalidInputError:
         return False
     return actual == wanted
+
+
+_MUTATION_CODES = {
+    "update_microsoft_todo_task": (
+        "microsoft_todo_task_updated",
+        "microsoft_todo_update_outcome_unknown",
+        "microsoft_todo_task_update_verified",
+    ),
+    "complete_microsoft_todo_task": (
+        "microsoft_todo_task_completed",
+        "microsoft_todo_complete_outcome_unknown",
+        "microsoft_todo_task_completion_verified",
+    ),
+    "reopen_microsoft_todo_task": (
+        "microsoft_todo_task_reopened",
+        "microsoft_todo_reopen_outcome_unknown",
+        "microsoft_todo_task_reopen_verified",
+    ),
+    "delete_microsoft_todo_task": (
+        "microsoft_todo_task_deleted",
+        "microsoft_todo_delete_outcome_unknown",
+        "microsoft_todo_task_deletion_verified",
+    ),
+}
+
+
+class MicrosoftTodoTaskMutationExecutor:
+    """Apply one bounded task mutation after an exact stale-target check."""
+
+    def __init__(self, client: MicrosoftTodoClient, capability_name: str) -> None:
+        self._client = client
+        self._capability_name = capability_name
+
+    def execute(self, action: ActionRecord) -> ExecutionOutcome:
+        arguments = action.proposal.arguments
+        try:
+            list_id = _required_text(arguments.get("list_id"))
+            task_id = _required_text(arguments.get("task_id"))
+            observed_at = _required_text(arguments.get("last_modified_at"))
+            current = self._client.get_task(list_id, task_id)
+        except Exception as exc:
+            return _definitive_mutation_failure(exc)
+
+        changed_fields: list[str] = []
+        if current.id != task_id:
+            changed_fields.append("task_id")
+        if current.last_modified_at != observed_at:
+            changed_fields.append("last_modified_at")
+        if changed_fields:
+            return ExecutionOutcome(
+                False, "microsoft_todo_task_changed", {"fields": changed_fields}
+            )
+
+        try:
+            if self._capability_name == "update_microsoft_todo_task":
+                self._client.patch_task(list_id, task_id, _update_request(arguments))
+            elif self._capability_name == "complete_microsoft_todo_task":
+                self._client.patch_task(
+                    list_id, task_id, TodoTaskPatchRequest(status="completed")
+                )
+            elif self._capability_name == "reopen_microsoft_todo_task":
+                self._client.patch_task(
+                    list_id, task_id, TodoTaskPatchRequest(status="notStarted")
+                )
+            elif self._capability_name == "delete_microsoft_todo_task":
+                self._client.delete_task(list_id, task_id)
+            else:
+                raise MicrosoftTodoInvalidInputError("Unsupported task mutation.")
+        except MicrosoftTodoAmbiguousWriteError:
+            return ExecutionOutcome(None, _MUTATION_CODES[self._capability_name][1], {})
+        except Exception as exc:
+            return _definitive_mutation_failure(exc)
+        return ExecutionOutcome(
+            True,
+            _MUTATION_CODES[self._capability_name][0],
+            {"list_id": list_id, "task_id": task_id},
+        )
+
+
+class MicrosoftTodoTaskMutationVerifier:
+    """Verify a mutation from the frozen task target without replaying it."""
+
+    def __init__(self, client: MicrosoftTodoClient, capability_name: str) -> None:
+        self._client = client
+        self._capability_name = capability_name
+
+    def verify(
+        self,
+        action: ActionRecord,
+        execution_evidence: Mapping[str, object],
+    ) -> VerificationOutcome:
+        arguments = action.proposal.arguments
+        try:
+            list_id = _required_text(arguments.get("list_id"))
+            task_id = _required_text(arguments.get("task_id"))
+        except MicrosoftTodoInvalidInputError:
+            return VerificationOutcome(False, "microsoft_todo_verification_unavailable", {})
+
+        if execution_evidence:
+            if (
+                execution_evidence.get("list_id") != list_id
+                or execution_evidence.get("task_id") != task_id
+            ):
+                fields = [
+                    name for name, expected in (("list_id", list_id), ("task_id", task_id))
+                    if execution_evidence.get(name) != expected
+                ]
+                return VerificationOutcome(False, "microsoft_todo_task_mismatch", {"fields": fields})
+
+        try:
+            task = self._client.get_task(list_id, task_id)
+        except MicrosoftTodoNotFoundError:
+            if self._capability_name == "delete_microsoft_todo_task":
+                return VerificationOutcome(True, _MUTATION_CODES[self._capability_name][2], {})
+            return VerificationOutcome(False, "microsoft_todo_task_not_found", {})
+        except (
+            MicrosoftTodoAuthenticationRequiredError,
+            MicrosoftTodoNotConfiguredError,
+            MicrosoftTodoInvalidInputError,
+            MicrosoftTodoPermissionError,
+            MicrosoftTodoThrottledError,
+            MicrosoftTodoUpstreamError,
+            TimeoutError,
+        ):
+            return VerificationOutcome(False, "microsoft_todo_verification_unavailable", {})
+
+        if self._capability_name == "delete_microsoft_todo_task":
+            return VerificationOutcome(False, "microsoft_todo_task_still_exists", {})
+
+        mismatches: list[str] = []
+        if task.id != task_id:
+            mismatches.append("task_id")
+        if self._capability_name == "update_microsoft_todo_task":
+            if "title" in arguments and task.title != arguments["title"]:
+                mismatches.append("title")
+            if "importance" in arguments and task.importance != arguments["importance"]:
+                mismatches.append("importance")
+            if "due" in arguments and not _matches_due(task.due, arguments["due"]):
+                mismatches.append("due")
+        elif self._capability_name == "complete_microsoft_todo_task":
+            if task.status != "completed":
+                mismatches.append("status")
+        elif self._capability_name == "reopen_microsoft_todo_task":
+            if task.status != "notStarted":
+                mismatches.append("status")
+        if mismatches:
+            return VerificationOutcome(False, "microsoft_todo_task_mismatch", {"fields": mismatches})
+        return VerificationOutcome(True, _MUTATION_CODES[self._capability_name][2], {})
+
+
+def _update_request(arguments: Mapping[str, object]) -> TodoTaskPatchRequest:
+    title = arguments.get("title", UNSET)
+    due = _due_from_arguments(arguments["due"]) if "due" in arguments else UNSET
+    importance = arguments.get("importance", UNSET)
+    if importance is not UNSET:
+        importance = _importance_from_arguments(importance)
+    return TodoTaskPatchRequest(title=title, due=due, importance=importance)
+
+
+def _definitive_mutation_failure(exc: Exception) -> ExecutionOutcome:
+    if isinstance(exc, MicrosoftTodoInvalidInputError):
+        code = "microsoft_todo_invalid_input"
+    elif isinstance(exc, MicrosoftTodoAuthenticationRequiredError):
+        code = "microsoft_todo_authentication_required"
+    elif isinstance(exc, MicrosoftTodoNotConfiguredError):
+        code = "microsoft_todo_not_configured"
+    elif isinstance(exc, MicrosoftTodoPermissionError):
+        code = "microsoft_todo_permission_denied"
+    elif isinstance(exc, MicrosoftTodoNotFoundError):
+        code = "microsoft_todo_task_not_found"
+    elif isinstance(exc, MicrosoftTodoThrottledError):
+        code = "microsoft_todo_throttled"
+    elif isinstance(exc, (MicrosoftTodoUpstreamError, MicrosoftTodoAmbiguousWriteError, TimeoutError)):
+        code = "microsoft_todo_upstream_unavailable"
+    else:
+        raise exc
+    return ExecutionOutcome(False, code, {})

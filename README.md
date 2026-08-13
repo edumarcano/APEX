@@ -38,7 +38,7 @@ A briefing can use a cloud Agent, a local Agent, or Structured Digest, a determi
 
 ### Operates Apex Agents
 
-Agent queries can use approved read capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. The first native write capability can propose a Microsoft To Do task, but it executes only after local operator approval. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
+Agent queries can use approved read capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Bounded Microsoft To Do create, update, completion, reopening, and deletion actions can be proposed, but each executes only after local operator approval and independent verification. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
 
 <p align="center">
   <img

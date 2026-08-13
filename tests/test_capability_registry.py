@@ -52,12 +52,22 @@ class CapabilityRegistryTests(unittest.TestCase):
                 "list_microsoft_todo_lists",
                 "list_microsoft_todo_tasks",
                 "create_microsoft_todo_task",
+                "update_microsoft_todo_task",
+                "complete_microsoft_todo_task",
+                "reopen_microsoft_todo_task",
+                "delete_microsoft_todo_task",
                 "get_gmail_message",
             },
         )
         for capability in capabilities:
             self.assertEqual(capability.origin, "native")
-            expected_risk = "write" if capability.name == "create_microsoft_todo_task" else "read"
+            expected_risk = (
+                "destructive" if capability.name == "delete_microsoft_todo_task"
+                else "write" if capability.name in {
+                    "create_microsoft_todo_task", "update_microsoft_todo_task",
+                    "complete_microsoft_todo_task", "reopen_microsoft_todo_task",
+                } else "read"
+            )
             self.assertEqual(capability.risk, expected_risk)
             self.assertTrue(capability.expose_to_agent)
             self.assertTrue(capability.expose_to_client_display)
