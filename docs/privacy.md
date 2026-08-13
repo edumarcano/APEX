@@ -14,7 +14,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
-| Action kernel | Frozen proposal, lifecycle state, bounded execution and verification evidence | No external service in the action kernel | SQLite action and audit ledger | No production capability is currently registered or exposed |
+| Action controls | Frozen proposal, lifecycle state, bounded execution and verification evidence | A supported native action receives only its frozen arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger; no production capability is currently registered or exposed |
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 

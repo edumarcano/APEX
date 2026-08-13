@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.actions.runtime import get_action_service
 from core.agent.capabilities import CapabilityDescriptor, get_capability_descriptor
 from core.agent.tool_catalog import build_tool_catalog
+from core.config import DEMO_MODE
 from core.agent.tool_profiles import (
     default_profile_names,
     get_tool_profile,
@@ -38,6 +40,8 @@ class ResolvedToolSelection:
 
 def _failure_code(reason: str, *, allowed: bool) -> str:
     lowered = reason.lower()
+    if "registered executor" in lowered:
+        return "unavailable"
     if not allowed:
         if "risk" in lowered:
             return "risk-rejected"
@@ -210,7 +214,9 @@ def resolve_selected_tools(
                 )
             )
             continue
-        if descriptor.risk != "read":
+        if descriptor.risk != "read" and (
+            descriptor.origin == "mcp" or DEMO_MODE
+        ):
             failures.append(
                 ToolSelectionFailure(
                     name=name,
@@ -219,6 +225,17 @@ def resolve_selected_tools(
                 )
             )
             continue
+        if descriptor.risk != "read":
+            action_service = get_action_service()
+            if action_service is None or not action_service.supports(descriptor.name):
+                failures.append(
+                    ToolSelectionFailure(
+                        name=name,
+                        code="unavailable",
+                        reason="This action capability is not available.",
+                    )
+                )
+                continue
         descriptors.append(project_descriptor_for_agent(agent_key, descriptor))
 
     selected_schema_tokens = (

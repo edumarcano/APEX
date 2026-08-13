@@ -31,7 +31,7 @@ from core.agent.types import (
     ToolCatalogTool,
     ToolProfileMetadata,
 )
-from core.config import PROJECT_ROOT
+from core.config import DEMO_MODE, PROJECT_ROOT
 from core.mcp import get_mcp_manager, load_mcp_config
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
 
@@ -323,10 +323,24 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         if descriptor is not None:
             descriptors[capability_name] = descriptor
 
+    from core.actions.runtime import get_action_service
+
+    action_service = get_action_service()
+
+    def action_allowed(descriptor: CapabilityDescriptor) -> bool:
+        return (
+            not DEMO_MODE
+            and descriptor.origin == "native"
+            and descriptor.risk in {"write", "destructive"}
+            and action_service is not None
+            and action_service.supports(descriptor.name)
+        )
+
     allowed = {
         descriptor.name
         for descriptor in filter_agent_capabilities(agent_key, descriptors.values())
-        if descriptor.expose_to_agent and descriptor.risk == "read"
+        if descriptor.expose_to_agent
+        and (descriptor.risk == "read" or action_allowed(descriptor))
     }
 
     catalog_tools: dict[str, ToolCatalogTool] = {}
@@ -354,9 +368,13 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
                 if descriptor.name in descriptors
                 else unavailable_reason
             )
-        if descriptor.risk != "read":
+        if descriptor.risk != "read" and not action_allowed(descriptor):
             allowed_for_agent = False
-            unavailable_reason = "This tool risk is not permitted for Agent turns."
+            unavailable_reason = (
+                "This tool risk is not permitted for Agent turns."
+                if descriptor.origin == "mcp" or DEMO_MODE
+                else "This action capability has no registered executor and verifier."
+            )
 
         projected = project_descriptor_for_agent(agent_key, descriptor)
         schema_tokens = estimate_json_tokens(

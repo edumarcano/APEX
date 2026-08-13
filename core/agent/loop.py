@@ -8,7 +8,10 @@ from core.agent.capabilities import (
     CapabilityErrorCategory,
     invoke_capability,
     is_client_display_enabled,
+    validate_capability_arguments,
 )
+from core.actions.runtime import get_action_service
+from core.config import DEMO_MODE
 from core.agent.pricing import estimate_inference_cost
 from core.agent.prompting import FINAL_ANSWER_INSTRUCTION
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
@@ -136,6 +139,7 @@ def run_agent_loop(
     is_local = is_local_profile(profile)
     resolved_tools = list(selected_tools or [])
     allowed_tools = {tool.name for tool in resolved_tools}
+    descriptors_by_name = {tool.name: tool for tool in resolved_tools}
     if tool_selection is None:
         requested_names = (
             list(request.selected_tool_names)
@@ -338,7 +342,49 @@ def run_agent_loop(
                             CapabilityErrorCategory.UNAVAILABLE,
                             "Tool is outside the resolved Agent tool selection.",
                         )
-                    output = tools_dispatcher(call.name, call.arguments)
+                    descriptor = descriptors_by_name.get(call.name)
+                    if descriptor is None:
+                        raise CapabilityError(
+                            CapabilityErrorCategory.UNAVAILABLE,
+                            "Tool is outside the resolved Agent tool selection.",
+                        )
+                    if descriptor.risk == "read":
+                        output = tools_dispatcher(call.name, call.arguments)
+                    else:
+                        if DEMO_MODE:
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "Action capabilities are unavailable in demo mode.",
+                            )
+                        action_service = get_action_service()
+                        if (
+                            descriptor.origin != "native"
+                            or action_service is None
+                            or not action_service.supports(call.name)
+                        ):
+                            raise CapabilityError(
+                                CapabilityErrorCategory.UNAVAILABLE,
+                                "Action capability is unavailable.",
+                            )
+                        arguments = validate_capability_arguments(
+                            call.name, call.arguments
+                        )
+                        action = action_service.propose(
+                            agent_key=agent_key or request.agent,
+                            capability_name=call.name,
+                            arguments=arguments,
+                            target=descriptor.title,
+                            risk=descriptor.risk,
+                            summary=f"Approve {descriptor.title}",
+                        )
+                        output = {
+                            "action_id": action.action_id,
+                            "status": action.status,
+                            "version": action.version,
+                            "risk": action.proposal.risk,
+                            "summary": action.proposal.summary,
+                            "target": action.proposal.target,
+                        }
                 except CapabilityError as exc:
                     status = "error"
                     _LOGGER.warning(

@@ -272,6 +272,51 @@ class MarkReadResponse(BaseModel):
     )
 
 
+ActionStatusResponse = Literal[
+    "proposed", "approved", "executing", "verifying", "verified", "rejected",
+    "expired", "execution_failed", "verification_failed", "outcome_unknown",
+]
+
+
+class ActionProposalResponse(BaseModel):
+    agent_key: str
+    capability_name: str
+    arguments: dict[str, Any]
+    target: str
+    risk: Literal["write", "destructive"]
+    summary: str
+    proposed_at: datetime
+    expires_at: datetime
+    proposal_hash: str
+
+
+class ActionResponse(BaseModel):
+    action_id: str
+    proposal: ActionProposalResponse
+    status: ActionStatusResponse
+    version: int = Field(ge=0)
+    updated_at: datetime
+
+
+class ActionEventResponse(BaseModel):
+    action_id: str
+    sequence: int = Field(ge=0)
+    from_status: ActionStatusResponse | None = None
+    to_status: ActionStatusResponse
+    occurred_at: datetime
+    actor: str
+    result_code: str
+    evidence: dict[str, Any]
+
+
+class ActionDetailResponse(ActionResponse):
+    events: list[ActionEventResponse] = Field(default_factory=list)
+
+
+class ActionMutationRequest(BaseModel):
+    expected_version: int = Field(ge=0)
+
+
 MicrosoftTodoState = Literal[
     "not-configured",
     "disconnected",

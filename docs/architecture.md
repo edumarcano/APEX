@@ -194,9 +194,9 @@ Local and cloud queries use the same explicit capability descriptor list. The br
 
 ## Capability and MCP boundary
 
-`core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound. Native capabilities remain read-only while the action kernel establishes the durable approval, audit, execution, and independent-verification model required before a future native write capability can run.
+`core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound. Supported native write and destructive capabilities are validated without invocation and become durable action proposals; only API approval may claim, execute, and independently verify them. Native action availability requires registered executor and verifier handlers. MCP write and destructive tools remain unavailable to Cortex.
 
-Native capabilities are read-only. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
+All currently registered production native capabilities are read-only. The action path is available only to a future native write or destructive capability that registers both handlers. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
 
 The Tools selector exposes only the canonical resolved descriptor list:
 `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP
@@ -277,6 +277,8 @@ Delivery mode controls orchestration:
 New timestamps are timezone-aware UTC. Legacy timezone-naive run timestamps remain readable as local wall-clock values without a destructive migration. Database writes use transactions; failed writes do not publish partial state.
 
 The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `verified`, with explicit rejected, expired, failed, and unknown-outcome paths. Proposals expire after 24 hours while they remain `proposed`; an approved action remains eligible for execution after that deadline. A positive verifier outcome, not executor success alone, transitions an action to `verified`. Execution failures are terminal, while verification failures and unknown outcomes can retry verification without replaying execution. Restart recovery marks interrupted execution outcomes unknown and interrupted verification failed for an explicit later verification attempt.
+
+The FastAPI lifespan owns one normal-mode `ActionService`, recovers interrupted records before requests are accepted, and clears it at shutdown. Action approval is synchronous on the loopback API worker: proposal creation never invokes a capability handler, and the atomic execution claim ensures only one concurrent approval can execute it. Demo mode creates, executes, expires, and reads no actions.
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
 

@@ -22,6 +22,11 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | GET | `/api/v1/reminders` | Active reminders |
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/read` | Dismiss reminders |
+| GET | `/api/v1/actions` | List durable action proposals |
+| GET | `/api/v1/actions/{action_id}` | Inspect one proposal and its audit events |
+| POST | `/api/v1/actions/{action_id}/approve` | Approve, execute, and verify one action |
+| POST | `/api/v1/actions/{action_id}/reject` | Reject one pending action |
+| POST | `/api/v1/actions/{action_id}/verify` | Retry verification without replaying execution |
 | GET | `/api/v1/cortex/tool-catalog` | Agent-specific native and MCP tool catalog |
 | POST | `/api/v1/cortex/tool-preflight` | Estimated next-request token breakdown |
 | GET | `/api/v1/cortex/tool-profiles` | Built-in and saved tool profiles |
@@ -371,6 +376,19 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
 Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 3/4 respectively. The last model turn is answer-only.
+
+## Actions
+
+Actions are loopback-only, durable proposals for supported native write capabilities. A Cortex turn validates and freezes the requested arguments, then returns a proposed action instead of performing the write. The API exposes the proposal, its ordered audit events, and the current lifecycle version.
+
+`GET /api/v1/actions` returns newest-first records and accepts repeated `status` filters. `GET /api/v1/actions/{action_id}` also returns audit events. In demo mode the list is empty and detail is unavailable, so demo requests never read the real action ledger.
+
+The approve, reject, and verify routes require `{"expected_version": 0}` with the version currently returned by the API. Approval runs synchronously: it approves a proposal, claims its execution once, and independently verifies the result. A later approval request may resume an already approved action, but restart recovery never replays an interrupted write. Verification retry is available only for `verification_failed` and `outcome_unknown` states and never re-executes the action. In demo mode, detail reads return `404` and mutations return `403`.
+
+- `403` — an action mutation was made in demo mode.
+- `404` — the action does not exist.
+- `409` — the supplied version is stale or the requested lifecycle state is no longer valid.
+- `503` — the local action service is unavailable.
 
 ## Markets and MCP
 
