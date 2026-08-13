@@ -380,6 +380,10 @@ def run_agent_loop(
                         output = {
                             "action_id": action.action_id,
                             "status": action.status,
+                            "message": (
+                                "Action proposed. It has not been executed and "
+                                "requires operator approval."
+                            ),
                             "version": action.version,
                             "risk": action.proposal.risk,
                             "summary": action.proposal.summary,

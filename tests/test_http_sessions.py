@@ -175,6 +175,72 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
 
 
 class AppHttpSessionLifecycleTests(unittest.TestCase):
+    def test_lifespan_registers_action_handlers_before_recovery_and_publication(self) -> None:
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        auth = mock.Mock()
+        auth.initialize = mock.AsyncMock()
+        auth.shutdown = mock.AsyncMock()
+        todo_client = mock.Mock()
+        manager = mock.Mock()
+        manager.start = mock.AsyncMock()
+        manager.shutdown = mock.AsyncMock()
+        action_service = mock.Mock()
+
+        with mock.patch("core.api.app.DEMO_MODE", False), mock.patch(
+            "core.api.app.MicrosoftTodoAuthenticationService", return_value=auth
+        ), mock.patch("core.api.app.MicrosoftTodoClient", return_value=todo_client), mock.patch(
+            "core.api.app.ActionService", return_value=action_service
+        ), mock.patch("core.api.app.set_action_service") as set_action_service, mock.patch(
+            "core.api.app.get_llama_cpp_server_supervisor", return_value=mock.Mock()
+        ), mock.patch("core.api.app.any_local_runtime_enabled", return_value=False), mock.patch(
+            "core.api.app.load_mcp_config", return_value=McpRuntimeConfig(enabled=False, servers={})
+        ), mock.patch("core.api.app.MCPClientManager", return_value=manager), mock.patch(
+            "core.api.app.ConnectorHttpSessions", return_value=mock.Mock()
+        ), mock.patch("core.api.app.configure_logging"), mock.patch(
+            "core.api.app.database.initialize_db"
+        ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"):
+            with TestClient(app):
+                pass
+
+        action_service.register_handler.assert_called_once()
+        action_service.recover_interrupted.assert_called_once_with()
+        self.assertEqual(
+            set_action_service.call_args_list,
+            [mock.call(action_service), mock.call(None)],
+        )
+
+    def test_lifespan_does_not_construct_or_publish_actions_in_demo_mode(self) -> None:
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        auth = mock.Mock()
+        auth.initialize = mock.AsyncMock()
+        auth.shutdown = mock.AsyncMock()
+        todo_client = mock.Mock()
+        manager = mock.Mock()
+        manager.start = mock.AsyncMock()
+        manager.shutdown = mock.AsyncMock()
+
+        with mock.patch("core.api.app.DEMO_MODE", True), mock.patch(
+            "core.api.app.MicrosoftTodoAuthenticationService", return_value=auth
+        ), mock.patch("core.api.app.MicrosoftTodoClient", return_value=todo_client), mock.patch(
+            "core.api.app.ActionService", side_effect=AssertionError("action ledger accessed")
+        ), mock.patch("core.api.app.set_action_service") as set_action_service, mock.patch(
+            "core.api.app.get_llama_cpp_server_supervisor", return_value=mock.Mock()
+        ), mock.patch("core.api.app.any_local_runtime_enabled", return_value=False), mock.patch(
+            "core.api.app.load_mcp_config", return_value=McpRuntimeConfig(enabled=False, servers={})
+        ), mock.patch("core.api.app.MCPClientManager", return_value=manager), mock.patch(
+            "core.api.app.ConnectorHttpSessions", return_value=mock.Mock()
+        ), mock.patch("core.api.app.configure_logging"), mock.patch(
+            "core.api.app.database.initialize_db"
+        ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"):
+            with TestClient(app):
+                pass
+
+        self.assertEqual(set_action_service.call_args_list, [mock.call(None)])
+
     def test_lifespan_creates_installs_closes_and_clears_registry(self) -> None:
         from core.api.app import app
         from core.mcp.models import McpRuntimeConfig

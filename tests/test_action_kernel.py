@@ -50,9 +50,11 @@ class _Verifier:
     def __init__(self, outcome: object | Exception) -> None:
         self.outcome = outcome
         self.calls = 0
+        self.execution_evidence = None
 
-    def verify(self, _action):
+    def verify(self, _action, execution_evidence):
         self.calls += 1
+        self.execution_evidence = dict(execution_evidence)
         if isinstance(self.outcome, Exception):
             raise self.outcome
         return self.outcome
@@ -154,6 +156,7 @@ class ActionKernelTests(unittest.TestCase):
         self.assertEqual(completed.status, "verified")
         self.assertEqual(executor.calls, 1)
         self.assertEqual(verifier.calls, 1)
+        self.assertEqual(verifier.execution_evidence, {"request_id": "safe"})
         self.assertEqual(executor.arguments["title"], "Study")
         events = self.service.events(action.action_id)
         self.assertEqual([event.sequence for event in events], list(range(5)))

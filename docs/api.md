@@ -381,6 +381,8 @@ Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 
 
 Actions are loopback-only, durable proposals for supported native write capabilities. A Cortex turn validates and freezes the requested arguments, then returns a proposed action instead of performing the write. The API exposes the proposal, its ordered audit events, and the current lifecycle version.
 
+`create_microsoft_todo_task` is the first supported action capability. It accepts an opaque Microsoft To Do list ID, title, optional due date/time zone, and importance. Approval creates the task once, persists only the returned list/task identifiers, and verifies the intended fields through an exact task read-back. A timeout or other ambiguous create outcome remains `outcome_unknown`; APEX never retries that creation automatically or searches by title.
+
 `GET /api/v1/actions` returns newest-first records and accepts repeated `status` filters. `GET /api/v1/actions/{action_id}` also returns audit events. In demo mode the list is empty and detail is unavailable, so demo requests never read the real action ledger.
 
 The approve, reject, and verify routes require `{"expected_version": 0}` with the version currently returned by the API. Approval runs synchronously: it approves a proposal, claims its execution once, and independently verifies the result. A later approval request may resume an already approved action, but restart recovery never replays an interrupted write. Verification retry is available only for `verification_failed` and `outcome_unknown` states and never re-executes the action. In demo mode, detail reads return `404` and mutations return `403`.

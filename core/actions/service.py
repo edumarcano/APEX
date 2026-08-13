@@ -32,7 +32,11 @@ class ActionExecutor(Protocol):
 class ActionVerifier(Protocol):
     """Independently verify the observed outcome of a persisted action."""
 
-    def verify(self, action: ActionRecord) -> VerificationOutcome:
+    def verify(
+        self,
+        action: ActionRecord,
+        execution_evidence: Mapping[str, object],
+    ) -> VerificationOutcome:
         """Return whether read-back evidence verifies the intended result."""
 
 
@@ -239,7 +243,7 @@ class ActionService:
         if verifier is None:
             return self._verification_failed(action, "verifier_unavailable")
         try:
-            outcome = verifier.verify(action)
+            outcome = verifier.verify(action, self._execution_evidence(action.action_id))
         except Exception:
             _LOGGER.warning(
                 "Action verification failed action_id=%s category=verifier_exception",
@@ -263,6 +267,17 @@ class ActionService:
                 now=self._now(),
             )
         return self._verification_failed(action, outcome.code, evidence=outcome.evidence)
+
+    def _execution_evidence(self, action_id: str) -> Mapping[str, object]:
+        """Return evidence committed with the successful execution transition.
+
+        Verification can run after a restart or an explicit retry, so it must
+        use the immutable action ledger rather than executor-local state.
+        """
+        for event in reversed(self.events(action_id)):
+            if event.from_status == "executing" and event.to_status == "verifying":
+                return event.evidence
+        return {}
 
     def _unknown_execution(
         self,

@@ -329,6 +329,14 @@ def list_microsoft_todo_tasks(
     ).to_dict()
 
 
+def create_microsoft_todo_task(**_arguments: Any) -> None:
+    """Reject direct invocation; approved actions own task creation."""
+    raise CapabilityError(
+        CapabilityErrorCategory.UNAVAILABLE,
+        "Microsoft To Do task creation requires action approval.",
+    )
+
+
 def get_active_reminders() -> list[dict[str, Any]]:
     """Retrieve all pending (unread) reminders from the APEX task ledger.
 
@@ -687,6 +695,69 @@ def register_native_capabilities() -> None:
             **native_common,
         ),
         list_microsoft_todo_tasks,
+    )
+    register_capability(
+        CapabilityDescriptor(
+            name="create_microsoft_todo_task",
+            title="Create Microsoft To Do Task",
+            description=(
+                "Propose a new Microsoft To Do task for operator approval. Use a "
+                "list identifier returned by list_microsoft_todo_lists."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "list_id": {
+                        "type": "string",
+                        "description": "Opaque list identifier returned by list_microsoft_todo_lists.",
+                        "maxLength": 512,
+                        "pattern": ".*\\S.*",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title for the new task.",
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "pattern": ".*\\S.*",
+                    },
+                    "due": {
+                        "type": "object",
+                        "description": "Optional due date and timezone for the task.",
+                        "properties": {
+                            "date_time": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "pattern": ".*\\S.*",
+                            },
+                            "time_zone": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "pattern": ".*\\S.*",
+                            },
+                        },
+                        "required": ["date_time", "time_zone"],
+                        "additionalProperties": False,
+                    },
+                    "importance": {
+                        "type": "string",
+                        "enum": ["low", "normal", "high"],
+                        "default": "normal",
+                    },
+                },
+                "required": ["list_id", "title"],
+                "additionalProperties": False,
+            },
+            origin="native",
+            risk="write",
+            expose_to_agent=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+            timeout_seconds=_NATIVE_TIMEOUT_SECONDS,
+            max_output_chars=_NATIVE_MAX_OUTPUT_CHARS,
+        ),
+        create_microsoft_todo_task,
     )
 
 

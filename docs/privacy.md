@@ -14,7 +14,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
-| Action controls | Frozen proposal, lifecycle state, bounded execution and verification evidence | A supported native action receives only its frozen arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger; no production capability is currently registered or exposed |
+| Action controls | Frozen proposal, lifecycle state, bounded execution and verification evidence | A supported native action receives only its frozen arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger; Microsoft To Do task creation is the first supported production action |
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
@@ -98,7 +98,7 @@ Acinonyx is a development-only Gemini sandbox with a browser history partition s
 
 Gmail tools can search bounded metadata and read one selected plain-text message under `gmail.readonly`. They exclude attachments, embedded resources, active HTML, and raw MIME and cannot send, delete, archive, or label mail.
 
-Microsoft To Do uses delegated `Tasks.ReadWrite`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. The connector has internal write primitives, but no Agent capability or API route exposes mutation yet, and SQLite reminders remain authoritative.
+Microsoft To Do uses delegated `Tasks.ReadWrite`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. An Agent can propose a task creation, and the approved title, due date, importance, and list identifier are sent to Microsoft Graph only after local operator approval. The local action ledger retains frozen proposal arguments and sanitized returned list/task identifiers for audit and read-back verification. SQLite reminders remain authoritative.
 
 ## MCP providers
 

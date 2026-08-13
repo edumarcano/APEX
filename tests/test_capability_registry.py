@@ -36,7 +36,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         clear_capability_registry_for_tests()
         register_native_capabilities()
 
-    def test_native_capabilities_are_registered_with_read_risk(self) -> None:
+    def test_native_capabilities_are_registered_with_expected_risks(self) -> None:
         capabilities = list_agent_capabilities()
         names = {capability.name for capability in capabilities}
         self.assertEqual(
@@ -51,12 +51,14 @@ class CapabilityRegistryTests(unittest.TestCase):
                 "search_gmail",
                 "list_microsoft_todo_lists",
                 "list_microsoft_todo_tasks",
+                "create_microsoft_todo_task",
                 "get_gmail_message",
             },
         )
         for capability in capabilities:
             self.assertEqual(capability.origin, "native")
-            self.assertEqual(capability.risk, "read")
+            expected_risk = "write" if capability.name == "create_microsoft_todo_task" else "read"
+            self.assertEqual(capability.risk, expected_risk)
             self.assertTrue(capability.expose_to_agent)
             self.assertTrue(capability.expose_to_client_display)
             self.assertFalse(capability.expose_to_mcp_server)

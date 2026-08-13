@@ -51,7 +51,7 @@ class _Verifier:
         self.calls = 0
         self.verified = verified
 
-    def verify(self, _action):
+    def verify(self, _action, _execution_evidence):
         self.calls += 1
         return VerificationOutcome(self.verified, "test_verified", {"found": self.verified})
 
@@ -130,6 +130,7 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(response.tool_outputs[0]["status"], "ok")
         output = response.tool_outputs[0]["output"]
         self.assertEqual(output["status"], "proposed")
+        self.assertEqual(output["message"], "Action proposed. It has not been executed and requires operator approval.")
         self.assertEqual(self.handler_calls, 0)
         action = self.service.get(output["action_id"])
         self.assertEqual(dict(action.proposal.arguments), {"count": 4})

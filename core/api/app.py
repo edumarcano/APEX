@@ -16,6 +16,10 @@ from clients.http_sessions import ConnectorHttpSessions, set_connector_http_sess
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.actions import ActionService, set_action_service
+from core.actions.microsoft_todo import (
+    CreateMicrosoftTodoTaskExecutor,
+    CreateMicrosoftTodoTaskVerifier,
+)
 from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import ENV_PATH
 from core.config import DEMO_MODE
@@ -47,6 +51,11 @@ async def _app_lifespan(_app: FastAPI):
     database.initialize_db()
     if not DEMO_MODE:
         action_service = ActionService()
+        action_service.register_handler(
+            "create_microsoft_todo_task",
+            executor=CreateMicrosoftTodoTaskExecutor(microsoft_todo_client),
+            verifier=CreateMicrosoftTodoTaskVerifier(microsoft_todo_client),
+        )
         action_service.recover_interrupted()
         set_action_service(action_service)
     get_settings_store()
