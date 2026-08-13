@@ -14,7 +14,7 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | SQLite | No | Yes | Default behavior |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
-| Action kernel | Frozen proposal, lifecycle state, bounded execution and verification evidence | No external service in the action kernel | SQLite action and audit ledger | No action is executed by this branch |
+| Action kernel | Frozen proposal, lifecycle state, bounded execution and verification evidence | No external service in the action kernel | SQLite action and audit ledger | No production capability is currently registered or exposed |
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
 
@@ -122,7 +122,7 @@ APEX is a personal, non-commercial application. A public source repository does 
 
 ## Local persistence
 
-`apex_memory.db` stores normal-mode run timestamps, reminders, up to 50 recent briefing records, structured digests, runtime metadata, and the durable action ledger. An action record includes the proposing Agent, capability, frozen arguments, target, risk, summary, state, timestamps, and bounded execution or verification evidence; its ordered audit events record state transitions and stable result codes. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
+`apex_memory.db` stores normal-mode run timestamps, reminders, up to 50 recent briefing records, structured digests, runtime metadata, and the durable action ledger. An action record includes the proposing Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and a SHA-256 proposal hash; its ordered audit events record state transitions, stable result codes, and bounded execution or verification evidence. New timestamps are timezone-aware UTC; legacy timezone-naive run timestamps remain readable as local wall-clock values.
 
 The database is not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, local settings, and model weights are gitignored.
 

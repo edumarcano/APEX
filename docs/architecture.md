@@ -266,17 +266,17 @@ Delivery mode controls orchestration:
 
 ## Persistence
 
-`core/database.py` owns SQLite transactions and readiness probing. `apex_memory.db` stores:
+`core/database.py` initializes the shared SQLite database, legacy tables, and readiness probe. The action store owns the action tables and their lifecycle transactions. `apex_memory.db` stores:
 
 - normal-mode run timestamps;
 - active and dismissed reminders;
 - the most recent 50 normal-mode briefings;
 - structured digests and runtime metadata, including `run_id` and snapshot identity.
-- action proposals and their ordered audit events. Action records retain the Agent, capability, frozen arguments, target, risk, summary, state, lightweight proposal checksum, and bounded execution or verification evidence. Normal action operations append audit events; each state change and its matching event commit atomically.
+- action proposals and their ordered audit events. Action records retain the Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and SHA-256 proposal hash. Transition events retain bounded execution or verification evidence and stable result codes; each state change and its matching event commit atomically.
 
 New timestamps are timezone-aware UTC. Legacy timezone-naive run timestamps remain readable as local wall-clock values without a destructive migration. Database writes use transactions; failed writes do not publish partial state.
 
-The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `verified`, with explicit rejected, expired, failed, and unknown-outcome paths. A successful executor result alone is not success: only verifier evidence can transition an action to `verified`. Restart recovery never replays interrupted execution; it marks execution outcomes unknown and interrupted verification failed for an explicit later verification attempt.
+The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `verified`, with explicit rejected, expired, failed, and unknown-outcome paths. Proposals expire after 24 hours while they remain `proposed`; an approved action remains eligible for execution after that deadline. A positive verifier outcome, not executor success alone, transitions an action to `verified`. Execution failures are terminal, while verification failures and unknown outcomes can retry verification without replaying execution. Restart recovery marks interrupted execution outcomes unknown and interrupted verification failed for an explicit later verification attempt.
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
 
@@ -305,7 +305,8 @@ Optional failures remain local to their path. A connector outage lowers telemetr
 | `core/agent/` | Agent catalog, bounded model loop, explicit tool selection, native capabilities |
 | `core/mcp/` | External MCP client configuration and lifecycle |
 | `core/settings/` | Typed overlay, normalization, transactional local persistence |
-| `core/database.py` | SQLite reminders, run records, briefing ledger, readiness query |
+| `core/actions/` | Durable action models, lifecycle orchestration, SQLite action persistence, and audit events |
+| `core/database.py` | Shared SQLite initialization, reminders, run records, briefing ledger, readiness query |
 | `core/speaker.py` | TTS routing, fallback, and serialized playback |
 | `frontend/src/hooks/` | Focused browser state owners and API workflows |
 | `frontend/src/components/` | HUD surfaces, controls, console, telemetry, and result cards |
