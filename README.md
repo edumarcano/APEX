@@ -116,6 +116,20 @@ uv run python launcher.py
 
 Demo mode bypasses live connectors and model calls, does not write briefing history, and uses the configured demo voice path. For the complete Windows setup, optional providers, manual launch commands, and troubleshooting, see [Getting Started](docs/getting-started.md).
 
+## Use APEX without the HUD
+
+When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, and review or resolve durable actions:
+
+```powershell
+uv run apex status
+uv run apex agents
+uv run apex ask "What needs my attention?" --profile core_apex
+uv run apex briefing --mode structured_digest
+uv run apex actions list
+```
+
+The CLI talks only to APEX's loopback API at `127.0.0.1:8000`; it does not start the backend or provide remote access. See the [CLI reference](docs/cli.md) for the full command list and action behavior.
+
 ## Local trust boundary
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
@@ -130,6 +144,7 @@ Use a local Agent or Structured Digest to avoid sending briefing data to a cloud
 | [Configuration](docs/configuration.md) | Configure modes, settings, credentials, connectors, models, speech, and MCP providers |
 | [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
 | [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
+| [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |
 | [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
 | [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and Apex Agent taxonomy |
 | [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |

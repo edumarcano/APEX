@@ -92,6 +92,8 @@ When Chrome or Edge is launched with a process handle, closing the kiosk window 
 
 FastAPI's lifespan initializes the database, Microsoft To Do client, action service, and one concrete `ReminderService` before publishing request adapters. It recovers interrupted actions and reconciles linked local reminder rows before requests are accepted. The service owns selected-list resolution, active live/stale reads, exact task detail, on-demand completed-task reads, local queueing, and direct operator reminder mutations. Active-task cache and telemetry remain bounded SQLite projections; completed history is live-only and is never persisted or sent to synthesis. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting. Demo mode retains static reminder fixtures and does not construct the production reminder service or access the action ledger.
 
+The HUD and `uv run apex` CLI are separate clients of the same loopback API. The CLI owns no connector, Agent, reminder, action, or database logic; it never starts the backend or reaches a remote URL. Its action commands read the current action version and submit it back to the action API, preserving the same optimistic concurrency and no-replay behavior as the HUD.
+
 ## Frontend state ownership
 
 `App.tsx` composes focused hooks instead of using the historical single-pipeline state model:

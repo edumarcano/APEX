@@ -62,6 +62,8 @@ APEX treats Ollama and llama.cpp as local by default. Ollama may be configured w
 
 `APEX_ALLOWED_ORIGINS` changes which browser origins may call the API. CORS is not authentication and does not protect a remotely bound service from non-browser clients.
 
+`uv run apex` is another local API client, not a second runtime. It connects only to the same loopback backend, adds no storage, and can display the same locally persisted action arguments, audit evidence, and Agent output that the HUD can display. It does not create a new external data destination.
+
 The backend child receives connector and provider credentials. The static server and browser receive a restricted environment containing only process essentials, so API keys are not copied into those child environments.
 
 ## Briefing synthesis

@@ -47,7 +47,7 @@ wheels = [
 [[package]]
 name = "apex"
 version = "1.19.1"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "fastmcp" },

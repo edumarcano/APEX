@@ -248,6 +248,26 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.json()["answer"], "Ready.")
         query_agent.assert_called_once()
 
+        with (
+            mock.patch(
+                "core.api.routers.cortex.resolve_agent_selection",
+                return_value=("local", "apodemus", None),
+            ) as resolve_selection,
+            mock.patch(
+                "core.api.routers.cortex.query_agent",
+                return_value=query_response,
+            ) as omitted_query_agent,
+        ):
+            response = self.client.post(
+                "/api/v1/cortex/query",
+                json={"prompt": "Use my saved Agent."},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        resolve_selection.assert_called_once()
+        omitted_query_agent.assert_called_once()
+        self.assertEqual(omitted_query_agent.call_args.args[0].agent, "apodemus")
+
         with mock.patch(
             "core.api.routers.cortex.unload_active_local_model_endpoint",
             return_value=LocalUnloadResponse(),
