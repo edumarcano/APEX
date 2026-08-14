@@ -374,11 +374,9 @@ Establish APEX's native write-capability and verification architecture through a
 
 The milestone introduces a consistent execution lifecycle in which proposed actions pass through policy evaluation, operator approval when required, execution, independent result verification, and persistent audit recording.
 
-The completed reminder cutover makes one explicitly selected Microsoft To Do list authoritative for Home reminders. SQLite now serves only as a bounded stale cache and retained offline/manual-sync queue; queued rows are synchronized through one verified action per operator-reviewed item. The Reminders panel also supports verified direct task edits, confirmed deletion, completed-task history, and reopening; completed history remains a live HUD-only read. Background synchronization and CLI/release work remain outside this completed cutover.
+The completed reminder cutover makes one explicitly selected Microsoft To Do list authoritative for Home reminders. SQLite now serves only as a bounded stale cache and retained offline/manual-sync queue; queued rows are synchronized through one verified action per operator-reviewed item. The Reminders panel also supports verified direct task edits, confirmed deletion, completed-task history, and reopening; completed history remains a live HUD-only read. Background synchronization remains outside the milestone.
 
-The initial APEX CLI should provide headless access to core capabilities such as system status, briefings, Apex Agent interaction, model and provider state, service state, and Cortex queries while reusing the same backend and execution services as the HUD.
-
-Cortex response rendering should also be improved so structured result cards reflect the actual scope and evidence returned by tool execution rather than presenting unrelated or globally cached telemetry.
+The initial APEX CLI provides focused headless access to backend readiness, Apex Agent availability, one-turn Agent queries, briefing generation, and durable action review and resolution. It reuses the same loopback API, action version checks, execution, and verification behavior as the HUD.
 
 ---
 

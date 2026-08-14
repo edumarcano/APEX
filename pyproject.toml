@@ -25,6 +25,9 @@ dependencies = [
     "uvicorn[standard]",
 ]
 
+[project.scripts]
+apex = "apex.cli:main"
+
 [project.optional-dependencies]
 tts-google = [
     "google-cloud-texttospeech",
@@ -36,7 +39,14 @@ tts-kokoro = [
 ]
 
 [tool.uv]
-package = false
+package = true
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+source-exclude = [".apex-uv-cache/**"]
 
 [dependency-groups]
 dev = [

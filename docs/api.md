@@ -4,6 +4,8 @@ This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
+The included [`uv run apex`](cli.md) command is a thin loopback client for a focused subset of these routes. It does not add routes or bypass their validation, action version checks, or runtime-mode behavior.
+
 ## Route index
 
 | Method | Path | Purpose |
