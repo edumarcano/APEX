@@ -42,17 +42,17 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Separate runtime paths without removing the full pipeline
 
-**Decision.** Activation, telemetry collection, briefing synthesis, Agent requests, and voice delivery have focused APIs and frontend owners. The full trigger remains supported.
+**Decision.** Activation, telemetry collection, briefing generation, Agent requests, and voice delivery have separate APIs and frontend owners. The full trigger remains supported.
 
 **Why.** APEX became less useful when one environmental or provider failure blocked every capability. I want to inspect telemetry, ask a question, regenerate a briefing, or replay speech independently.
 
-**Trade-off.** More explicit state owners and API workflows replace the simplicity of one global pipeline. The architecture reference must distinguish the primary independent model from compatibility orchestration.
+**Trade-off.** APEX now has more API and frontend paths to maintain. The older full trigger also remains supported, so the documentation has to make clear which paths are the normal ones.
 
 ### Keep telemetry snapshots process-local
 
 **Decision.** The current typed telemetry snapshot lives in memory and is identified by an opaque `snapshot_id`.
 
-**Why.** Snapshot state is ephemeral and refresh-oriented. Persisting every connector observation would add migrations, cleanup, and stale-record ambiguity without improving a single-process session.
+**Why.** Snapshot state is temporary and tied to refreshes. Persisting every connector observation would add migrations, cleanup, and stale-record ambiguity without improving a single-process session.
 
 **Trade-off.** Restarting FastAPI invalidates the snapshot. Snapshot-based briefing generation must reject missing or stale identifiers and require a refresh.
 
@@ -116,7 +116,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Decision.** One selected Microsoft To Do list is the main source for APEX reminders. SQLite keeps a local copy of active reminders and stores pending local changes that still need to be synced.
 
-**Why.** Microsoft To Do makes it easy to keep reminders in sync with my phone without APEX needing its own mobile app. Keeping a local copy in SQLite preserves APEX’s local-first behavior, so reminders can still be shown and created when Microsoft To Do or the network is unavailable.
+**Why.** Microsoft To Do makes it easy to keep reminders in sync with my phone without APEX needing its own mobile app. Keeping a local copy in SQLite preserves APEX's local-first behavior, so reminders can still be shown and created when Microsoft To Do or the network is unavailable.
 
 **Trade-off.** The local copy can become stale while offline, and locally created reminders may need to be synced later. APEX therefore has to keep the Microsoft list and its local state clearly separated instead of treating both as equal sources of truth.
 
@@ -132,51 +132,51 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Synthesize from typed facts instead of display prose
 
-**Decision.** Connectors normalize into typed results, and briefing models receive a sanitized, bounded `SynthesisInput` marked as untrusted data.
+**Decision.** Connectors turn their data into typed results, and briefing models receive a bounded `SynthesisInput` marked as untrusted data.
 
-**Why.** Raw display strings mix presentation, health state, and third-party content. An explicit schema creates a reviewable privacy and prompt-injection boundary shared by Panthera through OpenAI, Apodemus through llama.cpp, and deterministic output.
+**Why.** Display text mixes presentation, health state, and third-party content. Using a separate schema makes it clear which facts can be sent to a briefing model and keeps third-party text inside an explicit untrusted-data boundary.
 
-**Trade-off.** Every new synthesis-relevant fact requires deliberate schema work. That maintenance is preferable to silently expanding model disclosure.
+**Trade-off.** Every new fact that should reach synthesis has to be added deliberately. That extra work is preferable to silently sending more data to a model.
 
 ### Keep deterministic synthesis as the final fallback
 
-**Decision.** Every briefing mode terminates in Structured Digest when its selected model path cannot produce valid output.
+**Decision.** Every briefing mode ends in Structured Digest when its selected model path cannot produce valid output.
 
 **Why.** A personal briefing should remain useful when credentials, networks, providers, local models, or generated format fail.
 
-**Trade-off.** Deterministic prose is less flexible, but its behavior is predictable and source-bounded.
+**Trade-off.** Deterministic prose is less flexible, but its behavior is predictable and limited to known facts.
 
 ### Share one local runtime lifecycle across briefings and Agent turns
 
-**Decision.** Local briefing and Agent work share Agent definitions, resource gates, the execution slot, model switching, and idle unload through one provider-neutral coordinator spanning Ollama and llama.cpp.
+**Decision.** Local briefings and Agent requests share the same model loading, resource checks, execution slot, model switching, and idle unload across Ollama and llama.cpp.
 
-**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. A second manager would hide rather than remove that contention. Separating provider transport from global policy keeps each backend from copying orchestration throughout the application.
+**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. Separate managers would still compete for the same machine while making that contention harder to see and control.
 
-**Trade-off.** One local operation can reject another instead of queuing. Prompts and context remain separate even though lifecycle ownership is shared.
+**Trade-off.** One local operation can reject another instead of queuing. Briefing prompts and Agent context remain separate even though they share model lifecycle management.
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Apodemus, and Structured Digest rather than one opaque automatic selector.
+**Decision.** The HUD offers Panthera, Apodemus, and Structured Digest rather than choosing one automatically without showing the user.
 
-**Why.** Cloud disclosure, local resource use, latency, and model-free determinism are meaningful personal choices. The selected mode should communicate them before execution.
+**Why.** Cloud disclosure, local resource use, latency, and model-free output are meaningful personal choices. The selected mode should make that choice visible before execution.
 
-**Trade-off.** More Agents require more availability, fallback, configuration, and UI coverage. Legacy `cloud`, `local`, and `raw` values remain compatibility aliases.
+**Trade-off.** More modes require more availability, fallback, configuration, and UI coverage. Legacy `cloud`, `local`, and `raw` values remain compatibility aliases.
 
 ### Use layered text-to-speech fallback
 
-**Decision.** Google Cloud TTS is the normal cloud engine, pyttsx3 is the terminal local fallback, and Kokoro is an optional local neural engine that can fall through to Google and pyttsx3.
+**Decision.** Google Cloud TTS is the normal cloud engine, pyttsx3 is the final local fallback, and Kokoro is an optional local neural engine that can fall through to Google and pyttsx3.
 
 **Why.** Briefing delivery should survive network, credential, provider, or local-engine failure.
 
-**Trade-off.** Fallback can change voice quality and disclosure boundary. The resolved engine must remain visible.
+**Trade-off.** Fallback can change voice quality and whether transcript text leaves the machine. The resolved engine must remain visible.
 
 ### Keep Kokoro hardware-conditional
 
 **Decision.** Kokoro remains supported but is only loaded when selected. Piper was removed.
 
-**Why.** On the Intel Lunar Lake development machine, CPU ONNX execution caused severe oversubscription: more than 40 seconds before speech for a 420-character briefing. Piper took about 16 seconds. Google delivered in under three seconds with no sustained local CPU load, while pyttsx3 began immediately.
+**Why.** On the Intel Lunar Lake development machine, CPU ONNX execution took more than 40 seconds before speech for a 420-character briefing. Piper took about 16 seconds. Google delivered in under three seconds with no sustained local CPU load, while pyttsx3 began immediately.
 
-Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware where it is not selected. Hardware with appropriate ONNX acceleration can still opt in.
+Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not selected. Hardware with suitable ONNX acceleration can still opt in.
 
 **Trade-off.** The default Google path requires network access and can disclose transcript text. pyttsx3 remains lower quality but provides immediate offline delivery.
 
@@ -186,19 +186,19 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost on hardware whe
 
 **Decision.** Cortex exposes named Apex Agents rather than raw provider model IDs. The normal roster shows Panthera, Apodemus, and Neotoma, while the wider registered Agent family is surfaced in `DEV_MODE`.
 
-**Why.** The names communicate each Agent's intended role while provider model IDs remain separate implementation details. Each permanent Agent identity can survive model changes as long as its role and operating contract remain coherent.
+**Why.** The names communicate each Agent's intended role while provider model IDs remain implementation details. An Agent identity can survive a model change as long as its role still makes sense.
 
 **Trade-off.** Agent documentation must remain synchronized with current model mappings, stability labels, and visibility policy.
 
 ### Separate Agent visibility from Agent stability
 
-**Decision.** APEX treats Agent visibility and Agent stability as independent concerns. The normal product roster is intentionally limited to Panthera, Apodemus, and Neotoma, while other registered Agents are hidden from the normal roster.
+**Decision.** Agent visibility and Agent stability are separate. The normal roster is limited to Panthera, Apodemus, and Neotoma, while other registered Agents stay out of the normal selector.
 
-The `dev_only` flag controls roster visibility; it does not itself prevent explicit execution by registered key. Acinonyx has a separate hard `DEV_MODE` boundary on its public Cortex routes.
+The `dev_only` flag controls roster visibility; it does not by itself block execution by registered key. Acinonyx has a separate hard `DEV_MODE` boundary on its public Cortex routes.
 
-**Why.** Some Agents already have established genus identities, stable implementations, and defined intended roles, but APEX does not yet expose enough Agent-specific capability to make those roles meaningfully distinct in normal use. Keeping them in the primary selector would make the roster appear broader than the product's actual capabilities. Restricting them to `DEV_MODE` preserves their implementation and identity without implying that they currently justify a dedicated product slot.
+**Why.** Some hidden Agents are already technically stable, but APEX does not yet give them enough distinct behavior to justify a permanent place in the normal roster. Keeping them in `DEV_MODE` preserves their identities and implementations without making the product look broader than it is.
 
-**Trade-off.** A stable Agent may be absent from the normal UI, so stability can no longer be interpreted as product visibility. Documentation, tests, and catalog metadata must distinguish technical maturity from roster placement. An Agent can return to the primary roster when APEX provides enough differentiated functionality to support its intended role.
+**Trade-off.** A stable Agent may still be hidden from the normal UI. Documentation, tests, and catalog metadata therefore have to treat technical stability and product visibility as separate things. An Agent can return to the normal roster when its role becomes meaningfully distinct in APEX.
 
 ### Keep Agent sessions stateless on the server
 
@@ -212,7 +212,7 @@ The `dev_only` flag controls roster visibility; it does not itself prevent expli
 
 **Decision.** APEX keeps one selected local model resident across Ollama and llama.cpp and rejects competing local execution rather than queueing it.
 
-**Why.** Consumer hardware should remain responsive, and a hidden queue behind a slow generation gives poor feedback. Agent-specific CPU/RAM gates prevent unsafe cold loads; a model already resident skips the gate because reselection adds no new model footprint.
+**Why.** Consumer hardware should remain responsive, and a hidden queue behind a slow generation gives poor feedback. CPU and RAM checks protect cold loads; a model that is already resident skips that check because loading it again would add no new model footprint.
 
 **Trade-off.** I may need to retry a rejected request. Idle auto-unload returns memory without depending on manual cleanup.
 
@@ -220,33 +220,33 @@ The `dev_only` flag controls roster visibility; it does not itself prevent expli
 
 **Decision.** APEX talks to llama.cpp over HTTP rather than embedding a Python binding. I can run the router myself, or let APEX start and stop a locally installed `llama-server` executable.
 
-**Why.** Process isolation, independent upgrades, and existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD. Optional managed mode removes a manual startup step without bundling binaries or weights.
+**Why.** Process isolation, independent upgrades, and existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD. Managed mode removes a manual startup step without bundling binaries or model weights.
 
-**Trade-off.** APEX never installs, bundles, or updates llama.cpp and never downloads model weights. Managed mode accepts only loopback hosts, terminates only processes APEX launched, and exposes sanitized status without local filesystem paths outside Runtime Settings.
+**Trade-off.** APEX never installs, bundles, or updates llama.cpp and never downloads model weights. Managed mode accepts only loopback hosts, stops only processes APEX launched, and does not expose local filesystem paths outside Runtime Settings.
 
 ### Use stable runtime aliases for llama.cpp Agents
 
-**Decision.** Apodemus, Neotoma, and the Unnamed Experimental Agent load through stable llama.cpp runtime aliases instead of exposing raw GGUF paths or an arbitrary context slider.
+**Decision.** Apodemus, Neotoma, and the Unnamed Experimental Agent load through stable llama.cpp aliases instead of exposing raw GGUF paths or an arbitrary context slider.
 
-**Why.** I want discrete, tested contexts so admission, residency, and documentation stay predictable while each configured weight remains behind a stable Agent-specific alias.
+**Why.** I want a small set of tested context sizes so loading, memory checks, and documentation stay predictable while model paths remain behind stable Agent names.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the Unnamed Experimental Agent remains limited to its smaller evaluation presets. Model maximum metadata remains separate from selectable presets where it exceeds the exposed policy.
+**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the Unnamed Experimental Agent remains limited to smaller evaluation presets. A model can support a larger maximum context than APEX chooses to expose.
 
 ### Make local reasoning capability-driven and private
 
-**Decision.** Local reasoning preferences are persisted per Agent and default to `none`. Apodemus, Neotoma, and the Unnamed Experimental Agent expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"` while `Focused` omits that field so the model template can use native reasoning. Hidden reasoning fields and think-style tags are discarded before display.
+**Decision.** Local reasoning preferences are saved per Agent and default to `none`. Apodemus, Neotoma, and the Unnamed Experimental Agent expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"`, while `Focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
 
-**Why.** Local models do not share the cloud Agents' graded effort contract. A provider-neutral capability list keeps the HUD honest while allowing model-native reasoning where the runtime supports it.
+**Why.** Local models do not all support the same reasoning controls as cloud Agents. The HUD only shows reasoning options that each local Agent actually supports, and hidden reasoning stays out of the visible response.
 
-**Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry; llama.cpp runtime data provides conservative total completion headroom for native thinking. Model-specific sampling remains unchanged until benchmark evidence supports it.
+**Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry. llama.cpp runtime data only gives conservative completion headroom, and model-specific sampling stays unchanged until benchmarks justify tuning it.
 
 ### Keep Apodemus as an explicit briefing mode
 
-**Decision.** Apodemus is available as an explicit briefing synthesis mode and is Panthera's only local fallback before Structured Digest.
+**Decision.** Apodemus is an explicit briefing mode and Panthera's only local fallback before Structured Digest.
 
-**Why.** Apodemus uses the same provider-neutral local synthesis contract as Ollama while preserving explicit user intent. Cold loads use a dedicated 16K context policy, and resident llama.cpp aliases are reused rather than silently targeting a different context.
+**Why.** Choosing Apodemus should mean using Apodemus, not silently replacing it with another local Agent. Cold loads use a 16K context, while an already loaded compatible llama.cpp alias can be reused.
 
-**Trade-off.** A llama.cpp outage or resource gate falls directly to Structured Digest for an explicit Apodemus request; APEX does not substitute another local Agent behind the user's selection.
+**Trade-off.** If llama.cpp is unavailable or blocked by resource checks, an explicit Apodemus request falls directly to Structured Digest.
 
 ## Security
 
@@ -256,11 +256,11 @@ The `dev_only` flag controls roster visibility; it does not itself prevent expli
 
 **Why.** Calendar titles, headlines, email content, tasks, and provider results are written outside APEX's control and can contain instruction-like text.
 
-**Trade-off.** Prompt boundaries reduce risk but do not create an authorization boundary. High-impact operations therefore execute only through the durable action kernel after local operator approval and independent verification.
+**Trade-off.** Prompt boundaries reduce risk but do not authorize actions. Higher-impact operations go through the action system instead of being approved by model output alone.
 
 ### Prove the action flow with Microsoft To Do
 
-**Decision.** Microsoft To Do changes go through APEX’s action flow: propose the change, ask for approval when needed, execute it, verify the result, and record what happened. To Do is the first real use of this system and is serving as a test case for future Cortex actions.
+**Decision.** Microsoft To Do changes go through APEX's action flow: propose the change, ask for approval when needed, execute it, verify the result, and record what happened. To Do is the first real use of this system and serves as a test case for future Cortex actions.
 
 **Why.** Task changes are simple enough to test the full flow without much risk. The approval flow applies to Agent-requested changes, where APEX needs a clear boundary between a model suggestion and an external write. Direct reminder management in the Home workspace stays simpler and does not add approval steps just to edit a task. This gives APEX a place to work through approval, failed or uncertain writes, restart recovery, verification, and history before the same ideas are used for more important workflows.
 
@@ -272,6 +272,6 @@ The `dev_only` flag controls roster visibility; it does not itself prevent expli
 
 **Decision.** Repository-wide agreements live in `AGENTS.md`, scoped engineering guidance lives under `docs/agent-guidance/`, and reusable workflows live under `.agents/skills/`.
 
-**Why.** The older duplicated persona rules mixed project standards with task ceremony and drifted between editor surfaces. I prefer one canonical rule set and task-specific procedures that load only when relevant.
+**Why.** The older setup repeated persona and workflow rules in several places, which made them easier to drift. I prefer one main rule set with extra guidance and procedures loaded only when they are relevant.
 
 **Trade-off.** The system has less persona flavor and less automatic ceremony, but its expectations are easier to inspect and update. Historical changelog entries describing the earlier rule layout remain accurate as release history.
