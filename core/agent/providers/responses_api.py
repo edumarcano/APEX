@@ -57,6 +57,7 @@ class ResponsesModelProfile:
         system_instruction: str,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         hosted_tools: frozenset[Literal["x_search"]] = frozenset(),
+        supports_encrypted_reasoning: bool = True,
     ) -> None:
         self.provider = provider
         self.display_name = display_name
@@ -67,6 +68,7 @@ class ResponsesModelProfile:
         self.system_instruction = system_instruction
         self.reasoning_effort = reasoning_effort
         self.hosted_tools = hosted_tools
+        self.supports_encrypted_reasoning = supports_encrypted_reasoning
 
     def model_dump(self) -> dict[str, Any]:
         return {
@@ -79,6 +81,7 @@ class ResponsesModelProfile:
             "system_instruction": self.system_instruction,
             "reasoning_effort": self.reasoning_effort,
             "hosted_tools": sorted(self.hosted_tools),
+            "supports_encrypted_reasoning": self.supports_encrypted_reasoning,
         }
 
 
@@ -403,10 +406,23 @@ class ResponsesApiProvider:
             # Only reasoning models accept these fields; sending them to a
             # non-reasoning model is rejected by the API.
             request["reasoning"] = {"effort": profile.reasoning_effort}
-            request["include"] = ["reasoning.encrypted_content"]
+            if profile.supports_encrypted_reasoning:
+                request["include"] = ["reasoning.encrypted_content"]
 
         def _create() -> Any:
-            return self.client.responses.create(**request)
+            try:
+                return self.client.responses.create(**request)
+            except APIStatusError as exc:
+                if exc.status_code == 400:
+                    _LOGGER.warning(
+                        "%s Responses API 400 Bad Request for model %s: %s (body=%s, request_keys=%s)",
+                        self.provider_kind,
+                        profile.api_model,
+                        getattr(exc, "message", str(exc)),
+                        getattr(exc, "body", None),
+                        sorted(request.keys()),
+                    )
+                raise
 
         started = time.perf_counter()
         response, retry_count = call_with_bounded_retries(
