@@ -16,9 +16,41 @@
       "observed_at_offset": "now-2m",
       "data": {
         "temp_f": 72,
+        "apparent_temp_f": 74,
+        "temp_max_f": 78,
+        "temp_min_f": 62,
+        "humidity_pct": 52,
+        "wind_speed_mph": 8,
+        "precip_probability_max": 0,
         "condition": "clear sky",
         "archetype": "clear_day",
-        "location": "Simulation City"
+        "location": "Simulation City",
+        "timeline": [
+          {
+            "label": "NOW",
+            "time": "12 PM",
+            "temp_f": 72,
+            "condition": "clear sky",
+            "archetype": "clear_day",
+            "precip_prob": 0
+          },
+          {
+            "label": "+4H",
+            "time": "4 PM",
+            "temp_f": 78,
+            "condition": "clear sky",
+            "archetype": "clear_day",
+            "precip_prob": 0
+          },
+          {
+            "label": "+8H",
+            "time": "8 PM",
+            "temp_f": 66,
+            "condition": "clear sky",
+            "archetype": "clear_night",
+            "precip_prob": 0
+          }
+        ]
       }
     },
     "news": {

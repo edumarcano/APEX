@@ -7,7 +7,7 @@ import {
   attentionShellClass,
   type AttentionTier,
 } from '../lib/attentionTier'
-import type { WeatherConditionArchetype } from '../types/telemetry'
+import type { WeatherConditionArchetype, WeatherTimelinePoint } from '../types/telemetry'
 import {
   useId,
   useEffect,
@@ -401,6 +401,16 @@ export type TelemetryCardProps = {
   children?: ReactNode
   /** When set, renders the primary temperature numerical readout with VTE inline weight. */
   primaryTemperatureF?: number | null
+  /** Optional apparent feels-like temperature */
+  apparentTemperatureF?: number | null
+  /** Optional today's high temperature */
+  tempMaxF?: number | null
+  /** Optional today's low temperature */
+  tempMinF?: number | null
+  /** Optional wind speed in mph */
+  windSpeedMph?: number | null
+  /** Optional 3-point intraday timeline */
+  weatherTimeline?: WeatherTimelinePoint[]
   /** Optional F1 telemetry text source used for F1_DATA parsing. */
   f1TelemetryText?: string
   /** Micro-climate archetype for per-condition animated weather icons. */
@@ -432,6 +442,11 @@ export function TelemetryCard({
   icon: Icon,
   children,
   primaryTemperatureF,
+  apparentTemperatureF,
+  tempMaxF,
+  tempMinF,
+  windSpeedMph,
+  weatherTimeline,
   f1TelemetryText,
   weatherCondition,
   ledState = 'none',
@@ -566,8 +581,8 @@ export function TelemetryCard({
       ) : (
       <div className="hud-inner-lift relative z-10 flex h-full min-h-0 flex-col">
       {showHeader ? (
-        <header className="mb-3 shrink-0">
-          <div className="flex min-h-9 items-center gap-2.5">
+        <header className="mb-2 shrink-0">
+          <div className="flex min-h-8 items-center gap-2">
             <span className="hud-icon-badge size-7 shrink-0">
               <Icon
                 className="size-4 text-[color:var(--hud-accent)]"
@@ -577,11 +592,13 @@ export function TelemetryCard({
             </span>
             <h2
               id={headingId}
-              className="min-w-0 flex-1 truncate font-orbitron text-sm font-semibold leading-none tracking-[0.12em] text-[color:var(--hud-text)]"
+              className="shrink-0 font-orbitron text-sm font-semibold leading-none tracking-[0.12em] text-[color:var(--hud-text)]"
             >
               {title}
             </h2>
-            {headerAction}
+            <div className="flex min-w-0 flex-1 items-center justify-end">
+              {headerAction}
+            </div>
             <RefreshControls actions={resolvedRefreshActions} />
             {ledState !== 'none' ? (
               <span
@@ -592,7 +609,7 @@ export function TelemetryCard({
               />
             ) : null}
           </div>
-          <div className="hud-header-divider mt-3" aria-hidden />
+          <div className="hud-header-divider mt-2" aria-hidden />
         </header>
       ) : null}
       <div
@@ -610,27 +627,101 @@ export function TelemetryCard({
           </p>
         ) : null}
         {primaryTemperatureF != null ? (
-          <div className="mb-3 flex shrink-0 items-center gap-4">
-            <p
-              className="tabular-nums text-4xl leading-none tracking-tight text-white"
-              style={primaryTemperatureStyle}
-              data-vte="primary-temperature-readout"
-              aria-label="Current temperature"
-            >
-              {primaryTemperatureF}°
-            </p>
-            {weatherCondition != null && WeatherConditionIcon != null ? (
-              <WeatherConditionIcon
-                className="size-8 shrink-0 transition-all duration-1000 ease-in-out"
-                style={weatherIconStyles[weatherCondition]}
-                strokeWidth={1.75}
-                aria-hidden="true"
-              />
-            ) : null}
-            {isWeatherCard && compactValue != null ? (
-              <p className="min-w-0 flex-1 line-clamp-2 break-words text-sm leading-snug text-zinc-200">
-                {compactValue}
-              </p>
+          <div className="flex min-h-0 flex-1 flex-col justify-between overflow-y-auto pr-0.5 scrollbar-thin">
+            {/* HERO ROW */}
+            <div className="flex shrink-0 items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <p
+                  className="tabular-nums text-4xl leading-none tracking-tight text-white"
+                  style={primaryTemperatureStyle}
+                  data-vte="primary-temperature-readout"
+                  aria-label="Current temperature"
+                >
+                  {primaryTemperatureF}°
+                </p>
+                {weatherCondition != null && WeatherConditionIcon != null ? (
+                  <WeatherConditionIcon
+                    className="size-8 shrink-0 transition-all duration-1000 ease-in-out"
+                    style={weatherIconStyles[weatherCondition]}
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </div>
+
+              {isWeatherCard ? (
+                <div className="min-w-0 flex-1 text-right">
+                  {compactValue != null ? (
+                    <p
+                      className="truncate text-xs font-medium text-zinc-200"
+                      title={typeof compactValue === 'string' ? compactValue : undefined}
+                    >
+                      {compactValue}
+                    </p>
+                  ) : null}
+                  <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[11px] font-mono text-zinc-400">
+                    {apparentTemperatureF != null ? (
+                      <span>Feels {apparentTemperatureF}°</span>
+                    ) : null}
+                    {tempMaxF != null && tempMinF != null ? (
+                      <span>
+                        <span className="text-[#F87171]">▲{tempMaxF}°</span>{' '}
+                        <span className="text-[#60A5FA]">▼{tempMinF}°</span>
+                      </span>
+                    ) : null}
+                    {windSpeedMph != null ? (
+                      <span className="text-zinc-400">💨 {windSpeedMph}mph</span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : compactValue != null ? (
+                <p className="min-w-0 flex-1 line-clamp-2 break-words text-sm leading-snug text-zinc-200">
+                  {compactValue}
+                </p>
+              ) : null}
+            </div>
+
+            {/* 3-COLUMN INTRADAY TIMELINE */}
+            {isWeatherCard && weatherTimeline && weatherTimeline.length > 0 ? (
+              <div className="mt-2.5 grid grid-cols-3 gap-1.5 border-t border-white/5 pt-2">
+                {weatherTimeline.map((item, idx) => {
+                  const archetype = item.archetype || 'clouds'
+                  const PointIcon = WEATHER_ICON_BY_CONDITION[archetype] ?? CloudsIcon
+                  const iconStyle = weatherIconStyles[archetype] ?? weatherIconStyles.clouds
+                  return (
+                    <div
+                      key={`${item.label}-${item.time}-${idx}`}
+                      className="flex flex-col items-center justify-center rounded-lg border border-white/[0.04] bg-white/[0.02] px-1.5 py-1 text-center"
+                    >
+                      <div className="flex w-full items-center justify-between gap-1 text-[9px] font-mono uppercase tracking-wider text-zinc-500">
+                        <span>{item.label}</span>
+                        <span className="text-zinc-400">{item.time}</span>
+                      </div>
+                      <div className="my-0.5 flex items-center gap-1">
+                        <PointIcon
+                          className="size-3.5 shrink-0"
+                          style={iconStyle}
+                          strokeWidth={1.75}
+                          aria-hidden="true"
+                        />
+                        <span className="font-mono text-xs font-semibold text-zinc-200">
+                          {item.temp_f != null ? `${item.temp_f}°` : '--'}
+                        </span>
+                      </div>
+                      {item.precip_prob > 0 ? (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-mono text-[#7EB3FF]">
+                          <span>💧</span>
+                          <span>{item.precip_prob}%</span>
+                        </span>
+                      ) : (
+                        <span className="truncate max-w-full text-[9px] font-mono capitalize text-zinc-500">
+                          {item.condition}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -680,9 +771,11 @@ export function TelemetryCard({
             <p className="mt-2 border-t border-white/[0.08] pt-2 text-[10px] text-zinc-500">Formula 1 data provided by <a href="https://api.jolpi.ca/ergast/f1/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Jolpica F1 API</a> under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">CC BY-NC-SA 4.0</a>.</p>
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
-          {children}
-        </div>
+        {children ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
+            {children}
+          </div>
+        ) : null}
       </div>
       </div>
       )}

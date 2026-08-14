@@ -134,24 +134,107 @@ def _forecast_payload(
     *,
     current: str | None = None,
     daily: str | None = None,
+    hourly: str | None = None,
     forecast_days: int | None = None,
+    wind_speed_unit: str = "mph",
+    precipitation_unit: str = "inch",
 ) -> dict[str, Any] | None:
     latitude, longitude = coordinates
     params: dict[str, Any] = {
         "latitude": latitude,
         "longitude": longitude,
         "temperature_unit": "fahrenheit",
+        "wind_speed_unit": wind_speed_unit,
+        "precipitation_unit": precipitation_unit,
         "timezone": "auto",
     }
     if current is not None:
         params["current"] = current
     if daily is not None:
         params["daily"] = daily
+    if hourly is not None:
+        params["hourly"] = hourly
     if forecast_days is not None:
         params["forecast_days"] = forecast_days
 
     status_code, payload = _request_json(_FORECAST_URL, params)
     return payload if status_code == 200 else None
+
+
+def _format_hour_label(iso_time: str) -> str:
+    if "T" in iso_time:
+        time_part = iso_time.split("T")[1]
+        hour_str = time_part.split(":")[0]
+        try:
+            hour = int(hour_str)
+            suffix = "AM" if hour < 12 else "PM"
+            h12 = hour % 12
+            if h12 == 0:
+                h12 = 12
+            return f"{h12} {suffix}"
+        except ValueError:
+            pass
+    return iso_time
+
+
+def _extract_timeline(
+    payload: dict[str, Any] | None,
+    current: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    hourly = payload.get("hourly")
+    if not isinstance(hourly, dict):
+        return []
+
+    times = hourly.get("time")
+    temps = hourly.get("temperature_2m")
+    codes = hourly.get("weather_code")
+    days = hourly.get("is_day")
+    probs = hourly.get("precipitation_probability")
+
+    if not isinstance(times, list) or not isinstance(temps, list):
+        return []
+
+    current_time = str(current.get("time", "")).strip() if isinstance(current, dict) else ""
+    start_idx = 0
+    if current_time and current_time in times:
+        start_idx = times.index(current_time)
+    elif current_time and "T" in current_time:
+        prefix = current_time[:13]
+        for idx, t in enumerate(times):
+            if isinstance(t, str) and t.startswith(prefix):
+                start_idx = idx
+                break
+
+    offsets = [(0, "NOW"), (4, "+4H"), (8, "+8H")]
+    timeline: list[dict[str, Any]] = []
+
+    for offset, label in offsets:
+        target_idx = start_idx + offset
+        if target_idx < len(times):
+            t_str = str(times[target_idx])
+            temp_val = _as_finite_float(temps[target_idx]) if target_idx < len(temps) else None
+            code_val = codes[target_idx] if isinstance(codes, list) and target_idx < len(codes) else None
+            day_val = days[target_idx] if isinstance(days, list) and target_idx < len(days) else None
+            prob_val = _as_finite_float(probs[target_idx]) if isinstance(probs, list) and target_idx < len(probs) else None
+
+            condition = _weather_condition(code_val, is_day=day_val)
+            desc, archetype = condition if condition else ("unknown", "clouds")
+            formatted_time = _format_hour_label(t_str)
+
+            timeline.append(
+                {
+                    "label": label,
+                    "time": formatted_time,
+                    "temp_f": round(temp_val) if temp_val is not None else None,
+                    "condition": desc,
+                    "archetype": archetype,
+                    "precip_prob": round(prob_val) if prob_val is not None else 0,
+                }
+            )
+
+    return timeline
 
 
 def collect_weather() -> ConnectorResult:
@@ -175,8 +258,10 @@ def collect_weather() -> ConnectorResult:
 
         payload = _forecast_payload(
             coordinates,
-            current="temperature_2m,weather_code,is_day",
-            forecast_days=1,
+            current="temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m",
+            daily="temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
+            hourly="temperature_2m,weather_code,is_day,precipitation_probability",
+            forecast_days=2,
         )
         current = payload.get("current") if payload is not None else None
         if not isinstance(current, dict):
@@ -191,17 +276,81 @@ def collect_weather() -> ConnectorResult:
 
         description, archetype = condition
         temp_f = round(temperature)
+        apparent_raw = _as_finite_float(current.get("apparent_temperature"))
+        apparent_temp_f = round(apparent_raw) if apparent_raw is not None else None
+
+        humidity_raw = _as_finite_float(current.get("relative_humidity_2m"))
+        humidity_pct = round(humidity_raw) if humidity_raw is not None else None
+
+        wind_raw = _as_finite_float(current.get("wind_speed_10m"))
+        wind_speed_mph = round(wind_raw) if wind_raw is not None else None
+
+        daily = payload.get("daily") if payload is not None else None
+        temp_max_f: int | None = None
+        temp_min_f: int | None = None
+        precip_probability_max: int | None = None
+        precip_sum_in: float | None = None
+
+        if isinstance(daily, dict):
+            maxs = daily.get("temperature_2m_max")
+            mins = daily.get("temperature_2m_min")
+            probs = daily.get("precipitation_probability_max")
+            sums = daily.get("precipitation_sum")
+            if isinstance(maxs, list) and maxs:
+                max_val = _as_finite_float(maxs[0])
+                if max_val is not None:
+                    temp_max_f = round(max_val)
+            if isinstance(mins, list) and mins:
+                min_val = _as_finite_float(mins[0])
+                if min_val is not None:
+                    temp_min_f = round(min_val)
+            if isinstance(probs, list) and probs:
+                prob_val = _as_finite_float(probs[0])
+                if prob_val is not None:
+                    precip_probability_max = round(prob_val)
+            if isinstance(sums, list) and sums:
+                sum_val = _as_finite_float(sums[0])
+                if sum_val is not None:
+                    precip_sum_in = round(sum_val, 2)
+
+        timeline = _extract_timeline(payload, current)
+
+        parts = [f"Current temperature is {temp_f} degrees"]
+        if apparent_temp_f is not None:
+            parts.append(f"(feels like {apparent_temp_f})")
+        parts.append(f"with {description}.")
+        if temp_max_f is not None and temp_min_f is not None:
+            parts.append(f"Today's high is {temp_max_f}, low {temp_min_f}.")
+        display_text = " ".join(parts)
+
+        data: dict[str, Any] = {
+            "temp_f": temp_f,
+            "condition": description,
+            "location": location,
+            "archetype": archetype,
+            "timeline": timeline,
+        }
+        if apparent_temp_f is not None:
+            data["apparent_temp_f"] = apparent_temp_f
+        if temp_max_f is not None:
+            data["temp_max_f"] = temp_max_f
+        if temp_min_f is not None:
+            data["temp_min_f"] = temp_min_f
+        if humidity_pct is not None:
+            data["humidity_pct"] = humidity_pct
+        if wind_speed_mph is not None:
+            data["wind_speed_mph"] = wind_speed_mph
+        if precip_probability_max is not None:
+            data["precip_probability_max"] = precip_probability_max
+        if precip_sum_in is not None:
+            data["precip_sum_in"] = precip_sum_in
+
         return _weather_result(
             status="healthy",
             reason_code="ok",
             freshness="live",
-            display_text=f"Current temperature is {temp_f} degrees with {description}.",
-            data={
-                "temp_f": temp_f,
-                "condition": description,
-                "location": location,
-                "archetype": archetype,
-            },
+            display_text=display_text,
+            data=data,
         )
     except requests.RequestException:
         return _weather_result(

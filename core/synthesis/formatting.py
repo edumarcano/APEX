@@ -85,6 +85,10 @@ def _drop_optional_payload_item(data: dict[str, Any]) -> bool:
     for key in (
         "first_pending_reminder",
         "weather",
+        "weather_apparent_temp_f",
+        "weather_temp_max_f",
+        "weather_temp_min_f",
+        "weather_precip_probability",
         "weather_condition",
         "next_calendar_event",
         "f1_this_week",
@@ -102,6 +106,10 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
         "timezone": sanitize_fact(source.timezone, 64),
         "weather": sanitize_fact(source.weather_summary),
         "weather_temp_f": source.weather_temp_f,
+        "weather_apparent_temp_f": source.weather_apparent_temp_f,
+        "weather_temp_max_f": source.weather_temp_max_f,
+        "weather_temp_min_f": source.weather_temp_min_f,
+        "weather_precip_probability": source.weather_precip_probability,
         "weather_condition": sanitize_fact(source.weather_condition, 96) or None,
         "email_unread_count": source.email_unread_count,
         "email_recent_subjects": [

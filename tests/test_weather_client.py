@@ -42,7 +42,42 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
     ) -> None:
         session = _Session(
             _Response(_geocoding_payload()),
-            _Response({"current": {"temperature_2m": 70.6, "weather_code": 2, "is_day": 1}}),
+            _Response(
+                {
+                    "current": {
+                        "time": "2026-08-14T12:00",
+                        "temperature_2m": 70.6,
+                        "apparent_temperature": 73.8,
+                        "relative_humidity_2m": 58.2,
+                        "weather_code": 2,
+                        "is_day": 1,
+                        "wind_speed_10m": 11.4,
+                    },
+                    "daily": {
+                        "temperature_2m_max": [81.6, 78.0],
+                        "temperature_2m_min": [64.1, 60.0],
+                        "precipitation_probability_max": [45, 10],
+                        "precipitation_sum": [0.25, 0.0],
+                    },
+                    "hourly": {
+                        "time": [
+                            "2026-08-14T12:00",
+                            "2026-08-14T13:00",
+                            "2026-08-14T14:00",
+                            "2026-08-14T15:00",
+                            "2026-08-14T16:00",
+                            "2026-08-14T17:00",
+                            "2026-08-14T18:00",
+                            "2026-08-14T19:00",
+                            "2026-08-14T20:00",
+                        ],
+                        "temperature_2m": [70.6, 74.0, 78.0, 81.0, 81.6, 79.0, 75.0, 70.0, 66.0],
+                        "weather_code": [2, 2, 2, 61, 61, 2, 2, 0, 0],
+                        "is_day": [1, 1, 1, 1, 1, 1, 1, 0, 0],
+                        "precipitation_probability": [10, 15, 20, 45, 45, 20, 10, 0, 0],
+                    },
+                }
+            ),
         )
 
         with mock.patch.dict("os.environ", {"TARGET_LOCATION": "Boston"}, clear=False), mock.patch.object(
@@ -52,14 +87,49 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
 
         self.assertEqual(result.status, "healthy")
         self.assertIn("71 degrees", result.display_text)
+        self.assertIn("feels like 74", result.display_text)
         self.assertIn("partly cloudy", result.display_text)
+        self.assertIn("high is 82, low 64", result.display_text)
         self.assertEqual(
             result.data,
             {
                 "temp_f": 71,
+                "apparent_temp_f": 74,
+                "temp_max_f": 82,
+                "temp_min_f": 64,
+                "humidity_pct": 58,
+                "wind_speed_mph": 11,
+                "precip_probability_max": 45,
+                "precip_sum_in": 0.25,
                 "condition": "partly cloudy",
                 "location": "Boston",
                 "archetype": "clouds",
+                "timeline": [
+                    {
+                        "label": "NOW",
+                        "time": "12 PM",
+                        "temp_f": 71,
+                        "condition": "partly cloudy",
+                        "archetype": "clouds",
+                        "precip_prob": 10,
+                    },
+                    {
+                        "label": "+4H",
+                        "time": "4 PM",
+                        "temp_f": 82,
+                        "condition": "slight rain",
+                        "archetype": "rain",
+                        "precip_prob": 45,
+                    },
+                    {
+                        "label": "+8H",
+                        "time": "8 PM",
+                        "temp_f": 66,
+                        "condition": "clear sky",
+                        "archetype": "clear_night",
+                        "precip_prob": 0,
+                    },
+                ],
             },
         )
         self.assertEqual(session.calls[0][0], weather_client._GEOCODING_URL)
@@ -74,9 +144,13 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
                 "latitude": 42.3601,
                 "longitude": -71.0589,
                 "temperature_unit": "fahrenheit",
+                "wind_speed_unit": "mph",
+                "precipitation_unit": "inch",
                 "timezone": "auto",
-                "current": "temperature_2m,weather_code,is_day",
-                "forecast_days": 1,
+                "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m",
+                "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
+                "hourly": "temperature_2m,weather_code,is_day,precipitation_probability",
+                "forecast_days": 2,
             },
         )
         self.assertEqual(session.calls[0][1]["timeout"], 10.0)
