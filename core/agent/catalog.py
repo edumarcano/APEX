@@ -133,6 +133,7 @@ class AgentSpec:
     capability_tags: tuple[str, ...]
     dev_only: bool = False
     supports_effort: bool = True
+    supports_encrypted_reasoning: bool = True
 
 
 AGENT_SPECS: dict[str, AgentSpec] = {
@@ -217,6 +218,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         stability="stable",
         capability_tags=("Balanced", "X Search"),
         dev_only=True,
+        supports_encrypted_reasoning=False,
     ),
     "orcinus": AgentSpec(
         key="orcinus",
@@ -554,6 +556,7 @@ def build_concrete_agent(
             delphinus_x_search_enabled=delphinus_x_search_enabled,
             orcinus_x_search_enabled=orcinus_x_search_enabled,
         ),
+        supports_encrypted_reasoning=spec.supports_encrypted_reasoning,
     )
 
 

@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from google.genai.errors import APIError
+from openai import APIStatusError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.catalog import (
@@ -796,6 +797,86 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertEqual(result.message.content, "Hello from xAI")
         # Unavailable usage remains None rather than inventing zeros.
         self.assertIsNone(result.usage)
+
+    @patch("core.agent.providers.responses_api.OpenAI")
+    def test_grok_4_3_delphinus_omits_encrypted_reasoning_include(
+        self, mock_openai_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.output = []
+        mock_response.model = "grok-4.3"
+        mock_response.usage = None
+        mock_client.responses.create.return_value = mock_response
+
+        delphinus_profile = build_concrete_agent("delphinus", native_effort="medium")
+        XAIProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            delphinus_profile,  # type: ignore[arg-type]
+        )
+        kwargs = mock_client.responses.create.call_args.kwargs
+        self.assertEqual(kwargs["reasoning"], {"effort": "medium"})
+        self.assertNotIn("include", kwargs)
+
+    @patch("core.agent.providers.responses_api.OpenAI")
+    def test_grok_4_5_orcinus_includes_encrypted_reasoning_include(
+        self, mock_openai_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.output = []
+        mock_response.model = "grok-4.5"
+        mock_response.usage = None
+        mock_client.responses.create.return_value = mock_response
+
+        orcinus_profile = build_concrete_agent("orcinus", native_effort="high")
+        XAIProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            orcinus_profile,  # type: ignore[arg-type]
+        )
+        kwargs = mock_client.responses.create.call_args.kwargs
+        self.assertEqual(kwargs["reasoning"], {"effort": "high"})
+        self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
+
+    @patch("core.agent.providers.responses_api.OpenAI")
+    def test_responses_api_logs_structured_warning_on_400_bad_request(
+        self, mock_openai_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        error_response = MagicMock()
+        error_response.status_code = 400
+        mock_client.responses.create.side_effect = APIStatusError(
+            message="Invalid parameter: 'include'",
+            response=error_response,
+            body={
+                "error": {
+                    "message": "Invalid parameter: 'include'",
+                    "param": "include",
+                    "code": "invalid_parameter",
+                }
+            },
+        )
+
+        delphinus_profile = build_concrete_agent("delphinus", native_effort="medium")
+        with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
+            with self.assertRaises(APIStatusError):
+                XAIProvider(api_key="test").generate_turn(
+                    [AgentMessage(role="user", content="Hi")],
+                    [],
+                    delphinus_profile,  # type: ignore[arg-type]
+                )
+
+        self.assertTrue(
+            any(
+                "xai Responses API 400 Bad Request for model grok-4.3" in log and "invalid_parameter" in log
+                for log in log_cm.output
+            )
+        )
 
 
 class PublicRosterTests(unittest.TestCase):
