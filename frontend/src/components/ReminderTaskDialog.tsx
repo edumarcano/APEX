@@ -157,8 +157,8 @@ export function ReminderTaskDialog({
               <input value={title} maxLength={500} disabled={busy} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-2.5 py-2 text-sm text-zinc-100 focus:border-[#7EB3FF]/60 focus:outline-none focus:ring-1 focus:ring-[#7EB3FF]/40" />
             </label>
             <label className="block text-xs text-zinc-300">Importance
-              <select value={importance} disabled={busy} onChange={(event) => setImportance(event.target.value as ReminderTaskDetail['importance'])} className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-2.5 py-2 text-sm text-zinc-100 focus:border-[#7EB3FF]/60 focus:outline-none">
-                <option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option>
+              <select value={importance} disabled={busy} onChange={(event) => setImportance(event.target.value as ReminderTaskDetail['importance'])} className="mt-1 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-2 text-sm text-zinc-100 [color-scheme:dark] focus:border-[#7EB3FF]/60 focus:outline-none focus:ring-1 focus:ring-[#7EB3FF]/40">
+                <option value="low" className="bg-zinc-950 text-zinc-100">Low</option><option value="normal" className="bg-zinc-950 text-zinc-100">Normal</option><option value="high" className="bg-zinc-950 text-zinc-100">High</option>
               </select>
             </label>
             <label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={hasDue} disabled={busy} onChange={(event) => setHasDue(event.target.checked)} /> Include due date</label>

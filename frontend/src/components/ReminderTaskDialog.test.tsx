@@ -18,6 +18,13 @@ describe('ReminderTaskDialog', () => {
     render(<ReminderTaskDialog id={task.id} mode="edit" onClose={onClose} onLoad={vi.fn().mockResolvedValue(task)} onUpdate={onUpdate} onDelete={vi.fn()} />)
 
     await screen.findByDisplayValue('Review plan')
+    const importance = screen.getByRole('combobox')
+    expect(importance).toHaveClass('bg-zinc-950', '[color-scheme:dark]')
+    expect(Array.from(importance.querySelectorAll('option'))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ className: expect.stringContaining('bg-zinc-950') }),
+      ]),
+    )
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
     await user.click(screen.getByRole('checkbox', { name: 'Include due date' }))
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
