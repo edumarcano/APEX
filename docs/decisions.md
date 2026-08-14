@@ -8,11 +8,11 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Separate secrets from operator preferences
 
-**Decision.** Credentials, tokens, private keys, machine paths, and environment-only modes belong in `.env`. Committed non-secret defaults belong in `config.json`.
+**Decision.** Credentials, tokens, private keys, and environment-only modes belong in `.env`. Committed non-secret defaults belong in `config.json`, while personal or machine-local runtime settings can live in gitignored `config.local.json`.
 
-**Why.** The expected configuration shape should be visible and reviewable without risking secrets. Personal machine details should remain local.
+**Why.** Secrets should stay outside normal configuration files, while non-secret settings should live where APEX can validate and manage them. Machine-local settings such as llama.cpp executable and preset paths do not need to be environment variables as long as they remain untracked.
 
-**Trade-off.** APEX has more than one configuration surface, so ownership must remain explicit in [Configuration](configuration.md).
+**Trade-off.** Configuration has several storage locations, so each setting needs a clear owner.
 
 ### Use `config.local.json` as a mutable overlay
 
@@ -24,11 +24,11 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ## Backend and API
 
-### Use SQLite instead of a flat file
+### Use SQLite for local durable state
 
-**Decision.** Reminders, normal-mode runs, and briefing history use SQLite.
+**Decision.** SQLite stores APEX's local durable state, including run history, briefing history, the reminder cache and outbox, and the action ledger. Microsoft To Do remains authoritative for synced reminders.
 
-**Why.** The data has identity, ordering, lifecycle, and transactional requirements that outgrew ad hoc JSON or text files. SQLite keeps those properties local without adding a service.
+**Why.** This data needs identity, ordering, transactions, or reliable recovery that would be awkward to maintain in JSON or text files. SQLite provides those properties without adding another service.
 
 **Trade-off.** The database is not encrypted by APEX and still requires schema compatibility and transaction discipline.
 
@@ -164,11 +164,11 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Use layered text-to-speech fallback
 
-**Decision.** Google Cloud TTS is the normal cloud engine, pyttsx3 is the final local fallback, and Kokoro is an optional local neural engine that can fall through to Google and pyttsx3.
+**Decision.** Google Cloud TTS falls back to pyttsx3. Kokoro also falls back to pyttsx3, but never to Google, so a local speech request does not silently become a cloud request.
 
-**Why.** Briefing delivery should survive network, credential, provider, or local-engine failure.
+**Why.** Speech should remain available when the selected engine fails while preserving the privacy choice between local and cloud speech.
 
-**Trade-off.** Fallback can change voice quality and whether transcript text leaves the machine. The resolved engine must remain visible.
+**Trade-off.** Fallback can change voice quality. The resolved engine must remain visible.
 
 ### Keep Kokoro hardware-conditional
 
@@ -256,7 +256,7 @@ The `dev_only` flag controls roster visibility; it does not by itself block exec
 
 **Why.** Calendar titles, headlines, email content, tasks, and provider results are written outside APEX's control and can contain instruction-like text.
 
-**Trade-off.** Prompt boundaries reduce risk but do not authorize actions. Higher-impact operations go through the action system instead of being approved by model output alone.
+**Trade-off.** Prompt boundaries reduce risk but do not authorize actions. Supported native writes go through the action system, while MCP write and destructive capabilities remain unavailable.
 
 ### Prove the action flow with Microsoft To Do
 
