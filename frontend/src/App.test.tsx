@@ -16,6 +16,7 @@ const appMocks = vi.hoisted(() => ({
   verifyCloudAgent: vi.fn().mockResolvedValue(true),
   applyBootSettings: vi.fn(),
   markReminderAsRead: vi.fn().mockResolvedValue(undefined),
+  refreshReminders: vi.fn().mockResolvedValue(undefined),
   createReminder: vi.fn().mockResolvedValue(undefined),
   activate: vi.fn(),
   requestOperation: vi.fn().mockResolvedValue('proceed'),
@@ -50,13 +51,19 @@ vi.mock('./components/TelemetryCard', () => ({
     title,
     headerAction,
     compactValue,
+    onRefresh,
     children,
   }: {
     title?: string
     headerAction?: ReactNode
     compactValue?: ReactNode
+    onRefresh?: () => void
     children?: ReactNode
-  }) => title === 'Weather' ? (
+  }) => title === 'Reminders' ? (
+    <button type="button" aria-label="Refresh Reminders" onClick={onRefresh}>
+      {children}
+    </button>
+  ) : title === 'Weather' ? (
     <>
       {headerAction}
       <span data-testid="weather-compact-value">{compactValue}</span>
@@ -160,6 +167,7 @@ vi.mock('./hooks/useApexData', () => ({
     briefingDefaultMode: 'panthera',
     voiceMode: 'automatic',
     markReminderAsRead: appMocks.markReminderAsRead,
+    refreshReminders: appMocks.refreshReminders,
     applyBootSettings: appMocks.applyBootSettings,
   }),
 }))
@@ -501,5 +509,18 @@ describe('App weather attribution', () => {
     )
     expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
     expect(screen.getAllByText('Mainly Clear')).toHaveLength(1)
+  })
+})
+
+describe('App reminder refresh', () => {
+  it('refreshes both reminder rows and reminder telemetry', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Refresh Reminders' }))
+
+    expect(appMocks.refreshConnector).toHaveBeenCalledWith('reminders')
+    expect(appMocks.refreshReminders).toHaveBeenCalledTimes(1)
   })
 })

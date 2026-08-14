@@ -196,6 +196,7 @@ export default function App(): ReactElement {
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
     markReminderAsRead,
+    refreshReminders,
     syncReminders,
     dismissUnknownReminder,
     applyBootSettings,
@@ -589,6 +590,10 @@ export default function App(): ReactElement {
     },
     [telemetry],
   )
+  const handleRefreshReminders = useCallback((): void => {
+    void telemetry.refreshConnector('reminders')
+    void refreshReminders()
+  }, [refreshReminders, telemetry])
   const handleRefreshAll = useCallback((): void => {
     void telemetry.refreshAll({ force: false })
   }, [telemetry])
@@ -1561,7 +1566,7 @@ export default function App(): ReactElement {
                   remindersModule,
                   remindersRefreshing,
                 )}
-                onRefresh={() => handleRefreshConnector('reminders')}
+                onRefresh={handleRefreshReminders}
                 refreshDisabled={isRefreshingAll}
                 statusMessage={remindersStatusMessage}
                 compactValue={remindersCompactValue}
