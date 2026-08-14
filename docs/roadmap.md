@@ -1,10 +1,10 @@
 # APEX Roadmap
 
 > [!NOTE]
-> This roadmap records APEX's product and architectural evolution: the problems each phase set out to solve, the initiatives that shaped the current system, and the directions still under consideration.
+> This roadmap records how APEX has changed, what each phase set out to solve, and where the project is heading next.
 > Completed milestones provide historical context; [the changelog](../CHANGELOG.md) remains the detailed record of released changes.
-> Planned milestones reflect current intent. Their ordering, scope, implementation details, and phase boundaries may change as development progresses.
-> Planned milestones may include additional implementation direction; once completed, they are summarized around their final architectural outcome, with release details preserved in the changelog.
+> Planned milestones reflect current intent. Their order, scope, implementation details, and phase boundaries may change as development progresses.
+> Planned milestones may include more detail while they are still being designed. Once completed, they are shortened to their final outcome while the changelog keeps the release details.
 
 ## Current Focus
 
@@ -27,20 +27,20 @@
 
 # Roadmap Summary
 
-APEX began as a collection of single-purpose Python automation scripts and has progressively evolved into a local-first personal intelligence and operations platform.
+APEX began as a collection of single-purpose Python automation scripts and has grown into a local-first personal intelligence and operations platform.
 
-Its development has moved through several distinct architectural stages:
+Its development has moved through several stages:
 
-* **Foundational automation** — personal data ingestion, scheduled workflows, telemetry collection, and the original client-server platform.
-* **Modern interface architecture** — the React/Vite HUD, real-time pipeline visibility, interactive controls, visualization systems, and a more cohesive operator experience.
-* **Cognitive interaction** — conversational AI, local and cloud inference, provider routing, synthesis, and the foundations of Cortex.
-* **Interactive agent execution** — provider-neutral Apex Agents, tool and capability orchestration, approval-gated actions, verified execution, and headless operation through the APEX CLI.
-* **Persistent agent operation** — durable context, a provenance-aware world model, structured retrieval, bounded reasoning loops, execution graphs, procedural learning, and proactive event-driven orchestration.
-* **Platform consolidation and physical integration** — a clean APEX 2.x architectural baseline, native desktop operation, and carefully scoped integration with independent physical sensing systems such as Tyto-S3.
+* **Foundational automation** — collect personal data, run scheduled tasks, and establish the first client-server version of APEX.
+* **Modern interface architecture** — move to the React/Vite HUD, make system activity visible, and build the visual and interaction model used today.
+* **Cognitive interaction** — add conversational AI, local and cloud models, briefing generation, and the beginnings of Cortex.
+* **Interactive agent execution** — give Apex Agents tools, controlled write actions, verification, and a CLI that can use Cortex without the HUD.
+* **Persistent agent operation** — let Cortex remember useful context, retrieve what it needs, carry out longer tasks in controlled steps, learn reusable procedures, and respond to important changes.
+* **Platform consolidation and physical integration** — clean up the 1.x foundations, move toward a native desktop application, and connect APEX to independent physical systems such as Tyto-S3.
 
-Across these phases, APEX is evolving from a system that primarily gathers and presents information into one that can maintain an operational understanding of the user's world, retrieve relevant context, coordinate bounded multi-step work, verify its own actions through evidence, learn reusable procedures, and respond proactively to meaningful changes.
+Across these phases, APEX is moving from a system that mainly gathers and presents information toward one that can understand ongoing personal context, complete bounded multi-step work, verify what it changed, reuse successful procedures, and react to meaningful changes.
 
-Each phase represents a major shift in the project's architecture and role while preserving the local-first, single-user focus that defines APEX.
+The local-first, single-user focus remains the same throughout that evolution.
 
 ---
 
@@ -266,7 +266,7 @@ Revert the active primary speech synthesis path to Google Cloud TTS, deprecate a
 **Status:** In Progress
 
 **Core Focus:**
-Transitioning APEX from an intelligence presence into an operator-directed agent capable of reasoning, conversational interaction, tool use, provider-neutral execution, and verified personal actions.
+Turning APEX from a briefing and query interface into an operator-directed Agent system that can use tools, work with cloud and local models, and make verified personal changes when approved.
 
 [Back to Current Focus](#current-focus)
 
@@ -274,11 +274,11 @@ Transitioning APEX from an intelligence presence into an operator-directed agent
 
 ## Cortex Initiative
 
-The Cortex initiative is a multi-phase effort to evolve APEX from a briefing-oriented intelligence interface into a persistent personal operations agent.
+The Cortex initiative is a multi-phase effort to grow APEX from a briefing-oriented interface into a persistent personal operations agent.
 
-During Phase IV, Cortex establishes the interactive foundations of that architecture: provider-neutral reasoning, cloud and local Apex Agents, capability orchestration, conversational execution, runtime controls, approval-gated actions, and headless operator access.
+During Phase IV, Cortex establishes the interactive foundation: named cloud and local Agents, shared tools, conversations, runtime controls, approved write actions, and access from both the HUD and CLI.
 
-Phase V continues the Cortex initiative by extending these interactive capabilities into durable context, evidence-driven agent loops, explicit execution graphs, procedural learning, external Agent-runtime delegation, and proactive event-driven orchestration.
+Phase V builds on that foundation with persistent context, longer controlled workflows, reusable procedures, outside workers where useful, and proactive responses to meaningful changes.
 
 ---
 
@@ -370,13 +370,13 @@ Improve APEX’s reliability, consistency, and overall polish across its runtime
 **Status:** In Progress
 
 **Objective:**
-Establish APEX's native write-capability and verification architecture through approval-gated personal actions, deterministic outcome verification, action auditing, Microsoft To Do reminder migration, and a new APEX CLI capable of operating Cortex without the HUD.
+Give Cortex its first safe write path, move Home reminders to Microsoft To Do, and add a CLI for using core APEX features without the HUD.
 
-The milestone introduces a consistent execution lifecycle in which proposed actions pass through policy evaluation, operator approval when required, execution, independent result verification, and persistent audit recording.
+Microsoft To Do is the first real use of the new action flow. Agent-requested changes become proposals, require local approval when needed, execute once, verify the result, and keep an audit record. This provides a small, understandable place to prove the flow before future Cortex workflows depend on it.
 
-The completed reminder cutover makes one explicitly selected Microsoft To Do list authoritative for Home reminders. SQLite now serves only as a bounded stale cache and retained offline/manual-sync queue; queued rows are synchronized through one verified action per operator-reviewed item. The Reminders panel also supports verified direct task edits, confirmed deletion, completed-task history, and reopening; completed history remains a live HUD-only read. Background synchronization remains outside the milestone.
+One explicitly selected Microsoft To Do list is now the source for Home reminders. SQLite keeps a bounded cache for stale display and a local queue for reminders created while syncing is unavailable. The Reminders panel can edit, complete, delete, and reopen tasks directly without adding the Agent approval step to normal Home use. Completed history is read live and is not stored locally. Background synchronization remains outside this milestone.
 
-The initial APEX CLI provides focused headless access to backend readiness, Apex Agent availability, one-turn Agent queries, briefing generation, and durable action review and resolution. It reuses the same loopback API, action version checks, execution, and verification behavior as the HUD.
+The first APEX CLI can check backend readiness, list Agents, run one Agent request, generate a briefing, and review or resolve actions. It uses the same local API and action rules as the HUD rather than creating a second backend path.
 
 ---
 
@@ -385,7 +385,7 @@ The initial APEX CLI provides focused headless access to backend readiness, Apex
 **Status:** Planned
 
 **Core Focus:**
-Transforming Cortex from an interactive agent into a persistent, verifiable personal operations runtime capable of maintaining durable context, coordinating bounded autonomous workflows, learning reusable procedures, and responding proactively to meaningful changes in operator state.
+Giving Cortex memory, retrieval, longer-running task loops, and reusable procedures so it can handle more work over time without giving up clear limits, verification, or operator control.
 
 [Back to Current Focus](#current-focus)
 
@@ -393,11 +393,11 @@ Transforming Cortex from an interactive agent into a persistent, verifiable pers
 
 ## Cortex Initiative - Continued
 
-Phase V advances the Cortex initiative from interactive execution into persistent agent operation.
+Phase V takes Cortex from interactive requests into persistent operation.
 
-Cortex gains a durable operational world model, structured retrieval, bounded reasoning loops, explicit workflow graphs, reusable procedural skills, external Agent-runtime workers, secure context ingestion, and event-driven orchestration.
+Cortex should remember useful context, keep a sourced model of the user's world, retrieve relevant information, carry out longer tasks in bounded loops, use explicit workflow graphs when a single loop is not enough, learn reusable procedures, and respond to important changes.
 
-The architecture favors bounded loops before multi-node graphs, independently verifiable evidence over model confidence, one authoritative APEX world model, deterministic software control over orchestration and permissions, and versioned procedural learning rather than unrestricted self-modification.
+The design should keep software in control of permissions and limits. Evidence should matter more than model confidence, APEX should keep one authoritative world model, and learned procedures should be versioned and reviewable rather than allowing unrestricted self-modification.
 
 ---
 
@@ -406,15 +406,15 @@ The architecture favors bounded loops before multi-node graphs, independently ve
 **Status:** Planned
 
 **Objective:**
-Establish durable Cortex state through persistent conversation sessions, a provenance-aware operational world model, and a context engine capable of retrieving compact, task-relevant information across APEX data sources.
+Give Cortex persistent conversations, a sourced record of important people, projects, facts, and changes, and a retrieval system that can pull in the right context for the current task.
 
-The milestone introduces persistent session history, multiple conversations, conversation forking, editable messages, and per-session metadata while keeping conversational history distinct from canonical world-model state.
+The milestone should add persistent session history, multiple conversations, conversation forking, editable messages, and per-session metadata while keeping conversation history separate from the world model.
 
-The Cortex world model should represent entities, observations, claims, decisions, relationships, sources, and temporal changes while preserving provenance, superseded information, contradictions, and historical context.
+The world model should record entities, observations, claims, decisions, relationships, sources, and changes over time. It should keep source information, contradictions, superseded facts, and useful history instead of silently overwriting them.
 
-Retrieval should combine precise structured filtering, full-text search, semantic retrieval, and graph-aware relationship expansion where appropriate.
+Retrieval should combine structured filters, full-text search, semantic search, and relationship lookup where each is useful.
 
-As an initial production use of the context engine, Cortex should gain read-only retrieval over APEX repository documentation using heading-aware indexing, hybrid full-text and local-embedding search, cited excerpts, instruction isolation, and incremental reindexing when documentation changes.
+As an early real use of the context engine, Cortex should be able to search APEX repository documentation, return cited excerpts, keep retrieved instructions isolated from system instructions, and update its index when the docs change.
 
 ---
 
@@ -423,17 +423,15 @@ As an initial production use of the context engine, Cortex should gain read-only
 **Status:** Planned
 
 **Objective:**
-Establish a bounded Cortex agent-loop runtime that repeatedly observes, retrieves context, reasons, acts, verifies, and records progress until an evidence-based completion condition is reached.
+Let Cortex work through a task in repeated, bounded steps: observe, retrieve context, reason, act, verify, and stop when there is enough evidence that the task is complete.
 
-The runtime should introduce explicit iteration limits, execution budgets, cancellation, retry policy, failure classification, verifier support, execution traces, completion evidence, and deterministic termination rules.
+The loop should have clear limits for iterations, time or execution budget, cancellation, retries, failure handling, verification, traces, and completion evidence. Software rules, not the model alone, should decide when the loop must stop.
 
-This milestone should also expand structured-output support, including JSON Schema enforcement where supported, and expose inference telemetry such as tokens per second, time to first token, and context-window utilization.
+This milestone should also improve structured outputs where providers support them and expose useful inference measurements such as tokens per second, time to first token, and context-window use.
 
-APEX should additionally gain a Task Manager-inspired resource monitoring surface that exposes host and APEX runtime health, including CPU, memory, local inference processes, model residency, and other relevant resource telemetry.
+APEX should also gain a Task Manager-like resource view for CPU, memory, local inference processes, loaded models, and other useful system information. The same resource service can later help Cortex decide when local work is safe to run.
 
-The underlying resource service should support both HUD visualization and Cortex runtime gating so system state can inform future worker scheduling and execution decisions.
-
-The APEX CLI should expand alongside the loop runtime with commands for resource inspection, active runs, cancellation, and execution traces.
+The CLI should grow with the loop runtime so it can inspect resources and active runs, cancel work, and view execution traces.
 
 ---
 
@@ -442,13 +440,13 @@ The APEX CLI should expand alongside the loop runtime with commands for resource
 **Status:** Planned
 
 **Objective:**
-Extend the Cortex loop runtime with explicit execution graphs for workflows that require branching, parallel execution, joins, specialist workers, independent verification, approval gates, or deterministic state transitions.
+Add explicit workflow graphs for tasks that genuinely need branching, parallel work, joins, specialist workers, independent checks, or approval points.
 
-A bounded agent loop remains the default execution primitive. Execution graphs should be introduced only when workflow topology provides a clear advantage over a single loop.
+A bounded Agent loop remains the normal way to run a task. Graphs should be used only when the shape of the work is easier to express that way.
 
-The initial graph runtime should support sequential nodes, conditional branches, parallel fan-out, joins, retries, verification nodes, approval gates, failure paths, and explicit state transitions.
+The first graph runtime should support sequential steps, conditions, parallel branches, joins, retries, verification, approval gates, failure paths, and explicit state changes.
 
-Graph nodes should operate through a common worker abstraction capable of routing work to Apex Agents, deterministic code, and future external Agent runtimes without coupling orchestration logic to a specific model provider.
+Each graph step should use a common worker interface so APEX can send work to Apex Agents, normal code, or future external Agent runtimes without tying the graph itself to one model provider.
 
 ---
 
@@ -457,13 +455,13 @@ Graph nodes should operate through a common worker abstraction capable of routin
 **Status:** Planned
 
 **Objective:**
-Allow Cortex to identify repeatable successful procedures from completed execution trajectories and safely promote them into reusable, versioned procedural skills.
+Let Cortex recognize procedures that worked repeatedly and turn them into reusable, versioned skills after they have been reviewed and validated.
 
-The learning system should distinguish operational knowledge from procedural knowledge. World-model memory records what Cortex believes about the operator and environment, while procedural skills record how recurring classes of tasks can be executed reliably.
+The world model should store what Cortex knows about the user and environment. Procedural skills should instead store how a recurring kind of task can be completed reliably.
 
-Skill candidates should define applicability conditions, required capabilities, execution procedures, expected evidence, verification criteria, failure handling, provenance, success history, and version metadata.
+A skill candidate should record when it applies, what tools it needs, the steps to follow, what evidence to expect, how to verify success, how failures are handled, where the procedure came from, and how well it has worked.
 
-Learning should follow a controlled promotion model in which discovered procedures are validated, auditable, reversible, and subject to operator or policy approval rather than allowing unrestricted self-modification.
+New procedures should be reviewable, reversible, and subject to operator or policy approval. Cortex should not be able to rewrite its own behavior without those controls.
 
 ---
 
@@ -472,13 +470,13 @@ Learning should follow a controlled promotion model in which discovered procedur
 **Status:** Planned
 
 **Objective:**
-Integrate Hermes Agent as an optional sandboxed external Agent-runtime worker for bounded tasks that benefit from a mature autonomous execution harness while preserving Cortex ownership of orchestration, permissions, verification, persistent state, and world-model memory.
+Use Hermes Agent as an optional sandboxed worker for tasks that benefit from a more mature autonomous execution environment, while APEX keeps control of permissions, verification, persistent state, and orchestration.
 
-Hermes should operate through the same worker abstraction used by Cortex execution graphs and receive tightly scoped task requests defining context, allowed tools, workspace access, execution budgets, network policy, and output requirements.
+Hermes should receive a tightly scoped task with the context, tools, workspace access, execution budget, network policy, and output requirements it is allowed to use.
 
-Hermes results should return structured outcomes, artifacts, actions, evidence, errors, and execution metadata to Cortex for independent verification and reconciliation.
+It should return results, artifacts, actions, evidence, errors, and execution details to Cortex so APEX can verify and reconcile them independently.
 
-Persistent Hermes personal or world-state memory should remain disabled initially so APEX preserves one authoritative operational memory system.
+Hermes should not keep its own personal or world-state memory at first. APEX should remain the authoritative memory system.
 
 ---
 
@@ -487,13 +485,13 @@ Persistent Hermes personal or world-state memory should remain disabled initiall
 **Status:** Planned
 
 **Objective:**
-Create a structured, authenticated inbound context layer that allows external services, files, devices, and knowledge workspaces to contribute evidence to the Cortex world model without bypassing provenance, trust, or permission boundaries.
+Let trusted outside services, files, devices, and knowledge workspaces add context to Cortex without bypassing source tracking, permissions, or trust boundaries.
 
-This milestone should include a narrowly scoped APEX MCP ingestion surface, structured source identity, provenance-aware file and context ingestion, and secure routing of newly received evidence through Cortex reconciliation and retrieval systems.
+This should include a narrowly scoped APEX MCP ingestion surface, clear source identity, safe file and context ingestion, and a path for new evidence to be reconciled into the world model and retrieval system.
 
-APEX should also introduce a permissioned device-context abstraction for information such as current location and timezone, allowing capabilities such as weather to consume device state without directly owning location-detection logic.
+APEX should also add a permissioned device-context service for information such as current location and timezone. Features such as weather can then use device state without owning location detection themselves.
 
-Workspace interoperability may include an APEX-managed Markdown knowledge workspace using portable frontmatter and wikilink conventions, allowing optional compatibility with tools such as Obsidian without making external note-taking software a runtime dependency.
+Workspace support may include an APEX-managed Markdown knowledge folder using portable frontmatter and wikilinks, with optional compatibility with tools such as Obsidian rather than a runtime dependency on them.
 
 ---
 
@@ -502,13 +500,13 @@ Workspace interoperability may include an APEX-managed Markdown knowledge worksp
 **Status:** Planned
 
 **Objective:**
-Evolve Cortex into a proactive personal operations system that responds to meaningful changes in connected state, maintains its operational world model, and coordinates bounded multi-step workflows under explicit trust, verification, and approval policies.
+Let Cortex respond to meaningful changes in connected data, keep its world model current, and start bounded workflows when a change actually needs attention.
 
-Rather than continuously rescanning every connected source, Cortex should operate from structured change and event streams, determine which changes materially affect known entities, tasks, commitments, projects, or operator goals, and invoke the minimum necessary loop or execution graph.
+Instead of repeatedly rescanning every source, Cortex should react to structured changes and events, decide whether they affect known people, tasks, commitments, projects, or goals, and run only the work that is needed.
 
-Scheduled and event-triggered workflows should support proactive briefings, stale-state detection, contradiction discovery, commitment tracking, threshold monitoring, and bounded action proposals.
+Scheduled and event-triggered workflows should support proactive briefings, stale-state checks, contradiction discovery, commitment tracking, threshold monitoring, and action proposals.
 
-The resulting system should combine persistent context, verified execution, learned procedural skills, execution graphs, Apex Agents, deterministic workers, and optional external runtimes into a controlled personal operations architecture.
+By this point, persistent context, verified actions, learned procedures, execution graphs, Apex Agents, normal software workers, and optional external runtimes should work together under the same permissions and verification rules.
 
 ---
 
@@ -517,9 +515,9 @@ The resulting system should combine persistent context, verified execution, lear
 **Status:** Planned
 
 **Core Focus:**
-Establishing APEX 2.x as a clean, canonical platform built around the mature Cortex architecture, transitioning the primary interface into a native desktop application, and extending APEX beyond software-only context through purpose-built physical sensing systems.
+Cleaning up the APEX 2.x foundation, moving the main interface to a native desktop application, and connecting APEX to independent physical sensing systems without making those systems depend on Cortex.
 
-Phase VI marks the point where APEX stops carrying forward transitional assumptions from its 1.x evolution. The platform is consolidated around its current runtime, persistence, Agent, world-model, execution, and operator-interface architecture before expanding into native and physical integrations.
+Phase VI is where APEX can stop carrying forward temporary 1.x compatibility choices. The goal is to simplify the platform around the runtime, persistence, Agent, memory, and action systems that proved useful before expanding further into desktop and physical integrations.
 
 [Back to Current Focus](#current-focus)
 
@@ -530,17 +528,17 @@ Phase VI marks the point where APEX stops carrying forward transitional assumpti
 **Status:** Planned
 
 **Objective:**
-Establish a clean APEX 2.x architectural baseline by removing obsolete 1.x compatibility layers, consolidating persistence and configuration, and ensuring the system is structured entirely around the capabilities and abstractions developed through the Cortex initiative.
+Clean up the APEX 2.x foundation by removing obsolete 1.x compatibility layers and settling on the persistence, configuration, API, and runtime structures that future work should use.
 
-This milestone should perform a comprehensive audit of the APEX database, configuration system, APIs, persistence paths, runtime abstractions, naming conventions, and legacy compatibility code.
+This milestone should audit the database, configuration system, APIs, persistence paths, runtime code, naming, and compatibility code.
 
-Obsolete tables, columns, profile-era records, deprecated settings, unused telemetry structures, migration scaffolding, compatibility aliases, and superseded persistence mechanisms should be removed or migrated into their canonical replacements.
+Old tables, columns, profile-era records, deprecated settings, unused telemetry structures, migration scaffolding, aliases, and replaced persistence paths should be removed or migrated when they are no longer needed.
 
-Useful operator data should be preserved wherever practical, including Cortex conversations, world-model knowledge, evidence, learned procedural skills, execution history, meaningful configuration, and audit records.
+Useful operator data should be preserved where practical, including Cortex conversations, world-model knowledge, evidence, learned procedures, execution history, meaningful configuration, and audit records.
 
-Fresh installations and installations upgraded continuously from APEX 1.x should converge on the same canonical schema, configuration structure, and runtime behavior.
+Fresh installations and systems upgraded through APEX 1.x should end up with the same current schema, configuration shape, and runtime behavior.
 
-This release may intentionally remove or change legacy internal contracts where preserving them would compromise the clarity or maintainability of the mature APEX architecture.
+Some old internal contracts may be removed when keeping them would make the 2.x code harder to understand or maintain.
 
 ---
 
@@ -549,15 +547,15 @@ This release may intentionally remove or change legacy internal contracts where 
 **Status:** Planned
 
 **Objective:**
-Transition the primary APEX HUD from its existing browser-oriented application model into a native desktop application using Tauri while preserving the separation between interface, runtime, API, and CLI established during APEX 1.x.
+Move the main APEX HUD from a browser-oriented shell to a native Tauri desktop application while keeping the existing separation between the interface, backend, API, and CLI.
 
-The Tauri application should act as a native operator surface over the existing APEX platform rather than embedding Cortex or backend logic directly into the desktop shell.
+The Tauri app should remain a client of the APEX platform rather than moving Cortex or backend logic into the desktop shell.
 
-The milestone should preserve the ability to operate APEX independently through its CLI and backend interfaces while improving desktop lifecycle integration, startup and shutdown behavior, window management, local permissions, notifications, system integration, and distribution.
+The CLI and backend should continue to work independently. The desktop app can then improve startup and shutdown, window behavior, local permissions, notifications, system integration, and distribution without becoming the only way to run APEX.
 
-Where appropriate, native capabilities should be exposed through clearly defined platform services rather than accessed directly by Cortex or individual frontend components.
+Native features should go through clear platform services when possible instead of being accessed directly by Cortex or individual frontend components.
 
-The migration should retain the established APEX HUD experience while providing a cleaner foundation for future desktop-specific capabilities.
+The goal is to keep the current HUD experience while giving desktop-specific features a cleaner home.
 
 ---
 
@@ -566,17 +564,17 @@ The migration should retain the established APEX HUD experience while providing 
 **Status:** Planned
 
 **Objective:**
-Integrate [Tyto-S3](https://github.com/edumarcano/Tyto-S3) as APEX's first purpose-built physical sensing node, allowing environmental measurements, device state, historical observations, and detected climate events to become part of Cortex's operational understanding while preserving Tyto as a fully independent standalone system.
+Connect [Tyto-S3](https://github.com/edumarcano/Tyto-S3) to APEX so environmental measurements, device health, history, and detected events can become part of Cortex context while Tyto remains a fully independent system.
 
-APEX should connect to Tyto through a versioned and authenticated device interface rather than depending on firmware-specific implementation details.
+APEX should talk to Tyto through a versioned, authenticated device interface instead of depending on firmware implementation details.
 
-The integration should support current environmental measurements, derived climate values, sensor and device health, historical observations, detected environmental events, firmware and protocol compatibility information, and clean handling of temporary network or device outages.
+The integration should cover current measurements, derived climate values, sensor and device health, historical observations, environmental events, firmware and protocol compatibility, and temporary network outages.
 
-Cortex tools should be able to query Tyto's current state and relevant history, while significant observations may be reconciled into the Cortex world model with clear source provenance and timestamps.
+Cortex tools should be able to query current Tyto data and relevant history. Important observations can later enter the world model with their source and timestamp intact.
 
-Tyto-originated events should be able to enter the APEX event pipeline and participate in bounded Cortex workflows where appropriate, allowing environmental changes to contribute to briefings, context retrieval, anomaly detection, and future proactive behavior.
+Tyto events should also be able to enter the APEX event path and contribute to briefings, context retrieval, anomaly detection, or bounded Cortex workflows when useful.
 
-Tyto must remain operational when APEX is unavailable, and APEX should treat the device as an independently reliable source of physical-world evidence rather than as a peripheral that depends on Cortex for core functionality.
+Tyto must keep working when APEX is unavailable. APEX should treat it as an independent source of physical-world data, not as a peripheral that needs Cortex to function.
 
 ### Integration Readiness
 
@@ -597,7 +595,9 @@ Before APEX v2.2.0 integration work begins, Tyto should provide:
 
 # Long-Term Vision
 
-The long-term objective of APEX is to evolve through six distinct stages into a local-first personal intelligence and operations platform. Each phase builds upon the previous one, progressing from information aggregation and conversational intelligence toward a persistent system capable of maintaining an operational model of the user's world, retrieving relevant context, executing and verifying bounded actions, coordinating multi-step workflows, learning reusable procedures from experience, responding proactively to meaningful changes, and eventually extending those capabilities across distributed and physical interfaces.
+APEX is intended to grow from a local information and briefing system into a personal operations platform that can remember useful context, retrieve what matters, complete and verify bounded actions, coordinate longer workflows, learn reusable procedures, respond to meaningful changes, and eventually work with desktop and physical interfaces.
+
+Each phase adds to that capability without changing the project's local-first, single-user focus.
 
 ## Current Focus
 
