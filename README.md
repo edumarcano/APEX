@@ -161,3 +161,7 @@ uv run python scripts/check_docs.py
 ```
 
 APEX is a personal project, but the engineering is intentionally explicit: local constraints, privacy boundaries, failure modes, and visual behavior are part of the product rather than afterthoughts.
+
+## License
+
+APEX is licensed under the [MIT License](LICENSE). Third-party software notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
