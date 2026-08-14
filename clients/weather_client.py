@@ -237,6 +237,49 @@ def _extract_timeline(
     return timeline
 
 
+def _parse_current_conditions(current: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Parse real-time atmospheric conditions from an Open-Meteo current payload."""
+    if not isinstance(current, dict):
+        return None
+
+    temperature = _as_finite_float(current.get("temperature_2m"))
+    condition = _weather_condition(
+        current.get("weather_code"), is_day=current.get("is_day")
+    )
+    if temperature is None or condition is None:
+        return None
+
+    description, archetype = condition
+    result: dict[str, Any] = {
+        "temp_f": round(temperature),
+        "condition": description,
+        "archetype": archetype,
+    }
+    apparent_raw = _as_finite_float(current.get("apparent_temperature"))
+    if apparent_raw is not None:
+        result["apparent_temp_f"] = round(apparent_raw)
+    humidity_raw = _as_finite_float(current.get("relative_humidity_2m"))
+    if humidity_raw is not None:
+        result["humidity_pct"] = round(humidity_raw)
+    wind_raw = _as_finite_float(current.get("wind_speed_10m"))
+    if wind_raw is not None:
+        result["wind_speed_mph"] = round(wind_raw)
+
+    return result
+
+
+def _get_daily_metric(
+    values: list[Any] | None, index: int, decimals: int | None = None
+) -> float | int | None:
+    """Extract and round a numerical metric at an index from a daily payload list."""
+    if not isinstance(values, list) or index >= len(values):
+        return None
+    val = _as_finite_float(values[index])
+    if val is None:
+        return None
+    return round(val) if decimals is None else round(val, decimals)
+
+
 def collect_weather() -> ConnectorResult:
     """Collect current weather as a typed connector result."""
     location = _configured_location()
@@ -263,57 +306,26 @@ def collect_weather() -> ConnectorResult:
             hourly="temperature_2m,weather_code,is_day,precipitation_probability",
             forecast_days=2,
         )
-        current = payload.get("current") if payload is not None else None
-        if not isinstance(current, dict):
-            raise ValueError("Weather provider returned no current conditions.")
-
-        temperature = _as_finite_float(current.get("temperature_2m"))
-        condition = _weather_condition(
-            current.get("weather_code"), is_day=current.get("is_day")
-        )
-        if temperature is None or condition is None:
+        current_data = _parse_current_conditions(payload.get("current") if payload is not None else None)
+        if current_data is None:
             raise ValueError("Weather provider current conditions were incomplete.")
 
-        description, archetype = condition
-        temp_f = round(temperature)
-        apparent_raw = _as_finite_float(current.get("apparent_temperature"))
-        apparent_temp_f = round(apparent_raw) if apparent_raw is not None else None
-
-        humidity_raw = _as_finite_float(current.get("relative_humidity_2m"))
-        humidity_pct = round(humidity_raw) if humidity_raw is not None else None
-
-        wind_raw = _as_finite_float(current.get("wind_speed_10m"))
-        wind_speed_mph = round(wind_raw) if wind_raw is not None else None
-
         daily = payload.get("daily") if payload is not None else None
-        temp_max_f: int | None = None
-        temp_min_f: int | None = None
-        precip_probability_max: int | None = None
-        precip_sum_in: float | None = None
+        maxs = daily.get("temperature_2m_max") if isinstance(daily, dict) else None
+        mins = daily.get("temperature_2m_min") if isinstance(daily, dict) else None
+        probs = daily.get("precipitation_probability_max") if isinstance(daily, dict) else None
+        sums = daily.get("precipitation_sum") if isinstance(daily, dict) else None
 
-        if isinstance(daily, dict):
-            maxs = daily.get("temperature_2m_max")
-            mins = daily.get("temperature_2m_min")
-            probs = daily.get("precipitation_probability_max")
-            sums = daily.get("precipitation_sum")
-            if isinstance(maxs, list) and maxs:
-                max_val = _as_finite_float(maxs[0])
-                if max_val is not None:
-                    temp_max_f = round(max_val)
-            if isinstance(mins, list) and mins:
-                min_val = _as_finite_float(mins[0])
-                if min_val is not None:
-                    temp_min_f = round(min_val)
-            if isinstance(probs, list) and probs:
-                prob_val = _as_finite_float(probs[0])
-                if prob_val is not None:
-                    precip_probability_max = round(prob_val)
-            if isinstance(sums, list) and sums:
-                sum_val = _as_finite_float(sums[0])
-                if sum_val is not None:
-                    precip_sum_in = round(sum_val, 2)
+        temp_max_f = _get_daily_metric(maxs, 0)
+        temp_min_f = _get_daily_metric(mins, 0)
+        precip_probability_max = _get_daily_metric(probs, 0)
+        precip_sum_in = _get_daily_metric(sums, 0, decimals=2)
 
-        timeline = _extract_timeline(payload, current)
+        timeline = _extract_timeline(payload, payload.get("current") if payload is not None else None)
+
+        temp_f = current_data["temp_f"]
+        apparent_temp_f = current_data.get("apparent_temp_f")
+        description = current_data["condition"]
 
         parts = [f"Current temperature is {temp_f} degrees"]
         if apparent_temp_f is not None:
@@ -324,22 +336,14 @@ def collect_weather() -> ConnectorResult:
         display_text = " ".join(parts)
 
         data: dict[str, Any] = {
-            "temp_f": temp_f,
-            "condition": description,
+            **current_data,
             "location": location,
-            "archetype": archetype,
             "timeline": timeline,
         }
-        if apparent_temp_f is not None:
-            data["apparent_temp_f"] = apparent_temp_f
         if temp_max_f is not None:
             data["temp_max_f"] = temp_max_f
         if temp_min_f is not None:
             data["temp_min_f"] = temp_min_f
-        if humidity_pct is not None:
-            data["humidity_pct"] = humidity_pct
-        if wind_speed_mph is not None:
-            data["wind_speed_mph"] = wind_speed_mph
         if precip_probability_max is not None:
             data["precip_probability_max"] = precip_probability_max
         if precip_sum_in is not None:
@@ -392,30 +396,7 @@ def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[s
         if payload is None:
             raise ValueError("Weather provider returned no response.")
 
-        # Parse current atmospheric conditions
-        current_data = payload.get("current")
-        current_result: dict[str, Any] | None = None
-        if isinstance(current_data, dict):
-            curr_temp = _as_finite_float(current_data.get("temperature_2m"))
-            curr_code = current_data.get("weather_code")
-            curr_is_day = current_data.get("is_day")
-            if curr_temp is not None:
-                condition_tuple = _weather_condition(curr_code, is_day=curr_is_day)
-                desc, archetype = condition_tuple if condition_tuple else ("unknown", "clouds")
-                current_result = {
-                    "temp_f": round(curr_temp),
-                    "condition": desc,
-                    "archetype": archetype,
-                }
-                app_temp = _as_finite_float(current_data.get("apparent_temperature"))
-                if app_temp is not None:
-                    current_result["apparent_temp_f"] = round(app_temp)
-                rel_hum = _as_finite_float(current_data.get("relative_humidity_2m"))
-                if rel_hum is not None:
-                    current_result["humidity_pct"] = round(rel_hum)
-                wind_spd = _as_finite_float(current_data.get("wind_speed_10m"))
-                if wind_spd is not None:
-                    current_result["wind_speed_mph"] = round(wind_spd)
+        current_data = _parse_current_conditions(payload.get("current"))
 
         daily = payload.get("daily")
         if not isinstance(daily, dict):
@@ -449,22 +430,18 @@ def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[s
                 "temp_min": round(min_temp, 1),
                 "condition": condition[0],
             }
-            if isinstance(precip_probs, list) and i < len(precip_probs):
-                prob = _as_finite_float(precip_probs[i])
-                if prob is not None:
-                    day_entry["precip_probability_max"] = round(prob)
-            if isinstance(precip_sums, list) and i < len(precip_sums):
-                psum = _as_finite_float(precip_sums[i])
-                if psum is not None:
-                    day_entry["precip_sum_in"] = round(psum, 2)
-            if isinstance(wind_speeds, list) and i < len(wind_speeds):
-                wspd = _as_finite_float(wind_speeds[i])
-                if wspd is not None:
-                    day_entry["wind_speed_max_mph"] = round(wspd)
-            if isinstance(uv_indices, list) and i < len(uv_indices):
-                uv = _as_finite_float(uv_indices[i])
-                if uv is not None:
-                    day_entry["uv_index_max"] = round(uv, 1)
+            precip_prob = _get_daily_metric(precip_probs, i)
+            if precip_prob is not None:
+                day_entry["precip_probability_max"] = precip_prob
+            precip_sum = _get_daily_metric(precip_sums, i, decimals=2)
+            if precip_sum is not None:
+                day_entry["precip_sum_in"] = precip_sum
+            wind_speed = _get_daily_metric(wind_speeds, i)
+            if wind_speed is not None:
+                day_entry["wind_speed_max_mph"] = wind_speed
+            uv_index = _get_daily_metric(uv_indices, i, decimals=1)
+            if uv_index is not None:
+                day_entry["uv_index_max"] = uv_index
 
             forecast.append(day_entry)
 
@@ -472,10 +449,12 @@ def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[s
             "location": resolved_location,
             "forecast": forecast,
         }
-        if current_result is not None:
-            result["current"] = current_result
+        if current_data is not None:
+            result["current"] = current_data
 
         return result
+    except (requests.RequestException, TypeError, ValueError, KeyError):
+        return {"error": "Weather forecast unavailable."}
     except (requests.RequestException, TypeError, ValueError, KeyError):
         return {"error": "Weather forecast unavailable."}
 
