@@ -6,6 +6,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, status
 
+from core.agent.catalog import resolve_agent_selection
 from core.agent.types import (
     AgentKey,
     AgentQueryRequest,
@@ -55,6 +56,15 @@ def _ensure_agent_api_access(agent_key: str) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Requested Agent is not available.",
         )
+
+
+def _resolve_omitted_agent(payload: AgentQueryRequest) -> AgentQueryRequest:
+    """Apply the saved Agent selection when the caller omitted ``agent``."""
+    if "agent" in payload.model_fields_set:
+        return payload
+    snapshot = get_settings_store().get_snapshot()
+    _runtime, agent, _effort = resolve_agent_selection(snapshot.ask_apex)
+    return payload.model_copy(update={"agent": agent})
 
 
 def _normalize_profile_id(value: str) -> str:
@@ -361,5 +371,6 @@ def cortex_query(payload: AgentQueryRequest) -> AgentQueryResponse:
     switch (503 on load failure). Already-loaded target models bypass the
     resource gate because their memory footprint is already present.
     """
-    _ensure_agent_api_access(payload.agent)
-    return query_agent(payload)
+    effective_payload = _resolve_omitted_agent(payload)
+    _ensure_agent_api_access(effective_payload.agent)
+    return query_agent(effective_payload)

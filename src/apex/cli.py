@@ -33,6 +33,9 @@ class ApiClient:
 
     def __init__(self, session: requests.Session | None = None) -> None:
         self._session = session or requests.Session()
+        # The CLI is a loopback client, so do not inherit proxy or credential
+        # settings that could send local prompts or action data elsewhere.
+        self._session.trust_env = False
 
     def close(self) -> None:
         self._session.close()
@@ -56,6 +59,7 @@ class ApiClient:
                     if long_running
                     else _DEFAULT_READ_TIMEOUT_SECONDS,
                 ),
+                allow_redirects=False,
             )
         except requests.RequestException as exc:
             raise CliError(
@@ -63,8 +67,11 @@ class ApiClient:
                 "APEX is not reachable at http://127.0.0.1:8000.",
             ) from exc
 
-        body = _json_body(response)
         if not 200 <= response.status_code < 300:
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
             detail = body.get("detail") if isinstance(body, dict) else None
             raise CliError(
                 "http_error",
@@ -72,7 +79,7 @@ class ApiClient:
                 status_code=response.status_code,
                 detail=detail,
             )
-        return body
+        return _json_body(response)
 
 
 def _json_body(response: requests.Response) -> object:
@@ -176,8 +183,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _status(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
-    payload = client.request("GET", "/api/v1/health/ready")
-    _require_mapping(payload, "readiness")
+    readiness = _require_mapping(
+        client.request("GET", "/api/v1/health/ready"), "readiness"
+    )
+    config = _require_mapping(
+        client.request("GET", "/api/v1/config"), "runtime configuration"
+    )
+    payload = dict(readiness)
+    selection = config.get("agent_initial_selection")
+    if isinstance(selection, dict):
+        agent = selection.get("agent")
+        runtime = selection.get("runtime")
+        effort = selection.get("effort")
+        payload["agent"] = {
+            "key": agent if isinstance(agent, str) else config.get("default_agent"),
+            "runtime": runtime if isinstance(runtime, str) else None,
+            "effort": effort if isinstance(effort, str) else None,
+        }
+    elif isinstance(config.get("default_agent"), str):
+        payload["agent"] = {"key": config["default_agent"]}
     _emit(payload, json_mode, _render_status)
     return 0
 
@@ -206,13 +230,15 @@ def _ask(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
     response = _require_mapping(payload, "Agent response")
     if not isinstance(response.get("answer"), str):
         raise CliError("invalid_response", "APEX Agent response did not include an answer.")
-    _emit(payload, json_mode, _render_ask)
     if response.get("error"):
+        if not json_mode:
+            _render_ask(payload)
         _emit_error(
             CliError("agent_error", str(response["error"])),
-            json_mode=False,
+            json_mode=json_mode,
         )
         return 1
+    _emit(payload, json_mode, _render_ask)
     return 0
 
 
@@ -326,6 +352,12 @@ def _render_status(payload: object) -> None:
         value = payload.get(key)
         if isinstance(value, str):
             print(f"{key.capitalize()}: {value}")
+    agent = payload.get("agent")
+    if isinstance(agent, dict) and isinstance(agent.get("key"), str):
+        description = agent["key"]
+        if isinstance(agent.get("runtime"), str):
+            description += f" ({agent['runtime']})"
+        print(f"Agent: {description}")
 
 
 def _render_agents(payload: object) -> None:

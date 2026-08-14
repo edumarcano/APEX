@@ -61,12 +61,30 @@ class CliTests(unittest.TestCase):
     def test_status_and_agents_use_existing_read_routes(self) -> None:
         status_code, status_output, _, status_session = self._run(
             ["status"],
-            [_Response(200, {"status": "ready", "config": "ok", "database": "ok"})],
+            [
+                _Response(200, {"status": "ready", "config": "ok", "database": "ok"}),
+                _Response(
+                    200,
+                    {
+                        "default_agent": "apodemus",
+                        "agent_initial_selection": {
+                            "runtime": "local",
+                            "agent": "apodemus",
+                            "effort": None,
+                        },
+                    },
+                ),
+            ],
         )
         self.assertEqual(status_code, 0)
         self.assertIn("ready", status_output.lower())
+        self.assertIn("apodemus", status_output.lower())
         self.assertEqual(status_session.calls[0]["method"], "GET")
         self.assertEqual(status_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/health/ready")
+        self.assertEqual(status_session.calls[1]["url"], f"{cli.API_ROOT}/api/v1/config")
+        self.assertFalse(status_session.calls[0]["allow_redirects"])
+        self.assertFalse(status_session.trust_env)
+        self.assertTrue(status_session.closed)
 
         agent_code, agent_output, _, agent_session = self._run(
             ["agents"],
@@ -168,10 +186,25 @@ class CliTests(unittest.TestCase):
     def test_json_output_and_safe_transport_errors(self) -> None:
         code, output, _, _ = self._run(
             ["status", "--json"],
-            [_Response(200, {"status": "ready", "config": "ok", "database": "ok"})],
+            [
+                _Response(200, {"status": "ready", "config": "ok", "database": "ok"}),
+                _Response(
+                    200,
+                    {
+                        "default_agent": "panthera",
+                        "agent_initial_selection": {
+                            "runtime": "cloud",
+                            "agent": "panthera",
+                            "effort": "focused",
+                        },
+                    },
+                ),
+            ],
         )
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(output)["status"], "ready")
+        status_payload = json.loads(output)
+        self.assertEqual(status_payload["status"], "ready")
+        self.assertEqual(status_payload["agent"]["key"], "panthera")
 
         code, output, errors, _ = self._run(
             ["--json", "status"],
@@ -182,6 +215,14 @@ class CliTests(unittest.TestCase):
         error = json.loads(output)["error"]
         self.assertEqual(error["kind"], "backend_unavailable")
         self.assertNotIn("private", output)
+
+        code, output, errors, session = self._run(
+            ["status"],
+            [_Response(302, ValueError("redirect body"))],
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("HTTP 302", errors)
+        self.assertEqual(len(session.calls), 1)
 
     def test_invalid_json_and_agent_errors_are_nonzero(self) -> None:
         code, _, errors, _ = self._run(
@@ -202,6 +243,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("Partial.", output)
         self.assertIn("Agent stopped.", errors)
+
+        code, output, errors, _ = self._run(
+            ["--json", "ask", "Hello"],
+            [_Response(200, {"answer": "Partial.", "error": "Agent stopped."})],
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(errors, "")
+        self.assertEqual(json.loads(output)["error"]["kind"], "agent_error")
 
     def test_invalid_usage_keeps_argparse_exit_code_two(self) -> None:
         with redirect_stderr(io.StringIO()):
