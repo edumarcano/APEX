@@ -26,6 +26,10 @@ export interface LlamaCppSettings {
   preset_path: string
 }
 
+export interface MicrosoftTodoSettings {
+  reminder_list_id: string
+}
+
 
 export interface FeaturesSettings {
   weather: boolean
@@ -113,6 +117,7 @@ export interface RuntimeSettings {
   voice: VoiceSettings
   mcp: McpSettings
   llama_cpp: LlamaCppSettings
+  microsoft_todo: MicrosoftTodoSettings
 }
 
 export interface FeaturesPatch {
@@ -188,6 +193,10 @@ export interface LlamaCppPatch {
   preset_path?: string
 }
 
+export interface MicrosoftTodoPatch {
+  reminder_list_id?: string
+}
+
 export type LlamaCppServerState =
   | 'disabled'
   | 'external_connected'
@@ -219,6 +228,7 @@ export interface SettingsPatch {
   voice?: VoicePatch
   mcp?: McpPatch
   llama_cpp?: LlamaCppPatch
+  microsoft_todo?: MicrosoftTodoPatch
 }
 
 export interface SettingsResponse {

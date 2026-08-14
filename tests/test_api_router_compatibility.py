@@ -41,44 +41,67 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.client = TestClient(app, raise_server_exceptions=True)
 
     def test_reminder_routes_delegate_and_preserve_payloads(self) -> None:
+        service = mock.Mock()
+        service.list.return_value.to_dict.return_value = {
+            "items": [
+                {
+                    "id": "local:7",
+                    "note": "Review branch",
+                    "source": "local",
+                    "sync_state": "pending",
+                }
+            ],
+            "source_state": "unavailable",
+            "cache_timestamp": None,
+            "pending_sync_count": 1,
+        }
+        service.create.return_value = {
+            "id": "local:8",
+            "outcome": "pending",
+            "action_id": None,
+        }
+        service.complete.return_value = {
+            "id": "local:7",
+            "outcome": "dismissed",
+            "action_id": None,
+        }
         with mock.patch(
             "core.api.routers.reminders.DEMO_MODE", False
         ), mock.patch(
-            "core.api.routers.reminders.database.fetch_unread_reminders",
-            return_value=[(7, "Review branch")],
+            "core.api.routers.reminders.get_reminder_service", return_value=service,
         ):
             response = self.client.get("/api/v1/reminders")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [{"id": 7, "note": "Review branch"}])
+        self.assertEqual(response.json()["items"][0]["id"], "local:7")
 
         with mock.patch(
             "core.api.routers.reminders.DEMO_MODE", False
         ), mock.patch(
-            "core.api.routers.reminders.database.save_reminder", return_value=8
-        ) as save_reminder:
+            "core.api.routers.reminders.get_reminder_service", return_value=service,
+        ):
             response = self.client.post(
                 "/api/v1/reminders",
                 json={"text": "**Call** advisor"},
             )
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json(), {"id": 8})
-        save_reminder.assert_called_once_with("Call advisor")
+        self.assertEqual(response.json()["id"], "local:8")
+        service.create.assert_called_once_with("Call advisor")
 
         with mock.patch(
             "core.api.routers.reminders.DEMO_MODE", False
         ), mock.patch(
-            "core.api.routers.reminders.database.mark_reminders_read"
-        ) as mark_read:
+            "core.api.routers.reminders.get_reminder_service", return_value=service,
+        ):
             response = self.client.post(
-                "/api/v1/reminders/read",
-                json={"ids": [7, 8]},
+                "/api/v1/reminders/complete",
+                json={"id": "local:7"},
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "success"})
-        mark_read.assert_called_once_with([7, 8])
+        self.assertEqual(response.json()["outcome"], "dismissed")
+        service.complete.assert_called_once_with("local:7")
 
     def test_market_route_delegates_and_validates_payload(self) -> None:
         market_payload = {

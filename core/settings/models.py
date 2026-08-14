@@ -38,7 +38,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 13
+SETTINGS_SCHEMA_VERSION: int = 14
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -260,6 +260,21 @@ class LlamaCppSettings(BaseModel):
     preset_path: str = ""
 
 
+class MicrosoftTodoSettings(BaseModel):
+    """One explicitly selected Microsoft To Do list for APEX reminders."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reminder_list_id: str = Field(default="", max_length=512)
+
+    @field_validator("reminder_list_id")
+    @classmethod
+    def _validate_reminder_list_id(cls, value: str) -> str:
+        if value and value != value.strip():
+            raise ValueError("reminder_list_id must be an opaque trimmed identifier")
+        return value
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -280,6 +295,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
+    microsoft_todo: MicrosoftTodoSettings = Field(default_factory=MicrosoftTodoSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -420,6 +436,21 @@ class LlamaCppPatch(BaseModel):
     preset_path: str | None = None
 
 
+class MicrosoftTodoPatch(BaseModel):
+    """Partial selected-list update for the Microsoft To Do reminder source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reminder_list_id: str | None = Field(default=None, max_length=512)
+
+    @field_validator("reminder_list_id")
+    @classmethod
+    def _validate_reminder_list_id(cls, value: str | None) -> str | None:
+        if value is not None and value and value != value.strip():
+            raise ValueError("reminder_list_id must be an opaque trimmed identifier")
+        return value
+
+
 class LlamaCppServerStatusResponse(BaseModel):
     """Sanitized llama.cpp server ownership status for the Settings UI."""
 
@@ -448,6 +479,7 @@ class SettingsPatch(BaseModel):
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None
     llama_cpp: LlamaCppPatch | None = None
+    microsoft_todo: MicrosoftTodoPatch | None = None
 
 
 class SettingsResponse(BaseModel):

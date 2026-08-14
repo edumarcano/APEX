@@ -239,37 +239,72 @@ class CreateReminderRequest(BaseModel):
     text: str = Field(
         ...,
         min_length=1,
-        max_length=4096,
-        description="Raw reminder text; sanitized before persistence.",
+        max_length=500,
+        description="Reminder title; sanitized before a local or approved Graph write.",
     )
 
 
 class CreateReminderResponse(BaseModel):
-    id: int = Field(
-        ...,
-        ge=1,
-        description="SQLite row ID of the persisted reminder.",
-    )
+    id: str | None = Field(default=None, description="Opaque todo: or local: reminder identifier when known.")
+    outcome: Literal["synced", "pending", "unknown"]
+    action_id: str | None = None
 
 
 class ReminderRecord(BaseModel):
-    id: int = Field(..., ge=1, description="SQLite row ID of the reminder.")
+    id: str = Field(description="Opaque todo: or local: reminder identifier.")
     note: str = Field(..., description="Sanitized reminder text.")
+    source: Literal["todo", "local"]
+    sync_state: Literal["synced", "pending", "unknown"]
 
 
-class MarkReadRequest(BaseModel):
-    ids: list[Annotated[int, Field(ge=1)]] = Field(
-        ...,
-        min_length=1,
-        description="Reminder row IDs to mark as read.",
-    )
+class ReminderListResponse(BaseModel):
+    items: list[ReminderRecord]
+    source_state: Literal["live", "stale", "unavailable"]
+    cache_timestamp: str | None = None
+    pending_sync_count: int = Field(ge=0)
 
 
-class MarkReadResponse(BaseModel):
-    status: str = Field(
-        default="success",
-        description="Outcome label for the mark-read operation.",
-    )
+class CompleteReminderRequest(BaseModel):
+    id: str = Field(min_length=3, max_length=520)
+
+
+class CompleteReminderResponse(BaseModel):
+    id: str
+    outcome: Literal["synced", "dismissed"]
+    action_id: str | None = None
+
+
+class SyncRemindersRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "SyncRemindersRequest":
+        if len(set(self.ids)) != len(self.ids):
+            raise ValueError("Reminder IDs must be unique.")
+        return self
+
+
+class SyncReminderResult(BaseModel):
+    id: str
+    outcome: Literal["synced", "failed", "unknown"]
+    action_id: str | None = None
+
+
+class SyncRemindersResponse(BaseModel):
+    items: list[SyncReminderResult]
+
+
+class DismissReminderRequest(BaseModel):
+    id: str = Field(min_length=3, max_length=520)
+
+
+class MicrosoftTodoReminderList(BaseModel):
+    id: str = Field(min_length=1, max_length=512)
+    display_name: str = Field(min_length=1, max_length=300)
+
+
+class MicrosoftTodoReminderListsResponse(BaseModel):
+    lists: list[MicrosoftTodoReminderList] = Field(max_length=50)
 
 
 ActionStatusResponse = Literal[

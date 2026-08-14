@@ -12,8 +12,8 @@ APEX is local-first, not entirely offline. This reference separates project-cont
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
 | Briefing synthesis | Typed bounded input is built locally | Panthera sends it to OpenAI; Apodemus sends it to the local llama.cpp router | Normal-mode transcript/digest in SQLite | Apodemus or Structured Digest |
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
-| Reminders | SQLite | No | Yes | Default behavior |
-| Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache only; tasks are not copied to SQLite | Leave integration disconnected |
+| Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Bounded task-title/identifier cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
+| Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, bounded selected-list cache, and sanitized action evidence | Leave integration disconnected |
 | Action controls | Frozen proposal, lifecycle state, bounded execution and verification evidence | A supported native action receives only its frozen arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger; bounded Microsoft To Do task actions require local approval and verification |
 | Voice | Transcript exists locally | Google receives text when Google TTS is used | No; generated audio is temporary | pyttsx3 or local Kokoro |
 | MCP tools | Manager and policy remain local | Enabled provider receives selected arguments | Provider authorization stays outside repository | Leave MCP disabled |
@@ -98,7 +98,7 @@ Acinonyx is a development-only Gemini sandbox with a browser history partition s
 
 Gmail tools can search bounded metadata and read one selected plain-text message under `gmail.readonly`. They exclude attachments, embedded resources, active HTML, and raw MIME and cannot send, delete, archive, or label mail.
 
-Microsoft To Do uses delegated `Tasks.ReadWrite`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. An Agent can propose bounded creation, update, completion, reopening, or deletion. Approved task fields and target identifiers are sent to Microsoft Graph only after local operator approval; the local action ledger retains frozen proposal arguments and sanitized list/task identifiers for audit and read-back verification. SQLite reminders remain authoritative.
+Microsoft To Do uses delegated `Tasks.ReadWrite`, a public/native device-code flow, and an encrypted operating-system authorization cache. Task titles, dates, list identifiers, and bounded metadata can reach the selected Agent when invoked. Approved task fields are sent to Microsoft Graph only after local operator approval; the local action ledger retains frozen proposal arguments and sanitized list/task identifiers for audit and read-back verification. The selected list is the reminder authority. SQLite retains at most one bounded snapshot per list (task ID, title, and modification timestamp) for stale display, plus retained local pending/unknown outbox rows.
 
 ## MCP providers
 

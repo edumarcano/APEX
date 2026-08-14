@@ -25,6 +25,7 @@ import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderQuickAdd } from './components/ReminderQuickAdd'
+import { ReminderReviewDialog } from './components/ReminderReviewDialog'
 import SettingsPanel from './components/SettingsPanel'
 import { HomeCommandRail } from './components/HomeCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -172,6 +173,7 @@ export default function App(): ReactElement {
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
   )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isReminderReviewOpen, setIsReminderReviewOpen] = useState(false)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
@@ -183,6 +185,7 @@ export default function App(): ReactElement {
   const apexData = useApexData()
   const {
     activeReminders,
+    reminderSourceState,
     createReminder,
     demoModeActive,
     devModeActive,
@@ -193,6 +196,8 @@ export default function App(): ReactElement {
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
     markReminderAsRead,
+    syncReminders,
+    dismissUnknownReminder,
     applyBootSettings,
   } = apexData
   const actions = useActions(
@@ -678,7 +683,7 @@ export default function App(): ReactElement {
 
   const primaryTemperatureF = weatherInfo.temperatureF
 
-  const handleMarkReminderRead = (id: number): void => {
+  const handleMarkReminderRead = (id: string): void => {
     void markReminderAsRead(id)
   }
 
@@ -1587,6 +1592,20 @@ export default function App(): ReactElement {
                       ))}
                     </ul>
                   )}
+                  {reminderSourceState && reminderSourceState !== 'live' ? (
+                    <p className="mt-2 font-mono text-[9px] uppercase tracking-wide text-amber-200">
+                      Reminder source: {reminderSourceState}
+                    </p>
+                  ) : null}
+                  {activeReminders.some((item) => item.source === 'local') ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsReminderReviewOpen(true)}
+                      className="mt-2 self-start font-mono text-[10px] uppercase tracking-wide text-[#9AC2FF] hover:text-white"
+                    >
+                      Review local reminders
+                    </button>
+                  ) : null}
                 </div>
               </TelemetryCard>
 
@@ -1650,7 +1669,15 @@ export default function App(): ReactElement {
             actions={actions}
             demoModeActive={demoModeActive}
           />
-        )}
+      )}
+      {isReminderReviewOpen ? (
+        <ReminderReviewDialog
+          reminders={activeReminders}
+          onClose={() => setIsReminderReviewOpen(false)}
+          onSync={syncReminders}
+          onDismissUnknown={dismissUnknownReminder}
+        />
+      ) : null}
       </div>
 
       <PreflightDialog

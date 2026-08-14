@@ -200,30 +200,39 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
 
 
 def collect_reminders() -> ConnectorResult:
-    """Collect pending reminders as a typed connector result."""
+    """Collect the selected-list reminder view through its sole service owner."""
     observed_at = utc_now_iso()
     try:
-        unread_records = database.fetch_unread_reminders()
-        notes = [str(note) for _, note in unread_records]
+        from core.reminders import get_reminder_service
+
+        service = get_reminder_service()
+        if service is None:
+            raise RuntimeError("Reminder service is unavailable.")
+        view = service.list()
+        notes = [str(item["note"]) for item in view.items]
         if notes:
             display = f"Pending Reminders: {', '.join(notes)}"
         else:
             display = "No pending reminders."
+        connector_status = "healthy" if view.source_state == "live" else "unavailable"
+        freshness = "live" if view.source_state == "live" else ("stale" if view.source_state == "stale" else "none")
         return ConnectorResult(
             name="reminders",
-            status="healthy",
-            freshness="live",
-            reason_code="ok",
+            status=connector_status,
+            freshness=freshness,
+            reason_code="ok" if view.source_state == "live" else view.source_state,
             observed_at=observed_at,
             display_text=display,
             data={
                 "count": len(notes),
                 "notes": notes,
-                "records": [{"id": row_id, "note": note} for row_id, note in unread_records],
+                "records": view.items,
+                "source_state": view.source_state,
+                "pending_sync_count": view.pending_sync_count,
             },
         )
-    except sqlite3.Error:
-        _LOGGER.warning("Reminders fetch failed: database_error")
+    except Exception:
+        _LOGGER.warning("Reminders fetch failed: reminder_service_unavailable")
         return ConnectorResult(
             name="reminders",
             status="unavailable",

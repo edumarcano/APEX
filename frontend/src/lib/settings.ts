@@ -298,6 +298,21 @@ function parseLlamaCppSettings(value: unknown): RuntimeSettings['llama_cpp'] | n
   }
 }
 
+function parseMicrosoftTodoSettings(value: unknown): RuntimeSettings['microsoft_todo'] | null {
+  if (value === undefined) {
+    return { reminder_list_id: '' }
+  }
+  if (!isRecord(value) || typeof value.reminder_list_id !== 'string') {
+    return null
+  }
+  if (value.reminder_list_id.length > 512 || (
+    value.reminder_list_id.length > 0 && value.reminder_list_id !== value.reminder_list_id.trim()
+  )) {
+    return null
+  }
+  return { reminder_list_id: value.reminder_list_id }
+}
+
 function parseMcpSettings(value: unknown): McpSettings | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' || !isRecord(value.servers)) {
     return null
@@ -418,11 +433,13 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const hasToolProfiles = isRecord(value.tool_profiles)
   const tool_profiles = parseToolProfiles(value.tool_profiles)
   const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
+  const microsoft_todo = parseMicrosoftTodoSettings(value.microsoft_todo)
   if (
     !features ||
     !modules ||
     !mcp ||
     !llama_cpp ||
+    !microsoft_todo ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -511,6 +528,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     },
     mcp,
     llama_cpp,
+    microsoft_todo,
   }
 }
 
@@ -558,6 +576,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
       },
     },
     llama_cpp: { ...settings.llama_cpp },
+    microsoft_todo: { ...settings.microsoft_todo },
   }
 }
 
@@ -708,6 +727,11 @@ export function diffSettingsPatch(
     patch.llama_cpp = llamaCpp
   }
 
+  const microsoftTodo = diffSection(baseline.microsoft_todo, draft.microsoft_todo)
+  if (microsoftTodo) {
+    patch.microsoft_todo = microsoftTodo
+  }
+
   return patch
 }
 
@@ -722,7 +746,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.briefing === undefined &&
     patch.voice === undefined &&
     patch.mcp === undefined &&
-    patch.llama_cpp === undefined
+    patch.llama_cpp === undefined &&
+    patch.microsoft_todo === undefined
   )
 }
 

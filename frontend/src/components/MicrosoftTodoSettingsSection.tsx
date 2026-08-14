@@ -18,9 +18,13 @@ const LABELS: Record<string, { value: string; tone: SettingsStatusTone }> = {
 export default function MicrosoftTodoSettingsSection({
   sectionId,
   runtime,
+  reminderListId = '',
+  onReminderListIdChange = () => undefined,
 }: {
   sectionId: string
   runtime: TodoRuntime
+  reminderListId?: string
+  onReminderListIdChange?: (value: string) => void
 }): ReactElement {
   const presentation = runtime.status
     ? LABELS[runtime.status.state]
@@ -32,7 +36,7 @@ export default function MicrosoftTodoSettingsSection({
     <section className="space-y-2.5" aria-labelledby={sectionId}>
       <SectionHeading id={sectionId} title="Microsoft To Do" />
       <p className="text-[11px] leading-relaxed text-zinc-500">
-        Lets the selected Agent read task lists and tasks with Tasks.ReadWrite. Bounded Microsoft To Do writes are proposed by an Agent and require local approval in Cortex. APEX reminders remain in the local SQLite ledger.
+        Lets the selected Agent read task lists and tasks with Tasks.ReadWrite. The selected list is the reminder authority; SQLite keeps only stale display data and pending offline reminders.
       </p>
       <div className="rounded-lg border border-white/5 bg-white/[0.015] p-2.5">
         <StatusRow label="Connection" value={presentation.value} tone={presentation.tone} />
@@ -81,6 +85,25 @@ export default function MicrosoftTodoSettingsSection({
             </button>
           ) : null}
         </div>
+        {connected ? (
+          <label className="mt-3 block text-[11px] text-zinc-400" htmlFor="settings-microsoft-todo-reminder-list">
+            Reminder list
+            <select
+              id="settings-microsoft-todo-reminder-list"
+              value={reminderListId}
+              onChange={(event) => onReminderListIdChange(event.target.value)}
+              className="mt-1 block w-full rounded-md border border-white/10 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100"
+            >
+              <option value="">No list selected</option>
+              {reminderListId && !runtime.lists.some((item) => item.id === reminderListId) ? (
+                <option value={reminderListId}>Saved list unavailable</option>
+              ) : null}
+              {runtime.lists.map((item) => (
+                <option key={item.id} value={item.id}>{item.display_name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
     </section>
   )

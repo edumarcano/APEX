@@ -19,6 +19,7 @@ describe('Microsoft To Do settings', () => {
           },
           loading: false,
           error: null,
+          lists: [],
           refresh: vi.fn(async () => undefined),
           connect: vi.fn(async () => undefined),
           disconnect: vi.fn(async () => undefined),
@@ -26,7 +27,7 @@ describe('Microsoft To Do settings', () => {
       />,
     )
     expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument()
-    expect(screen.getByText(/require local approval in Cortex/i)).toBeInTheDocument()
+    expect(screen.getByText(/selected list is the reminder authority/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open Microsoft sign-in/i })).toHaveAttribute(
       'href',
       'https://microsoft.com/devicelogin',
@@ -49,6 +50,7 @@ describe('Microsoft To Do settings', () => {
           authorization: null,
           loading: false,
           error: null,
+          lists: [],
           refresh: vi.fn(async () => undefined),
           connect: vi.fn(async () => undefined),
           disconnect: vi.fn(async () => undefined),

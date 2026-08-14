@@ -89,6 +89,9 @@
       }
     }
   },
+  "microsoft_todo": {
+    "reminder_list_id": ""
+  },
   "mcp": {
     "enabled": false,
     "servers": {

@@ -160,6 +160,35 @@ class DatabaseHistoryTests(unittest.TestCase):
         unread_after = database.fetch_unread_reminders()
         self.assertEqual(unread_after, [(second, "Review notes")])
 
+    def test_reminder_cutover_migrates_legacy_rows_without_deleting_them(self) -> None:
+        legacy_path = Path(self._temp_dir.name) / "legacy_reminders.db"
+        conn = sqlite3.connect(str(legacy_path))
+        try:
+            conn.execute(
+                "CREATE TABLE reminders (id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)"
+            )
+            conn.execute("INSERT INTO reminders(id, note, is_read) VALUES (1, 'Unread', 0)")
+            conn.execute("INSERT INTO reminders(id, note, is_read) VALUES (2, 'Read', 1)")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with mock.patch.object(database, "DB_NAME", str(legacy_path)):
+            database.initialize_db()
+            rows = database.fetch_local_reminders()
+            self.assertEqual(rows[0]["id"], 1)
+            self.assertEqual(rows[0]["sync_state"], "pending")
+            with database._connection() as migrated:
+                archived = migrated.execute(
+                    "SELECT sync_state FROM reminders WHERE id = 2"
+                ).fetchone()
+                self.assertEqual(archived[0], "dismissed")
+                self.assertIsNotNone(
+                    migrated.execute(
+                        "SELECT name FROM sqlite_master WHERE name = 'microsoft_todo_reminder_cache'"
+                    ).fetchone()
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

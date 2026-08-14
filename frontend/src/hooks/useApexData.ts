@@ -26,15 +26,17 @@ import {
 
 const STATUS_ENDPOINT = API_ENDPOINTS.status
 const REMINDERS_ENDPOINT = API_ENDPOINTS.reminders
-const REMINDERS_READ_ENDPOINT = API_ENDPOINTS.remindersRead
+const REMINDERS_COMPLETE_ENDPOINT = API_ENDPOINTS.remindersComplete
 const CONFIG_ENDPOINT = API_ENDPOINTS.config
 
 export type { ApexDataState } from '../types/telemetry'
 
 export type UseApexDataReturn = ApexDataState & {
   refreshReminders: () => Promise<void>
-  createReminder: (text: string) => Promise<void>
-  markReminderAsRead: (id: number) => Promise<void>
+  createReminder: (text: string) => Promise<'synced' | 'pending' | 'unknown'>
+  markReminderAsRead: (id: string) => Promise<void>
+  syncReminders: (ids: string[]) => Promise<Array<{ id: string; outcome: string }>>
+  dismissUnknownReminder: (id: string) => Promise<void>
   triggerSynthesis: () => Promise<void>
   applyBootSettings: (next: {
     agentQueriesEnabled: boolean
@@ -44,23 +46,45 @@ export type UseApexDataReturn = ApexDataState & {
 }
 
 type ReminderRecord = {
-  id: number
+  id: string
   note: string
+  source: 'todo' | 'local'
+  sync_state: 'synced' | 'pending' | 'unknown'
 }
 
-function parseReminderRecords(body: unknown): ReminderRecord[] {
-  if (!Array.isArray(body)) {
-    return []
+type ReminderEnvelope = {
+  items: ReminderRecord[]
+  source_state: 'live' | 'stale' | 'unavailable'
+  cache_timestamp: string | null
+  pending_sync_count: number
+}
+
+function parseReminderEnvelope(body: unknown): ReminderEnvelope | null {
+  if (!body || typeof body !== 'object') {
+    return null
   }
+  const envelope = body as Record<string, unknown>
+  if (!Array.isArray(envelope.items) || !['live', 'stale', 'unavailable'].includes(String(envelope.source_state))) return null
+  if (envelope.cache_timestamp !== null && typeof envelope.cache_timestamp !== 'string') return null
+  if (typeof envelope.pending_sync_count !== 'number') return null
 
   const records: ReminderRecord[] = []
-  for (const entry of body) {
+  for (const entry of envelope.items) {
     if (!entry || typeof entry !== 'object') continue
-    const row = entry as { id?: unknown; note?: unknown }
-    if (typeof row.id !== 'number' || typeof row.note !== 'string') continue
-    records.push({ id: row.id, note: row.note })
+    const row = entry as { id?: unknown; note?: unknown; source?: unknown; sync_state?: unknown }
+    if (
+      typeof row.id !== 'string' || typeof row.note !== 'string' ||
+      (row.source !== 'todo' && row.source !== 'local') ||
+      !['synced', 'pending', 'unknown'].includes(String(row.sync_state))
+    ) continue
+    records.push({ id: row.id, note: row.note, source: row.source as ReminderRecord['source'], sync_state: row.sync_state as ReminderRecord['sync_state'] })
   }
-  return records
+  return {
+    items: records,
+    source_state: envelope.source_state as ReminderEnvelope['source_state'],
+    cache_timestamp: envelope.cache_timestamp as string | null,
+    pending_sync_count: envelope.pending_sync_count,
+  }
 }
 
 function assembleRemindersTelemetry(records: ReminderRecord[]): string {
@@ -207,14 +231,14 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
 
 export { resolvePipelineTemperatureF, resolveWeatherCondition, resolveWeatherDetail } from '../lib/weatherTelemetry'
 
-async function fetchUnreadReminderRecords(): Promise<ReminderRecord[]> {
+async function fetchReminderEnvelope(): Promise<ReminderEnvelope | null> {
   const response = await fetch(REMINDERS_ENDPOINT)
   if (!response.ok) {
-    return []
+    return null
   }
 
   const body: unknown = await response.json()
-  return parseReminderRecords(body)
+  return parseReminderEnvelope(body)
 }
 
 function parseConnectorHealth(raw: unknown): ConnectorHealthEntry[] {
@@ -283,13 +307,14 @@ export function useApexData(): UseApexDataReturn {
 
   const synthesisAbortRef = useRef<AbortController | null>(null)
 
-  const applyReminderRecords = useCallback((records: ReminderRecord[]): void => {
-    const activeReminders = records.map((record) => ({ id: record.id, note: record.note }))
+  const applyReminderRecords = useCallback((records: ReminderRecord[], sourceState?: ApexDataState['reminderSourceState']): void => {
+    const activeReminders = records.map((record) => ({ ...record }))
     const reminders = assembleRemindersTelemetry(records)
 
     setState((prev) => ({
       ...prev,
       activeReminders,
+      ...(sourceState ? { reminderSourceState: sourceState } : {}),
       data: prev.data
         ? {
             ...prev.data,
@@ -326,15 +351,15 @@ export function useApexData(): UseApexDataReturn {
 
   const refreshReminders = useCallback(async (): Promise<void> => {
     try {
-      const records = await fetchUnreadReminderRecords()
-      applyReminderRecords(records)
+      const envelope = await fetchReminderEnvelope()
+      if (envelope) applyReminderRecords(envelope.items, envelope.source_state)
     } catch {
       // Reminder refresh is best-effort; preserve existing HUD state on failure.
     }
   }, [applyReminderRecords])
 
   const createReminder = useCallback(
-    async (text: string): Promise<void> => {
+    async (text: string): Promise<'synced' | 'pending' | 'unknown'> => {
       const response = await fetch(REMINDERS_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,13 +369,19 @@ export function useApexData(): UseApexDataReturn {
       if (!response.ok) {
         throw new Error(`Create reminder failed with status ${response.status}`)
       }
-
+      const body: unknown = await response.json()
+      const outcome = body && typeof body === 'object'
+        ? (body as { outcome?: unknown }).outcome
+        : null
       await refreshReminders()
+      return outcome === 'synced' || outcome === 'pending' || outcome === 'unknown'
+        ? outcome
+        : 'pending'
     },
     [refreshReminders],
   )
 
-  const markReminderAsRead = useCallback(async (id: number): Promise<void> => {
+  const markReminderAsRead = useCallback(async (id: string): Promise<void> => {
     let removedReminder: ActiveReminder | undefined
 
     setState((prev) => {
@@ -363,10 +394,7 @@ export function useApexData(): UseApexDataReturn {
       const nextActiveReminders = prev.activeReminders.filter(
         (reminder) => reminder.id !== id,
       )
-      const nextRecords: ReminderRecord[] = nextActiveReminders.map((reminder) => ({
-        id: reminder.id,
-        note: reminder.note,
-      }))
+      const nextRecords: ReminderRecord[] = nextActiveReminders.map((reminder) => ({ ...reminder }))
       const reminders = assembleRemindersTelemetry(nextRecords)
 
       return {
@@ -387,10 +415,10 @@ export function useApexData(): UseApexDataReturn {
     }
 
     try {
-      const response = await fetch(REMINDERS_READ_ENDPOINT, {
+      const response = await fetch(REMINDERS_COMPLETE_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [id] }),
+        body: JSON.stringify({ id }),
       })
 
       if (!response.ok) {
@@ -404,13 +432,8 @@ export function useApexData(): UseApexDataReturn {
           return prev
         }
 
-        const restored = [...prev.activeReminders, removedReminder!].sort(
-          (a, b) => a.id - b.id,
-        )
-        const nextRecords: ReminderRecord[] = restored.map((reminder) => ({
-          id: reminder.id,
-          note: reminder.note,
-        }))
+        const restored = [...prev.activeReminders, removedReminder!].sort((a, b) => a.id.localeCompare(b.id))
+        const nextRecords: ReminderRecord[] = restored.map((reminder) => ({ ...reminder }))
         const reminders = assembleRemindersTelemetry(nextRecords)
 
         return {
@@ -427,6 +450,33 @@ export function useApexData(): UseApexDataReturn {
       })
     }
   }, [])
+
+  const syncReminders = useCallback(async (ids: string[]): Promise<Array<{ id: string; outcome: string }>> => {
+    const response = await fetch(API_ENDPOINTS.remindersSync, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    if (!response.ok) throw new Error(`Reminder sync failed with status ${response.status}`)
+    const body: unknown = await response.json()
+    await refreshReminders()
+    if (!body || typeof body !== 'object' || !Array.isArray((body as { items?: unknown }).items)) return []
+    return (body as { items: unknown[] }).items.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const row = item as { id?: unknown; outcome?: unknown }
+      return typeof row.id === 'string' && typeof row.outcome === 'string'
+        ? [{ id: row.id, outcome: row.outcome }]
+        : []
+    })
+  }, [refreshReminders])
+
+  const dismissUnknownReminder = useCallback(async (id: string): Promise<void> => {
+    const response = await fetch(API_ENDPOINTS.remindersDismiss, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (!response.ok) throw new Error(`Reminder dismissal failed with status ${response.status}`)
+    await refreshReminders()
+  }, [refreshReminders])
 
   const triggerSynthesis = useCallback(async (): Promise<void> => {
     const { status, isPipelinePolling } = stateRef.current
@@ -549,12 +599,12 @@ export function useApexData(): UseApexDataReturn {
 
       let reminderRecords: ReminderRecord[] = []
       try {
-        reminderRecords = await fetchUnreadReminderRecords()
+        reminderRecords = (await fetchReminderEnvelope())?.items ?? []
       } catch {
         reminderRecords = []
       }
 
-      const activeReminders = reminderRecords.map((record) => ({ id: record.id, note: record.note }))
+      const activeReminders = reminderRecords.map((record) => ({ ...record }))
       const reminders = assembleRemindersTelemetry(reminderRecords)
 
       const weatherDetail = resolveWeatherDetail(weatherReport)
@@ -750,13 +800,14 @@ export function useApexData(): UseApexDataReturn {
         }
 
         const body: unknown = await remindersResp.json()
-        const records = parseReminderRecords(body)
+        const reminderEnvelope = parseReminderEnvelope(body)
+        const records = reminderEnvelope?.items ?? []
 
         if (signal.aborted) {
           return
         }
 
-        const activeReminders = records.map((record) => ({ id: record.id, note: record.note }))
+        const activeReminders = records.map((record) => ({ ...record }))
         const reminders = assembleRemindersTelemetry(records)
 
         setState((prev) => {
@@ -768,6 +819,7 @@ export function useApexData(): UseApexDataReturn {
             ...prev,
             status: 'idle',
             activeReminders,
+            ...(reminderEnvelope ? { reminderSourceState: reminderEnvelope.source_state } : {}),
             ...(defaultAgent !== undefined ? { defaultAgent } : {}),
             ...(agentInitialSelection !== undefined
               ? { agentInitialSelection }
@@ -910,6 +962,8 @@ export function useApexData(): UseApexDataReturn {
     refreshReminders,
     createReminder,
     markReminderAsRead,
+    syncReminders,
+    dismissUnknownReminder,
     triggerSynthesis,
     applyBootSettings,
   }

@@ -32,6 +32,7 @@ from core import database, speaker
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
+from core.reminders import ReminderService, set_reminder_service
 from core.settings.store import get_settings_store
 
 load_dotenv(dotenv_path=ENV_PATH)
@@ -45,13 +46,17 @@ async def _app_lifespan(_app: FastAPI):
     configure_logging()
     idle_model_task: asyncio.Task[None] | None = None
     mcp_manager: MCPClientManager | None = None
-    microsoft_auth = MicrosoftTodoAuthenticationService()
-    await microsoft_auth.initialize()
-    microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
-    set_microsoft_auth_service(microsoft_auth)
-    set_microsoft_todo_client(microsoft_todo_client)
-    database.initialize_db()
+    microsoft_auth: MicrosoftTodoAuthenticationService | None = None
+    microsoft_todo_client: MicrosoftTodoClient | None = None
     if not DEMO_MODE:
+        microsoft_auth = MicrosoftTodoAuthenticationService()
+        await microsoft_auth.initialize()
+        microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
+        set_microsoft_auth_service(microsoft_auth)
+        set_microsoft_todo_client(microsoft_todo_client)
+    database.initialize_db(include_actions=not DEMO_MODE)
+    if not DEMO_MODE:
+        assert microsoft_todo_client is not None
         action_service = ActionService()
         action_service.register_handler(
             "create_microsoft_todo_task",
@@ -75,6 +80,9 @@ async def _app_lifespan(_app: FastAPI):
             )
         action_service.recover_interrupted()
         set_action_service(action_service)
+        reminder_service = ReminderService(microsoft_todo_client, action_service)
+        reminder_service.reconcile()
+        set_reminder_service(reminder_service)
     get_settings_store()
     speaker.initialize()
 
@@ -127,10 +135,12 @@ async def _app_lifespan(_app: FastAPI):
                         _LOGGER.exception("Error while stopping owned llama.cpp process")
                 finally:
                     try:
-                        await microsoft_auth.shutdown()
+                        if microsoft_auth is not None:
+                            await microsoft_auth.shutdown()
                     finally:
                         try:
-                            microsoft_todo_client.close()
+                            if microsoft_todo_client is not None:
+                                microsoft_todo_client.close()
                         finally:
                             set_microsoft_todo_client(None)
                             set_microsoft_auth_service(None)
@@ -139,6 +149,7 @@ async def _app_lifespan(_app: FastAPI):
                             finally:
                                 set_connector_http_sessions(None)
                                 set_action_service(None)
+                                set_reminder_service(None)
                                 if idle_model_task is not None:
                                     idle_model_task.cancel()
                                     try:

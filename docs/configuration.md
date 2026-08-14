@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `13`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `14`.
 
 | Group | Editable values |
 |---|---|
@@ -105,7 +105,7 @@ Disabling a connector prevents its network or authentication attempt and exclude
 | News | GNews key | AI and global-events headlines |
 | Gmail | Google desktop OAuth | Read-only primary inbox and Agent search/read tools |
 | Calendar | Google desktop OAuth | Seven-day telemetry horizon and Agent tools |
-| Reminders | SQLite | Always local; independent of Microsoft To Do |
+| Reminders | Selected Microsoft To Do list, when configured | SQLite is a bounded stale cache and offline/local queue; no list is selected automatically |
 | Market | Alpha Vantage key plus Runtime Settings symbols | End-of-day data; absent configuration returns an empty not-configured state |
 
 Football telemetry keeps each configured team's next fixture. Briefing synthesis receives only the earliest eligible fixture within seven days.
@@ -258,7 +258,7 @@ Changing scopes requires reauthorization. Both files are gitignored and must rem
 
 Register a public/native Microsoft Entra application, enable device-code flow, grant delegated `Tasks.ReadWrite`, and configure the client ID documented in `.env.example`. The tenant defaults to `common`. Existing `Tasks.Read` authorizations must reconnect to grant the expanded permission.
 
-APEX stores the authorization cache through encrypted operating-system persistence unless an explicit machine path is configured. Agents can propose bounded Microsoft To Do create, update, completion, reopening, and deletion actions; local approval and exact verification are required before they become verified. SQLite reminders remain authoritative for the HUD and briefings.
+APEX stores the authorization cache through encrypted operating-system persistence unless an explicit machine path is configured. Runtime Settings exposes `microsoft_todo.reminder_list_id`, an optional opaque identifier selected from the connected account's lists. APEX never selects or clears this value automatically. Once selected, its newest 50 incomplete tasks are authoritative for Home and briefings; SQLite keeps only a cache for stale display and pending/uncertain local rows. Agents can propose bounded Microsoft To Do actions; local approval and exact verification are required before they become verified.
 
 ## MCP providers
 

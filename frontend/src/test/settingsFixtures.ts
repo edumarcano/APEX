@@ -70,6 +70,9 @@ export const BASE_SETTINGS: RuntimeSettings = {
     executable_path: '',
     preset_path: '',
   },
+  microsoft_todo: {
+    reminder_list_id: '',
+  },
 }
 
 export function buildSettingsResponse(
