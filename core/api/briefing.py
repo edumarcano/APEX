@@ -193,16 +193,48 @@ def _build_synthesis_input(
     if weather and weather.status != "unavailable":
         weather_summary = weather.display_text or None
         if weather_data.get("temp_f") is not None and weather_data.get("condition"):
-            weather_summary = (
-                f"Current temperature is {weather_data['temp_f']} degrees "
-                f"with {weather_data['condition']}."
-            )
+            temp = weather_data["temp_f"]
+            cond = weather_data["condition"]
+            apparent = weather_data.get("apparent_temp_f")
+            t_max = weather_data.get("temp_max_f")
+            t_min = weather_data.get("temp_min_f")
+            prob = weather_data.get("precip_probability_max")
+
+            parts = [f"Current temperature is {temp} degrees"]
+            if apparent is not None and apparent != temp:
+                parts.append(f"(feels like {apparent})")
+            parts.append(f"with {cond}.")
+            if t_max is not None and t_min is not None:
+                parts.append(f"High {t_max}, low {t_min}.")
+            if isinstance(prob, (int, float)) and prob >= 30:
+                parts.append(f"{int(prob)}% chance of rain.")
+            weather_summary = " ".join(parts)
 
     return SynthesisInput(
         weather_summary=weather_summary,
         weather_temp_f=(
             int(weather_data["temp_f"])
             if isinstance(weather_data, dict) and isinstance(weather_data.get("temp_f"), (int, float))
+            else None
+        ),
+        weather_apparent_temp_f=(
+            int(weather_data["apparent_temp_f"])
+            if isinstance(weather_data, dict) and isinstance(weather_data.get("apparent_temp_f"), (int, float))
+            else None
+        ),
+        weather_temp_max_f=(
+            int(weather_data["temp_max_f"])
+            if isinstance(weather_data, dict) and isinstance(weather_data.get("temp_max_f"), (int, float))
+            else None
+        ),
+        weather_temp_min_f=(
+            int(weather_data["temp_min_f"])
+            if isinstance(weather_data, dict) and isinstance(weather_data.get("temp_min_f"), (int, float))
+            else None
+        ),
+        weather_precip_probability=(
+            int(weather_data["precip_probability_max"])
+            if isinstance(weather_data, dict) and isinstance(weather_data.get("precip_probability_max"), (int, float))
             else None
         ),
         weather_condition=(

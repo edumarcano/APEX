@@ -72,6 +72,15 @@ export type WeatherConditionArchetype =
   | 'rain'
   | 'thunderstorm'
 
+export interface WeatherTimelinePoint {
+  label: string
+  time: string
+  temp_f: number | null
+  condition: string
+  archetype: WeatherConditionArchetype
+  precip_prob: number
+}
+
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
 export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'

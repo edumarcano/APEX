@@ -71,6 +71,10 @@ class ConnectorHealthFact(BaseModel):
 class SynthesisInput(BaseModel):
     weather_summary: str | None = None
     weather_temp_f: int | None = None
+    weather_apparent_temp_f: int | None = None
+    weather_temp_max_f: int | None = None
+    weather_temp_min_f: int | None = None
+    weather_precip_probability: int | None = None
     weather_condition: str | None = None
     email_unread_count: int = Field(default=0, ge=0)
     email_recent_subjects: list[str] = Field(default_factory=list)

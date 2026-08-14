@@ -13,15 +13,29 @@ import type { ReactElement, ReactNode } from 'react'
 
 import type { ActiveReminder, ToolOutputItem } from '../types/telemetry'
 
+interface WeatherCurrentConditions {
+  temp_f: number
+  apparent_temp_f?: number
+  humidity_pct?: number
+  wind_speed_mph?: number
+  condition: string
+  archetype?: string
+}
+
 interface WeatherForecastDay {
   date: string
   temp_max: number
   temp_min: number
   condition: string
+  precip_probability_max?: number
+  precip_sum_in?: number
+  wind_speed_max_mph?: number
+  uv_index_max?: number
 }
 
 interface WeatherForecastPayload {
   location?: string
+  current?: WeatherCurrentConditions
   forecast?: WeatherForecastDay[]
   error?: string
 }
@@ -276,6 +290,22 @@ function parseWeatherForecastPayload(output: unknown): WeatherForecastPayload | 
     return { error: output.error }
   }
 
+  let current: WeatherCurrentConditions | undefined
+  if (isRecord(output.current)) {
+    const tempF = typeof output.current.temp_f === 'number' && Number.isFinite(output.current.temp_f) ? output.current.temp_f : null
+    const condition = typeof output.current.condition === 'string' ? output.current.condition : null
+    if (tempF !== null && condition) {
+      current = {
+        temp_f: tempF,
+        condition,
+        apparent_temp_f: typeof output.current.apparent_temp_f === 'number' && Number.isFinite(output.current.apparent_temp_f) ? output.current.apparent_temp_f : undefined,
+        humidity_pct: typeof output.current.humidity_pct === 'number' && Number.isFinite(output.current.humidity_pct) ? output.current.humidity_pct : undefined,
+        wind_speed_mph: typeof output.current.wind_speed_mph === 'number' && Number.isFinite(output.current.wind_speed_mph) ? output.current.wind_speed_mph : undefined,
+        archetype: typeof output.current.archetype === 'string' ? output.current.archetype : undefined,
+      }
+    }
+  }
+
   const forecast = Array.isArray(output.forecast)
     ? output.forecast
         .map((entry): WeatherForecastDay | null => {
@@ -303,6 +333,10 @@ function parseWeatherForecastPayload(output: unknown): WeatherForecastPayload | 
             temp_max: tempMax,
             temp_min: tempMin,
             condition,
+            precip_probability_max: typeof entry.precip_probability_max === 'number' && Number.isFinite(entry.precip_probability_max) ? entry.precip_probability_max : undefined,
+            precip_sum_in: typeof entry.precip_sum_in === 'number' && Number.isFinite(entry.precip_sum_in) ? entry.precip_sum_in : undefined,
+            wind_speed_max_mph: typeof entry.wind_speed_max_mph === 'number' && Number.isFinite(entry.wind_speed_max_mph) ? entry.wind_speed_max_mph : undefined,
+            uv_index_max: typeof entry.uv_index_max === 'number' && Number.isFinite(entry.uv_index_max) ? entry.uv_index_max : undefined,
           }
         })
         .filter((entry): entry is WeatherForecastDay => entry !== null)
@@ -310,6 +344,7 @@ function parseWeatherForecastPayload(output: unknown): WeatherForecastPayload | 
 
   return {
     location: typeof output.location === 'string' ? output.location : undefined,
+    current,
     forecast,
   }
 }
@@ -773,10 +808,34 @@ function WeatherForecastCard({
       durationMs={durationMs}
       accentClass="text-[#7EB3FF]"
     >
-      {payload.location ? (
-        <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-          {payload.location}
-        </p>
+      {payload.location || payload.current ? (
+        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
+          {payload.location ? (
+            <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-400">
+              {payload.location}
+            </p>
+          ) : null}
+          {payload.current ? (
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span className="font-semibold text-white">
+                {payload.current.temp_f}°
+              </span>
+              <span className="text-[11px] capitalize text-zinc-300">
+                {payload.current.condition}
+              </span>
+              {payload.current.apparent_temp_f != null ? (
+                <span className="text-[10px] text-zinc-500">
+                  (feels {payload.current.apparent_temp_f}°)
+                </span>
+              ) : null}
+              {payload.current.wind_speed_mph != null ? (
+                <span className="text-[10px] text-zinc-400">
+                  💨 {payload.current.wind_speed_mph}mph
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <ul className={LIST_SCROLL}>
         {days.length === 0 ? (
@@ -787,17 +846,30 @@ function WeatherForecastCard({
               key={day.date}
               className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="font-mono text-[11px] uppercase tracking-wide text-zinc-400">
                   {formatDisplayDate(day.date)}
                 </p>
-                <span className="mt-1 inline-flex rounded-full border border-[#0F4DB8]/30 bg-[#0F4DB8]/10 px-2 py-0.5 text-[10px] capitalize text-[#7EB3FF]">
-                  {day.condition}
-                </span>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex rounded-full border border-[#0F4DB8]/30 bg-[#0F4DB8]/10 px-2 py-0.5 text-[10px] capitalize text-[#7EB3FF]">
+                    {day.condition}
+                  </span>
+                  {day.precip_probability_max != null && day.precip_probability_max > 0 ? (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-[#7EB3FF]">
+                      <span>💧</span>
+                      <span>{day.precip_probability_max}%</span>
+                    </span>
+                  ) : null}
+                  {day.wind_speed_max_mph != null ? (
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      💨 {day.wind_speed_max_mph}mph
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="shrink-0 text-right font-mono text-xs">
-                <p className="text-[#FBBF24]">{Math.round(day.temp_max)}°</p>
-                <p className="text-zinc-500">{Math.round(day.temp_min)}°</p>
+                <p className="text-[#FBBF24]">▲ {Math.round(day.temp_max)}°</p>
+                <p className="text-zinc-500">▼ {Math.round(day.temp_min)}°</p>
               </div>
             </li>
           ))

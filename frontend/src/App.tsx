@@ -56,7 +56,7 @@ import {
   resolveOuterShellActivity,
 } from './lib/logoVisualState'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
-import { resolveWeatherFromModule } from './lib/weatherTelemetry'
+import { DEFAULT_WEATHER_INFO, resolveWeatherFromModule } from './lib/weatherTelemetry'
 import {
   filterAgentSettingsForDevMode,
   parseSettingsResponse,
@@ -691,7 +691,7 @@ export default function App(): ReactElement {
 
   const weatherInfo = weatherModule
     ? resolveWeatherFromModule(weatherModule)
-    : { temperatureF: null, detail: '', condition: null }
+    : DEFAULT_WEATHER_INFO
   const weatherBody = (() => {
     const detail = weatherInfo.detail.trim()
     if (detail.length > 0) {
@@ -1266,6 +1266,11 @@ export default function App(): ReactElement {
                   title="Weather"
                   icon={CloudSun}
                   primaryTemperatureF={primaryTemperatureF}
+                  apparentTemperatureF={weatherInfo.apparentTempF}
+                  tempMaxF={weatherInfo.tempMaxF}
+                  tempMinF={weatherInfo.tempMinF}
+                  windSpeedMph={weatherInfo.windSpeedMph}
+                  weatherTimeline={weatherInfo.timeline}
                   weatherCondition={weatherInfo.condition}
                   ledState={weatherLedState}
                   onRefresh={() => handleRefreshConnector('weather')}

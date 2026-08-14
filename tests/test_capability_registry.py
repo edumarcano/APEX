@@ -162,7 +162,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         )
         self.assertEqual(
             ollama_schema["function"]["parameters"]["properties"]["days"]["maximum"],
-            5,
+            14,
         )
 
     def test_invoke_clamps_integer_bounds_and_applies_defaults(self) -> None:
@@ -173,7 +173,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             result = invoke_capability("get_weather_forecast", {"days": 99})
 
         self.assertEqual(result, {"location": "test", "forecast": []})
-        fetch_mock.assert_called_once_with(5)
+        fetch_mock.assert_called_once_with(location=None, days=14)
 
         with mock.patch(
             "core.agent.tools.fetch_weather_forecast",
@@ -181,7 +181,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         ) as fetch_mock:
             invoke_capability("get_weather_forecast", {})
 
-        fetch_mock.assert_called_once_with(5)
+        fetch_mock.assert_called_once_with(location=None, days=5)
 
     def test_invoke_invalid_input_and_unavailable_categories(self) -> None:
         with self.assertRaises(CapabilityError) as missing:
