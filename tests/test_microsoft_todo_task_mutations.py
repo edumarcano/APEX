@@ -217,6 +217,25 @@ class MicrosoftTodoTaskMutationTests(unittest.TestCase):
             self.assertIs(request.due, UNSET)
             self.assertIs(request.importance, UNSET)
 
+    def test_repeated_completion_of_completed_task_is_verified_without_another_patch(self) -> None:
+        capability = "complete_microsoft_todo_task"
+        completed = _task(status="completed", is_completed=True)
+        client = _Client(reads=[completed, completed])
+        self._register(client, capability)
+        action = self._action(capability)
+        approved = self.service.approve(action.action_id, actor="operator")
+
+        result = self.service.claim_and_execute(
+            action.action_id, actor="executor", expected_version=approved.version
+        )
+
+        self.assertEqual(result.status, "verified")
+        self.assertEqual([call[0] for call in client.calls], ["get", "get"])
+        self.assertEqual(
+            self.service.events(action.action_id)[-2].result_code,
+            "microsoft_todo_task_already_completed",
+        )
+
     def test_update_converts_each_sparse_field_without_defaults(self) -> None:
         capability = "update_microsoft_todo_task"
         cases = (

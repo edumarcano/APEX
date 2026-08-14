@@ -17,6 +17,7 @@ from core.api.models import (
     LocalLoadResponse,
     LocalUnloadResponse,
 )
+from core.reminders.service import ReminderServiceError
 
 
 class ApiPackageCompatibilityTests(unittest.TestCase):
@@ -148,6 +149,32 @@ class ExtractedRouterHttpTests(unittest.TestCase):
             self.client.post("/api/v1/reminders/update", json={
                 "id": "todo:task-7", "last_modified_at": "stamp-7",
             }).raise_for_status()
+
+    def test_reminder_task_mutation_errors_preserve_status_and_action_id(self) -> None:
+        service = mock.Mock()
+        payload = {
+            "id": "todo:task-7", "last_modified_at": "stamp-7", "title": "Review branch",
+        }
+        cases = (
+            ("reminder_not_found", 404),
+            ("reminder_target_changed", 409),
+            ("microsoft_todo_unavailable", 503),
+            ("microsoft_todo_mutation_failed", 502),
+        )
+        with mock.patch(
+            "core.api.routers.reminders.DEMO_MODE", False
+        ), mock.patch(
+            "core.api.routers.reminders.get_reminder_service", return_value=service,
+        ):
+            for code, expected_status in cases:
+                service.update_task.side_effect = ReminderServiceError(
+                    code, action_id=f"action-{code}"
+                )
+                response = self.client.post("/api/v1/reminders/update", json=payload)
+                self.assertEqual(response.status_code, expected_status)
+                self.assertEqual(response.json()["detail"], {
+                    "code": code, "action_id": f"action-{code}"
+                })
 
     def test_market_route_delegates_and_validates_payload(self) -> None:
         market_payload = {

@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactElement,
@@ -14,6 +15,7 @@ import type {
   ReminderTaskMutationResult,
   ReminderTaskUpdateRequest,
 } from '../hooks/useApexData'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 type ReminderTaskDialogProps = {
   id: string
@@ -47,6 +49,9 @@ export function ReminderTaskDialog({
   const [timeZone, setTimeZone] = useState('UTC')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useFocusTrap(true, dialogRef)
 
   useEffect(() => {
     let cancelled = false
@@ -137,10 +142,12 @@ export function ReminderTaskDialog({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="w-full max-w-md rounded-xl border border-white/15 bg-zinc-950 p-4 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="reminder-task-dialog-title"
+        tabIndex={-1}
       >
         <header className="flex items-center justify-between gap-3">
           <h2 id="reminder-task-dialog-title" className="font-orbitron text-xs uppercase tracking-[0.14em] text-zinc-100">

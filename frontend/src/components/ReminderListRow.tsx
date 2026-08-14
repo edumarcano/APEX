@@ -21,14 +21,20 @@ export function ReminderListRow({
   const [isDismissing, setIsDismissing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
     const close = (event: PointerEvent): void => {
       if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMenuOpen(false)
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMenuOpen(false)
+        menuTriggerRef.current?.focus()
+      }
     }
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', onKeyDown)
@@ -41,18 +47,10 @@ export function ReminderListRow({
   const handleComplete = useCallback((): void => {
     if (isDismissing) return
     setIsDismissing(true)
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      onMarkRead(reminder.id)
-    }
+    // Start the mutation independently of the exit animation. CSS transition
+    // events are presentation details and must not gate the remote write.
+    onMarkRead(reminder.id)
   }, [isDismissing, onMarkRead, reminder.id])
-
-  const handleTransitionEnd = useCallback(
-    (event: React.TransitionEvent<HTMLLIElement>): void => {
-      if (!isDismissing || event.propertyName !== 'opacity') return
-      onMarkRead(reminder.id)
-    },
-    [isDismissing, onMarkRead, reminder.id],
-  )
 
   return (
     <li
@@ -62,7 +60,6 @@ export function ReminderListRow({
           ? 'max-h-0 overflow-hidden opacity-0 py-0'
           : 'max-h-16 overflow-visible opacity-100',
       ].join(' ')}
-      onTransitionEnd={handleTransitionEnd}
     >
       <div className="flex items-center gap-3 px-3 py-2">
         <span className="hud-log-index w-5 pt-0">
@@ -81,6 +78,7 @@ export function ReminderListRow({
         {reminder.source === 'todo' && onEdit && onDelete ? (
           <div ref={menuRef} className="relative shrink-0">
             <button
+              ref={menuTriggerRef}
               type="button"
               onClick={() => setMenuOpen((open) => !open)}
               disabled={isDismissing}
@@ -93,8 +91,8 @@ export function ReminderListRow({
             </button>
             {menuOpen ? (
               <div role="menu" aria-label={`Reminder actions for ${reminder.note}`} className="absolute right-0 top-8 z-20 w-28 rounded-md border border-white/15 bg-zinc-950 p-1 shadow-xl">
-                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onEdit(reminder.id) }} className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--hud-accent)]">Edit</button>
-                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onDelete(reminder.id) }} className="block w-full rounded px-2 py-1.5 text-left text-xs text-red-200 hover:bg-red-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300">Delete</button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); menuTriggerRef.current?.focus(); onEdit(reminder.id) }} className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--hud-accent)]">Edit</button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); menuTriggerRef.current?.focus(); onDelete(reminder.id) }} className="block w-full rounded px-2 py-1.5 text-left text-xs text-red-200 hover:bg-red-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300">Delete</button>
               </div>
             ) : null}
           </div>

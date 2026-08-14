@@ -172,7 +172,11 @@ async function responseFailure(response: Response, fallback: string): Promise<Er
     const body: unknown = await response.json()
     const detail = body && typeof body === 'object' ? (body as { detail?: unknown }).detail : null
     if (detail && typeof detail === 'object' && typeof (detail as { code?: unknown }).code === 'string') {
-      return new Error((detail as { code: string }).code)
+      const error = new Error((detail as { code: string }).code) as Error & { actionId?: string }
+      if (typeof (detail as { action_id?: unknown }).action_id === 'string') {
+        error.actionId = (detail as { action_id: string }).action_id
+      }
+      return error
     }
   } catch {
     // Fall through to a stable local message.
@@ -399,6 +403,7 @@ export function useApexData(): UseApexDataReturn {
   stateRef.current = state
 
   const synthesisAbortRef = useRef<AbortController | null>(null)
+  const reminderRefreshSequenceRef = useRef(0)
 
   const applyReminderRecords = useCallback((records: ReminderRecord[], sourceState?: ApexDataState['reminderSourceState']): void => {
     const activeReminders = records.map((record) => ({ ...record }))
@@ -443,8 +448,10 @@ export function useApexData(): UseApexDataReturn {
   )
 
   const refreshReminders = useCallback(async (): Promise<void> => {
+    const requestSequence = ++reminderRefreshSequenceRef.current
     try {
       const envelope = await fetchReminderEnvelope()
+      if (requestSequence !== reminderRefreshSequenceRef.current) return
       if (envelope) applyReminderRecords(envelope.items, envelope.source_state)
     } catch {
       // Reminder refresh is best-effort; preserve existing HUD state on failure.
@@ -476,6 +483,10 @@ export function useApexData(): UseApexDataReturn {
 
   const markReminderAsRead = useCallback(async (id: string): Promise<void> => {
     let removedReminder: ActiveReminder | undefined
+
+    // Invalidate an older list read before starting the mutation. Otherwise an
+    // in-flight response captured before completion could restore the task.
+    ++reminderRefreshSequenceRef.current
 
     setState((prev) => {
       const target = prev.activeReminders.find((reminder) => reminder.id === id)
@@ -515,8 +526,9 @@ export function useApexData(): UseApexDataReturn {
       })
 
       if (!response.ok) {
-        throw new Error(`Mark read failed with status ${response.status}`)
+        throw await responseFailure(response, 'Could not complete reminder.')
       }
+      await refreshReminders()
     } catch (error) {
       console.warn('Failed to mark reminder as read; restoring local state.', error)
 
@@ -538,11 +550,12 @@ export function useApexData(): UseApexDataReturn {
                 activeReminders: restored,
                 reminders,
               }
-            : prev.data,
+          : prev.data,
         }
       })
+      throw error
     }
-  }, [])
+  }, [refreshReminders])
 
   const getReminderTask = useCallback(async (id: string): Promise<ReminderTaskDetail> => {
     const response = await fetch(API_ENDPOINTS.reminderTask(id))

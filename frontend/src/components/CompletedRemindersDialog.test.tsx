@@ -19,6 +19,7 @@ describe('CompletedRemindersDialog', () => {
     render(<CompletedRemindersDialog onClose={vi.fn()} onLoad={onLoad} onReopen={onReopen} />)
 
     expect(await screen.findByText('Archive notes')).toBeInTheDocument()
+    expect(screen.getByText(/Completed 2026-08-14 09:00:00 \(UTC\)/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Reopen' }))
     await waitFor(() => expect(onReopen).toHaveBeenCalledWith({ id: completedTask.id, last_modified_at: 'stamp-done' }))
     expect(screen.queryByText('Archive notes')).not.toBeInTheDocument()
@@ -36,5 +37,27 @@ describe('CompletedRemindersDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Reopen' }))
     expect(await screen.findByText(/action-uncertain/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reopen' })).toBeDisabled()
+  })
+
+  it('traps focus and restores the opener after Escape', async () => {
+    const user = userEvent.setup()
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    let closeDialog = (): void => undefined
+    const rendered = render(
+      <CompletedRemindersDialog
+        onClose={() => closeDialog()}
+        onLoad={vi.fn().mockResolvedValue({ items: [], source_state: 'live' })}
+        onReopen={vi.fn()}
+      />,
+    )
+    closeDialog = rendered.unmount
+
+    expect(await screen.findByRole('heading', { name: 'Completed reminders' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog') as HTMLElement).toContainElement(document.activeElement as HTMLElement)
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveFocus()
+    opener.remove()
   })
 })

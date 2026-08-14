@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,8 +9,7 @@ afterEach(() => {
 })
 
 describe('ReminderListRow', () => {
-  it('submits completion immediately when reduced motion disables the exit transition', async () => {
-    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
+  it('submits completion immediately without waiting for the exit transition', async () => {
     const user = userEvent.setup()
     const onMarkRead = vi.fn()
 
@@ -28,11 +27,10 @@ describe('ReminderListRow', () => {
     expect(onMarkRead).toHaveBeenCalledWith('todo:task-1')
   })
 
-  it('keeps the normal motion path tied to the opacity transition', async () => {
-    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }))
+  it('does not require a transition event before submitting completion', async () => {
     const user = userEvent.setup()
     const onMarkRead = vi.fn()
-    const { container } = render(
+    render(
       <ReminderListRow
         reminder={{ id: 'local:7', note: 'Review notes', source: 'local', sync_state: 'pending' }}
         index={0}
@@ -41,8 +39,7 @@ describe('ReminderListRow', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Complete reminder local:7' }))
-    expect(onMarkRead).not.toHaveBeenCalled()
-    fireEvent.transitionEnd(container.querySelector('li')!, { propertyName: 'opacity' })
+    expect(onMarkRead).toHaveBeenCalledOnce()
     expect(onMarkRead).toHaveBeenCalledWith('local:7')
   })
 
@@ -62,13 +59,30 @@ describe('ReminderListRow', () => {
 
     expect(screen.getByRole('button', { name: 'Complete reminder todo:task-1' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Manage reminder todo:task-1' }))
-    const row = screen.getByRole('menu').closest('li')
-    expect(row).toHaveClass('overflow-visible')
-    expect(row).not.toHaveClass('overflow-hidden')
     await user.click(screen.getByRole('menuitem', { name: 'Edit' }))
     expect(onEdit).toHaveBeenCalledWith('todo:task-1')
     await user.click(screen.getByRole('button', { name: 'Manage reminder todo:task-1' }))
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
     expect(onDelete).toHaveBeenCalledWith('todo:task-1')
+  })
+
+  it('moves focus into the menu and restores it on Escape', async () => {
+    const user = userEvent.setup()
+    render(
+      <ReminderListRow
+        reminder={{ id: 'todo:task-1', note: 'Review notes', source: 'todo', sync_state: 'synced' }}
+        index={0}
+        onMarkRead={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Manage reminder todo:task-1' })
+    await user.click(trigger)
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })

@@ -211,6 +211,16 @@ class MicrosoftTodoTaskMutationExecutor:
                 False, "microsoft_todo_task_changed", {"fields": changed_fields}
             )
 
+        # Completion is idempotent at the task boundary. A stale HUD row can
+        # be submitted again after Microsoft has already completed it; avoid
+        # issuing another PATCH while still verifying the observed state.
+        if self._capability_name == "complete_microsoft_todo_task" and current.is_completed:
+            return ExecutionOutcome(
+                True,
+                "microsoft_todo_task_already_completed",
+                {"list_id": list_id, "task_id": task_id},
+            )
+
         try:
             if self._capability_name == "update_microsoft_todo_task":
                 self._client.patch_task(list_id, task_id, _update_request(arguments))

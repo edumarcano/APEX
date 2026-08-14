@@ -1,5 +1,5 @@
 import { RefreshCw, RotateCcw, X } from 'lucide-react'
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 
 import type {
@@ -7,6 +7,7 @@ import type {
   ReminderTaskDetail,
   ReminderTaskMutationResult,
 } from '../hooks/useApexData'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 type CompletedRemindersDialogProps = {
   onClose: () => void
@@ -16,9 +17,7 @@ type CompletedRemindersDialogProps = {
 
 function formatDateTime(value: ReminderTaskDetail['completed_at']): string | null {
   if (!value) return null
-  const parsed = new Date(value.date_time)
-  if (Number.isNaN(parsed.getTime())) return `${value.date_time} (${value.time_zone})`
-  return `${parsed.toLocaleString()} (${value.time_zone})`
+  return `${value.date_time.replace('T', ' ')} (${value.time_zone})`
 }
 
 export function CompletedRemindersDialog({
@@ -30,43 +29,41 @@ export function CompletedRemindersDialog({
   const [busyId, setBusyId] = useState<string | null>(null)
   const [reviewIds, setReviewIds] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const loadRequestRef = useRef(0)
+
+  useFocusTrap(true, dialogRef)
 
   const load = useCallback(async (): Promise<void> => {
+    const requestId = ++loadRequestRef.current
     setLoading(true)
     setError(null)
     try {
       const result = await onLoad()
+      if (requestId !== loadRequestRef.current) return
       setItems(result.items)
       setSourceState(result.source_state)
     } catch (reason) {
+      if (requestId !== loadRequestRef.current) return
       setItems([])
       setSourceState('unavailable')
       setError(reason instanceof Error ? reason.message : 'Could not load completed reminders.')
     } finally {
-      setLoading(false)
+      if (requestId === loadRequestRef.current) setLoading(false)
     }
   }, [onLoad])
 
   useEffect(() => {
     let cancelled = false
     const loadInitial = async (): Promise<void> => {
-      try {
-        const result = await onLoad()
-        if (cancelled) return
-        setItems(result.items)
-        setSourceState(result.source_state)
-      } catch (reason) {
-        if (cancelled) return
-        setItems([])
-        setSourceState('unavailable')
-        setError(reason instanceof Error ? reason.message : 'Could not load completed reminders.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+      if (!cancelled) await load()
     }
     void loadInitial()
-    return () => { cancelled = true }
-  }, [onLoad])
+    return () => {
+      cancelled = true
+      loadRequestRef.current += 1
+    }
+  }, [load])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -96,7 +93,7 @@ export function CompletedRemindersDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && busyId === null) onClose() }}>
-      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-white/15 bg-zinc-950 p-4 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="completed-reminders-title">
+      <div ref={dialogRef} className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-white/15 bg-zinc-950 p-4 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="completed-reminders-title" tabIndex={-1}>
         <header className="flex shrink-0 items-center justify-between gap-3">
           <h2 id="completed-reminders-title" className="font-orbitron text-xs uppercase tracking-[0.14em] text-zinc-100">Completed reminders</h2>
           <div className="flex items-center gap-2"><button type="button" onClick={() => void load()} disabled={loading || busyId !== null} aria-label="Refresh completed reminders" className="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:opacity-50"><RefreshCw className={loading ? 'size-3.5 animate-spin' : 'size-3.5'} aria-hidden /></button><button type="button" onClick={onClose} disabled={busyId !== null} aria-label="Close completed reminders" className="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:opacity-50"><X className="size-4" aria-hidden /></button></div>

@@ -18,13 +18,6 @@ describe('ReminderTaskDialog', () => {
     render(<ReminderTaskDialog id={task.id} mode="edit" onClose={onClose} onLoad={vi.fn().mockResolvedValue(task)} onUpdate={onUpdate} onDelete={vi.fn()} />)
 
     await screen.findByDisplayValue('Review plan')
-    const importance = screen.getByRole('combobox')
-    expect(importance).toHaveClass('bg-zinc-950', '[color-scheme:dark]')
-    expect(Array.from(importance.querySelectorAll('option'))).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ className: expect.stringContaining('bg-zinc-950') }),
-      ]),
-    )
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
     await user.click(screen.getByRole('checkbox', { name: 'Include due date' }))
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -59,5 +52,30 @@ describe('ReminderTaskDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Delete task' }))
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith({ id: task.id, last_modified_at: 'stamp-1' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('traps focus and restores the opener after Escape', async () => {
+    const user = userEvent.setup()
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    let closeDialog = (): void => undefined
+    const rendered = render(
+      <ReminderTaskDialog
+        id={task.id}
+        mode="edit"
+        onClose={() => closeDialog()}
+        onLoad={vi.fn().mockResolvedValue(task)}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+    closeDialog = rendered.unmount
+
+    await screen.findByDisplayValue('Review plan')
+    expect(screen.getByRole('dialog') as HTMLElement).toContainElement(document.activeElement as HTMLElement)
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveFocus()
+    opener.remove()
   })
 })

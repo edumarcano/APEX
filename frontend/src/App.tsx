@@ -183,6 +183,7 @@ export default function App(): ReactElement {
     mode: 'edit' | 'delete'
   } | null>(null)
   const [isReminderRefreshPending, setIsReminderRefreshPending] = useState(false)
+  const [reminderActionError, setReminderActionError] = useState<string | null>(null)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
@@ -606,6 +607,7 @@ export default function App(): ReactElement {
   )
   const handleRefreshReminders = useCallback((): void => {
     if (isReminderRefreshPending) return
+    setReminderActionError(null)
     setIsReminderRefreshPending(true)
     void refreshReminders().finally(() => setIsReminderRefreshPending(false))
   }, [isReminderRefreshPending, refreshReminders])
@@ -704,7 +706,19 @@ export default function App(): ReactElement {
   const primaryTemperatureF = weatherInfo.temperatureF
 
   const handleMarkReminderRead = (id: string): void => {
-    void markReminderAsRead(id)
+    setReminderActionError(null)
+    void markReminderAsRead(id).catch((error: unknown) => {
+      const code = error instanceof Error ? error.message : 'reminder_completion_failed'
+      const actionId = error && typeof error === 'object' && 'actionId' in error
+        ? String((error as { actionId?: unknown }).actionId ?? '')
+        : ''
+      const message = code === 'reminder_target_changed'
+        ? 'Reminder changed in Microsoft To Do. Refresh and try again.'
+        : code === 'microsoft_todo_unavailable'
+          ? 'Microsoft To Do is unavailable. The reminder was restored.'
+          : 'Could not complete the reminder. The reminder was restored.'
+      setReminderActionError(actionId ? `${message} Review action ${actionId}.` : message)
+    })
   }
 
   const handleReminderSave = useCallback(async (text: string): Promise<'synced' | 'pending' | 'unknown'> => {
@@ -1636,6 +1650,11 @@ export default function App(): ReactElement {
                   {reminderSourceState && reminderSourceState !== 'live' ? (
                     <p className="mt-2 font-mono text-[9px] uppercase tracking-wide text-amber-200">
                       Reminder source: {reminderSourceState}
+                    </p>
+                  ) : null}
+                  {reminderActionError ? (
+                    <p className="mt-2 text-xs leading-relaxed text-red-200" role="alert">
+                      {reminderActionError}
                     </p>
                   ) : null}
                   {activeReminders.some((item) => item.source === 'local') ? (
