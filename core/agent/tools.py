@@ -33,23 +33,28 @@ def _stable_tool_result(
     return {"error": failure_message}
 
 
-def get_weather_forecast(days: int = 5) -> dict[str, Any]:
-    """Retrieve a multi-day weather forecast for the configured target location.
+def get_weather_forecast(location: str | None = None, days: int = 5) -> dict[str, Any]:
+    """Retrieve real-time atmospheric conditions and multi-day weather forecast.
 
-    Returns Open-Meteo daily high/low temperature and condition summaries.
+    Queries Open-Meteo for any global location (or default configured home)
+    and returns current temperature, atmospheric metrics, and daily forecasts.
 
     Args:
-        days: Number of forecast days to return. Values below 1 are raised to
-            1; values above 5 are lowered to 5.
+        location: Optional location name, city, or coordinates (e.g. 'Paris',
+            'Tokyo', 'Austin, TX'). When omitted or null, defaults to the
+            configured target location.
+        days: Number of forecast days to return (1 to 14). Values below 1 are
+            raised to 1; values above 14 are lowered to 14. Defaults to 5.
 
     Returns:
-        dict: A payload with ``location`` and ``forecast`` (list of daily
-            records containing ``date``, ``temp_max``, ``temp_min``, and
-            ``condition``), or an ``error`` key on failure.
+        dict: A payload with ``location``, optional ``current`` atmospheric conditions,
+            and ``forecast`` (list of daily records containing ``date``, ``temp_max``,
+            ``temp_min``, ``condition``, and precipitation/wind metrics), or an
+            ``error`` key on failure.
     """
-    clamped_days = max(1, min(5, days))
+    clamped_days = max(1, min(14, days))
     return _stable_tool_result(
-        fetch_weather_forecast(clamped_days),
+        fetch_weather_forecast(location=location, days=clamped_days),
         tool_name="get_weather_forecast",
         failure_message="Weather forecast unavailable.",
     )
@@ -451,22 +456,29 @@ def register_native_capabilities() -> None:
             name="get_weather_forecast",
             title="Weather Forecast",
             description=(
-                "Retrieve a multi-day weather forecast for the configured "
-                "target location."
+                "Retrieve real-time atmospheric conditions and multi-day weather "
+                "forecasts for any location or configured default."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": (
+                            "Optional location or city name (e.g. 'Paris', 'Tokyo', 'Austin, TX'). "
+                            "When omitted or null, defaults to the configured target location."
+                        ),
+                    },
                     "days": {
                         "type": "integer",
                         "description": (
-                            "Number of forecast days to return. Values below 1 "
-                            "are raised to 1; values above 5 are lowered to 5."
+                            "Number of forecast days to return (1 to 14). Values below 1 "
+                            "are raised to 1; values above 14 are lowered to 14. Defaults to 5."
                         ),
                         "minimum": 1,
-                        "maximum": 5,
+                        "maximum": 14,
                         "default": 5,
-                    }
+                    },
                 },
                 "required": [],
                 "additionalProperties": False,

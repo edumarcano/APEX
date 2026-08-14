@@ -371,24 +371,53 @@ def fetch_weather_data() -> str:
     return collect_weather().display_text
 
 
-def fetch_weather_forecast(days: int = 5) -> dict[str, Any]:
-    """Fetch a multi-day Open-Meteo forecast for the configured location."""
-    location = _configured_location()
-    if location is None:
+def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[str, Any]:
+    """Fetch an enriched multi-day Open-Meteo forecast and current conditions for any location or configured default."""
+    resolved_location = location.strip() if isinstance(location, str) and location.strip() else _configured_location()
+    if resolved_location is None:
         return {"error": "Weather forecast offline: Missing target location."}
 
-    max_days = max(1, min(5, days))
+    max_days = max(1, min(14, days))
     try:
-        coordinates = _resolve_coordinates(location)
+        coordinates = _resolve_coordinates(resolved_location)
         if coordinates is None:
             return {"error": "Weather forecast unavailable."}
 
         payload = _forecast_payload(
             coordinates,
-            daily="temperature_2m_max,temperature_2m_min,weather_code",
+            current="temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m",
+            daily="temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,uv_index_max",
             forecast_days=max_days,
         )
-        daily = payload.get("daily") if payload is not None else None
+        if payload is None:
+            raise ValueError("Weather provider returned no response.")
+
+        # Parse current atmospheric conditions
+        current_data = payload.get("current")
+        current_result: dict[str, Any] | None = None
+        if isinstance(current_data, dict):
+            curr_temp = _as_finite_float(current_data.get("temperature_2m"))
+            curr_code = current_data.get("weather_code")
+            curr_is_day = current_data.get("is_day")
+            if curr_temp is not None:
+                condition_tuple = _weather_condition(curr_code, is_day=curr_is_day)
+                desc, archetype = condition_tuple if condition_tuple else ("unknown", "clouds")
+                current_result = {
+                    "temp_f": round(curr_temp),
+                    "condition": desc,
+                    "archetype": archetype,
+                }
+                app_temp = _as_finite_float(current_data.get("apparent_temperature"))
+                if app_temp is not None:
+                    current_result["apparent_temp_f"] = round(app_temp)
+                rel_hum = _as_finite_float(current_data.get("relative_humidity_2m"))
+                if rel_hum is not None:
+                    current_result["humidity_pct"] = round(rel_hum)
+                wind_spd = _as_finite_float(current_data.get("wind_speed_10m"))
+                if wind_spd is not None:
+                    current_result["wind_speed_mph"] = round(wind_spd)
+
+        daily = payload.get("daily")
         if not isinstance(daily, dict):
             raise ValueError("Weather provider returned no daily forecast.")
 
@@ -396,28 +425,57 @@ def fetch_weather_forecast(days: int = 5) -> dict[str, Any]:
         maximums = daily.get("temperature_2m_max")
         minimums = daily.get("temperature_2m_min")
         weather_codes = daily.get("weather_code")
+        precip_probs = daily.get("precipitation_probability_max")
+        precip_sums = daily.get("precipitation_sum")
+        wind_speeds = daily.get("wind_speed_10m_max")
+        uv_indices = daily.get("uv_index_max")
+
         if not all(isinstance(values, list) for values in (dates, maximums, minimums, weather_codes)):
             raise ValueError("Weather provider daily forecast was incomplete.")
 
         forecast: list[dict[str, Any]] = []
-        for date, maximum, minimum, weather_code in zip(
-            dates, maximums, minimums, weather_codes, strict=True
+        for i, (date, maximum, minimum, weather_code) in enumerate(
+            zip(dates, maximums, minimums, weather_codes, strict=True)
         ):
             max_temp = _as_finite_float(maximum)
             min_temp = _as_finite_float(minimum)
             condition = _weather_condition(weather_code)
             if not isinstance(date, str) or max_temp is None or min_temp is None or condition is None:
                 raise ValueError("Weather provider daily forecast entry was invalid.")
-            forecast.append(
-                {
-                    "date": date,
-                    "temp_max": round(max_temp, 1),
-                    "temp_min": round(min_temp, 1),
-                    "condition": condition[0],
-                }
-            )
 
-        return {"location": location, "forecast": forecast}
+            day_entry: dict[str, Any] = {
+                "date": date,
+                "temp_max": round(max_temp, 1),
+                "temp_min": round(min_temp, 1),
+                "condition": condition[0],
+            }
+            if isinstance(precip_probs, list) and i < len(precip_probs):
+                prob = _as_finite_float(precip_probs[i])
+                if prob is not None:
+                    day_entry["precip_probability_max"] = round(prob)
+            if isinstance(precip_sums, list) and i < len(precip_sums):
+                psum = _as_finite_float(precip_sums[i])
+                if psum is not None:
+                    day_entry["precip_sum_in"] = round(psum, 2)
+            if isinstance(wind_speeds, list) and i < len(wind_speeds):
+                wspd = _as_finite_float(wind_speeds[i])
+                if wspd is not None:
+                    day_entry["wind_speed_max_mph"] = round(wspd)
+            if isinstance(uv_indices, list) and i < len(uv_indices):
+                uv = _as_finite_float(uv_indices[i])
+                if uv is not None:
+                    day_entry["uv_index_max"] = round(uv, 1)
+
+            forecast.append(day_entry)
+
+        result: dict[str, Any] = {
+            "location": resolved_location,
+            "forecast": forecast,
+        }
+        if current_result is not None:
+            result["current"] = current_result
+
+        return result
     except (requests.RequestException, TypeError, ValueError, KeyError):
         return {"error": "Weather forecast unavailable."}
 

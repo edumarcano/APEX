@@ -132,6 +132,46 @@ describe('CortexToolCards weather presentation', () => {
     )
     expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
   })
+
+  it('renders current atmospheric conditions and precipitation probability badges', () => {
+    render(
+      <CortexToolCards
+        toolOutputs={[
+          {
+            name: 'get_weather_forecast',
+            status: 'ok',
+            duration_ms: 15,
+            output: {
+              location: 'Tokyo',
+              current: {
+                temp_f: 77,
+                condition: 'partly cloudy',
+                apparent_temp_f: 80,
+                wind_speed_mph: 9,
+              },
+              forecast: [
+                {
+                  date: '2026-08-10',
+                  temp_max: 88,
+                  temp_min: 75,
+                  condition: 'scattered showers',
+                  precip_probability_max: 65,
+                  wind_speed_max_mph: 18,
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Tokyo')).toBeInTheDocument()
+    expect(screen.getByText('77°')).toBeInTheDocument()
+    expect(screen.getByText('partly cloudy')).toBeInTheDocument()
+    expect(screen.getByText('(feels 80°)')).toBeInTheDocument()
+    expect(screen.getByText(/65%/)).toBeInTheDocument()
+    expect(screen.getByText(/18mph/)).toBeInTheDocument()
+  })
 })
 
 describe('CortexToolCards Gmail presentation', () => {

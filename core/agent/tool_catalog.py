@@ -56,7 +56,7 @@ APEX_TOOL_FAMILIES: tuple[ApexToolFamily, ...] = (
     ApexToolFamily(
         "weather",
         "Weather",
-        "Configured-location forecast up to five days.",
+        "Current conditions and multi-day forecasts up to 14 days.",
         ("get_weather_forecast",),
     ),
     ApexToolFamily(
