@@ -590,24 +590,28 @@ function TodoSourceLabel(): ReactElement {
 }
 
 function parseReminderList(output: unknown): ActiveReminder[] {
-  if (!Array.isArray(output)) {
+  const items = isRecord(output) ? output.items : output
+  if (!Array.isArray(items)) {
     return []
   }
 
-  return output
+  return items
     .map((entry): ActiveReminder | null => {
       if (!isRecord(entry)) {
         return null
       }
-      const id =
-        typeof entry.id === 'number' && Number.isFinite(entry.id) ? entry.id : null
+      const id = typeof entry.id === 'string' ? entry.id : null
       const note = typeof entry.note === 'string' ? entry.note : null
+      const source = entry.source === 'todo' || entry.source === 'local' ? entry.source : null
+      const syncState = entry.sync_state === 'synced' || entry.sync_state === 'pending' || entry.sync_state === 'unknown'
+        ? entry.sync_state
+        : null
 
-      if (id === null || !note) {
+      if (id === null || !note || source === null || syncState === null) {
         return null
       }
 
-      return { id, note }
+      return { id, note, source, sync_state: syncState }
     })
     .filter((entry): entry is ActiveReminder => entry !== null)
 }

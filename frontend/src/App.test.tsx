@@ -16,7 +16,8 @@ const appMocks = vi.hoisted(() => ({
   verifyCloudAgent: vi.fn().mockResolvedValue(true),
   applyBootSettings: vi.fn(),
   markReminderAsRead: vi.fn().mockResolvedValue(undefined),
-  createReminder: vi.fn().mockResolvedValue(undefined),
+  refreshReminders: vi.fn().mockResolvedValue(undefined),
+  createReminder: vi.fn().mockResolvedValue('synced'),
   activate: vi.fn(),
   requestOperation: vi.fn().mockResolvedValue('proceed'),
   refreshAll: vi.fn().mockResolvedValue(null),
@@ -36,7 +37,11 @@ const appMocks = vi.hoisted(() => ({
   } | null,
 }))
 
-vi.mock('./components/ApexLogo', () => ({ ApexLogo: () => null }))
+vi.mock('./components/ApexLogo', () => ({
+  ApexLogo: ({ reminderPulseCount }: { reminderPulseCount?: number }) => (
+    <output data-testid="reminder-pulse-count">{reminderPulseCount ?? 0}</output>
+  ),
+}))
 vi.mock('./components/CelestialBackground', () => ({ CelestialBackground: () => null }))
 vi.mock('./components/BriefingDigest', () => ({ BriefingDigest: () => null }))
 vi.mock('./components/CalendarEventList', () => ({ CalendarEventList: () => null }))
@@ -44,19 +49,34 @@ vi.mock('./components/FootballFixtureList', () => ({ FootballFixtureList: () => 
 vi.mock('./components/MarketTickerCard', () => ({ MarketTickerCard: () => null }))
 vi.mock('./components/PreflightDialog', () => ({ PreflightDialog: () => null }))
 vi.mock('./components/ReminderListRow', () => ({ ReminderListRow: () => null }))
-vi.mock('./components/ReminderQuickAdd', () => ({ ReminderQuickAdd: () => null }))
+vi.mock('./components/ReminderQuickAdd', () => ({
+  ReminderQuickAdd: ({ onSave }: { onSave: (text: string) => Promise<unknown> }) => (
+    <button type="button" onClick={() => void onSave('Call the dentist')}>
+      Add reminder
+    </button>
+  ),
+}))
 vi.mock('./components/TelemetryCard', () => ({
   TelemetryCard: ({
     title,
     headerAction,
     compactValue,
+    onRefresh,
     children,
   }: {
     title?: string
     headerAction?: ReactNode
     compactValue?: ReactNode
+    onRefresh?: () => void
     children?: ReactNode
-  }) => title === 'Weather' ? (
+  }) => title === 'Reminders' ? (
+    <>
+      {headerAction}
+      <button type="button" aria-label="Refresh Reminders" onClick={onRefresh}>
+        {children}
+      </button>
+    </>
+  ) : title === 'Weather' ? (
     <>
       {headerAction}
       <span data-testid="weather-compact-value">{compactValue}</span>
@@ -160,6 +180,7 @@ vi.mock('./hooks/useApexData', () => ({
     briefingDefaultMode: 'panthera',
     voiceMode: 'automatic',
     markReminderAsRead: appMocks.markReminderAsRead,
+    refreshReminders: appMocks.refreshReminders,
     applyBootSettings: appMocks.applyBootSettings,
   }),
 }))
@@ -501,5 +522,19 @@ describe('App weather attribution', () => {
     )
     expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
     expect(screen.getAllByText('Mainly Clear')).toHaveLength(1)
+  })
+})
+
+describe('App reminder feedback', () => {
+  it('pulses the logo after an accepted reminder save', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    expect(screen.getByTestId('reminder-pulse-count')).toHaveTextContent('0')
+    await user.click(screen.getByRole('button', { name: 'Add reminder' }))
+
+    await waitFor(() => expect(screen.getByTestId('reminder-pulse-count')).toHaveTextContent('1'))
+    expect(appMocks.createReminder).toHaveBeenCalledWith('Call the dentist')
   })
 })

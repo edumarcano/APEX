@@ -25,6 +25,7 @@ from core.settings.models import (
     FootballSettings,
     FootballTeamSettings,
     LlamaCppSettings,
+    MicrosoftTodoSettings,
     MarketSettings,
     McpServerEnablementSettings,
     McpServersSettings,
@@ -57,6 +58,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "tts_settings",
         "mcp",
         "llama_cpp",
+        "microsoft_todo",
     }
 )
 _DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
@@ -189,8 +191,36 @@ def normalize_layer(
             llama_cpp = _normalize_llama_cpp(value, layer_name, issues)
             if llama_cpp:
                 normalized["llama_cpp"] = llama_cpp
+        elif key == "microsoft_todo":
+            microsoft_todo = _normalize_microsoft_todo(value, layer_name, issues)
+            if microsoft_todo is not None:
+                normalized["microsoft_todo"] = microsoft_todo
 
     return normalized
+
+
+def _normalize_microsoft_todo(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Normalize the intentionally small reminder-list selection setting."""
+    if not isinstance(value, dict):
+        _record_error(issues, "microsoft_todo must be an object")
+        _LOGGER.warning("microsoft_todo in %s must be an object; ignoring.", layer_name)
+        return None
+    unknown = set(value) - {"reminder_list_id"}
+    if unknown:
+        _record_warning(issues, "microsoft_todo contains unknown fields")
+        _LOGGER.warning("Ignoring unknown microsoft_todo fields in %s.", layer_name)
+    if "reminder_list_id" not in value:
+        return {}
+    list_id = value["reminder_list_id"]
+    if not isinstance(list_id, str) or len(list_id) > 512 or (
+        list_id and list_id != list_id.strip()
+    ):
+        _record_error(issues, "microsoft_todo.reminder_list_id is invalid")
+        _LOGGER.warning("microsoft_todo.reminder_list_id in %s is invalid; ignoring.", layer_name)
+        return {}
+    return {"reminder_list_id": list_id}
 
 
 def _normalize_user_designation(
@@ -1313,6 +1343,19 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         executable_path=executable_path,
         preset_path=preset_path,
     )
+    microsoft_todo_raw = (
+        merged.get("microsoft_todo")
+        if isinstance(merged.get("microsoft_todo"), dict)
+        else {}
+    )
+    reminder_list_id = microsoft_todo_raw.get("reminder_list_id", "")
+    if (
+        not isinstance(reminder_list_id, str)
+        or len(reminder_list_id) > 512
+        or (reminder_list_id and reminder_list_id != reminder_list_id.strip())
+    ):
+        reminder_list_id = ""
+    microsoft_todo = MicrosoftTodoSettings(reminder_list_id=reminder_list_id)
     return RuntimeSettingsSnapshot(
         user_designation=(
             merged.get("user_designation", "")
@@ -1329,6 +1372,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         voice=voice,
         mcp=mcp,
         llama_cpp=llama_cpp,
+        microsoft_todo=microsoft_todo,
     )
 
 
@@ -1368,6 +1412,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
         },
         "mcp": snapshot.mcp.model_dump(),
         "llama_cpp": snapshot.llama_cpp.model_dump(),
+        "microsoft_todo": snapshot.microsoft_todo.model_dump(),
     }
 
 
@@ -1480,4 +1525,8 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
             llama_cpp["preset_path"] = patch.llama_cpp.preset_path
         if llama_cpp:
             ondisk["llama_cpp"] = llama_cpp
+    if patch.microsoft_todo is not None and patch.microsoft_todo.reminder_list_id is not None:
+        ondisk["microsoft_todo"] = {
+            "reminder_list_id": patch.microsoft_todo.reminder_list_id,
+        }
     return ondisk

@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { ReminderQuickAdd } from './ReminderQuickAdd'
 
 describe('ReminderQuickAdd', () => {
-  it('opens from the header action, saves text, and restores focus', async () => {
+  it('opens from the header action and reports a queued save', async () => {
     const user = userEvent.setup()
-    const onSave = vi.fn().mockResolvedValue(undefined)
+    const onSave = vi.fn().mockResolvedValue('pending')
     render(<ReminderQuickAdd onSave={onSave} />)
 
     const trigger = screen.getByRole('button', { name: 'Add reminder' })
@@ -18,8 +18,8 @@ describe('ReminderQuickAdd', () => {
     await user.click(screen.getByRole('button', { name: 'Save reminder' }))
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith('Call the dentist'))
-    expect(screen.queryByRole('dialog', { name: 'Add reminder' })).toBeNull()
-    expect(trigger).toHaveFocus()
+    expect(screen.getByText('Queued locally for review.')).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Add reminder' })).toBeVisible()
   })
 
   it('keeps the popover open and reports a save failure', async () => {
@@ -37,7 +37,7 @@ describe('ReminderQuickAdd', () => {
 
   it('dismisses with Escape and restores focus to the header action', async () => {
     const user = userEvent.setup()
-    render(<ReminderQuickAdd onSave={vi.fn()} />)
+    render(<ReminderQuickAdd onSave={vi.fn(async (): Promise<'pending'> => 'pending')} />)
 
     const trigger = screen.getByRole('button', { name: 'Add reminder' })
     await user.click(trigger)

@@ -34,6 +34,11 @@ export interface MicrosoftTodoAuthorization {
   expires_at: string
 }
 
+export interface MicrosoftTodoListOption {
+  id: string
+  display_name: string
+}
+
 const STATES: readonly MicrosoftTodoState[] = [
   'not-configured',
   'disconnected',
@@ -92,7 +97,9 @@ export function useMicrosoftTodoStatus(open: boolean) {
   const [authorization, setAuthorization] = useState<MicrosoftTodoAuthorization | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lists, setLists] = useState<MicrosoftTodoListOption[]>([])
   const sequence = useRef(0)
+  const listsLoadedForConnection = useRef(false)
 
   const refresh = useCallback(async () => {
     const requestId = ++sequence.current
@@ -103,6 +110,28 @@ export function useMicrosoftTodoStatus(open: boolean) {
         setStatus(parsed)
         setError(parsed ? null : 'Microsoft To Do status is unavailable.')
         if (parsed && parsed.state !== 'authorizing') setAuthorization(null)
+        if (parsed?.state === 'connected') {
+          if (!listsLoadedForConnection.current) {
+            const listsResponse = await fetch(API_ENDPOINTS.microsoftTodoLists)
+            const body: unknown = listsResponse.ok ? await listsResponse.json() : null
+            const rows = body && typeof body === 'object' && Array.isArray((body as { lists?: unknown }).lists)
+              ? (body as { lists: unknown[] }).lists.flatMap((item): MicrosoftTodoListOption[] => (
+                item && typeof item === 'object' &&
+                typeof (item as { id?: unknown }).id === 'string' &&
+                typeof (item as { display_name?: unknown }).display_name === 'string'
+                  ? [{ id: (item as { id: string }).id, display_name: (item as { display_name: string }).display_name }]
+                  : []
+              )).slice(0, 50)
+              : []
+            if (requestId === sequence.current) {
+              setLists(rows)
+              listsLoadedForConnection.current = listsResponse.ok
+            }
+          }
+        } else {
+          setLists([])
+          listsLoadedForConnection.current = false
+        }
       }
     } catch {
       if (requestId === sequence.current) setError('Microsoft To Do status is unavailable.')
@@ -145,6 +174,8 @@ export function useMicrosoftTodoStatus(open: boolean) {
       if (!parsed) throw new Error()
       setStatus(parsed)
       setAuthorization(null)
+      listsLoadedForConnection.current = false
+      setLists([])
     } catch {
       setError('Microsoft authorization could not be removed.')
     } finally {
@@ -152,5 +183,5 @@ export function useMicrosoftTodoStatus(open: boolean) {
     }
   }, [])
 
-  return { status, authorization, loading, error, refresh, connect, disconnect }
+  return { status, authorization, loading, error, lists, refresh, connect, disconnect }
 }

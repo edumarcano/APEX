@@ -90,7 +90,7 @@ The launcher polls `GET /api/v1/health/ready` and frontend HTTP availability at 
 
 When Chrome or Edge is launched with a process handle, closing the kiosk window stops both servers. The default-browser fallback has no process handle and relies on `Ctrl+C`.
 
-FastAPI's lifespan initializes the database and Microsoft To Do services, starts the provider-neutral local-runtime idle-model monitor whenever a local backend is enabled, and owns one MCP client manager. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting.
+FastAPI's lifespan initializes the database, Microsoft To Do client, action service, and one concrete `ReminderService` before publishing request adapters. It recovers interrupted actions and reconciles linked local reminder rows before requests are accepted. The service owns selected-list resolution, live reads, a bounded SQLite stale cache, local queueing, and reminder mutations. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting. Demo mode retains static reminder fixtures and does not construct the production reminder service or access the action ledger.
 
 ## Frontend state ownership
 
@@ -199,7 +199,7 @@ Local and cloud queries use the same explicit capability descriptor list. The br
 
 `core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound. Supported native write and destructive capabilities are validated without invocation and become durable action proposals; only API approval may claim, execute, and independently verify them. Native action availability requires registered executor and verifier handlers. MCP write and destructive tools remain unavailable to Cortex.
 
-Production native capabilities are primarily read-only. Microsoft To Do create, update, completion, reopening, and deletion are approval-gated native actions: an Agent can propose them, but only local action approval can execute them. Mutations first reread the exact observed task and reject a changed `last_modified_at` target before writing. Executors persist only sanitized identifiers before verifiers perform exact Graph read-back; deletion verifies only through confirmed absence, and retries recover ledger evidence or the frozen target without replaying a write. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
+Production native capabilities are mostly read-only, with a small set of approval-gated Microsoft To Do writes. An Agent can propose them, but only local action approval can execute them. Executors persist sanitized execution evidence before verification; verifiers reload that immutable ledger evidence for exact Graph read-back, including after restart. Mutations first reread the exact observed task and reject a changed `last_modified_at` target before writing. An ambiguous write remains `outcome_unknown` and is never replayed. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
 
 The Tools selector exposes only the canonical resolved descriptor list:
 `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP
@@ -272,7 +272,7 @@ Delivery mode controls orchestration:
 `core/database.py` initializes the shared SQLite database, legacy tables, and readiness probe. The action store owns the action tables and their lifecycle transactions. `apex_memory.db` stores:
 
 - normal-mode run timestamps;
-- active and dismissed reminders;
+- legacy reminder/archive rows, the selected-list cache, and local reminder outbox rows;
 - the most recent 50 normal-mode briefings;
 - structured digests and runtime metadata, including `run_id` and snapshot identity.
 - action proposals and their ordered audit events. Action records retain the Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and SHA-256 proposal hash. Transition events retain bounded execution or verification evidence and stable result codes; each state change and its matching event commit atomically.

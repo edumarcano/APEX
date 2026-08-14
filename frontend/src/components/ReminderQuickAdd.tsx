@@ -10,7 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 
 type ReminderQuickAddProps = {
-  onSave: (text: string) => Promise<void>
+  onSave: (text: string) => Promise<'synced' | 'pending' | 'unknown'>
 }
 
 type PopoverPosition = {
@@ -47,6 +47,7 @@ export function ReminderQuickAdd({ onSave }: ReminderQuickAddProps): ReactElemen
   const [text, setText] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<string | null>(null)
   const [position, setPosition] = useState<PopoverPosition | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -56,6 +57,7 @@ export function ReminderQuickAdd({ onSave }: ReminderQuickAddProps): ReactElemen
     if (isSaving) return
     setIsOpen(false)
     setError(null)
+    setResult(null)
     setText('')
     triggerRef.current?.focus()
   }, [isSaving])
@@ -65,6 +67,7 @@ export function ReminderQuickAdd({ onSave }: ReminderQuickAddProps): ReactElemen
     if (!trigger) return
     setPosition(resolvePopoverPosition(trigger))
     setError(null)
+    setResult(null)
     setText('')
     setIsOpen(true)
   }, [])
@@ -112,11 +115,16 @@ export function ReminderQuickAdd({ onSave }: ReminderQuickAddProps): ReactElemen
     setIsSaving(true)
     setError(null)
     try {
-      await onSave(trimmedText)
+      const outcome = await onSave(trimmedText)
       setIsSaving(false)
-      setIsOpen(false)
       setText('')
-      triggerRef.current?.focus()
+      setResult(
+        outcome === 'synced'
+          ? 'Saved in Microsoft To Do.'
+          : outcome === 'unknown'
+            ? 'Microsoft To Do outcome is uncertain. Review it before retrying.'
+            : 'Queued locally for review.',
+      )
     } catch {
       setIsSaving(false)
       setError('Could not save reminder. Try again.')
@@ -169,7 +177,7 @@ export function ReminderQuickAdd({ onSave }: ReminderQuickAddProps): ReactElemen
                     id="reminder-quick-add-input"
                     type="text"
                     value={text}
-                    maxLength={4096}
+                    maxLength={500}
                     onChange={(event) => setText(event.target.value)}
                     placeholder="Reminder text…"
                     disabled={isSaving}
@@ -188,8 +196,10 @@ export function ReminderQuickAdd({ onSave }: ReminderQuickAddProps): ReactElemen
                   <p className="mt-2 text-xs text-[#F87171]" role="alert">
                     {error}
                   </p>
+                ) : result ? (
+                  <p className="mt-2 text-[11px] text-zinc-300" aria-live="polite">{result}</p>
                 ) : (
-                  <p className="mt-2 text-[11px] text-zinc-500">Saved locally for the next briefing.</p>
+                  <p className="mt-2 text-[11px] text-zinc-500">Creates in the selected list when connected, otherwise queues locally.</p>
                 )}
               </form>
             </div>,

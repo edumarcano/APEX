@@ -21,7 +21,9 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | GET | `/api/v1/briefings/history` | Recent briefing ledger |
 | GET | `/api/v1/reminders` | Active reminders |
 | POST | `/api/v1/reminders` | Create a reminder |
-| POST | `/api/v1/reminders/read` | Dismiss reminders |
+| POST | `/api/v1/reminders/complete` | Complete or dismiss one reminder |
+| POST | `/api/v1/reminders/sync` | Reviewed local reminder synchronization |
+| POST | `/api/v1/reminders/dismiss` | Dismiss a reviewed uncertain local reminder |
 | GET | `/api/v1/actions` | List durable action proposals |
 | GET | `/api/v1/actions/{action_id}` | Inspect one proposal and its audit events |
 | POST | `/api/v1/actions/{action_id}/approve` | Approve, execute, and verify one action |
@@ -43,6 +45,7 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
 | GET | `/api/v1/llama-cpp/status` | Sanitized llama.cpp server ownership status |
 | GET | `/api/v1/microsoft-todo/status` | Microsoft To Do authorization status |
+| GET | `/api/v1/microsoft-todo/lists` | Bounded selected-list choices |
 | POST | `/api/v1/microsoft-todo/auth/start` | Begin device-code authorization |
 | DELETE | `/api/v1/microsoft-todo/auth` | Disconnect Microsoft To Do |
 | GET | `/api/v1/telemetry/latest` | Current process-local snapshot |
@@ -75,11 +78,11 @@ Returns boot-time HUD values such as Agent query enablement, the effective Agent
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `13`.
+Returns the resolved settings envelope. The current contract version is `14`.
 
 ```json
 {
-  "schema_version": 13,
+  "schema_version": 14,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -91,7 +94,8 @@ Returns the resolved settings envelope. The current contract version is `13`.
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
-    "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" }
+    "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
+    "microsoft_todo": { "reminder_list_id": "" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -101,7 +105,7 @@ Returns the resolved settings envelope. The current contract version is `13`.
 }
 ```
 
-`football.teams`, `market.symbols`, and `tool_profiles` are returned in the resolved settings snapshot. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults. The generic settings patch continues to accept the complete `tool_profiles` group for contract compatibility.
+`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
@@ -219,27 +223,42 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 
 ### GET `/api/v1/reminders`
 
-Returns active SQLite reminders. Demo mode returns static mock reminders without database access.
+Returns the unified reminder envelope. A configured selected list is authoritative: a successful read returns its newest 50 incomplete tasks as `live`; a failed read returns only that list's bounded cache as `stale`; no matching cache or no selected list is `unavailable`. Pending and uncertain local rows remain visible in every state.
+
+```json
+{
+  "items": [{ "id": "todo:opaque", "note": "Review plan", "source": "todo", "sync_state": "synced" }],
+  "source_state": "live",
+  "cache_timestamp": null,
+  "pending_sync_count": 0
+}
+```
 
 ### POST `/api/v1/reminders`
 
-Creates a local reminder from bounded text and returns its SQLite ID.
+Accepts bounded text (maximum 500 characters). A connected selected list creates one immediately approved `create_microsoft_todo_task` action and returns `201` only after verification. Known offline/no-list requests return a local `pending` item with `201`. An ambiguous or verification-failed attempted write returns `202` with `outcome: "unknown"` and an action ID; a definitive attempted write returns `502` with its action ID and never creates a local fallback.
 
 ```json
 { "text": "Review the APEX documentation" }
 ```
 
-Invalid or empty text returns `422`. Microsoft To Do remains a separate read-only source and is not synchronized.
+Invalid or empty text returns `422`.
 
-### POST `/api/v1/reminders/read`
+### POST `/api/v1/reminders/complete`
 
-Dismisses one or more local reminders.
+Accepts one opaque `{ "id": "todo:…" | "local:…" }`. Remote completion is an immediate verified action using cached stale-target evidence. An unavailable remote source returns `503`; a changed target returns `409`. Pending local rows are dismissed, while uncertain local rows require explicit review.
+
+### POST `/api/v1/reminders/sync`
+
+Accepts one to 50 unique, explicitly selected pending `local:` IDs. Rows are processed sequentially with one action per item and return `synced`, `failed`, or `unknown` results. Concurrent batches return `409`; uncertain rows are never replayed automatically.
+
+### POST `/api/v1/reminders/dismiss`
+
+Archives one explicitly reviewed uncertain local row after the operator has inspected Microsoft To Do.
 
 ```json
-{ "ids": [12, 13] }
+{ "id": "local:12" }
 ```
-
-The operation is explicit and is not changed by development mode.
 
 ## Apex Agents and local models
 
@@ -411,6 +430,10 @@ The status schema is unchanged while the runtime recovers transient provider fai
 ### GET `/api/v1/microsoft-todo/status`
 
 Returns whether the integration is configured, its authorization state, the fixed `Tasks.ReadWrite` permission, and a bounded authorization error when applicable. Existing read-only grants report authentication required until the user reconnects with the broader delegated permission.
+
+### GET `/api/v1/microsoft-todo/lists`
+
+Returns at most 50 sanitized `{ "id", "display_name" }` records for the Runtime Settings selected-list control. It returns `503` when the connected account cannot be read.
 
 ### POST `/api/v1/microsoft-todo/auth/start`
 

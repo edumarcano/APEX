@@ -345,26 +345,34 @@ def _reject_microsoft_todo_task_mutation(**_arguments: Any) -> None:
     )
 
 
-def get_active_reminders() -> list[dict[str, Any]]:
-    """Retrieve all pending (unread) reminders from the APEX task ledger.
+def get_active_reminders() -> dict[str, Any]:
+    """Retrieve the unified selected-list reminder view.
 
-    Returns every active reminder stored in the local SQLite database where
-    ``is_read = 0``. Enables the agent to perform semantic search,
-    categorization, keyword clustering, and priority grouping over outstanding
-    operator tasks without mirroring on-screen HUD state.
+    Returns the same authoritative remote/cache/local-outbox data as Home.
 
     Returns:
-        list[dict]: A list of reminder records, each containing ``id`` (int)
-            and ``note`` (str). Returns an empty list on failure or when no
-            unread reminders exist.
+        dict: The reminder envelope containing opaque IDs, source and sync
+            state, plus freshness metadata.  A stable unavailable envelope is
+            returned when the application service is not running.
     """
     try:
-        from core import database
+        from core.reminders import get_reminder_service
 
-        records = database.fetch_unread_reminders()
-        return [{"id": row_id, "note": note} for row_id, note in records]
+        service = get_reminder_service()
+        if service is None:
+            return _unavailable_reminder_envelope()
+        return service.list().to_dict()
     except Exception:
-        return []
+        return _unavailable_reminder_envelope()
+
+
+def _unavailable_reminder_envelope() -> dict[str, Any]:
+    return {
+        "items": [],
+        "source_state": "unavailable",
+        "cache_timestamp": None,
+        "pending_sync_count": 0,
+    }
 
 
 def get_briefing_history(limit: int = 5) -> dict[str, Any]:
@@ -533,7 +541,8 @@ def register_native_capabilities() -> None:
             name="get_active_reminders",
             title="Active Reminders",
             description=(
-                "Retrieve all pending (unread) reminders from the APEX task ledger."
+                "Retrieve the selected Microsoft To Do reminder view, including "
+                "freshness and pending local review items."
             ),
             input_schema={
                 "type": "object",

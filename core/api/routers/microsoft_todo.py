@@ -8,10 +8,12 @@ from clients.microsoft_auth import (
     MicrosoftTodoNotConfiguredError,
     get_microsoft_auth_service,
 )
+from clients.microsoft_todo_client import get_microsoft_todo_client
 from clients.microsoft_todo_models import MicrosoftTodoAuthStatus
 from core.api.models import (
     MicrosoftTodoAuthorizationResponse,
     MicrosoftTodoStatusResponse,
+    MicrosoftTodoReminderListsResponse,
 )
 
 router = APIRouter(tags=["microsoft-todo"])
@@ -32,6 +34,18 @@ def microsoft_todo_status() -> MicrosoftTodoStatusResponse:
         state="not-configured",
     )
     return MicrosoftTodoStatusResponse.model_validate(snapshot.to_dict())
+
+
+@router.get("/api/v1/microsoft-todo/lists", response_model=MicrosoftTodoReminderListsResponse)
+def list_microsoft_todo_reminder_lists() -> MicrosoftTodoReminderListsResponse:
+    """Return the bounded list selector data without exposing task contents."""
+    try:
+        result = get_microsoft_todo_client().list_task_lists()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Microsoft To Do lists are unavailable.") from None
+    return MicrosoftTodoReminderListsResponse(
+        lists=[{"id": item.id, "display_name": item.display_name} for item in result.lists[:50]]
+    )
 
 
 @router.post(

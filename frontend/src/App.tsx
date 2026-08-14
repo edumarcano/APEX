@@ -25,6 +25,7 @@ import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderQuickAdd } from './components/ReminderQuickAdd'
+import { ReminderReviewDialog } from './components/ReminderReviewDialog'
 import SettingsPanel from './components/SettingsPanel'
 import { HomeCommandRail } from './components/HomeCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -154,7 +155,7 @@ interface PersistAgentSettingsOptions {
 }
 
 export default function App(): ReactElement {
-  const reminderPulseCount = 0
+  const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [activeAgent, setAgent] = useState<AgentKey>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
@@ -172,6 +173,8 @@ export default function App(): ReactElement {
     globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
   )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isReminderReviewOpen, setIsReminderReviewOpen] = useState(false)
+  const [isReminderRefreshPending, setIsReminderRefreshPending] = useState(false)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
@@ -183,6 +186,7 @@ export default function App(): ReactElement {
   const apexData = useApexData()
   const {
     activeReminders,
+    reminderSourceState,
     createReminder,
     demoModeActive,
     devModeActive,
@@ -193,6 +197,9 @@ export default function App(): ReactElement {
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
     markReminderAsRead,
+    refreshReminders,
+    syncReminders,
+    dismissUnknownReminder,
     applyBootSettings,
   } = apexData
   const actions = useActions(
@@ -584,6 +591,11 @@ export default function App(): ReactElement {
     },
     [telemetry],
   )
+  const handleRefreshReminders = useCallback((): void => {
+    if (isReminderRefreshPending) return
+    setIsReminderRefreshPending(true)
+    void refreshReminders().finally(() => setIsReminderRefreshPending(false))
+  }, [isReminderRefreshPending, refreshReminders])
   const handleRefreshAll = useCallback((): void => {
     void telemetry.refreshAll({ force: false })
   }, [telemetry])
@@ -640,7 +652,7 @@ export default function App(): ReactElement {
   const calendarRefreshing = isConnectorRefreshing('calendar')
   const f1Refreshing = isConnectorRefreshing('f1')
   const footballRefreshing = isConnectorRefreshing('football')
-  const remindersRefreshing = isConnectorRefreshing('reminders')
+  const remindersRefreshing = isConnectorRefreshing('reminders') || isReminderRefreshPending
 
   const weatherLedState = resolveModuleLedState(weatherModule, weatherRefreshing)
   const newsLedState = resolveModuleLedState(newsModule, newsRefreshing)
@@ -678,9 +690,15 @@ export default function App(): ReactElement {
 
   const primaryTemperatureF = weatherInfo.temperatureF
 
-  const handleMarkReminderRead = (id: number): void => {
+  const handleMarkReminderRead = (id: string): void => {
     void markReminderAsRead(id)
   }
+
+  const handleReminderSave = useCallback(async (text: string): Promise<'synced' | 'pending' | 'unknown'> => {
+    const outcome = await createReminder(text)
+    setReminderPulseCount((previous) => previous + 1)
+    return outcome
+  }, [createReminder])
 
   const handleGenerateBriefing = useCallback(async (): Promise<void> => {
     const snapshotId = telemetry.snapshot?.snapshot_id
@@ -1556,8 +1574,8 @@ export default function App(): ReactElement {
                   remindersModule,
                   remindersRefreshing,
                 )}
-                onRefresh={() => handleRefreshConnector('reminders')}
-                refreshDisabled={isRefreshingAll}
+                onRefresh={handleRefreshReminders}
+                refreshDisabled={isRefreshingAll || isReminderRefreshPending}
                 statusMessage={remindersStatusMessage}
                 compactValue={remindersCompactValue}
                 attentionTier={attentionTiers.reminders}
@@ -1566,7 +1584,7 @@ export default function App(): ReactElement {
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
-                headerAction={<ReminderQuickAdd onSave={createReminder} />}
+                headerAction={<ReminderQuickAdd onSave={handleReminderSave} />}
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (
@@ -1587,6 +1605,20 @@ export default function App(): ReactElement {
                       ))}
                     </ul>
                   )}
+                  {reminderSourceState && reminderSourceState !== 'live' ? (
+                    <p className="mt-2 font-mono text-[9px] uppercase tracking-wide text-amber-200">
+                      Reminder source: {reminderSourceState}
+                    </p>
+                  ) : null}
+                  {activeReminders.some((item) => item.source === 'local') ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsReminderReviewOpen(true)}
+                      className="mt-2 self-start font-mono text-[10px] uppercase tracking-wide text-[#9AC2FF] hover:text-white"
+                    >
+                      Review local reminders
+                    </button>
+                  ) : null}
                 </div>
               </TelemetryCard>
 
@@ -1650,7 +1682,15 @@ export default function App(): ReactElement {
             actions={actions}
             demoModeActive={demoModeActive}
           />
-        )}
+      )}
+      {isReminderReviewOpen ? (
+        <ReminderReviewDialog
+          reminders={activeReminders}
+          onClose={() => setIsReminderReviewOpen(false)}
+          onSync={syncReminders}
+          onDismissUnknown={dismissUnknownReminder}
+        />
+      ) : null}
       </div>
 
       <PreflightDialog

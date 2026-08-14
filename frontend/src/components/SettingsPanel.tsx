@@ -595,6 +595,13 @@ export default function SettingsPanel({
               <MicrosoftTodoSettingsSection
                 sectionId={`${titleId}-microsoft-todo`}
                 runtime={microsoftTodoRuntime}
+                reminderListId={draft.microsoft_todo.reminder_list_id}
+                onReminderListIdChange={(reminder_list_id) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    microsoft_todo: { ...prev.microsoft_todo, reminder_list_id },
+                  }))
+                }
               />
 
               <section className="space-y-2.5" aria-labelledby={`${titleId}-voice`}>

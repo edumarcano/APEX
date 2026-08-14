@@ -198,6 +198,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             "core.api.app.load_mcp_config", return_value=McpRuntimeConfig(enabled=False, servers={})
         ), mock.patch("core.api.app.MCPClientManager", return_value=manager), mock.patch(
             "core.api.app.ConnectorHttpSessions", return_value=mock.Mock()
+        ), mock.patch("core.api.app.ReminderService"
         ), mock.patch("core.api.app.configure_logging"), mock.patch(
             "core.api.app.database.initialize_db"
         ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"):
@@ -257,6 +258,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             "core.api.app.load_mcp_config", return_value=McpRuntimeConfig(enabled=False, servers={})
         ), mock.patch("core.api.app.MCPClientManager", return_value=manager), mock.patch(
             "core.api.app.ConnectorHttpSessions", return_value=mock.Mock()
+        ), mock.patch("core.api.app.ReminderService", side_effect=AssertionError("reminder service accessed")
         ), mock.patch("core.api.app.configure_logging"), mock.patch(
             "core.api.app.database.initialize_db"
         ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"):
@@ -294,6 +296,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             return_value=McpRuntimeConfig(enabled=False, servers={}),
         ), mock.patch(
             "core.api.app.MCPClientManager", return_value=manager
+        ), mock.patch("core.api.app.ReminderService"
         ), mock.patch("core.api.app.configure_logging"), mock.patch(
             "core.api.app.database.initialize_db"
         ), mock.patch(
@@ -339,6 +342,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             return_value=McpRuntimeConfig(enabled=False, servers={}),
         ), mock.patch(
             "core.api.app.MCPClientManager", return_value=manager
+        ), mock.patch("core.api.app.ReminderService"
         ), mock.patch("core.api.app.configure_logging"), mock.patch(
             "core.api.app.database.initialize_db"
         ), mock.patch(

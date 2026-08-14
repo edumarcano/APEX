@@ -46,8 +46,10 @@ export const DEFAULT_SYSTEM_DIAGNOSTICS: SystemDiagnostics = {
 }
 
 export interface ActiveReminder {
-  id: number
+  id: string
   note: string
+  source: 'todo' | 'local'
+  sync_state: 'synced' | 'pending' | 'unknown'
 }
 
 export interface ToolOutputItem {
@@ -384,6 +386,7 @@ export interface TelemetryPayload {
   calendar: string
   reminders: string
   activeReminders: ActiveReminder[]
+  reminderSourceState?: 'live' | 'stale' | 'unavailable'
   diagnostics?: SystemDiagnostics | null
   confidenceScore: number
   failedConnectors: string[]
@@ -431,6 +434,7 @@ export interface ApexDataState {
   isPipelinePolling: boolean
   isSpeaking: boolean
   activeReminders: ActiveReminder[]
+  reminderSourceState?: 'live' | 'stale' | 'unavailable'
   demoModeActive: boolean
   devModeActive: boolean
   confidenceScore: number
