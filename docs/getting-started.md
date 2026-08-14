@@ -167,10 +167,10 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ap
 
 - Standby does not automatically collect telemetry or run a briefing.
 - **Start APEX** activates Home and refreshes its data.
-- **Start with Briefing** activates Home, refreshes telemetry, and synthesizes with the selected briefing mode.
+- **Start with Briefing** activates Home, refreshes telemetry, and generates a briefing with the selected mode.
 - Agent queries become available after activation when they are enabled in Settings.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
-- Normal-mode briefings and reminders persist to `apex_memory.db`; demo briefings do not.
+- Normal-mode briefing history is stored in `apex_memory.db`. APEX also keeps its Microsoft To Do reminder cache, offline queue, and action history there. Demo briefings are not persisted.
 
 ## Troubleshooting
 

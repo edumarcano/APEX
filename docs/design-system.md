@@ -1,15 +1,14 @@
 # APEX Design System
 
-This reference defines the durable visual and interaction language for contributors working on the React HUD. It describes design intent and invariants rather than component implementation; runtime ownership belongs in [Architecture](architecture.md), and frontend code conventions live in the [Frontend Guide](../frontend/README.md).
+This reference defines the visual and interaction language for contributors working on the React HUD. It explains the design intent and reusable rules rather than individual component implementation; runtime ownership belongs in [Architecture](architecture.md), and frontend code conventions live in the [Frontend Guide](../frontend/README.md).
 
-The meaning of the APEX mark and its relationship to the product and
-Agent taxonomy is documented in [Identity and Naming](identity-and-naming.md).
+The meaning of the APEX mark and its relationship to the product and Agent taxonomy is documented in [Identity and Naming](identity-and-naming.md).
 
 ## Visual Direction
 
-APEX uses a dark intelligence and operations aesthetic built from cinematic atmospheric lighting, metallic state transitions, translucent glass surfaces, and mission-control chrome. Expressive background and identity layers surround comparatively restrained interaction surfaces so telemetry remains legible and operational states remain clear.
+APEX uses a dark, cinematic operations look built around atmospheric lighting, metallic transitions, glass surfaces, and mission-control details. The background and identity effects should frame the interface without making telemetry or controls harder to read.
 
-Prioritize clarity, accessibility, and information hierarchy over atmosphere. Visual effects must reinforce system state, depth, or interaction rather than compete with content.
+Prioritize clarity, accessibility, and information hierarchy over atmosphere. Visual effects should reinforce system state, depth, or interaction rather than compete with content.
 
 ## Color Families
 
@@ -91,9 +90,9 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ### Briefing and voice controls
 
-- Treat briefing synthesis as a global operation. Keep its selector, Refresh, and split Synthesize command together in the Home command rail beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
-- Organize briefing modes into Cloud and Local sections. Use the shared Agent availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
-- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Refresh and Synthesize until activation, disable current-snapshot synthesis when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or synthesis is active.
+- Treat briefing generation as a global operation. Keep its selector, Refresh, and split Synthesize command together in the Home command rail beneath the logo while keeping the selected mode distinct from the engine that produced the last transcript.
+- Organize briefing modes into Cloud and Local sections. Use shared Agent availability signals to disable unavailable model-backed modes; Structured Digest remains independent of model availability.
+- Keep the briefing selector available in standby so Start with Briefing can use a session mode override. Hide Refresh and Synthesize until activation, disable current-snapshot generation when there is no telemetry snapshot, and disable briefing controls while collection, preflight, or generation is active.
 - Treat Refresh All & Synthesize as one ordered action: a failed refresh must stop synthesis and leave its error visible.
 - Show Speak / Replay as an icon action only on the Briefing tab when a transcript exists and voice mode permits manual delivery. Disable it while speech is active and present delivery failures as red text with an accessible status role.
 - Keep provider, fallback, and delivery feedback with the transcript so the header selector continues to represent the next requested mode.
@@ -101,7 +100,7 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ## Attention and Disclosure
 
-Telemetry surfaces participate in a four-tier attention sequence:
+Telemetry surfaces use four attention states:
 
 ```text
 dormant -> pending -> active -> complete
@@ -109,10 +108,10 @@ dormant -> pending -> active -> complete
 
 - **Dormant:** Preserve settled glass and readable standby content.
 - **Pending:** Reduce saturation and brightness while keeping the shell visible; mask body content when the pipeline has not unlocked it.
-- **Active:** Apply blue catch-light and reveal the body as the surface becomes operationally relevant.
+- **Active:** Apply blue catch-light and reveal the body as the surface becomes relevant.
 - **Complete:** Return to settled glass while preserving completed content.
 
-Use staggered curtain reveals to communicate pipeline order. The shell remains spatially stable while content transitions; avoid moving or resizing the overall layout solely to indicate attention.
+Use staggered curtain reveals to communicate pipeline order. Keep the shell spatially stable while content changes; do not move or resize the overall layout just to show attention.
 
 ## Atmospheric Layering
 
@@ -156,7 +155,7 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Unified Tools selector
 
-The Tools control is shared by cloud and local Agents. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only prompt exposure; MCP settings remain a separate authority boundary.
+The Tools control is shared by cloud and local Agents. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only which tools are offered to the Agent; MCP settings remain a separate permission boundary.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 
@@ -178,7 +177,7 @@ Weather conditions, market trends, provider badges, tool-result cards, demo/deve
 
 ## Motion and Accessibility
 
-- Keep animation purposeful, deterministic, and tied to atmosphere, state transition, data activity, or direct interaction.
+- Keep animation purposeful and tied to atmosphere, state transition, data activity, or direct interaction.
 - Prefer slow breathing, staged flow, curtain reveal, and material response over arbitrary bouncing or continuous high-frequency motion.
 - Respect `prefers-reduced-motion` across every animation family, including atmosphere, weather, logo breathing and surges, status LEDs, border rotation, signal flow, speech waveform, and attention transitions.
 - Preserve visible keyboard focus, semantic structure, meaningful labels, adequate contrast, and minimum interaction targets.

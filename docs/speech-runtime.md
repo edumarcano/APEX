@@ -1,6 +1,6 @@
 # Speech Runtime
 
-APEX treats speech delivery as an application-owned runtime subsystem. `core.speaker` owns text preparation, engine selection, resource admission, fallback, chunking, synthesis, playback, cancellation, and readiness. FastAPI initializes the subsystem during application startup and releases it during shutdown; importing `core.speaker` does not load Kokoro or initialize cloud TTS.
+APEX manages speech through `core.speaker`. It prepares text, chooses the engine, handles fallback, splits long text, plays audio, supports cancellation, and reports whether speech is ready. FastAPI starts the speech runtime during application startup and releases it during shutdown; importing `core.speaker` does not load Kokoro or initialize cloud TTS.
 
 ## Installation
 
@@ -19,7 +19,7 @@ Install both optional speech engines with:
 uv sync --all-extras
 ```
 
-Selecting an engine whose optional dependency, credentials, or local model assets are unavailable does not prevent APEX from starting. The speech subsystem records a degraded readiness reason and falls back locally when delivery is requested.
+If an optional engine is missing its package, credentials, or local model files, APEX still starts. Speech reports that engine as unavailable and uses the local fallback when speech is requested.
 
 ## Engine behavior
 
@@ -29,28 +29,28 @@ Selecting an engine whose optional dependency, credentials, or local model asset
 | Kokoro | local Kokoro ONNX | local pyttsx3 |
 | pyttsx3 | local pyttsx3 | delivery failure |
 
-Kokoro is a strict local privacy boundary. A Kokoro request never escalates to Google Cloud TTS if local readiness, resource admission, synthesis, or playback fails.
+Kokoro stays local. If Kokoro is unavailable or fails during preparation, synthesis, or playback, APEX falls back to pyttsx3 and never sends the text to Google Cloud TTS.
 
 ## Long-text delivery
 
-Google and Kokoro input is normalized to Unicode plain text and split on sentence boundaries with a bounded hard fallback for unusually long sentences. Valid accented and non-Latin characters are preserved.
+Google and Kokoro input is normalized to Unicode plain text and split at sentence boundaries. Very long sentences are split again at a fixed size limit. Valid accented and non-Latin characters are preserved.
 
-Speech is synthesized one chunk ahead of playback: the first chunk is synthesized and begins playing while the next chunk is generated. The queue remains bounded so a long briefing does not require the full audio result to exist in memory before playback begins.
+APEX synthesizes one chunk ahead of playback. The first chunk starts playing while the next one is generated, and the queue stays small so a long briefing does not need all of its audio in memory before playback begins.
 
-## Kokoro resource admission
+## Kokoro resource checks
 
-Kokoro uses speech-specific admission rather than the generic APEX system-throttle boolean:
+Kokoro has its own CPU and memory checks:
 
-- RAM at or above 95% causes an immediate local pyttsx3 fallback.
-- CPU above 80% is treated as potentially transient. APEX waits for a short bounded recovery window and requires stable samples at or below the threshold before starting Kokoro.
-- Sustained CPU pressure through the recovery window falls back to local pyttsx3.
+- RAM at or above 95% causes an immediate fallback to pyttsx3.
+- CPU above 80% may be temporary, so APEX waits briefly and requires stable samples at or below the threshold before starting Kokoro.
+- If CPU pressure remains high through that window, APEX falls back to pyttsx3.
 
-This policy leaves the project-wide scanner thresholds unchanged and avoids rejecting Kokoro solely because briefing synthesis ended on a short CPU spike.
+These checks are separate from the general system scanner and avoid rejecting Kokoro just because briefing generation ended with a short CPU spike.
 
 ## Readiness and cancellation
 
-Startup readiness tracks audio mixer initialization and the selected optional engine. Kokoro readiness checks model and voice assets, model loading, and a small synthesis probe. Google readiness checks credentials, package availability, and client construction.
+Startup readiness tracks audio mixer initialization and the selected optional engine. Kokoro checks its model and voice files, loads the model, and runs a small synthesis probe. Google checks its credentials, package availability, and client setup.
 
-Optional-engine readiness is degraded state, not global API unavailability. `/api/v1/health/ready` continues to represent the core application rather than requiring every optional speech provider.
+An unavailable optional speech engine does not make the whole API unavailable. `/api/v1/health/ready` continues to represent the core application rather than every optional speech provider.
 
-The speaker subsystem also owns an internal cancellation event. Shutdown stops active mixer playback, attempts to stop active pyttsx3 playback, prevents queued chunks from continuing, and discards late synthesis results. A user-facing stop control is intentionally outside this runtime change.
+The speaker also owns cancellation during shutdown. It stops active mixer playback, attempts to stop pyttsx3, prevents queued chunks from continuing, and ignores late synthesis results. A user-facing stop control is outside the current speech runtime.
