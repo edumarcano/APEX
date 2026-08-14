@@ -195,7 +195,9 @@ export default function App(): ReactElement {
     markReminderAsRead,
     applyBootSettings,
   } = apexData
-  const actions = useActions(workspace === 'cortex' && !demoModeActive)
+  const actions = useActions(
+    workspace === 'cortex' && apexData.status === 'success' && !demoModeActive,
+  )
   const { data: marketData, isLoading: isMarketLoading } = useMarketData(
     marketEnabled,
     marketPollKey,

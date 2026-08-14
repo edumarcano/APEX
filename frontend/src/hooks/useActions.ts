@@ -139,7 +139,8 @@ export function useActions(enabled: boolean): UseActionsResult {
   const [actions, setActions] = useState<ActionRecord[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [readError, setReadError] = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null)
   const [detail, setDetail] = useState<ActionDetail | null>(null)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
@@ -167,7 +168,7 @@ export function useActions(enabled: boolean): UseActionsResult {
       ])
       if (controller.signal.aborted) return
       if (!actionsResponse.ok || !pendingResponse.ok) {
-        setError(await errorMessage(!actionsResponse.ok ? actionsResponse : pendingResponse))
+        setReadError(await errorMessage(!actionsResponse.ok ? actionsResponse : pendingResponse))
         return
       }
       const [actionsBody, pendingBody]: [unknown, unknown] = await Promise.all([
@@ -176,12 +177,12 @@ export function useActions(enabled: boolean): UseActionsResult {
       const parsedActions = parseActions(actionsBody)
       const parsedPending = parseActions(pendingBody)
       if (!parsedActions || !parsedPending) {
-        setError('Action data is unavailable.')
+        setReadError('Action data is unavailable.')
         return
       }
       setActions(parsedActions)
       setPendingCount(parsedPending.length)
-      setError(null)
+      setReadError(null)
       const expandedDetail = detailRef.current
       const currentRecord = expandedDetail
         ? parsedActions.find((action) => action.action_id === expandedDetail.action_id)
@@ -192,7 +193,7 @@ export function useActions(enabled: boolean): UseActionsResult {
       setSelectedActionId((current) => current && !parsedActions.some((action) => action.action_id === current) ? null : current)
     } catch (fetchError) {
       if (!(fetchError instanceof DOMException && fetchError.name === 'AbortError')) {
-        setError('Action controls could not be reached.')
+        setReadError('Action controls could not be reached.')
       }
     } finally {
       if (!controller.signal.aborted) setIsLoading(false)
@@ -210,21 +211,21 @@ export function useActions(enabled: boolean): UseActionsResult {
       if (controller.signal.aborted) return
       if (!response.ok) {
         setDetail(null)
-        setError(await errorMessage(response))
+        setReadError(await errorMessage(response))
         if (response.status === 404) setSelectedActionId(null)
         return
       }
       const parsed = parseActionDetail(await response.json())
       if (!parsed) {
         setDetail(null)
-        setError('Action details are unavailable.')
+        setReadError('Action details are unavailable.')
         return
       }
       setDetail(parsed)
-      setError(null)
+      setReadError(null)
     } catch (fetchError) {
       if (!(fetchError instanceof DOMException && fetchError.name === 'AbortError')) {
-        setError('Action details could not be reached.')
+        setReadError('Action details could not be reached.')
       }
     } finally {
       if (!controller.signal.aborted) setIsDetailLoading(false)
@@ -276,7 +277,7 @@ export function useActions(enabled: boolean): UseActionsResult {
         ? API_ENDPOINTS.actionReject(detail.action_id)
         : API_ENDPOINTS.actionVerify(detail.action_id)
     setMutation(requested)
-    setError(null)
+    setMutationError(null)
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -284,14 +285,14 @@ export function useActions(enabled: boolean): UseActionsResult {
         body: JSON.stringify({ expected_version: detail.version }),
       })
       if (response.status === 409) {
-        setError('This action changed. Its latest state is shown.')
+        setMutationError('This action changed. Its latest state is shown.')
       } else if (!response.ok) {
-        setError(await errorMessage(response))
+        setMutationError(await errorMessage(response))
       }
       await refresh()
       await loadDetail(detail.action_id)
     } catch {
-      setError('Action request could not be reached.')
+      setMutationError('Action request could not be reached.')
     } finally {
       setMutation(null)
     }
@@ -308,7 +309,7 @@ export function useActions(enabled: boolean): UseActionsResult {
     actions: enabled ? actions : [],
     pendingCount: enabled ? pendingCount : 0,
     isLoading: enabled && isLoading,
-    error: enabled ? error : null,
+    error: enabled ? mutationError ?? readError : null,
     selectedActionId: enabled ? selectedActionId : null,
     detail: enabled ? detail : null,
     isDetailLoading: enabled && isDetailLoading,

@@ -64,4 +64,25 @@ describe('useActions', () => {
     }))
     expect(result.current.detail?.status).toBe('verified')
   })
+
+  it('keeps stale-version feedback visible after refreshing authority', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([ACTION]))
+      .mockResolvedValueOnce(response([ACTION]))
+      .mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response({ detail: 'Action version conflict.' }, 409))
+      .mockResolvedValueOnce(response([{ ...ACTION, version: 1 }]))
+      .mockResolvedValueOnce(response([{ ...ACTION, version: 1 }]))
+      .mockResolvedValueOnce(response({ ...DETAIL, version: 1 }))
+
+    const { result } = renderHook(() => useActions(true))
+    await act(async () => { await Promise.resolve() })
+    act(() => result.current.setSelectedActionId('action-1'))
+    await act(async () => { await Promise.resolve() })
+
+    await act(async () => { await result.current.resolve('approve') })
+
+    expect(result.current.detail?.version).toBe(1)
+    expect(result.current.error).toBe('This action changed. Its latest state is shown.')
+  })
 })
