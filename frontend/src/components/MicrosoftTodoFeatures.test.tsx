@@ -26,7 +26,7 @@ describe('Microsoft To Do settings', () => {
       />,
     )
     expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument()
-    expect(screen.getByText(/no Agent write actions are exposed yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/require local approval in Cortex/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open Microsoft sign-in/i })).toHaveAttribute(
       'href',
       'https://microsoft.com/devicelogin',

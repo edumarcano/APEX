@@ -2,6 +2,7 @@ import { ExternalLink, Loader2, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
+import type { UseActionsResult } from '../hooks/useActions'
 import type {
   AgentStatus,
   AgentKey,
@@ -19,6 +20,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { CortexToolCards } from './CortexToolCards'
+import { CortexActions } from './CortexActions'
 import { ApexLogo, type ApexLogoProps } from './ApexLogo'
 import { AgentQueryBar } from './AgentQueryBar'
 import { AgentSelector } from './AgentSelector'
@@ -87,6 +89,8 @@ interface CortexWorkspaceProps {
     toolProfileId: string | null,
   ) => Promise<boolean>
   onNewSession: () => void
+  actions: UseActionsResult
+  demoModeActive: boolean
 }
 
 function isLocalAgent(agent: AgentKey): agent is LocalSettingsAgent {
@@ -390,6 +394,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
         {!local ? <CloudControls {...props} /> : null}
         {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl key={`${activeStatus.key}-reasoning`} agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={(reasoningMode) => props.onLocalReasoningModeChange(activeStatus.key as LocalSettingsAgent, reasoningMode)} /> : null}{activeStatus.context_window_options?.length ? <LocalContextControl key={`${activeStatus.key}-context`} agent={activeStatus} disabled={localContextLocked} onChange={(contextWindow) => props.onLocalContextWindowChange(activeStatus.key as LocalSettingsAgent, contextWindow)} /> : null}</> : null}
         <ContextControl {...props} />
+        <CortexActions actions={props.actions} demoModeActive={props.demoModeActive} />
       </aside>
     </div>
   </section>

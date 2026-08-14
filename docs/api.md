@@ -375,7 +375,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 3/4 respectively. The last model turn is answer-only.
+Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 4 turns/4 calls. The last model turn is answer-only, leaving local Agents up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
 
 ## Actions
 
@@ -383,7 +383,7 @@ Actions are loopback-only, durable proposals for supported native write capabili
 
 Supported Microsoft To Do action capabilities are `create_microsoft_todo_task`, `update_microsoft_todo_task`, `complete_microsoft_todo_task`, `reopen_microsoft_todo_task`, and destructive `delete_microsoft_todo_task`. Every mutation requires an opaque list ID, task ID, and the task's observed `last_modified_at` from `list_microsoft_todo_tasks`; approval rereads that exact task and fails without writing when it changed. Updates can alter only title, due date, and importance; completion and reopening alter only status. Deletion verifies only through a confirmed exact-task `404`. A timeout or other ambiguous write outcome remains `outcome_unknown`; APEX never retries a write automatically, while explicit verification retry rereads only the frozen target.
 
-`GET /api/v1/actions` returns newest-first records and accepts repeated `status` filters. `GET /api/v1/actions/{action_id}` also returns audit events. In demo mode the list is empty and detail is unavailable, so demo requests never read the real action ledger.
+`GET /api/v1/actions` returns newest-first records, accepts repeated `status` filters, and accepts `limit` from `1` through `50` (default `50`). The limit is applied after status filtering. `GET /api/v1/actions/{action_id}` also returns audit events. In demo mode the list is empty and detail is unavailable, so demo requests never read the real action ledger.
 
 The approve, reject, and verify routes require `{"expected_version": 0}` with the version currently returned by the API. Approval runs synchronously: it approves a proposal, claims its execution once, and independently verifies the result. A later approval request may resume an already approved action, but restart recovery never replays an interrupted write. Verification retry is available only for `verification_failed` and `outcome_unknown` states and never re-executes the action. In demo mode, detail reads return `404` and mutations return `403`.
 

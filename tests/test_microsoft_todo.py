@@ -8,6 +8,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import quote
 
 import requests
 
@@ -172,6 +173,34 @@ class MicrosoftTodoClientTests(unittest.TestCase):
         self.assertEqual(client.get_task("list-1", "task-1").id, "task-1")
         self.assertEqual(session.calls[0][0], "get")
         self.assertTrue(session.calls[0][1].endswith("/lists/list-1/tasks/task-1"))
+
+    def test_default_list_alias_uses_its_canonical_identifier_for_write_and_read(self) -> None:
+        list_id = "AQMkADAwATMwMAItMDFkYS00MmMyLTAwAi0wMAoALgAAAA=="
+        task = {"id": "task-1", "title": "Ship release", "status": "notStarted"}
+        session = _Session([
+            _Response({"value": [{
+                "id": list_id,
+                "displayName": "Tasks",
+                "wellknownListName": "defaultList",
+            }]}),
+            _Response(task, status_code=201),
+            _Response({"value": [{
+                "id": list_id,
+                "displayName": "Tasks",
+                "wellknownListName": "defaultList",
+            }]}),
+            _Response(task),
+        ])
+        client = MicrosoftTodoClient(_Auth(), session=session)
+
+        self.assertEqual(
+            client.create_task("Tasks", TodoTaskCreateRequest(title="Ship release")).id,
+            "task-1",
+        )
+        self.assertEqual(client.get_task("Tasks", "task-1").id, "task-1")
+        encoded_list_id = quote(list_id, safe="")
+        self.assertTrue(session.calls[1][1].endswith(f"/lists/{encoded_list_id}/tasks"))
+        self.assertTrue(session.calls[3][1].endswith(f"/lists/{encoded_list_id}/tasks/task-1"))
 
     def test_create_uses_documented_request(self) -> None:
         task = {"id": "task-1", "title": "Ship release", "status": "notStarted"}

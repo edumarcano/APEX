@@ -32,7 +32,7 @@ export default function MicrosoftTodoSettingsSection({
     <section className="space-y-2.5" aria-labelledby={sectionId}>
       <SectionHeading id={sectionId} title="Microsoft To Do" />
       <p className="text-[11px] leading-relaxed text-zinc-500">
-        Lets the selected Agent read task lists and tasks with Tasks.ReadWrite. The connector is ready for approved writes, but no Agent write actions are exposed yet. APEX reminders remain in the local SQLite ledger.
+        Lets the selected Agent read task lists and tasks with Tasks.ReadWrite. Bounded Microsoft To Do writes are proposed by an Agent and require local approval in Cortex. APEX reminders remain in the local SQLite ledger.
       </p>
       <div className="rounded-lg border border-white/5 bg-white/[0.015] p-2.5">
         <StatusRow label="Connection" value={presentation.value} tone={presentation.tone} />

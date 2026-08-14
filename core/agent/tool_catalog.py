@@ -92,8 +92,16 @@ APEX_TOOL_FAMILIES: tuple[ApexToolFamily, ...] = (
     ApexToolFamily(
         "microsoft_todo",
         "Microsoft To Do",
-        "Read-only Microsoft To Do lists and tasks.",
-        ("list_microsoft_todo_lists", "list_microsoft_todo_tasks"),
+        "Microsoft To Do lists, tasks, and approval-gated task actions.",
+        (
+            "list_microsoft_todo_lists",
+            "list_microsoft_todo_tasks",
+            "create_microsoft_todo_task",
+            "update_microsoft_todo_task",
+            "complete_microsoft_todo_task",
+            "reopen_microsoft_todo_task",
+            "delete_microsoft_todo_task",
+        ),
     ),
 )
 

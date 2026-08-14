@@ -46,6 +46,22 @@ describe('CortexToolCards MCP presentation', () => {
   })
 })
 
+describe('CortexToolCards action proposals', () => {
+  it('renders a compact card that directs approval to the Cortex inspector', () => {
+    render(
+      <CortexToolCards
+        toolOutputs={[{
+          name: 'delete_microsoft_todo_task', status: 'ok', duration_ms: 5,
+          output: { action_id: 'action-1', status: 'proposed', version: 0, risk: 'destructive', summary: 'Approve Delete Microsoft To Do Task', target: 'Delete Microsoft To Do Task' },
+        }]}
+      />,
+    )
+    expect(screen.getByText('Action proposed')).toBeInTheDocument()
+    expect(screen.getByText(/Review this action in the Cortex Actions inspector/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Approve/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('CortexToolCards calendar presentation', () => {
   it('presents normalized all-day calendar events without shifting the date', () => {
     render(
