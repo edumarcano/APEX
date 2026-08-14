@@ -20,8 +20,13 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 | POST | `/api/v1/briefings/generate` | Brief from the current snapshot |
 | GET | `/api/v1/briefings/history` | Recent briefing ledger |
 | GET | `/api/v1/reminders` | Active reminders |
+| GET | `/api/v1/reminders/task` | Exact selected-list task detail (`id=todo:…`) |
+| GET | `/api/v1/reminders/completed` | Live bounded completed reminders |
 | POST | `/api/v1/reminders` | Create a reminder |
 | POST | `/api/v1/reminders/complete` | Complete or dismiss one reminder |
+| POST | `/api/v1/reminders/update` | Update one active Microsoft To Do task |
+| POST | `/api/v1/reminders/delete` | Delete one confirmed Microsoft To Do task |
+| POST | `/api/v1/reminders/reopen` | Reopen one completed Microsoft To Do task |
 | POST | `/api/v1/reminders/sync` | Reviewed local reminder synchronization |
 | POST | `/api/v1/reminders/dismiss` | Dismiss a reviewed uncertain local reminder |
 | GET | `/api/v1/actions` | List durable action proposals |
@@ -247,6 +252,14 @@ Invalid or empty text returns `422`.
 ### POST `/api/v1/reminders/complete`
 
 Accepts one opaque `{ "id": "todo:…" | "local:…" }`. Remote completion is an immediate verified action using cached stale-target evidence. An unavailable remote source returns `503`; a changed target returns `409`. Pending local rows are dismissed, while uncertain local rows require explicit review.
+
+### Microsoft To Do task management
+
+`GET /api/v1/reminders/task?id=todo:…` reads one exact task from the selected list for the edit and delete dialogs. It returns the opaque ID, title, due date/timezone, importance, completion metadata, and observed `last_modified_at`.
+
+`GET /api/v1/reminders/completed` reads one bounded live collection and returns only completed Microsoft To Do tasks. It never reads SQLite cache or local outbox rows. When no selected list or live Microsoft connection is available, it returns an empty `unavailable` envelope.
+
+`POST /api/v1/reminders/update`, `/delete`, and `/reopen` are explicit operator commands. They require the opaque `todo:` ID and the `last_modified_at` observed by the HUD; update accepts only title, due date/timezone, and importance. A verified mutation returns `200`; an ambiguous execution or failed verification returns `202` with an action ID and is never replayed automatically. Stale targets return `409`, known unavailability returns `503`, absence returns `404`, and definitive action failure returns `502` with its action ID.
 
 ### POST `/api/v1/reminders/sync`
 

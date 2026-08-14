@@ -1,6 +1,7 @@
 import {
   Calendar,
   CheckSquare,
+  Clock,
   CloudSun,
   Mail,
   Newspaper,
@@ -26,6 +27,8 @@ import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderQuickAdd } from './components/ReminderQuickAdd'
 import { ReminderReviewDialog } from './components/ReminderReviewDialog'
+import { ReminderTaskDialog } from './components/ReminderTaskDialog'
+import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
 import SettingsPanel from './components/SettingsPanel'
 import { HomeCommandRail } from './components/HomeCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -174,7 +177,13 @@ export default function App(): ReactElement {
   )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isReminderReviewOpen, setIsReminderReviewOpen] = useState(false)
+  const [isCompletedRemindersOpen, setIsCompletedRemindersOpen] = useState(false)
+  const [reminderTaskDialog, setReminderTaskDialog] = useState<{
+    id: string
+    mode: 'edit' | 'delete'
+  } | null>(null)
   const [isReminderRefreshPending, setIsReminderRefreshPending] = useState(false)
+  const [reminderActionError, setReminderActionError] = useState<string | null>(null)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
@@ -197,6 +206,11 @@ export default function App(): ReactElement {
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
     markReminderAsRead,
+    getReminderTask,
+    listCompletedReminders,
+    updateReminderTask,
+    deleteReminderTask,
+    reopenReminderTask,
     refreshReminders,
     syncReminders,
     dismissUnknownReminder,
@@ -593,6 +607,7 @@ export default function App(): ReactElement {
   )
   const handleRefreshReminders = useCallback((): void => {
     if (isReminderRefreshPending) return
+    setReminderActionError(null)
     setIsReminderRefreshPending(true)
     void refreshReminders().finally(() => setIsReminderRefreshPending(false))
   }, [isReminderRefreshPending, refreshReminders])
@@ -691,7 +706,19 @@ export default function App(): ReactElement {
   const primaryTemperatureF = weatherInfo.temperatureF
 
   const handleMarkReminderRead = (id: string): void => {
-    void markReminderAsRead(id)
+    setReminderActionError(null)
+    void markReminderAsRead(id).catch((error: unknown) => {
+      const code = error instanceof Error ? error.message : 'reminder_completion_failed'
+      const actionId = error && typeof error === 'object' && 'actionId' in error
+        ? String((error as { actionId?: unknown }).actionId ?? '')
+        : ''
+      const message = code === 'reminder_target_changed'
+        ? 'Reminder changed in Microsoft To Do. Refresh and try again.'
+        : code === 'microsoft_todo_unavailable'
+          ? 'Microsoft To Do is unavailable. The reminder was restored.'
+          : 'Could not complete the reminder. The reminder was restored.'
+      setReminderActionError(actionId ? `${message} Review action ${actionId}.` : message)
+    })
   }
 
   const handleReminderSave = useCallback(async (text: string): Promise<'synced' | 'pending' | 'unknown'> => {
@@ -1584,7 +1611,20 @@ export default function App(): ReactElement {
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
-                headerAction={<ReminderQuickAdd onSave={handleReminderSave} />}
+                headerAction={(
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsCompletedRemindersOpen(true)}
+                      aria-label="Completed reminders"
+                      title="Completed reminders"
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-text)] transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                    >
+                      <Clock className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={2} aria-hidden />
+                    </button>
+                    <ReminderQuickAdd onSave={handleReminderSave} />
+                  </div>
+                )}
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (
@@ -1601,6 +1641,8 @@ export default function App(): ReactElement {
                           reminder={reminder}
                           index={index}
                           onMarkRead={handleMarkReminderRead}
+                          onEdit={(id) => setReminderTaskDialog({ id, mode: 'edit' })}
+                          onDelete={(id) => setReminderTaskDialog({ id, mode: 'delete' })}
                         />
                       ))}
                     </ul>
@@ -1608,6 +1650,11 @@ export default function App(): ReactElement {
                   {reminderSourceState && reminderSourceState !== 'live' ? (
                     <p className="mt-2 font-mono text-[9px] uppercase tracking-wide text-amber-200">
                       Reminder source: {reminderSourceState}
+                    </p>
+                  ) : null}
+                  {reminderActionError ? (
+                    <p className="mt-2 text-xs leading-relaxed text-red-200" role="alert">
+                      {reminderActionError}
                     </p>
                   ) : null}
                   {activeReminders.some((item) => item.source === 'local') ? (
@@ -1689,6 +1736,23 @@ export default function App(): ReactElement {
           onClose={() => setIsReminderReviewOpen(false)}
           onSync={syncReminders}
           onDismissUnknown={dismissUnknownReminder}
+        />
+      ) : null}
+      {reminderTaskDialog ? (
+        <ReminderTaskDialog
+          id={reminderTaskDialog.id}
+          mode={reminderTaskDialog.mode}
+          onClose={() => setReminderTaskDialog(null)}
+          onLoad={getReminderTask}
+          onUpdate={updateReminderTask}
+          onDelete={deleteReminderTask}
+        />
+      ) : null}
+      {isCompletedRemindersOpen ? (
+        <CompletedRemindersDialog
+          onClose={() => setIsCompletedRemindersOpen(false)}
+          onLoad={listCompletedReminders}
+          onReopen={reopenReminderTask}
         />
       ) : null}
       </div>

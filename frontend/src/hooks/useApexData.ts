@@ -35,6 +35,11 @@ export type UseApexDataReturn = ApexDataState & {
   refreshReminders: () => Promise<void>
   createReminder: (text: string) => Promise<'synced' | 'pending' | 'unknown'>
   markReminderAsRead: (id: string) => Promise<void>
+  getReminderTask: (id: string) => Promise<ReminderTaskDetail>
+  listCompletedReminders: () => Promise<CompletedRemindersResult>
+  updateReminderTask: (request: ReminderTaskUpdateRequest) => Promise<ReminderTaskMutationResult>
+  deleteReminderTask: (request: ReminderTaskTargetRequest) => Promise<ReminderTaskMutationResult>
+  reopenReminderTask: (request: ReminderTaskTargetRequest) => Promise<ReminderTaskMutationResult>
   syncReminders: (ids: string[]) => Promise<Array<{ id: string; outcome: string }>>
   dismissUnknownReminder: (id: string) => Promise<void>
   triggerSynthesis: () => Promise<void>
@@ -57,6 +62,45 @@ type ReminderEnvelope = {
   source_state: 'live' | 'stale' | 'unavailable'
   cache_timestamp: string | null
   pending_sync_count: number
+}
+
+export type ReminderTaskDue = {
+  date_time: string
+  time_zone: string
+}
+
+export type ReminderTaskDetail = {
+  id: string
+  title: string
+  due: ReminderTaskDue | null
+  importance: 'low' | 'normal' | 'high'
+  is_completed: boolean
+  completed_at: ReminderTaskDue | null
+  last_modified_at: string
+}
+
+export type CompletedRemindersResult = {
+  items: ReminderTaskDetail[]
+  source_state: 'live' | 'unavailable'
+}
+
+export type ReminderTaskUpdateRequest = {
+  id: string
+  last_modified_at: string
+  title?: string
+  due?: ReminderTaskDue | null
+  importance?: 'low' | 'normal' | 'high'
+}
+
+export type ReminderTaskTargetRequest = {
+  id: string
+  last_modified_at: string
+}
+
+export type ReminderTaskMutationResult = {
+  id: string
+  outcome: 'synced' | 'unknown'
+  action_id: string
 }
 
 function parseReminderEnvelope(body: unknown): ReminderEnvelope | null {
@@ -85,6 +129,59 @@ function parseReminderEnvelope(body: unknown): ReminderEnvelope | null {
     cache_timestamp: envelope.cache_timestamp as string | null,
     pending_sync_count: envelope.pending_sync_count,
   }
+}
+
+function parseReminderTaskDetail(value: unknown): ReminderTaskDetail | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  const parseDue = (candidate: unknown): ReminderTaskDue | null | undefined => {
+    if (candidate === null) return null
+    if (!candidate || typeof candidate !== 'object') return undefined
+    const due = candidate as Record<string, unknown>
+    return typeof due.date_time === 'string' && typeof due.time_zone === 'string'
+      ? { date_time: due.date_time, time_zone: due.time_zone }
+      : undefined
+  }
+  const due = parseDue(row.due)
+  const completedAt = parseDue(row.completed_at)
+  if (
+    typeof row.id !== 'string' || typeof row.title !== 'string' ||
+    (row.importance !== 'low' && row.importance !== 'normal' && row.importance !== 'high') ||
+    typeof row.is_completed !== 'boolean' || typeof row.last_modified_at !== 'string' ||
+    due === undefined || completedAt === undefined
+  ) return null
+  return {
+    id: row.id, title: row.title, due, importance: row.importance,
+    is_completed: row.is_completed, completed_at: completedAt,
+    last_modified_at: row.last_modified_at,
+  }
+}
+
+function parseMutationResult(value: unknown): ReminderTaskMutationResult | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.id !== 'string' || typeof row.action_id !== 'string' ||
+    (row.outcome !== 'synced' && row.outcome !== 'unknown')
+  ) return null
+  return { id: row.id, outcome: row.outcome, action_id: row.action_id }
+}
+
+async function responseFailure(response: Response, fallback: string): Promise<Error> {
+  try {
+    const body: unknown = await response.json()
+    const detail = body && typeof body === 'object' ? (body as { detail?: unknown }).detail : null
+    if (detail && typeof detail === 'object' && typeof (detail as { code?: unknown }).code === 'string') {
+      const error = new Error((detail as { code: string }).code) as Error & { actionId?: string }
+      if (typeof (detail as { action_id?: unknown }).action_id === 'string') {
+        error.actionId = (detail as { action_id: string }).action_id
+      }
+      return error
+    }
+  } catch {
+    // Fall through to a stable local message.
+  }
+  return new Error(fallback)
 }
 
 function assembleRemindersTelemetry(records: ReminderRecord[]): string {
@@ -306,6 +403,7 @@ export function useApexData(): UseApexDataReturn {
   stateRef.current = state
 
   const synthesisAbortRef = useRef<AbortController | null>(null)
+  const reminderRefreshSequenceRef = useRef(0)
 
   const applyReminderRecords = useCallback((records: ReminderRecord[], sourceState?: ApexDataState['reminderSourceState']): void => {
     const activeReminders = records.map((record) => ({ ...record }))
@@ -350,8 +448,10 @@ export function useApexData(): UseApexDataReturn {
   )
 
   const refreshReminders = useCallback(async (): Promise<void> => {
+    const requestSequence = ++reminderRefreshSequenceRef.current
     try {
       const envelope = await fetchReminderEnvelope()
+      if (requestSequence !== reminderRefreshSequenceRef.current) return
       if (envelope) applyReminderRecords(envelope.items, envelope.source_state)
     } catch {
       // Reminder refresh is best-effort; preserve existing HUD state on failure.
@@ -383,6 +483,10 @@ export function useApexData(): UseApexDataReturn {
 
   const markReminderAsRead = useCallback(async (id: string): Promise<void> => {
     let removedReminder: ActiveReminder | undefined
+
+    // Invalidate an older list read before starting the mutation. Otherwise an
+    // in-flight response captured before completion could restore the task.
+    ++reminderRefreshSequenceRef.current
 
     setState((prev) => {
       const target = prev.activeReminders.find((reminder) => reminder.id === id)
@@ -422,8 +526,9 @@ export function useApexData(): UseApexDataReturn {
       })
 
       if (!response.ok) {
-        throw new Error(`Mark read failed with status ${response.status}`)
+        throw await responseFailure(response, 'Could not complete reminder.')
       }
+      await refreshReminders()
     } catch (error) {
       console.warn('Failed to mark reminder as read; restoring local state.', error)
 
@@ -445,11 +550,68 @@ export function useApexData(): UseApexDataReturn {
                 activeReminders: restored,
                 reminders,
               }
-            : prev.data,
+          : prev.data,
         }
       })
+      throw error
     }
+  }, [refreshReminders])
+
+  const getReminderTask = useCallback(async (id: string): Promise<ReminderTaskDetail> => {
+    const response = await fetch(API_ENDPOINTS.reminderTask(id))
+    if (!response.ok) throw await responseFailure(response, 'Could not load reminder task.')
+    const parsed = parseReminderTaskDetail(await response.json())
+    if (!parsed) throw new Error('Reminder task response is invalid.')
+    return parsed
   }, [])
+
+  const listCompletedReminders = useCallback(async (): Promise<CompletedRemindersResult> => {
+    const response = await fetch(API_ENDPOINTS.remindersCompleted)
+    if (!response.ok) throw await responseFailure(response, 'Could not load completed reminders.')
+    const body: unknown = await response.json()
+    if (!body || typeof body !== 'object') throw new Error('Completed reminders response is invalid.')
+    const envelope = body as { items?: unknown; source_state?: unknown }
+    if (!Array.isArray(envelope.items) || (envelope.source_state !== 'live' && envelope.source_state !== 'unavailable')) {
+      throw new Error('Completed reminders response is invalid.')
+    }
+    const items = envelope.items.flatMap((item) => {
+      const parsed = parseReminderTaskDetail(item)
+      return parsed ? [parsed] : []
+    })
+    return { items, source_state: envelope.source_state }
+  }, [])
+
+  const mutateReminderTask = useCallback(async (
+    endpoint: string,
+    request: ReminderTaskUpdateRequest | ReminderTaskTargetRequest,
+  ): Promise<ReminderTaskMutationResult> => {
+    const response = await fetch(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+    if (!response.ok && response.status !== 202) {
+      throw await responseFailure(response, 'Could not update reminder task.')
+    }
+    const result = parseMutationResult(await response.json())
+    if (!result) throw new Error('Reminder task response is invalid.')
+    if (result.outcome === 'synced') await refreshReminders()
+    return result
+  }, [refreshReminders])
+
+  const updateReminderTask = useCallback(
+    (request: ReminderTaskUpdateRequest) => mutateReminderTask(API_ENDPOINTS.remindersUpdate, request),
+    [mutateReminderTask],
+  )
+
+  const deleteReminderTask = useCallback(
+    (request: ReminderTaskTargetRequest) => mutateReminderTask(API_ENDPOINTS.remindersDelete, request),
+    [mutateReminderTask],
+  )
+
+  const reopenReminderTask = useCallback(
+    (request: ReminderTaskTargetRequest) => mutateReminderTask(API_ENDPOINTS.remindersReopen, request),
+    [mutateReminderTask],
+  )
 
   const syncReminders = useCallback(async (ids: string[]): Promise<Array<{ id: string; outcome: string }>> => {
     const response = await fetch(API_ENDPOINTS.remindersSync, {
@@ -962,6 +1124,11 @@ export function useApexData(): UseApexDataReturn {
     refreshReminders,
     createReminder,
     markReminderAsRead,
+    getReminderTask,
+    listCompletedReminders,
+    updateReminderTask,
+    deleteReminderTask,
+    reopenReminderTask,
     syncReminders,
     dismissUnknownReminder,
     triggerSynthesis,

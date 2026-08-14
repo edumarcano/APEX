@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from core.agent.types import (
     AgentKey,
@@ -296,6 +296,73 @@ class SyncRemindersResponse(BaseModel):
 
 class DismissReminderRequest(BaseModel):
     id: str = Field(min_length=3, max_length=520)
+
+
+class ReminderDueDateTime(BaseModel):
+    """A bounded Microsoft To Do due date/timezone pair."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    date_time: str = Field(min_length=1, max_length=64, pattern=r".*\S.*")
+    time_zone: str = Field(min_length=1, max_length=64, pattern=r".*\S.*")
+
+
+class ReminderTaskDetail(BaseModel):
+    """One selected-list Microsoft To Do task safe for direct HUD management."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=6, max_length=520, pattern=r"^todo:.*\S.*$")
+    title: str = Field(min_length=1, max_length=500)
+    due: ReminderDueDateTime | None = None
+    importance: Literal["low", "normal", "high"]
+    is_completed: bool
+    completed_at: ReminderDueDateTime | None = None
+    last_modified_at: str = Field(min_length=1, max_length=64, pattern=r".*\S.*")
+
+
+class CompletedReminderListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ReminderTaskDetail] = Field(max_length=50)
+    source_state: Literal["live", "unavailable"]
+
+
+class ReminderTaskUpdateRequest(BaseModel):
+    """Sparse direct update request using the task version observed by the HUD."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=6, max_length=520, pattern=r"^todo:.*\S.*$")
+    last_modified_at: str = Field(min_length=1, max_length=64, pattern=r".*\S.*")
+    title: str | None = Field(default=None, min_length=1, max_length=500, pattern=r".*\S.*")
+    due: ReminderDueDateTime | None = None
+    importance: Literal["low", "normal", "high"] | None = None
+
+    @model_validator(mode="after")
+    def _has_update(self) -> "ReminderTaskUpdateRequest":
+        if not {"title", "due", "importance"}.intersection(self.model_fields_set):
+            raise ValueError("At least one reminder task field must be supplied.")
+        if "title" in self.model_fields_set and self.title is None:
+            raise ValueError("Reminder task title cannot be null.")
+        if "importance" in self.model_fields_set and self.importance is None:
+            raise ValueError("Reminder task importance cannot be null.")
+        return self
+
+
+class ReminderTaskTargetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=6, max_length=520, pattern=r"^todo:.*\S.*$")
+    last_modified_at: str = Field(min_length=1, max_length=64, pattern=r".*\S.*")
+
+
+class ReminderTaskMutationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=6, max_length=520, pattern=r"^todo:.*\S.*$")
+    outcome: Literal["synced", "unknown"]
+    action_id: str = Field(min_length=1, max_length=128)
 
 
 class MicrosoftTodoReminderList(BaseModel):

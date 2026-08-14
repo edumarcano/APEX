@@ -17,6 +17,7 @@ from core.api.models import (
     LocalLoadResponse,
     LocalUnloadResponse,
 )
+from core.reminders.service import ReminderServiceError
 
 
 class ApiPackageCompatibilityTests(unittest.TestCase):
@@ -102,6 +103,78 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["outcome"], "dismissed")
         service.complete.assert_called_once_with("local:7")
+
+    def test_reminder_task_management_routes_validate_and_delegate(self) -> None:
+        service = mock.Mock()
+        task = {
+            "id": "todo:task-7", "title": "Review branch", "due": None,
+            "importance": "normal", "is_completed": False,
+            "completed_at": None, "last_modified_at": "stamp-7",
+        }
+        service.task_detail.return_value = task
+        service.completed.return_value = {"items": [task], "source_state": "live"}
+        service.update_task.return_value = {
+            "id": "todo:task-7", "outcome": "synced", "action_id": "action-7"
+        }
+        service.delete_task.return_value = {
+            "id": "todo:task-7", "outcome": "unknown", "action_id": "action-8"
+        }
+        service.reopen_task.return_value = {
+            "id": "todo:task-7", "outcome": "synced", "action_id": "action-9"
+        }
+        patch = mock.patch(
+            "core.api.routers.reminders.get_reminder_service", return_value=service,
+        )
+        demo = mock.patch("core.api.routers.reminders.DEMO_MODE", False)
+        with patch, demo:
+            response = self.client.get("/api/v1/reminders/task", params={"id": "todo:task-7"})
+            completed = self.client.get("/api/v1/reminders/completed")
+            update = self.client.post("/api/v1/reminders/update", json={
+                "id": "todo:task-7", "last_modified_at": "stamp-7", "due": None,
+            })
+            deleted = self.client.post("/api/v1/reminders/delete", json={
+                "id": "todo:task-7", "last_modified_at": "stamp-7",
+            })
+            reopened = self.client.post("/api/v1/reminders/reopen", json={
+                "id": "todo:task-7", "last_modified_at": "stamp-7",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(completed.json()["source_state"], "live")
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(deleted.status_code, 202)
+        self.assertEqual(reopened.status_code, 200)
+        service.update_task.assert_called_once_with("todo:task-7", "stamp-7", {"due": None})
+        with self.assertRaises(Exception):
+            self.client.post("/api/v1/reminders/update", json={
+                "id": "todo:task-7", "last_modified_at": "stamp-7",
+            }).raise_for_status()
+
+    def test_reminder_task_mutation_errors_preserve_status_and_action_id(self) -> None:
+        service = mock.Mock()
+        payload = {
+            "id": "todo:task-7", "last_modified_at": "stamp-7", "title": "Review branch",
+        }
+        cases = (
+            ("reminder_not_found", 404),
+            ("reminder_target_changed", 409),
+            ("microsoft_todo_unavailable", 503),
+            ("microsoft_todo_mutation_failed", 502),
+        )
+        with mock.patch(
+            "core.api.routers.reminders.DEMO_MODE", False
+        ), mock.patch(
+            "core.api.routers.reminders.get_reminder_service", return_value=service,
+        ):
+            for code, expected_status in cases:
+                service.update_task.side_effect = ReminderServiceError(
+                    code, action_id=f"action-{code}"
+                )
+                response = self.client.post("/api/v1/reminders/update", json=payload)
+                self.assertEqual(response.status_code, expected_status)
+                self.assertEqual(response.json()["detail"], {
+                    "code": code, "action_id": f"action-{code}"
+                })
 
     def test_market_route_delegates_and_validates_payload(self) -> None:
         market_payload = {

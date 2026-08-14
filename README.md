@@ -38,7 +38,7 @@ A briefing can use a cloud Agent, a local Agent, or Structured Digest, a determi
 
 ### Operates Apex Agents
 
-Agent queries can use approved read capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Ordinary reads execute directly; supported native writes create durable proposals and require local approval plus independent verification. After a Microsoft To Do list is selected, its incomplete tasks are the Home reminder authority, while SQLite retains only a bounded stale cache and a local offline queue. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
+Agent queries can use approved read capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Ordinary reads execute directly; supported native writes create durable proposals and require local approval plus independent verification. After a Microsoft To Do list is selected, its incomplete tasks are the Home reminder authority, while SQLite retains only a bounded stale cache and a local offline queue. The Reminders panel can explicitly edit, complete, delete, and reopen selected-list tasks through the same verified operator-action path; completed history is a live HUD view. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
 
 <p align="center">
   <img
