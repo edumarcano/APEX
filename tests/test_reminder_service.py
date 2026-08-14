@@ -138,3 +138,65 @@ class ReminderServiceTests(unittest.TestCase):
             "Move to the current list", list_id="list-new", local_id=local_id
         )
         self.actions.approve_and_execute.assert_not_called()
+
+    def test_task_detail_reads_only_the_selected_list(self) -> None:
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        self.client.get_task.return_value = SimpleNamespace(
+            id="task-a", title="Review plan", importance="high", is_completed=False,
+            due=SimpleNamespace(date_time="2026-08-15T09:00:00", time_zone="UTC"),
+            completed_at=None, last_modified_at="stamp-a",
+        )
+
+        detail = self._service("list-a").task_detail("todo:task-a")
+
+        self.assertEqual(detail["id"], "todo:task-a")
+        self.assertEqual(detail["importance"], "high")
+        self.assertEqual(detail["due"], {"date_time": "2026-08-15T09:00:00", "time_zone": "UTC"})
+        self.client.get_task.assert_called_once_with("list-a", "task-a")
+
+    def test_completed_read_is_live_bounded_and_does_not_touch_cache(self) -> None:
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        self.client.list_tasks.return_value = SimpleNamespace(tasks=[
+            SimpleNamespace(id="active", title="Active", importance="normal", is_completed=False, due=None, completed_at=None, last_modified_at="a"),
+            SimpleNamespace(id="done", title="Done", importance="normal", is_completed=True, due=None, completed_at=SimpleNamespace(date_time="2026-08-14T09:00:00", time_zone="UTC"), last_modified_at="b"),
+        ])
+
+        result = self._service("list-a").completed()
+
+        self.assertEqual(result["source_state"], "live")
+        self.assertEqual([item["id"] for item in result["items"]], ["todo:done"])
+        self.client.list_tasks.assert_called_once_with("list-a", include_completed=True, max_results=50)
+        self.assertIsNone(database.fetch_microsoft_todo_reminder_cache("list-a"))
+
+    def test_update_uses_an_immediate_operator_action_with_the_observed_timestamp(self) -> None:
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        proposal = SimpleNamespace(action_id="action-1", version=2)
+        verified = SimpleNamespace(status="verified", action_id="action-1")
+        self.actions.propose.return_value = proposal
+        self.actions.approve_and_execute.return_value = verified
+
+        result = self._service("list-a").update_task(
+            "todo:task-a", "stamp-a", {"title": "Review updated", "due": None}
+        )
+
+        self.assertEqual(result, {"id": "todo:task-a", "outcome": "synced", "action_id": "action-1"})
+        self.actions.propose.assert_called_once_with(
+            agent_key="operator", capability_name="update_microsoft_todo_task",
+            arguments={"list_id": "list-a", "task_id": "task-a", "last_modified_at": "stamp-a", "title": "Review updated", "due": None},
+            target="Update Microsoft To Do Task", risk="write",
+            summary="Approve Update Microsoft To Do Task", actor="operator",
+        )
+        self.actions.approve_and_execute.assert_called_once_with("action-1", actor="operator", expected_version=2)
+
+    def test_ambiguous_delete_returns_unknown_without_replaying(self) -> None:
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        proposal = SimpleNamespace(action_id="action-1", version=0)
+        unknown = SimpleNamespace(status="outcome_unknown", action_id="action-1")
+        self.actions.propose.return_value = proposal
+        self.actions.approve_and_execute.return_value = unknown
+
+        result = self._service("list-a").delete_task("todo:task-a", "stamp-a")
+
+        self.assertEqual(result["outcome"], "unknown")
+        self.actions.propose.assert_called_once()
+        self.actions.approve_and_execute.assert_called_once()

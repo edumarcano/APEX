@@ -20,6 +20,7 @@ from clients.microsoft_todo_client import (
     MicrosoftTodoThrottledError,
     MicrosoftTodoUpstreamError,
 )
+from clients.microsoft_todo_models import TodoDateTime, TodoTask
 from core import database
 from core.actions.models import ActionEvent, ActionRecord
 from core.actions.service import ActionService
@@ -200,6 +201,82 @@ class ReminderService:
             raise ReminderServiceError("microsoft_todo_outcome_unknown", action_id=resolved.action_id)
         raise ReminderServiceError("microsoft_todo_completion_failed", action_id=resolved.action_id)
 
+    def task_detail(self, public_id: str) -> dict[str, object]:
+        """Read one exact selected-list task for an edit or delete dialog."""
+        list_id, task_id = self._remote_target(public_id)
+        try:
+            task = self._client.get_task(list_id, task_id)
+        except MicrosoftTodoNotFoundError as exc:
+            raise ReminderServiceError("reminder_not_found") from exc
+        except _EXPECTED_READ_ERRORS as exc:
+            raise ReminderServiceError("microsoft_todo_unavailable") from exc
+        return self._task_detail(task)
+
+    def completed(self) -> dict[str, object]:
+        """Return a live, bounded completed-task view without a local cache."""
+        list_id = self._selected_list_id()
+        if not list_id or not self._is_connected():
+            return {"items": [], "source_state": "unavailable"}
+        try:
+            result = self._client.list_tasks(
+                list_id, include_completed=True, max_results=50
+            )
+        except _EXPECTED_READ_ERRORS as exc:
+            _LOGGER.warning(
+                "Microsoft To Do completed reminder read unavailable: error_type=%s",
+                type(exc).__name__,
+            )
+            return {"items": [], "source_state": "unavailable"}
+        return {
+            "items": [
+                self._task_detail(task)
+                for task in result.tasks[:50]
+                if task.is_completed
+            ],
+            "source_state": "live",
+        }
+
+    def update_task(
+        self,
+        public_id: str,
+        last_modified_at: str,
+        changes: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Apply one sparse update through the existing verified action handler."""
+        title = changes.get("title")
+        if title is not None:
+            changes = {**changes, "title": self._validated_note(title)}
+        return self._mutate_task(
+            public_id,
+            last_modified_at,
+            capability_name="update_microsoft_todo_task",
+            target="Update Microsoft To Do Task",
+            risk="write",
+            changes=changes,
+        )
+
+    def delete_task(self, public_id: str, last_modified_at: str) -> dict[str, object]:
+        """Delete one exact task after the HUD has explicitly confirmed it."""
+        return self._mutate_task(
+            public_id,
+            last_modified_at,
+            capability_name="delete_microsoft_todo_task",
+            target="Delete Microsoft To Do Task",
+            risk="destructive",
+            changes={},
+        )
+
+    def reopen_task(self, public_id: str, last_modified_at: str) -> dict[str, object]:
+        """Reopen one observed completed task through the verified action path."""
+        return self._mutate_task(
+            public_id,
+            last_modified_at,
+            capability_name="reopen_microsoft_todo_task",
+            target="Reopen Microsoft To Do Task",
+            risk="write",
+            changes={},
+        )
+
     def dismiss_unknown(self, public_id: str) -> None:
         """Archive one operator-reviewed uncertain local row."""
         kind, identifier = self._parse_public_id(public_id)
@@ -314,6 +391,82 @@ class ReminderService:
     def _action_code(self, action: ActionRecord) -> str:
         events = self._actions.events(action.action_id)
         return events[-1].result_code if events else ""
+
+    def _remote_target(self, public_id: str) -> tuple[str, str]:
+        kind, task_id = self._parse_public_id(public_id)
+        if kind != "todo":
+            raise ReminderServiceError("only_remote_reminders_can_be_managed")
+        list_id = self._selected_list_id()
+        if not list_id or not self._is_connected():
+            raise ReminderServiceError("microsoft_todo_unavailable")
+        return list_id, task_id
+
+    def _mutate_task(
+        self,
+        public_id: str,
+        last_modified_at: str,
+        *,
+        capability_name: str,
+        target: str,
+        risk: Literal["write", "destructive"],
+        changes: Mapping[str, object],
+    ) -> dict[str, object]:
+        list_id, task_id = self._remote_target(public_id)
+        if not isinstance(last_modified_at, str) or not last_modified_at.strip():
+            raise ReminderServiceError("reminder_invalid_input")
+        action = self._actions.propose(
+            agent_key="operator",
+            capability_name=capability_name,
+            arguments={
+                "list_id": list_id,
+                "task_id": task_id,
+                "last_modified_at": last_modified_at,
+                **changes,
+            },
+            target=target,
+            risk=risk,
+            summary=f"Approve {target}",
+            actor="operator",
+        )
+        resolved = self._actions.approve_and_execute(
+            action.action_id, actor="operator", expected_version=action.version
+        )
+        if resolved.status == "verified":
+            return {"id": public_id, "outcome": "synced", "action_id": resolved.action_id}
+        if resolved.status in {"outcome_unknown", "verification_failed"}:
+            return {"id": public_id, "outcome": "unknown", "action_id": resolved.action_id}
+
+        code = self._action_code(resolved)
+        if code == "microsoft_todo_task_changed":
+            raise ReminderServiceError("reminder_target_changed", action_id=resolved.action_id)
+        if code == "microsoft_todo_task_not_found":
+            raise ReminderServiceError("reminder_not_found", action_id=resolved.action_id)
+        if code in {
+            "microsoft_todo_authentication_required",
+            "microsoft_todo_not_configured",
+            "microsoft_todo_throttled",
+            "microsoft_todo_upstream_unavailable",
+        }:
+            raise ReminderServiceError("microsoft_todo_unavailable", action_id=resolved.action_id)
+        raise ReminderServiceError("microsoft_todo_mutation_failed", action_id=resolved.action_id)
+
+    @staticmethod
+    def _task_detail(task: TodoTask) -> dict[str, object]:
+        def date_time(value: TodoDateTime | None) -> dict[str, str] | None:
+            if value is None:
+                return None
+            return {"date_time": value.date_time, "time_zone": value.time_zone}
+
+        importance = task.importance if task.importance in {"low", "normal", "high"} else "normal"
+        return {
+            "id": f"todo:{task.id}",
+            "title": task.title,
+            "due": date_time(task.due),
+            "importance": importance,
+            "is_completed": task.is_completed,
+            "completed_at": date_time(task.completed_at),
+            "last_modified_at": task.last_modified_at,
+        }
 
     def _linked_action_is_active(self, row: Mapping[str, object]) -> bool:
         action_id = row.get("sync_action_id")

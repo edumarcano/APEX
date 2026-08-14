@@ -18,6 +18,11 @@ const appMocks = vi.hoisted(() => ({
   markReminderAsRead: vi.fn().mockResolvedValue(undefined),
   refreshReminders: vi.fn().mockResolvedValue(undefined),
   createReminder: vi.fn().mockResolvedValue('synced'),
+  getReminderTask: vi.fn(),
+  listCompletedReminders: vi.fn().mockResolvedValue({ items: [], source_state: 'live' }),
+  updateReminderTask: vi.fn(),
+  deleteReminderTask: vi.fn(),
+  reopenReminderTask: vi.fn(),
   activate: vi.fn(),
   requestOperation: vi.fn().mockResolvedValue('proceed'),
   refreshAll: vi.fn().mockResolvedValue(null),
@@ -180,6 +185,11 @@ vi.mock('./hooks/useApexData', () => ({
     briefingDefaultMode: 'panthera',
     voiceMode: 'automatic',
     markReminderAsRead: appMocks.markReminderAsRead,
+    getReminderTask: appMocks.getReminderTask,
+    listCompletedReminders: appMocks.listCompletedReminders,
+    updateReminderTask: appMocks.updateReminderTask,
+    deleteReminderTask: appMocks.deleteReminderTask,
+    reopenReminderTask: appMocks.reopenReminderTask,
     refreshReminders: appMocks.refreshReminders,
     applyBootSettings: appMocks.applyBootSettings,
   }),
@@ -536,5 +546,15 @@ describe('App reminder feedback', () => {
 
     await waitFor(() => expect(screen.getByTestId('reminder-pulse-count')).toHaveTextContent('1'))
     expect(appMocks.createReminder).toHaveBeenCalledWith('Call the dentist')
+  })
+
+  it('opens completed reminders from the panel header without renaming the panel', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Completed reminders' }))
+
+    expect(await screen.findByRole('heading', { name: 'Completed reminders' })).toBeInTheDocument()
+    expect(appMocks.listCompletedReminders).toHaveBeenCalledOnce()
   })
 })

@@ -45,4 +45,30 @@ describe('ReminderListRow', () => {
     fireEvent.transitionEnd(container.querySelector('li')!, { propertyName: 'opacity' })
     expect(onMarkRead).toHaveBeenCalledWith('local:7')
   })
+
+  it('keeps completion visible while exposing edit and delete only for remote reminders', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    render(
+      <ReminderListRow
+        reminder={{ id: 'todo:task-1', note: 'Review notes', source: 'todo', sync_state: 'synced' }}
+        index={0}
+        onMarkRead={vi.fn()}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Complete reminder todo:task-1' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Manage reminder todo:task-1' }))
+    const row = screen.getByRole('menu').closest('li')
+    expect(row).toHaveClass('overflow-visible')
+    expect(row).not.toHaveClass('overflow-hidden')
+    await user.click(screen.getByRole('menuitem', { name: 'Edit' }))
+    expect(onEdit).toHaveBeenCalledWith('todo:task-1')
+    await user.click(screen.getByRole('button', { name: 'Manage reminder todo:task-1' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    expect(onDelete).toHaveBeenCalledWith('todo:task-1')
+  })
 })
