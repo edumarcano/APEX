@@ -92,6 +92,32 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             {tool.name for tool in catalog.tools},
         )
 
+    def test_microsoft_todo_actions_are_in_the_todo_family(self) -> None:
+        catalog = build_tool_catalog("panthera")
+        groups_by_id = {group.id: group for group in catalog.groups}
+        todo_tools = {
+            tool.name for tool in groups_by_id["family:microsoft_todo"].tools
+        }
+        self.assertTrue(
+            {
+                "list_microsoft_todo_lists",
+                "list_microsoft_todo_tasks",
+                "create_microsoft_todo_task",
+                "update_microsoft_todo_task",
+                "complete_microsoft_todo_task",
+                "reopen_microsoft_todo_task",
+                "delete_microsoft_todo_task",
+            }.issubset(todo_tools)
+        )
+        self.assertFalse(
+            any(
+                tool.name == "create_microsoft_todo_task"
+                for group in catalog.groups
+                if group.id != "family:microsoft_todo"
+                for tool in group.tools
+            )
+        )
+
     def test_catalog_groups_render_each_capability_once_without_duplicate_mcp_families(
         self,
     ) -> None:

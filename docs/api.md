@@ -375,7 +375,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 3/4 respectively. The last model turn is answer-only.
+Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 4 turns/4 calls. The last model turn is answer-only, leaving local Agents up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
 
 ## Actions
 

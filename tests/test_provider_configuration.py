@@ -36,12 +36,15 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
             profile = _concrete_profile(key)
             self.assertEqual(profile.agent_version, spec.agent_version)
 
-    def test_local_agents_retain_existing_loop_caps(self) -> None:
+    def test_local_agents_leave_a_final_answer_turn_after_tool_work(self) -> None:
         for key in ("sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"):
             with self.subTest(agent=key):
                 spec = AGENT_SPECS[key]
                 self.assertGreater(spec.max_tool_turns, 0)
                 self.assertGreaterEqual(spec.max_tool_calls, spec.max_tool_turns)
+        for key in ("mus", "apodemus", "neotoma", "unnamed-experimental-agent"):
+            with self.subTest(agent=key):
+                self.assertEqual(AGENT_SPECS[key].max_tool_turns, 4)
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_gemini_provider_config_omits_temperature(
