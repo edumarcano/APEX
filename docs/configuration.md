@@ -99,7 +99,7 @@ Disabling a connector prevents its network or authentication attempt and exclude
 
 | Feature | Credential or local dependency | Notes |
 |---|---|---|
-| Weather | `TARGET_LOCATION` | Open-Meteo current conditions and up to five forecast days; no API key is required for personal, non-commercial use |
+| Weather | `TARGET_LOCATION` | Open-Meteo current conditions and up to 14 forecast days for any location or configured default; no API key is required for personal, non-commercial use |
 | Formula 1 | None | Jolpica/Ergast data with a 24-hour file cache |
 | Football | football-data.org key | Up to three followed team IDs configured in Runtime Settings; disabled by default |
 | News | GNews key | AI and global-events headlines |
@@ -110,7 +110,7 @@ Disabling a connector prevents its network or authentication attempt and exclude
 
 Football telemetry keeps each configured team's next fixture. Briefing synthesis receives only the earliest eligible fixture within seven days.
 
-Weather resolves `TARGET_LOCATION` through Open-Meteo's geocoding service before requesting the forecast. The free hosted API is limited to non-commercial use and 10,000 calls per day, 5,000 per hour, and 600 per minute. The HUD and Cortex weather results identify Open-Meteo and GeoNames, link to the [CC BY 4.0 licence](https://creativecommons.org/licenses/by/4.0/), and state that APEX adapts the data for display.
+Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open-Meteo's geocoding service before requesting the forecast. The free hosted API is limited to non-commercial use and 10,000 calls per day, 5,000 per hour, and 600 per minute. The HUD and Cortex weather results identify Open-Meteo and GeoNames, link to the [CC BY 4.0 licence](https://creativecommons.org/licenses/by/4.0/), and state that APEX adapts the data for display.
 
 ## Briefing modes and Agents
 
