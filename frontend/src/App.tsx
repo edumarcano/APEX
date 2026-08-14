@@ -155,7 +155,7 @@ interface PersistAgentSettingsOptions {
 }
 
 export default function App(): ReactElement {
-  const reminderPulseCount = 0
+  const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [activeAgent, setAgent] = useState<AgentKey>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
@@ -691,6 +691,12 @@ export default function App(): ReactElement {
   const handleMarkReminderRead = (id: string): void => {
     void markReminderAsRead(id)
   }
+
+  const handleReminderSave = useCallback(async (text: string): Promise<'synced' | 'pending' | 'unknown'> => {
+    const outcome = await createReminder(text)
+    setReminderPulseCount((previous) => previous + 1)
+    return outcome
+  }, [createReminder])
 
   const handleGenerateBriefing = useCallback(async (): Promise<void> => {
     const snapshotId = telemetry.snapshot?.snapshot_id
@@ -1576,7 +1582,7 @@ export default function App(): ReactElement {
                 role="region"
                 aria-label="Active reminders"
                 data-slot="reminders-card"
-                headerAction={<ReminderQuickAdd onSave={createReminder} />}
+                headerAction={<ReminderQuickAdd onSave={handleReminderSave} />}
               >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {activeReminders.length === 0 ? (
