@@ -112,6 +112,22 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** Shortcut setup must preserve the repository working directory.
 
+### Use Microsoft To Do as the main reminder source
+
+**Decision.** One selected Microsoft To Do list is the main source for APEX reminders. SQLite keeps a local copy of active reminders and stores pending local changes that still need to be synced.
+
+**Why.** Microsoft To Do makes it easy to keep reminders in sync with my phone without APEX needing its own mobile app. Keeping a local copy in SQLite preserves APEX’s local-first behavior, so reminders can still be shown and created when Microsoft To Do or the network is unavailable.
+
+**Trade-off.** The local copy can become stale while offline, and locally created reminders may need to be synced later. APEX therefore has to keep the Microsoft list and its local state clearly separated instead of treating both as equal sources of truth.
+
+### Keep the CLI as a client of the APEX API
+
+**Decision.** The APEX CLI talks to the same local API as the HUD instead of calling backend services or the database directly.
+
+**Why.** This keeps one path for Agent requests, briefings, reminders, actions, approval, and verification. The HUD and CLI therefore follow the same rules instead of slowly developing different behavior.
+
+**Trade-off.** The APEX backend has to be running before the CLI can be used, and the CLI is intentionally limited to the local APEX instance.
+
 ## AI and speech
 
 ### Synthesize from typed facts instead of display prose
@@ -240,7 +256,15 @@ The `dev_only` flag controls roster visibility; it does not itself prevent expli
 
 **Why.** Calendar titles, headlines, email content, tasks, and provider results are written outside APEX's control and can contain instruction-like text.
 
-**Trade-off.** Prompt boundaries reduce risk but do not create a security boundary. Models cannot authorize actions, and higher-impact capabilities would require independent approval controls.
+**Trade-off.** Prompt boundaries reduce risk but do not create an authorization boundary. High-impact operations therefore execute only through the durable action kernel after local operator approval and independent verification.
+
+### Prove the action flow with Microsoft To Do
+
+**Decision.** Microsoft To Do changes go through APEX’s action flow: propose the change, ask for approval when needed, execute it, verify the result, and record what happened. To Do is the first real use of this system and is serving as a test case for future Cortex actions.
+
+**Why.** Task changes are simple enough to test the full flow without much risk. The approval flow applies to Agent-requested changes, where APEX needs a clear boundary between a model suggestion and an external write. Direct reminder management in the Home workspace stays simpler and does not add approval steps just to edit a task. This gives APEX a place to work through approval, failed or uncertain writes, restart recovery, verification, and history before the same ideas are used for more important workflows.
+
+**Trade-off.** This is more machinery than Microsoft To Do alone needs. For now, that extra complexity is intentional because the goal is to prove the action flow, not just build task editing.
 
 ## Development process
 
