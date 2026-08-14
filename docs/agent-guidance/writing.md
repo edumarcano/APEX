@@ -2,6 +2,10 @@
 
 Write in plain, natural language for the intended audience. Prefer concrete verbs, specific claims, and direct explanations. Avoid unnecessary technical jargon, corporate language, marketing claims, filler, and exaggerated wording.
 
+Avoid AI-shaped prose: unnecessary modifiers, abstract nouns, inflated phrasing, repetitive sentence patterns, and generic claims such as “robust,” “streamlined,” “structured,” “comprehensive,” or “enhanced” unless they convey specific information. Prefer the simplest wording that accurately describes the change.
+
+Vary sentence structure naturally. Do not force parallel bullet phrasing, repeated “X now Y” constructions, or polished-sounding transitions when plain prose is clearer.
+
 Use technical terminology when it improves precision. Explain unfamiliar terms when the audience may not know them, but do not replace accurate engineering language with vague simplifications. Preserve the established voice of an existing document instead of rewriting it into a generic style.
 
 Distinguish verified behavior from inference, proposals, limitations, and unresolved questions. Do not present expected, planned, or unverified behavior as implemented fact.
@@ -11,6 +15,8 @@ Distinguish verified behavior from inference, proposals, limitations, and unreso
 Write project documentation for the project owner's future reference first, and for external engineers who want to understand or run APEX second. Make the project understandable through concrete motivation, working behavior, and honest trade-offs, not evaluative or promotional framing.
 
 Use first person only where it adds useful context about personal motivation, constraints, or a decision. The README, roadmap framing, and engineering decisions may use that voice. Technical references should remain neutral, direct, and specific.
+
+Prefer ordinary engineering language over abstract or inflated phrasing. Avoid unnecessary modifiers, stacked abstractions, and formulaic wording when a simpler sentence would be equally precise.
 
 ## Documentation Structure and Ownership
 
@@ -40,8 +46,7 @@ When a route, setting, provider, persistence boundary, integration, or privacy b
 ## Artifact Expectations
 
 - **Documentation:** Make it durable, navigable, and explanatory.
-- **Pull requests:** Keep the title and description precise and implementation-focused.
-- **Changelog entries:** Emphasize confirmed user-visible outcomes while retaining important compatibility or operational details.
-- **Release notes:** Present a concise milestone narrative without duplicating the full changelog.
+- **Pull requests:** Write like an engineer explaining the change to another engineer, not like release marketing or generated documentation. State what changed and why in ordinary language. Avoid filler adjectives, unnecessary categorization, and formulaic AI phrasing.
+- **Changelog entries:** Record what changed in plain language, with enough technical detail to remain a useful engineering history. Describe behavior before implementation, avoid unnecessary architectural labels and modifiers, and reserve file names, contracts, routes, and internal structures for sections where they add useful precision.
+- **Release notes:** Summarize the milestone in terms of the most important changes and their practical effect. Keep implementation detail lighter than the changelog and avoid architecture-inventory language.
 - **Interface copy:** Keep it brief, direct, and actionable. State what happened and what the user can do next.
-
