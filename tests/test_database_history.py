@@ -160,6 +160,25 @@ class DatabaseHistoryTests(unittest.TestCase):
         unread_after = database.fetch_unread_reminders()
         self.assertEqual(unread_after, [(second, "Review notes")])
 
+    def test_verified_sync_cannot_overwrite_a_local_dismissal(self) -> None:
+        reminder_id = database.save_reminder("Review race handling")
+        self.assertTrue(database.link_reminder_action(reminder_id, "action-1"))
+        database.set_reminder_sync_state(reminder_id, "dismissed")
+
+        updated = database.mark_reminder_synced(
+            reminder_id,
+            list_id="list-1",
+            task_id="task-1",
+            action_id="action-1",
+        )
+
+        self.assertFalse(updated)
+        row = database.get_local_reminder(reminder_id)
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertTrue(row["is_read"])
+        self.assertEqual(row["sync_state"], "dismissed")
+
     def test_reminder_cutover_migrates_legacy_rows_without_deleting_them(self) -> None:
         legacy_path = Path(self._temp_dir.name) / "legacy_reminders.db"
         conn = sqlite3.connect(str(legacy_path))

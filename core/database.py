@@ -426,15 +426,20 @@ def link_reminder_action(reminder_id: int, action_id: str) -> bool:
             return cursor.rowcount == 1
 
 
-def mark_reminder_synced(reminder_id: int, *, list_id: str, task_id: str) -> None:
-    """Archive a local row after an independently verified remote creation."""
+def mark_reminder_synced(
+    reminder_id: int, *, list_id: str, task_id: str, action_id: str
+) -> bool:
+    """Archive the still-linked pending row after verified remote creation."""
     with _connection() as conn:
         with conn:
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE reminders SET is_read = 1, sync_state = 'synced', "
-                "todo_list_id = ?, todo_task_id = ? WHERE id = ?",
-                (list_id, task_id, reminder_id),
+                "todo_list_id = ?, todo_task_id = ? "
+                "WHERE id = ? AND is_read = 0 AND sync_state = 'pending' "
+                "AND sync_action_id = ?",
+                (list_id, task_id, reminder_id, action_id),
             )
+            return cursor.rowcount == 1
 
 
 def set_reminder_sync_state(reminder_id: int, state: str) -> None:

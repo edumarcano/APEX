@@ -99,6 +99,7 @@ export function useMicrosoftTodoStatus(open: boolean) {
   const [error, setError] = useState<string | null>(null)
   const [lists, setLists] = useState<MicrosoftTodoListOption[]>([])
   const sequence = useRef(0)
+  const listsLoadedForConnection = useRef(false)
 
   const refresh = useCallback(async () => {
     const requestId = ++sequence.current
@@ -110,20 +111,26 @@ export function useMicrosoftTodoStatus(open: boolean) {
         setError(parsed ? null : 'Microsoft To Do status is unavailable.')
         if (parsed && parsed.state !== 'authorizing') setAuthorization(null)
         if (parsed?.state === 'connected') {
-          const listsResponse = await fetch(API_ENDPOINTS.microsoftTodoLists)
-          const body: unknown = listsResponse.ok ? await listsResponse.json() : null
-          const rows = body && typeof body === 'object' && Array.isArray((body as { lists?: unknown }).lists)
-            ? (body as { lists: unknown[] }).lists.flatMap((item): MicrosoftTodoListOption[] => (
-              item && typeof item === 'object' &&
-              typeof (item as { id?: unknown }).id === 'string' &&
-              typeof (item as { display_name?: unknown }).display_name === 'string'
-                ? [{ id: (item as { id: string }).id, display_name: (item as { display_name: string }).display_name }]
-                : []
-            )).slice(0, 50)
-            : []
-          if (requestId === sequence.current) setLists(rows)
+          if (!listsLoadedForConnection.current) {
+            const listsResponse = await fetch(API_ENDPOINTS.microsoftTodoLists)
+            const body: unknown = listsResponse.ok ? await listsResponse.json() : null
+            const rows = body && typeof body === 'object' && Array.isArray((body as { lists?: unknown }).lists)
+              ? (body as { lists: unknown[] }).lists.flatMap((item): MicrosoftTodoListOption[] => (
+                item && typeof item === 'object' &&
+                typeof (item as { id?: unknown }).id === 'string' &&
+                typeof (item as { display_name?: unknown }).display_name === 'string'
+                  ? [{ id: (item as { id: string }).id, display_name: (item as { display_name: string }).display_name }]
+                  : []
+              )).slice(0, 50)
+              : []
+            if (requestId === sequence.current) {
+              setLists(rows)
+              listsLoadedForConnection.current = listsResponse.ok
+            }
+          }
         } else {
           setLists([])
+          listsLoadedForConnection.current = false
         }
       }
     } catch {
@@ -167,6 +174,8 @@ export function useMicrosoftTodoStatus(open: boolean) {
       if (!parsed) throw new Error()
       setStatus(parsed)
       setAuthorization(null)
+      listsLoadedForConnection.current = false
+      setLists([])
     } catch {
       setError('Microsoft authorization could not be removed.')
     } finally {

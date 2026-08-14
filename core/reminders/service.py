@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
 from clients.microsoft_todo_client import MicrosoftTodoClient
+from clients.microsoft_auth import (
+    MicrosoftTodoAuthenticationRequiredError,
+    MicrosoftTodoNotConfiguredError,
+)
+from clients.microsoft_todo_client import (
+    MicrosoftTodoInvalidInputError,
+    MicrosoftTodoNotFoundError,
+    MicrosoftTodoPermissionError,
+    MicrosoftTodoThrottledError,
+    MicrosoftTodoUpstreamError,
+)
 from core import database
 from core.actions.models import ActionEvent, ActionRecord
 from core.actions.service import ActionService
@@ -15,6 +27,18 @@ from core.connectors.models import utc_now_iso
 from core.settings.store import get_settings_store
 
 ReminderSourceState = Literal["live", "stale", "unavailable"]
+_LOGGER = logging.getLogger(__name__)
+_EXPECTED_READ_ERRORS = (
+    MicrosoftTodoAuthenticationRequiredError,
+    MicrosoftTodoNotConfiguredError,
+    MicrosoftTodoInvalidInputError,
+    MicrosoftTodoNotFoundError,
+    MicrosoftTodoPermissionError,
+    MicrosoftTodoThrottledError,
+    MicrosoftTodoUpstreamError,
+    TimeoutError,
+)
+_ACTIVE_ACTION_STATUSES = frozenset({"proposed", "approved", "executing", "verifying"})
 
 
 class ReminderServiceError(RuntimeError):
@@ -92,8 +116,11 @@ class ReminderService:
                     ],
                 )
                 return self._assemble(remote, local, "live", None)
-            except Exception:
-                pass
+            except _EXPECTED_READ_ERRORS as exc:
+                _LOGGER.warning(
+                    "Microsoft To Do reminder read unavailable: error_type=%s",
+                    type(exc).__name__,
+                )
 
         cached = database.fetch_microsoft_todo_reminder_cache(list_id)
         if cached is None:
@@ -132,6 +159,8 @@ class ReminderService:
             row = database.get_local_reminder(int(identifier))
             if row is None or row["is_read"]:
                 raise ReminderServiceError("reminder_not_found")
+            if self._linked_action_is_active(row):
+                raise ReminderServiceError("reminder_sync_in_progress")
             if row["sync_state"] == "unknown":
                 raise ReminderServiceError("unknown_reminder_requires_review")
             database.set_reminder_sync_state(int(identifier), "dismissed")
@@ -213,8 +242,16 @@ class ReminderService:
             try:
                 action = self._actions.get(existing)
                 if action.status == "proposed":
+                    if action.proposal.arguments.get("list_id") != list_id:
+                        return self._propose_create(
+                            str(row["note"]), list_id=list_id, local_id=int(row["id"])
+                        )
                     return self._actions.approve_and_execute(
                         action.action_id, actor="operator", expected_version=action.version
+                    )
+                if action.status == "execution_failed":
+                    return self._propose_create(
+                        str(row["note"]), list_id=list_id, local_id=int(row["id"])
                     )
                 return action
             except Exception:
@@ -240,7 +277,10 @@ class ReminderService:
             evidence = self._creation_evidence(action.action_id)
             if local_id is not None and evidence is not None:
                 database.mark_reminder_synced(
-                    local_id, list_id=evidence["list_id"], task_id=evidence["task_id"]
+                    local_id,
+                    list_id=evidence["list_id"],
+                    task_id=evidence["task_id"],
+                    action_id=action.action_id,
                 )
             return {"outcome": "synced", "action_id": action.action_id}
         if action.status in {"outcome_unknown", "verification_failed"}:
@@ -254,7 +294,10 @@ class ReminderService:
             evidence = self._creation_evidence(action.action_id)
             if evidence is not None:
                 database.mark_reminder_synced(
-                    row_id, list_id=evidence["list_id"], task_id=evidence["task_id"]
+                    row_id,
+                    list_id=evidence["list_id"],
+                    task_id=evidence["task_id"],
+                    action_id=action.action_id,
                 )
         elif action.status in {"outcome_unknown", "verification_failed"}:
             database.set_reminder_sync_state(row_id, "unknown")
@@ -271,6 +314,15 @@ class ReminderService:
     def _action_code(self, action: ActionRecord) -> str:
         events = self._actions.events(action.action_id)
         return events[-1].result_code if events else ""
+
+    def _linked_action_is_active(self, row: Mapping[str, object]) -> bool:
+        action_id = row.get("sync_action_id")
+        if not isinstance(action_id, str) or not action_id:
+            return False
+        try:
+            return self._actions.get(action_id).status in _ACTIVE_ACTION_STATUSES
+        except Exception:
+            return False
 
     def _local_items(self) -> list[dict[str, str]]:
         return [

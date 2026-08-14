@@ -174,6 +174,7 @@ export default function App(): ReactElement {
   )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isReminderReviewOpen, setIsReminderReviewOpen] = useState(false)
+  const [isReminderRefreshPending, setIsReminderRefreshPending] = useState(false)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
@@ -591,9 +592,10 @@ export default function App(): ReactElement {
     [telemetry],
   )
   const handleRefreshReminders = useCallback((): void => {
-    void telemetry.refreshConnector('reminders')
-    void refreshReminders()
-  }, [refreshReminders, telemetry])
+    if (isReminderRefreshPending) return
+    setIsReminderRefreshPending(true)
+    void refreshReminders().finally(() => setIsReminderRefreshPending(false))
+  }, [isReminderRefreshPending, refreshReminders])
   const handleRefreshAll = useCallback((): void => {
     void telemetry.refreshAll({ force: false })
   }, [telemetry])
@@ -650,7 +652,7 @@ export default function App(): ReactElement {
   const calendarRefreshing = isConnectorRefreshing('calendar')
   const f1Refreshing = isConnectorRefreshing('f1')
   const footballRefreshing = isConnectorRefreshing('football')
-  const remindersRefreshing = isConnectorRefreshing('reminders')
+  const remindersRefreshing = isConnectorRefreshing('reminders') || isReminderRefreshPending
 
   const weatherLedState = resolveModuleLedState(weatherModule, weatherRefreshing)
   const newsLedState = resolveModuleLedState(newsModule, newsRefreshing)
@@ -1573,7 +1575,7 @@ export default function App(): ReactElement {
                   remindersRefreshing,
                 )}
                 onRefresh={handleRefreshReminders}
-                refreshDisabled={isRefreshingAll}
+                refreshDisabled={isRefreshingAll || isReminderRefreshPending}
                 statusMessage={remindersStatusMessage}
                 compactValue={remindersCompactValue}
                 attentionTier={attentionTiers.reminders}

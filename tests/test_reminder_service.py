@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from clients.microsoft_todo_client import MicrosoftTodoUpstreamError
 from core import database
 from core.reminders.service import ReminderService, ReminderServiceError
 
@@ -77,7 +78,7 @@ class ReminderServiceTests(unittest.TestCase):
             tasks=[{"id": "task-b", "title": "Wrong list", "last_modified_at": "stamp"}],
         )
         self.client.get_status.return_value = SimpleNamespace(state="connected")
-        self.client.list_tasks.side_effect = RuntimeError("offline")
+        self.client.list_tasks.side_effect = MicrosoftTodoUpstreamError("offline")
 
         view = self._service("list-a").list().to_dict()
 
@@ -102,3 +103,38 @@ class ReminderServiceTests(unittest.TestCase):
             service.complete(f"local:{local_id}")
         service.dismiss_unknown(f"local:{local_id}")
         self.assertEqual(database.fetch_local_reminders(), [])
+
+    def test_linked_active_sync_cannot_be_dismissed_locally(self) -> None:
+        local_id = database.save_reminder("Wait for verified sync")
+        self.assertTrue(database.link_reminder_action(local_id, "action-1"))
+        self.actions.get.return_value = SimpleNamespace(status="executing")
+
+        with self.assertRaisesRegex(ReminderServiceError, "reminder_sync_in_progress"):
+            self._service().complete(f"local:{local_id}")
+
+        row = database.get_local_reminder(local_id)
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertFalse(row["is_read"])
+        self.assertEqual(row["sync_state"], "pending")
+
+    def test_explicit_resync_replaces_a_proposal_for_a_previous_list(self) -> None:
+        local_id = database.save_reminder("Move to the current list")
+        self.assertTrue(database.link_reminder_action(local_id, "action-old"))
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        self.actions.get.return_value = SimpleNamespace(
+            status="proposed",
+            action_id="action-old",
+            version=0,
+            proposal=SimpleNamespace(arguments={"list_id": "list-old"}),
+        )
+        service = self._service("list-new")
+        replacement = SimpleNamespace(status="execution_failed", action_id="action-new")
+        with mock.patch.object(service, "_propose_create", return_value=replacement) as propose:
+            result = service.sync([f"local:{local_id}"])
+
+        self.assertEqual(result, [{"id": f"local:{local_id}", "outcome": "failed", "action_id": "action-new"}])
+        propose.assert_called_once_with(
+            "Move to the current list", list_id="list-new", local_id=local_id
+        )
+        self.actions.approve_and_execute.assert_not_called()

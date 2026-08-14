@@ -525,18 +525,7 @@ describe('App weather attribution', () => {
   })
 })
 
-describe('App reminder refresh', () => {
-  it('refreshes both reminder rows and reminder telemetry', async () => {
-    const user = userEvent.setup()
-
-    render(<App />)
-
-    await user.click(screen.getByRole('button', { name: 'Refresh Reminders' }))
-
-    expect(appMocks.refreshConnector).toHaveBeenCalledWith('reminders')
-    expect(appMocks.refreshReminders).toHaveBeenCalledTimes(1)
-  })
-
+describe('App reminder feedback', () => {
   it('pulses the logo after an accepted reminder save', async () => {
     const user = userEvent.setup()
 

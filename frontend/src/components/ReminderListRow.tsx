@@ -19,7 +19,10 @@ export function ReminderListRow({
   const handleComplete = useCallback((): void => {
     if (isDismissing) return
     setIsDismissing(true)
-  }, [isDismissing])
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      onMarkRead(reminder.id)
+    }
+  }, [isDismissing, onMarkRead, reminder.id])
 
   const handleTransitionEnd = useCallback(
     (event: React.TransitionEvent<HTMLLIElement>): void => {

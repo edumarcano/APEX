@@ -25,13 +25,14 @@ export function ReminderReviewDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<Array<{ id: string; outcome: string }>>([])
+  const selectedPending = selected.filter((id) => pending.some((item) => item.id === id))
 
   const sync = async (): Promise<void> => {
-    if (!selected.length) return
+    if (!selectedPending.length) return
     setBusy(true)
     setError(null)
     try {
-      setResults(await onSync(selected))
+      setResults(await onSync(selectedPending))
     } catch {
       setError('Could not synchronize the selected reminders.')
     } finally {
@@ -74,7 +75,7 @@ export function ReminderReviewDialog({
             <label key={item.id} className="flex gap-2 rounded border border-white/10 p-2 text-sm text-zinc-200">
               <input
                 type="checkbox"
-                checked={selected.includes(item.id)}
+                checked={selectedPending.includes(item.id)}
                 onChange={(event) => setSelected((current) => (
                   event.target.checked
                     ? [...current, item.id]
@@ -101,7 +102,7 @@ export function ReminderReviewDialog({
         ) : null}
         <button
           type="button"
-          disabled={busy || !selected.length}
+          disabled={busy || !selectedPending.length}
           onClick={() => void sync()}
           className="mt-4 rounded border border-[#7EB3FF]/30 bg-[#7EB3FF]/10 px-3 py-1.5 text-xs text-[#9AC2FF] disabled:opacity-50"
         >
