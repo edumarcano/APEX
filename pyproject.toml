@@ -1,6 +1,6 @@
 [project]
 name = "apex"
-version = "1.19.1"
+version = "1.20.0"
 description = "Local-first personal intelligence HUD"
 readme = "README.md"
 requires-python = "==3.14.*"

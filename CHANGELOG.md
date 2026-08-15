@@ -3,6 +3,60 @@
 ---
 
 
+## v1.20.0 - Cortex: Verified Personal Actions & Headless Control
+
+**Released:** August 15, 2026
+
+Agent-initiated writes to Microsoft To Do now go through an explicit approval step before execution. APEX checks the result and records what happened, so the operator always has a clear record of what changed and whether it succeeded. Reminders moved from a local store to a selected Microsoft To Do list, with a local cache for offline use. A new CLI (`uv run apex`) covers the most common operations: status, Agent queries, briefing, and action control for cases where the HUD is not needed. The Weather card now shows current conditions, a +4h/+8h intraday view, and daily highs/lows; the Agent weather tool extends to 14 days and accepts custom locations. A fix prevents 400 errors when Delphinus (grok-4.3) is asked to use encrypted reasoning.
+
+---
+
+### What's New
+
+- Added an action system (`core/actions/`): Agent capabilities that write to external services now generate a proposal, wait for operator approval, execute the write, and verify the result against the provider. In-flight actions are recovered on restart. Definitive failures and uncertain outcomes are treated differently to avoid replaying ambiguous writes.
+- Mutative Microsoft To Do capabilities (`create_microsoft_todo_task`, `update_microsoft_todo_task`, `complete_microsoft_todo_task`, `reopen_microsoft_todo_task`, `delete_microsoft_todo_task`) go through the action flow rather than writing directly.
+- Added a Cortex Actions panel (`CortexActions.tsx`, `useActions.ts`) where pending, executed, verified, rejected, and failed actions can be reviewed with their audit history. Approve, reject, and retry controls are available; destructive approvals require a second confirmation.
+- Moved APEX reminders to a selected Microsoft To Do list. A local SQLite cache keeps reminders available offline, and a background queue syncs changes when the connection returns. The Home panel now supports creating, editing, completing, reopening, and deleting tasks directly.
+- Added `uv run apex`, a terminal client for the local backend. Commands: `status`, `agents`, `ask`, `briefing`, and `actions list/show/approve/reject/verify`. Pass `--json` for machine-readable output.
+- The Weather card now fetches current conditions, daily summaries, and hourly forecasts in one request and shows a three-point intraday timeline (Now, +4h, +8h) with feels-like temperature, daily range, and rain probability.
+- The `get_weather_forecast` Agent tool now covers up to 14 days and accepts a custom city alongside the default home location.
+- Added `supports_encrypted_reasoning` to `AgentSpec` and set it to `false` for Delphinus (grok-4.3), which was triggering 400 errors from the xAI API. The 400 path also now logs the provider, model, error body, and request keys.
+- Added `THIRD_PARTY_NOTICES.md` listing open-source Python and npm dependencies with their licenses.
+
+### Architecture Changes
+
+- `core/actions/` (`models.py`, `service.py`, `store.py`, `runtime.py`, `microsoft_todo.py`) owns the action schema, SQLite persistence (`actions` and `action_audit` tables), lifecycle transitions, and startup recovery. Capabilities that require a proposal set `requires_action_proposal`; the agent loop intercepts those calls and creates a durable record instead of executing immediately.
+- `clients/microsoft_auth.py` and `clients/microsoft_todo_client.py` now require and validate the `Tasks.ReadWrite` OAuth scope. The client exposes read and write primitives with explicit error classification for definitive vs. ambiguous failures.
+- `core/reminders/service.py` and `runtime.py` sync with Microsoft To Do and keep a local SQLite cache for offline access. The reminder router (`core/api/routers/reminders.py`) handles task mutations via the same action flow.
+- `clients/weather_client.py` fetches current conditions, daily summaries, and hourly forecasts together and supports multi-location geocoding.
+- Settings normalizers in `core/settings/` cover Microsoft To Do list selection, write permissions, and reminder preferences.
+
+### API Changes
+
+- Added the action control API (`core/api/routers/actions.py`): `GET /api/v1/actions`, `GET /api/v1/actions/{action_id}`, `POST /api/v1/actions/{action_id}/approve`, `POST /api/v1/actions/{action_id}/reject`, and `POST /api/v1/actions/{action_id}/retry`.
+- Added reminder task mutation endpoints: `POST /api/v1/reminders/tasks/{task_id}/complete`, `POST /api/v1/reminders/tasks/{task_id}/reopen`, `PATCH /api/v1/reminders/tasks/{task_id}`, and `DELETE /api/v1/reminders/tasks/{task_id}`.
+- `POST /api/v1/cortex/query` returns action proposal descriptors when a mutative capability is triggered.
+- `GET /api/v1/microsoft-todo/status` and `PATCH /api/v1/settings` expose and accept the selected Microsoft To Do list and write permission settings.
+
+### Frontend Changes
+
+- Added `CortexActions.tsx` and `useActions.ts` for action status polling and the approve/reject/retry UI.
+- `CortexToolCards.tsx` renders action proposal cards with pending status and execution evidence. Weather tool cards show 14-day results with precipitation data.
+- Added `ReminderTaskDialog.tsx`, `CompletedRemindersDialog.tsx`, `ReminderQuickAdd.tsx`, and `ReminderListRow.tsx` for task editing and lifecycle management in the Reminders panel.
+- `TelemetryCard.tsx` weather view redesigned with the intraday timeline, feels-like temperature, daily range, and rain probability.
+- Added `lib/weatherTelemetry.ts` for weather data parsing and timeline bucketing.
+- Fixed the calendar events card layout so it scrolls as a single unit. Refreshed demo-mode fixtures for weather and reminders.
+
+### Documentation Updates
+
+- Added `docs/cli.md` covering the loopback CLI commands, action management, JSON output, and exit codes.
+- Updated `docs/architecture.md`, `docs/api.md`, `docs/configuration.md`, `docs/privacy.md`, and `docs/getting-started.md` for the action system, Microsoft To Do write path, 14-day weather, and CLI.
+- Updated `docs/decisions.md` with the reasoning behind the action flow and the choice to prove it with Microsoft To Do first.
+- Updated `README.md`, `frontend/README.md`, and `docs/roadmap.md` to reflect Phase IV completion.
+
+---
+
+
 ## v1.19.1 - Runtime Reliability & Maintenance
 
 **Released:** August 10, 2026
