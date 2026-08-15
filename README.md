@@ -60,14 +60,14 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 
 ## Engineering highlights
 
-- **Local-first** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
-- **Independent features** — telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
-- **Safer model input** — connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
-- **Cloud, local, and model-free briefings** — APEX can use cloud or local Agents and always keeps Structured Digest as the final fallback.
-- **One local model at a time** — APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage** — SQLite keeps briefing history, the reminder cache and offline queue, and the durable action ledger. Browser-held Agent conversations disappear on reload.
-- **Visible failures** — readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
-- **Credential isolation** — the backend receives credentials; the static server and browser receive a restricted child environment.
+- **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
+- **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
+- **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
+- **Cloud, local, and model-free briefings:** APEX can use cloud or local Agents and always keeps Structured Digest as the final fallback.
+- **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
+- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, and the durable action ledger. Browser-held Agent conversations disappear on reload.
+- **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
+- **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 
 ## Architecture at a glance
 

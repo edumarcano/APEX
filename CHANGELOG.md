@@ -3,7 +3,7 @@
 ---
 
 
-## v1.19.1 — Runtime Reliability & Maintenance
+## v1.19.1 - Runtime Reliability & Maintenance
 
 **Released:** August 10, 2026
 
@@ -36,7 +36,7 @@ This release improves reliability and consistency across APEX's connector networ
 ---
 
 
-## v1.19.0 — Apex Agents & Cortex Workspace
+## v1.19.0 - Apex Agents & Cortex Workspace
 
 **Released:** August 8, 2026
 
@@ -128,7 +128,7 @@ This release establishes Apex Agents as APEX's provider-neutral intelligence abs
 
 ---
 
-## v1.18.0 — Cortex: MCP Client Foundation & Read-Only Integrations
+## v1.18.0 - Cortex: MCP Client Foundation & Read-Only Integrations
 
 **Released:** August 1, 2026
 
@@ -185,7 +185,7 @@ This release gives APEX a provider-neutral capability layer and its first extern
 
 ---
 
-## v1.17.0 — Runtime Hardening & Decoupling
+## v1.17.0 - Runtime Hardening & Decoupling
 
 **Released:** July 22, 2026
 
@@ -240,7 +240,7 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 
 ---
 
-## v1.16.0 — Command Console & Runtime Control Deck
+## v1.16.0 - Command Console & Runtime Control Deck
 
 **Released:** July 12, 2026
 
@@ -286,7 +286,7 @@ This release adds a runtime settings layer that lets operators edit assistant, b
 
 ---
 
-## v1.15.1 — Gemini Client GC Fix & Console Diagnostics
+## v1.15.1 - Gemini Client GC Fix & Console Diagnostics
 
 **Released:** July 11, 2026
 
@@ -304,7 +304,7 @@ This release fixes a critical runtime exception in the Gemini briefing synthesis
 
 ---
 
-## v1.15.0 — Synthesis Routing and Profile Tuning
+## v1.15.0 - Synthesis Routing and Profile Tuning
 
 **Released:** July 11, 2026
 
@@ -355,7 +355,7 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 
 ---
 
-## v1.14.0 — Central Command Atmosphere
+## v1.14.0 - Central Command Atmosphere
 
 **Released:** July 9, 2026
 
@@ -420,7 +420,7 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 
 ---
 
-## v1.13.0 — Cortex: Local Ollama Provider
+## v1.13.0 - Cortex: Local Ollama Provider
 
 **Released:** July 5, 2026
 
@@ -474,7 +474,7 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 
 ---
 
-## v1.12.0 — Cloud Gemini Agentic Tool Calling
+## v1.12.0 - Cloud Gemini Agentic Tool Calling
 
 **Released:** July 2, 2026
 
@@ -523,7 +523,7 @@ This release adds a Gemini-backed conversational assistant to APEX. A bounded mu
 
 ---
 
-## v1.11.1 — Speech Engine Stabilization & Library Pruning
+## v1.11.1 - Speech Engine Stabilization & Library Pruning
 
 **Released:** June 29, 2026
 
@@ -560,7 +560,7 @@ This patch removes Piper CLI from the active TTS stack, restores Google Cloud TT
 
 ---
 
-## v1.11.0 — Dormant Core & Ambient State Engine
+## v1.11.0 - Dormant Core & Ambient State Engine
 
 **Released:** June 28, 2026
 
@@ -601,7 +601,7 @@ This release transforms APEX into a standby intelligence appliance. The HUD now 
 
 ---
 
-## v1.10.0 — Local Neural Voice Matrix
+## v1.10.0 - Local Neural Voice Matrix
 
 **Released:** June 13, 2026
 
@@ -649,7 +649,7 @@ This release transitions APEX speech synthesis from cloud-first delivery toward 
 
 ---
 
-## v1.9.1 — Stabilization & Maintenance
+## v1.9.1 - Stabilization & Maintenance
 
 **Released:** June 11, 2026
 
@@ -700,7 +700,7 @@ This release focuses on backend concurrency hardening, external API payload opti
 
 ---
 
-## v1.9.0 — Standby Core & Unified Status Deck
+## v1.9.0 - Standby Core & Unified Status Deck
 
 **Released:** June 11, 2026
 
@@ -766,7 +766,7 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 
 ---
 
-## v1.8.0 — Briefing Digest & Transcript Layer
+## v1.8.0 - Briefing Digest & Transcript Layer
 
 **Released:** June 9, 2026
 
@@ -863,7 +863,7 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 
 ---
 
-## v1.7.0 — HUD-Renaissance: Productization
+## v1.7.0 - HUD-Renaissance: Productization
 
 **Released:** June 6, 2026
 
@@ -943,7 +943,7 @@ The monolithic `README.md` was broken apart into three dedicated reference docum
 
 ---
 
-## v1.6.0 — HUD-Renaissance: Atmospheric Resonance
+## v1.6.0 - HUD-Renaissance: Atmospheric Resonance
 
 **Released:** June 5, 2026
 
@@ -1105,7 +1105,7 @@ The reminder input component was refactored from a fixed full-page overlay into 
 
 ---
 
-## v1.5.0 — HUD-Renaissance: The Control Deck
+## v1.5.0 - HUD-Renaissance: The Control Deck
 
 **Released:** May 31, 2026
 
@@ -1198,7 +1198,7 @@ The orchestrator now treats the browser window as the authoritative signal for A
 
 ---
 
-## v1.4.0 — Developer Experience & Local Sandbox Recalibration
+## v1.4.0 - Developer Experience & Local Sandbox Recalibration
 
 **Released:** May 28, 2026
 
@@ -1281,7 +1281,7 @@ The `core/speaker.py` module was restructured to eliminate per-call initializati
 
 ---
 
-## v1.3.0 — HUD-Renaissance: DATA AS GEOMETRY
+## v1.3.0 - HUD-Renaissance: DATA AS GEOMETRY
 
 **Released:** May 27, 2026
 
@@ -1367,7 +1367,7 @@ The HUD now responds visually to live weather conditions.
 
 ---
 
-## v1.2.0 — HUD-Renaissance: Pipeline State Visibility
+## v1.2.0 - HUD-Renaissance: Pipeline State Visibility
 
 **Released:** May 18, 2026
 
@@ -1388,7 +1388,7 @@ This release upgrades the APEX dashboard by transforming static loading screens 
 
 ---
 
-## v1.1.1 — AI Workforce Calibration Patch
+## v1.1.1 - AI Workforce Calibration Patch
 
 **Released:** May 17, 2026
 
@@ -1399,7 +1399,7 @@ This release upgrades the APEX dashboard by transforming static loading screens 
 
 ---
 
-## v1.1.0 — The Foundation (React/TypeScript Migration)
+## v1.1.0 - The Foundation (React/TypeScript Migration)
 
 **Released:** May 17, 2026
 
@@ -1419,7 +1419,7 @@ This release replaces the original web interface with a modern dashboard built u
 
 ---
 
-## v1.0.0 — The Core Foundation
+## v1.0.0 - The Core Foundation
 
 **Released:** May 15, 2026
 

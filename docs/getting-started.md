@@ -90,13 +90,13 @@ For a desktop shortcut, set the shortcut's **Start in** field to the repository 
 
 Use two terminals from the repository root.
 
-Terminal 1 — API:
+Terminal 1: API
 
 ```powershell
 uv run python -m uvicorn core.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Terminal 2 — compiled frontend:
+Terminal 2: compiled frontend
 
 ```powershell
 uv run python -m http.server 5500 --bind 127.0.0.1 --directory dist
