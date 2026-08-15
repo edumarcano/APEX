@@ -725,54 +725,54 @@ export function TelemetryCard({
             ) : null}
           </div>
         ) : null}
-        {f1Schedule ? (
-          <div className="mb-3 shrink-0 rounded-xl border border-white/5 bg-black/30 p-2.5 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span
-                  aria-label={`Race country flag ${f1Schedule.country || 'unknown'}`}
-                  className="shrink-0 text-sm leading-none"
-                >
-                  {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
-                    f1Schedule.countryFlag
-                  ) : (
-                    <img
-                      src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
-                      alt={`${f1Schedule.country || 'Unknown'} flag`}
-                      className="h-3 w-4 rounded object-cover shadow-sm"
-                      loading="lazy"
-                      decoding="async"
-                      onError={(event) => {
-                        const flagContainer = event.currentTarget.parentElement
-                        if (!flagContainer) return
-                        flagContainer.textContent = CHECKERED_FALLBACK_FLAG
-                      }}
-                    />
-                  )}
-                </span>
-                <span className="truncate text-xs font-semibold text-zinc-200">
-                  {f1Schedule.raceName}
-                </span>
-              </div>
-              <span className="shrink-0 font-mono text-[10px] text-zinc-500">
-                R{f1Schedule.round}
-              </span>
-            </div>
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <span className="truncate text-[11px] font-medium text-[#7EB3FF]">
-                {f1Schedule.raceEtLabel}
-              </span>
-              {f1Schedule.sprintScheduled ? (
-                <span className="shrink-0 rounded-full border border-[#7EB3FF]/30 bg-[#7EB3FF]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#7EB3FF]">
-                  Sprint
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-2 border-t border-white/[0.08] pt-2 text-[10px] text-zinc-500">Formula 1 data provided by <a href="https://api.jolpi.ca/ergast/f1/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Jolpica F1 API</a> under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">CC BY-NC-SA 4.0</a>.</p>
-          </div>
-        ) : null}
-        {children ? (
+        {f1Schedule || children ? (
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin flex flex-col">
+            {f1Schedule ? (
+              <div className="mb-3 shrink-0 rounded-xl border border-white/5 bg-black/30 p-2.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      aria-label={`Race country flag ${f1Schedule.country || 'unknown'}`}
+                      className="shrink-0 text-sm leading-none"
+                    >
+                      {f1Schedule.countryFlag === CHECKERED_FALLBACK_FLAG ? (
+                        f1Schedule.countryFlag
+                      ) : (
+                        <img
+                          src={`https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/${f1Schedule.countryFlag}.svg`}
+                          alt={`${f1Schedule.country || 'Unknown'} flag`}
+                          className="h-3 w-4 rounded object-cover shadow-sm"
+                          loading="lazy"
+                          decoding="async"
+                          onError={(event) => {
+                            const flagContainer = event.currentTarget.parentElement
+                            if (!flagContainer) return
+                            flagContainer.textContent = CHECKERED_FALLBACK_FLAG
+                          }}
+                        />
+                      )}
+                    </span>
+                    <span className="truncate text-xs font-semibold text-zinc-200">
+                      {f1Schedule.raceName}
+                    </span>
+                  </div>
+                  <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                    R{f1Schedule.round}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <span className="truncate text-[11px] font-medium text-[#7EB3FF]">
+                    {f1Schedule.raceEtLabel}
+                  </span>
+                  {f1Schedule.sprintScheduled ? (
+                    <span className="shrink-0 rounded-full border border-[#7EB3FF]/30 bg-[#7EB3FF]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#7EB3FF]">
+                      Sprint
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 border-t border-white/[0.08] pt-2 text-[10px] text-zinc-500">Formula 1 data provided by <a href="https://api.jolpi.ca/ergast/f1/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Jolpica F1 API</a> under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">CC BY-NC-SA 4.0</a>.</p>
+              </div>
+            ) : null}
             {children}
           </div>
         ) : null}
