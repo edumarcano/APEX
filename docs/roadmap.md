@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime)
-**Active Milestone:** [v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
+**Active Milestone:** [v1.21.0 - Cortex: Persistent Context & Retrieval](#v1210---cortex-persistent-context--retrieval)
 **Current Initiative:** [Cortex Initiative](#cortex-initiative)
 
-**Next Milestone:** [v1.22.0 - Cortex: Loop Runtime, Structured Execution & Runtime Observability](#v1220---cortex-loop-runtime-structured-execution--runtime-observability)
+**Next Milestone:** [v1.22.0 - Cortex: Bounded Task Execution & Observability](#v1220---cortex-bounded-task-execution--observability)
 
 ### Navigation
 
@@ -395,7 +395,7 @@ The design should keep software in control of permissions and limits. Evidence s
 
 ---
 
-## v1.21.0 - Cortex: Persistent Context, World Model & Retrieval
+## v1.21.0 - Cortex: Persistent Context & Retrieval
 
 **Status:** Planned
 
@@ -412,7 +412,7 @@ As an early real use of the context engine, Cortex should be able to search APEX
 
 ---
 
-## v1.22.0 - Cortex: Loop Runtime, Structured Execution & Runtime Observability
+## v1.22.0 - Cortex: Bounded Task Execution & Observability
 
 **Status:** Planned
 
@@ -429,7 +429,7 @@ The CLI should grow with the loop runtime so it can inspect resources and active
 
 ---
 
-## v1.23.0 - Cortex: Execution Graphs & Multi-Worker Orchestration
+## v1.23.0 - Cortex: Workflow Graphs & Worker Orchestration
 
 **Status:** Planned
 
@@ -444,7 +444,7 @@ Each graph step should use a common worker interface so APEX can send work to Ap
 
 ---
 
-## v1.24.0 - Cortex: Learning Loops & Procedural Skills
+## v1.24.0 - Cortex: Procedural Learning & Skills
 
 **Status:** Planned
 
@@ -459,7 +459,7 @@ New procedures should be reviewable, reversible, and subject to operator or poli
 
 ---
 
-## v1.25.0 - Cortex: Hermes Agent Runtime Integration
+## v1.25.0 - Cortex: Hermes Worker Integration
 
 **Status:** Planned
 
@@ -474,7 +474,7 @@ Hermes should not keep its own personal or world-state memory at first. APEX sho
 
 ---
 
-## v1.26.0 - Cortex: Secure Context Ingestion & Workspace Interoperability
+## v1.26.0 - Cortex: External Context & Workspace Integration
 
 **Status:** Planned
 
@@ -489,7 +489,7 @@ Workspace support may include an APEX-managed Markdown knowledge folder using po
 
 ---
 
-## v1.27.0 - Cortex: Proactive Life OS & Event-Driven Orchestration
+## v1.27.0 - Cortex: Proactive Automation & Event Response
 
 **Status:** Planned
 
@@ -517,7 +517,7 @@ Phase VI is where APEX can stop carrying forward temporary 1.x compatibility cho
 
 ---
 
-## v2.0.0 - Architectural Consolidation
+## v2.0.0 - Platform Consolidation
 
 **Status:** Planned
 
@@ -553,7 +553,7 @@ The goal is to keep the current HUD experience while giving desktop-specific fea
 
 ---
 
-## v2.2.0 - Tyto Environmental Node Integration
+## v2.2.0 - Tyto Environmental Integration
 
 **Status:** Planned
 
@@ -598,4 +598,4 @@ Each phase adds to that capability without changing the project's local-first, s
 APEX is currently in **Phase V: Persistent Agent Runtime**.
 
 **Active milestone:**
-[v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
+[v1.21.0 - Cortex: Persistent Context & Retrieval](#v1210---cortex-persistent-context--retrieval)
