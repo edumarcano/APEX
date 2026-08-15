@@ -9,8 +9,8 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime)
-**Active Milestone:** [v1.21.0 - Cortex: Persistent Context & Retrieval](#v1210---cortex-persistent-context--retrieval)
-**Current Initiative:** [Cortex Initiative](#cortex-initiative)
+**Active Milestone:** [v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
+**Current Initiative:** [Cortex Initiative - Continued](#cortex-initiative---continued)
 
 **Next Milestone:** [v1.22.0 - Cortex: Bounded Task Execution & Observability](#v1220---cortex-bounded-task-execution--observability)
 
@@ -27,7 +27,7 @@
 
 # Roadmap Summary
 
-APEX began as a collection of single-purpose Python automation scripts and has grown into a local-first personal intelligence and operations platform.
+APEX began as a collection of single-purpose Python automation scripts and has grown into a local-first personal context and operations platform.
 
 Its development has moved through several stages:
 
@@ -35,10 +35,12 @@ Its development has moved through several stages:
 * **Modern interface architecture:** Move to the React/Vite HUD, make system activity visible, and build the visual and interaction model used today.
 * **Cognitive interaction:** Add conversational AI, local and cloud models, briefing generation, and the beginnings of Cortex.
 * **Interactive agent execution:** Give Apex Agents tools, controlled write actions, verification, and a CLI that can use Cortex without the HUD.
-* **Persistent agent operation:** Let Cortex remember useful context, retrieve what it needs, carry out longer tasks in controlled steps, learn reusable procedures, and respond to important changes.
+* **Persistent personal context and agent operation:** Give APEX a durable record of useful personal context, make that context available to Cortex and approved models when relevant, and let Cortex use it for longer tasks, reusable procedures, and proactive work.
 * **Platform consolidation and physical integration:** Clean up the 1.x foundations, move toward a native desktop application, and connect APEX to independent physical systems such as Tyto-S3.
 
-Across these phases, APEX is moving from a system that mainly gathers and presents information toward one that can understand ongoing personal context, complete bounded multi-step work, verify what it changed, reuse successful procedures, and react to meaningful changes.
+Across these phases, APEX is moving from a system that mainly gathers and presents information toward one that can keep a lasting understanding of the user's world and use it across different Agents and models.
+
+APEX should own that context rather than leaving it tied to a single model provider. Cortex can use the same context to complete and verify work, while approved outside LLMs can retrieve only what is relevant to the current task.
 
 The local-first, single-user focus remains the same throughout that evolution.
 
@@ -278,7 +280,7 @@ The Cortex initiative is a multi-phase effort to grow APEX from a briefing-orien
 
 During Phase IV, Cortex establishes the interactive foundation: named cloud and local Agents, shared tools, conversations, runtime controls, approved write actions, and access from both the HUD and CLI.
 
-Phase V builds on that foundation with persistent context, longer controlled workflows, reusable procedures, outside workers where useful, and proactive responses to meaningful changes.
+Phase V builds on that foundation with APEX-owned personal context, longer controlled workflows, reusable procedures, outside workers and models where useful, and proactive responses to meaningful changes.
 
 ---
 
@@ -376,10 +378,12 @@ Give Cortex its first safe write path through verified Microsoft To Do actions, 
 
 # Phase V: Persistent Agent Runtime
 
-**Status:** Planned
+**Status:** In Progress
 
 **Core Focus:**
-Giving Cortex memory, retrieval, longer-running task loops, and reusable procedures so it can handle more work over time without giving up clear limits, verification, or operator control.
+Giving APEX durable personal context and retrieval, then giving Cortex the loops, workflows, and reusable procedures needed to use that context safely over time.
+
+APEX should remain the owner of its personal context even when outside models or workers are allowed to use parts of it.
 
 [Back to Current Focus](#current-focus)
 
@@ -387,26 +391,32 @@ Giving Cortex memory, retrieval, longer-running task loops, and reusable procedu
 
 ## Cortex Initiative - Continued
 
-Phase V takes Cortex from interactive requests into persistent operation.
+Phase V takes Cortex from interactive requests into persistent operation and makes APEX the long-term home for useful personal context.
 
-Cortex should remember useful context, keep a sourced model of the user's world, retrieve relevant information, carry out longer tasks in bounded loops, use explicit workflow graphs when a single loop is not enough, learn reusable procedures, and respond to important changes.
+APEX should be able to remember information given directly by the operator as well as context gathered from connected sources. It should keep a sourced model of people, projects, ideas, preferences, decisions, relationships, and changes, then retrieve only the parts that matter for the current task.
+
+Cortex should use that same context for longer tasks, workflow graphs, reusable skills, and proactive work. Approved outside models and workers may also use relevant context without becoming owners of APEX memory.
 
 The design should keep software in control of permissions and limits. Evidence should matter more than model confidence, APEX should keep one authoritative world model, and learned procedures should be versioned and reviewable rather than allowing unrestricted self-modification.
 
 ---
 
-## v1.21.0 - Cortex: Persistent Context & Retrieval
+## v1.21.0 - Cortex: Persistent Context, World Model & Retrieval
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
-Give Cortex persistent conversations, a sourced record of important people, projects, facts, and changes, and a retrieval system that can pull in the right context for the current task.
+Give APEX durable personal context that Cortex and Apex Agents can build from conversations, direct input, connected data, and other trusted sources, along with a retrieval system that can pull in the right context for the current task.
 
 The milestone should add persistent session history, multiple conversations, conversation forking, editable messages, and per-session metadata while keeping conversation history separate from the world model.
 
+When the operator gives APEX an idea, preference, plan, decision, or other information worth keeping, an Apex Agent should be able to turn it into structured context while preserving the original source. Conversation text should not automatically become trusted knowledge; APEX should keep the original input, Agent interpretation, and stored context distinct.
+
 The world model should record entities, observations, claims, decisions, relationships, sources, and changes over time. It should keep source information, contradictions, superseded facts, and useful history instead of silently overwriting them.
 
-Retrieval should combine structured filters, full-text search, semantic search, and relationship lookup where each is useful.
+Retrieval should combine structured filters, full-text search, semantic search, and relationship lookup where each is useful. Agents should receive the smallest useful set of personal context for the current request rather than loading the full world model into every conversation.
+
+The Cortex Workspace should adopt assistant-ui for reusable conversation behavior such as threads, messages, the composer, message actions, branching, and session navigation. APEX should remain responsible for conversation storage, Agents, tools, actions, context, and backend behavior, with a thin adapter between assistant-ui and the existing Cortex API.
 
 As an early real use of the context engine, Cortex should be able to search APEX repository documentation, return cited excerpts, keep retrieved instructions isolated from system instructions, and update its index when the docs change.
 
@@ -420,6 +430,8 @@ As an early real use of the context engine, Cortex should be able to search APEX
 Let Cortex work through a task in repeated, bounded steps: observe, retrieve context, reason, act, verify, and stop when there is enough evidence that the task is complete.
 
 The loop should have clear limits for iterations, time or execution budget, cancellation, retries, failure handling, verification, traces, and completion evidence. Software rules, not the model alone, should decide when the loop must stop.
+
+Cortex should also gain an APEX-owned streaming path for response text, tool activity, action proposals, runtime measurements, completion, and errors. The frontend can use this stream for live responses and execution state without making its chat library part of the Cortex runtime.
 
 This milestone should also improve structured outputs where providers support them and expose useful inference measurements such as tokens per second, time to first token, and context-window use.
 
@@ -440,7 +452,9 @@ A bounded Agent loop remains the normal way to run a task. Graphs should be used
 
 The first graph runtime should support sequential steps, conditions, parallel branches, joins, retries, verification, approval gates, failure paths, and explicit state changes.
 
-Each graph step should use a common worker interface so APEX can send work to Apex Agents, normal code, or future external Agent runtimes without tying the graph itself to one model provider.
+Workflow graphs should describe how work runs. They should remain separate from the world model, which describes what APEX knows.
+
+Each graph step should use a common worker interface so APEX can send work to Apex Agents, normal code, or future external Agent runtimes without tying the graph itself to one model provider. Workers should receive only the context and permissions needed for their part of the task.
 
 ---
 
@@ -470,18 +484,24 @@ Hermes should receive a tightly scoped task with the context, tools, workspace a
 
 It should return results, artifacts, actions, evidence, errors, and execution details to Cortex so APEX can verify and reconcile them independently.
 
+Hermes should receive only the personal context needed for the assigned task. If it discovers useful new context, it should return that information and its evidence to APEX rather than changing the world model directly.
+
 Hermes should not keep its own personal or world-state memory at first. APEX should remain the authoritative memory system.
 
 ---
 
-## v1.26.0 - Cortex: External Context & Workspace Integration
+## v1.26.0 - Cortex: Context Access & Workspace Integration
 
 **Status:** Planned
 
 **Objective:**
-Let trusted outside services, files, devices, and knowledge workspaces add context to Cortex without bypassing source tracking, permissions, or trust boundaries.
+Let trusted outside sources add context to APEX and let approved outside LLM clients retrieve relevant personal context from APEX without bypassing source tracking, permissions, or local-first ownership.
 
-This should include a narrowly scoped APEX MCP ingestion surface, clear source identity, safe file and context ingestion, and a path for new evidence to be reconciled into the world model and retrieval system.
+This milestone should add a narrowly scoped APEX MCP server or equivalent context interface. It should support both directions: new evidence entering APEX and approved clients asking APEX for context relevant to a question or task.
+
+Outside clients should not receive unrestricted access to the APEX database, wider backend, or direct world-model writes. New information should pass through the same source-tracked review and reconciliation path before it becomes part of APEX's trusted context.
+
+External access should be optional and authenticated. The authoritative world model should remain local by default, and the first version may require the APEX host to be online. A continuously available cloud copy of personal context is not required for this milestone.
 
 APEX should also add a permissioned device-context service for information such as current location and timezone. Features such as weather can then use device state without owning location detection themselves.
 
@@ -589,13 +609,19 @@ Before APEX v2.2.0 integration work begins, Tyto should provide:
 
 # Long-Term Vision
 
-APEX is intended to grow from a local information and briefing system into a personal operations platform that can remember useful context, retrieve what matters, complete and verify bounded actions, coordinate longer workflows, learn reusable procedures, respond to meaningful changes, and eventually work with desktop and physical interfaces.
+APEX is intended to become a local-first personal context and operations platform.
 
-Each phase adds to that capability without changing the project's local-first, single-user focus.
+It should act as the long-term home for useful personal knowledge: ideas, preferences, decisions, people, projects, relationships, history, and context gathered from connected services, files, and devices.
+
+That knowledge should belong to APEX rather than a particular model provider. Cortex, Apex Agents, and approved outside LLM clients should be able to retrieve the parts that are relevant to what they are doing without needing the full personal history every time.
+
+Cortex should use the same context to complete and verify bounded actions, coordinate longer workflows, learn reusable procedures, and respond to meaningful changes.
+
+The single-user, local-first model remains the default. External access should be optional, authenticated, and narrowly scoped rather than requiring APEX or its authoritative world model to move to the cloud.
 
 ## Current Focus
 
 APEX is currently in **Phase V: Persistent Agent Runtime**.
 
 **Active milestone:**
-[v1.21.0 - Cortex: Persistent Context & Retrieval](#v1210---cortex-persistent-context--retrieval)
+[v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
