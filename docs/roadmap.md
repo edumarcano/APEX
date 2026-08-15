@@ -8,11 +8,11 @@
 
 ## Current Focus
 
-**Current Phase:** [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence)
-**Active Milestone:** [v1.20.0 - Cortex: Verified Personal Actions & Headless Control](#v1200---cortex-verified-personal-actions-headless-control)
+**Current Phase:** [Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime)
+**Active Milestone:** [v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
 **Current Initiative:** [Cortex Initiative](#cortex-initiative)
 
-**Next Milestone:** [v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model-retrieval)
+**Next Milestone:** [v1.22.0 - Cortex: Loop Runtime, Structured Execution & Runtime Observability](#v1220---cortex-loop-runtime-structured-execution--runtime-observability)
 
 ### Navigation
 
@@ -21,7 +21,7 @@
 [Phase III: Cognitive Interface](#phase-iii-cognitive-interface) ·
 [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence) ·
 [Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime) ·
-[Phase VI: Platform Consolidation & Physical Integration](#phase-vi-platform-consolidation-physical-integration)
+[Phase VI: Platform Consolidation & Physical Integration](#phase-vi-platform-consolidation--physical-integration)
 
 ---
 
@@ -46,7 +46,7 @@ The local-first, single-user focus remains the same throughout that evolution.
 
 # Phase I: Foundational
 
-**Status:** Complete (100%)
+**Status:** Complete
 
 **Core Focus:**
 Establishing core data ingestion, automation capabilities, and the first operational proof-of-concept.
@@ -100,7 +100,7 @@ Establish the first official APEX platform release through a FastAPI backend, st
 
 # Phase II: Modernization
 
-**Status:** Complete (100%)
+**Status:** Complete
 
 **Core Focus:**
 Migrating APEX from a traditional Python interface into a scalable React/Vite intelligence HUD.
@@ -200,7 +200,7 @@ Introduce the layered atmospheric canvas architecture, DEMO_MODE workflows, and 
 
 # Phase III: Cognitive Interface
 
-**Status:** Complete (100%)
+**Status:** Complete
 
 **Core Focus:**
 Transforming APEX from a telemetry dashboard into an intelligence presence through structured briefing delivery, local speech synthesis, synchronized communication, and intentional operator interaction.
@@ -263,7 +263,7 @@ Revert the active primary speech synthesis path to Google Cloud TTS, deprecate a
 
 # Phase IV: Interactive Intelligence
 
-**Status:** In Progress
+**Status:** Complete
 
 **Core Focus:**
 Turning APEX from a briefing and query interface into an operator-directed Agent system that can use tools, work with cloud and local models, and make verified personal changes when approved.
@@ -367,16 +367,10 @@ Improve APEX’s reliability, consistency, and overall polish across its runtime
 
 ## v1.20.0 - Cortex: Verified Personal Actions & Headless Control
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Give Cortex its first safe write path, move Home reminders to Microsoft To Do, and add a CLI for using core APEX features without the HUD.
-
-Microsoft To Do is the first real use of the new action flow. Agent-requested changes become proposals, require local approval when needed, execute once, verify the result, and keep an audit record. This provides a small, understandable place to prove the flow before future Cortex workflows depend on it.
-
-One explicitly selected Microsoft To Do list is now the source for Home reminders. SQLite keeps a bounded cache for stale display and a local queue for reminders created while syncing is unavailable. The Reminders panel can edit, complete, delete, and reopen tasks directly without adding the Agent approval step to normal Home use. Completed history is read live and is not stored locally. Background synchronization remains outside this milestone.
-
-The first APEX CLI can check backend readiness, list Agents, run one Agent request, generate a briefing, and review or resolve actions. It uses the same local API and action rules as the HUD rather than creating a second backend path.
+Give Cortex its first safe write path through verified Microsoft To Do actions, move Home reminders to Microsoft To Do with local offline support, and add a CLI for using core APEX features without the HUD.
 
 ---
 
@@ -601,7 +595,7 @@ Each phase adds to that capability without changing the project's local-first, s
 
 ## Current Focus
 
-APEX is currently in **Phase IV: Interactive Intelligence**.
+APEX is currently in **Phase V: Persistent Agent Runtime**.
 
 **Active milestone:**
-[v1.20.0 - Cortex: Verified Personal Actions & Headless Control](#v1200---cortex-verified-personal-actions-headless-control)
+[v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
