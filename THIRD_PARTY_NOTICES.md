@@ -32,12 +32,12 @@ Redistributions must preserve the applicable Apache License 2.0 notices and any 
 
 APEX also uses third-party components under permissive or weak-copyleft licenses, including:
 
-- React and related frontend libraries — MIT
-- Lucide — ISC
-- psutil — BSD-3-Clause
-- python-dotenv — BSD-3-Clause
-- pygame-ce — LGPL-2.1-or-later
-- pyttsx3 — MPL-2.0
+- React and related frontend libraries: MIT
+- Lucide: ISC
+- psutil: BSD-3-Clause
+- python-dotenv: BSD-3-Clause
+- pygame-ce: LGPL-2.1-or-later
+- pyttsx3: MPL-2.0
 
 These components remain subject to their respective upstream license terms.
 

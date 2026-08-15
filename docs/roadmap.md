@@ -31,12 +31,12 @@ APEX began as a collection of single-purpose Python automation scripts and has g
 
 Its development has moved through several stages:
 
-* **Foundational automation** — collect personal data, run scheduled tasks, and establish the first client-server version of APEX.
-* **Modern interface architecture** — move to the React/Vite HUD, make system activity visible, and build the visual and interaction model used today.
-* **Cognitive interaction** — add conversational AI, local and cloud models, briefing generation, and the beginnings of Cortex.
-* **Interactive agent execution** — give Apex Agents tools, controlled write actions, verification, and a CLI that can use Cortex without the HUD.
-* **Persistent agent operation** — let Cortex remember useful context, retrieve what it needs, carry out longer tasks in controlled steps, learn reusable procedures, and respond to important changes.
-* **Platform consolidation and physical integration** — clean up the 1.x foundations, move toward a native desktop application, and connect APEX to independent physical systems such as Tyto-S3.
+* **Foundational automation:** Collect personal data, run scheduled tasks, and establish the first client-server version of APEX.
+* **Modern interface architecture:** Move to the React/Vite HUD, make system activity visible, and build the visual and interaction model used today.
+* **Cognitive interaction:** Add conversational AI, local and cloud models, briefing generation, and the beginnings of Cortex.
+* **Interactive agent execution:** Give Apex Agents tools, controlled write actions, verification, and a CLI that can use Cortex without the HUD.
+* **Persistent agent operation:** Let Cortex remember useful context, retrieve what it needs, carry out longer tasks in controlled steps, learn reusable procedures, and respond to important changes.
+* **Platform consolidation and physical integration:** Clean up the 1.x foundations, move toward a native desktop application, and connect APEX to independent physical systems such as Tyto-S3.
 
 Across these phases, APEX is moving from a system that mainly gathers and presents information toward one that can understand ongoing personal context, complete bounded multi-step work, verify what it changed, reuse successful procedures, and react to meaningful changes.
 

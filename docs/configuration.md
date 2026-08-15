@@ -81,9 +81,9 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
-- `raw` — deterministic output without a model call
-- `local` — Apodemus synthesis with deterministic fallback
-- `cloud` — Panthera with Apodemus and deterministic fallback
+- `raw`: deterministic output without a model call
+- `local`: Apodemus synthesis with deterministic fallback
+- `cloud`: Panthera with Apodemus and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -118,11 +118,11 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 | Agent key and display name | Provider and model | Role |
 |---|---|---|
-| `acinonyx` — Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
-| `panthera` — Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
-| `neofelis` — Neofelis 1.0 | Google `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| `delphinus` — Delphinus 1.0 | SpaceXAI `grok-4.3` | Focused SpaceXAI cloud Agent with persisted optional X Search |
-| `orcinus` — Orcinus 1.0 | SpaceXAI `grok-4.5` | Extended SpaceXAI cloud Agent with persisted optional X Search |
+| `acinonyx`: Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
+| `panthera`: Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
+| `neofelis`: Neofelis 1.0 | Google `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
+| `delphinus`: Delphinus 1.0 | SpaceXAI `grok-4.3` | Focused SpaceXAI cloud Agent with persisted optional X Search |
+| `orcinus`: Orcinus 1.0 | SpaceXAI `grok-4.5` | Extended SpaceXAI cloud Agent with persisted optional X Search |
 
 Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
 
@@ -134,11 +134,11 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 | Agent key and display name | Provider and model | Intended use |
 |---|---|---|
-| `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
-| `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
-| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
-| `neotoma` — Neotoma 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
-| `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
+| `sorex`: Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
+| `mus`: Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
+| `apodemus`: Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
+| `neotoma`: Neotoma 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
+| `unnamed-experimental-agent`: Unnamed Experimental Agent 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`.
 
@@ -268,9 +268,9 @@ APEX stores the authorization cache through encrypted operating-system persisten
 
 APEX is an MCP client, not an MCP server. The tracked presets are disabled by default:
 
-- GitHub — read-only repository, code, issue, and pull-request operations
-- Brave Search — bounded web and news search through a local Node subprocess
-- Alpha Vantage — bounded market research through hosted OAuth
+- GitHub: read-only repository, code, issue, and pull-request operations
+- Brave Search: bounded web and news search through a local Node subprocess
+- Alpha Vantage: bounded market research through hosted OAuth
 
 Every imported tool must be allowlisted and assigned a local risk classification before registration. Runtime Settings exposes only preset enablement; it never returns or accepts credentials, endpoints, commands, allowlists, or authorization artifacts.
 
