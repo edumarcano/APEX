@@ -17,6 +17,7 @@ Check the relevant dimensions:
 
 - correctness and edge conditions;
 - security, privacy, and credential boundaries;
+- unnecessary complexity, duplication, dead paths, and opportunities to simplify or consolidate the changed implementation without altering behavior;
 - async execution, shared state, resource cleanup, and bounded retries;
 - API, database, connector, and frontend data contracts;
 - accessibility, state ownership, and responsive behavior;
@@ -24,7 +25,7 @@ Check the relevant dimensions:
 - test adequacy;
 - documentation that must change because of the reviewed implementation.
 
-Prioritize concrete defects over preferences. For every finding, provide severity, a tight file and line reference, impact, evidence, and a corrective direction. Separate confirmed findings from questions or optional improvements.
+Prioritize concrete defects over preferences. For every finding, provide severity, a tight file and line reference, impact, evidence, and a corrective direction. Separate confirmed findings from questions or optional improvements, including refactor or simplification opportunities.
 
 Keep documentation findings scoped to consequences of the reviewed change. Record affected files, changed behavior or configuration, removed behavior, and unresolved documentation decisions. Defer systematic change-range or repository-wide reconciliation to `audit-documentation`.
 

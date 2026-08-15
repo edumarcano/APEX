@@ -164,7 +164,7 @@ def _build_weather_module(module: dict[str, Any], *, now: datetime) -> tuple[Tel
     if not isinstance(temp_f, (int, float)):
         raise DemoFixtureError("weather.data.temp_f must be numeric.")
 
-    resolved_data = {
+    resolved_data: dict[str, Any] = {
         "temp_f": int(round(float(temp_f))),
         "condition": condition,
         "archetype": archetype,
@@ -172,9 +172,61 @@ def _build_weather_module(module: dict[str, Any], *, now: datetime) -> tuple[Tel
     if location:
         resolved_data["location"] = location
 
-    display = (
-        f"Current temperature is {resolved_data['temp_f']} degrees with {condition}."
-    )
+    for key in (
+        "apparent_temp_f",
+        "temp_max_f",
+        "temp_min_f",
+        "humidity_pct",
+        "wind_speed_mph",
+        "precip_probability_max",
+    ):
+        val = data.get(key)
+        if val is not None:
+            if not isinstance(val, (int, float)):
+                raise DemoFixtureError(f"weather.data.{key} must be numeric.")
+            resolved_data[key] = int(round(float(val)))
+
+    if data.get("precip_sum_in") is not None:
+        precip_sum = data.get("precip_sum_in")
+        if not isinstance(precip_sum, (int, float)):
+            raise DemoFixtureError("weather.data.precip_sum_in must be numeric.")
+        resolved_data["precip_sum_in"] = round(float(precip_sum), 2)
+
+    timeline_raw = data.get("timeline")
+    if timeline_raw is not None:
+        if not isinstance(timeline_raw, list):
+            raise DemoFixtureError("weather.data.timeline must be a list.")
+        timeline: list[dict[str, Any]] = []
+        for index, item in enumerate(timeline_raw):
+            row = _require_dict(item, path=f"weather.data.timeline[{index}]")
+            label = _require_str(row.get("label"), path=f"weather.data.timeline[{index}].label")
+            time_val = _require_str(row.get("time"), path=f"weather.data.timeline[{index}].time")
+            t_f = row.get("temp_f")
+            if t_f is not None and not isinstance(t_f, (int, float)):
+                raise DemoFixtureError(f"weather.data.timeline[{index}].temp_f must be numeric.")
+            p_prob = row.get("precip_prob", 0)
+            if not isinstance(p_prob, (int, float)):
+                raise DemoFixtureError(f"weather.data.timeline[{index}].precip_prob must be numeric.")
+            timeline.append(
+                {
+                    "label": label,
+                    "time": time_val,
+                    "temp_f": int(round(float(t_f))) if t_f is not None else None,
+                    "condition": _optional_str(row.get("condition")) or "clear sky",
+                    "archetype": _optional_str(row.get("archetype")) or "clear_day",
+                    "precip_prob": int(round(float(p_prob))),
+                }
+            )
+        resolved_data["timeline"] = timeline
+
+    parts = [f"Current temperature is {resolved_data['temp_f']} degrees"]
+    if "apparent_temp_f" in resolved_data:
+        parts.append(f"(feels like {resolved_data['apparent_temp_f']})")
+    parts.append(f"with {condition}.")
+    if "temp_max_f" in resolved_data and "temp_min_f" in resolved_data:
+        parts.append(f"Today's high is {resolved_data['temp_max_f']}, low {resolved_data['temp_min_f']}.")
+    display = " ".join(parts)
+
     return (
         TelemetryModuleEntry(
             name="weather",

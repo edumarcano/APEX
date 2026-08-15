@@ -64,8 +64,20 @@ class DemoFixtureNormalizationTests(unittest.TestCase):
 
         weather = bundle.modules["weather"].data
         self.assertEqual(weather["temp_f"], 72)
+        self.assertEqual(weather["apparent_temp_f"], 74)
+        self.assertEqual(weather["temp_max_f"], 78)
+        self.assertEqual(weather["temp_min_f"], 62)
+        self.assertEqual(weather["humidity_pct"], 52)
+        self.assertEqual(weather["wind_speed_mph"], 8)
+        self.assertEqual(weather["precip_probability_max"], 0)
         self.assertEqual(weather["condition"], "clear sky")
         self.assertEqual(weather["archetype"], "clear_day")
+        self.assertEqual(weather["location"], "Simulation City")
+        self.assertEqual(len(weather["timeline"]), 3)
+        self.assertEqual(weather["timeline"][0]["label"], "NOW")
+        self.assertEqual(weather["timeline"][0]["temp_f"], 72)
+        self.assertIn("feels like 74", bundle.modules["weather"].display_text)
+        self.assertIn("Today's high is 78, low 62", bundle.modules["weather"].display_text)
 
         calendar = bundle.modules["calendar"].data
         self.assertEqual(calendar["total_count"], 3)

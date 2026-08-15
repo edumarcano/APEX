@@ -18,7 +18,7 @@ description: Prepare and, after explicit approval, execute evidence-based APEX p
 1. Compare the feature branch with the selected base from their merge-base. Detect uncommitted or untracked work that would be omitted, secrets or generated files, documentation drift, and missing verification evidence.
 2. Draft distinct artifacts:
    - A conventional PR title.
-   - A concise reviewer-facing PR body with Summary and Changes. Add sections such as Architecture or Contract Impact, Validation Notes, Risks or Limitations, or Documentation only when they communicate material information that is not already evident from the diff, CI results, or other repository evidence. Do not add boilerplate sections.
+   - A concise reviewer-facing PR body with Summary and Changes. Write in plain, natural language and describe what changed and why before implementation details. Avoid inflated wording, unnecessary modifiers, formulaic AI phrasing, and technical detail that does not help review. Add sections such as Architecture, Contract Impact, Risks, or Limitations only when they communicate material information that is not already evident from the diff, CI results, or other repository evidence. Do not add boilerplate sections.
    - A concise squash title and optional body describing the complete branch diff for permanent history.
 3. Treat an explicit request to create or update a PR as authorization to push the feature branch and perform the requested PR actions.
 4. Treat later merging as a separate batch. Refresh the PR head, base, reviews, conflicts, and required checks; present the final squash message and merge action for approval.

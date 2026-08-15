@@ -15,16 +15,16 @@ export function FootballFixtureList({ telemetry, module, hasSnapshot }: Football
   const attribution = <p className="mt-3 border-t border-white/[0.08] pt-2 text-[10px] text-[color:var(--hud-muted-text)]">Football data provided by the <a href="https://www.football-data.org/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Football-Data.org API</a>.</p>
   if (telemetry.fixtures.length === 0) {
     return (
-      <>
+      <div className="shrink-0">
         <p className="mt-3 text-sm text-[color:var(--hud-muted-text)]">
           {hasSnapshot ? 'No upcoming football fixtures.' : 'Football unavailable.'}
         </p>
         {attribution}
-      </>
+      </div>
     )
   }
   return (
-    <section className="mt-3 border-t border-white/[0.08] pt-3" aria-label="Football fixtures">
+    <section className="mt-3 shrink-0 border-t border-white/[0.08] pt-3" aria-label="Football fixtures">
       <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
         Football
       </p>

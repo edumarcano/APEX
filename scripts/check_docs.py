@@ -85,7 +85,7 @@ def github_slug(value: str) -> str:
     value = re.sub(r"<[^>]+>", "", value)
     value = re.sub(r"[`*_~]", "", value).strip().lower()
     value = re.sub(r"[^\w\- ]", "", value, flags=re.UNICODE)
-    return re.sub(r"[ ]+", "-", value)
+    return value.replace(" ", "-")
 
 
 def anchors_for_text(text: str) -> set[str]:

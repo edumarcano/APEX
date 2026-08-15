@@ -14,7 +14,7 @@ export function CalendarEventList({
   compact = false,
 }: CalendarEventListProps): ReactElement {
   return (
-    <>
+    <div className="shrink-0">
       {telemetry.totalCount > 0 && (
         <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
           {telemetry.totalCount} Upcoming
@@ -22,9 +22,9 @@ export function CalendarEventList({
       )}
       {telemetry.items.length > 0 ? (
         <ul
-          className={`list-fade-mask min-h-0 overflow-y-auto pr-1 scrollbar-thin ${
+          className={
             compact ? 'space-y-1.5' : 'space-y-2'
-          }`}
+          }
         >
           {telemetry.items.map((item, index) => (
             <li
@@ -52,6 +52,6 @@ export function CalendarEventList({
             : 'Schedule unavailable.'}
         </p>
       )}
-    </>
+    </div>
   )
 }

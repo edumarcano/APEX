@@ -1,25 +1,24 @@
 # APEX Architecture
 
-This reference explains the current system model: which process owns each responsibility, how independently triggered operations exchange state, where data crosses trust boundaries, and how APEX degrades when an optional dependency fails. Configuration belongs in [Configuration](configuration.md), HTTP usage in [API](api.md), design rules in the [Design System](design-system.md), and rationale in [Engineering Decisions](decisions.md).
+This reference explains the current system: which process owns each responsibility, how separate operations share state, where data crosses trust boundaries, and what happens when an optional dependency fails. Configuration belongs in [Configuration](configuration.md), HTTP usage in [API](api.md), design rules in the [Design System](design-system.md), and rationale in [Engineering Decisions](decisions.md).
 
 ## Canonical taxonomy
 
-For the meanings and design rationale behind these terms, see
-[Identity and Naming](identity-and-naming.md).
+For the meanings and design rationale behind these terms, see [Identity and Naming](identity-and-naming.md).
 
-- **APEX** is the standalone product and operational entity.
-- **Apex Agents** are specialized workers such as Apex Panthera and Apex Apodemus.
-- **Cortex Engine** is the backend subsystem that executes, orchestrates, tools, sessions, and manages model lifecycle.
+- **APEX** is the complete product and local operating environment.
+- **Apex Agents** are named workers such as Apex Panthera and Apex Apodemus.
+- **Cortex Engine** is the backend that runs Agent requests, coordinates context and tools, calls providers, and manages local-model lifecycle.
 - **Cortex workspace** is the interface for operating and configuring Apex Agents.
-- **Home workspace** presents telemetry, briefings, connector health, and a compact Agent query bar.
+- **Home workspace** presents telemetry, briefings, connector health, reminders, and compact Agent access.
 
-Home/Cortex switching changes only what is visible. It never cancels active Cortex Engine turns, polling, speech, briefings, or local-model lifecycle work.
+Switching between Home and Cortex changes only what is visible. It does not cancel active Agent turns, polling, speech, briefings, or local-model work.
 
 ## Architecture in 60 seconds
 
 `launcher.py` starts two loopback-bound child processes: FastAPI on port 8000 and a static server for the compiled React HUD on port 5500. The browser owns the interactive session; FastAPI owns connectors, runtime settings, model and tool execution, speech, and SQLite persistence.
 
-The HUD starts in standby. Activation, telemetry refresh, briefing synthesis, interactive Agent requests, and voice delivery are separate operations. The legacy/full-run trigger remains available when one request should refresh telemetry, generate a briefing, persist it, and optionally start speech.
+The HUD starts in standby. Activation, telemetry refresh, briefing generation, Agent requests, and voice delivery are separate operations. The full-run trigger remains available when one request should refresh telemetry, generate and persist a briefing, and optionally start speech.
 
 ```mermaid
 flowchart TB
@@ -36,7 +35,7 @@ flowchart TB
     Telemetry --> Connectors["Local + external connectors"]
     Briefing --> Models["OpenAI · llama.cpp · Structured Digest"]
     Cortex --> Capabilities["Native + approved MCP capabilities"]
-    API --> SQLite["SQLite reminders + briefing ledger"]
+    API --> SQLite["SQLite briefing, reminder-cache, and action state"]
 ```
 
 | Runtime path | Trigger | Primary owner | Durable state | External work |
@@ -90,9 +89,9 @@ The launcher polls `GET /api/v1/health/ready` and frontend HTTP availability at 
 
 When Chrome or Edge is launched with a process handle, closing the kiosk window stops both servers. The default-browser fallback has no process handle and relies on `Ctrl+C`.
 
-FastAPI's lifespan initializes the database, Microsoft To Do client, action service, and one concrete `ReminderService` before publishing request adapters. It recovers interrupted actions and reconciles linked local reminder rows before requests are accepted. The service owns selected-list resolution, active live/stale reads, exact task detail, on-demand completed-task reads, local queueing, and direct operator reminder mutations. Active-task cache and telemetry remain bounded SQLite projections; completed history is live-only and is never persisted or sent to synthesis. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting. Demo mode retains static reminder fixtures and does not construct the production reminder service or access the action ledger.
+FastAPI's lifespan initializes the database, Microsoft To Do client, action service, and one `ReminderService` before requests are accepted. It recovers interrupted actions and reconciles linked local reminder rows at startup. The reminder service owns selected-list resolution, live and stale reads, exact task detail, completed-task reads, local queueing, and direct operator reminder changes. The active-task cache stays bounded; completed history is live-only and is never persisted or sent to briefing synthesis. MCP discovery runs independently of readiness so an offline optional provider cannot prevent the local service from starting. Demo mode uses static reminder fixtures and does not construct the production reminder service or access the action ledger.
 
-The HUD and `uv run apex` CLI are separate clients of the same loopback API. The CLI owns no connector, Agent, reminder, action, or database logic; it never starts the backend or reaches a remote URL. Its action commands read the current action version and submit it back to the action API, preserving the same optimistic concurrency and no-replay behavior as the HUD.
+The HUD and `uv run apex` CLI are separate clients of the same loopback API. The CLI owns no connector, Agent, reminder, action, or database logic; it never starts the backend or reaches a remote URL. Its action commands read the current action version and submit it back to the action API, preserving the same conflict checks and no-replay behavior as the HUD.
 
 ## Frontend state ownership
 
@@ -115,7 +114,7 @@ The HUD and `uv run apex` CLI are separate clients of the same loopback API. The
 
 The browser holds activation state and Agent history for the tab lifetime. Reloading the page returns the UI to standby and clears conversation history, but it does not erase reminders or persisted briefing history.
 
-When Cortex is visible in normal mode, its inspector owns action review. `useActions` reads the newest 50 durable actions, fetches audit detail only for an expanded item, and polls every five seconds only while the browser tab remains visible. It submits the backend-provided action version for approval, rejection, and verification retry, then refetches authoritative ledger state. Conversation cards only identify newly proposed actions and direct the operator to the inspector; they never resolve an action themselves. Demo mode does not access the action API.
+When Cortex is visible in normal mode, its inspector owns action review. `useActions` reads the newest 50 durable actions, fetches audit detail only for an expanded item, and polls every five seconds only while the browser tab remains visible. It submits the backend-provided action version for approval, rejection, and verification retry, then refetches the current ledger state. Conversation cards only identify newly proposed actions and direct the operator to the inspector; they never resolve an action themselves. Demo mode does not access the action API.
 
 ## Telemetry snapshots
 
@@ -125,7 +124,7 @@ Normal refresh can reuse a snapshot younger than five minutes unless the request
 
 Snapshots are intentionally process-local:
 
-- They avoid writing high-frequency or ephemeral connector state to SQLite.
+- They avoid writing high-frequency or temporary connector state to SQLite.
 - A server restart invalidates the previous `snapshot_id`.
 - Briefing generation from an existing snapshot requires the current ID and returns `409` when it is absent or stale.
 
@@ -135,7 +134,7 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 ### Generate from the current snapshot
 
-`POST /api/v1/briefings/generate` synthesizes from an existing process-current snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
+`POST /api/v1/briefings/generate` generates a briefing from the current process snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
 Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Apodemus/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
@@ -147,13 +146,13 @@ The current briefing modes are:
 | Apodemus | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local Agent. The Panthera path falls back to Apodemus once, then Structured Digest; an explicit Apodemus failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path terminates in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local Agent. The Panthera path falls back to Apodemus once, then Structured Digest; an explicit Apodemus failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path ends in Structured Digest with a stable fallback reason.
 
-Normal-mode generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and prunes the ledger to 50 rows. Demo mode returns static history and performs no normal-mode write.
+Normal-mode generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and keeps the newest 50 rows. Demo mode returns static history and performs no normal-mode write.
 
 ### Full trigger compatibility path
 
-`POST /api/v1/trigger` remains the one-call orchestration path. It force-refreshes telemetry, synthesizes with the requested or configured mode, persists the normal-mode result, and applies automatic voice-delivery rules.
+`POST /api/v1/trigger` remains the one-call path. It force-refreshes telemetry, generates a briefing with the requested or configured mode, persists the normal-mode result, and applies automatic voice-delivery rules.
 
 This path exposes a four-stage compatibility status (`GATE`, `COLLECTION`, `SYNTHESIS`, `DELIVERY`) through `GET /api/v1/status`. The frontend polls every 500 ms while a full run or speech is active. Pipeline state resets after audio finishes so `is_speaking` remains accurate for the whole delivery.
 
@@ -183,40 +182,37 @@ Attached context and tool results are separately marked as untrusted model data.
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 
-Each non-demo Agent request begins with the selected Agent's immutable identity instruction, followed by prompt behavior loaded exclusively from `config.json`, an optional user designation from the local runtime settings snapshot, scoped context, and the security boundary. Agent identity describes the active Agent and its model; it does not grant capabilities or override tool and privacy policy.
+Each non-demo Agent request begins with the selected Agent's identity instruction, followed by prompt behavior loaded from `config.json`, an optional user designation from local settings, scoped context, and the security boundary. Agent identity describes the active Agent and its model; it does not grant tools or override privacy policy.
 
-Panthera, Neofelis, Delphinus, and Orcinus receive the general APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; SpaceXAI general web search and OpenAI hosted search remain disabled. Acinonyx uses an execution-enforced restricted development allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+Panthera, Neofelis, Delphinus, and Orcinus receive the general APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; SpaceXAI general web search and OpenAI hosted search remain disabled. Acinonyx uses a restricted development allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
 
-`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, selectable local context and reasoning metadata, effective grounding state, pricing metadata, and sanitized availability. Cortex owns only presentation and interaction, while retaining compatibility writes to the existing settings fields. Cloud availability is configured until a user-triggered metadata probe or real inference provides stronger evidence; Agent polling never performs a provider probe.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
-The Home command rail owns the visible briefing-mode selector. It persists `briefing.default_mode` immediately so the last selected mode is restored from boot configuration after a restart; the Settings panel keeps the schema field for compatibility but does not render a duplicate selector.
+The Home command rail owns the visible briefing-mode selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
 
 ### Local Agents and explicit tool selection
 
-The normal local roster consists of Apodemus and Neotoma. Sorex, Mus, and the Unnamed Experimental Agent are development roster entries surfaced only in `DEV_MODE`. All use the same local runtime path; the experimental target is a separate technical target outside the genus-based Agent family. Prompts and context remain separate from briefing generation. One non-blocking execution lock covers all local inference. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+The normal local roster consists of Apodemus and Neotoma. Sorex, Mus, and the Unnamed Experimental Agent are development entries surfaced only in `DEV_MODE`. All use the same local runtime path. One non-blocking execution lock covers local inference across providers. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
-Local and cloud queries use the same explicit capability descriptor list. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for cloud Agents and No APEX Tools for local Agents. The resolver intersects selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns structured per-tool failures instead of silently dropping a request. Generic local context preflight is a warning-only estimate; the provider serializes the actual request, trims complete older interactions, and applies its template allowance and safety margin before deciding whether the current interaction fits. Provider-hosted Google and X grounding remains outside these schema profiles and is controlled separately.
+Local and cloud queries use the same explicit capability descriptors. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for cloud Agents and No APEX Tools for local Agents. The resolver combines the selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns per-tool failures instead of silently dropping a request. Local context preflight is only an estimate; the provider serializes the real request, trims older complete interactions, and applies its own allowance and safety margin before deciding whether the request fits. Provider-hosted Google and X grounding remains outside these profiles and is controlled separately.
 
 ## Capability and MCP boundary
 
-`core/agent/capabilities.py` provides one concurrency-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output bound. Supported native write and destructive capabilities are validated without invocation and become durable action proposals; only API approval may claim, execute, and independently verify them. Native action availability requires registered executor and verifier handlers. MCP write and destructive tools remain unavailable to Cortex.
+`core/agent/capabilities.py` provides one thread-safe registry for native and imported tools. Every descriptor declares its JSON input schema, origin, risk classification, exposure surfaces, timeout, and output limit. Supported native write and destructive capabilities are validated without running them and become durable action proposals. Only local API approval may execute and verify them. MCP write and destructive tools remain unavailable to Cortex.
 
-Production native capabilities are mostly read-only, with a small set of approval-gated Microsoft To Do writes. An Agent can propose them, but only local action approval can execute them. Executors persist sanitized execution evidence before verification; verifiers reload that immutable ledger evidence for exact Graph read-back, including after restart. Mutations first reread the exact observed task and reject a changed `last_modified_at` target before writing. An ambiguous write remains `outcome_unknown` and is never replayed. MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced on collision, bounded before model and client display, and never re-exported as an APEX MCP server.
+Production native capabilities are mostly read-only, with a small set of approval-gated Microsoft To Do writes. An Agent can propose them, but only local approval can execute them. Executors save limited execution evidence before verification; verifiers reload that saved evidence and read Microsoft Graph again to confirm the result, including after restart. A changed `last_modified_at` target is rejected before writing. An ambiguous write remains `outcome_unknown` and is never replayed automatically.
 
-The Tools selector exposes only the canonical resolved descriptor list:
-`selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP
-allowlists`. It can narrow a turn but cannot enable a provider, modify an
-allowlist, or bypass Acinonyx restrictions. Catalog and preflight responses use
-the same projected descriptors that provider turns receive.
+MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced when needed, limited in size before model and client display, and never re-exported as an APEX MCP server.
 
-Provider-hosted Search, Maps, and X activity is normalized separately from APEX tool calls. Successful billable uses carry provider-origin traces, citations where available, attributed latency, and versioned cost estimates.
+The Tools selector can only narrow what is already allowed. It cannot enable an MCP provider, change its allowlist, or bypass Acinonyx restrictions. Catalog and preflight responses use the same descriptors that provider turns receive.
 
-The MCP manager owns provider connection, discovery, registration, reconciliation, recovery, and shutdown. Transient connection, discovery, and active-transport failures retire the affected client, unregister its capabilities, and schedule one generation-guarded recovery attempt with bounded backoff. Disabling a provider unregisters its capabilities before closing the transport and cancels pending recovery, preventing new calls from entering a connection being torn down.
+Provider-hosted Search, Maps, and X activity is tracked separately from APEX tool calls. Successful billable uses can include provider-origin traces, citations where available, latency, and cost estimates.
+
+The MCP manager owns connection, discovery, registration, recovery, and shutdown. Temporary connection or transport failures retire the affected client, unregister its tools, and schedule one guarded recovery attempt with bounded backoff. Disabling a provider unregisters its tools before closing the transport and cancels pending recovery.
 
 ## Local model lifecycle
 
-Local Agents share one provider-neutral local runtime coordinator over Ollama
-and llama.cpp:
+Local Agents share one runtime coordinator across Ollama and llama.cpp:
 
 ```mermaid
 flowchart TB
@@ -233,35 +229,25 @@ flowchart TB
 ```
 
 - Only one local generation can run at a time across both backends.
-- Only one APEX-selected model remains resident; identity is provider-qualified
-  (`ollama`/`qwen3:…` or `llama_cpp`/`<agent>-<context>`).
+- Only one APEX-selected model remains resident; identity includes both provider and model.
 - CPU and RAM percentage gates apply before a cold load.
 - An already resident target model skips the cold-load resource gate.
 - A different target unloads other known APEX local models before warming the new one.
 - Unknown externally loaded models remain visible but are not silently unloaded.
 - Activity resets the idle timer; the lifespan monitor unloads an idle model.
 - Manual load and unload are rejected while local inference or another lifecycle action is busy.
-- A manual load is a pre-warm; normal request routing can still load a selected model.
-- Lifecycle success is verified against the provider backend before the HUD reports it.
+- A manual load is only a pre-warm; a normal request can still load its selected model.
+- A successful load or unload is checked against the provider before the HUD reports it.
 
-APEX does not embed llama.cpp or ship its binaries or weights. Inference still
-uses the OpenAI-compatible HTTP router. Operators may start that router
-externally, or enable managed mode so APEX starts a user-installed
-`llama-server` when the configured loopback URL is unreachable. APEX terminates
-only a child process it owns. Inference and property probes pass
-`autoload=false` so the server cannot bypass APEX admission, resource gates, or
-explicit load.
+APEX does not embed llama.cpp or ship its binaries or weights. It talks to the OpenAI-compatible HTTP router. The operator can start that router externally, or enable managed mode so APEX starts a user-installed `llama-server` when the configured loopback URL is unreachable. APEX stops only a child process it launched. Requests use `autoload=false` so the server cannot bypass APEX's own loading and resource checks.
 
-Application orchestration routes through the coordinator and backend registry.
-Provider-specific discovery, warmup, unload, and residency probes remain inside
-each backend. This same lifecycle serves briefings and Agent turns, exposing
-contention immediately rather than hiding it behind an unbounded queue.
+Provider-specific discovery, warmup, unload, and residency checks stay inside each backend. Briefings and Agent turns share the same lifecycle, so local contention is visible instead of hidden behind a queue.
 
 ## Voice delivery
 
-Voice is independent of synthesis. `POST /api/v1/voice/speak` accepts an existing transcript and serializes playback through the backend speaker lock.
+Voice is independent of briefing generation. `POST /api/v1/voice/speak` accepts an existing transcript and serializes playback through the backend speaker lock.
 
-Google Cloud TTS falls back to pyttsx3. Kokoro, when selected and installed, falls back to Google and then pyttsx3. The speaker state is backend-owned; the frontend does not infer completion from an animation timer.
+Google Cloud TTS falls back to pyttsx3. Kokoro also falls back to pyttsx3, but never to Google, so choosing a local speech engine cannot silently send transcript text to the cloud. The speaker state is backend-owned; the frontend does not guess completion from an animation timer.
 
 Delivery mode controls orchestration:
 
@@ -276,14 +262,16 @@ Delivery mode controls orchestration:
 - normal-mode run timestamps;
 - legacy reminder/archive rows, the selected-list cache, and local reminder outbox rows;
 - the most recent 50 normal-mode briefings;
-- structured digests and runtime metadata, including `run_id` and snapshot identity.
-- action proposals and their ordered audit events. Action records retain the Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and SHA-256 proposal hash. Transition events retain bounded execution or verification evidence and stable result codes; each state change and its matching event commit atomically.
+- structured digests and runtime metadata, including `run_id` and snapshot identity;
+- action proposals and their ordered audit events.
+
+Action records keep the Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and proposal hash. Transition events keep limited execution or verification evidence and stable result codes; each state change and matching event commit together.
 
 New timestamps are timezone-aware UTC. Legacy timezone-naive run timestamps remain readable as local wall-clock values without a destructive migration. Database writes use transactions; failed writes do not publish partial state.
 
-The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `verified`, with explicit rejected, expired, failed, and unknown-outcome paths. Proposals expire after 24 hours while they remain `proposed`; an approved action remains eligible for execution after that deadline. A positive verifier outcome, not executor success alone, transitions an action to `verified`. Execution failures are terminal, while verification failures and unknown outcomes can retry verification without replaying execution. Restart recovery marks interrupted execution outcomes unknown and interrupted verification failed for an explicit later verification attempt.
+The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `verified`, with explicit rejected, expired, failed, and unknown-outcome paths. Proposals expire after 24 hours while they remain `proposed`; an approved action can still execute after that deadline. A positive verifier result, not executor success alone, moves an action to `verified`. Execution failures are terminal, while verification failures and unknown outcomes can retry verification without replaying the write. Restart recovery marks interrupted execution outcomes unknown and interrupted verification failed for an explicit later verification attempt.
 
-The FastAPI lifespan owns one normal-mode `ActionService`, recovers interrupted records before requests are accepted, and clears it at shutdown. Action approval is synchronous on the loopback API worker: proposal creation never invokes a capability handler, and the atomic execution claim ensures only one concurrent approval can execute it. Demo mode creates, executes, expires, and reads no actions.
+FastAPI owns one normal-mode `ActionService`, recovers interrupted records before requests are accepted, and clears it at shutdown. Proposal creation never invokes a capability handler. The atomic execution claim ensures only one concurrent approval can execute an action. Demo mode creates, executes, expires, and reads no actions.
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
 
@@ -320,6 +308,6 @@ Optional failures remain local to their path. A connector outage lowers telemetr
 
 ## Logging and trust boundaries
 
-Operational logging uses module loggers and propagates a briefing `run_id` into pipeline state, persisted metadata, and worker-thread context. Failures log stable categories, component names, and exception types rather than connector payloads, prompts, briefing text, or credentials.
+Operational logging uses module loggers and carries a briefing `run_id` through pipeline state, persisted metadata, and worker-thread context. Failures log stable categories, component names, and exception types rather than connector payloads, prompts, briefing text, or credentials.
 
 The browser and API are local, but enabled providers can still receive selected data. See [Privacy and Data Boundaries](privacy.md) for the complete disclosure and persistence model.

@@ -34,11 +34,13 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 ### Produces briefings on my terms
 
-A briefing can use a cloud Agent, a local Agent, or Structured Digest, a deterministic briefing that does not use a model. The cloud Agent falls back to the local Agent and then Structured Digest; an explicit local Agent request falls directly to Structured Digest. All routes receive the same sanitized, size-bounded facts, and a provider failure ends in a useful model-free result instead of a blank screen.
+A briefing can use a cloud Agent, a local Agent, or Structured Digest, a deterministic briefing that does not use a model. The cloud Agent falls back to the local Agent and then Structured Digest; an explicit local Agent request falls directly to Structured Digest. All routes receive the same selected, size-limited facts, and a provider failure ends in a useful model-free result instead of a blank screen.
 
 ### Operates Apex Agents
 
-Agent queries can use approved read capabilities for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Ordinary reads execute directly; supported native writes create durable proposals and require local approval plus independent verification. After a Microsoft To Do list is selected, its incomplete tasks are the Home reminder authority, while SQLite retains only a bounded stale cache and a local offline queue. The Reminders panel can explicitly edit, complete, delete, and reopen selected-list tasks through the same verified operator-action path; completed history is a live HUD view. Cloud and local Agents share one provider-neutral capability layer and one Tools selector; the selected names narrow Agent policy without changing MCP authorization.
+Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
+
+After a Microsoft To Do list is selected, its incomplete tasks become the Home reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Home Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. Cloud and local Agents use the same Tools selector, while each Agent's tool policy and MCP permissions remain separate.
 
 <p align="center">
   <img
@@ -54,18 +56,18 @@ Agent queries can use approved read capabilities for live data, briefing history
 
 ### Keeps runtime control visible
 
-The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing synthesis, interactive Agent requests, and speech are independent operations rather than one mandatory pipeline.
+The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing generation, Agent requests, and speech are separate operations rather than one mandatory pipeline.
 
 ## Engineering highlights
 
-- **Local-first boundary** — FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
-- **Independent runtime paths** — telemetry, briefing generation, Agent work, and voice delivery can succeed or fail without taking the entire HUD down.
-- **Typed trust boundary** — connectors produce structured results; models receive only selected, sanitized facts marked as untrusted data.
-- **Cloud, local, and deterministic execution** — cloud and local Agents support different execution paths, while Structured Digest provides the final model-free briefing fallback.
-- **Explicit concurrency controls** — briefing execution, local inference, speech, settings writes, and telemetry refreshes use bounded ownership rather than silent queues.
-- **Durable personal state** — SQLite persists reminders and the last 50 normal-mode briefings, while browser-held Agent conversations disappear on reload.
-- **Inspectable failure behavior** — readiness probes, connector health, stable error categories, run IDs, and advisory preflight keep degraded states understandable.
-- **Privacy-aware process isolation** — the backend receives credentials; the static server and browser receive a restricted child environment.
+- **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
+- **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
+- **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
+- **Cloud, local, and model-free briefings:** APEX can use cloud or local Agents and always keeps Structured Digest as the final fallback.
+- **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
+- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, and the durable action ledger. Browser-held Agent conversations disappear on reload.
+- **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
+- **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 
 ## Architecture at a glance
 
@@ -83,7 +85,7 @@ flowchart LR
     API --> DB["SQLite"]
 ```
 
-The browser owns the interactive session. FastAPI owns connector access, runtime coordination, model/provider boundaries, speech, and persistence. See the [architecture reference](docs/architecture.md) for the state owners, request flows, and failure model.
+The browser owns the interactive session. FastAPI owns connector access, runtime coordination, model and tool execution, speech, and persistence. See the [architecture reference](docs/architecture.md) for the full system model and failure behavior.
 
 ## Technology
 
@@ -160,4 +162,8 @@ Run the documentation consistency check after editing public docs:
 uv run python scripts/check_docs.py
 ```
 
-APEX is a personal project, but the engineering is intentionally explicit: local constraints, privacy boundaries, failure modes, and visual behavior are part of the product rather than afterthoughts.
+APEX is a personal project. Local constraints, privacy boundaries, failure behavior, and the HUD's visual language are part of how I want the system to work, not afterthoughts.
+
+## License
+
+APEX is licensed under the [MIT License](LICENSE). Third-party software notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

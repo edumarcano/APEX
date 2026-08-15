@@ -1,41 +1,33 @@
 # APEX Identity and Naming
 
-This document explains the meaning behind the main names used throughout APEX. It is intended both as an introduction for someone unfamiliar with the project and as a record of the identity and naming rationale for the full registered Apex Agent family, including Agents that are not currently user-facing.
+This document explains the names used throughout APEX and the reasoning behind them. It covers both the normal product roster and Agents that remain registered for development, specialization, legacy continuity, or experimentation.
 
-An Agent being documented here does not mean that it is visible in the normal product UI. The current primary/user-facing roster is Apex Panthera, Apex Apodemus, and Apex Neotoma. Other named Agents remain documented because they still exist as development, legacy, specialized, or experimental identities. DEV_MODE surfaces the wider development roster for testing and evaluation.
+Being documented here does not mean an Agent appears in the normal UI. The current primary roster is Apex Panthera, Apex Apodemus, and Apex Neotoma. `DEV_MODE` exposes the wider development roster.
 
-The naming system combines product terminology with biological metaphors. Those metaphors help communicate differences in scale, purpose, and capability, but they are not intended as a strict scientific classification or permanent ranking.
+The naming system uses biological metaphors to communicate differences in role, scale, and capability. It is not meant to be a strict scientific classification or permanent ranking.
 
 ## APEX
 
 **APEX** stands for **Automated Personal Environment Xylem**.
 
-The name has several connected meanings.
+An apex is the highest point of a structure. In APEX, it represents the place where information from across a personal digital environment comes together into one view.
 
-An apex is the highest point of a structure. In APEX, it represents the point where information from across a personal digital environment is brought together into one operational view.
+Xylem is the plant tissue that carries water and minerals upward. APEX uses that as an analogy for collecting signals from calendars, messages, reminders, weather, markets, system telemetry, and other sources and bringing the useful parts into one interface.
 
-Xylem is the vascular tissue that carries water and minerals upward through a plant. APEX uses that as an analogy for collecting signals from separate systems, such as calendars, messages, reminders, weather, markets, and machine telemetry, and moving the useful information upward into a single interface.
-
-The name also evokes an **apex predator**, connecting the product to the genus-based names used by Apex Agents.
-
-Together, these ideas describe APEX as a system that collects information from across a personal environment, moves it upward, and presents it at the highest operational level.
+The name also suggests an **apex predator**, which connects the product to the genus-based names used by Apex Agents.
 
 ## The APEX logo
 
-The APEX logo combines the same ideas visually.
+The logo combines the same ideas visually.
 
-Its outer structure forms the shape of an **A**. That structure is divided into sections resembling the levels of a food-chain pyramid, leading upward toward its apex.
-
-The inner structure resembles a trunk or xylem channel. It represents data being collected from the wider environment and moving upward through the system toward the peak.
+Its outer structure forms an **A** and resembles the levels of a food-chain pyramid leading to an apex. The inner structure resembles a trunk or xylem channel carrying information upward.
 
 The logo therefore combines:
 
 - the letter **A** for APEX;
 - a food-chain pyramid leading to an apex predator;
-- a trunk or xylem channel transporting information upward;
-- and the apex itself, where the collected information converges.
-
-The logo is not only a monogram. It is a visual summary of the project name and the way APEX is intended to operate.
+- a trunk or xylem channel carrying information upward;
+- and the apex where that information comes together.
 
 <p align="center">
   <img
@@ -47,12 +39,12 @@ The logo is not only a monogram. It is a visual summary of the project name and 
 
 ## Product vocabulary
 
-The main APEX terms describe different parts of the product rather than interchangeable names for the same system.
+The main APEX terms refer to different parts of the system.
 
 ```text
 APEX
 ├── Home workspace
-│   └── Telemetry, briefings, health, and compact Agent query access
+│   └── Telemetry, briefings, health, reminders, and compact Agent access
 └── Cortex
     ├── Cortex workspace
     ├── Cortex Engine
@@ -61,85 +53,51 @@ APEX
 
 ### APEX
 
-**APEX** is the complete application and operational environment.
-
-It includes Home, Cortex, telemetry collection, briefing generation, voice delivery, connectors, settings, and all available Agents.
+**APEX** is the complete application. It includes Home, Cortex, telemetry, briefings, voice, connectors, settings, and the available Agents.
 
 ### Home
 
-**Home** is the primary operational workspace.
-
-It presents the current state of the user’s environment through telemetry, briefings, connector health, system status, reminders, and compact controls. The name is intentionally direct: it is the workspace the user returns to for the overall state of APEX.
+**Home** is the main operational workspace. It shows the current state of the user's environment through telemetry, briefings, connector health, reminders, system status, and compact controls.
 
 ### Agent queries
 
-**Agent queries** are the prompt and command surface through which the user makes requests.
-
-An Agent query is not itself an Agent. A request entered through the query surface is handled by the selected Apex Agent through the Cortex Engine.
+An **Agent query** is a request sent to the selected Apex Agent. It is the interaction surface, not the Agent itself.
 
 ### Cortex workspace
 
-The **Cortex workspace** is the detailed interface for working with the visible Apex Agents.
-
-It contains Agent selection, effort controls, provider-specific capabilities, the unified Tools selector, model lifecycle controls, conversation history, and execution information.
+The **Cortex workspace** is the detailed interface for working with Apex Agents. It contains Agent selection, effort and reasoning controls, tools, local-model controls, conversation history, and execution information.
 
 ### Cortex Engine
 
-The **Cortex Engine** is the backend subsystem that executes Agent requests.
-
-It coordinates the selected Agent, conversation context, tools, provider calls, local-model lifecycle, execution limits, and returned results. Cortex is the operating layer; it is not the identity of the Agent doing the work.
+The **Cortex Engine** is the backend that runs Agent requests, coordinates context and tools, calls the selected provider, and manages local-model lifecycle.
 
 ### Apex Agents
 
-**Apex Agents** are the named workers registered with Cortex. The catalog includes both the normal product roster and identities retained for development, specialization, legacy compatibility, or experimentation; registration does not mean that every Agent is equally surfaced in the normal Cortex UI.
-
-Each Agent has a particular role, underlying model configuration, runtime, capability policy, cost profile, and intended type of work.
+**Apex Agents** are the named workers used through Cortex. Each has its own role, model configuration, runtime, tool policy, cost profile, and intended type of work.
 
 ## Why Agents use genus names
 
-Apex Agents use animal genera as product identities.
+Apex Agents use animal genera as product identities. The names create one family while still allowing relationships between Agents to suggest differences in speed, scale, specialization, and capability.
 
-The names create a cohesive family while allowing relationships between Agents to communicate differences in scale and capability. Some Agents are direct counterparts, while others represent specialized branches serving a different purpose.
+The genus name represents the Agent's role in APEX, not only the model behind it. Most current Agents are still closely tied to one model, but the identity is meant to survive model changes when the role remains useful.
 
-The genus name is not meant to describe only the underlying model. It represents the complete role that the Agent occupies within APEX.
-
-At present, most Agents are closely associated with one model. That can make them appear like named costumes for their underlying models. The longer-term purpose of the Agent identity is broader.
-
-An Apex Agent can eventually include:
-
-- one or more underlying models;
-- APEX tools and external integrations;
-- Agent-specific instructions and behavior;
-- context selection and memory policies;
-- routing between different execution strategies;
-- and capabilities that do not belong to the raw model itself.
-
-The model is therefore one part of an Agent’s implementation, not necessarily its permanent identity.
+An Agent can eventually include its model, tools, instructions, context and memory rules, routing choices, and other behavior that does not belong to the raw model itself.
 
 ## Agent versioning
 
-The version attached to an Apex Agent belongs to that named Agent identity. It is not the APEX application version, a shared Cortex contract version, or the version of the underlying provider model.
+An Agent version belongs to that Agent identity. It is separate from the APEX application version and the provider model version.
 
-Each current Agent begins at `1.0` as the initial version of its current product identity.
-
-Agent versions evolve independently:
-
-- A meaningful model upgrade, compatible capability expansion, or substantial change to execution behavior normally increases the minor version, such as `1.0` to `1.1`.
-- A provider migration, major role change, or substantial change to the Agent's capability, privacy, or operating contract normally increases the major version, such as `1.1` to `2.0`.
-
-The version is intended as a concise indicator of meaningful Agent evolution rather than strict semantic versioning.
+Each current Agent begins at `1.0`. A meaningful model or capability upgrade can increase the minor version, while a provider migration or major role or privacy change can increase the major version. This is a simple record of Agent evolution rather than strict semantic versioning.
 
 ## The registered Agent family
 
-The registered family shares one Cortex operating layer across cloud-hosted and local Agents, while each Agent occupies a distinct product role or development purpose. The normal product roster is intentionally smaller than the full catalog: Primary Agents are Panthera, Apodemus, and Neotoma. DEV_MODE surfaces the wider development roster, while the other identities remain registered and documented without being normal user-facing alternatives.
+The normal roster is intentionally smaller than the full registered catalog. Panthera, Apodemus, and Neotoma are the current Primary Agents. Other Agents remain available in `DEV_MODE` or stay registered for development and evaluation.
 
-DEV_MODE visibility does not necessarily indicate instability. Some Agents have established identities and technically stable implementations but are currently hidden from the primary roster because APEX does not yet provide enough Agent-specific functionality to make their roles meaningfully distinct in normal use. They remain surfaced in the DEV_MODE roster for development, evaluation, and future capability work. Stability answers whether an Agent works reliably; visibility answers whether its current role earns space in the product.
-
-Some DEV_MODE-only Agents retain intended future product roles that APEX does not yet fully support, while others remain registered primarily for development, comparison, or historical continuity.
+Visibility and stability are separate. An Agent can work reliably and still stay out of the main roster if APEX does not yet give its role enough distinct value in normal use.
 
 ```mermaid
 flowchart TB
-    ENGINE["Cortex Engine<br/>Shared execution, tools, context, and observability"]
+    ENGINE["Cortex Engine<br/>Shared execution, tools, context, and runtime"]
     FAMILY["Registered Apex Agent family"]
 
     PRIMARY["Primary roster<br/>Normal product UI"]
@@ -155,209 +113,120 @@ flowchart TB
     PRIMARY --> APODEMUS["Apodemus<br/>Efficient local · Stable"]
     PRIMARY --> NEOTOMA["Neotoma<br/>Capable local · Preview"]
 
-    DEV --> CLOUDDEV["Cloud specialists"]
-    DEV --> LOCALDEV["Local development Agents"]
-
-    CLOUDDEV --> ACINONYX["Acinonyx<br/>Privacy sandbox · Experimental"]
-    CLOUDDEV --> NEOFELIS["Neofelis<br/>Google research · Stable"]
-    CLOUDDEV --> DELPHINUS["Delphinus<br/>Live information · Stable"]
-    CLOUDDEV --> ORCINUS["Orcinus<br/>Deep live investigation · Stable"]
-
-    LOCALDEV --> SOREX["Sorex<br/>Lightweight local · Stable"]
-    LOCALDEV --> MUS["Mus<br/>Local generalist · Stable"]
+    DEV --> ACINONYX["Acinonyx<br/>Privacy sandbox · Experimental"]
+    DEV --> NEOFELIS["Neofelis<br/>Google research · Stable"]
+    DEV --> DELPHINUS["Delphinus<br/>Live information · Stable"]
+    DEV --> ORCINUS["Orcinus<br/>Deep live investigation · Stable"]
+    DEV --> SOREX["Sorex<br/>Lightweight local · Stable"]
+    DEV --> MUS["Mus<br/>Local generalist · Stable"]
 
     EXP --> UNNAMED["Unnamed Experimental Agent<br/>Candidate model evaluation · Experimental"]
 ```
 
-Every registered Apex Agent uses the same Cortex operating layer, while differing in provider, model scale, capability policy, cost profile, and intended role. Only the Primary Agents belong to the normal user-facing roster; DEV_MODE surfaces the Development Agents and technical target in the development roster.
-
-These roles describe current product intent. They should not be read as a precise biological hierarchy or permanent capability ranking.
+For current model IDs, context sizes, provider controls, and runtime behavior, see [Configuration](configuration.md) and [Architecture](architecture.md).
 
 ## Apex Acinonyx
 
 **Status:** Visibility: DEV_MODE only / Stability: Experimental
 
-*Acinonyx* is the genus of the cheetah.
+*Acinonyx* is the cheetah genus. The cheetah's association with speed fits Acinonyx's role as a development-only privacy sandbox for quick tests with masked or non-personal context.
 
-The cheetah is strongly associated with speed and short bursts of focused activity. Apex Acinonyx applies that association to quick experimentation.
-
-Acinonyx is the development-only privacy sandbox used for short, fast tests with masked or non-personal context. It is not intended to be the broad everyday Agent. Its purpose is to make experimentation inexpensive, rapid, and separated from the full personal operating context.
-
-Within the felid naming group, Acinonyx represents the fast and narrowly focused starting point.
+It is deliberately narrow rather than an everyday Agent. Within the felid group, it represents the fast experimental starting point.
 
 ## Apex Panthera
 
 **Status:** Visibility: Primary / Stability: Stable
 
-*Panthera* is the genus containing lions, tigers, leopards, jaguars, and snow leopards.
+*Panthera* includes lions, tigers, leopards, jaguars, and snow leopards. Their range and adaptability fit Panthera's role as the broad everyday cloud Agent.
 
-Apex Panthera represents a significant jump from Acinonyx in breadth and adaptability. It is the default general-purpose Agent for ordinary daily use.
-
-Panthera is not intended only for difficult or complex work. It should be suitable across a wide range of situations, from simple questions and routine planning to work that requires greater analysis.
-
-The variety within the *Panthera* genus supports that meaning. Its different species occupy different environments and demonstrate different strengths while still belonging to one recognizable group. In APEX, this represents an Agent that can adapt to many types of work rather than being defined by one specialized capability.
-
-Panthera is therefore the broad, everyday generalist of the current Agent family.
+Panthera is meant for ordinary use across many kinds of work, not only difficult questions. It is the generalist of the current Agent family.
 
 ## Apex Neofelis
 
 **Status:** Visibility: DEV_MODE only / Stability: Stable
 
-*Neofelis* is the genus containing the clouded leopards. It is distinct from, but closely related to, *Panthera*.
+*Neofelis* is the genus of clouded leopards and is closely related to *Panthera*. In APEX, that relationship represents an Agent that sits near Panthera but has a narrower role.
 
-That relationship is reflected in APEX. Neofelis is adjacent to Panthera, but it is not intended for the same broad general-purpose role.
-
-Apex Neofelis specializes in using the distinctive capabilities of its underlying model. It currently uses Gemini 3.6 Flash and focuses on Google Search, Google Maps, and a one-million-token context window without a separate long-context surcharge in the current pricing configuration. The underlying model may support multimodal work, but current APEX requests are text- and tool-based.
-
-The name represents a smaller and more specialized relative of the Panthera group. Neofelis remains a registered development/specialized Agent whose intended product role is Google-centered research and long-context work. APEX does not yet provide enough Agent-specific research capability to make that specialization meaningfully distinct in the normal roster, so Neofelis remains surfaced through DEV_MODE.
-
-Its identity should therefore be understood as a specialized branch, not simply a weaker or stronger Panthera.
+Neofelis focuses on Google-centered research, especially Search, Maps, and long-context work. It stays in `DEV_MODE` because APEX does not yet have enough workflows built around that specialization to justify putting it in the main roster.
 
 ## Apex Delphinus
 
 **Status:** Visibility: DEV_MODE only / Stability: Stable
 
-*Delphinus* is the genus associated with common dolphins.
+*Delphinus* is associated with common dolphins. It begins a separate naming group from the felid Agents.
 
-Delphinus begins a separate naming group from the felid Agents. It represents a different scope of work rather than another step in the Acinonyx–Panthera relationship.
-
-Apex Delphinus specializes in live and social information retrieval. Its current Grok integration gives it access to X Search, making it useful for current conversations, developing events, social reactions, and information that may be moving faster than conventional sources.
-
-Like Neofelis, Delphinus is defined by a specific capability rather than broad everyday coverage.
-
-Apex Delphinus is a registered development/specialized Agent whose intended product role is live and social information work. Its lower-cost X-centered capability remains distinct from Orcinus, but APEX does not yet provide enough workflow support around that specialization to justify surfacing Delphinus in the normal roster.
+Delphinus focuses on live and social information through X Search. It is meant for developing events, current conversations, and social reactions. It stays in `DEV_MODE` because that role does not yet have enough dedicated workflow support to justify a main roster slot.
 
 ## Apex Orcinus
 
 **Status:** Visibility: DEV_MODE only / Stability: Stable
 
-*Orcinus* is the genus containing the orca. Although commonly called a killer whale, the orca is the largest member of the dolphin family.
+*Orcinus* is the orca genus. Orcas are the largest members of the dolphin family, making Orcinus a natural larger counterpart to Delphinus.
 
-That makes Orcinus a direct larger counterpart to Delphinus within the APEX naming system.
-
-Apex Orcinus is a registered development/specialized Agent whose intended product role is deeper investigation and reasoning over live information. It currently has the same general X-centered capability family as Delphinus, including live and social information retrieval. Its underlying model provides stronger intelligence and reasoning, particularly for deeper analysis and extended investigations, but at a higher cost. APEX does not yet provide enough differentiated investigation workflow capability for that role to justify a primary roster slot.
-
-Delphinus was introduced because many requests can benefit from X integration without requiring Orcinus-level reasoning. The two registered development Agents therefore preserve different cost and capability points around a related set of tools.
-
-The relationship can be summarized as:
-
-- **Delphinus:** specialized live information at a lower cost;
-- **Orcinus:** the same general information scope with stronger reasoning at a higher cost.
+Orcinus covers the same general live-information space but is intended for deeper analysis and investigation at a higher cost. Delphinus keeps the lower-cost role; Orcinus keeps the stronger-reasoning role.
 
 ## Apex Sorex
 
 **Status:** Visibility: DEV_MODE only / Stability: Stable
 
-*Sorex* is a genus of shrews.
+*Sorex* is a genus of shrews. Its small scale fits the smallest local Agent in the family.
 
-Sorex belongs to the local Agent group. The shift from large cats and dolphins to very small mammals represents the smaller model size and more limited computing resources of local inference.
-
-Apex Sorex is retained as a lightweight local development Agent. Its technical role represents situations where a simple answer is sufficient and minimizing local hardware use matters more than obtaining the strongest possible reasoning, but it is not a normal product choice or briefing fallback tier.
-
-Its small scale represents:
-
-- lower model capacity;
-- lower CPU and memory requirements;
-- shorter and simpler work;
-- and wider compatibility with constrained systems.
-
-Sorex is not intended to imitate the full capability of the cloud Agents. Its historical and technical identity represents a fast, private, on-device fallback for straightforward requests; it remains documented for development rather than occupying a normal roster slot.
+Sorex is kept as a lightweight development Agent for simple work where low hardware use matters more than maximum capability. It is not part of the normal roster or briefing fallback path.
 
 ## Apex Mus
 
 **Status:** Visibility: DEV_MODE only / Stability: Stable
 
-*Mus* is a genus of mice.
+*Mus* is the mouse genus. Mus represents a larger local step than Sorex: more capable, but also more demanding on the machine.
 
-Apex Mus is retained as a larger local development Agent than Sorex. It represents an improvement in intelligence and general usefulness over Sorex while requiring more local hardware resources, but it is not a normal product choice or briefing fallback tier.
-
-Mus remains intentionally smaller in scale than the cloud Agent groups. Its historical and technical role represents a practical on-device generalist for work that benefits from greater capability than Sorex can provide but should remain local; it is retained as a development Agent rather than part of the normal roster.
-
-The Sorex–Mus relationship is therefore:
-
-- **Sorex:** the smallest and lightest local option for simple answers;
-- **Mus:** a more capable local generalist with higher hardware requirements.
-
-Mice and shrews are not especially close taxonomic counterparts. Their relationship in APEX is based primarily on their shared small scale and the operational progression between the two local models.
+It remains a development Agent rather than a normal product choice. The Sorex-Mus relationship is based on their shared small scale and their progression as local models, not close taxonomy.
 
 ## Apex Apodemus
 
 **Status:** Visibility: Primary / Stability: Stable
 
-*Apodemus* is a genus of field mice.
+*Apodemus* is a genus of field mice. It belongs to the same small-mammal local group as Sorex and Mus while representing a more capable and useful everyday local Agent.
 
-Apodemus belongs to the same small-mammal local group as Sorex and Mus. The name positions it as an efficient local relative rather than a cloud-scale Agent.
-
-Apex Apodemus is a local Agent that runs through a llama.cpp HTTP router (external or APEX-managed). It is intended for private, on-device work that benefits from structured tool use, with a selectable context window of 4K, 16K, 32K, or high-resource 132K tokens. Its configured model is Gemma 4 E2B (`gemma-4-E2B-Q4_K_M.gguf`). Its local reasoning control supports None and Focused, with None as the safe default; Focused uses the model template's native reasoning without exposing hidden reasoning in Cortex.
-
-Apodemus is also independently selectable for briefing synthesis. The current simplified briefing architecture has Panthera and Apodemus as the model-backed briefing choices: Panthera uses the cloud synthesis path, while Apodemus uses the shared local synthesis lifecycle and llama.cpp provider. Apodemus keeps its selectable context policy for interactive Cortex work.
+Apodemus is intended for private, on-device work and can also be selected for local briefing generation. Its exact model, context options, reasoning controls, and llama.cpp setup belong in [Configuration](configuration.md).
 
 ## Apex Neotoma
 
 **Status:** Visibility: Primary / Stability: Preview
 
-*Neotoma* is a genus of pack rats and woodrats.
+*Neotoma* is a genus of pack rats and woodrats. The name keeps Neotoma in the small-mammal local family while distinguishing it from Apodemus.
 
-Apex Neotoma is a preview local Agent that runs through the same generic llama.cpp provider path as Apodemus. Its configured model is Gemma 4 E4B (`gemma-4-E4B-Q4_K_M.gguf`), with selectable 4K, 16K, 32K, and high-resource 64K context presets and a 16K default. Its native model maximum is 131K tokens, while APEX exposes only the smaller presets as a resource policy. Its local reasoning control also supports None and Focused, defaulting to None.
-
-Neotoma is not a briefing mode. Its role is interactive Agent queries and Cortex local execution alongside the other local Agents.
+Neotoma is the more capable preview local Agent for interactive Cortex work. It is not a briefing mode. Current model and context details are documented in [Configuration](configuration.md).
 
 ## Unnamed Experimental Agent
 
 **Status:** Visibility: DEV_MODE only / Stability: Experimental
 
-Unnamed Experimental Agent is a development-only technical target for evaluating candidate local models. It is deliberately outside the genus-based Agent family: its name carries no genus-based identity, lore, or Apex prefix. It uses the same generic llama.cpp provider and local runtime coordinator as Apodemus and Neotoma, with Qwen3.5 4B (`Qwen3.5-4B-Q4_K_M.gguf`) behind 4K, 16K, and 32K aliases. Its native model maximum is 262K tokens, while the experimental Agent exposes only the smaller evaluation presets.
+Unnamed Experimental Agent is a technical target for trying candidate local models before they receive a permanent product identity. It deliberately has no genus name or Apex prefix.
 
-Its Cortex controls expose None and Focused reasoning, defaulting to None. None disables native thinking explicitly; Focused enables the model template's native thinking, while the provider strips hidden reasoning before returning the answer. The target is fully registered for development use but hidden from the normal Agent catalog. The lack of a genus-based identity is intentional: experimental model candidates should not automatically become permanent members of the Apex Agent family. A candidate should receive a permanent genus-based identity only if it graduates into a durable product role.
+It uses the same local runtime path as the named llama.cpp Agents but stays outside the Agent family until a candidate proves useful enough to earn a durable role. Technical model and context details belong in [Configuration](configuration.md).
 
 ## The Agent family is not permanent
 
-The current Agent family is an experimental product structure, not a permanent roster. Product visibility and registration are separate: an Agent can remain implemented and documented for development without occupying a Primary product slot.
+The Agent family can change as APEX changes. Agents may be introduced, combined, renamed, or removed when their roles stop being useful.
 
-Agents may be introduced, changed, combined, or removed as the Agent capabilities of APEX evolve. The names should reflect useful distinctions that exist in the product, not preserve an Agent after its original purpose has disappeared.
+The Primary roster should stay small. A visible Agent should earn its place by doing something meaningfully different in the product, while `DEV_MODE` can keep broader development identities available for testing.
 
-The Primary roster should stay small, and each visible Agent should justify a distinct operational role. DEV_MODE can expose broader development identities without making them normal user-facing choices. An Agent may therefore remain registered and documented without occupying a primary product slot until APEX provides the capabilities that justify its intended role.
-
-Delphinus is an example. It was derived from the Orcinus capability family because the cost difference created a useful lower-priced role. If a future model provides Orcinus-level reasoning and capabilities at Delphinus-level pricing, the distinction may no longer be valuable. Delphinus could then be changed or removed.
-
-The same principle applies throughout the family. Agent continuity is useful, but maintaining meaningful roles is more important than preserving every name indefinitely.
+Delphinus is a useful example. Its role exists because X access at a lower cost is meaningfully different from Orcinus today. If that distinction disappears in the future, there is no reason to preserve two Agents only for the sake of keeping both names.
 
 ## Previous naming
 
-Before the current Agent family, APEX used a mixture of celestial and animal profile names.
+Before the current Agent family, APEX mixed celestial cloud-profile names with animal local-profile names.
 
-The cloud profiles included:
+The cloud profiles were Comet, Nova, and Pulsar. The local profiles were Lynx, Acinonyx, and Neofelis.
 
-- Comet;
-- Nova;
-- Pulsar.
+The current system replaced that split with one genus-based Agent family. Acinonyx and Neofelis were kept but given new roles; Lynx was retired.
 
-The local profiles included:
-
-- Lynx;
-- Acinonyx;
-- Neofelis.
-
-This created two unrelated naming styles inside the same system. The celestial names described cloud model tiers, while the genus-based names described local model tiers. The result did not communicate one cohesive Agent family.
-
-The current system replaced the celestial terminology with genus names throughout the roster. Acinonyx and Neofelis were retained but assigned new roles within the broader Agent structure. Lynx was retired because it did not fit the final distribution and relationships between the current Agents.
-
-The terminology also changed from **profiles** to **Apex Agents**.
-
-A profile primarily sounds like a collection of settings around one model. That description was increasingly too narrow. The Agent identity leaves room for tools, context policies, orchestration, model replacement, and eventually more than one model working behind a single named role.
-
-The current names therefore describe evolving APEX product identities rather than fixed aliases for individual models.
+The terminology also changed from **profiles** to **Apex Agents**. A profile sounds like settings wrapped around one model. The Agent identity leaves room for tools, context rules, model replacement, and other behavior that can grow beyond a single model configuration.
 
 ## Closing idea
 
-The APEX naming system is intended to make the product memorable while still communicating real differences between its parts.
+The naming system is meant to make APEX memorable while still communicating real differences between its parts.
 
-APEX describes information moving upward through a personal environment. The logo turns that movement into a visual path toward the peak. Cortex operates the named Agents, and the Agent genera communicate relationships in speed, scale, specialization, capability, and cost.
+APEX describes information moving upward through a personal environment. The logo turns that movement into a visual path toward the peak. Cortex runs the named Agents, and their genera suggest relationships in speed, scale, specialization, capability, and cost.
 
-Those meanings record the current design of APEX, while leaving the family free to evolve alongside the project.
-
----
-
-For runtime responsibilities and system boundaries, see
-[Architecture](architecture.md). For the implementation of the visual
-language, see the [Design System](design-system.md).
+For runtime responsibilities and system boundaries, see [Architecture](architecture.md). For the visual language, see the [Design System](design-system.md).

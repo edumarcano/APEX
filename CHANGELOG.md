@@ -3,7 +3,61 @@
 ---
 
 
-## v1.19.1 — Runtime Reliability & Maintenance
+## v1.20.0 - Cortex: Verified Personal Actions & Headless Control
+
+**Released:** August 15, 2026
+
+Agent-initiated writes to Microsoft To Do now go through an explicit approval step before execution. APEX checks the result and records what happened, so the operator always has a clear record of what changed and whether it succeeded. Reminders moved from a local store to a selected Microsoft To Do list, with a local cache for offline use. A new CLI (`uv run apex`) covers the most common operations: status, Agent queries, briefing, and action control for cases where the HUD is not needed. The Weather card now shows current conditions, a +4h/+8h intraday view, and daily highs/lows; the Agent weather tool extends to 14 days and accepts custom locations. A fix prevents 400 errors when Delphinus (grok-4.3) is asked to use encrypted reasoning.
+
+---
+
+### What's New
+
+- Added an action system (`core/actions/`): Agent capabilities that write to external services now generate a proposal, wait for operator approval, execute the write, and verify the result against the provider. In-flight actions are recovered on restart. Definitive failures and uncertain outcomes are treated differently to avoid replaying ambiguous writes.
+- Mutative Microsoft To Do capabilities (`create_microsoft_todo_task`, `update_microsoft_todo_task`, `complete_microsoft_todo_task`, `reopen_microsoft_todo_task`, `delete_microsoft_todo_task`) go through the action flow rather than writing directly.
+- Added a Cortex Actions panel (`CortexActions.tsx`, `useActions.ts`) where pending, executed, verified, rejected, and failed actions can be reviewed with their audit history. Approve, reject, and retry controls are available; destructive approvals require a second confirmation.
+- Moved APEX reminders to a selected Microsoft To Do list. A local SQLite cache keeps reminders available offline, and a background queue syncs changes when the connection returns. The Home panel now supports creating, editing, completing, reopening, and deleting tasks directly.
+- Added `uv run apex`, a terminal client for the local backend. Commands: `status`, `agents`, `ask`, `briefing`, and `actions list/show/approve/reject/verify`. Pass `--json` for machine-readable output.
+- The Weather card now fetches current conditions, daily summaries, and hourly forecasts in one request and shows a three-point intraday timeline (Now, +4h, +8h) with feels-like temperature, daily range, and rain probability.
+- The `get_weather_forecast` Agent tool now covers up to 14 days and accepts a custom city alongside the default home location.
+- Added `supports_encrypted_reasoning` to `AgentSpec` and set it to `false` for Delphinus (grok-4.3), which was triggering 400 errors from the xAI API. The 400 path also now logs the provider, model, error body, and request keys.
+- Added `THIRD_PARTY_NOTICES.md` listing open-source Python and npm dependencies with their licenses.
+
+### Architecture Changes
+
+- `core/actions/` (`models.py`, `service.py`, `store.py`, `runtime.py`, `microsoft_todo.py`) owns the action schema, SQLite persistence (`actions` and `action_audit` tables), lifecycle transitions, and startup recovery. Capabilities that require a proposal set `requires_action_proposal`; the agent loop intercepts those calls and creates a durable record instead of executing immediately.
+- `clients/microsoft_auth.py` and `clients/microsoft_todo_client.py` now require and validate the `Tasks.ReadWrite` OAuth scope. The client exposes read and write primitives with explicit error classification for definitive vs. ambiguous failures.
+- `core/reminders/service.py` and `runtime.py` sync with Microsoft To Do and keep a local SQLite cache for offline access. The reminder router (`core/api/routers/reminders.py`) handles task mutations via the same action flow.
+- `clients/weather_client.py` fetches current conditions, daily summaries, and hourly forecasts together and supports multi-location geocoding.
+- Settings normalizers in `core/settings/` cover Microsoft To Do list selection, write permissions, and reminder preferences.
+
+### API Changes
+
+- Added the action control API (`core/api/routers/actions.py`): `GET /api/v1/actions`, `GET /api/v1/actions/{action_id}`, `POST /api/v1/actions/{action_id}/approve`, `POST /api/v1/actions/{action_id}/reject`, and `POST /api/v1/actions/{action_id}/retry`.
+- Added reminder task mutation endpoints: `POST /api/v1/reminders/tasks/{task_id}/complete`, `POST /api/v1/reminders/tasks/{task_id}/reopen`, `PATCH /api/v1/reminders/tasks/{task_id}`, and `DELETE /api/v1/reminders/tasks/{task_id}`.
+- `POST /api/v1/cortex/query` returns action proposal descriptors when a mutative capability is triggered.
+- `GET /api/v1/microsoft-todo/status` and `PATCH /api/v1/settings` expose and accept the selected Microsoft To Do list and write permission settings.
+
+### Frontend Changes
+
+- Added `CortexActions.tsx` and `useActions.ts` for action status polling and the approve/reject/retry UI.
+- `CortexToolCards.tsx` renders action proposal cards with pending status and execution evidence. Weather tool cards show 14-day results with precipitation data.
+- Added `ReminderTaskDialog.tsx`, `CompletedRemindersDialog.tsx`, `ReminderQuickAdd.tsx`, and `ReminderListRow.tsx` for task editing and lifecycle management in the Reminders panel.
+- `TelemetryCard.tsx` weather view redesigned with the intraday timeline, feels-like temperature, daily range, and rain probability.
+- Added `lib/weatherTelemetry.ts` for weather data parsing and timeline bucketing.
+- Fixed the calendar events card layout so it scrolls as a single unit. Refreshed demo-mode fixtures for weather and reminders.
+
+### Documentation Updates
+
+- Added `docs/cli.md` covering the loopback CLI commands, action management, JSON output, and exit codes.
+- Updated `docs/architecture.md`, `docs/api.md`, `docs/configuration.md`, `docs/privacy.md`, and `docs/getting-started.md` for the action system, Microsoft To Do write path, 14-day weather, and CLI.
+- Updated `docs/decisions.md` with the reasoning behind the action flow and the choice to prove it with Microsoft To Do first.
+- Updated `README.md`, `frontend/README.md`, and `docs/roadmap.md` to reflect Phase IV completion.
+
+---
+
+
+## v1.19.1 - Runtime Reliability & Maintenance
 
 **Released:** August 10, 2026
 
@@ -36,7 +90,7 @@ This release improves reliability and consistency across APEX's connector networ
 ---
 
 
-## v1.19.0 — Apex Agents & Cortex Workspace
+## v1.19.0 - Apex Agents & Cortex Workspace
 
 **Released:** August 8, 2026
 
@@ -128,7 +182,7 @@ This release establishes Apex Agents as APEX's provider-neutral intelligence abs
 
 ---
 
-## v1.18.0 — Cortex: MCP Client Foundation & Read-Only Integrations
+## v1.18.0 - Cortex: MCP Client Foundation & Read-Only Integrations
 
 **Released:** August 1, 2026
 
@@ -185,7 +239,7 @@ This release gives APEX a provider-neutral capability layer and its first extern
 
 ---
 
-## v1.17.0 — Runtime Hardening & Decoupling
+## v1.17.0 - Runtime Hardening & Decoupling
 
 **Released:** July 22, 2026
 
@@ -240,7 +294,7 @@ This release rebuilds APEX's foundations and separates its runtime paths. Python
 
 ---
 
-## v1.16.0 — Command Console & Runtime Control Deck
+## v1.16.0 - Command Console & Runtime Control Deck
 
 **Released:** July 12, 2026
 
@@ -286,7 +340,7 @@ This release adds a runtime settings layer that lets operators edit assistant, b
 
 ---
 
-## v1.15.1 — Gemini Client GC Fix & Console Diagnostics
+## v1.15.1 - Gemini Client GC Fix & Console Diagnostics
 
 **Released:** July 11, 2026
 
@@ -304,7 +358,7 @@ This release fixes a critical runtime exception in the Gemini briefing synthesis
 
 ---
 
-## v1.15.0 — Synthesis Routing and Profile Tuning
+## v1.15.0 - Synthesis Routing and Profile Tuning
 
 **Released:** July 11, 2026
 
@@ -355,7 +409,7 @@ This release extracts briefing synthesis into a provider-neutral router with clo
 
 ---
 
-## v1.14.0 — Central Command Atmosphere
+## v1.14.0 - Central Command Atmosphere
 
 **Released:** July 9, 2026
 
@@ -420,7 +474,7 @@ This release replaces the separate `AssistantDrawer` and `BriefingPanel` surface
 
 ---
 
-## v1.13.0 — Cortex: Local Ollama Provider
+## v1.13.0 - Cortex: Local Ollama Provider
 
 **Released:** July 5, 2026
 
@@ -474,7 +528,7 @@ This release adds a local Ollama inference path to the APEX assistant, alongside
 
 ---
 
-## v1.12.0 — Cloud Gemini Agentic Tool Calling
+## v1.12.0 - Cloud Gemini Agentic Tool Calling
 
 **Released:** July 2, 2026
 
@@ -523,7 +577,7 @@ This release adds a Gemini-backed conversational assistant to APEX. A bounded mu
 
 ---
 
-## v1.11.1 — Speech Engine Stabilization & Library Pruning
+## v1.11.1 - Speech Engine Stabilization & Library Pruning
 
 **Released:** June 29, 2026
 
@@ -560,7 +614,7 @@ This patch removes Piper CLI from the active TTS stack, restores Google Cloud TT
 
 ---
 
-## v1.11.0 — Dormant Core & Ambient State Engine
+## v1.11.0 - Dormant Core & Ambient State Engine
 
 **Released:** June 28, 2026
 
@@ -601,7 +655,7 @@ This release transforms APEX into a standby intelligence appliance. The HUD now 
 
 ---
 
-## v1.10.0 — Local Neural Voice Matrix
+## v1.10.0 - Local Neural Voice Matrix
 
 **Released:** June 13, 2026
 
@@ -649,7 +703,7 @@ This release transitions APEX speech synthesis from cloud-first delivery toward 
 
 ---
 
-## v1.9.1 — Stabilization & Maintenance
+## v1.9.1 - Stabilization & Maintenance
 
 **Released:** June 11, 2026
 
@@ -700,7 +754,7 @@ This release focuses on backend concurrency hardening, external API payload opti
 
 ---
 
-## v1.9.0 — Standby Core & Unified Status Deck
+## v1.9.0 - Standby Core & Unified Status Deck
 
 **Released:** June 11, 2026
 
@@ -766,7 +820,7 @@ This release replaces the auto-firing trigger with an operator-initiated model, 
 
 ---
 
-## v1.8.0 — Briefing Digest & Transcript Layer
+## v1.8.0 - Briefing Digest & Transcript Layer
 
 **Released:** June 9, 2026
 
@@ -863,7 +917,7 @@ This release adds structured output from the Gemini synthesis stage, a persisten
 
 ---
 
-## v1.7.0 — HUD-Renaissance: Productization
+## v1.7.0 - HUD-Renaissance: Productization
 
 **Released:** June 6, 2026
 
@@ -943,7 +997,7 @@ The monolithic `README.md` was broken apart into three dedicated reference docum
 
 ---
 
-## v1.6.0 — HUD-Renaissance: Atmospheric Resonance
+## v1.6.0 - HUD-Renaissance: Atmospheric Resonance
 
 **Released:** June 5, 2026
 
@@ -1105,7 +1159,7 @@ The reminder input component was refactored from a fixed full-page overlay into 
 
 ---
 
-## v1.5.0 — HUD-Renaissance: The Control Deck
+## v1.5.0 - HUD-Renaissance: The Control Deck
 
 **Released:** May 31, 2026
 
@@ -1198,7 +1252,7 @@ The orchestrator now treats the browser window as the authoritative signal for A
 
 ---
 
-## v1.4.0 — Developer Experience & Local Sandbox Recalibration
+## v1.4.0 - Developer Experience & Local Sandbox Recalibration
 
 **Released:** May 28, 2026
 
@@ -1281,7 +1335,7 @@ The `core/speaker.py` module was restructured to eliminate per-call initializati
 
 ---
 
-## v1.3.0 — HUD-Renaissance: DATA AS GEOMETRY
+## v1.3.0 - HUD-Renaissance: DATA AS GEOMETRY
 
 **Released:** May 27, 2026
 
@@ -1367,7 +1421,7 @@ The HUD now responds visually to live weather conditions.
 
 ---
 
-## v1.2.0 — HUD-Renaissance: Pipeline State Visibility
+## v1.2.0 - HUD-Renaissance: Pipeline State Visibility
 
 **Released:** May 18, 2026
 
@@ -1388,7 +1442,7 @@ This release upgrades the APEX dashboard by transforming static loading screens 
 
 ---
 
-## v1.1.1 — AI Workforce Calibration Patch
+## v1.1.1 - AI Workforce Calibration Patch
 
 **Released:** May 17, 2026
 
@@ -1399,7 +1453,7 @@ This release upgrades the APEX dashboard by transforming static loading screens 
 
 ---
 
-## v1.1.0 — The Foundation (React/TypeScript Migration)
+## v1.1.0 - The Foundation (React/TypeScript Migration)
 
 **Released:** May 17, 2026
 
@@ -1419,7 +1473,7 @@ This release replaces the original web interface with a modern dashboard built u
 
 ---
 
-## v1.0.0 — The Core Foundation
+## v1.0.0 - The Core Foundation
 
 **Released:** May 15, 2026
 

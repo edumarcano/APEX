@@ -1,21 +1,21 @@
 # Configuration
 
-This is the canonical operator reference for APEX settings, runtime modes, credentials, and optional integrations. It explains ownership and behavior; [`.env.example`](../.env.example) remains the exhaustive list of supported environment keys and placeholders.
+This is the main operator reference for APEX settings, runtime modes, credentials, and optional integrations. It explains where settings belong and how they behave; [`.env.example`](../.env.example) remains the complete list of supported environment keys and placeholders.
 
 ## Configuration ownership
 
 | Surface | Contains | Version control |
 |---|---|---|
-| `.env` | Secrets, credential paths, machine paths, and environment-only modes | Never committed |
+| `.env` | Secrets, credential paths, and environment-only modes | Never committed |
 | `config.json` | Tracked non-secret defaults, prompt text, feature flags, model behavior, and provider presets | Committed |
-| `config.local.json` | Machine-local runtime-setting overrides, including the optional user designation | Gitignored |
+| `config.local.json` | Personal or machine-local runtime overrides, including the optional user designation and llama.cpp executable/preset paths | Gitignored |
 | Runtime Settings | Editable subset of resolved settings | Persists to `config.local.json` |
 
 ```mermaid
 flowchart TD
-    ENV[".env<br/>Secrets, credentials, machine paths, and environment modes"]
+    ENV[".env<br/>Secrets, credential paths, and environment modes"]
     DEFAULTS["config.json<br/>Tracked non-secret defaults"]
-    LOCAL["config.local.json<br/>Machine-local overrides"]
+    LOCAL["config.local.json<br/>Personal and machine-local overrides"]
     HUD["Runtime Settings"]
     LOADER["Runtime settings loader and validation"]
     SNAPSHOT["Immutable runtime settings snapshot"]
@@ -62,8 +62,8 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 ### When changes take effect
 
 - Connector and sports flags are captured when telemetry collection begins.
-- The Home command rail persists the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
-- Agent query enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes.
+- The Home command rail saves the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
+- Agent query enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes with the settings it started with.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately; symbol changes apply on the next poll.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
@@ -81,9 +81,9 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
-- `raw` — deterministic output without a model call
-- `local` — Apodemus synthesis with deterministic fallback
-- `cloud` — Panthera with Apodemus and deterministic fallback
+- `raw`: deterministic output without a model call
+- `local`: Apodemus synthesis with deterministic fallback
+- `cloud`: Panthera with Apodemus and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -118,11 +118,11 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 | Agent key and display name | Provider and model | Role |
 |---|---|---|
-| `acinonyx` — Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
-| `panthera` — Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
-| `neofelis` — Neofelis 1.0 | Google `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| `delphinus` — Delphinus 1.0 | SpaceXAI `grok-4.3` | Focused SpaceXAI cloud Agent with persisted optional X Search |
-| `orcinus` — Orcinus 1.0 | SpaceXAI `grok-4.5` | Extended SpaceXAI cloud Agent with persisted optional X Search |
+| `acinonyx`: Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
+| `panthera`: Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
+| `neofelis`: Neofelis 1.0 | Google `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
+| `delphinus`: Delphinus 1.0 | SpaceXAI `grok-4.3` | Focused SpaceXAI cloud Agent with persisted optional X Search |
+| `orcinus`: Orcinus 1.0 | SpaceXAI `grok-4.5` | Extended SpaceXAI cloud Agent with persisted optional X Search |
 
 Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
 
@@ -134,13 +134,15 @@ The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside dev
 
 | Agent key and display name | Provider and model | Intended use |
 |---|---|---|
-| `sorex` — Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
-| `mus` — Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
-| `apodemus` — Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
-| `neotoma` — Neotoma 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
-| `unnamed-experimental-agent` — Unnamed Experimental Agent 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
+| `sorex`: Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
+| `mus`: Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
+| `apodemus`: Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
+| `neotoma`: Neotoma 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
+| `unnamed-experimental-agent`: Unnamed Experimental Agent 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
 
-`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`. Local lifecycle policy is provider-neutral: APEX enforces one active local generation and one resident model through the global coordinator, applies per-Agent CPU/RAM gates before cold load, and unloads idle models after the configured timeout. Outside DEV_MODE, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; DEV_MODE also surfaces the registered development Agents. Ollama serves Mus and Sorex; llama.cpp serves Apodemus, Neotoma, and the development-only Unnamed Experimental Agent.
+`ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`.
+
+APEX allows one local generation at a time and keeps one selected local model resident across Ollama and llama.cpp. CPU and RAM checks apply before cold loads, and idle models unload after the configured timeout. Outside `DEV_MODE`, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; `DEV_MODE` also surfaces the registered development Agents.
 
 For repeatable local Agent and candidate-model comparisons, see [Local Model Benchmarking](../benchmarks/README.md). Benchmark results remain machine-specific and gitignored.
 
@@ -239,9 +241,11 @@ Panthera is the default cloud briefing engine and always uses Light effort, inde
 |---|---|---|
 | Google Cloud TTS | External cloud service | pyttsx3 |
 | pyttsx3 | Local operating-system voice | Terminal fallback |
-| Kokoro ONNX | Local model when installed | Google, then pyttsx3 |
+| Kokoro ONNX | Local model when installed | pyttsx3 |
 
 Google TTS requires a service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path. Kokoro requires its ONNX model and voices file. Voice delivery mode controls whether speech is disabled, manually initiated, or automatic after a briefing.
+
+A Kokoro request never falls through to Google. If Kokoro cannot run, APEX stays local and uses pyttsx3 instead.
 
 ## Google OAuth
 
@@ -264,9 +268,9 @@ APEX stores the authorization cache through encrypted operating-system persisten
 
 APEX is an MCP client, not an MCP server. The tracked presets are disabled by default:
 
-- GitHub — read-only repository, code, issue, and pull-request operations
-- Brave Search — bounded web and news search through a local Node subprocess
-- Alpha Vantage — bounded market research through hosted OAuth
+- GitHub: read-only repository, code, issue, and pull-request operations
+- Brave Search: bounded web and news search through a local Node subprocess
+- Alpha Vantage: bounded market research through hosted OAuth
 
 Every imported tool must be allowlisted and assigned a local risk classification before registration. Runtime Settings exposes only preset enablement; it never returns or accepts credentials, endpoints, commands, allowlists, or authorization artifacts.
 
@@ -285,5 +289,6 @@ FastAPI and the static HUD bind to loopback. `APEX_ALLOWED_ORIGINS` controls whi
 - Never commit `.env`, OAuth tokens, service-account keys, databases, generated audio, caches, or local model files.
 - Use absolute paths for machine-specific credentials.
 - Keep credentials out of `config.json` and `config.local.json`.
+- Keep personal or machine-local non-secret runtime paths in the gitignored local settings layer when APEX exposes them there.
 - Review [Privacy and Data Boundaries](privacy.md) before sending personal connector data to a cloud model.
 - Use demo mode, a local briefing Agent, or Structured Digest when cloud disclosure is inappropriate.
