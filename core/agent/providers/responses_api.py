@@ -471,4 +471,4 @@ def _responses_wait_seconds(attempt: int, exc: BaseException) -> float:
         return exponential_backoff_seconds(attempt)
     if isinstance(exc, APIStatusError) and exc.status_code == 429:
         return exponential_backoff_seconds(attempt)
-    return fixed_backoff_seconds(attempt, exc)
+    return fixed_backoff_seconds(attempt)
