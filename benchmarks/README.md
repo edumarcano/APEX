@@ -1,7 +1,7 @@
 # Local model benchmark v0
 
-This directory contains a lightweight developer utility for comparing local
-APEX Agents on one Windows development machine. It is intentionally not a
+This directory contains a lightweight developer utility for comparing Lynx
+local models on one Windows development machine. It is intentionally not a
 benchmark service: results are local files, there is no frontend or database
 history, and the case set is kept small enough for a manual model comparison.
 
@@ -11,28 +11,27 @@ From the repository root:
 
 ```powershell
 uv run python scripts/benchmark_local_models.py `
-  --agents apodemus neotoma `
+  --agents lynx `
   --context 16384 `
   --reasoning none `
   --repetitions 3
 ```
 
-To compare every registered llama.cpp context preset:
+To compare every registered llama.cpp context preset for the current Lynx model:
 
 ```powershell
 uv run python scripts/benchmark_local_models.py `
-  --agents apodemus `
+  --agents lynx `
   --all-contexts
 ```
 
-The command also accepts registered Ollama Agents (`sorex` and `mus`). Ollama
-uses its fixed configured context; `--context 4096` is accepted for clarity.
+The command also accepts development-only Ollama models when Lynx is configured to use Ollama. Ollama uses its fixed configured context; `--context 4096` is accepted for clarity.
 Repeat `--reasoning` to compare `none` and `focused` without reloading the same
 runtime alias:
 
 ```powershell
 uv run python scripts/benchmark_local_models.py `
-  --agents neotoma `
+  --agents lynx `
   --context 16384 `
   --reasoning none `
   --reasoning focused
@@ -53,7 +52,7 @@ uv run python scripts/benchmark_local_models.py `
 
 The alias must already appear in the configured llama.cpp router's `/models`
 list. The candidate is represented by an in-memory profile only; it is not
-added to `AGENT_SPECS`, Cortex, settings, or the Agent naming taxonomy.
+added to the Agent catalog, Cortex, settings, or the Agent naming taxonomy.
 
 ## Runtime and metrics
 
@@ -97,9 +96,8 @@ separate rates for task success, required tool selection, schema validity,
 multi-tool completion, unnecessary tool calls, and failures. There is no
 LLM-as-judge or weighted overall score.
 
-The benchmark measures configured APEX Agents as shipped, including their
-Agent-specific identity instructions; it is not a neutral underlying-model
-test.
+The benchmark measures configured Lynx models as shipped, including Lynx's
+identity instruction; it is not a neutral underlying-model test.
 
 ## Results
 

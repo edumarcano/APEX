@@ -97,7 +97,7 @@ def get_global_config() -> dict[str, Any]:
         "synthesis_agent": (
             None
             if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw")
-            else "apodemus"
+            else "lynx"
             if is_dev_mode() and DEV_AI_SYNTHESIS == "local"
             else "panthera"
         ),

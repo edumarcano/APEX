@@ -48,7 +48,9 @@ from core.agent.catalog import (
     known_local_model_refs,
     local_agent_keys,
     local_reasoning_modes_for_agent,
+    resolve_selected_model_profile,
 )
+from core.agent.model_catalog import DEFAULT_LYNX_MODEL, get_model_profile
 from core.agent.local_runtime.contract import (
     LocalModelRef,
     LocalModelProfile,
@@ -472,26 +474,27 @@ def _context_values(
     context: int | None,
     all_contexts: bool,
 ) -> tuple[int, ...]:
-    spec = AGENT_SPECS[agent_key]
-    if spec.provider == "llama_cpp":
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS[agent_key]
+    model_profile = resolve_selected_model_profile(agent_key)
+    model_id = model_profile.model_id
+    if model_profile.provider == "llama_cpp":
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS[model_id]
         if all_contexts:
             return runtime.allowed_context_windows
         if context is not None:
             if context not in runtime.allowed_context_windows:
                 raise ValueError(
-                    f"Unsupported context {context} for Agent {agent_key!r}; "
+                    f"Unsupported context {context} for model {model_id!r}; "
                     f"choose from {runtime.allowed_context_windows}."
                 )
             return (context,)
         return (runtime.default_context_window,)
 
-    runtime = OLLAMA_RUNTIME_CONFIGS[agent_key]
+    runtime = OLLAMA_RUNTIME_CONFIGS[model_id]
     if all_contexts:
         return (runtime.context_window,)
     if context is not None and context != runtime.context_window:
         raise ValueError(
-            f"Ollama Agent {agent_key!r} only supports context "
+            f"Ollama model {model_id!r} only supports context "
             f"{runtime.context_window}."
         )
     return (runtime.context_window,)
@@ -547,8 +550,10 @@ def _build_candidate_configuration(
     reasoning: str,
 ) -> BenchmarkConfiguration:
     """Build an in-memory llama.cpp profile without changing the Agent catalog."""
-    resolved_context = context or LLAMA_CPP_RUNTIME_CONFIGS["apodemus"].default_context_window
-    supported = local_reasoning_modes_for_agent("apodemus")
+    resolved_context = context or LLAMA_CPP_RUNTIME_CONFIGS[
+        DEFAULT_LYNX_MODEL
+    ].default_context_window
+    supported = local_reasoning_modes_for_agent("lynx")
     if reasoning not in supported:
         raise ValueError(
             f"llama.cpp candidate does not support reasoning mode {reasoning!r}."
@@ -560,16 +565,17 @@ def _build_candidate_configuration(
     if not alias:
         raise ValueError("The llama.cpp candidate requires a runtime alias.")
 
-    spec = AGENT_SPECS["apodemus"]
+    lynx_profile = get_model_profile(DEFAULT_LYNX_MODEL)
+    assert lynx_profile is not None
     profile = build_llama_cpp_profile(
-        "apodemus",
+        DEFAULT_LYNX_MODEL,
         display_name="Benchmark candidate",
         agent_version="benchmark-v0",
         api_model=model_name,
-        tier="balanced",
-        stability="experimental",
-        max_tool_turns=spec.max_tool_turns,
-        max_tool_calls=spec.max_tool_calls,
+        tier=lynx_profile.tier,  # type: ignore[arg-type]
+        stability=lynx_profile.stability,
+        max_tool_turns=lynx_profile.max_tool_turns,
+        max_tool_calls=lynx_profile.max_tool_calls,
         system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
         context_window=resolved_context,
         reasoning_mode=reasoning,  # type: ignore[arg-type]
@@ -583,7 +589,7 @@ def _build_candidate_configuration(
         reasoning=profile.reasoning_mode,
         profile=profile,
         agent_key=None,
-        tool_projection_agent="apodemus",
+        tool_projection_agent="lynx",
     )
 
 
@@ -613,11 +619,11 @@ def build_configurations(
         if candidate_model:
             selected_agents = []
         else:
-            selected_agents = [
-                key
-                for key in local_agent_keys(dev_mode=True)
-                if get_local_runtime_backend(AGENT_SPECS[key].provider).enabled
-            ]
+            lynx_profile = resolve_selected_model_profile("lynx")
+            if get_local_runtime_backend(lynx_profile.provider).enabled:
+                selected_agents = ["lynx"]
+            else:
+                selected_agents = []
     else:
         selected_agents = []
         for raw_key in agents:
@@ -1149,7 +1155,7 @@ class BenchmarkRunner:
             # AgentQueryRequest intentionally accepts only product Agent keys.
             # Candidates use the local system prompt and omit agent_key below;
             # this value is never used to resolve a candidate profile.
-            agent="apodemus",
+            agent="lynx",
             selected_tool_names=[descriptor.name for descriptor in descriptors],
         )
         started = time.perf_counter()
@@ -1901,7 +1907,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agents",
         nargs="+",
-        help="Registered local Agent keys, such as apodemus neotoma.",
+        help="Registered local Agent keys, such as lynx.",
     )
     context_group = parser.add_mutually_exclusive_group()
     context_group.add_argument(

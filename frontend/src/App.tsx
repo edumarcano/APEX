@@ -63,15 +63,28 @@ import {
   resolveAppliedAgentSelection,
   resolveInitialAgentSelection,
 } from './lib/settings'
-import { isCloudSettingsAgentKey, isLocalAgentKey } from './lib/agents'
+import {
+  defaultModelForLynxRuntime,
+  defaultModelForPantheraProvider,
+  isLynxKey,
+  isPantheraKey,
+} from './lib/agents'
 import type {
   AgentKey,
   CloudEffort,
-  CloudSettingsAgent,
+  CloudProvider,
+  HostedTool,
   LocalReasoningMode,
-  LocalSettingsAgent,
+  LocalRuntime,
 } from './types/telemetry'
-import type { BriefingMode, SettingsResponse, VoiceMode } from './types/settings'
+import type {
+  BriefingMode,
+  PantheraHostedToolsSettings,
+  SettingsResponse,
+  VoiceMode,
+} from './types/settings'
+import { resolveHistoryPartition } from './lib/settings'
+import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 interface ParsedEmail {
   subject: string
@@ -117,7 +130,7 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
 
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
-  'apodemus',
+  'lynx',
   'structured_digest',
 ]
 
@@ -135,13 +148,6 @@ function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
   return mode === 'panthera'
 }
 
-function synthesisAgentForMode(mode: BriefingMode): string | null {
-  if (mode === 'structured_digest') {
-    return null
-  }
-  return mode
-}
-
 function isCloudAgentKey(
   agent: AgentKey,
   agentsStatus: { key: AgentKey; runtime: 'cloud' | 'local' }[],
@@ -150,7 +156,35 @@ function isCloudAgentKey(
   if (match) {
     return match.runtime === 'cloud'
   }
-  return !isLocalAgentKey(agent)
+  return isPantheraKey(agent)
+}
+
+function synthesisAgentForMode(mode: BriefingMode): string | null {
+  if (mode === 'structured_digest') {
+    return null
+  }
+  return mode
+}
+
+function applyAskApexSettings(
+  askApex: SettingsResponse['settings']['ask_apex'],
+  setters: {
+    setCloudEffort: (effort: CloudEffort) => void
+    setPantheraProvider: (provider: CloudProvider) => void
+    setPantheraModel: (model: string) => void
+    setLynxRuntime: (runtime: LocalRuntime) => void
+    setLynxModel: (model: string) => void
+    setSandboxMode: (enabled: boolean) => void
+    setPantheraHostedTools: (tools: PantheraHostedToolsSettings) => void
+  },
+): void {
+  setters.setCloudEffort(askApex.panthera.effort)
+  setters.setPantheraProvider(askApex.panthera.provider)
+  setters.setPantheraModel(askApex.panthera.model)
+  setters.setLynxRuntime(askApex.lynx.runtime)
+  setters.setLynxModel(askApex.lynx.model)
+  setters.setSandboxMode(askApex.sandbox_mode)
+  setters.setPantheraHostedTools({ ...askApex.panthera.hosted_tools })
 }
 
 interface PersistAgentSettingsOptions {
@@ -165,7 +199,16 @@ export default function App(): ReactElement {
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
-  const [cloudAgent, setCloudAgent] = useState<CloudSettingsAgent>('panthera')
+  const [pantheraProvider, setPantheraProvider] = useState<CloudProvider>('openai')
+  const [pantheraModel, setPantheraModel] = useState('gpt-5.6-luna')
+  const [lynxRuntime, setLynxRuntime] = useState<LocalRuntime>('llama_cpp')
+  const [lynxModel, setLynxModel] = useState('gemma-4-E2B-Q4_K_M.gguf')
+  const [sandboxMode, setSandboxMode] = useState(false)
+  const [pantheraHostedTools, setPantheraHostedTools] = useState<PantheraHostedToolsSettings>({
+    google_search: true,
+    google_maps: true,
+    x_search: true,
+  })
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
@@ -251,7 +294,7 @@ export default function App(): ReactElement {
     verifyCloudAgent,
     refreshAgentsStatus,
     clearCortexSession,
-  } = useCortex(true, activeAgent)
+  } = useCortex(true, { devModeActive, sandboxMode })
   const mcpRuntime = useMcpStatus(true)
   const mcpAvailabilityVersion = useMemo(() => {
     if (!mcpRuntime.status) return null
@@ -273,7 +316,7 @@ export default function App(): ReactElement {
     prompt: draftPrompt,
     history: cortexHistory,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-    historyPartition: activeAgent === 'acinonyx' ? 'acinonyx' : 'production',
+    historyPartition: resolveHistoryPartition(devModeActive, sandboxMode),
     enabled: Boolean(
       agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
@@ -293,11 +336,11 @@ export default function App(): ReactElement {
     )
     if (selection) {
       setAgent(selection.agent)
-      if (isCloudSettingsAgentKey(selection.agent)) {
-        setCloudAgent(selection.agent)
-      }
       if (selection.effort) {
         setCloudEffort(selection.effort)
+      }
+      if (selection.sandboxMode !== undefined) {
+        setSandboxMode(selection.sandboxMode)
       }
       agentSelectionHydratedRef.current = true
     }
@@ -331,12 +374,21 @@ export default function App(): ReactElement {
       })
       activeAgentRef.current = selection.agent
       setAgent(selection.agent)
-      if (isCloudSettingsAgentKey(selection.agent)) {
-        setCloudAgent(selection.agent)
-      }
       if (selection.effort) {
         setCloudEffort(selection.effort)
       }
+      if (selection.sandboxMode !== undefined) {
+        setSandboxMode(selection.sandboxMode)
+      }
+      applyAskApexSettings(response.settings.ask_apex, {
+        setCloudEffort,
+        setPantheraProvider,
+        setPantheraModel,
+        setLynxRuntime,
+        setLynxModel,
+        setSandboxMode,
+        setPantheraHostedTools,
+      })
       if (!briefingModeSelectionTouchedRef.current) {
         setBriefingMode(response.settings.briefing.default_mode)
       }
@@ -370,12 +422,23 @@ export default function App(): ReactElement {
         const settingsValues = settings as Record<string, unknown>
         const agentSettings = settingsValues.ask_apex
         if (agentSettings && typeof agentSettings === 'object') {
-          const values = agentSettings as Record<string, unknown>
-          if (values.cloud_agent === 'panthera' || values.cloud_agent === 'neofelis' || values.cloud_agent === 'delphinus' || values.cloud_agent === 'orcinus') {
-            setCloudAgent(values.cloud_agent)
-          }
-          if (values.effort === 'light' || values.effort === 'focused' || values.effort === 'extended') {
-            setCloudEffort(values.effort)
+          const parsed = parseSettingsResponse(buildSettingsResponse({
+            ...BASE_SETTINGS,
+            ask_apex: {
+              ...BASE_SETTINGS.ask_apex,
+              ...(agentSettings as SettingsResponse['settings']['ask_apex']),
+            },
+          }))
+          if (parsed) {
+            applyAskApexSettings(parsed.settings.ask_apex, {
+              setCloudEffort,
+              setPantheraProvider,
+              setPantheraModel,
+              setLynxRuntime,
+              setLynxModel,
+              setSandboxMode,
+              setPantheraHostedTools,
+            })
           }
         }
         const briefing = settingsValues.briefing
@@ -408,7 +471,7 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    isLocalAgentKey(activeQueryAgent) ||
+    isLynxKey(activeQueryAgent) ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 
@@ -433,7 +496,7 @@ export default function App(): ReactElement {
     loadingLocalAgent !== null ||
     (liveSynthesis?.loading === true &&
       (liveSynthesis.provider === 'llama_cpp' ||
-        (liveSynthesis.agent !== undefined && isLocalAgentKey(liveSynthesis.agent))))
+        (liveSynthesis.agent !== undefined && isLynxKey(liveSynthesis.agent))))
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??
@@ -1064,122 +1127,89 @@ export default function App(): ReactElement {
   const handleAgentChange = useCallback((agent: AgentKey): void => {
     activeAgentRef.current = agent
     setAgent(agent)
-    if (agent === 'acinonyx') {
-      void persistAgentSettings(
-        { runtime: 'cloud', effort: cloudEffort },
-        agent,
-        { refreshToolCatalog: false },
-      )
-      return
-    }
-    if (isLocalAgentKey(agent)) {
-      void persistAgentSettings(
-        { runtime: 'local', local_agent: agent },
-        agent,
-        { refreshToolCatalog: false },
-      )
-      return
-    }
-    if (isCloudSettingsAgentKey(agent)) {
-      setCloudAgent(agent)
-      void persistAgentSettings(
-        { runtime: 'cloud', cloud_agent: agent, effort: cloudEffort },
-        agent,
-        { refreshToolCatalog: false },
-      )
-    }
-  }, [cloudEffort, persistAgentSettings])
+    void persistAgentSettings({ agent }, agent, { refreshToolCatalog: false })
+  }, [persistAgentSettings])
+
+  const handlePantheraProviderChange = useCallback((provider: CloudProvider): void => {
+    const model = defaultModelForPantheraProvider(provider, devModeActive)
+    setPantheraProvider(provider)
+    setPantheraModel(model)
+    void persistAgentSettings({
+      panthera: { provider, model },
+    }, activeAgent, { refreshToolCatalog: true })
+  }, [activeAgent, devModeActive, persistAgentSettings])
+
+  const handlePantheraModelChange = useCallback((model: string): void => {
+    setPantheraModel(model)
+    void persistAgentSettings({
+      panthera: { model },
+    }, activeAgent, { refreshToolCatalog: true })
+  }, [activeAgent, persistAgentSettings])
+
+  const handleLynxRuntimeChange = useCallback((runtime: LocalRuntime): void => {
+    const model = defaultModelForLynxRuntime(runtime, devModeActive)
+    setLynxRuntime(runtime)
+    setLynxModel(model)
+    void persistAgentSettings({
+      lynx: { runtime, model },
+    }, activeAgent, { refreshToolCatalog: true })
+  }, [activeAgent, devModeActive, persistAgentSettings])
+
+  const handleLynxModelChange = useCallback((model: string): void => {
+    setLynxModel(model)
+    void persistAgentSettings({
+      lynx: { model },
+    }, activeAgent, { refreshToolCatalog: true })
+  }, [activeAgent, persistAgentSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
     void persistAgentSettings(
-      { runtime: 'cloud', cloud_agent: cloudAgent, effort: effort },
+      { panthera: { effort } },
       activeAgent,
       { refreshToolCatalog: false },
     )
-  }, [activeAgent, cloudAgent, persistAgentSettings])
+  }, [activeAgent, persistAgentSettings])
 
-  const handleGoogleSearchChange = useCallback((enabled: boolean): void => {
+  const handleHostedToolChange = useCallback((tool: HostedTool, enabled: boolean): void => {
+    setPantheraHostedTools((current) => ({ ...current, [tool]: enabled }))
     void persistAgentSettings(
-      { neofelis_google_search_enabled: enabled },
+      { panthera: { hosted_tools: { [tool]: enabled } } },
       activeAgent,
       { refreshToolCatalog: true },
     )
   }, [activeAgent, persistAgentSettings])
 
-  const handleGoogleMapsChange = useCallback((enabled: boolean): void => {
-    void persistAgentSettings(
-      { neofelis_google_maps_enabled: enabled },
-      activeAgent,
-      { refreshToolCatalog: true },
-    )
-  }, [activeAgent, persistAgentSettings])
-
-  const handleDelphinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAgentSettings(
-      { delphinus_x_search_enabled: enabled },
-      activeAgent,
-      { refreshToolCatalog: true },
-    )
-  }, [activeAgent, persistAgentSettings])
-
-  const handleOrcinusXSearchChange = useCallback((enabled: boolean): void => {
-    void persistAgentSettings(
-      { orcinus_x_search_enabled: enabled },
-      activeAgent,
-      { refreshToolCatalog: true },
-    )
+  const handleSandboxModeChange = useCallback((enabled: boolean): void => {
+    setSandboxMode(enabled)
+    void persistAgentSettings({ sandbox_mode: enabled }, activeAgent, { refreshToolCatalog: false })
   }, [activeAgent, persistAgentSettings])
 
   const handleLocalContextWindowChange = useCallback((
-    agent: LocalSettingsAgent,
     contextWindow: number,
   ): Promise<boolean> => {
-    const contextWindows: Record<string, number> = {}
-    for (const status of agentsStatus) {
-      if (!status.context_window_options?.length) {
-        continue
-      }
-      const selected = status.context_window ?? status.default_context_window
-      if (selected !== null && selected !== undefined) {
-        contextWindows[status.key] = selected
-      }
-    }
-    contextWindows[agent] = contextWindow
     return persistAgentSettings(
-      { local_context_windows: contextWindows },
-      agent,
+      { lynx: { context_window: contextWindow } },
+      'lynx',
       { refreshToolCatalog: true },
     )
-  }, [agentsStatus, persistAgentSettings])
+  }, [persistAgentSettings])
 
   const handleLocalReasoningModeChange = useCallback((
-    agent: LocalSettingsAgent,
     reasoningMode: LocalReasoningMode,
   ): Promise<boolean> => {
-    const reasoningModes: Record<string, LocalReasoningMode> = {}
-    for (const status of agentsStatus) {
-      if (!status.reasoning_mode_options?.length) {
-        continue
-      }
-      const selected = status.reasoning_mode ?? status.default_reasoning_mode
-      if (selected !== null && selected !== undefined) {
-        reasoningModes[status.key] = selected
-      }
-    }
-    reasoningModes[agent] = reasoningMode
     return persistAgentSettings(
-      { local_reasoning_modes: reasoningModes },
-      agent,
+      { lynx: { reasoning_mode: reasoningMode } },
+      'lynx',
       { refreshToolCatalog: false },
     )
-  }, [agentsStatus, persistAgentSettings])
+  }, [persistAgentSettings])
 
   const handleNewCortexSession = useCallback((): void => {
-    clearCortexSession(activeAgent)
+    clearCortexSession()
     setSnapshotAttached(false)
     setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
-  }, [activeAgent, clearCortexSession])
+  }, [clearCortexSession])
 
   const handleHomeSubmit = useCallback(async (
     query: string,
@@ -1682,6 +1712,13 @@ export default function App(): ReactElement {
           <CortexWorkspace
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
+            pantheraProvider={pantheraProvider}
+            pantheraModel={pantheraModel}
+            lynxRuntime={lynxRuntime}
+            lynxModel={lynxModel}
+            pantheraHostedTools={pantheraHostedTools}
+            devModeActive={devModeActive}
+            sandboxMode={sandboxMode}
             agentQueriesEnabled={Boolean(agentQueriesEnabled)}
             agentsStatus={agentsStatus}
             agentsStatusHydrated={agentsStatusHydrated}
@@ -1722,11 +1759,13 @@ export default function App(): ReactElement {
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
             onAgentChange={handleAgentChange}
+            onPantheraProviderChange={handlePantheraProviderChange}
+            onPantheraModelChange={handlePantheraModelChange}
+            onLynxRuntimeChange={handleLynxRuntimeChange}
+            onLynxModelChange={handleLynxModelChange}
             onEffortChange={handleEffortChange}
-            onGoogleSearchChange={handleGoogleSearchChange}
-            onGoogleMapsChange={handleGoogleMapsChange}
-            onDelphinusXSearchChange={handleDelphinusXSearchChange}
-            onOrcinusXSearchChange={handleOrcinusXSearchChange}
+            onHostedToolChange={handleHostedToolChange}
+            onSandboxModeChange={handleSandboxModeChange}
             onLocalContextWindowChange={handleLocalContextWindowChange}
             onLocalReasoningModeChange={handleLocalReasoningModeChange}
             onSubmit={handleHomeSubmit}

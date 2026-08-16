@@ -6,6 +6,15 @@ import os
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
+from core.agent.model_catalog import (
+    DEFAULT_LYNX_MODEL,
+    DEFAULT_LYNX_RUNTIME,
+    DEFAULT_PANTHERA_MODEL,
+    LOCAL_MODEL_PROFILES,
+    ModelProfile,
+    get_model_profile,
+    model_has_credentials,
+)
 from core.agent.providers.contract import InferenceProvider, is_local_inference_provider
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.gemini_models import GeminiModelProfile, GeminiThinkingLevel
@@ -13,78 +22,32 @@ from core.agent.providers.llama_cpp_models import (
     LLAMA_CPP_RUNTIME_CONFIGS,
     LlamaCppModelProfile,
     build_llama_cpp_profile,
+    llama_cpp_runtime_config,
+    model_id_for_llama_cpp_alias,
+    resolve_llama_cpp_router_alias,
 )
 from core.agent.providers.ollama_models import (
-    OLLAMA_HIGH_RESOURCE_AGENTS,
+    OLLAMA_HIGH_RESOURCE_MODELS,
     OLLAMA_RUNTIME_CONFIGS,
     OllamaModelProfile,
 )
 from core.agent.providers.responses_api import ResponsesModelProfile
-from core.agent.tool_policies import hosted_tools_for_agent
+from core.agent.tool_policies import hosted_tools_for_model
 from core.agent.types import LocalReasoningMode
 from core.config import (
     AGENT_SYSTEM_PROMPT,
-    GEMINI_AGENT_MAX_TOOL_CALLS,
-    GEMINI_AGENT_MAX_TURNS,
     LOCAL_AGENT_SYSTEM_PROMPT,
-    MUS_CPU_LIMIT,
-    MUS_RAM_LIMIT,
-    SOREX_CPU_LIMIT,
-    SOREX_RAM_LIMIT,
     is_dev_mode,
 )
 
-AgentKey: TypeAlias = Literal[
-    "acinonyx",
-    "panthera",
-    "neofelis",
-    "delphinus",
-    "orcinus",
-    "sorex",
-    "mus",
-    "apodemus",
-    "neotoma",
-    "unnamed-experimental-agent",
-]
-CloudAgentKey: TypeAlias = Literal[
-    "acinonyx", "panthera", "neofelis", "delphinus", "orcinus"
-]
-CloudSettingsAgentKey: TypeAlias = Literal[
-    "panthera", "neofelis", "delphinus", "orcinus"
-]
-LocalAgentKey: TypeAlias = Literal[
-    "sorex",
-    "mus",
-    "apodemus",
-    "neotoma",
-    "unnamed-experimental-agent",
-]
+AgentKey: TypeAlias = Literal["panthera", "lynx"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 NativeEffort: TypeAlias = Literal["low", "medium", "high"]
+CloudProvider: TypeAlias = Literal["openai", "gemini", "xai"]
+LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
-VALID_AGENT_KEYS: frozenset[str] = frozenset(
-    {
-        "acinonyx",
-        "panthera",
-        "neofelis",
-        "delphinus",
-        "orcinus",
-        "sorex",
-        "mus",
-        "apodemus",
-        "neotoma",
-        "unnamed-experimental-agent",
-    }
-)
-VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"panthera", "neofelis", "delphinus", "orcinus"}
-)
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"}
-)
-VALID_APEX_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
-VALID_NATIVE_EFFORTS: frozenset[str] = frozenset({"low", "medium", "high"})
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "lynx"})
 
 _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "gemini": "Google",
@@ -114,317 +77,100 @@ AgentModelProfile = (
 
 @dataclass(frozen=True, slots=True)
 class AgentSpec:
-    """Static metadata for one Apex Agent."""
+    """Static metadata for one durable Apex Agent identity."""
 
     key: AgentKey
     display_name: str
     description: str
     identity_instruction: str
     agent_version: str
-    provider: InferenceProvider
     runtime: AgentRuntime
-    api_model: str
-    default_effort: ApexEffort | None
-    credential_env: str | None
-    max_tool_turns: int
-    max_tool_calls: int
-    tier: str
-    stability: Literal["stable", "preview", "experimental"]
     capability_tags: tuple[str, ...]
-    dev_only: bool = False
-    supports_effort: bool = True
-    supports_encrypted_reasoning: bool = True
 
 
 AGENT_SPECS: dict[str, AgentSpec] = {
-    "acinonyx": AgentSpec(
-        key="acinonyx",
-        display_name="Apex Acinonyx",
-        description="Development-only privacy sandbox for testing Apex with masked personal context.",
-        identity_instruction=(
-            "You are Apex Acinonyx, an Apex Agent powered by "
-            "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
-        ),
-        agent_version="1.0",
-        provider="gemini",
-        runtime="cloud",
-        api_model="gemini-3.5-flash-lite",
-        default_effort="focused",
-        credential_env="GEMINI_SANDBOX_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="fast",
-        stability="experimental",
-        capability_tags=("Privacy sandbox", "Masked context"),
-        dev_only=True,
-    ),
     "panthera": AgentSpec(
         key="panthera",
         display_name="Apex Panthera",
-        description="Default generalist for thoughtful answers, planning, and complex everyday work.",
+        description="Cloud Agent for thoughtful answers, planning, and complex everyday work.",
         identity_instruction=(
-            "You are Apex Panthera, an Apex Agent powered by "
-            "GPT-5.6 Luna."
+            "You are Apex Panthera, the cloud Apex Agent. "
+            "You run through the operator's selected cloud provider and model."
         ),
-        agent_version="1.0",
-        provider="openai",
+        agent_version="2.0",
         runtime="cloud",
-        api_model="gpt-5.6-luna",
-        default_effort="focused",
-        credential_env="OPENAI_API_KEY",
-        max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="balanced",
-        stability="stable",
-        capability_tags=("Generalist", "Planning"),
+        capability_tags=("Cloud", "Generalist", "Planning"),
     ),
-    "neofelis": AgentSpec(
-        key="neofelis",
-        display_name="Apex Neofelis",
-        description="Fast research specialist with optional Google Search and Maps grounding.",
+    "lynx": AgentSpec(
+        key="lynx",
+        display_name="Apex Lynx",
+        description="Local Agent for private on-device work through Ollama or llama.cpp.",
         identity_instruction=(
-            "You are Apex Neofelis, an Apex Agent powered by "
-            "Gemini 3.6 Flash."
+            "You are Apex Lynx, the local Apex Agent. "
+            "You run through the operator's selected local runtime and model."
         ),
-        agent_version="1.0",
-        provider="gemini",
-        runtime="cloud",
-        api_model="gemini-3.6-flash",
-        default_effort="focused",
-        credential_env="GEMINI_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="advanced",
-        stability="stable",
-        capability_tags=("Research", "Google Search", "Google Maps"),
-        dev_only=True,
-    ),
-    "delphinus": AgentSpec(
-        key="delphinus",
-        display_name="Apex Delphinus",
-        description="Balanced live-information Agent with optional X Search for current conversations and trends.",
-        identity_instruction=(
-            "You are Apex Delphinus, an Apex Agent powered by Grok 4.3."
-        ),
-        agent_version="1.0",
-        provider="xai",
-        runtime="cloud",
-        api_model="grok-4.3",
-        default_effort="focused",
-        credential_env="XAI_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="balanced",
-        stability="stable",
-        capability_tags=("Balanced", "X Search"),
-        dev_only=True,
-        supports_encrypted_reasoning=False,
-    ),
-    "orcinus": AgentSpec(
-        key="orcinus",
-        display_name="Apex Orcinus",
-        description="Deep-reasoning Agent for difficult analysis, synthesis, and extended investigations.",
-        identity_instruction=(
-            "You are Apex Orcinus, an Apex Agent powered by Grok 4.5."
-        ),
-        agent_version="1.0",
-        provider="xai",
-        runtime="cloud",
-        api_model="grok-4.5",
-        default_effort="extended",
-        credential_env="XAI_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="advanced",
-        stability="stable",
-        capability_tags=("Deep reasoning", "Extended analysis", "X Search"),
-        dev_only=True,
-    ),
-    "sorex": AgentSpec(
-        key="sorex",
-        display_name="Apex Sorex",
-        description="Lightweight local development Agent for evaluating constrained-system workflows.",
-        identity_instruction=(
-            "You are Apex Sorex, an Apex Agent powered by "
-            "Qwen3 1.7B through Ollama."
-        ),
-        agent_version="1.0",
-        provider="ollama",
+        agent_version="2.0",
         runtime="local",
-        api_model="qwen3:1.7b",
-        default_effort=None,
-        credential_env=None,
-        max_tool_turns=2,
-        max_tool_calls=3,
-        tier="lightweight",
-        stability="stable",
-        capability_tags=("Lightweight", "Development", "Constrained local"),
-        dev_only=True,
-        supports_effort=False,
-    ),
-    "mus": AgentSpec(
-        key="mus",
-        display_name="Apex Mus",
-        description="Local development generalist for evaluating capable offline work without cloud processing.",
-        identity_instruction=(
-            "You are Apex Mus, an Apex Agent powered by "
-            "Qwen3 4B Instruct through Ollama."
-        ),
-        agent_version="1.0",
-        provider="ollama",
-        runtime="local",
-        api_model="qwen3:4b-instruct",
-        default_effort=None,
-        credential_env=None,
-        max_tool_turns=4,
-        max_tool_calls=4,
-        tier="balanced",
-        stability="stable",
-        capability_tags=("Larger model", "Development local"),
-        dev_only=True,
-        supports_effort=False,
-    ),
-    "apodemus": AgentSpec(
-        key="apodemus",
-        display_name="Apex Apodemus",
-        description=(
-            "Stable private local Agent for efficient tool-driven work through llama.cpp."
-        ),
-        identity_instruction=(
-            "You are Apex Apodemus, an Apex Agent powered by "
-            "Gemma 4 E2B through llama.cpp."
-        ),
-        agent_version="1.0",
-        provider="llama_cpp",
-        runtime="local",
-        api_model="gemma-4-E2B-Q4_K_M.gguf",
-        default_effort=None,
-        credential_env=None,
-        max_tool_turns=4,
-        max_tool_calls=4,
-        tier="balanced",
-        stability="stable",
-        capability_tags=("Efficient local", "Selectable context"),
-        supports_effort=False,
-    ),
-    "neotoma": AgentSpec(
-        key="neotoma",
-        display_name="Apex Neotoma",
-        description=(
-            "Preview private local Agent for Gemma 4 E4B work through llama.cpp."
-        ),
-        identity_instruction=(
-            "You are Apex Neotoma, an Apex Agent powered by "
-            "Gemma 4 E4B through llama.cpp."
-        ),
-        agent_version="1.0",
-        provider="llama_cpp",
-        runtime="local",
-        api_model="gemma-4-E4B-Q4_K_M.gguf",
-        default_effort=None,
-        credential_env=None,
-        max_tool_turns=4,
-        max_tool_calls=4,
-        tier="balanced",
-        stability="preview",
-        capability_tags=("Generalist local", "Selectable context"),
-        dev_only=False,
-        supports_effort=False,
-    ),
-    "unnamed-experimental-agent": AgentSpec(
-        key="unnamed-experimental-agent",
-        display_name="Unnamed Experimental Agent",
-        description=(
-            "Development-only technical target for evaluating candidate local "
-            "models through llama.cpp."
-        ),
-        identity_instruction=(
-            "You are Unnamed Experimental Agent, a technical APEX development "
-            "target powered by Qwen3.5 4B through llama.cpp."
-        ),
-        agent_version="1.0",
-        provider="llama_cpp",
-        runtime="local",
-        api_model="Qwen3.5-4B-Q4_K_M.gguf",
-        default_effort=None,
-        credential_env=None,
-        max_tool_turns=4,
-        max_tool_calls=4,
-        tier="balanced",
-        stability="experimental",
-        capability_tags=("Experimental local", "Selectable context"),
-        dev_only=True,
-        supports_effort=False,
+        capability_tags=("Local", "Private", "On-device"),
     ),
 }
 
-_RUNTIME_PROFILE_ORDER: tuple[str, ...] = (
-    "acinonyx",
-    "panthera",
-    "neofelis",
-    "delphinus",
-    "orcinus",
-    "mus",
-    "apodemus",
-    "neotoma",
-    "unnamed-experimental-agent",
-    "sorex",
-)
+_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("panthera", "lynx")
 
 
 def runtime_agent_order(*, dev_mode: bool | None = None) -> tuple[str, ...]:
     """Return HUD-visible Agent keys in display order."""
-    dev_active = is_dev_mode() if dev_mode is None else dev_mode
-    return tuple(
-        key
-        for key in _RUNTIME_PROFILE_ORDER
-        if not AGENT_SPECS[key].dev_only or dev_active
-    )
+    return _RUNTIME_PROFILE_ORDER
 
 
 def is_agent_visible(key: str, *, dev_mode: bool | None = None) -> bool:
-    if key not in AGENT_SPECS:
-        return False
-    spec = AGENT_SPECS[key]
-    if not spec.dev_only:
-        return True
-    dev_active = is_dev_mode() if dev_mode is None else dev_mode
-    return dev_active
+    return key in AGENT_SPECS
 
 
 def apex_effort_to_native(effort: ApexEffort) -> NativeEffort:
     return _APEX_TO_NATIVE_EFFORT[effort]
 
 
-def resolve_effort(
+def resolve_effort_for_agent(
     agent_key: str,
     requested: ApexEffort | None,
 ) -> tuple[ApexEffort | None, NativeEffort | None]:
-    """Resolve APEX and provider-native effort for an Agent."""
-    spec = AGENT_SPECS[agent_key]
-    if not spec.supports_effort:
+    """Resolve effort for the model currently selected for an Agent."""
+    return resolve_effort(resolve_selected_model_profile(agent_key), requested)
+
+
+def resolve_effort(
+    model_profile: ModelProfile,
+    requested: ApexEffort | None,
+) -> tuple[ApexEffort | None, NativeEffort | None]:
+    """Resolve APEX and provider-native effort for a model."""
+    if not model_profile.supports_effort:
         return None, None
-    apex_effort = requested or spec.default_effort
+    apex_effort = requested or model_profile.default_effort
     if apex_effort is None:
         return None, None
     return apex_effort, apex_effort_to_native(apex_effort)
 
 
 def agent_has_credentials(agent_key: str) -> bool:
-    spec = AGENT_SPECS[agent_key]
-    if spec.credential_env is None:
-        return True
-    return bool(os.getenv(spec.credential_env))
+    """Return whether the selected model for an Agent has credentials."""
+    profile = resolve_selected_model_profile(agent_key)
+    return model_has_credentials(profile)
 
 
 def compose_agent_system_instruction(
     agent_key: str,
     base_instruction: str,
     *,
+    model_profile: ModelProfile | None = None,
     user_designation: str = "",
 ) -> str:
     """Compose identity, behavior, and optional user-addressing instructions."""
     identity = AGENT_SPECS[agent_key].identity_instruction
+    if model_profile is not None:
+        identity = (
+            f"{identity} You are currently powered by {model_profile.display_name}."
+        )
     normalized_base = base_instruction.strip()
     normalized_designation = " ".join(user_designation.split())[:80]
     designation_instruction = (
@@ -439,9 +185,9 @@ def compose_agent_system_instruction(
 
 
 def credential_missing_message(agent_key: str) -> str:
-    spec = AGENT_SPECS[agent_key]
-    env_key = spec.credential_env or "API_KEY"
-    provider_label = _PROVIDER_DISPLAY_NAMES[spec.provider]
+    profile = resolve_selected_model_profile(agent_key)
+    env_key = profile.credential_env or "API_KEY"
+    provider_label = _PROVIDER_DISPLAY_NAMES[profile.provider]
     return (
         f"APEX is currently unavailable because the {provider_label} "
         f"API key is not configured. Please set {env_key} in your "
@@ -450,8 +196,37 @@ def credential_missing_message(agent_key: str) -> str:
 
 
 def credential_missing_error(agent_key: str) -> str:
-    spec = AGENT_SPECS[agent_key]
-    return f"{spec.credential_env} is missing from environment variables."
+    profile = resolve_selected_model_profile(agent_key)
+    return f"{profile.credential_env} is missing from environment variables."
+
+
+def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
+    """Return the model profile selected in settings for an Agent."""
+    from core.settings import get_settings_store
+
+    settings = get_settings_store().get_snapshot().ask_apex
+    if agent_key == "panthera":
+        model_id = settings.panthera.model
+    elif agent_key == "lynx":
+        model_id = settings.lynx.model
+    else:
+        raise ValueError(f"Unknown Agent key: {agent_key!r}")
+    profile = get_model_profile(model_id)
+    if profile is None:
+        raise ValueError(f"Unknown model {model_id!r} for Agent {agent_key!r}")
+    return profile
+
+
+def resolve_panthera_provider() -> CloudProvider:
+    from core.settings import get_settings_store
+
+    return get_settings_store().get_snapshot().ask_apex.panthera.provider
+
+
+def resolve_lynx_runtime() -> LocalRuntime:
+    from core.settings import get_settings_store
+
+    return get_settings_store().get_snapshot().ask_apex.lynx.runtime
 
 
 def build_concrete_agent(
@@ -460,49 +235,60 @@ def build_concrete_agent(
     native_effort: NativeEffort | None,
     local_context_window: int | None = None,
     local_reasoning_mode: LocalReasoningMode | None = None,
-    neofelis_google_search_enabled: bool = True,
-    neofelis_google_maps_enabled: bool = True,
-    delphinus_x_search_enabled: bool = True,
-    orcinus_x_search_enabled: bool = True,
+    google_search_enabled: bool = True,
+    google_maps_enabled: bool = True,
+    x_search_enabled: bool = True,
+    model_id: str | None = None,
 ) -> AgentModelProfile:
     """Materialize a provider-specific model configuration for an Agent."""
     spec = AGENT_SPECS[agent_key]
-    if spec.provider == "gemini":
+    if model_id is None:
+        model_profile = resolve_selected_model_profile(agent_key)
+    else:
+        resolved = get_model_profile(model_id)
+        if resolved is None:
+            raise ValueError(f"Unknown model {model_id!r}")
+        model_profile = resolved
+
+    system_instruction = compose_agent_system_instruction(
+        agent_key,
+        AGENT_SYSTEM_PROMPT if spec.runtime == "cloud" else LOCAL_AGENT_SYSTEM_PROMPT,
+        model_profile=model_profile,
+    )
+
+    if model_profile.provider == "gemini":
         thinking: GeminiThinkingLevel = native_effort or "medium"
         return GeminiModelProfile(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
-            api_model=spec.api_model,
-            tier=spec.tier,  # type: ignore[arg-type]
-            stability=spec.stability,
+            api_model=model_profile.model_id,
+            tier=model_profile.tier,  # type: ignore[arg-type]
+            stability=model_profile.stability,
             thinking_level=thinking,
-            max_tool_turns=spec.max_tool_turns,
-            max_tool_calls=spec.max_tool_calls,
-            system_instruction=compose_agent_system_instruction(
-                agent_key, AGENT_SYSTEM_PROMPT
-            ),
-            hosted_tools=hosted_tools_for_agent(
-                agent_key,
-                neofelis_google_search_enabled=neofelis_google_search_enabled,
-                neofelis_google_maps_enabled=neofelis_google_maps_enabled,
-                delphinus_x_search_enabled=delphinus_x_search_enabled,
-                orcinus_x_search_enabled=orcinus_x_search_enabled,
+            max_tool_turns=model_profile.max_tool_turns,
+            max_tool_calls=model_profile.max_tool_calls,
+            system_instruction=system_instruction,
+            hosted_tools=hosted_tools_for_model(
+                model_profile,
+                google_search_enabled=google_search_enabled,
+                google_maps_enabled=google_maps_enabled,
+                x_search_enabled=x_search_enabled,
             ),
         )
-    if spec.provider == "ollama":
-        runtime = OLLAMA_RUNTIME_CONFIGS[agent_key]
+    if model_profile.provider == "ollama":
+        runtime = OLLAMA_RUNTIME_CONFIGS[model_profile.model_id]
         resolved_reasoning_mode = _resolve_local_reasoning_mode(
-            agent_key, local_reasoning_mode
+            model_profile.model_id, local_reasoning_mode
         )
         return OllamaModelProfile(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
-            api_model=spec.api_model,
-            tier=spec.tier,  # type: ignore[arg-type]
-            stability=spec.stability,
+            api_model=model_profile.model_id,
+            tier=model_profile.tier,  # type: ignore[arg-type]
+            stability=model_profile.stability,
             default_temperature=runtime.default_temperature,
-            max_tool_turns=spec.max_tool_turns,
-            max_tool_calls=spec.max_tool_calls,
+            max_tool_turns=model_profile.max_tool_turns,
+            max_tool_calls=model_profile.max_tool_calls,
             context_window=runtime.context_window,
             tool_select_max_tokens=runtime.tool_select_max_tokens,
             final_answer_max_tokens=runtime.final_answer_max_tokens,
@@ -514,66 +300,62 @@ def build_concrete_agent(
             reasoning_mode=resolved_reasoning_mode,
             ram_limit=runtime.ram_limit,
             cpu_limit=runtime.cpu_limit,
-            high_resource=agent_key in OLLAMA_HIGH_RESOURCE_AGENTS,
-            system_instruction=compose_agent_system_instruction(
-                agent_key, runtime.system_instruction
-            ),
+            high_resource=model_profile.model_id in OLLAMA_HIGH_RESOURCE_MODELS,
+            system_instruction=system_instruction,
         )
-    if spec.provider == "llama_cpp":
+    if model_profile.provider == "llama_cpp":
         resolved_reasoning_mode = _resolve_local_reasoning_mode(
-            agent_key, local_reasoning_mode
+            model_profile.model_id, local_reasoning_mode
         )
         return build_llama_cpp_profile(
-            agent_key,
+            model_profile.model_id,
             display_name=spec.display_name,
             agent_version=spec.agent_version,
-            api_model=spec.api_model,
-            tier=spec.tier,  # type: ignore[arg-type]
-            stability=spec.stability,
-            max_tool_turns=spec.max_tool_turns,
-            max_tool_calls=spec.max_tool_calls,
-            system_instruction=compose_agent_system_instruction(
-                agent_key, LOCAL_AGENT_SYSTEM_PROMPT
-            ),
+            api_model=model_profile.model_id,
+            tier=model_profile.tier,  # type: ignore[arg-type]
+            stability=model_profile.stability,
+            max_tool_turns=model_profile.max_tool_turns,
+            max_tool_calls=model_profile.max_tool_calls,
+            system_instruction=system_instruction,
             context_window=local_context_window,
             reasoning_mode=resolved_reasoning_mode,
         )
     return ResponsesModelProfile(
-        provider=spec.provider,  # type: ignore[arg-type]
+        provider=model_profile.provider,  # type: ignore[arg-type]
         display_name=spec.display_name,
         agent_version=spec.agent_version,
-        api_model=spec.api_model,
-        max_tool_turns=spec.max_tool_turns,
-        max_tool_calls=spec.max_tool_calls,
-        system_instruction=compose_agent_system_instruction(
-            agent_key, AGENT_SYSTEM_PROMPT
-        ),
+        api_model=model_profile.model_id,
+        max_tool_turns=model_profile.max_tool_turns,
+        max_tool_calls=model_profile.max_tool_calls,
+        system_instruction=system_instruction,
         reasoning_effort=native_effort,
-        hosted_tools=hosted_tools_for_agent(
-            agent_key,
-            neofelis_google_search_enabled=neofelis_google_search_enabled,
-            neofelis_google_maps_enabled=neofelis_google_maps_enabled,
-            delphinus_x_search_enabled=delphinus_x_search_enabled,
-            orcinus_x_search_enabled=orcinus_x_search_enabled,
+        hosted_tools=hosted_tools_for_model(
+            model_profile,
+            google_search_enabled=google_search_enabled,
+            google_maps_enabled=google_maps_enabled,
+            x_search_enabled=x_search_enabled,
         ),
-        supports_encrypted_reasoning=spec.supports_encrypted_reasoning,
+        supports_encrypted_reasoning=model_profile.supports_encrypted_reasoning,
     )
 
 
 def build_agent_used_metadata(
     agent_key: str,
     *,
+    provider: InferenceProvider,
     configured_model: str,
     resolved_model: str | None,
     requested_effort: ApexEffort | None,
     resolved_apex_effort: ApexEffort | None,
     resolved_native_effort: NativeEffort | None,
+    model_stability: str | None = None,
+    hosted_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     spec = AGENT_SPECS[agent_key]
-    return {
+    metadata: dict[str, Any] = {
         "key": agent_key,
         "version": spec.agent_version,
-        "provider": spec.provider,
+        "provider": provider,
         "configured_model": configured_model,
         "resolved_model": resolved_model or configured_model,
         "requested_effort": requested_effort,
@@ -581,61 +363,57 @@ def build_agent_used_metadata(
         "resolved_apex_effort": resolved_apex_effort,
         "runtime": spec.runtime,
     }
+    if model_stability is not None:
+        metadata["model_stability"] = model_stability
+    if hosted_tools is not None:
+        metadata["hosted_tools"] = sorted(hosted_tools)
+    return metadata
 
 
-def is_acinonyx_agent(agent_key: str) -> bool:
-    return agent_key == "acinonyx"
+def is_sandbox_query(*, sandbox_mode: bool, dev_mode: bool | None = None) -> bool:
+    from core.agent.sandbox_policy import is_sandbox_active
+
+    dev_active = is_dev_mode() if dev_mode is None else dev_mode
+    return is_sandbox_active(sandbox_mode=sandbox_mode, dev_mode=dev_active)
 
 
 def local_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
-    """Return visible Agent keys whose runtime is local, in HUD order."""
-    return tuple(
-        key
-        for key in runtime_agent_order(dev_mode=dev_mode)
-        if AGENT_SPECS[key].runtime == "local"
-    )
+    return ("lynx",)
 
 
 def cloud_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
-    """Return visible Agent keys whose runtime is cloud, in HUD order."""
-    return tuple(
-        key
-        for key in runtime_agent_order(dev_mode=dev_mode)
-        if AGENT_SPECS[key].runtime == "cloud"
-    )
+    return ("panthera",)
 
 
 def is_local_agent_key(agent_key: str) -> bool:
-    """Return whether ``agent_key`` is a catalogued local Agent."""
     spec = AGENT_SPECS.get(agent_key)
     return spec is not None and spec.runtime == "local"
 
 
+def is_cloud_agent_key(agent_key: str) -> bool:
+    spec = AGENT_SPECS.get(agent_key)
+    return spec is not None and spec.runtime == "cloud"
+
+
 def local_context_window_for_agent(agent_key: str) -> int | None:
-    """Return the persisted selectable context for a local Agent, if present."""
-    if not is_local_agent_key(agent_key):
+    if agent_key != "lynx":
         return None
     from core.settings import get_settings_store
 
-    value = get_settings_store().get_snapshot().ask_apex.local_context_windows.get(
-        agent_key
-    )
-    if isinstance(value, int) and not isinstance(value, bool):
-        return value
-    return None
+    settings = get_settings_store().get_snapshot().ask_apex
+    if settings.lynx.runtime != "llama_cpp":
+        return None
+    return settings.lynx.context_window
 
 
-def local_reasoning_modes_for_agent(
-    agent_key: str,
-) -> tuple[LocalReasoningMode, ...]:
-    """Return provider-declared reasoning modes for a local Agent."""
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.runtime != "local":
+def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
+    profile = get_model_profile(model_id)
+    if profile is None:
         return ()
-    if spec.provider == "llama_cpp":
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
-    elif spec.provider == "ollama":
-        runtime = OLLAMA_RUNTIME_CONFIGS.get(agent_key)
+    if profile.provider == "llama_cpp":
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model_id)
+    elif profile.provider == "ollama":
+        runtime = OLLAMA_RUNTIME_CONFIGS.get(model_id)
     else:
         return ()
     if runtime is None:
@@ -643,16 +421,22 @@ def local_reasoning_modes_for_agent(
     return runtime.supported_reasoning_modes
 
 
+def local_reasoning_modes_for_agent(agent_key: str) -> tuple[LocalReasoningMode, ...]:
+    if agent_key != "lynx":
+        return ()
+    from core.settings import get_settings_store
+
+    model_id = get_settings_store().get_snapshot().ask_apex.lynx.model
+    return local_reasoning_modes_for_model(model_id)
+
+
 def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
-    """Return the persisted reasoning mode, safely resolved to capabilities."""
     supported = local_reasoning_modes_for_agent(agent_key)
     if not supported:
         return None
     from core.settings import get_settings_store
 
-    value = get_settings_store().get_snapshot().ask_apex.local_reasoning_modes.get(
-        agent_key
-    )
+    value = get_settings_store().get_snapshot().ask_apex.lynx.reasoning_mode
     if value in supported:
         return value
     if "none" in supported:
@@ -661,23 +445,20 @@ def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
 
 
 def _resolve_local_reasoning_mode(
-    agent_key: str,
+    model_id: str,
     requested: LocalReasoningMode | None,
 ) -> LocalReasoningMode:
-    """Resolve an explicit or persisted mode against provider capabilities."""
-    supported = local_reasoning_modes_for_agent(agent_key)
+    supported = local_reasoning_modes_for_model(model_id)
     if requested in supported:
         return requested  # type: ignore[return-value]
-    persisted = local_reasoning_mode_for_agent(agent_key)
-    if persisted is not None:
-        return persisted
-    return "none"
+    from core.settings import get_settings_store
 
-
-def is_cloud_agent_key(agent_key: str) -> bool:
-    """Return whether ``agent_key`` is a catalogued cloud Agent."""
-    spec = AGENT_SPECS.get(agent_key)
-    return spec is not None and spec.runtime == "cloud"
+    settings = get_settings_store().get_snapshot().ask_apex
+    if settings.lynx.model == model_id and settings.lynx.reasoning_mode in supported:
+        return settings.lynx.reasoning_mode
+    if "none" in supported:
+        return "none"
+    return supported[0] if supported else "none"
 
 
 def local_model_ref_for_agent(
@@ -685,14 +466,8 @@ def local_model_ref_for_agent(
     *,
     local_context_window: int | None = None,
 ) -> LocalModelRef:
-    """Return the currently selected runtime reference for a local Agent."""
-    spec = AGENT_SPECS[agent_key]
-    if spec.runtime != "local":
+    if agent_key != "lynx":
         raise ValueError(f"Agent {agent_key!r} is not a local Agent")
-    if not is_local_inference_provider(spec.provider):
-        raise ValueError(
-            f"Agent {agent_key!r} uses unsupported local provider {spec.provider!r}"
-        )
     profile = build_concrete_agent(
         agent_key,
         native_effort=None,
@@ -705,45 +480,59 @@ def local_model_ref_for_agent(
         )
     return LocalModelRef(
         provider=profile.provider,  # type: ignore[arg-type]
-        model=runtime_model_id,
+        model=resolve_llama_cpp_router_alias(runtime_model_id),
+    )
+
+
+def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
+    profile = get_model_profile(model_id)
+    if profile is None or profile.runtime != "local":
+        return frozenset()
+    if profile.provider == "llama_cpp":
+        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model_id)
+        if runtime is None:
+            return frozenset()
+        aliases = set(runtime.runtime_model_ids.values())
+        aliases.update(
+            legacy
+            for legacy, canonical in __import__(
+                "core.agent.providers.llama_cpp_models",
+                fromlist=["LLAMA_CPP_LEGACY_ALIAS_MAP"],
+            ).LLAMA_CPP_LEGACY_ALIAS_MAP.items()
+            if canonical in aliases
+        )
+        return frozenset(
+            LocalModelRef(provider="llama_cpp", model=alias) for alias in aliases
+        )
+    return frozenset(
+        {LocalModelRef(provider=profile.provider, model=model_id)}  # type: ignore[arg-type]
     )
 
 
 def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
-    """Return every recognized runtime reference belonging to a local Agent."""
-    spec = AGENT_SPECS[agent_key]
-    if spec.runtime != "local":
+    if agent_key != "lynx":
         return frozenset()
-    if spec.provider == "llama_cpp":
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
-        if runtime is None:
-            return frozenset()
-        return frozenset(
-            LocalModelRef(provider="llama_cpp", model=alias)
-            for alias in runtime.runtime_model_ids.values()
-        )
-    return frozenset({local_model_ref_for_agent(agent_key)})
+    model_id = resolve_selected_model_profile(agent_key).model_id
+    return local_model_refs_for_model(model_id)
 
 
 def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
-    """Return the Agent key for any recognized local runtime alias, if configured."""
-    for key, spec in AGENT_SPECS.items():
-        if spec.runtime != "local":
+    if ref.provider == "llama_cpp":
+        normalized = resolve_llama_cpp_router_alias(ref.model)
+        if model_id_for_llama_cpp_alias(normalized) is not None:
+            return "lynx"
+    for model_id, profile in LOCAL_MODEL_PROFILES.items():
+        if profile.provider != ref.provider:
             continue
-        if not is_local_inference_provider(spec.provider):
-            continue
-        if ref in local_model_refs_for_agent(key):
-            return key
+        if ref in local_model_refs_for_model(model_id):
+            return "lynx"
     return None
 
 
 def known_local_model_refs() -> frozenset[LocalModelRef]:
-    """Return every configured APEX local runtime model reference."""
     refs: set[LocalModelRef] = set()
-    for key, spec in AGENT_SPECS.items():
-        if spec.runtime != "local":
-            continue
-        refs.update(local_model_refs_for_agent(key))
+    for model_id in LOCAL_MODEL_PROFILES:
+        refs.update(local_model_refs_for_model(model_id))
     return frozenset(refs)
 
 
@@ -752,8 +541,6 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     if raw.get("mode") in {"cloud", "local"}:
         return raw
     if not ({"default_profile", "default_cloud_profile"} & raw.keys()):
-        # Schema-6 local overrides are intentionally partial. Do not synthesize
-        # defaults that would replace values from the base configuration layer.
         return raw
 
     migrated: dict[str, Any] = {
@@ -776,8 +563,6 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
             migrated["cloud_effort"] = "focused"
             migrated["local_profile"] = "apodemus"
         elif normalized in _SCHEMA5_LOCAL_PROFILES:
-            # Plan: every old local selection becomes Local/Apodemus while retaining
-            # Panthera/Focused as the saved cloud choice.
             migrated["mode"] = "local"
             migrated["local_profile"] = "apodemus"
             migrated["cloud_profile"] = "panthera"
@@ -812,7 +597,6 @@ def migrate_schema7_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
 def migrate_schema5_briefing(
     raw: dict[str, Any], *, schema5: bool = True
 ) -> dict[str, Any]:
-    """Map every legacy briefing mode to panthera (schema-5 one-way migration)."""
     if not schema5:
         return raw
     return {"default_mode": "panthera"}
@@ -824,18 +608,106 @@ def resolve_agent_selection(
     dev_mode: bool | None = None,
 ) -> tuple[AgentRuntime, str, ApexEffort | None]:
     """Resolve effective runtime, Agent, and effort from Agent settings."""
-    dev_active = is_dev_mode() if dev_mode is None else dev_mode
-    if dev_active:
-        return "cloud", "acinonyx", getattr(agent_settings, "effort", "focused")
-
-    runtime = getattr(agent_settings, "runtime", "cloud")
-    if runtime == "local":
-        agent = getattr(agent_settings, "local_agent", "apodemus")
-        if not dev_active and not is_agent_visible(agent, dev_mode=False):
-            agent = "apodemus"
-        return "local", agent, None
-    agent = getattr(agent_settings, "cloud_agent", "panthera")
-    if not dev_active and not is_agent_visible(agent, dev_mode=False):
+    agent = getattr(agent_settings, "agent", "panthera")
+    if agent not in VALID_AGENT_KEYS:
         agent = "panthera"
-    effort = getattr(agent_settings, "effort", "focused")
+    spec = AGENT_SPECS[agent]
+    if spec.runtime == "local":
+        return "local", agent, None
+    effort = getattr(agent_settings.panthera, "effort", "focused")
     return "cloud", agent, effort
+
+
+def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
+    """Convert schema-14 ask_apex to schema-15 Panthera/Lynx shape."""
+    if "agent" in raw and (
+        isinstance(raw.get("panthera"), dict) or isinstance(raw.get("lynx"), dict)
+    ):
+        return raw
+    if isinstance(raw.get("panthera"), dict) or isinstance(raw.get("lynx"), dict):
+        return {
+            "enabled": raw.get("enabled", True),
+            "agent": raw.get("agent", "panthera"),
+            "sandbox_mode": bool(raw.get("sandbox_mode", False)),
+            "panthera": raw.get("panthera", default_panthera_settings()),
+            "lynx": raw.get("lynx", default_lynx_settings()),
+        }
+
+    from core.agent.model_catalog import LEGACY_AGENT_MIGRATION
+
+    legacy = migrate_schema7_ask_apex(raw)
+    runtime = legacy.get("runtime", "cloud")
+    cloud_agent = str(legacy.get("cloud_agent", "panthera")).strip().lower()
+    local_agent = str(legacy.get("local_agent", "apodemus")).strip().lower()
+    effort = legacy.get("effort", "focused")
+
+    _, panthera_provider, panthera_model = LEGACY_AGENT_MIGRATION.get(
+        cloud_agent, ("panthera", "openai", DEFAULT_PANTHERA_MODEL)
+    )
+    _, lynx_runtime, lynx_model = LEGACY_AGENT_MIGRATION.get(
+        local_agent, ("lynx", DEFAULT_LYNX_RUNTIME, DEFAULT_LYNX_MODEL)
+    )
+
+    context_window = llama_cpp_runtime_config(DEFAULT_LYNX_MODEL).default_context_window
+    reasoning_mode = "none"
+    local_context_windows = legacy.get("local_context_windows", {})
+    if isinstance(local_context_windows, dict):
+        ctx = local_context_windows.get(local_agent)
+        if isinstance(ctx, int) and not isinstance(ctx, bool):
+            context_window = ctx
+    local_reasoning_modes = legacy.get("local_reasoning_modes", {})
+    if isinstance(local_reasoning_modes, dict):
+        mode = local_reasoning_modes.get(local_agent)
+        if mode in {"none", "focused"}:
+            reasoning_mode = mode
+
+    hosted_tools = {
+        "google_search": bool(legacy.get("neofelis_google_search_enabled", True)),
+        "google_maps": bool(legacy.get("neofelis_google_maps_enabled", True)),
+        "x_search": bool(
+            legacy.get("delphinus_x_search_enabled", True)
+            or legacy.get("orcinus_x_search_enabled", True)
+        ),
+    }
+
+    agent = "lynx" if runtime == "local" else "panthera"
+    migrated: dict[str, Any] = {
+        "enabled": legacy.get("enabled", True),
+        "agent": agent,
+        "sandbox_mode": False,
+        "panthera": {
+            "provider": panthera_provider,
+            "model": panthera_model,
+            "effort": effort if effort in {"light", "focused", "extended"} else "focused",
+            "hosted_tools": hosted_tools,
+        },
+        "lynx": {
+            "runtime": lynx_runtime,
+            "model": lynx_model,
+            "context_window": context_window,
+            "reasoning_mode": reasoning_mode,
+        },
+    }
+    return migrated
+
+
+def default_panthera_settings() -> dict[str, Any]:
+    return {
+        "provider": "openai",
+        "model": DEFAULT_PANTHERA_MODEL,
+        "effort": "focused",
+        "hosted_tools": {
+            "google_search": True,
+            "google_maps": True,
+            "x_search": True,
+        },
+    }
+
+
+def default_lynx_settings() -> dict[str, Any]:
+    return {
+        "runtime": DEFAULT_LYNX_RUNTIME,
+        "model": DEFAULT_LYNX_MODEL,
+        "context_window": llama_cpp_runtime_config(DEFAULT_LYNX_MODEL).default_context_window,
+        "reasoning_mode": "none",
+    }

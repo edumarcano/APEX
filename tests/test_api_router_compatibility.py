@@ -251,7 +251,7 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         with (
             mock.patch(
                 "core.api.routers.cortex.resolve_agent_selection",
-                return_value=("local", "apodemus", None),
+                return_value=("local", "lynx", None),
             ) as resolve_selection,
             mock.patch(
                 "core.api.routers.cortex.query_agent",
@@ -266,7 +266,7 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         resolve_selection.assert_called_once()
         omitted_query_agent.assert_called_once()
-        self.assertEqual(omitted_query_agent.call_args.args[0].agent, "apodemus")
+        self.assertEqual(omitted_query_agent.call_args.args[0].agent, "lynx")
 
         with mock.patch(
             "core.api.routers.cortex.unload_active_local_model_endpoint",
@@ -279,12 +279,12 @@ class ExtractedRouterHttpTests(unittest.TestCase):
 
         with mock.patch(
             "core.api.routers.cortex.load_local_model_endpoint",
-            return_value=LocalLoadResponse(agent="mus"),
+            return_value=LocalLoadResponse(agent="lynx"),
         ) as load:
-            response = self.client.post("/api/v1/cortex/local-model/load", json={"agent": "mus"})
+            response = self.client.post("/api/v1/cortex/local-model/load", json={"agent": "lynx"})
 
-        self.assertEqual(response.json(), {"status": "success", "agent": "mus"})
-        load.assert_called_once_with("mus")
+        self.assertEqual(response.json(), {"status": "success", "agent": "lynx"})
+        load.assert_called_once_with("lynx")
 
         verification = CloudAgentVerificationResponse(
             agent="panthera",

@@ -136,12 +136,25 @@ class TelemetryApiTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
+                "ask_apex": {
+                    "enabled": True,
+                    "agent": "lynx",
+                    "panthera": {
+                        "provider": "openai",
+                        "model": "gpt-5.6-luna",
+                        "effort": "focused",
+                    },
+                    "lynx": {
+                        "runtime": "ollama",
+                        "model": "qwen3:1.7b",
+                        "reasoning_mode": "none",
+                    },
+                },
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",
                 },
-                "ollama": {"enabled": False},
+                "ollama": {"enabled": True},
             },
         )
         reset_settings_store_for_tests()
@@ -161,6 +174,8 @@ class TelemetryApiTests(unittest.TestCase):
             mock.patch(
                 "core.telemetry.preflight.get_settings_store", return_value=self.store
             ),
+            mock.patch("core.settings.get_settings_store", return_value=self.store),
+            mock.patch("core.settings.get_settings_store", return_value=self.store),
             mock.patch("core.database.DB_NAME", str(self.db_path)),
             mock.patch("core.api.app.any_local_runtime_enabled", return_value=False),
         ]
@@ -445,7 +460,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "activate",
-                    "synthesis_agent": "sorex",
+                    "synthesis_agent": "lynx",
                     "involves_cloud": False,
                 },
             )
@@ -652,7 +667,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "cortex_query", "synthesis_agent": "sorex"},
+                json={"operation": "cortex_query", "synthesis_agent": "lynx"},
             )
 
         payload = response.json()
@@ -770,12 +785,25 @@ class TriggerWithoutGateTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
+                "ask_apex": {
+                    "enabled": True,
+                    "agent": "lynx",
+                    "panthera": {
+                        "provider": "openai",
+                        "model": "gpt-5.6-luna",
+                        "effort": "focused",
+                    },
+                    "lynx": {
+                        "runtime": "ollama",
+                        "model": "qwen3:1.7b",
+                        "reasoning_mode": "none",
+                    },
+                },
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",
                 },
-                "ollama": {"enabled": False},
+                "ollama": {"enabled": True},
             },
         )
         reset_settings_store_for_tests()

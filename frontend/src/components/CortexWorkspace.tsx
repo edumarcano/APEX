@@ -7,14 +7,27 @@ import type {
   AgentStatus,
   AgentKey,
   CloudEffort,
+  CloudProvider,
+  HostedTool,
   LocalContextUsage,
   LocalReasoningMode,
-  LocalSettingsAgent,
+  LocalRuntime,
   ToolCatalog,
   ToolPreflightEstimate,
   ToolOutputItem,
 } from '../types/telemetry'
-import { formatContextWindowLabel, isLocalAgentKey, providerDisplayName } from '../lib/agents'
+import type { PantheraHostedToolsSettings } from '../types/settings'
+import {
+  formatContextWindowLabel,
+  hostedCapabilitiesForModel,
+  modelsForLynxRuntime,
+  modelsForPantheraProvider,
+  providerDisplayName,
+  PANTHERA_PROVIDERS,
+  LYNX_RUNTIMES,
+  resolveModelCatalog,
+  runtimeDisplayName,
+} from '../lib/agents'
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -29,6 +42,13 @@ import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 interface CortexWorkspaceProps {
   activeAgent: AgentKey
   cloudEffort: CloudEffort
+  pantheraProvider: CloudProvider
+  pantheraModel: string
+  lynxRuntime: LocalRuntime
+  lynxModel: string
+  pantheraHostedTools: PantheraHostedToolsSettings
+  devModeActive: boolean
+  sandboxMode: boolean
   agentQueriesEnabled: boolean
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
@@ -62,26 +82,22 @@ interface CortexWorkspaceProps {
   lifecycleBusy: boolean
   lifecycleActionPending: boolean
   verifyingCloudAgent: AgentKey | null
-  onLoadLocalModel: (agent: LocalSettingsAgent) => Promise<boolean>
+  onLoadLocalModel: () => Promise<boolean>
   onUnloadLocalModel: () => Promise<boolean>
-  onVerifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
+  onVerifyCloudAgent: (agent: 'panthera') => Promise<boolean>
   snapshotAttached: boolean
   snapshotAvailable: boolean
   onSnapshotAttachedChange: (attached: boolean) => void
   onAgentChange: (agent: AgentKey) => void
+  onPantheraProviderChange: (provider: CloudProvider) => void
+  onPantheraModelChange: (model: string) => void
+  onLynxRuntimeChange: (runtime: LocalRuntime) => void
+  onLynxModelChange: (model: string) => void
   onEffortChange: (effort: CloudEffort) => void
-  onGoogleSearchChange: (enabled: boolean) => void
-  onGoogleMapsChange: (enabled: boolean) => void
-  onDelphinusXSearchChange: (enabled: boolean) => void
-  onOrcinusXSearchChange: (enabled: boolean) => void
-  onLocalContextWindowChange: (
-    agent: LocalSettingsAgent,
-    contextWindow: number,
-  ) => Promise<boolean>
-  onLocalReasoningModeChange: (
-    agent: LocalSettingsAgent,
-    reasoningMode: LocalReasoningMode,
-  ) => Promise<boolean>
+  onHostedToolChange: (tool: HostedTool, enabled: boolean) => void
+  onSandboxModeChange: (enabled: boolean) => void
+  onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
+  onLocalReasoningModeChange: (reasoningMode: LocalReasoningMode) => Promise<boolean>
   onSubmit: (
     query: string,
     agent: AgentKey,
@@ -91,10 +107,6 @@ interface CortexWorkspaceProps {
   onNewSession: () => void
   actions: UseActionsResult
   demoModeActive: boolean
-}
-
-function isLocalAgent(agent: AgentKey): agent is LocalSettingsAgent {
-  return isLocalAgentKey(agent)
 }
 
 function LocalContextControl({
@@ -336,7 +348,7 @@ function useIdleUnloadCountdown(seconds: number | null, running: boolean): numbe
   return remaining
 }
 
-function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: { agent: AgentStatus; busy: boolean; actionPending: boolean; onLoad: (agent: LocalSettingsAgent) => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
+function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: { agent: AgentStatus; busy: boolean; actionPending: boolean; onLoad: () => Promise<boolean>; onUnload: () => Promise<boolean> }): ReactElement {
   const [error, setError] = useState<string | null>(null)
   const transition = agent.loading || actionPending
   const lifecycleState = agent.loading ? 'Loading' : agent.active ? 'Loaded' : agent.status === 'available' ? 'Unloaded' : 'Unavailable'
@@ -355,7 +367,7 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
   const action = async (): Promise<void> => {
     if (disabled) return
     setError(null)
-    const successful = canUnload ? await onUnload() : await onLoad(agent.key as LocalSettingsAgent)
+    const successful = canUnload ? await onUnload() : await onLoad()
     if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check Ollama status and try again.`)
   }
   if (lifecycleState === 'Loaded') {
@@ -375,7 +387,6 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
 }
 
 export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
-  const local = isLocalAgent(props.activeAgent)
   const activeStatus = props.agentsStatus.find((agent) => agent.key === props.activeAgent)
   const localContextLocked =
     props.lifecycleBusy ||
@@ -391,8 +402,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><div data-slot="cortex-logo" className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...props.logoProps} className="h-8 w-auto" /></div><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div><button type="button" onClick={props.onNewSession} disabled={props.isQuerying || props.submissionPending} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button></header>
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={promptChipsEnabled ? (query) => { void props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) } : null} />{props.agentQueriesEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AgentQueryBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} submissionPending={props.submissionPending} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>}</div>
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying || Boolean(props.submissionPending)} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
-        {!local ? <CloudControls {...props} /> : null}
-        {local && activeStatus ? <><LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />{activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl key={`${activeStatus.key}-reasoning`} agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={(reasoningMode) => props.onLocalReasoningModeChange(activeStatus.key as LocalSettingsAgent, reasoningMode)} /> : null}{activeStatus.context_window_options?.length ? <LocalContextControl key={`${activeStatus.key}-context`} agent={activeStatus} disabled={localContextLocked} onChange={(contextWindow) => props.onLocalContextWindowChange(activeStatus.key as LocalSettingsAgent, contextWindow)} /> : null}</> : null}
+        <RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} />
         <ContextControl {...props} />
         <CortexActions actions={props.actions} demoModeActive={props.demoModeActive} />
       </aside>
@@ -400,15 +410,69 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   </section>
 }
 
-function CloudControls(props: CortexWorkspaceProps): ReactElement {
-  const activeAgent = props.agentsStatus.find((agent) => agent.key === props.activeAgent)
-  const effortOptions = activeAgent?.effort_options ?? []
-  const grounding = props.activeAgent === 'neofelis'
-    ? <GroundingControls label="Neofelis" note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="Google Search" detail="Provider grounding for later requests" checked={activeAgent?.native_tools.google_search ?? false} onChange={props.onGoogleSearchChange} /><GroundingToggle label="Google Maps" detail="Provider grounding for later requests" checked={activeAgent?.native_tools.google_maps ?? false} onChange={props.onGoogleMapsChange} /></GroundingControls>
-    : props.activeAgent === 'delphinus' || props.activeAgent === 'orcinus'
-      ? <GroundingControls label={props.activeAgent === 'delphinus' ? 'Delphinus' : 'Orcinus'} note="Apex Brave Search remains the standard search capability when connected."><GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={activeAgent?.native_tools.x_search ?? false} onChange={props.activeAgent === 'delphinus' ? props.onDelphinusXSearchChange : props.onOrcinusXSearchChange} /></GroundingControls>
-      : null
-  return <>{effortOptions.length > 0 ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{effortOptions.map((effort) => <option key={effort} value={effort}>{effort.slice(0, 1).toUpperCase()}{effort.slice(1)}</option>)}</select></section> : null}{grounding}</>
+function RuntimeControls({
+  activeAgent,
+  activeStatus,
+  localContextLocked,
+  ...props
+}: CortexWorkspaceProps & {
+  activeStatus: AgentStatus | null
+  localContextLocked: boolean
+}): ReactElement {
+  const pantheraStatus = props.agentsStatus.find((agent) => agent.key === 'panthera')
+  const lynxStatus = props.agentsStatus.find((agent) => agent.key === 'lynx')
+  const catalog = resolveModelCatalog(
+    activeAgent === 'panthera' ? pantheraStatus : lynxStatus,
+    props.devModeActive,
+  )
+  const pantheraModels = modelsForPantheraProvider(props.pantheraProvider, props.devModeActive, catalog)
+  const lynxModels = modelsForLynxRuntime(props.lynxRuntime, props.devModeActive, catalog)
+  const hostedCapabilities = hostedCapabilitiesForModel(
+    activeAgent === 'panthera' ? props.pantheraModel : props.lynxModel,
+    props.devModeActive,
+  )
+
+  return <div className="space-y-4">
+    {activeAgent === 'panthera' ? <>
+      <section className="space-y-2" aria-label="Panthera provider">
+        <label htmlFor="cortex-panthera-provider" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Provider</label>
+        <select id="cortex-panthera-provider" value={props.pantheraProvider} onChange={(event) => props.onPantheraProviderChange(event.target.value as CloudProvider)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
+          {PANTHERA_PROVIDERS.map((provider) => <option key={provider} value={provider}>{providerDisplayName(provider)}</option>)}
+        </select>
+      </section>
+      <section className="space-y-2" aria-label="Panthera model">
+        <label htmlFor="cortex-panthera-model" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Model</label>
+        <select id="cortex-panthera-model" value={props.pantheraModel} onChange={(event) => props.onPantheraModelChange(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
+          {pantheraModels.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
+        </select>
+      </section>
+      {pantheraStatus?.effort_options?.length ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{pantheraStatus.effort_options.map((effort) => <option key={effort} value={effort}>{effort.slice(0, 1).toUpperCase()}{effort.slice(1)}</option>)}</select></section> : null}
+    </> : <>
+      <section className="space-y-2" aria-label="Lynx runtime">
+        <label htmlFor="cortex-lynx-runtime" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Runtime</label>
+        <select id="cortex-lynx-runtime" value={props.lynxRuntime} onChange={(event) => props.onLynxRuntimeChange(event.target.value as LocalRuntime)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
+          {LYNX_RUNTIMES.map((runtime) => <option key={runtime} value={runtime}>{runtimeDisplayName(runtime)}</option>)}
+        </select>
+      </section>
+      <section className="space-y-2" aria-label="Lynx model">
+        <label htmlFor="cortex-lynx-model" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Model</label>
+        <select id="cortex-lynx-model" value={props.lynxModel} onChange={(event) => props.onLynxModelChange(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
+          {lynxModels.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
+        </select>
+      </section>
+      {activeStatus ? <>
+        <LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />
+        {activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl key={`${activeStatus.key}-reasoning`} agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={props.onLocalReasoningModeChange} /> : null}
+        {activeStatus.context_window_options?.length ? <LocalContextControl key={`${activeStatus.key}-context`} agent={activeStatus} disabled={localContextLocked} onChange={props.onLocalContextWindowChange} /> : null}
+      </> : null}
+    </>}
+    {hostedCapabilities.length > 0 ? <GroundingControls note="Apex Brave Search remains the standard search capability when connected.">
+      {hostedCapabilities.includes('google_search') ? <GroundingToggle label="Google Search" detail="Provider grounding for later requests" checked={props.pantheraHostedTools.google_search} onChange={(enabled) => props.onHostedToolChange('google_search', enabled)} /> : null}
+      {hostedCapabilities.includes('google_maps') ? <GroundingToggle label="Google Maps" detail="Provider grounding for later requests" checked={props.pantheraHostedTools.google_maps} onChange={(enabled) => props.onHostedToolChange('google_maps', enabled)} /> : null}
+      {hostedCapabilities.includes('x_search') ? <GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={props.pantheraHostedTools.x_search} onChange={(enabled) => props.onHostedToolChange('x_search', enabled)} /> : null}
+    </GroundingControls> : null}
+    {props.devModeActive ? <section className="space-y-2" aria-label="Sandbox mode"><label className="flex items-center justify-between gap-3 rounded-lg border border-cyan-300/20 bg-cyan-950/10 px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-cyan-100">Sandbox mode</span><span className="block text-[11px] text-zinc-500">Isolated history and masked context for DEV_MODE queries.</span></span><input aria-label="Sandbox mode" type="checkbox" checked={props.sandboxMode} onChange={(event) => props.onSandboxModeChange(event.target.checked)} className="size-4 accent-cyan-400" /></label></section> : null}
+  </div>
 }
 
 function ContextControl(props: CortexWorkspaceProps): ReactElement {
@@ -423,4 +487,4 @@ function ContextControl(props: CortexWorkspaceProps): ReactElement {
   return <div className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Context</p><label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span className="text-xs text-zinc-300">Current HUD snapshot</span><input type="checkbox" checked={props.snapshotAttached} disabled={!props.snapshotAvailable} onChange={(event) => props.onSnapshotAttachedChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label><p className="text-[11px] leading-relaxed text-zinc-500">{props.snapshotAttached && props.snapshotAvailable ? 'The current snapshot will be included with the next turn.' : 'No HUD context will be attached.'}</p></section><section className="space-y-2" aria-label="Selected tools summary"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prompt tools</p><div className="rounded-lg border border-purple-300/15 bg-purple-950/10 p-3 font-mono text-[10px] text-zinc-400"><p className="text-zinc-200">{activeProfile?.name ?? 'Custom'} · {selectedNames.length} selected</p><p className="mt-1 text-zinc-500">{props.selectionReady ? 'Configured beside the prompt.' : 'Hydrating this Agent selection…'}</p>{props.toolCatalog?.provider_hosted_tools.length ? <p className="mt-1 text-cyan-200/80">Hosted grounding: {props.toolCatalog.provider_hosted_tools.join(', ')}</p> : <p className="mt-1 text-zinc-600">Hosted grounding is controlled separately.</p>}{unavailableCount > 0 ? <p className="mt-1 text-red-200">{unavailableCount} unavailable selection{unavailableCount === 1 ? '' : 's'} need removal.</p> : null}{props.contextUsage ? <p className="mt-2 text-zinc-600">Last local estimate: {formatNumber(props.contextUsage.estimated_prompt_tokens)}/{formatNumber(props.contextUsage.context_window)} tokens.</p> : null}{props.toolCatalogError ? <p className="mt-2 text-red-200" role="alert">{props.toolCatalogError}</p> : null}</div></section></div>
 }
 function GroundingToggle({ label, detail, checked, onChange }: { label: string; detail: string; checked: boolean; onChange: (enabled: boolean) => void }): ReactElement { return <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-zinc-300">{label}</span><span className="block text-[11px] text-zinc-500">{detail} · {checked ? 'Enabled' : 'Disabled'}</span></span><input aria-label={`${label} grounding`} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label> }
-function GroundingControls({ label, note, children }: { label: string; note: string; children: ReactElement | ReactElement[] }): ReactElement { return <section className="space-y-2" aria-label={`${label} grounding`}><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Grounding</p>{children}<p className="text-[11px] leading-relaxed text-zinc-500">{note}</p></section> }
+function GroundingControls({ note, children }: { note: string; children: React.ReactNode }): ReactElement { return <section className="space-y-2" aria-label="Grounding"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Grounding</p>{children}<p className="text-[11px] leading-relaxed text-zinc-500">{note}</p></section> }

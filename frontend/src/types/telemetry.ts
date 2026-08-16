@@ -12,7 +12,7 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'apodemus'
+export type SynthesisAgent = 'panthera' | 'lynx'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -83,20 +83,11 @@ export interface WeatherTimelinePoint {
 
 export type AgentRuntime = 'cloud' | 'local'
 export type CloudEffort = 'light' | 'focused' | 'extended'
-export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent =
-  | 'sorex'
-  | 'mus'
-  | 'apodemus'
-  | 'neotoma'
-  | 'unnamed-experimental-agent'
+export type CloudProvider = 'openai' | 'gemini' | 'xai'
+export type LocalRuntime = 'ollama' | 'llama_cpp'
+export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
 
-export type CloudAgent = CloudSettingsAgent
-
-export type AgentKey =
-  | CloudSettingsAgent
-  | LocalSettingsAgent
-  | 'acinonyx'
+export type AgentKey = 'panthera' | 'lynx'
 
 export type ToolCatalogGroupKind = 'apex_family' | 'mcp_server'
 
@@ -225,6 +216,15 @@ export interface AgentPricingMetadata {
   long_context_cached_input_per_million: number | null
 }
 
+export interface ModelCatalogEntry {
+  model_id: string
+  display_name: string
+  provider: CloudProvider | LocalRuntime
+  runtime: AgentRuntime
+  stability: AgentStability
+  hosted_capabilities: HostedTool[]
+}
+
 export interface LocalLoadedModelStatus {
   provider: 'ollama' | 'llama_cpp'
   name: string
@@ -247,13 +247,14 @@ export interface AgentStatus {
   configured_model: string
   native_tools: Record<string, boolean>
   display_name: string
-  provider: 'ollama' | 'llama_cpp' | 'gemini' | 'openai' | 'xai'
+  provider: CloudProvider | LocalRuntime
   version: string
   sort_order: number
   capabilities: string[]
   runtime: AgentRuntime
   tier: string
   stability: AgentStability
+  model_stability: AgentStability | null
   effort_options: CloudEffort[] | null
   default_effort: CloudEffort | null
   context_window: number | null
@@ -273,12 +274,14 @@ export interface AgentStatus {
   reason: string | null
   idle_unload_remaining_seconds: number | null
   loaded_model: LocalLoadedModelStatus | null
+  model_catalog?: ModelCatalogEntry[] | null
 }
 
 export interface AgentInitialSelection {
   runtime: AgentRuntime
   agent: AgentKey
   effort: CloudEffort | null
+  sandboxMode?: boolean
 }
 
 export interface DigestPayload {
@@ -324,7 +327,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'apodemus' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'lynx' | 'structured_digest'
 
 export type PreflightOperation =
   | 'activate'

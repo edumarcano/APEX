@@ -30,23 +30,23 @@
   "local_agent_system_prompt": "Answer the user's request completely, using the available tools when needed.\n\nWhen APEX-managed or MCP tools are attached, use attached read tools directly when necessary; do not ask the user for permission before performing a read-only lookup. Native write and destructive tools create durable proposals only and require separate local operator approval; do not claim that such a change is complete before approval and verification.\n\nWhen the user's request requires information from multiple tools, continue calling the necessary tools until you have enough information to answer the original request or create the required action proposal.\n\nDo not stop after a partial lookup to ask whether you should perform another read-only lookup that is necessary to complete the request.\n\nFor example, if the user asks whether the weather conflicts with their schedule, retrieve both the relevant weather and calendar events, then compare them and answer.\n\nAsk a clarifying question only when information necessary to determine the correct operation cannot reasonably be inferred from the user's request.\n\nBe concise but natural, helpful, and conversational. Prefer clear, complete sentences over terse or status-like phrasing. Speak with calm confidence without sounding robotic, overly formal, or abrupt.",
   "ask_apex": {
     "enabled": true,
-    "runtime": "cloud",
-    "cloud_agent": "panthera",
-    "effort": "focused",
-    "local_agent": "apodemus",
-    "neofelis_google_search_enabled": true,
-    "neofelis_google_maps_enabled": true,
-    "delphinus_x_search_enabled": true,
-    "orcinus_x_search_enabled": true,
-    "local_context_windows": {
-      "apodemus": 16384,
-      "neotoma": 16384
+    "agent": "panthera",
+    "sandbox_mode": false,
+    "panthera": {
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "effort": "focused",
+      "hosted_tools": {
+        "google_search": true,
+        "google_maps": true,
+        "x_search": true
+      }
     },
-    "local_reasoning_modes": {
-      "sorex": "none",
-      "mus": "none",
-      "apodemus": "none",
-      "neotoma": "none"
+    "lynx": {
+      "runtime": "llama_cpp",
+      "model": "gemma-4-E2B-Q4_K_M.gguf",
+      "context_window": 16384,
+      "reasoning_mode": "none"
     },
     "max_session_messages": 6
   },
@@ -61,8 +61,8 @@
     "single_loaded_model": true,
     "manual_unload_enabled": true,
     "resource_gates": {
-      "sorex": { "ram_limit": 88.0, "cpu_limit": 95.0 },
-      "mus": { "ram_limit": 78.0, "cpu_limit": 90.0 }
+      "qwen3:1.7b": { "ram_limit": 88.0, "cpu_limit": 95.0 },
+      "qwen3:4b-instruct": { "ram_limit": 78.0, "cpu_limit": 90.0 }
     }
   },
   "llama_cpp": {
@@ -75,15 +75,15 @@
     "manual_unload_enabled": true,
     "request_timeout_seconds": 180,
     "resource_gates": {
-      "apodemus": {
+      "gemma-4-E2B-Q4_K_M.gguf": {
         "ram_limit": 88.0,
         "cpu_limit": 95.0
       },
-      "neotoma": {
+      "gemma-4-E4B-Q4_K_M.gguf": {
         "ram_limit": 80.0,
         "cpu_limit": 90.0
       },
-      "unnamed-experimental-agent": {
+      "Qwen3.5-4B-Q4_K_M.gguf": {
         "ram_limit": 82.0,
         "cpu_limit": 92.0
       }

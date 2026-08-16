@@ -1,0 +1,290 @@
+"""Registered model profiles for Panthera and Lynx execution."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+from core.agent.providers.contract import InferenceProvider
+from core.agent.types import LocalReasoningMode
+from core.config import (
+    GEMINI_AGENT_MAX_TOOL_CALLS,
+    GEMINI_AGENT_MAX_TURNS,
+)
+
+ModelStability = Literal["stable", "preview", "experimental"]
+CloudProvider = Literal["openai", "gemini", "xai"]
+LocalRuntime = Literal["ollama", "llama_cpp"]
+HostedTool = Literal["google_search", "google_maps", "x_search"]
+
+VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
+VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
+
+
+@dataclass(frozen=True, slots=True)
+class ModelProfile:
+    """Replaceable provider/runtime model configuration."""
+
+    model_id: str
+    display_name: str
+    provider: InferenceProvider
+    runtime: Literal["cloud", "local"]
+    stability: ModelStability
+    credential_env: str | None
+    max_tool_turns: int
+    max_tool_calls: int
+    tier: str
+    default_effort: Literal["light", "focused", "extended"] | None
+    supports_effort: bool
+    supports_encrypted_reasoning: bool
+    hosted_capabilities: frozenset[HostedTool]
+    dev_only: bool = False
+
+
+# Cloud models available under Panthera
+CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
+    "gpt-5.6-luna": ModelProfile(
+        model_id="gpt-5.6-luna",
+        display_name="GPT-5.6 Luna",
+        provider="openai",
+        runtime="cloud",
+        stability="stable",
+        credential_env="OPENAI_API_KEY",
+        max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
+        tier="balanced",
+        default_effort="focused",
+        supports_effort=True,
+        supports_encrypted_reasoning=True,
+        hosted_capabilities=frozenset(),
+    ),
+    "gemini-3.6-flash": ModelProfile(
+        model_id="gemini-3.6-flash",
+        display_name="Gemini 3.6 Flash",
+        provider="gemini",
+        runtime="cloud",
+        stability="stable",
+        credential_env="GEMINI_API_KEY",
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
+        tier="advanced",
+        default_effort="focused",
+        supports_effort=True,
+        supports_encrypted_reasoning=True,
+        hosted_capabilities=frozenset({"google_search", "google_maps"}),
+    ),
+    "gemini-3.5-flash-lite": ModelProfile(
+        model_id="gemini-3.5-flash-lite",
+        display_name="Gemini 3.5 Flash Lite",
+        provider="gemini",
+        runtime="cloud",
+        stability="experimental",
+        credential_env="GEMINI_API_KEY",
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
+        tier="fast",
+        default_effort="focused",
+        supports_effort=True,
+        supports_encrypted_reasoning=True,
+        hosted_capabilities=frozenset(),
+        dev_only=True,
+    ),
+    "grok-4.3": ModelProfile(
+        model_id="grok-4.3",
+        display_name="Grok 4.3",
+        provider="xai",
+        runtime="cloud",
+        stability="stable",
+        credential_env="XAI_API_KEY",
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
+        tier="balanced",
+        default_effort="focused",
+        supports_effort=True,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset({"x_search"}),
+        dev_only=True,
+    ),
+    "grok-4.5": ModelProfile(
+        model_id="grok-4.5",
+        display_name="Grok 4.5",
+        provider="xai",
+        runtime="cloud",
+        stability="stable",
+        credential_env="XAI_API_KEY",
+        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
+        tier="advanced",
+        default_effort="extended",
+        supports_effort=True,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset({"x_search"}),
+        dev_only=True,
+    ),
+}
+
+# Local models available under Lynx
+LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
+    "qwen3:1.7b": ModelProfile(
+        model_id="qwen3:1.7b",
+        display_name="Qwen3 1.7B",
+        provider="ollama",
+        runtime="local",
+        stability="stable",
+        credential_env=None,
+        max_tool_turns=2,
+        max_tool_calls=3,
+        tier="lightweight",
+        default_effort=None,
+        supports_effort=False,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset(),
+        dev_only=True,
+    ),
+    "qwen3:4b-instruct": ModelProfile(
+        model_id="qwen3:4b-instruct",
+        display_name="Qwen3 4B Instruct",
+        provider="ollama",
+        runtime="local",
+        stability="stable",
+        credential_env=None,
+        max_tool_turns=4,
+        max_tool_calls=4,
+        tier="balanced",
+        default_effort=None,
+        supports_effort=False,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset(),
+        dev_only=True,
+    ),
+    "gemma-4-E2B-Q4_K_M.gguf": ModelProfile(
+        model_id="gemma-4-E2B-Q4_K_M.gguf",
+        display_name="Gemma 4 E2B",
+        provider="llama_cpp",
+        runtime="local",
+        stability="stable",
+        credential_env=None,
+        max_tool_turns=4,
+        max_tool_calls=4,
+        tier="balanced",
+        default_effort=None,
+        supports_effort=False,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset(),
+    ),
+    "gemma-4-E4B-Q4_K_M.gguf": ModelProfile(
+        model_id="gemma-4-E4B-Q4_K_M.gguf",
+        display_name="Gemma 4 E4B",
+        provider="llama_cpp",
+        runtime="local",
+        stability="preview",
+        credential_env=None,
+        max_tool_turns=4,
+        max_tool_calls=4,
+        tier="balanced",
+        default_effort=None,
+        supports_effort=False,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset(),
+    ),
+    "Qwen3.5-4B-Q4_K_M.gguf": ModelProfile(
+        model_id="Qwen3.5-4B-Q4_K_M.gguf",
+        display_name="Qwen3.5 4B",
+        provider="llama_cpp",
+        runtime="local",
+        stability="experimental",
+        credential_env=None,
+        max_tool_turns=4,
+        max_tool_calls=4,
+        tier="balanced",
+        default_effort=None,
+        supports_effort=False,
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset(),
+        dev_only=True,
+    ),
+}
+
+ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
+    **CLOUD_MODEL_PROFILES,
+    **LOCAL_MODEL_PROFILES,
+}
+
+DEFAULT_PANTHERA_MODEL = "gpt-5.6-luna"
+DEFAULT_LYNX_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
+DEFAULT_LYNX_RUNTIME: LocalRuntime = "llama_cpp"
+
+# Legacy agent key → (agent, provider/runtime, model) for schema-15 migration
+LEGACY_AGENT_MIGRATION: dict[str, tuple[str, str, str]] = {
+    "acinonyx": ("panthera", "gemini", "gemini-3.5-flash-lite"),
+    "panthera": ("panthera", "openai", "gpt-5.6-luna"),
+    "neofelis": ("panthera", "gemini", "gemini-3.6-flash"),
+    "delphinus": ("panthera", "xai", "grok-4.3"),
+    "orcinus": ("panthera", "xai", "grok-4.5"),
+    "sorex": ("lynx", "ollama", "qwen3:1.7b"),
+    "mus": ("lynx", "ollama", "qwen3:4b-instruct"),
+    "apodemus": ("lynx", "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neotoma": ("lynx", "llama_cpp", "gemma-4-E4B-Q4_K_M.gguf"),
+    "unnamed-experimental-agent": (
+        "lynx",
+        "llama_cpp",
+        "Qwen3.5-4B-Q4_K_M.gguf",
+    ),
+}
+
+
+def get_model_profile(model_id: str) -> ModelProfile | None:
+    return ALL_MODEL_PROFILES.get(model_id)
+
+
+def cloud_models_for_provider(
+    provider: CloudProvider,
+    *,
+    dev_mode: bool = False,
+) -> tuple[ModelProfile, ...]:
+    return tuple(
+        profile
+        for profile in CLOUD_MODEL_PROFILES.values()
+        if profile.provider == provider and (not profile.dev_only or dev_mode)
+    )
+
+
+def local_models_for_runtime(
+    runtime: LocalRuntime,
+    *,
+    dev_mode: bool = False,
+) -> tuple[ModelProfile, ...]:
+    return tuple(
+        profile
+        for profile in LOCAL_MODEL_PROFILES.values()
+        if profile.provider == runtime and (not profile.dev_only or dev_mode)
+    )
+
+
+def visible_cloud_models(*, dev_mode: bool = False) -> tuple[ModelProfile, ...]:
+    return tuple(
+        profile
+        for profile in CLOUD_MODEL_PROFILES.values()
+        if not profile.dev_only or dev_mode
+    )
+
+
+def visible_local_models(*, dev_mode: bool = False) -> tuple[ModelProfile, ...]:
+    return tuple(
+        profile
+        for profile in LOCAL_MODEL_PROFILES.values()
+        if not profile.dev_only or dev_mode
+    )
+
+
+def model_has_credentials(profile: ModelProfile) -> bool:
+    if profile.credential_env is None:
+        return True
+    import os
+
+    return bool(os.getenv(profile.credential_env))
+
+
+def model_display_label(model_id: str) -> str:
+    profile = ALL_MODEL_PROFILES.get(model_id)
+    return profile.display_name if profile is not None else model_id

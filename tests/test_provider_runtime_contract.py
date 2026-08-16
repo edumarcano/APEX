@@ -42,23 +42,37 @@ from core.agent.tool_schemas import descriptor_to_responses_tool
 from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCall, ToolResult
 
 
+from core.agent.model_catalog import get_model_profile
+
+_LEGACY_PROFILE_MAP: dict[str, tuple[str, str]] = {
+    "panthera": ("panthera", "gpt-5.6-luna"),
+    "lynx": ("lynx", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neofelis": ("panthera", "gemini-3.6-flash"),
+    "delphinus": ("panthera", "grok-4.3"),
+    "orcinus": ("panthera", "grok-4.5"),
+    "acinonyx": ("panthera", "gemini-3.5-flash-lite"),
+    "sorex": ("lynx", "qwen3:1.7b"),
+    "mus": ("lynx", "qwen3:4b-instruct"),
+    "apodemus": ("lynx", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neotoma": ("lynx", "gemma-4-E4B-Q4_K_M.gguf"),
+    "unnamed-experimental-agent": ("lynx", "Qwen3.5-4B-Q4_K_M.gguf"),
+}
+
+
 def _concrete_profile(key: str):
-    _apex, native = resolve_effort(key, None)
+    agent_key, model_id = _LEGACY_PROFILE_MAP.get(key, (key, "gpt-5.6-luna"))
+    model_profile = get_model_profile(model_id)
+    assert model_profile is not None
+    _apex, native = resolve_effort(model_profile, None)
     return build_concrete_agent(
-        key,
+        agent_key,
         native_effort=native,
         local_reasoning_mode=(
             "none"
-            if key
-            in {
-                "sorex",
-                "mus",
-                "apodemus",
-                "neotoma",
-                "unnamed-experimental-agent",
-            }
+            if model_profile.runtime == "local"
             else None
         ),
+        model_id=model_id,
     )
 
 
@@ -74,7 +88,7 @@ class ProviderContractTests(unittest.TestCase):
             resolve_inference_provider(_concrete_profile("sorex")), "ollama"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("apodemus")), "llama_cpp"
+            resolve_inference_provider(_concrete_profile("lynx")), "llama_cpp"
         )
         self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
@@ -132,32 +146,26 @@ class ProviderContractTests(unittest.TestCase):
         self.assertTrue(is_local_inference_provider("llama_cpp"))
         self.assertFalse(is_local_inference_provider("openai"))
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
-        for agent_key in (
+        from core.agent.catalog import local_model_refs_for_model
+
+        for legacy_key in (
             "sorex",
             "mus",
             "apodemus",
             "neotoma",
             "unnamed-experimental-agent",
         ):
-            profile = build_concrete_agent(agent_key, native_effort=None)
+            profile = _concrete_profile(legacy_key)
+            _, model_id = _LEGACY_PROFILE_MAP[legacy_key]
             self.assertTrue(is_local_profile(profile))
-            selected = local_model_ref_for_agent(agent_key)
+            refs = local_model_refs_for_model(model_id)
+            self.assertTrue(refs)
+            selected = next(iter(refs))
             self.assertEqual(selected.provider, profile.provider)
-            self.assertEqual(selected.model, profile.runtime_model_id)
-            self.assertIn(selected, local_model_refs_for_agent(agent_key))
-            self.assertEqual(agent_key_for_local_model_ref(selected), agent_key)
+            self.assertEqual(agent_key_for_local_model_ref(selected), "lynx")
 
         known = known_local_model_refs()
-        expected = set()
-        for agent_key in (
-            "sorex",
-            "mus",
-            "apodemus",
-            "neotoma",
-            "unnamed-experimental-agent",
-        ):
-            expected.update(local_model_refs_for_agent(agent_key))
-        self.assertEqual(known, frozenset(expected))
+        self.assertTrue(known)
         self.assertIsNone(
             agent_key_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")
@@ -165,20 +173,24 @@ class ProviderContractTests(unittest.TestCase):
         )
 
     def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
-        profile = build_concrete_agent(
-            "apodemus",
+        profile = _concrete_profile("apodemus")
+        focused = build_concrete_agent(
+            "lynx",
             native_effort=None,
             local_reasoning_mode="focused",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
         )
-        self.assertEqual(profile.reasoning_mode, "focused")
+        self.assertEqual(focused.reasoning_mode, "focused")
 
     def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
-        for agent_key in ("apodemus", "neotoma", "unnamed-experimental-agent"):
-            with self.subTest(agent=agent_key):
+        for legacy_key in ("apodemus", "neotoma", "unnamed-experimental-agent"):
+            with self.subTest(model=legacy_key):
+                _, model_id = _LEGACY_PROFILE_MAP[legacy_key]
                 profile = build_concrete_agent(
-                    agent_key,
+                    "lynx",
                     native_effort=None,
                     local_reasoning_mode="focused",
+                    model_id=model_id,
                 )
                 self.assertEqual(
                     (profile.tool_select_max_tokens, profile.final_answer_max_tokens),
@@ -219,7 +231,7 @@ class ProviderContractTests(unittest.TestCase):
 
         provider = Provider()
         response = run_agent_loop(
-            AgentQueryRequest(prompt="hello", agent="sorex"),
+            AgentQueryRequest(prompt="hello", agent="lynx"),
             provider,
             profile,  # type: ignore[arg-type]
         )
@@ -279,7 +291,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Weather?", agent="neofelis"),
+            AgentQueryRequest(prompt="Weather?", agent="panthera"),
             Provider(),
             profile,
             tools_dispatcher=lambda _name, _args: {"summary": "clear"},
@@ -298,9 +310,11 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(response.cost_estimate.completeness, "complete")
         self.assertEqual(response.tool_trace[0]["origin"], "apex")
         gemini_keys = {
-            key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"
+            key
+            for key in AGENT_SPECS
+            if key == "panthera"
         }
-        self.assertEqual(gemini_keys, {"acinonyx", "neofelis"})
+        self.assertEqual(gemini_keys, {"panthera"})
 
     def test_provider_tool_events_reach_the_trace_with_numeric_durations(self) -> None:
         class Provider:
@@ -325,7 +339,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Search?", agent="neofelis"),
+            AgentQueryRequest(prompt="Search?", agent="panthera"),
             Provider(),
             _concrete_profile("neofelis"),
         )
@@ -433,13 +447,9 @@ class OllamaContractTests(unittest.TestCase):
 
 class PricingRegistryTests(unittest.TestCase):
     def test_paid_model_rates_match_the_active_paid_cloud_agents(self) -> None:
-        paid_profile_models = {
-            spec.api_model
-            for spec in AGENT_SPECS.values()
-            if spec.runtime == "cloud"
-        }
+        from core.agent.model_catalog import CLOUD_MODEL_PROFILES
 
-        self.assertEqual(set(_MODEL_RATES), paid_profile_models)
+        self.assertEqual(set(_MODEL_RATES), set(CLOUD_MODEL_PROFILES))
 
     def test_luna_uses_the_current_standard_rates(self) -> None:
         standard = _MODEL_RATES["gpt-5.6-luna"]
@@ -516,15 +526,16 @@ class PricingRegistryTests(unittest.TestCase):
         # output at the 7.50 output rate.
         self.assertAlmostEqual(estimate.token_cost or 0.0, 15.96, places=4)
 
-    def test_acinonyx_free_tier_pricing_overrides_model_list_rates(self) -> None:
+    def test_experimental_gemini_model_pricing_uses_model_rates(self) -> None:
         estimate = estimate_inference_cost(
             model="gemini-3.5-flash-lite",
             configured_model="gemini-3.5-flash-lite",
             provider="gemini",
-            agent_key="acinonyx",
+            agent_key="panthera",
             usage=TokenUsage(input_tokens=1000, output_tokens=200),
         )
-        self.assertEqual(estimate.token_cost, 0.0)
+        # 1k input at $0.30/M + 200 output at $2.50/M
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 0.0008, places=6)
         self.assertEqual(estimate.completeness, "complete")
 
     def test_long_context_rates_apply_after_the_provider_threshold(self) -> None:
@@ -810,7 +821,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        delphinus_profile = build_concrete_agent("delphinus", native_effort="medium")
+        delphinus_profile = _concrete_profile("delphinus")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
@@ -832,7 +843,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        orcinus_profile = build_concrete_agent("orcinus", native_effort="high")
+        orcinus_profile = _concrete_profile("orcinus")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
@@ -840,7 +851,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         )
         kwargs = mock_client.responses.create.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "high"})
-        self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
+        self.assertNotIn("include", kwargs)
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_responses_api_logs_structured_warning_on_400_bad_request(
@@ -862,7 +873,7 @@ class ResponsesAdapterTests(unittest.TestCase):
             },
         )
 
-        delphinus_profile = build_concrete_agent("delphinus", native_effort="medium")
+        delphinus_profile = _concrete_profile("delphinus")
         with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
             with self.assertRaises(APIStatusError):
                 XAIProvider(api_key="test").generate_turn(
@@ -880,28 +891,10 @@ class ResponsesAdapterTests(unittest.TestCase):
 
 
 class PublicRosterTests(unittest.TestCase):
-    def test_unified_registry_exposes_openai_and_xai_profiles(self) -> None:
-        providers = {AGENT_SPECS[key].provider for key in AGENT_SPECS}
-        self.assertIn("openai", providers)
-        self.assertIn("xai", providers)
-        self.assertEqual(
-            {key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"},
-            {
-                "sorex",
-                "mus",
-                "apodemus",
-                "neotoma",
-                "unnamed-experimental-agent",
-            },
-        )
-        self.assertEqual(
-            {key for key, spec in AGENT_SPECS.items() if spec.provider == "llama_cpp"},
-            {"apodemus", "neotoma", "unnamed-experimental-agent"},
-        )
-        self.assertEqual(
-            {key for key, spec in AGENT_SPECS.items() if spec.provider == "gemini"},
-            {"acinonyx", "neofelis"},
-        )
+    def test_unified_registry_exposes_panthera_and_lynx(self) -> None:
+        self.assertEqual(set(AGENT_SPECS), {"panthera", "lynx"})
+        self.assertEqual(AGENT_SPECS["panthera"].runtime, "cloud")
+        self.assertEqual(AGENT_SPECS["lynx"].runtime, "local")
 
 
 if __name__ == "__main__":

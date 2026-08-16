@@ -1,4 +1,4 @@
-"""Apex Agent tool policy, grounding, and Acinonyx privacy coverage."""
+"""Apex Agent tool policy, grounding, and sandbox privacy coverage."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.loop import run_agent_loop
 from core.agent.capabilities import CapabilityDescriptor
+from core.agent.model_catalog import get_model_profile
 from core.agent.prompting import build_tool_access_instruction
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _parse_grounding
@@ -26,18 +26,23 @@ from core.agent.types import (
 from core.api.cortex import _build_hud_context
 from core.api.briefing import _mask_dev_personal_results
 from core.connectors.models import ConnectorResult
+from tests.support.agent_fixtures import (
+    DELPHINUS_MODEL,
+    NEOFELIS_MODEL,
+    ORCINUS_MODEL,
+    build_panthera_profile,
+)
 
 
 class HostedGroundingTests(unittest.TestCase):
     def test_hosted_grounding_stays_outside_apex_tool_schema_profiles(self) -> None:
         expected = {
-            "neofelis": {"google_search", "google_maps"},
-            "delphinus": {"x_search"},
-            "orcinus": {"x_search"},
+            NEOFELIS_MODEL: {"google_search", "google_maps"},
+            DELPHINUS_MODEL: {"x_search"},
+            ORCINUS_MODEL: {"x_search"},
         }
-        for agent_key, hosted_names in expected.items():
-            _apex, native = resolve_effort(agent_key, None)
-            profile = build_concrete_agent(agent_key, native_effort=native)
+        for model_id, hosted_names in expected.items():
+            profile = build_panthera_profile(model=model_id)
             instruction = build_tool_access_instruction(
                 [],
                 hosted_tool_names=tuple(profile.hosted_tools),
@@ -123,11 +128,11 @@ class HostedGroundingTests(unittest.TestCase):
                     ),
                 )
 
-        _apex, native = resolve_effort("neofelis", None)
+        profile = build_panthera_profile(model=NEOFELIS_MODEL)
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Find current information", agent="neofelis"),
+            AgentQueryRequest(prompt="Find current information", agent="panthera"),
             Provider(),
-            build_concrete_agent("neofelis", native_effort=native),
+            profile,
         )
 
         self.assertEqual(response.answer, "Grounded answer.")
@@ -145,8 +150,7 @@ class HostedGroundingTests(unittest.TestCase):
         client.responses.create.return_value = SimpleNamespace(
             output=[], model="grok-4.3", usage=None
         )
-        _apex, native = resolve_effort("delphinus", None)
-        profile = build_concrete_agent("delphinus", native_effort=native)
+        profile = build_panthera_profile(model=DELPHINUS_MODEL)
 
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="What is happening on X?")],
@@ -198,7 +202,7 @@ class ToolAccessInstructionTests(unittest.TestCase):
         )
 
 
-class AcinonyxContextTests(unittest.TestCase):
+class SandboxContextTests(unittest.TestCase):
     def tearDown(self) -> None:
         clear_masked_briefing_for_tests()
 
@@ -209,24 +213,30 @@ class AcinonyxContextTests(unittest.TestCase):
             insights=["Review the masked summary."],
         )
 
-        current = _build_hud_context(
-            AgentQueryRequest(
-                prompt="Summarize",
-                agent="acinonyx",
-                snapshot_id="current-snapshot",
-                history_partition="acinonyx",
-            ),
-            agent_key="acinonyx",
-        )
-        stale = _build_hud_context(
-            AgentQueryRequest(
-                prompt="Summarize",
-                agent="acinonyx",
-                snapshot_id="stale-snapshot",
-                history_partition="acinonyx",
-            ),
-            agent_key="acinonyx",
-        )
+        ask_apex = mock.Mock()
+        ask_apex.sandbox_mode = True
+        with mock.patch("core.api.cortex.get_settings_store") as store, mock.patch(
+            "core.api.cortex.is_dev_mode", return_value=True
+        ):
+            store.return_value.get_snapshot.return_value.ask_apex = ask_apex
+            current = _build_hud_context(
+                AgentQueryRequest(
+                    prompt="Summarize",
+                    agent="panthera",
+                    snapshot_id="current-snapshot",
+                    history_partition="sandbox",
+                ),
+                agent_key="panthera",
+            )
+            stale = _build_hud_context(
+                AgentQueryRequest(
+                    prompt="Summarize",
+                    agent="panthera",
+                    snapshot_id="stale-snapshot",
+                    history_partition="sandbox",
+                ),
+                agent_key="panthera",
+            )
 
         self.assertIn("CURRENT MASKED DEV BRIEFING", current)
         self.assertNotIn("CURRENT TELEMETRY SNAPSHOT", current)
@@ -303,15 +313,15 @@ class AcinonyxContextTests(unittest.TestCase):
                     message=AgentMessage(role="agent", content="Cannot access that tool.")
                 )
 
-        _apex, native = resolve_effort("acinonyx", None)
+        profile = build_panthera_profile(model="gemini-3.5-flash-lite")
         response = run_agent_loop(
             AgentQueryRequest(
                 prompt="Read reminders",
-                agent="acinonyx",
-                history_partition="acinonyx",
+                agent="panthera",
+                history_partition="sandbox",
             ),
             Provider(),
-            build_concrete_agent("acinonyx", native_effort=native),
+            profile,
             tools_dispatcher=mock.Mock(side_effect=AssertionError("must not execute")),
             selected_tools=[weather],
         )

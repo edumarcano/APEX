@@ -316,7 +316,7 @@ def check_agent_profiles(
                 )
             )
 
-    known_models = set(expected_profiles.values())
+    known_models = registered_model_ids()
     model_pattern = re.compile(
         r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|"
         r"qwen\d+(?:\.\d+)?:[a-z0-9.-]+|"
@@ -456,13 +456,13 @@ def check_default_briefing_provider(
     """Keep README briefing paths aligned with the current synthesis contract."""
     import json
 
-    from core.agent.catalog import AGENT_SPECS
+    from core.agent.catalog import AGENT_SPECS, resolve_selected_model_profile
     from core.synthesis.models import VALID_BRIEFING_MODES
 
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     default_mode = config.get("briefing", {}).get("default_mode", "panthera")
     if default_mode in AGENT_SPECS:
-        provider = AGENT_SPECS[default_mode].provider
+        provider = resolve_selected_model_profile(default_mode).provider
         expected = PROVIDER_DISPLAY_NAMES[provider]
     else:
         expected = "Structured Digest"
@@ -502,7 +502,7 @@ def check_default_briefing_provider(
         expected_paths = {
             "Structured Digest"
             if mode == "structured_digest"
-            else PROVIDER_DISPLAY_NAMES[AGENT_SPECS[mode].provider]
+            else PROVIDER_DISPLAY_NAMES[resolve_selected_model_profile(mode).provider]
             for mode in VALID_BRIEFING_MODES
         }
         for provider in sorted(expected_paths):
@@ -556,13 +556,22 @@ def public_openapi_routes() -> set[tuple[str, str]]:
 
 
 def current_agent_profiles() -> dict[str, str]:
-    from core.agent.catalog import AGENT_SPECS
+    from core.agent.model_catalog import DEFAULT_LYNX_MODEL, DEFAULT_PANTHERA_MODEL
 
-    return {key: spec.api_model.lower() for key, spec in AGENT_SPECS.items()}
+    return {
+        "panthera": DEFAULT_PANTHERA_MODEL,
+        "lynx": DEFAULT_LYNX_MODEL,
+    }
+
+
+def registered_model_ids() -> set[str]:
+    from core.agent.model_catalog import ALL_MODEL_PROFILES
+
+    return {model_id.lower() for model_id in ALL_MODEL_PROFILES}
 
 
 def current_agent_versions() -> dict[str, str]:
-    from core.agent.catalog import AGENT_SPECS
+    from core.agent.catalog import AGENT_SPECS, resolve_selected_model_profile
 
     return {
         spec.display_name.removeprefix("Apex "): spec.agent_version

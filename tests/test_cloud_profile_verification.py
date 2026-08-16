@@ -131,7 +131,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
             "core.agent.catalog.is_dev_mode", return_value=True
         ), mock.patch("core.api.cortex.verify_cloud_agent") as verify:
             with self.assertRaises(HTTPException) as local_error:
-                verify_cloud_agent_endpoint("mus")
+                verify_cloud_agent_endpoint("lynx")
         self.assertEqual(local_error.exception.status_code, 400)
         verify.assert_not_called()
 

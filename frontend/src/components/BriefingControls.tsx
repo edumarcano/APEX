@@ -39,7 +39,7 @@ const CLOUD_OPTIONS: readonly BriefingOption[] = [
 ]
 
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'apodemus', label: 'Apodemus', description: 'Full briefing · efficient llama.cpp synthesis' },
+  { key: 'lynx', label: 'Lynx', description: 'Full briefing · local synthesis' },
   {
     key: 'structured_digest',
     label: 'Structured Digest',
@@ -59,7 +59,7 @@ const SECTIONS: readonly {
 
 const MODE_LABELS: Record<BriefingMode, string> = {
   panthera: 'Panthera',
-  apodemus: 'Apodemus',
+  lynx: 'Lynx',
   structured_digest: 'Structured Digest',
 }
 
@@ -134,7 +134,7 @@ function modeCost(mode: BriefingMode, agents: AgentStatus[]): string {
   if (mode === 'structured_digest') return 'No model cost'
   const agent = agents.find((entry) => entry.key === mode)
   if (!agent) {
-    return mode === 'apodemus'
+    return mode === 'lynx'
       ? 'No provider token charge'
       : 'Pricing unavailable'
   }

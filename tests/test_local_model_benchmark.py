@@ -374,7 +374,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
 
     def test_warmup_is_not_counted_as_a_measured_repetition(self) -> None:
         configurations = benchmark.build_configurations(
-            agents=("apodemus",),
+            agents=("lynx",),
             context=16384,
             all_contexts=False,
             reasoning_modes=("none",),

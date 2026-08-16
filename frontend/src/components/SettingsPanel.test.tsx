@@ -242,7 +242,7 @@ describe('SettingsPanel', () => {
       screen.getByText(/External mode uses a loopback router/i),
     ).toBeVisible()
     expect(screen.queryByLabelText('Executable path')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Apodemus context')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Lynx context')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('switch', { name: 'Manage server automatically' }))
     expect(screen.getByLabelText('Executable path')).toBeVisible()

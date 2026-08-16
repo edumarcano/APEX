@@ -110,8 +110,6 @@ def agent_pricing(
     provider: InferenceProvider,
 ) -> ProfilePricing:
     """Return the authoritative billing basis for an Apex Agent."""
-    if agent_key == "acinonyx":
-        return ProfilePricing("free_tier", _FREE_TIER_ZERO)
     if is_local_inference_provider(provider):
         return ProfilePricing("local", _LOCAL_ZERO)
     return ProfilePricing(

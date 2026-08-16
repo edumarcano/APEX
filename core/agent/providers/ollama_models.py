@@ -136,7 +136,7 @@ class OllamaRuntimeConfig(BaseModel):
 
 
 OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
-    "sorex": OllamaRuntimeConfig(
+    "qwen3:1.7b": OllamaRuntimeConfig(
         default_temperature=0.2,
         context_window=4096,
         tool_select_max_tokens=128,
@@ -147,7 +147,7 @@ OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
         ram_limit=SOREX_RAM_LIMIT,
         cpu_limit=SOREX_CPU_LIMIT,
     ),
-    "mus": OllamaRuntimeConfig(
+    "qwen3:4b-instruct": OllamaRuntimeConfig(
         default_temperature=0.2,
         context_window=4096,
         tool_select_max_tokens=128,
@@ -160,4 +160,4 @@ OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
     ),
 }
 
-OLLAMA_HIGH_RESOURCE_AGENTS: frozenset[str] = frozenset({"mus"})
+OLLAMA_HIGH_RESOURCE_MODELS: frozenset[str] = frozenset({"qwen3:4b-instruct"})

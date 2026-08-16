@@ -4,7 +4,6 @@ import type { BriefingMode } from '../types/settings'
 import type {
   AgentStatus,
   AgentKey,
-  LocalSettingsAgent,
   ToolCatalog,
   ToolPreflightEstimate,
 } from '../types/telemetry'
@@ -24,7 +23,7 @@ interface HomeCommandRailProps {
   isCortexQuerying: boolean
   verifyingCloudAgent: AgentKey | null
   onAgentChange: (agent: AgentKey) => void
-  onVerifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
+  onVerifyCloudAgent: (agent: 'panthera') => Promise<boolean>
   onAgentSubmit: (
     query: string,
     agent: AgentKey,

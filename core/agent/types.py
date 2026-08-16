@@ -20,18 +20,7 @@ ToolSelectionFailureCode: TypeAlias = Literal[
 
 ToolCatalogGroupKind: TypeAlias = Literal["apex_family", "mcp_server"]
 
-AgentKey: TypeAlias = Literal[
-    "acinonyx",
-    "panthera",
-    "neofelis",
-    "delphinus",
-    "orcinus",
-    "sorex",
-    "mus",
-    "apodemus",
-    "neotoma",
-    "unnamed-experimental-agent",
-]
+AgentKey: TypeAlias = Literal["panthera", "lynx"]
 LocalReasoningMode: TypeAlias = Literal["none", "focused"]
 ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
 
@@ -313,7 +302,7 @@ class AgentQueryRequest(BaseModel):
         default_factory=list,
         description="Recent conversation history for the session.",
     )
-    history_partition: Literal["production", "acinonyx"] = Field(
+    history_partition: Literal["production", "sandbox"] = Field(
         default="production",
         description=(
             "Browser-owned history partition. Acinonyx history is accepted only "

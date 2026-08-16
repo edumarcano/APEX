@@ -81,22 +81,38 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective selection; in development mode it can be Acinonyx without changing saved normal-mode preferences.
+Returns boot-time HUD values such as Agent query enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective Panthera or Lynx selection from saved settings.
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `14`.
+Returns the resolved settings envelope. The current contract version is `15`.
 
 ```json
 {
-  "schema_version": 14,
+  "schema_version": 15,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
     "modules": { "football": false, "f1": true },
     "football": { "teams": [] },
     "market": { "symbols": [] },
-    "ask_apex": { "enabled": true, "runtime": "cloud", "cloud_agent": "panthera", "effort": "focused", "local_agent": "apodemus", "local_context_windows": { "apodemus": 16384, "neotoma": 16384, "unnamed-experimental-agent": 16384 }, "local_reasoning_modes": { "sorex": "none", "mus": "none", "apodemus": "none", "neotoma": "none", "unnamed-experimental-agent": "none" }, "neofelis_google_search_enabled": true, "neofelis_google_maps_enabled": true, "delphinus_x_search_enabled": true, "orcinus_x_search_enabled": true },
+    "ask_apex": {
+      "enabled": true,
+      "agent": "panthera",
+      "sandbox_mode": false,
+      "panthera": {
+        "provider": "openai",
+        "model": "gpt-5.6-luna",
+        "effort": "focused",
+        "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
+      },
+      "lynx": {
+        "runtime": "llama_cpp",
+        "model": "gemma-4-E2B-Q4_K_M.gguf",
+        "context_window": 16384,
+        "reasoning_mode": "none"
+      }
+    },
     "tool_profiles": { "custom_profiles": [], "default_profile_by_agent": {} },
     "briefing": { "default_mode": "panthera" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
@@ -131,7 +147,7 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-`ask_apex.local_reasoning_modes` accepts `none` or `focused` for llama.cpp Agents and only `none` for Mus and Sorex. `focused` is request-level and does not trigger a local model unload/reload; unsupported Agent/mode combinations return `422`.
+`ask_apex.lynx.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
 Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
@@ -201,7 +217,7 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 { "mode": "panthera" }
 ```
 
-The body is optional. Valid modes are `panthera`, `apodemus`, and `structured_digest`.
+The body is optional. Valid modes are `panthera`, `lynx`, and `structured_digest`.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.
@@ -289,8 +305,8 @@ the active provider-hosted grounding names. Provider-hosted grounding is
 separate from APEX/MCP schema profiles.
 
 The selector is a prompt-level exposure layer. It does not enable an MCP server,
-connect or authenticate it, change a persistent allowlist, or bypass Acinonyx's
-policy.
+connect or authenticate it, change a persistent allowlist, or bypass sandbox
+policy when `DEV_MODE` and `ask_apex.sandbox_mode` are active.
 
 ### POST `/api/v1/cortex/tool-preflight`
 
@@ -337,13 +353,13 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
-Returns visible Apex Agents in stable product order. Each entry supplies its full display name, description, provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, versioned pricing metadata, and availability/lifecycle diagnostics. Outside `DEV_MODE`, the response contains exactly Panthera, Apodemus, and Neotoma; `DEV_MODE` includes the complete registered catalog, with Acinonyx first.
+Returns visible Apex Agents in stable product order. The response contains exactly Panthera and Lynx. Each entry supplies its full display name, description, selected provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, available provider/runtime and model catalogs, versioned pricing metadata, and availability/lifecycle diagnostics.
 
-The `dev_only` catalog flag controls roster visibility for this endpoint; it is not a generic execution-authorization flag. Hidden Agents other than Acinonyx can still be explicitly addressed by their registered key on supported execution paths. Acinonyx has a separate hard `DEV_MODE` boundary: outside `DEV_MODE`, `GET /api/v1/cortex/tool-catalog`, `POST /api/v1/cortex/tool-preflight`, `POST /api/v1/cortex/query`, and `POST /api/v1/agents/{agent_key}/verify` return `404` when addressed as Acinonyx.
+Development-only models appear in each Agent's `available_models` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
-The Agent catalog currently includes Acinonyx (`gemini-3.5-flash-lite`, development-only), Panthera (`gpt-5.6-luna`), Neofelis (`gemini-3.6-flash`), Delphinus (`grok-4.3`), Orcinus (`grok-4.5`), Sorex (`qwen3:1.7b`), Mus (`qwen3:4b-instruct`), Apodemus (`gemma-4-E2B-Q4_K_M.gguf` through llama.cpp), Neotoma (`gemma-4-E4B-Q4_K_M.gguf` through llama.cpp), and the development-only Unnamed Experimental Agent (`Qwen3.5-4B-Q4_K_M.gguf` through llama.cpp).
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Lynx publishes its selected context and reasoning values, options, and defaults when the selected model supports them. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
-Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Local Agents with selectable contexts or reasoning modes publish their selected value, options, and default metadata. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
+Registered cloud models under Panthera include `gpt-5.6-luna`, `gemini-3.6-flash`, and development-only `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Lynx include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b`, `qwen3:4b-instruct`, and `Qwen3.5-4B-Q4_K_M.gguf`.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
@@ -359,10 +375,10 @@ Runs one user-triggered, non-generative metadata check for a visible credential-
 Pre-warms one installed local Agent before a request:
 
 ```json
-{ "agent": "mus" }
+{ "agent": "lynx" }
 ```
 
-`agent` may be `mus`, `sorex`, `apodemus`, `neotoma`, or `unnamed-experimental-agent`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
+`agent` must be `lynx`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
 
 - `403` — demo mode disallows model calls.
 - `409` — a local generation or lifecycle action is active.
@@ -397,9 +413,9 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 }
 ```
 
-`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is the literal `production` normal-mode partition or `acinonyx`; the backend discards history that crosses those partitions. Acinonyx rejects saved `briefing_id` attachments and accepts only the process-current masked development briefing identified by its matching `snapshot_id`.
+`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is the literal `production` normal-mode partition or `sandbox` for `DEV_MODE` sandbox queries; the backend discards history that crosses those partitions. Sandbox queries reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for cloud Agents and `No APEX Tools` for local Agents. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera, Neofelis, Delphinus, and Orcinus can receive the approved APEX capability registry, including Brave Search when connected. Acinonyx receives only weather, Formula 1, Brave Search, and Alpha Vantage capabilities. Neofelis has optional Google Search and Maps grounding; Delphinus and Orcinus have optional X Search. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for every cloud Agent, including Acinonyx, and rejected for local Agents. Responses contain synthesized text, resolved Agent metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Lynx. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model supports effort and is rejected for Lynx. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `400` — selected tools are invalid, outside policy, or unavailable.
 - A provider-authoritative local context overflow is returned as an actionable
@@ -409,7 +425,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded. Panthera can use up to 6 model turns and 10 tool calls; the other cloud Agents can use up to 4 turns and 6 calls; Sorex uses up to 2/3 turns/calls, while Mus, Apodemus, Neotoma, and Unnamed Experimental Agent use up to 4 turns/4 calls. The last model turn is answer-only, leaving local Agents up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
+Cortex Engine Agent loops are bounded by the selected model profile. The default Panthera model can use up to 6 model turns and 10 tool calls; other cloud models can use up to 4 turns and 6 calls; the lightweight Ollama development model uses up to 2/3 turns/calls, while the default Lynx llama.cpp models use up to 4 turns/4 calls. The last model turn is answer-only, leaving Lynx up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
 
 ## Actions
 

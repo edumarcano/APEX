@@ -119,33 +119,32 @@ APEX can start without most provider credentials. Enable only the integrations y
 
 | Capability | What to prepare |
 |---|---|
-| Cloud Agents | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the selected Agent |
+| Cloud Agents | `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY`, according to the Panthera model you select |
 | Weather, news, and football data | The corresponding key from `.env.example` |
 | Market data | `ALPHA_VANTAGE_API_KEY` in `.env` plus ticker symbols in Runtime Settings |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
-| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags |
-| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with Apodemus, Neotoma, and development-target aliases |
+| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags for development-only Lynx models |
+| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with model-based Lynx aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.ReadWrite` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
 See [Configuration](configuration.md) for ownership, precedence, modes, Agent names, and provider-specific boundaries.
 
-## Install local Ollama Agents
+## Install local Ollama models
 
-Install and start [Ollama](https://ollama.com), then pull only the models required by the local Agents you want:
+Install and start [Ollama](https://ollama.com), then pull only the development-only Lynx models you want to test:
 
 ```powershell
 ollama pull qwen3:1.7b
 ollama pull qwen3:4b-instruct
 ```
 
-These map to Sorex and Mus. Missing tags appear as unavailable in the HUD instead of failing at selection time.
-Sorex and Mus are retained development Agents and are surfaced in the Agent roster only in `DEV_MODE`.
+These map to development-only Lynx model options. Missing tags appear as unavailable in the HUD instead of failing at selection time. They are surfaced in the Lynx model catalog only in `DEV_MODE`.
 
 ## Optional llama.cpp path
 
-llama.cpp is not required to start APEX. When you want Apex Apodemus, Apex Neotoma, or the development-only Unnamed Experimental Agent:
+llama.cpp is not required to start APEX. When you want Apex Lynx through llama.cpp:
 
 1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
 2. Copy [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini) to a machine-local path, set the GGUF placeholders, and keep that copy untracked.
@@ -155,12 +154,12 @@ llama.cpp is not required to start APEX. When you want Apex Apodemus, Apex Neoto
 4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
 5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 
-Apodemus, Neotoma, and Unnamed Experimental Agent default to request-level `None` reasoning. Their Cortex Reasoning control can select `Focused` without unloading the model; hidden reasoning is discarded before display.
+Lynx defaults to request-level `none` reasoning. Its Cortex Reasoning control can select `focused` for supported llama.cpp models without unloading the model; hidden reasoning is discarded before display.
 
 A manual smoke script is available when a router is running:
 
 ```powershell
-uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model apodemus-16k --load --unload
+uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model gemma-4-e2b-16k --load --unload
 ```
 
 ## First-run expectations
@@ -198,7 +197,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### A local model is unavailable
 
-Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For Apodemus, confirm the llama.cpp router lists the selected runtime alias. Cold loads can also be blocked by the Agent's CPU or RAM gate.
+Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For Lynx through llama.cpp, confirm the router lists the selected model-based runtime alias. Cold loads can also be blocked by the model's CPU or RAM gate.
 
 ### Live connectors return no data
 

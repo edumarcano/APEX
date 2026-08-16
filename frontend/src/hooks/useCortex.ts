@@ -5,17 +5,19 @@ import type {
   AgentStatus,
   AgentKey,
   CloudEffort,
+  HostedTool,
   LocalLoadedModelStatus,
-  LocalSettingsAgent,
   LocalContextUsage,
   LocalReasoningMode,
   AgentAvailabilityStatus,
   AgentPricingMetadata,
   AgentStatusSource,
   AgentStability,
+  ModelCatalogEntry,
   ToolSelectionDiagnostics,
   ToolOutputItem,
 } from '../types/telemetry'
+import { usesSandboxHistory } from '../lib/agents'
 import { API_ENDPOINTS } from '../lib/api'
 
 const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.cortexQuery
@@ -111,18 +113,7 @@ interface AgentQueryResponseBody {
   resolved_tool_selection?: ToolSelectionDiagnostics
 }
 
-const VALID_AGENT_KEYS: readonly AgentKey[] = [
-  'panthera',
-  'neofelis',
-  'delphinus',
-  'orcinus',
-  'sorex',
-  'mus',
-  'apodemus',
-  'neotoma',
-  'unnamed-experimental-agent',
-  'acinonyx',
-]
+const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'lynx']
 
 const VALID_AGENT_STATUSES: readonly AgentAvailabilityStatus[] = [
   'available',
@@ -283,6 +274,40 @@ function parseLocalLoadedModelStatus(value: unknown): LocalLoadedModelStatus | n
     context: parseNullableString(record.context),
     expires_at: parseNullableString(record.expires_at),
   }
+}
+
+function parseModelCatalog(value: unknown): ModelCatalogEntry[] | null {
+  if (!Array.isArray(value)) {
+    return null
+  }
+  const parsed = value.flatMap((entry): ModelCatalogEntry[] => {
+    if (!entry || typeof entry !== 'object') return []
+    const record = entry as Record<string, unknown>
+    if (
+      typeof record.model_id !== 'string' ||
+      typeof record.display_name !== 'string' ||
+      typeof record.provider !== 'string' ||
+      (record.runtime !== 'cloud' && record.runtime !== 'local') ||
+      !isAgentStability(record.stability) ||
+      !Array.isArray(record.hosted_capabilities)
+    ) {
+      return []
+    }
+    return [{
+      model_id: record.model_id,
+      display_name: record.display_name,
+      provider: record.provider as ModelCatalogEntry['provider'],
+      runtime: record.runtime,
+      stability: record.stability,
+      hosted_capabilities: record.hosted_capabilities.filter(
+        (capability): capability is HostedTool =>
+          capability === 'google_search' ||
+          capability === 'google_maps' ||
+          capability === 'x_search',
+      ),
+    }]
+  })
+  return parsed.length === value.length ? parsed : null
 }
 
 function parseAgentPricing(value: unknown): AgentPricingMetadata {
@@ -474,6 +499,24 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     return null
   }
 
+  const modelStability =
+    record.model_stability === undefined || record.model_stability === null
+      ? null
+      : isAgentStability(record.model_stability)
+        ? record.model_stability
+        : null
+  if (
+    record.model_stability !== undefined &&
+    record.model_stability !== null &&
+    modelStability === null
+  ) {
+    return null
+  }
+  const modelCatalog = parseModelCatalog(record.model_catalog)
+  if (record.model_catalog !== undefined && record.model_catalog !== null && modelCatalog === null) {
+    return null
+  }
+
   return {
     key,
     display_name: displayName,
@@ -487,6 +530,7 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     runtime: mode,
     tier,
     stability,
+    model_stability: modelStability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
     context_window: contextWindow,
@@ -506,6 +550,7 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     reason: parseNullableString(record.reason),
     idle_unload_remaining_seconds: parseNullableFiniteNumber(record.idle_unload_remaining_seconds),
     loaded_model: parseLocalLoadedModelStatus(record.loaded_model),
+    model_catalog: modelCatalog,
   }
 }
 
@@ -764,8 +809,11 @@ function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   }
 }
 
-function isAcinonyxAgent(agent: AgentKey): boolean {
-  return agent === 'acinonyx'
+function usesSandboxPartition(
+  devModeActive: boolean,
+  sandboxMode: boolean,
+): boolean {
+  return usesSandboxHistory(devModeActive, sandboxMode)
 }
 
 export interface UseCortexResult {
@@ -793,18 +841,23 @@ export interface UseCortexResult {
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
-  loadLocalModel: (agent: LocalSettingsAgent) => Promise<boolean>
-  verifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
+  loadLocalModel: () => Promise<boolean>
+  verifyCloudAgent: (agent: 'panthera') => Promise<boolean>
   clearCortexSession: (agent?: AgentKey) => void
   resetCortexSession: () => void
 }
 
 export function useCortex(
   agentsPollingEnabled = false,
-  activeAgent: AgentKey = 'panthera',
+  options: {
+    devModeActive?: boolean
+    sandboxMode?: boolean
+  } = {},
 ): UseCortexResult {
+  const devModeActive = options.devModeActive ?? false
+  const sandboxMode = options.sandboxMode ?? false
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
-  const [acinonyxHistory, setAcinonyxHistory] = useState<AgentMessage[]>([])
+  const [sandboxHistory, setSandboxHistory] = useState<AgentMessage[]>([])
   const [isCortexQuerying, setIsCortexQuerying] = useState(false)
   const [activeQueryAgent, setActiveQueryAgent] = useState<AgentKey | null>(null)
   const [cortexLatestTrace, setCortexLatestTrace] = useState<ToolTraceItem[]>([])
@@ -817,19 +870,20 @@ export function useCortex(
   const [verifyingCloudAgent, setVerifyingCloudAgent] = useState<AgentKey | null>(null)
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
-  const acinonyxHistoryRef = useRef<AgentMessage[]>([])
+  const sandboxHistoryRef = useRef<AgentMessage[]>([])
 
   useEffect(() => {
     productionHistoryRef.current = productionHistory
   }, [productionHistory])
 
   useEffect(() => {
-    acinonyxHistoryRef.current = acinonyxHistory
-  }, [acinonyxHistory])
+    sandboxHistoryRef.current = sandboxHistory
+  }, [sandboxHistory])
 
+  const useSandboxStore = usesSandboxPartition(devModeActive, sandboxMode)
   const cortexHistory = useMemo(
-    () => (isAcinonyxAgent(activeAgent) ? acinonyxHistory : productionHistory),
-    [activeAgent, acinonyxHistory, productionHistory],
+    () => (useSandboxStore ? sandboxHistory : productionHistory),
+    [useSandboxStore, sandboxHistory, productionHistory],
   )
 
   // Mirrors isCortexQuerying for the poll loop without restarting it on
@@ -943,16 +997,14 @@ export function useCortex(
     }
   }, [fetchAgentsStatus, isLocalModelActionPending])
 
-  const loadLocalModel = useCallback(async (
-    agent: LocalSettingsAgent,
-  ): Promise<boolean> => {
+  const loadLocalModel = useCallback(async (): Promise<boolean> => {
     if (isLocalModelActionPending) return false
     setIsLocalModelActionPending(true)
     try {
       const response = await fetch(AGENT_LOCAL_LOAD_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent }),
+        body: JSON.stringify({ agent: 'lynx' }),
       })
       if (!response.ok) {
         console.warn(`[useCortex] Local model load failed (${response.status}).`)
@@ -970,7 +1022,7 @@ export function useCortex(
   }, [fetchAgentsStatus, isLocalModelActionPending])
 
   const verifyCloudAgent = useCallback(async (
-    agent: Exclude<AgentKey, LocalSettingsAgent>,
+    agent: 'panthera',
   ): Promise<boolean> => {
     if (verifyingCloudAgent) return false
     setVerifyingCloudAgent(agent)
@@ -1004,9 +1056,9 @@ export function useCortex(
         return
       }
 
-      const useAcinonyxStore = isAcinonyxAgent(agent)
-      const priorHistory = useAcinonyxStore
-        ? acinonyxHistoryRef.current
+      const useSandboxStore = usesSandboxPartition(devModeActive, sandboxMode)
+      const priorHistory = useSandboxStore
+        ? sandboxHistoryRef.current
         : productionHistoryRef.current
 
       isCortexQueryingRef.current = true
@@ -1015,8 +1067,8 @@ export function useCortex(
       setCortexError(null)
 
       const userMsg: AgentMessage = { role: 'user', content: trimmedPrompt }
-      if (useAcinonyxStore) {
-        setAcinonyxHistory((prev) => [...prev, userMsg])
+      if (useSandboxStore) {
+        setSandboxHistory((prev) => [...prev, userMsg])
       } else {
         setProductionHistory((prev) => [...prev, userMsg])
       }
@@ -1029,9 +1081,7 @@ export function useCortex(
             prompt: trimmedPrompt,
             agent,
             history: priorHistory,
-            history_partition: isAcinonyxAgent(agent)
-              ? 'acinonyx'
-              : 'production',
+            history_partition: useSandboxStore ? 'sandbox' : 'production',
             ...(context?.effort ? { effort: context.effort } : {}),
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
@@ -1102,8 +1152,8 @@ export function useCortex(
           ...(body.metadata ? { metadata: body.metadata } : {}),
         }
 
-        if (useAcinonyxStore) {
-          setAcinonyxHistory((prev) => [...prev, modelMsg])
+        if (useSandboxStore) {
+          setSandboxHistory((prev) => [...prev, modelMsg])
         } else {
           setProductionHistory((prev) => [...prev, modelMsg])
         }
@@ -1126,14 +1176,13 @@ export function useCortex(
         void fetchAgentsStatus()
       }
     },
-    [fetchAgentsStatus],
+    [devModeActive, fetchAgentsStatus, sandboxMode],
   )
 
-  const clearCortexSession = useCallback((agent?: AgentKey): void => {
-    const target = agent ?? activeAgent
-    if (isAcinonyxAgent(target)) {
-      acinonyxHistoryRef.current = []
-      setAcinonyxHistory([])
+  const clearCortexSession = useCallback((): void => {
+    if (usesSandboxPartition(devModeActive, sandboxMode)) {
+      sandboxHistoryRef.current = []
+      setSandboxHistory([])
     } else {
       productionHistoryRef.current = []
       setProductionHistory([])
@@ -1141,13 +1190,13 @@ export function useCortex(
     setCortexLatestTrace([])
     setCortexError(null)
     setCortexContextUsage(null)
-  }, [activeAgent])
+  }, [devModeActive, sandboxMode])
 
   const resetCortexSession = useCallback((): void => {
     productionHistoryRef.current = []
-    acinonyxHistoryRef.current = []
+    sandboxHistoryRef.current = []
     setProductionHistory([])
-    setAcinonyxHistory([])
+    setSandboxHistory([])
     setCortexLatestTrace([])
     setCortexError(null)
     setCortexContextUsage(null)

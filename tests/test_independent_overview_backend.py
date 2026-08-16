@@ -56,7 +56,21 @@ class ProfileBusyStatusTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"f1": True, "football": False},
-                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
+                "ask_apex": {
+                    "enabled": True,
+                    "agent": "lynx",
+                    "panthera": {
+                        "provider": "openai",
+                        "model": "gpt-5.6-luna",
+                        "effort": "focused",
+                    },
+                    "lynx": {
+                        "runtime": "ollama",
+                        "model": "qwen3:1.7b",
+                        "reasoning_mode": "none",
+                    },
+                },
+                "ollama": {"enabled": True},
                 "tts_settings": {"primary_tts": "pyttsx3", "voice_gender": "male"},
             },
         )
@@ -66,7 +80,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
         self._store_patch = mock.patch(
-            "core.api.cortex.get_settings_store",
+            "core.settings.get_settings_store",
             return_value=self.store,
         )
         self._store_patch.start()
@@ -125,12 +139,11 @@ class ProfileBusyStatusTests(unittest.TestCase):
             profiles = build_agent_statuses()
 
         by_key = {entry.key: entry for entry in profiles}
-        for key in ("sorex", "mus"):
-            self.assertEqual(by_key[key].status, "busy")
-            self.assertEqual(
-                by_key[key].reason,
-                "Briefing synthesis is using local inference.",
-            )
+        self.assertEqual(by_key["lynx"].status, "busy")
+        self.assertEqual(
+            by_key["lynx"].reason,
+            "Briefing synthesis is using local inference.",
+        )
         self.assertEqual(by_key["panthera"].status, "configured")
         self.assertIsNone(by_key["panthera"].reason)
 
@@ -169,7 +182,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
         ):
             profiles = build_agent_statuses()
-        cloud = [entry for entry in profiles if entry.provider == "gemini"]
+        cloud = [entry for entry in profiles if entry.runtime == "cloud"]
         self.assertTrue(cloud)
         self.assertTrue(all(entry.status == "configured" for entry in cloud))
 
@@ -282,7 +295,21 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                     "market": False,
                 },
                 "modules": {"f1": True, "football": False},
-                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
+                "ask_apex": {
+                    "enabled": True,
+                    "agent": "lynx",
+                    "panthera": {
+                        "provider": "openai",
+                        "model": "gpt-5.6-luna",
+                        "effort": "focused",
+                    },
+                    "lynx": {
+                        "runtime": "ollama",
+                        "model": "qwen3:1.7b",
+                        "reasoning_mode": "none",
+                    },
+                },
+                "ollama": {"enabled": True},
                 "tts_settings": {"primary_tts": "pyttsx3", "voice_gender": "male"},
             },
         )

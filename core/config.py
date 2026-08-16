@@ -483,8 +483,8 @@ try:
         default=True,
     )
     DEFAULT_CLOUD_AGENT: Final[str] = _parse_cloud_agent(
-        _agent_settings_cfg.get("cloud_agent"),
-        key="ask_apex.cloud_agent",
+        _agent_settings_cfg.get("cloud_agent") or _agent_settings_cfg.get("agent"),
+        key="ask_apex.agent",
         default="panthera",
     )
     MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
@@ -580,8 +580,10 @@ try:
         _resource_gates = {}
 
     _sorex_ram, _sorex_cpu = _parse_resource_gate(
-        _resource_gates.get("sorex") or _resource_gates.get("lynx"),
-        profile="sorex",
+        _resource_gates.get("qwen3:1.7b")
+        or _resource_gates.get("sorex")
+        or _resource_gates.get("lynx"),
+        profile="qwen3:1.7b",
         default_ram=_DEFAULT_SOREX_RAM,
         default_cpu=_DEFAULT_SOREX_CPU,
     )
@@ -589,8 +591,10 @@ try:
     SOREX_CPU_LIMIT: Final[float] = _sorex_cpu
 
     _mus_ram, _mus_cpu = _parse_resource_gate(
-        _resource_gates.get("mus") or _resource_gates.get("acinonyx"),
-        profile="mus",
+        _resource_gates.get("qwen3:4b-instruct")
+        or _resource_gates.get("mus")
+        or _resource_gates.get("acinonyx"),
+        profile="qwen3:4b-instruct",
         default_ram=_DEFAULT_MUS_RAM,
         default_cpu=_DEFAULT_MUS_CPU,
     )
@@ -664,17 +668,17 @@ try:
         _llama_resource_gates = {}
 
     _llama_cpp_resource_limits: dict[str, tuple[float, float]] = {}
-    for _profile, _profile_gate in (
-        ("apodemus", _llama_resource_gates.get("apodemus")),
-        ("neotoma", _llama_resource_gates.get("neotoma")),
-        (
-            "unnamed-experimental-agent",
-            _llama_resource_gates.get("unnamed-experimental-agent"),
-        ),
+    for model_id, legacy_key in (
+        ("gemma-4-E2B-Q4_K_M.gguf", "apodemus"),
+        ("gemma-4-E4B-Q4_K_M.gguf", "neotoma"),
+        ("Qwen3.5-4B-Q4_K_M.gguf", "unnamed-experimental-agent"),
     ):
-        _llama_cpp_resource_limits[_profile] = _parse_resource_gate(
-            _profile_gate,
-            profile=_profile,
+        gate = _llama_resource_gates.get(model_id) or _llama_resource_gates.get(
+            legacy_key
+        )
+        _llama_cpp_resource_limits[model_id] = _parse_resource_gate(
+            gate,
+            profile=model_id,
             default_ram=_DEFAULT_LLAMA_CPP_RAM,
             default_cpu=_DEFAULT_LLAMA_CPP_CPU,
             gate_root="llama_cpp",
@@ -682,10 +686,12 @@ try:
     LLAMA_CPP_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
         _llama_cpp_resource_limits
     )
-    APODEMUS_RAM_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
-    APODEMUS_CPU_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]
-    NEOTOMA_RAM_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["neotoma"][0]
-    NEOTOMA_CPU_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["neotoma"][1]
+    _default_lynx_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
+    APODEMUS_RAM_LIMIT: Final[float] = _default_lynx_gate[0]
+    APODEMUS_CPU_LIMIT: Final[float] = _default_lynx_gate[1]
+    _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
+    NEOTOMA_RAM_LIMIT: Final[float] = _default_neotoma_gate[0]
+    NEOTOMA_CPU_LIMIT: Final[float] = _default_neotoma_gate[1]
 except Exception as exc:
     _LOGGER.warning("Unable to parse llama_cpp config: %s; using defaults.", exc)
     LLAMA_CPP_ENABLED = False
@@ -694,14 +700,22 @@ except Exception as exc:
     LLAMA_CPP_MANUAL_UNLOAD_ENABLED = True
     LLAMA_CPP_REQUEST_TIMEOUT_SECONDS = 180
     LLAMA_CPP_RESOURCE_GATES = {
-        "apodemus": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
-        "neotoma": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
-        "unnamed-experimental-agent": (
+        "gemma-4-E2B-Q4_K_M.gguf": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+        "gemma-4-E4B-Q4_K_M.gguf": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+        "Qwen3.5-4B-Q4_K_M.gguf": (
             _DEFAULT_LLAMA_CPP_RAM,
             _DEFAULT_LLAMA_CPP_CPU,
         ),
     }
-    APODEMUS_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
-    APODEMUS_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]
-    NEOTOMA_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["neotoma"][0]
-    NEOTOMA_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["neotoma"][1]
+    _default_lynx_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
+    APODEMUS_RAM_LIMIT = _default_lynx_gate[0]
+    APODEMUS_CPU_LIMIT = _default_lynx_gate[1]
+    _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
+    NEOTOMA_RAM_LIMIT = _default_neotoma_gate[0]
+    NEOTOMA_CPU_LIMIT = _default_neotoma_gate[1]
+    _default_lynx_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
+    APODEMUS_RAM_LIMIT = _default_lynx_gate[0]
+    APODEMUS_CPU_LIMIT = _default_lynx_gate[1]
+    _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
+    NEOTOMA_RAM_LIMIT = _default_neotoma_gate[0]
+    NEOTOMA_CPU_LIMIT = _default_neotoma_gate[1]

@@ -12,6 +12,7 @@ from core.agent.catalog import (
     agent_key_for_local_model_ref,
     build_concrete_agent,
     compose_agent_system_instruction,
+    resolve_selected_model_profile,
 )
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.openai_provider import OpenAIProvider
@@ -45,7 +46,7 @@ from core.synthesis.formatting import (
     wrap_untrusted_payload,
 )
 from core.synthesis.models import (
-    APODEMUS_BRIEFING_CONTEXT_WINDOW,
+    LYNX_BRIEFING_CONTEXT_WINDOW,
     LOCAL_BRIEFING_AGENTS,
     BriefingMode,
     SynthesisInput,
@@ -64,7 +65,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
 @dataclass
 class WarmupHandle:
-    agent_key: str = "apodemus"
+    agent_key: str = "lynx"
     model_ref: LocalModelRef | None = None
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
@@ -135,8 +136,8 @@ class SynthesisRouter:
             handle.finished_at = time.monotonic()
             handle.event.set()
             return handle
-        if agent_key == "apodemus":
-            context_window = context_window or APODEMUS_BRIEFING_CONTEXT_WINDOW
+        if agent_key == "lynx":
+            context_window = context_window or LYNX_BRIEFING_CONTEXT_WINDOW
             reasoning_mode = reasoning_mode or "none"
         try:
             agent = build_concrete_agent(
@@ -213,13 +214,18 @@ class SynthesisRouter:
             return None
         resident = resident_agent_key()
         if resident == mode:
-            self._state("ready", AGENT_SPECS[mode].provider, resident, None)
+            self._state(
+                "ready",
+                resolve_selected_model_profile(mode).provider,
+                resident,
+                None,
+            )
             return None
         # Explicit local selection warms the selected Agent.
-        if mode == "apodemus":
+        if mode == "lynx":
             return self.start_agent_warmup(
                 mode,
-                context_window=APODEMUS_BRIEFING_CONTEXT_WINDOW,
+                context_window=LYNX_BRIEFING_CONTEXT_WINDOW,
                 reasoning_mode="none",
             )
         return self.start_agent_warmup(mode)
@@ -293,12 +299,13 @@ class SynthesisRouter:
     ):
         """Build the provider profile for the selected local briefing Agent."""
         context_window: int | None = None
-        if AGENT_SPECS[agent_key].provider == "llama_cpp":
-            context_window = APODEMUS_BRIEFING_CONTEXT_WINDOW
+        if AGENT_SPECS[agent_key].runtime == "local":
+            context_window = LYNX_BRIEFING_CONTEXT_WINDOW
             if resident_ref is not None and resident_ref.provider == "llama_cpp":
+                model_id = resolve_selected_model_profile(agent_key).model_id
                 context_window = (
                     llama_cpp_context_window_for_runtime_model_id(
-                        agent_key, resident_ref.model
+                        model_id, resident_ref.model
                     )
                     or context_window
                 )
@@ -409,7 +416,12 @@ class SynthesisRouter:
             return self._structured_digest_fallback(
                 source, warmup.reason or "local_warmup_failed", warmup.elapsed_ms
             )
-        self._state("ready", AGENT_SPECS[agent_key].provider, agent_key, None)
+        self._state(
+            "ready",
+            resolve_selected_model_profile(agent_key).provider,
+            agent_key,
+            None,
+        )
         try:
             result = self._local(
                 source,
@@ -439,7 +451,7 @@ class SynthesisRouter:
             reason = str(exc) if str(exc).startswith("openai_") else "openai_error"
             fallback_steps.append(f"panthera:{reason}")
 
-        for agent_key in ("apodemus",):
+        for agent_key in ("lynx",):
             result, local_reason = self._try_panthera_local_fallback(source, agent_key)
             if result is not None:
                 fallback_steps.append(f"{agent_key}:resolved")
@@ -489,7 +501,12 @@ class SynthesisRouter:
             return None, "local_warmup_timeout"
         if not warmup.success:
             return None, warmup.reason or "local_warmup_failed"
-        self._state("ready", AGENT_SPECS[agent_key].provider, agent_key, None)
+        self._state(
+            "ready",
+            resolve_selected_model_profile(agent_key).provider,
+            agent_key,
+            None,
+        )
         try:
             return (
                 self._local(

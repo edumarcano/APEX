@@ -78,10 +78,17 @@ def project_descriptor_for_agent(
     same descriptor.
     """
     projected = descriptor
-    if (
+    uses_compact_brave = False
+    if agent_key == "lynx" and descriptor.name == "brave_brave_web_search":
+        from core.agent.catalog import resolve_lynx_runtime
+
+        uses_compact_brave = resolve_lynx_runtime() == "ollama"
+    elif (
         agent_key in {"sorex", "mus"}
         and descriptor.name == "brave_brave_web_search"
     ):
+        uses_compact_brave = True
+    if uses_compact_brave:
         projected = descriptor.model_copy(
             update={
                 "description": (

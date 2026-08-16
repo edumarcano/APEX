@@ -7,7 +7,7 @@ This reference explains the current system: which process owns each responsibili
 For the meanings and design rationale behind these terms, see [Identity and Naming](identity-and-naming.md).
 
 - **APEX** is the complete product and local operating environment.
-- **Apex Agents** are named workers such as Apex Panthera and Apex Apodemus.
+- **Apex Agents** are named workers: Apex Panthera for cloud work and Apex Lynx for local work.
 - **Cortex Engine** is the backend that runs Agent requests, coordinates context and tools, calls providers, and manages local-model lifecycle.
 - **Cortex workspace** is the interface for operating and configuring Apex Agents.
 - **Home workspace** presents telemetry, briefings, connector health, reminders, and compact Agent access.
@@ -42,7 +42,7 @@ flowchart TB
 |---|---|---|---|---|
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
-| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Apodemus/llama.cpp, or Structured Digest |
+| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Lynx/llama.cpp, or Structured Digest |
 | Cortex query | User prompt | Browser history plus backend turn execution | No chat-session store | Selected Agent and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
@@ -64,7 +64,7 @@ flowchart LR
     CONNECTORS --> SNAPSHOT["Process-current telemetry snapshot"]
 
     SNAPSHOT --> BRIEF
-    BRIEF --> SYNTHESIS["Panthera, Apodemus, or Structured Digest"]
+    BRIEF --> SYNTHESIS["Panthera, Lynx, or Structured Digest"]
     SYNTHESIS --> LEDGER[("SQLite briefing ledger")]
 
     ASK --> CORTEX["Cortex Engine"]
@@ -136,17 +136,17 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` generates a briefing from the current process snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Apodemus/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Lynx/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
 | Panthera | OpenAI | `gpt-5.6-luna` at fixed Light effort |
-| Apodemus | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
+| Lynx | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local Agent. The Panthera path falls back to Apodemus once, then Structured Digest; an explicit Apodemus failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path ends in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local model. The Panthera path falls back to Lynx once, then Structured Digest; an explicit Lynx failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path ends in Structured Digest with a stable fallback reason.
 
 Normal-mode generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and keeps the newest 50 rows. Demo mode returns static history and performs no normal-mode write.
 
@@ -170,31 +170,32 @@ HUD context is explicit:
 
 Attached context and tool results are separately marked as untrusted model data. Unknown or stale identifiers are omitted rather than replaced with another record.
 
-### Cloud Agents
+### Panthera and Lynx
 
-| Agent | Provider and model | Effort | Maximum tool loop |
+APEX exposes two Apex Agents. Panthera is the cloud identity; Lynx is the local identity. Provider, runtime, model, context, reasoning, effort, and hosted-tool settings live underneath those identities.
+
+| Agent | Default model | Effort | Maximum tool loop |
 |---|---|---|---|
-| Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Light, Focused, Extended; development-only | Up to 4 turns / 6 calls; non-personal allowlist only |
-| Panthera 1.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended | Up to 6 turns / 10 calls |
-| Neofelis 1.0 | Google `gemini-3.6-flash` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Delphinus 1.0 | SpaceXAI `grok-4.3` | Light, Focused, Extended | Up to 4 turns / 6 calls |
-| Orcinus 1.0 | SpaceXAI `grok-4.5` | Light, Focused, Extended | Up to 4 turns / 6 calls |
+| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended when supported | Up to 6 turns / 10 calls on the default model |
+| Lynx 2.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Fixed for local models | Up to 4 turns / 4 calls on default llama.cpp models |
+
+Other registered cloud and local models keep their own loop limits and optional hosted-tool support. Development-only models appear in each Agent's model catalog only when `DEV_MODE` is active.
 
 The final permitted turn is answer-only, preventing a model from requesting a tool call that cannot receive a follow-up response.
 
-Each non-demo Agent request begins with the selected Agent's identity instruction, followed by prompt behavior loaded from `config.json`, an optional user designation from local settings, scoped context, and the security boundary. Agent identity describes the active Agent and its model; it does not grant tools or override privacy policy.
+Each non-demo Agent request begins with the selected Agent's identity instruction, followed by prompt behavior loaded from `config.json`, an optional user designation from local settings, scoped context, and the security boundary. Agent identity describes the active Agent and its selected model; it does not grant tools or override privacy policy.
 
-Panthera, Neofelis, Delphinus, and Orcinus receive the general APEX capability registry. Brave MCP is the only general web-search path. Neofelis can receive Google Maps and Google Search grounding when their persisted controls are enabled. Delphinus and Orcinus can receive X Search when their respective controls are enabled; SpaceXAI general web search and OpenAI hosted search remain disabled. Acinonyx uses a restricted development allowlist containing weather, Formula 1, Brave, and Alpha Vantage only.
+Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `DEV_MODE` sandbox queries use a restricted non-personal allowlist instead of the full registry.
 
-`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes product ordering, Agent content, available effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Lynx, their selected models, available provider/runtime and model catalogs, effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
 The Home command rail owns the visible briefing-mode selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
 
-### Local Agents and explicit tool selection
+### Explicit tool selection
 
-The normal local roster consists of Apodemus and Neotoma. Sorex, Mus, and the Unnamed Experimental Agent are development entries surfaced only in `DEV_MODE`. All use the same local runtime path. One non-blocking execution lock covers local inference across providers. A concurrent request receives `429`; a cold load that fails availability or resource checks receives `503`.
+Panthera and Lynx use the same explicit capability descriptors. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for Panthera and No APEX Tools for Lynx. The resolver combines the selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns per-tool failures instead of silently dropping a request. Local context preflight is only an estimate; the provider serializes the real request, trims older complete interactions, and applies its own allowance and safety margin before deciding whether the request fits. Provider-hosted Google and X grounding remains outside these profiles and is controlled separately.
 
-Local and cloud queries use the same explicit capability descriptors. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for cloud Agents and No APEX Tools for local Agents. The resolver combines the selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns per-tool failures instead of silently dropping a request. Local context preflight is only an estimate; the provider serializes the real request, trims older complete interactions, and applies its own allowance and safety margin before deciding whether the request fits. Provider-hosted Google and X grounding remains outside these profiles and is controlled separately.
+One non-blocking execution lock covers local inference across providers. A concurrent Lynx request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
 ## Capability and MCP boundary
 
@@ -204,7 +205,7 @@ Production native capabilities are mostly read-only, with a small set of approva
 
 MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced when needed, limited in size before model and client display, and never re-exported as an APEX MCP server.
 
-The Tools selector can only narrow what is already allowed. It cannot enable an MCP provider, change its allowlist, or bypass Acinonyx restrictions. Catalog and preflight responses use the same descriptors that provider turns receive.
+The Tools selector can only narrow what is already allowed. It cannot enable an MCP provider, change its allowlist, or bypass sandbox restrictions in `DEV_MODE`. Catalog and preflight responses use the same descriptors that provider turns receive.
 
 Provider-hosted Search, Maps, and X activity is tracked separately from APEX tool calls. Successful billable uses can include provider-origin traces, citations where available, latency, and cost estimates.
 
@@ -212,7 +213,7 @@ The MCP manager owns connection, discovery, registration, recovery, and shutdown
 
 ## Local model lifecycle
 
-Local Agents share one runtime coordinator across Ollama and llama.cpp:
+Local Lynx work shares one runtime coordinator across Ollama and llama.cpp:
 
 ```mermaid
 flowchart TB

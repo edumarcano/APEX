@@ -6,39 +6,38 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
+from core.agent.model_catalog import (
+    DEFAULT_LYNX_MODEL,
+    DEFAULT_LYNX_RUNTIME,
+    DEFAULT_PANTHERA_MODEL,
+    VALID_CLOUD_PROVIDERS,
+    VALID_LOCAL_RUNTIMES,
+    get_model_profile,
+)
+from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.types import LocalReasoningMode
 
-CloudSettingsAgent = Literal["panthera", "neofelis", "delphinus", "orcinus"]
-LocalSettingsAgent = Literal[
-    "sorex",
-    "mus",
-    "apodemus",
-    "neotoma",
-    "unnamed-experimental-agent",
-]
+AgentKey = Literal["panthera", "lynx"]
+CloudProvider = Literal["openai", "gemini", "xai"]
+LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["light", "focused", "extended"]
-BriefingMode = Literal["panthera", "apodemus", "structured_digest"]
+BriefingMode = Literal["panthera", "lynx", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
-VALID_CLOUD_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"panthera", "neofelis", "delphinus", "orcinus"}
-)
-VALID_LOCAL_SETTINGS_AGENTS: frozenset[str] = frozenset(
-    {"sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"}
-)
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "lynx"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "apodemus", "structured_digest"}
+    {"panthera", "lynx", "structured_digest"}
 )
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 14
+SETTINGS_SCHEMA_VERSION: int = 15
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -52,51 +51,131 @@ LlamaCppServerState = Literal[
 LlamaCppServerOwnership = Literal["none", "external", "apex"]
 
 
-def _default_local_context_windows() -> dict[str, int]:
-    """Resolve defaults from registered provider capabilities."""
-    from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
-
-    return {
-        agent_key: runtime.default_context_window
-        for agent_key, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items()
-    }
+def _default_lynx_context_window() -> int:
+    return LLAMA_CPP_RUNTIME_CONFIGS[DEFAULT_LYNX_MODEL].default_context_window
 
 
-def _validate_local_context_windows(
-    value: dict[str, StrictInt],
-) -> dict[str, StrictInt]:
-    """Validate context preferences against the registered provider data."""
-    from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
-
-    for agent_key, context_window in value.items():
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key)
-        if runtime is None or context_window not in runtime.allowed_context_windows:
-            raise ValueError(
-                f"Unsupported local context preset for Agent {agent_key!r}: "
-                f"{context_window!r}"
-            )
+def _validate_lynx_context_window(value: int, runtime: LocalRuntime, model: str) -> int:
+    if runtime != "llama_cpp":
+        return value
+    llama_runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model)
+    if llama_runtime is None or value not in llama_runtime.allowed_context_windows:
+        raise ValueError(
+            f"Unsupported local context preset for model {model!r}: {value!r}"
+        )
     return value
 
 
-def _default_local_reasoning_modes() -> dict[str, LocalReasoningMode]:
-    """Keep every registered local Agent explicitly in the safe default mode."""
-    return {agent_key: "none" for agent_key in VALID_LOCAL_SETTINGS_AGENTS}
+def _validate_lynx_reasoning_mode(
+    value: LocalReasoningMode, runtime: LocalRuntime, model: str
+) -> LocalReasoningMode:
+    from core.agent.catalog import local_reasoning_modes_for_model
 
-
-def _validate_local_reasoning_modes(
-    value: dict[str, LocalReasoningMode],
-) -> dict[str, LocalReasoningMode]:
-    """Validate reasoning preferences against provider-declared capabilities."""
-    from core.agent.catalog import local_reasoning_modes_for_agent
-
-    for agent_key, reasoning_mode in value.items():
-        supported = local_reasoning_modes_for_agent(agent_key)
-        if reasoning_mode not in supported:
-            raise ValueError(
-                f"Unsupported local reasoning mode for Agent {agent_key!r}: "
-                f"{reasoning_mode!r}"
-            )
+    supported = local_reasoning_modes_for_model(model)
+    if value not in supported:
+        raise ValueError(
+            f"Unsupported local reasoning mode for model {model!r}: {value!r}"
+        )
     return value
+
+
+class PantheraHostedToolsSettings(BaseModel):
+    """Provider-hosted grounding toggles for Panthera's selected model."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    google_search: bool = True
+    google_maps: bool = True
+    x_search: bool = True
+
+
+class PantheraSettings(BaseModel):
+    """Cloud provider, model, effort, and hosted-tool preferences."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider: CloudProvider = "openai"
+    model: str = DEFAULT_PANTHERA_MODEL
+    effort: CloudEffort = "focused"
+    hosted_tools: PantheraHostedToolsSettings = Field(
+        default_factory=PantheraHostedToolsSettings
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def _validate_provider(cls, value: str) -> str:
+        if value not in VALID_CLOUD_PROVIDERS:
+            raise ValueError(f"Unsupported cloud provider: {value!r}")
+        return value
+
+    @field_validator("model")
+    @classmethod
+    def _validate_model(cls, value: str) -> str:
+        profile = get_model_profile(value)
+        if profile is None or profile.runtime != "cloud":
+            raise ValueError(f"Unsupported Panthera model: {value!r}")
+        return value
+
+
+class LynxSettings(BaseModel):
+    """Local runtime, model, context, and reasoning preferences."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    runtime: LocalRuntime = DEFAULT_LYNX_RUNTIME
+    model: str = DEFAULT_LYNX_MODEL
+    context_window: StrictInt = Field(default_factory=_default_lynx_context_window)
+    reasoning_mode: LocalReasoningMode = "none"
+
+    @field_validator("runtime")
+    @classmethod
+    def _validate_runtime(cls, value: str) -> str:
+        if value not in VALID_LOCAL_RUNTIMES:
+            raise ValueError(f"Unsupported local runtime: {value!r}")
+        return value
+
+    @field_validator("model")
+    @classmethod
+    def _validate_model(cls, value: str) -> str:
+        profile = get_model_profile(value)
+        if profile is None or profile.runtime != "local":
+            raise ValueError(f"Unsupported Lynx model: {value!r}")
+        return value
+
+    @field_validator("context_window")
+    @classmethod
+    def _validate_context(cls, value: int, info) -> int:
+        data = info.data
+        runtime = data.get("runtime", DEFAULT_LYNX_RUNTIME)
+        model = data.get("model", DEFAULT_LYNX_MODEL)
+        return _validate_lynx_context_window(value, runtime, model)
+
+    @field_validator("reasoning_mode")
+    @classmethod
+    def _validate_reasoning(cls, value: LocalReasoningMode, info) -> LocalReasoningMode:
+        data = info.data
+        runtime = data.get("runtime", DEFAULT_LYNX_RUNTIME)
+        model = data.get("model", DEFAULT_LYNX_MODEL)
+        return _validate_lynx_reasoning_mode(value, runtime, model)
+
+
+class AgentSettings(BaseModel):
+    """Agent query enablement, identity, sandbox, and nested Agent configuration."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = True
+    agent: AgentKey = "panthera"
+    sandbox_mode: bool = False
+    panthera: PantheraSettings = Field(default_factory=PantheraSettings)
+    lynx: LynxSettings = Field(default_factory=LynxSettings)
+
+    @field_validator("agent")
+    @classmethod
+    def _validate_agent(cls, value: str) -> str:
+        if value not in VALID_AGENT_KEYS:
+            raise ValueError(f"Unsupported Agent key: {value!r}")
+        return value
 
 
 class FeaturesSettings(BaseModel):
@@ -144,35 +223,6 @@ class MarketSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     symbols: tuple[str, ...] = ()
-
-
-class AgentSettings(BaseModel):
-    """Agent query enablement, runtime, Agent, and grounding preferences."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    enabled: bool = True
-    runtime: AgentRuntime = "cloud"
-    cloud_agent: CloudSettingsAgent = "panthera"
-    effort: CloudEffort = "focused"
-    local_agent: LocalSettingsAgent = "apodemus"
-    local_context_windows: dict[str, StrictInt] = Field(
-        default_factory=_default_local_context_windows
-    )
-    local_reasoning_modes: dict[str, LocalReasoningMode] = Field(
-        default_factory=_default_local_reasoning_modes
-    )
-    neofelis_google_search_enabled: bool = True
-    neofelis_google_maps_enabled: bool = True
-    delphinus_x_search_enabled: bool = True
-    orcinus_x_search_enabled: bool = True
-
-    _validate_context_windows = field_validator("local_context_windows")(
-        _validate_local_context_windows
-    )
-    _validate_reasoning_modes = field_validator("local_reasoning_modes")(
-        _validate_local_reasoning_modes
-    )
 
 
 class ToolProfile(BaseModel):
@@ -345,29 +395,42 @@ class MarketPatch(BaseModel):
     symbols: list[str] | None = None
 
 
+class PantheraHostedToolsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    google_search: bool | None = None
+    google_maps: bool | None = None
+    x_search: bool | None = None
+
+
+class PantheraSettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: CloudProvider | None = None
+    model: str | None = None
+    effort: CloudEffort | None = None
+    hosted_tools: PantheraHostedToolsPatch | None = None
+
+
+class LynxSettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runtime: LocalRuntime | None = None
+    model: str | None = None
+    context_window: StrictInt | None = None
+    reasoning_mode: LocalReasoningMode | None = None
+
+
 class AgentSettingsPatch(BaseModel):
     """Partial Agent query settings patch; unknown fields are rejected."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool | None = None
-    runtime: AgentRuntime | None = None
-    cloud_agent: CloudSettingsAgent | None = None
-    effort: CloudEffort | None = None
-    local_agent: LocalSettingsAgent | None = None
-    local_context_windows: dict[str, StrictInt] | None = None
-    local_reasoning_modes: dict[str, LocalReasoningMode] | None = None
-    neofelis_google_search_enabled: bool | None = None
-    neofelis_google_maps_enabled: bool | None = None
-    delphinus_x_search_enabled: bool | None = None
-    orcinus_x_search_enabled: bool | None = None
-
-    _validate_context_windows = field_validator("local_context_windows")(
-        _validate_local_context_windows
-    )
-    _validate_reasoning_modes = field_validator("local_reasoning_modes")(
-        _validate_local_reasoning_modes
-    )
+    agent: AgentKey | None = None
+    sandbox_mode: bool | None = None
+    panthera: PantheraSettingsPatch | None = None
+    lynx: LynxSettingsPatch | None = None
 
 
 class ToolProfilesPatch(BaseModel):

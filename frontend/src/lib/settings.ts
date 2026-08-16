@@ -1,11 +1,14 @@
-import { isLocalAgentKey, runtimeForAgentKey } from './agents'
+import {
+  isPantheraKey,
+  runtimeForAgentKey,
+  usesSandboxHistory,
+} from './agents'
 import type {
-  AgentRuntime,
   AgentKey,
   AgentInitialSelection,
   CloudEffort,
-  CloudSettingsAgent,
-  LocalSettingsAgent,
+  CloudProvider,
+  LocalRuntime,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
@@ -26,35 +29,23 @@ import type {
   ToolProfilesSettings,
   ToolProfileSettings,
   LlamaCppServerStatusResponse,
-  LocalContextWindows,
-  LocalReasoningModes,
+  LocalReasoningMode,
   VoiceGender,
   VoiceMode,
 } from '../types/settings'
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
-const VALID_CLOUD_SETTINGS_AGENTS: readonly CloudSettingsAgent[] = [
-  'panthera',
-  'neofelis',
-  'delphinus',
-  'orcinus',
-]
+const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'lynx']
+const VALID_CLOUD_PROVIDERS: readonly CloudProvider[] = ['openai', 'gemini', 'xai']
+const VALID_LOCAL_RUNTIMES: readonly LocalRuntime[] = ['ollama', 'llama_cpp']
 
-const VALID_LOCAL_SETTINGS_AGENTS: readonly LocalSettingsAgent[] = [
-  'sorex',
-  'mus',
-  'apodemus',
-  'neotoma',
-  'unnamed-experimental-agent',
-]
-
-export { isLocalAgentKey } from './agents'
+export { isLocalAgentKey, isPantheraKey, isLynxKey } from './agents'
 
 export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
-  selection: { agent: AgentKey; effort: CloudEffort | null } | undefined,
+  selection: { agent: AgentKey; effort: CloudEffort | null; sandboxMode?: boolean } | undefined,
   defaultAgent: AgentKey | undefined,
-): { agent: AgentKey; effort: CloudEffort | null } | null {
+): { agent: AgentKey; effort: CloudEffort | null; sandboxMode?: boolean } | null {
   if (alreadyHydrated) return null
   if (selection) return selection
   if (defaultAgent) return { agent: defaultAgent, effort: null }
@@ -64,7 +55,7 @@ export function resolveInitialAgentSelection(
 /**
  * Resolve an Agent selection from a settings response without allowing
  * the DEV_MODE startup override to clobber an already-selected session
- * agent. DEV_MODE defaults to Acinonyx only during initial hydration;
+ * agent. DEV_MODE defaults sandbox mode on during initial hydration;
  * subsequent settings responses preserve the active Cortex selection.
  */
 export function resolveAppliedAgentSelection(
@@ -72,47 +63,38 @@ export function resolveAppliedAgentSelection(
   currentAgent: AgentKey,
   selectionHydrated: boolean,
 ): AgentInitialSelection {
-  if (response.dev_mode_active && !selectionHydrated) {
-    return {
-      runtime: 'cloud',
-      agent: 'acinonyx',
-      effort: response.settings.ask_apex.effort,
-    }
-  }
-
-  if (response.dev_mode_active) {
-    return {
-      runtime: runtimeForAgentKey(currentAgent),
-      agent: currentAgent,
-      effort: isLocalAgentKey(currentAgent)
-        ? null
-        : response.settings.ask_apex.effort,
-    }
-  }
+  const { ask_apex: settings } = response.settings
+  const agent = selectionHydrated ? currentAgent : settings.agent
+  const sandboxMode = response.dev_mode_active
+    ? (selectionHydrated ? undefined : defaultSandboxMode(settings.sandbox_mode))
+    : false
 
   return {
-    runtime: response.settings.ask_apex.runtime,
-    agent: resolveAgentKey(response.settings.ask_apex),
-    effort:
-      response.settings.ask_apex.runtime === 'cloud'
-        ? response.settings.ask_apex.effort
-        : null,
+    runtime: runtimeForAgentKey(agent),
+    agent,
+    effort: isPantheraKey(agent) ? settings.panthera.effort : null,
+    ...(response.dev_mode_active
+      ? { sandboxMode: sandboxMode ?? settings.sandbox_mode }
+      : {}),
   }
 }
 
-const DEV_MODE_AGENT_SETTINGS_KEYS = new Set([
-  'effort',
-  'local_context_windows',
-  'local_reasoning_modes',
-  'neofelis_google_search_enabled',
-  'neofelis_google_maps_enabled',
-  'delphinus_x_search_enabled',
-  'orcinus_x_search_enabled',
-])
+export function defaultSandboxMode(storedValue: boolean | undefined): boolean {
+  return storedValue ?? true
+}
+
+export function resolveHistoryPartition(
+  devModeActive: boolean,
+  sandboxMode: boolean,
+): 'production' | 'sandbox' {
+  return usesSandboxHistory(devModeActive, sandboxMode) ? 'sandbox' : 'production'
+}
+
+const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'lynx'])
 
 /**
  * Keep session-only agent selection out of persisted DEV_MODE settings,
- * while allowing effort and grounding preferences to remain configurable.
+ * while allowing nested Panthera and Lynx preferences to remain configurable.
  */
 export function filterAgentSettingsForDevMode(
   agentSettings: Record<string, unknown>,
@@ -122,19 +104,16 @@ export function filterAgentSettingsForDevMode(
   )
 }
 
-const VALID_ASSISTANT_MODES: readonly AgentRuntime[] = ['cloud', 'local']
-
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
-
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
-  'apodemus',
+  'lynx',
   'structured_digest',
 ]
-
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_VOICE_GENDERS: readonly VoiceGender[] = ['male', 'female']
 const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
+const VALID_LOCAL_REASONING_MODES: readonly LocalReasoningMode[] = ['none', 'focused']
 const VALID_MCP_STATUSES = [
   'configured',
   'connected',
@@ -147,65 +126,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isCloudSettingsAgent(value: unknown): value is CloudSettingsAgent {
+function isAgentKey(value: unknown): value is AgentKey {
+  return typeof value === 'string' && (VALID_AGENT_KEYS as readonly string[]).includes(value)
+}
+
+function isCloudProvider(value: unknown): value is CloudProvider {
   return (
     typeof value === 'string' &&
-    (VALID_CLOUD_SETTINGS_AGENTS as readonly string[]).includes(value)
+    (VALID_CLOUD_PROVIDERS as readonly string[]).includes(value)
   )
 }
 
-function isLocalSettingsAgent(value: unknown): value is LocalSettingsAgent {
+function isLocalRuntime(value: unknown): value is LocalRuntime {
   return (
     typeof value === 'string' &&
-    (VALID_LOCAL_SETTINGS_AGENTS as readonly string[]).includes(value)
-  )
-}
-
-function parseLocalContextWindows(value: unknown): LocalContextWindows | null {
-  if (!isRecord(value)) {
-    return null
-  }
-  const entries = Object.entries(value)
-  if (
-    !entries.every(
-      ([agent, contextWindow]) =>
-        agent.trim().length > 0 &&
-        typeof contextWindow === 'number' &&
-        Number.isInteger(contextWindow) &&
-        contextWindow > 0,
-    )
-  ) {
-    return null
-  }
-  return Object.fromEntries(entries) as LocalContextWindows
-}
-
-function parseLocalReasoningModes(value: unknown): LocalReasoningModes | null {
-  if (!isRecord(value)) {
-    return null
-  }
-  const entries = Object.entries(value)
-  if (
-    !entries.every(
-      ([agent, reasoningMode]) =>
-        agent.trim().length > 0 &&
-        (reasoningMode === 'none' || reasoningMode === 'focused'),
-    )
-  ) {
-    return null
-  }
-  return Object.fromEntries(entries) as LocalReasoningModes
-}
-
-function isAgentRuntime(value: unknown): value is AgentRuntime {
-  return (
-    typeof value === 'string' && (VALID_ASSISTANT_MODES as readonly string[]).includes(value)
+    (VALID_LOCAL_RUNTIMES as readonly string[]).includes(value)
   )
 }
 
 function isCloudEffort(value: unknown): value is CloudEffort {
   return (
     typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
+  )
+}
+
+function isLocalReasoningMode(value: unknown): value is LocalReasoningMode {
+  return (
+    typeof value === 'string' &&
+    (VALID_LOCAL_REASONING_MODES as readonly string[]).includes(value)
   )
 }
 
@@ -230,6 +178,69 @@ function isVoiceMode(value: unknown): value is VoiceMode {
   return (
     typeof value === 'string' && (VALID_VOICE_MODES as readonly string[]).includes(value)
   )
+}
+
+function parsePantheraHostedTools(value: unknown): RuntimeSettings['ask_apex']['panthera']['hosted_tools'] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  if (
+    typeof value.google_search !== 'boolean' ||
+    typeof value.google_maps !== 'boolean' ||
+    typeof value.x_search !== 'boolean'
+  ) {
+    return null
+  }
+  return {
+    google_search: value.google_search,
+    google_maps: value.google_maps,
+    x_search: value.x_search,
+  }
+}
+
+function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['panthera'] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  if (!isCloudProvider(value.provider) || typeof value.model !== 'string' || !value.model.trim()) {
+    return null
+  }
+  if (!isCloudEffort(value.effort)) {
+    return null
+  }
+  const hostedTools = parsePantheraHostedTools(value.hosted_tools)
+  if (!hostedTools) {
+    return null
+  }
+  return {
+    provider: value.provider,
+    model: value.model.trim(),
+    effort: value.effort,
+    hosted_tools: hostedTools,
+  }
+}
+
+function parseLynxSettings(value: unknown): RuntimeSettings['ask_apex']['lynx'] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  if (
+    !isLocalRuntime(value.runtime) ||
+    typeof value.model !== 'string' ||
+    !value.model.trim() ||
+    typeof value.context_window !== 'number' ||
+    !Number.isInteger(value.context_window) ||
+    value.context_window <= 0 ||
+    !isLocalReasoningMode(value.reasoning_mode)
+  ) {
+    return null
+  }
+  return {
+    runtime: value.runtime,
+    model: value.model.trim(),
+    context_window: value.context_window,
+    reasoning_mode: value.reasoning_mode,
+  }
 }
 
 function parseFeatures(value: unknown): FeaturesSettings | null {
@@ -450,40 +461,15 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.ask_apex.enabled !== 'boolean') {
     return null
   }
-  if (!isAgentRuntime(value.ask_apex.runtime)) {
+  if (!isAgentKey(value.ask_apex.agent)) {
     return null
   }
-  if (!isCloudSettingsAgent(value.ask_apex.cloud_agent)) {
+  if (typeof value.ask_apex.sandbox_mode !== 'boolean') {
     return null
   }
-  if (!isCloudEffort(value.ask_apex.effort)) {
-    return null
-  }
-  if (!isLocalSettingsAgent(value.ask_apex.local_agent)) {
-    return null
-  }
-  const localContextWindows = parseLocalContextWindows(
-    value.ask_apex.local_context_windows,
-  )
-  if (!localContextWindows) {
-    return null
-  }
-  const localReasoningModes = parseLocalReasoningModes(
-    value.ask_apex.local_reasoning_modes,
-  )
-  if (!localReasoningModes) {
-    return null
-  }
-  if (typeof value.ask_apex.neofelis_google_search_enabled !== 'boolean') {
-    return null
-  }
-  if (typeof value.ask_apex.neofelis_google_maps_enabled !== 'boolean') {
-    return null
-  }
-  if (typeof value.ask_apex.delphinus_x_search_enabled !== 'boolean') {
-    return null
-  }
-  if (typeof value.ask_apex.orcinus_x_search_enabled !== 'boolean') {
+  const panthera = parsePantheraSettings(value.ask_apex.panthera)
+  const lynx = parseLynxSettings(value.ask_apex.lynx)
+  if (!panthera || !lynx) {
     return null
   }
   if (!isBriefingMode(value.briefing.default_mode)) {
@@ -506,16 +492,10 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     market,
     ask_apex: {
       enabled: value.ask_apex.enabled,
-      runtime: value.ask_apex.runtime,
-      cloud_agent: value.ask_apex.cloud_agent,
-      effort: value.ask_apex.effort,
-      local_agent: value.ask_apex.local_agent,
-      local_context_windows: localContextWindows,
-      local_reasoning_modes: localReasoningModes,
-      neofelis_google_search_enabled: value.ask_apex.neofelis_google_search_enabled,
-      neofelis_google_maps_enabled: value.ask_apex.neofelis_google_maps_enabled,
-      delphinus_x_search_enabled: value.ask_apex.delphinus_x_search_enabled,
-      orcinus_x_search_enabled: value.ask_apex.orcinus_x_search_enabled,
+      agent: value.ask_apex.agent,
+      sandbox_mode: value.ask_apex.sandbox_mode,
+      panthera,
+      lynx,
     },
     ...(hasToolProfiles ? { tool_profiles } : {}),
     briefing: {
@@ -533,7 +513,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
 }
 
 export function resolveAgentKey(settings: RuntimeSettings['ask_apex']): AgentKey {
-  return settings.runtime === 'local' ? settings.local_agent : settings.cloud_agent
+  return settings.agent
 }
 
 export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings {
@@ -549,8 +529,11 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     },
     ask_apex: {
       ...settings.ask_apex,
-      local_context_windows: { ...settings.ask_apex.local_context_windows },
-      local_reasoning_modes: { ...settings.ask_apex.local_reasoning_modes },
+      panthera: {
+        ...settings.ask_apex.panthera,
+        hosted_tools: { ...settings.ask_apex.panthera.hosted_tools },
+      },
+      lynx: { ...settings.ask_apex.lynx },
     },
     ...(settings.tool_profiles
       ? {

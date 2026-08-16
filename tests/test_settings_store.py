@@ -17,8 +17,10 @@ from core.settings.models import (
     FeaturesPatch,
     FootballPatch,
     FootballTeamPatch,
+    LynxSettingsPatch,
     MarketPatch,
     ModulesPatch,
+    PantheraSettingsPatch,
     SettingsPatch,
     VoicePatch,
 )
@@ -51,7 +53,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             "modules": {"football": False, "f1": True},
             "ask_apex": {
                 "enabled": True,
-                "cloud_agent": "comet",
+                "default_profile": "comet",
             },
             "tts_settings": {
                 "primary_tts": "google",
@@ -75,10 +77,10 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(snap.modules.football)
         self.assertTrue(snap.modules.f1)
         self.assertTrue(snap.ask_apex.enabled)
-        self.assertEqual(snap.ask_apex.runtime, "cloud")
-        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
-        self.assertEqual(snap.ask_apex.effort, "focused")
-        self.assertEqual(snap.ask_apex.local_agent, "apodemus")
+        self.assertEqual(snap.ask_apex.agent, "panthera")
+        self.assertEqual(snap.ask_apex.panthera.model, "gpt-5.6-luna")
+        self.assertEqual(snap.ask_apex.panthera.effort, "focused")
+        self.assertEqual(snap.ask_apex.lynx.model, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(snap.user_designation, "")
         self.assertEqual(snap.voice.engine, "google")
         self.assertEqual(snap.voice.gender, "female")
@@ -86,11 +88,12 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(store.local_override_active)
         self.assertIsNone(store.load_warning)
 
-    def test_invalid_local_agent_falls_back_to_apodemus(self) -> None:
+    def test_invalid_local_model_falls_back_to_default_lynx_model(self) -> None:
         self.base["ask_apex"]["local_agent"] = "not-an-agent"
         _write_json(self.config_path, self.base)
         self.assertEqual(
-            self._store().get_snapshot().ask_apex.local_agent, "apodemus"
+            self._store().get_snapshot().ask_apex.lynx.model,
+            "gemma-4-E2B-Q4_K_M.gguf",
         )
 
     def test_base_plus_local_loading(self) -> None:
@@ -108,8 +111,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.features.news)
         self.assertFalse(snap.ask_apex.enabled)
-        self.assertEqual(snap.ask_apex.runtime, "cloud")
-        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "panthera")
         self.assertEqual(snap.voice.engine, "kokoro")
         self.assertEqual(snap.voice.gender, "female")
         self.assertEqual(snap.user_designation, "Chief")
@@ -160,13 +162,13 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(store.local_override_active)
         self.assertEqual([(team.id, team.name) for team in store.get_snapshot().football.teams], [(1, "One")])
 
-    def test_local_agent_profile_loading(self) -> None:
+    def test_legacy_local_profiles_migrate_to_lynx(self) -> None:
         expectations = {
-            "lynx": ("local", "apodemus"),
-            "acinonyx": ("local", "apodemus"),
-            "neofelis": ("local", "apodemus"),
+            "lynx": "gemma-4-E2B-Q4_K_M.gguf",
+            "acinonyx": "gemma-4-E2B-Q4_K_M.gguf",
+            "neofelis": "gemma-4-E2B-Q4_K_M.gguf",
         }
-        for profile, (mode, local_agent) in expectations.items():
+        for profile, model in expectations.items():
             with self.subTest(agent=profile):
                 _write_json(
                     self.local_path,
@@ -174,9 +176,8 @@ class SettingsStoreLoadTests(unittest.TestCase):
                 )
                 store = self._store()
                 snap = store.get_snapshot().ask_apex
-                self.assertEqual(snap.runtime, mode)
-                self.assertEqual(snap.local_agent, local_agent)
-                self.assertEqual(snap.cloud_agent, "panthera")
+                self.assertEqual(snap.agent, "lynx")
+                self.assertEqual(snap.lynx.model, model)
 
     def test_recursive_precedence(self) -> None:
         base = {"features": {"weather": True, "sports": False}, "modules": {"f1": True}}
@@ -190,40 +191,40 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
         )
 
-    def test_partial_schema6_agent_settings_overlay_preserves_base_selection(self) -> None:
-        self.base["ask_apex"] = {
-            "enabled": True,
-            "runtime": "cloud",
-            "cloud_agent": "orcinus",
-            "effort": "extended",
-            "local_agent": "sorex",
-            "neofelis_google_search_enabled": False,
-            "neofelis_google_maps_enabled": False,
-            "delphinus_x_search_enabled": False,
-            "orcinus_x_search_enabled": False,
-        }
-        _write_json(self.config_path, self.base)
-        _write_json(self.local_path, {"ask_apex": {"enabled": False}})
-
-        agent_settings = self._store().get_snapshot().ask_apex
-
-        self.assertFalse(agent_settings.enabled)
-        self.assertEqual(agent_settings.cloud_agent, "orcinus")
-        self.assertEqual(agent_settings.effort, "extended")
-        self.assertEqual(agent_settings.local_agent, "sorex")
-        self.assertFalse(agent_settings.neofelis_google_search_enabled)
-        self.assertFalse(agent_settings.neofelis_google_maps_enabled)
-        self.assertFalse(agent_settings.delphinus_x_search_enabled)
-        self.assertFalse(agent_settings.orcinus_x_search_enabled)
-
-    def test_apodemus_briefing_mode_survives_reload(self) -> None:
+    def test_partial_schema15_agent_settings_overlay_preserves_base_selection(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(briefing=BriefingPatch(default_mode="apodemus"))
+            SettingsPatch(
+                ask_apex=AgentSettingsPatch(
+                    panthera=PantheraSettingsPatch(
+                        provider="xai",
+                        model="grok-4.5",
+                        effort="extended",
+                    ),
+                    lynx=LynxSettingsPatch(
+                        runtime="ollama",
+                        model="qwen3:1.7b",
+                    ),
+                )
+            )
+        )
+        store.apply_patch(SettingsPatch(ask_apex=AgentSettingsPatch(enabled=False)))
+
+        agent_settings = store.get_snapshot().ask_apex
+
+        self.assertFalse(agent_settings.enabled)
+        self.assertEqual(agent_settings.panthera.model, "grok-4.5")
+        self.assertEqual(agent_settings.panthera.effort, "extended")
+        self.assertEqual(agent_settings.lynx.model, "qwen3:1.7b")
+
+    def test_lynx_briefing_mode_survives_reload(self) -> None:
+        store = self._store()
+        store.apply_patch(
+            SettingsPatch(briefing=BriefingPatch(default_mode="lynx"))
         )
 
-        self.assertEqual(store.get_snapshot().briefing.default_mode, "apodemus")
-        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "apodemus")
+        self.assertEqual(store.get_snapshot().briefing.default_mode, "lynx")
+        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "lynx")
 
     def test_immutable_snapshot(self) -> None:
         store = self._store()
@@ -243,7 +244,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         )
         store = self._store()
         snap = store.get_snapshot()
-        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "panthera")
         self.assertEqual(snap.voice.engine, "pyttsx3")
         self.assertEqual(snap.voice.gender, "male")
 
@@ -258,7 +259,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
         )
         store = self._store()
-        self.assertEqual(store.get_snapshot().ask_apex.cloud_agent, "panthera")
+        self.assertEqual(store.get_snapshot().ask_apex.agent, "panthera")
 
         normalized = normalize_layer(
             {
@@ -269,14 +270,14 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
             layer_name="test",
         )
-        self.assertEqual(normalized["ask_apex"]["cloud_agent"], "panthera")
+        self.assertEqual(normalized["ask_apex"]["agent"], "panthera")
 
     def test_malformed_local_uses_base_with_warning(self) -> None:
         self.local_path.write_text("{not-json", encoding="utf-8")
         store = self._store()
         snap = store.get_snapshot()
         self.assertTrue(snap.features.weather)
-        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "panthera")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
         self.assertFalse(store.local_override_active)
@@ -302,10 +303,9 @@ class SettingsStoreLoadTests(unittest.TestCase):
         )
         store = self._store()
         snap = store.get_snapshot()
-        # One invalid known value rejects every local editable override.
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.modules.f1)
-        self.assertEqual(snap.ask_apex.cloud_agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "panthera")
         self.assertEqual(snap.voice.engine, "google")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
@@ -344,7 +344,7 @@ class SettingsStorePatchTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "cloud_agent": "comet"},
+                "ask_apex": {"enabled": True, "default_profile": "comet"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",
@@ -358,49 +358,40 @@ class SettingsStorePatchTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
 
-    def test_local_agents_are_valid_patch_values(self) -> None:
-        for profile in ("sorex", "mus", "apodemus", "neotoma"):
-            with self.subTest(agent=profile):
+    def test_lynx_models_are_valid_patch_values(self) -> None:
+        for model in ("qwen3:1.7b", "qwen3:4b-instruct", "gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf"):
+            with self.subTest(model=model):
                 patch = SettingsPatch.model_validate(
-                    {"ask_apex": {"local_agent": profile}}
+                    {"ask_apex": {"lynx": {"model": model}}}
                 )
-                self.assertEqual(patch.ask_apex.local_agent, profile)
+                self.assertEqual(patch.ask_apex.lynx.model, model)
 
-    def test_local_context_window_patch_values(self) -> None:
+    def test_lynx_context_window_patch_values(self) -> None:
         patch = SettingsPatch.model_validate(
             {
                 "ask_apex": {
-                    "local_context_windows": {
-                        "apodemus": 32768,
-                        "neotoma": 65536,
+                    "lynx": {
+                        "context_window": 32768,
                     }
                 }
             }
         )
-        self.assertEqual(
-            patch.ask_apex.local_context_windows,
-            {"apodemus": 32768, "neotoma": 65536},
-        )
+        self.assertEqual(patch.ask_apex.lynx.context_window, 32768)
 
-    def test_local_reasoning_mode_patch_values(self) -> None:
+    def test_lynx_reasoning_mode_patch_values(self) -> None:
         patch = SettingsPatch.model_validate(
             {
                 "ask_apex": {
-                    "local_reasoning_modes": {
-                        "mus": "none",
-                        "apodemus": "focused",
-                        "neotoma": "none",
+                    "lynx": {
+                        "reasoning_mode": "focused",
                     }
                 }
             }
         )
-        self.assertEqual(
-            patch.ask_apex.local_reasoning_modes,
-            {"mus": "none", "apodemus": "focused", "neotoma": "none"},
-        )
+        self.assertEqual(patch.ask_apex.lynx.reasoning_mode, "focused")
         with self.assertRaises(ValidationError):
             SettingsPatch.model_validate(
-                {"ask_apex": {"local_reasoning_modes": {"mus": "focused"}}}
+                {"ask_apex": {"lynx": {"reasoning_mode": "invalid"}}}
             )
 
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
@@ -552,16 +543,28 @@ class SettingsStorePatchTests(unittest.TestCase):
     def test_same_field_last_successful_write_wins(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(ask_apex=AgentSettingsPatch(cloud_agent="neofelis"))
+            SettingsPatch(
+                ask_apex=AgentSettingsPatch(
+                    panthera=PantheraSettingsPatch(
+                        provider="gemini", model="gemini-3.6-flash"
+                    )
+                )
+            )
         )
         store.apply_patch(
-            SettingsPatch(ask_apex=AgentSettingsPatch(cloud_agent="orcinus"))
+            SettingsPatch(
+                ask_apex=AgentSettingsPatch(
+                    panthera=PantheraSettingsPatch(
+                        provider="xai", model="grok-4.5"
+                    )
+                )
+            )
         )
         self.assertEqual(
-            store.get_snapshot().ask_apex.cloud_agent, "orcinus"
+            store.get_snapshot().ask_apex.panthera.model, "grok-4.5"
         )
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(written["ask_apex"]["cloud_agent"], "orcinus")
+        self.assertEqual(written["ask_apex"]["panthera"]["model"], "grok-4.5")
 
 
 class SettingsStoreConcurrencyTests(unittest.TestCase):
@@ -582,7 +585,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "cloud_agent": "comet"},
+                "ask_apex": {"enabled": True, "default_profile": "comet"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",
@@ -604,7 +607,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                 for _ in range(40):
                     snap = self.store.get_snapshot()
                     _ = snap.features.weather
-                    _ = snap.ask_apex.cloud_agent
+                    _ = snap.ask_apex.agent
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
 
@@ -644,10 +647,10 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
             thread.join(timeout=30)
         self.assertEqual(errors, [])
         snap = self.store.get_snapshot()
-        # Both writers should have left the store in a valid state.
         self.assertIn(snap.features.weather, (True, False))
         self.assertIn(snap.modules.f1, (True, False))
         self.assertTrue(self.local_path.is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

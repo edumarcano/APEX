@@ -20,11 +20,12 @@ function profile(
     sort_order: 0,
     capabilities: [],
     native_tools: {},
-    provider: mode === 'cloud' ? 'openai' : key === 'apodemus' ? 'llama_cpp' : 'ollama',
+    provider: mode === 'cloud' ? 'openai' : 'llama_cpp',
     version: '7.4',
     runtime: mode,
     tier: 'stable',
     stability: 'stable',
+    model_stability: 'stable',
     effort_options: mode === 'cloud' ? ['light', 'focused', 'extended'] : null,
     default_effort: mode === 'cloud' ? 'focused' : null,
     context_window: null,
@@ -49,7 +50,7 @@ function profile(
 
 const AVAILABLE_PROFILES = [
   profile('panthera'),
-  profile('apodemus'),
+  profile('lynx'),
 ]
 
 function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSelector>> = {}) {
@@ -81,7 +82,7 @@ describe('BriefingModeSelector', () => {
     expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
     expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
     expect(within(listbox).getByText('Full briefing · cloud synthesis')).toBeVisible()
-    expect(within(listbox).getByText('Full briefing · efficient llama.cpp synthesis')).toBeVisible()
+    expect(within(listbox).getByText('Full briefing · local synthesis')).toBeVisible()
     expect(within(listbox).getByText('Structured facts · no model or synthesis')).toBeVisible()
     expect(within(listbox).queryByRole('option', { name: /^Mus\b/i })).not.toBeInTheDocument()
     expect(within(listbox).queryByRole('option', { name: /^Sorex\b/i })).not.toBeInTheDocument()
@@ -94,12 +95,12 @@ describe('BriefingModeSelector', () => {
       onChange: onModeChange,
       agents: [
         profile('panthera'),
-        profile('apodemus', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
+        profile('lynx', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
       ],
     })
 
     await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
-    expect(screen.getByRole('option', { name: /^Apodemus\b/i })).toBeDisabled()
+    expect(screen.getByRole('option', { name: /^Lynx\b/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured_digest')

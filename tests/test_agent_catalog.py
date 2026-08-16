@@ -17,21 +17,23 @@ from core.agent.catalog import (
 from core.agent.types import AgentQueryRequest
 from core.api.cortex import build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
-from core.settings.models import AgentSettings
+from core.settings.models import AgentSettings, LynxSettings, PantheraSettings
+from tests.support.agent_fixtures import lynx_settings, panthera_settings
 
 
 class AgentSelectionTests(unittest.TestCase):
-    def test_dev_mode_selects_acinonyx(self) -> None:
-        agent_settings = AgentSettings()
+    def test_sandbox_mode_selects_panthera_with_sandbox_flag(self) -> None:
+        agent_settings = AgentSettings(sandbox_mode=True)
         mode, profile, effort = resolve_agent_selection(
             agent_settings, dev_mode=True
         )
-        self.assertEqual((mode, profile, effort), ("cloud", "acinonyx", "focused"))
+        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "focused"))
+        self.assertTrue(agent_settings.sandbox_mode)
 
     def test_cloud_settings_resolve_profile_and_effort(self) -> None:
-        agent_settings = AgentSettings(
-            runtime="cloud",
-            cloud_agent="neofelis",
+        agent_settings = panthera_settings(
+            provider="gemini",
+            model="gemini-3.6-flash",
             effort="extended",
         )
         mode, profile, effort = resolve_agent_selection(
@@ -40,30 +42,27 @@ class AgentSelectionTests(unittest.TestCase):
         self.assertEqual((mode, profile, effort), ("cloud", "panthera", "extended"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
-        agent_settings = AgentSettings(runtime="local", local_agent="sorex")
+        agent_settings = lynx_settings(runtime="ollama", model="qwen3:1.7b")
         mode, profile, effort = resolve_agent_selection(
             agent_settings, dev_mode=False
         )
-        self.assertEqual((mode, profile, effort), ("local", "apodemus", None))
+        self.assertEqual((mode, profile, effort), ("local", "lynx", None))
 
-    def test_hidden_local_agent_falls_back_outside_dev_mode(self) -> None:
-        agent_settings = AgentSettings(runtime="local", local_agent="mus")
-        self.assertEqual(
-            resolve_agent_selection(agent_settings, dev_mode=False),
-            ("local", "apodemus", None),
-        )
-
-    def test_dev_mode_keeps_mus_selectable(self) -> None:
-        agent_settings = AgentSettings(runtime="local", local_agent="mus")
-        self.assertTrue(is_agent_visible("mus", dev_mode=True))
-        self.assertEqual(agent_settings.local_agent, "mus")
+    def test_dev_only_local_model_remains_selectable_in_dev_mode(self) -> None:
+        agent_settings = lynx_settings(runtime="ollama", model="qwen3:4b-instruct")
+        self.assertTrue(is_agent_visible("lynx", dev_mode=True))
+        self.assertEqual(agent_settings.lynx.model, "qwen3:4b-instruct")
 
 
 class CredentialIsolationTests(unittest.TestCase):
-    def test_each_cloud_agent_uses_distinct_env_keys(self) -> None:
+    def test_cloud_models_use_provider_env_keys(self) -> None:
+        from core.agent.model_catalog import get_model_profile
+
         env_keys = {
-            AGENT_SPECS[key].credential_env
-            for key in ("panthera", "neofelis", "delphinus", "orcinus", "acinonyx")
+            get_model_profile("gpt-5.6-luna").credential_env,
+            get_model_profile("gemini-3.6-flash").credential_env,
+            get_model_profile("grok-4.3").credential_env,
+            get_model_profile("gemini-3.5-flash-lite").credential_env,
         }
         self.assertEqual(
             env_keys,
@@ -71,7 +70,6 @@ class CredentialIsolationTests(unittest.TestCase):
                 "OPENAI_API_KEY",
                 "GEMINI_API_KEY",
                 "XAI_API_KEY",
-                "GEMINI_SANDBOX_API_KEY",
             },
         )
 
@@ -80,34 +78,46 @@ class CredentialIsolationTests(unittest.TestCase):
             "os.environ",
             {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": ""},
             clear=False,
-        ):
+        ), mock.patch(
+            "core.agent.catalog.resolve_selected_model_profile"
+        ) as resolve_profile:
+            from core.agent.model_catalog import get_model_profile
+
+            resolve_profile.side_effect = [
+                get_model_profile("gpt-5.6-luna"),
+                get_model_profile("gemini-3.6-flash"),
+            ]
             self.assertTrue(agent_has_credentials("panthera"))
-            self.assertFalse(agent_has_credentials("neofelis"))
+            self.assertFalse(agent_has_credentials("panthera"))
 
     def test_missing_credential_message_uses_provider_display_names(self) -> None:
-        self.assertIn("Google API key", credential_missing_message("neofelis"))
-        self.assertIn("SpaceXAI API key", credential_missing_message("orcinus"))
-        self.assertIn("GEMINI_API_KEY", credential_missing_message("neofelis"))
-        self.assertIn("XAI_API_KEY", credential_missing_message("orcinus"))
+        with mock.patch(
+            "core.agent.catalog.resolve_selected_model_profile"
+        ) as resolve_profile:
+            from core.agent.model_catalog import get_model_profile
+
+            resolve_profile.side_effect = lambda *_args: get_model_profile("gpt-5.6-luna")
+            self.assertIn("OpenAI API key", credential_missing_message("panthera"))
+            resolve_profile.side_effect = lambda *_args: get_model_profile("gemini-3.6-flash")
+            self.assertIn("Google API key", credential_missing_message("panthera"))
+            resolve_profile.side_effect = lambda *_args: get_model_profile("grok-4.5")
+            self.assertIn("SpaceXAI API key", credential_missing_message("panthera"))
 
 
 class DemoRosterTests(unittest.TestCase):
-    def test_runtime_roster_hides_dev_only_agents_outside_dev(self) -> None:
+    def test_runtime_roster_exposes_panthera_and_lynx(self) -> None:
         visible = runtime_agent_order(dev_mode=False)
-        self.assertNotIn("acinonyx", visible)
-        self.assertEqual(visible, ("panthera", "apodemus", "neotoma"))
+        self.assertEqual(visible, ("panthera", "lynx"))
         development = runtime_agent_order(dev_mode=True)
-        self.assertEqual(development[0], "acinonyx")
-        self.assertIn("unnamed-experimental-agent", development)
-        self.assertTrue(set(visible).issubset(development))
+        self.assertEqual(development, ("panthera", "lynx"))
 
-    def test_demo_agent_query_rejects_hidden_profile(self) -> None:
+    def test_demo_agent_query_rejects_unknown_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
 
         with mock.patch("core.agent.catalog.is_agent_visible", return_value=False):
             with self.assertRaises(HTTPException) as ctx:
                 run_demo_agent_query(
-                    AgentQueryRequest(prompt="status", agent="acinonyx")
+                    AgentQueryRequest(prompt="status", agent="panthera")
                 )
         self.assertEqual(ctx.exception.status_code, 404)
 
@@ -117,9 +127,12 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         clear_cloud_status_cache()
         self.addCleanup(clear_cloud_status_cache)
 
-    def test_neofelis_reports_configured_model_and_effective_native_tools(self) -> None:
+    def test_panthera_reports_configured_model_and_effective_native_tools(self) -> None:
         settings = mock.Mock()
-        settings.ask_apex.neofelis_google_search_enabled = False
+        settings.ask_apex.panthera.hosted_tools.google_search = False
+        settings.ask_apex.panthera.hosted_tools.google_maps = True
+        settings.ask_apex.panthera.hosted_tools.x_search = True
+        settings.ask_apex.panthera.model = "gemini-3.6-flash"
         backend = mock.Mock()
         backend.provider = "ollama"
         backend.enabled = False
@@ -148,18 +161,24 @@ class ProfileStatusMetadataTests(unittest.TestCase):
                 return_value="none",
             ),
             mock.patch("core.api.cortex.get_settings_store") as store,
+            mock.patch(
+                "core.api.cortex.resolve_selected_model_profile"
+            ) as resolve_profile,
         ):
+            from core.agent.model_catalog import get_model_profile
+
+            resolve_profile.return_value = get_model_profile("gemini-3.6-flash")
             store.return_value.get_snapshot.return_value = settings
             profiles = build_agent_statuses()
 
-        neofelis = next(item for item in profiles if item.key == "neofelis")
-        self.assertTrue(neofelis.description)
-        self.assertEqual(neofelis.status, "configured")
-        self.assertEqual(neofelis.status_source, "configuration")
-        self.assertIsNone(neofelis.provider_account_tier)
+        panthera = next(item for item in profiles if item.key == "panthera")
+        self.assertTrue(panthera.description)
+        self.assertEqual(panthera.status, "configured")
+        self.assertEqual(panthera.status_source, "configuration")
+        self.assertIsNone(panthera.provider_account_tier)
         self.assertEqual(
-            neofelis.native_tools,
-            {"google_search": False, "google_maps": True},
+            panthera.native_tools,
+            {"google_search": False, "google_maps": True, "x_search": False},
         )
         for profile in profiles:
             with self.subTest(agent=profile.key):
@@ -185,6 +204,7 @@ class ProfileStatusMetadataTests(unittest.TestCase):
                         profile.reasoning_mode_options,
                     )
                     self.assertIn(profile.reasoning_mode, profile.reasoning_mode_options)
+
 
 if __name__ == "__main__":
     unittest.main()

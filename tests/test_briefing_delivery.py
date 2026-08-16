@@ -206,17 +206,17 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             stale = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": "stale", "mode": "apodemus"},
+                json={"snapshot_id": "stale", "mode": "lynx"},
             )
             response = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": snap.snapshot_id, "mode": "apodemus"},
+                json={"snapshot_id": snap.snapshot_id, "mode": "lynx"},
             )
         self.assertEqual(stale.status_code, 409)
         self.assertEqual(response.status_code, 200)
         metadata = response.json()["metadata"]
         self.assertEqual(metadata["snapshot_id"], "demo-current")
-        self.assertEqual(metadata["briefing_mode"], "apodemus")
+        self.assertEqual(metadata["briefing_mode"], "lynx")
 
     def test_removed_ollama_briefing_modes_are_rejected(self) -> None:
         snap = self._seed_snapshot("briefing-mode-validation")

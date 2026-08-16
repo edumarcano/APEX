@@ -1,9 +1,9 @@
 import type {
-  AgentRuntime,
+  AgentKey,
   CloudEffort,
-  CloudSettingsAgent,
-  LocalSettingsAgent,
+  CloudProvider,
   LocalReasoningMode,
+  LocalRuntime,
   TtsEngine,
 } from './telemetry'
 
@@ -14,9 +14,7 @@ export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
-export type BriefingMode = 'panthera' | 'apodemus' | 'structured_digest'
-export type LocalContextWindows = Record<string, number>
-export type LocalReasoningModes = Record<string, LocalReasoningMode>
+export type BriefingMode = 'panthera' | 'lynx' | 'structured_digest'
 
 export interface LlamaCppSettings {
   enabled: boolean
@@ -58,18 +56,32 @@ export interface MarketSettings {
   symbols: string[]
 }
 
+export interface PantheraHostedToolsSettings {
+  google_search: boolean
+  google_maps: boolean
+  x_search: boolean
+}
+
+export interface PantheraSettings {
+  provider: CloudProvider
+  model: string
+  effort: CloudEffort
+  hosted_tools: PantheraHostedToolsSettings
+}
+
+export interface LynxSettings {
+  runtime: LocalRuntime
+  model: string
+  context_window: number
+  reasoning_mode: LocalReasoningMode
+}
+
 export interface AgentSettings {
   enabled: boolean
-  runtime: AgentRuntime
-  cloud_agent: CloudSettingsAgent
-  effort: CloudEffort
-  local_agent: LocalSettingsAgent
-  local_context_windows: LocalContextWindows
-  local_reasoning_modes: LocalReasoningModes
-  neofelis_google_search_enabled: boolean
-  neofelis_google_maps_enabled: boolean
-  delphinus_x_search_enabled: boolean
-  orcinus_x_search_enabled: boolean
+  agent: AgentKey
+  sandbox_mode: boolean
+  panthera: PantheraSettings
+  lynx: LynxSettings
 }
 
 export interface ToolProfileSettings {
@@ -147,18 +159,32 @@ export interface MarketPatch {
   symbols?: string[]
 }
 
+export interface PantheraHostedToolsPatch {
+  google_search?: boolean
+  google_maps?: boolean
+  x_search?: boolean
+}
+
+export interface PantheraSettingsPatch {
+  provider?: CloudProvider
+  model?: string
+  effort?: CloudEffort
+  hosted_tools?: PantheraHostedToolsPatch
+}
+
+export interface LynxSettingsPatch {
+  runtime?: LocalRuntime
+  model?: string
+  context_window?: number
+  reasoning_mode?: LocalReasoningMode
+}
+
 export interface AgentSettingsPatch {
   enabled?: boolean
-  runtime?: AgentRuntime
-  cloud_agent?: CloudSettingsAgent
-  effort?: CloudEffort
-  local_agent?: LocalSettingsAgent
-  local_context_windows?: LocalContextWindows
-  local_reasoning_modes?: LocalReasoningModes
-  neofelis_google_search_enabled?: boolean
-  neofelis_google_maps_enabled?: boolean
-  delphinus_x_search_enabled?: boolean
-  orcinus_x_search_enabled?: boolean
+  agent?: AgentKey
+  sandbox_mode?: boolean
+  panthera?: PantheraSettingsPatch
+  lynx?: LynxSettingsPatch
 }
 
 export interface ToolProfilesPatch {

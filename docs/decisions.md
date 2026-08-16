@@ -156,7 +156,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Apodemus, and Structured Digest rather than choosing one automatically without showing the user.
+**Decision.** The HUD offers Panthera, Lynx, and Structured Digest rather than choosing one automatically without showing the user.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free output are meaningful personal choices. The selected mode should make that choice visible before execution.
 
@@ -182,23 +182,29 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ## Local inference
 
+### Consolidate the Agent family to Panthera and Lynx
+
+**Decision.** APEX exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Provider, runtime, model, context, reasoning, effort, and hosted-tool settings live underneath those identities.
+
+**Why.** The earlier genus-based roster made every model/provider combination look like a separate product Agent. That was useful for experimentation, but the normal UI became broader than the roles APEX actually distinguishes today: cloud versus local.
+
+**Trade-off.** Former Agent keys remain as migration and development-only model entries. Documentation, settings migration, and benchmarks must treat models as configuration rather than separate Apex Agents.
+
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex exposes named Apex Agents rather than raw provider model IDs. The normal roster shows Panthera, Apodemus, and Neotoma, while the wider registered Agent family is surfaced in `DEV_MODE`.
+**Decision.** Cortex exposes Panthera and Lynx rather than raw provider model IDs. Each Agent card shows the selected model and exposes the registered model catalog underneath it.
 
-**Why.** The names communicate each Agent's intended role while provider model IDs remain implementation details. An Agent identity can survive a model change as long as its role still makes sense.
+**Why.** The names communicate the cloud/local split while provider model IDs remain implementation details. An Agent identity can survive a model change as long as its role still makes sense.
 
-**Trade-off.** Agent documentation must remain synchronized with current model mappings, stability labels, and visibility policy.
+**Trade-off.** Agent documentation must remain synchronized with current default model mappings, stability labels, and development-only model visibility.
 
-### Separate Agent visibility from Agent stability
+### Separate development-only models from product Agents
 
-**Decision.** Agent visibility and Agent stability are separate. The normal roster is limited to Panthera, Apodemus, and Neotoma, while other registered Agents stay out of the normal selector.
+**Decision.** Development-only models remain in the registered model catalog and appear in each Agent's `available_models` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
-The `dev_only` flag controls roster visibility; it does not by itself block execution by registered key. Acinonyx has a separate hard `DEV_MODE` boundary on its public Cortex routes.
+**Why.** I still need safe places to try alternate cloud and local models without expanding the normal product roster again.
 
-**Why.** Some hidden Agents are already technically stable, but APEX does not yet give them enough distinct behavior to justify a permanent place in the normal roster. Keeping them in `DEV_MODE` preserves their identities and implementations without making the product look broader than it is.
-
-**Trade-off.** A stable Agent may still be hidden from the normal UI. Documentation, tests, and catalog metadata therefore have to treat technical stability and product visibility as separate things. An Agent can return to the normal roster when its role becomes meaningfully distinct in APEX.
+**Trade-off.** Documentation and tests must distinguish durable Agent identities from replaceable model configuration.
 
 ### Keep Agent sessions stateless on the server
 
@@ -224,29 +230,29 @@ The `dev_only` flag controls roster visibility; it does not by itself block exec
 
 **Trade-off.** APEX never installs, bundles, or updates llama.cpp and never downloads model weights. Managed mode accepts only loopback hosts, stops only processes APEX launched, and does not expose local filesystem paths outside Runtime Settings.
 
-### Use stable runtime aliases for llama.cpp Agents
+### Use stable runtime aliases for llama.cpp models
 
-**Decision.** Apodemus, Neotoma, and the Unnamed Experimental Agent load through stable llama.cpp aliases instead of exposing raw GGUF paths or an arbitrary context slider.
+**Decision.** Lynx loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider. Legacy Agent-based alias names still resolve for existing presets.
 
-**Why.** I want a small set of tested context sizes so loading, memory checks, and documentation stay predictable while model paths remain behind stable Agent names.
+**Why.** I want a small set of tested context sizes so loading, memory checks, and documentation stay predictable while model paths remain behind stable aliases.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. Apodemus 132K and Neotoma 64K are explicitly high-resource, while the Unnamed Experimental Agent remains limited to smaller evaluation presets. A model can support a larger maximum context than APEX chooses to expose.
+**Trade-off.** Adding a new context requires a router preset and settings migration work. High-resource presets such as `gemma-4-e2b-132k` and `gemma-4-e4b-64k` are explicitly marked as such. A model can support a larger maximum context than APEX chooses to expose.
 
 ### Make local reasoning capability-driven and private
 
-**Decision.** Local reasoning preferences are saved per Agent and default to `none`. Apodemus, Neotoma, and the Unnamed Experimental Agent expose `None` and `Focused`; Mus and Sorex expose only `None`. For llama.cpp, `None` sends `reasoning_effort: "none"`, while `Focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
+**Decision.** Lynx reasoning preferences default to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. For llama.cpp, `none` sends `reasoning_effort: "none"`, while `focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
 
-**Why.** Local models do not all support the same reasoning controls as cloud Agents. The HUD only shows reasoning options that each local Agent actually supports, and hidden reasoning stays out of the visible response.
+**Why.** Local models do not all support the same reasoning controls as cloud models. The HUD only shows reasoning options that the selected Lynx model actually supports, and hidden reasoning stays out of the visible response.
 
 **Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry. llama.cpp runtime data only gives conservative completion headroom, and model-specific sampling stays unchanged until benchmarks justify tuning it.
 
-### Keep Apodemus as an explicit briefing mode
+### Keep Lynx as an explicit briefing mode
 
-**Decision.** Apodemus is an explicit briefing mode and Panthera's only local fallback before Structured Digest.
+**Decision.** Lynx is an explicit briefing mode and Panthera's only local fallback before Structured Digest.
 
-**Why.** Choosing Apodemus should mean using Apodemus, not silently replacing it with another local Agent. Cold loads use a 16K context, while an already loaded compatible llama.cpp alias can be reused.
+**Why.** Choosing Lynx should mean using Lynx, not silently replacing it with another local model. Cold loads use a 16K context, while an already loaded compatible llama.cpp alias can be reused.
 
-**Trade-off.** If llama.cpp is unavailable or blocked by resource checks, an explicit Apodemus request falls directly to Structured Digest.
+**Trade-off.** If the configured local runtime is unavailable or blocked by resource checks, an explicit Lynx request falls directly to Structured Digest.
 
 ## Security
 

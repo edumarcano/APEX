@@ -40,7 +40,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
-    briefing_mode: Literal["panthera", "apodemus", "structured_digest"] | None = Field(
+    briefing_mode: Literal["panthera", "lynx", "structured_digest"] | None = Field(
         default=None,
         description="Explicit briefing mode used for this run.",
     )
@@ -48,7 +48,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_provider: (
         Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"] | None
     ) = None
-    synthesis_agent: Literal["panthera", "apodemus"] | None = None
+    synthesis_agent: Literal["panthera", "lynx"] | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -533,6 +533,27 @@ class LocalLoadedModelStatus(BaseModel):
     )
 
 
+class AgentModelCatalogEntry(BaseModel):
+    """One selectable cloud or local model exposed in the Agent catalog."""
+
+    model_id: str = Field(description="Stable model identifier from the registry.")
+    display_name: str = Field(description="Human-readable model label for the HUD.")
+    provider: Literal["openai", "gemini", "xai", "ollama", "llama_cpp"] = Field(
+        description="Inference provider or local runtime for this model.",
+    )
+    stability: Literal["stable", "preview", "experimental"] = Field(
+        description="Release stage classification for this model.",
+    )
+    dev_only: bool = Field(
+        default=False,
+        description="Whether this model is visible only in DEV_MODE.",
+    )
+    credentials_configured: bool = Field(
+        default=True,
+        description="Whether required provider credentials are configured.",
+    )
+
+
 class AgentStatus(BaseModel):
     key: str = Field(description="Stable Agent identifier used by the HUD.")
     display_name: str = Field(description="Human-readable Apex Agent label.")
@@ -637,6 +658,14 @@ class AgentStatus(BaseModel):
         default=None,
         description="Runtime details reported by the local provider for the loaded model.",
     )
+    available_providers: list[str] | None = Field(
+        default=None,
+        description="Selectable cloud providers or local runtimes for this Agent.",
+    )
+    available_models: list[AgentModelCatalogEntry] | None = Field(
+        default=None,
+        description="Registered models available for selection in the HUD.",
+    )
 
 
 class ToolPreflightRequest(BaseModel):
@@ -647,7 +676,7 @@ class ToolPreflightRequest(BaseModel):
     tool_profile_id: str | None = None
     prompt: str = ""
     history: list[AgentMessage] = Field(default_factory=list)
-    history_partition: Literal["production", "acinonyx"] = "production"
+    history_partition: Literal["production", "sandbox"] = "production"
     snapshot_id: str | None = None
     briefing_id: int | None = Field(default=None, ge=1)
 
@@ -699,13 +728,7 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal[
-        "mus",
-        "sorex",
-        "apodemus",
-        "neotoma",
-        "unnamed-experimental-agent",
-    ] = Field(
+    agent: Literal["lynx"] = Field(
         description="Local Apex Agent to pre-warm in local runtime memory."
     )
 
@@ -715,13 +738,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal[
-        "mus",
-        "sorex",
-        "apodemus",
-        "neotoma",
-        "unnamed-experimental-agent",
-    ] = Field(
+    agent: Literal["lynx"] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 
@@ -744,7 +761,7 @@ class BriefingHistoryRecord(BaseModel):
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
     provider: Literal["ollama", "llama_cpp", "raw", "demo", "openai"] | None = None
-    agent: Literal["panthera", "apodemus"] | None = None
+    agent: Literal["panthera", "lynx"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
@@ -841,7 +858,7 @@ class VoiceSpeakResponse(BaseModel):
 
 
 class BriefingTriggerRequest(BaseModel):
-    mode: Literal["panthera", "apodemus", "structured_digest"] | None = Field(
+    mode: Literal["panthera", "lynx", "structured_digest"] | None = Field(
         default=None,
         description="Optional briefing mode override; omitted requests use the saved default.",
     )
@@ -853,7 +870,7 @@ class BriefingGenerateRequest(BaseModel):
         min_length=1,
         description="Process-current telemetry snapshot identity to synthesize from.",
     )
-    mode: Literal["panthera", "apodemus", "structured_digest"] = Field(
+    mode: Literal["panthera", "lynx", "structured_digest"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
     )

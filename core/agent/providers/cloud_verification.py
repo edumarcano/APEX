@@ -10,7 +10,7 @@ from typing import Literal
 
 import requests
 
-from core.agent.catalog import AGENT_SPECS
+from core.agent.catalog import AGENT_SPECS, resolve_selected_model_profile
 
 CloudStatus = Literal[
     "configured",
@@ -59,10 +59,13 @@ def cloud_status(agent_key: str) -> CloudStatusRecord:
 
 def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
     """Force a bounded model-metadata probe and cache its sanitized result."""
-    spec = AGENT_SPECS[agent_key]
-    if spec.runtime != "cloud" or spec.credential_env is None:
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None or spec.runtime != "cloud":
         raise ValueError("Cloud verification requires a credential-backed cloud Agent.")
-    api_key = os.getenv(spec.credential_env)
+    model_profile = resolve_selected_model_profile(agent_key)
+    if model_profile.credential_env is None:
+        raise ValueError("Cloud verification requires configured credentials.")
+    api_key = os.getenv(model_profile.credential_env)
     if not api_key:
         raise ValueError("Cloud verification requires configured credentials.")
 
@@ -71,7 +74,9 @@ def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
             raise RuntimeError("Cloud verification is already in progress.")
         _IN_FLIGHT.add(agent_key)
     try:
-        status, reason = _probe_model(spec.provider, spec.api_model, api_key)
+        status, reason = _probe_model(
+            model_profile.provider, model_profile.model_id, api_key
+        )
         record = _record(status, reason, "verification")
         with _LOCK:
             previous = _CACHE.get(agent_key)

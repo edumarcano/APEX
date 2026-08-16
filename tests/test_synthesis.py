@@ -4,12 +4,21 @@ import sqlite3
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
+from core.agent.model_catalog import get_model_profile
+from core.agent.catalog import resolve_effort
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.synthesis.models import CalendarFact, F1Fact, SynthesisInput, SynthesisResult
 from core.synthesis.router import SynthesisRouter, WarmupHandle
+from tests.support.agent_fixtures import (
+    ACINONYX_MODEL,
+    GEMMA_E2B_ALIAS,
+    MUS_MODEL,
+    NEOFELIS_MODEL,
+    build_lynx_profile,
+    build_panthera_profile,
+)
 
 
 def sample_input(**overrides: object) -> SynthesisInput:
@@ -72,18 +81,18 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, "gpt-5.6-luna")
         self.assertEqual(result.provider_ms, 123.4)
 
-    def test_panthera_falls_back_to_apodemus(self) -> None:
+    def test_panthera_falls_back_to_lynx(self) -> None:
         router = SynthesisRouter()
-        expected = SynthesisResult(briefing="Local.", provider="llama_cpp", agent="apodemus")
+        expected = SynthesisResult(briefing="Local.", provider="llama_cpp", agent="lynx")
         with patch.object(router, "_panthera", side_effect=RuntimeError("openai_error")), patch.object(
             router, "_try_panthera_local_fallback", return_value=(expected, "")
         ) as local_fallback:
             result = router.synthesize(sample_input(), "cloud")
-        self.assertEqual(result.agent, "apodemus")
+        self.assertEqual(result.agent, "lynx")
         self.assertEqual(result.fallback_reason, "openai_error")
-        local_fallback.assert_called_once_with(unittest.mock.ANY, "apodemus")
+        local_fallback.assert_called_once_with(unittest.mock.ANY, "lynx")
 
-    def test_panthera_falls_back_to_structured_digest_after_apodemus(self) -> None:
+    def test_panthera_falls_back_to_structured_digest_after_lynx(self) -> None:
         router = SynthesisRouter()
         with patch.object(router, "_panthera", side_effect=RuntimeError("openai_unavailable")), patch.object(
             router,
@@ -97,11 +106,11 @@ class RoutingTests(unittest.TestCase):
             result.fallback_steps,
             [
                 "panthera:openai_unavailable",
-                "apodemus:local_insufficient_ram",
+                "lynx:local_insufficient_ram",
                 "structured_digest:resolved",
             ],
         )
-        local_fallback.assert_called_once_with(unittest.mock.ANY, "apodemus")
+        local_fallback.assert_called_once_with(unittest.mock.ANY, "lynx")
 
     def test_late_warmup_returns_raw_without_cancelling_worker(self) -> None:
         router = SynthesisRouter()
@@ -137,28 +146,28 @@ class RoutingTests(unittest.TestCase):
         ) as generate, patch(
             "core.synthesis.router.PRIMARY_SYNTHESIS_PROMPT", "PRIMARY_PROMPT"
         ):
-            result = router._local(sample_input(), "apodemus", None)
+            result = router._local(sample_input(), "lynx", None)
         messages, tools, profile = generate.call_args.args
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
         self.assertEqual(profile.reasoning_mode, "none")
         self.assertEqual(profile.final_answer_max_tokens, 512)
-        self.assertTrue(profile.system_instruction.startswith("You are Apex Apodemus"))
+        self.assertTrue(profile.system_instruction.startswith("You are Apex Lynx"))
         self.assertIn("PRIMARY_PROMPT", profile.system_instruction)
-        self.assertEqual(result.agent, "apodemus")
+        self.assertEqual(result.agent, "lynx")
 
-    def test_explicit_apodemus_synthesis_uses_llama_cpp_at_16k(self) -> None:
+    def test_explicit_lynx_synthesis_uses_llama_cpp_at_16k(self) -> None:
         router = SynthesisRouter()
         response = ProviderTurnResult(
             message=AgentMessage(
                 role="agent",
                 content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
             ),
-            resolved_model="apodemus-16k",
+            resolved_model=GEMMA_E2B_ALIAS,
         )
         handle = WarmupHandle(
-            agent_key="apodemus",
-            model_ref=LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+            agent_key="lynx",
+            model_ref=LocalModelRef(provider="llama_cpp", model=GEMMA_E2B_ALIAS),
             success=True,
         )
         handle.event.set()
@@ -174,32 +183,32 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.LlamaCppProvider.generate_turn",
             return_value=response,
         ) as generate:
-            result = router.synthesize_mode(sample_input(), "apodemus")
+            result = router.synthesize_mode(sample_input(), "lynx")
 
         messages, tools, profile = generate.call_args.args
         self.assertEqual(result.provider, "llama_cpp")
-        self.assertEqual(result.agent, "apodemus")
-        self.assertEqual(result.resolved_model, "apodemus-16k")
+        self.assertEqual(result.agent, "lynx")
+        self.assertEqual(result.resolved_model, GEMMA_E2B_ALIAS)
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
-        self.assertEqual(profile.runtime_model_id, "apodemus-16k")
+        self.assertEqual(profile.runtime_model_id, GEMMA_E2B_ALIAS)
         self.assertEqual(profile.context_window, 16_384)
         self.assertEqual(profile.reasoning_mode, "none")
         self.assertEqual(profile.final_answer_max_tokens, 512)
-        self.assertIn(("generating", "llama_cpp", "apodemus", None), states)
+        self.assertIn(("generating", "llama_cpp", "lynx", None), states)
 
-    def test_resident_apodemus_reuses_the_actual_context_alias(self) -> None:
+    def test_resident_lynx_reuses_the_actual_context_alias(self) -> None:
         router = SynthesisRouter()
-        resident = LocalModelRef(provider="llama_cpp", model="apodemus-4k")
+        resident = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-4k")
         response = ProviderTurnResult(
             message=AgentMessage(
                 role="agent",
                 content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
             ),
-            resolved_model="apodemus-4k",
+            resolved_model="gemma-4-e2b-4k",
         )
         with patch(
-            "core.synthesis.router.resident_agent_key", return_value="apodemus"
+            "core.synthesis.router.resident_agent_key", return_value="lynx"
         ), patch(
             "core.synthesis.router.resident_local_model_ref",
             return_value=resident,
@@ -209,19 +218,19 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.LlamaCppProvider.generate_turn",
             return_value=response,
         ) as generate, patch.object(router, "start_agent_warmup") as warmup:
-            result = router.synthesize_mode(sample_input(), "apodemus")
+            result = router.synthesize_mode(sample_input(), "lynx")
 
         profile = generate.call_args.args[2]
         self.assertEqual(result.provider, "llama_cpp")
-        self.assertEqual(profile.runtime_model_id, "apodemus-4k")
+        self.assertEqual(profile.runtime_model_id, "gemma-4-e2b-4k")
         self.assertEqual(profile.context_window, 4096)
         warmup.assert_not_called()
 
-    def test_explicit_apodemus_failure_falls_to_structured_digest(self) -> None:
+    def test_explicit_lynx_failure_falls_to_structured_digest(self) -> None:
         router = SynthesisRouter()
         handle = WarmupHandle(
-            agent_key="apodemus",
-            model_ref=LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+            agent_key="lynx",
+            model_ref=LocalModelRef(provider="llama_cpp", model=GEMMA_E2B_ALIAS),
             success=True,
         )
         handle.event.set()
@@ -235,22 +244,20 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.LlamaCppProvider.generate_turn",
             side_effect=RuntimeError("router unavailable"),
         ):
-            result = router.synthesize_mode(sample_input(), "apodemus")
+            result = router.synthesize_mode(sample_input(), "lynx")
 
         self.assertEqual(result.provider, "raw")
         self.assertEqual(result.fallback_reason, "local_generation_failed")
         self.assertEqual(result.fallback_steps, ["structured_digest:resolved"])
-        self.assertNotIn("mus", result.fallback_steps)
-        self.assertNotIn("sorex", result.fallback_steps)
 
-    def test_apodemus_cold_warmup_uses_llama_cpp_provider_and_16k(self) -> None:
+    def test_lynx_cold_warmup_uses_llama_cpp_provider_and_16k(self) -> None:
         router = SynthesisRouter()
         backend = MagicMock()
         backend.enabled = True
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-16k"],
+            "installed_models": [GEMMA_E2B_ALIAS],
             "loaded_models": [],
             "sampled_at": 0.0,
         }
@@ -273,19 +280,19 @@ class RoutingTests(unittest.TestCase):
         ), patch(
             "core.synthesis.router.switch_local_model", return_value=True
         ) as switch_model, patch("core.synthesis.router.end_local_execution"):
-            handle = router.start_agent_warmup("apodemus")
+            handle = router.start_agent_warmup("lynx")
             self.assertTrue(handle.event.wait(1.0))
 
         self.assertTrue(handle.success)
         self.assertEqual(
             handle.model_ref,
-            LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+            LocalModelRef(provider="llama_cpp", model=GEMMA_E2B_ALIAS),
         )
         loaded_profile = switch_model.call_args.args[0]
         self.assertEqual(loaded_profile.context_window, 16_384)
         self.assertEqual(loaded_profile.reasoning_mode, "none")
 
-    def test_apodemus_warmup_reports_disabled_runtime(self) -> None:
+    def test_lynx_warmup_reports_disabled_runtime(self) -> None:
         router = SynthesisRouter()
         backend = MagicMock()
         backend.enabled = False
@@ -293,11 +300,11 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.get_local_runtime_backend",
             return_value=backend,
         ):
-            handle = router.start_agent_warmup("apodemus")
+            handle = router.start_agent_warmup("lynx")
         self.assertEqual(handle.reason, "local_disabled")
         self.assertTrue(handle.event.is_set())
 
-    def test_apodemus_warmup_reports_unreachable_or_missing_alias(self) -> None:
+    def test_lynx_warmup_reports_unreachable_or_missing_alias(self) -> None:
         router = SynthesisRouter()
         backend = MagicMock()
         backend.enabled = True
@@ -336,18 +343,18 @@ class RoutingTests(unittest.TestCase):
                 "core.synthesis.router.get_provider_snapshot",
                 return_value=snapshot,
             ), patch("core.synthesis.router.end_local_execution"):
-                handle = router.start_agent_warmup("apodemus")
+                handle = router.start_agent_warmup("lynx")
                 self.assertTrue(handle.event.wait(1.0))
             self.assertEqual(handle.reason, reason)
 
-    def test_apodemus_warmup_reports_resource_gate(self) -> None:
+    def test_lynx_warmup_reports_resource_gate(self) -> None:
         router = SynthesisRouter()
         backend = MagicMock()
         backend.enabled = True
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-16k"],
+            "installed_models": [GEMMA_E2B_ALIAS],
             "loaded_models": [],
             "sampled_at": 0.0,
         }
@@ -368,17 +375,17 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.check_resource_gate",
             return_value=(False, "insufficient_ram"),
         ), patch("core.synthesis.router.end_local_execution"):
-            handle = router.start_agent_warmup("apodemus")
+            handle = router.start_agent_warmup("lynx")
             self.assertTrue(handle.event.wait(1.0))
         self.assertEqual(handle.reason, "local_insufficient_ram")
 
-    def test_local_synthesis_strategy_resolves_to_apodemus(self) -> None:
+    def test_local_synthesis_strategy_resolves_to_lynx(self) -> None:
         from core.synthesis.models import strategy_to_briefing_mode
 
-        self.assertEqual(strategy_to_briefing_mode("local"), "apodemus")
+        self.assertEqual(strategy_to_briefing_mode("local"), "lynx")
         self.assertEqual(strategy_to_briefing_mode("cloud"), "panthera")
         self.assertEqual(strategy_to_briefing_mode("raw"), "structured_digest")
-        self.assertEqual(strategy_to_briefing_mode("mus"), "panthera")
+        self.assertEqual(strategy_to_briefing_mode("apodemus"), "lynx")
         self.assertEqual(strategy_to_briefing_mode("sorex"), "panthera")
 
     def test_structured_digest_mode(self) -> None:
@@ -389,7 +396,7 @@ class RoutingTests(unittest.TestCase):
         panthera.assert_not_called()
         local.assert_not_called()
 
-    def test_prepare_local_warms_apodemus(self) -> None:
+    def test_prepare_local_warms_lynx(self) -> None:
         router = SynthesisRouter()
         with patch("core.synthesis.router.resident_agent_key", return_value=None), patch(
             "core.synthesis.router.get_local_runtime_backend"
@@ -398,38 +405,43 @@ class RoutingTests(unittest.TestCase):
             handle = router.prepare("local")
         self.assertIsNotNone(handle)
         assert handle is not None
-        self.assertEqual(handle.agent_key, "apodemus")
+        self.assertEqual(handle.agent_key, "lynx")
         self.assertEqual(handle.reason, "local_disabled")
         self.assertTrue(handle.event.is_set())
 
 
 class ProfileAndPersistenceTests(unittest.TestCase):
-    def test_gemini_profiles_map_effort_to_thinking_level(self) -> None:
+    def test_gemini_models_map_effort_to_thinking_level(self) -> None:
         expected = {
-            "acinonyx": {"light": "low", "focused": "medium", "extended": "high"},
-            "neofelis": {"light": "low", "focused": "medium", "extended": "high"},
+            ACINONYX_MODEL: {"light": "low", "focused": "medium", "extended": "high"},
+            NEOFELIS_MODEL: {"light": "low", "focused": "medium", "extended": "high"},
         }
-        for key, efforts in expected.items():
-            with self.subTest(agent=key):
+        for model_id, efforts in expected.items():
+            with self.subTest(model=model_id):
+                model_profile = get_model_profile(model_id)
+                assert model_profile is not None
                 for effort, thinking in efforts.items():
-                    _apex, native = resolve_effort(key, effort)  # type: ignore[arg-type]
-                    profile = build_concrete_agent(key, native_effort=native)
+                    _apex, native = resolve_effort(model_profile, effort)  # type: ignore[arg-type]
+                    profile = build_panthera_profile(model=model_id, effort=effort)
                     self.assertEqual(profile.thinking_level, thinking)
 
-    def test_federated_gemini_profile_models(self) -> None:
+    def test_panthera_cloud_models_have_expected_stability(self) -> None:
         self.assertEqual(
             {
-                key: (AGENT_SPECS[key].api_model, AGENT_SPECS[key].stability)
-                for key in ("acinonyx", "neofelis")
+                model_id: (
+                    get_model_profile(model_id).stability,
+                    get_model_profile(model_id).provider,
+                )
+                for model_id in (ACINONYX_MODEL, NEOFELIS_MODEL)
             },
             {
-                "acinonyx": ("gemini-3.5-flash-lite", "experimental"),
-                "neofelis": ("gemini-3.6-flash", "stable"),
+                ACINONYX_MODEL: ("experimental", "gemini"),
+                NEOFELIS_MODEL: ("stable", "gemini"),
             },
         )
 
-    def test_mus_local_agent_specs(self) -> None:
-        profile = build_concrete_agent("mus", native_effort=None)
+    def test_lynx_ollama_model_specs(self) -> None:
+        profile = build_lynx_profile(model=MUS_MODEL)
         self.assertEqual((profile.tier, profile.stability), ("balanced", "stable"))
         self.assertEqual((profile.api_model, profile.context_window), ("qwen3:4b-instruct", 4096))
         self.assertEqual((profile.final_answer_max_tokens, profile.generation_timeout), (768, 150))
