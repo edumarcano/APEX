@@ -671,10 +671,11 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
     agent = "lynx" if runtime == "local" else "panthera"
+    sandbox_mode = cloud_agent == "acinonyx"
     migrated: dict[str, Any] = {
         "enabled": legacy.get("enabled", True),
         "agent": agent,
-        "sandbox_mode": False,
+        "sandbox_mode": sandbox_mode,
         "panthera": {
             "provider": panthera_provider,
             "model": panthera_model,

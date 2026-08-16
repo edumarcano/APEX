@@ -94,6 +94,52 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertFalse(captured["disable_tools"])
         self.assertFalse(captured["disable_hud_context"])
 
+    def test_sandbox_lynx_rejects_production_history(self) -> None:
+        captured: dict[str, object] = {}
+
+        def capture_execution(payload, *_args, **kwargs):
+            captured.update(
+                {
+                    "history": list(payload.history),
+                    "disable_hud_context": kwargs.get("disable_hud_context"),
+                }
+            )
+            return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
+
+        ask_apex = mock.Mock()
+        ask_apex.enabled = True
+        ask_apex.sandbox_mode = True
+        backend = mock.Mock()
+        backend.enabled = True
+        with (
+            mock.patch("core.api.cortex.DEMO_MODE", False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
+            mock.patch("core.api.cortex.is_agent_visible", return_value=True),
+            mock.patch("core.api.cortex.get_settings_store") as store_mock,
+            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
+            mock.patch("core.api.cortex._ensure_local_alias_configured"),
+            mock.patch("core.api.cortex.switch_local_model", return_value=True),
+            mock.patch("core.api.cortex.is_local_model_ready", return_value=True),
+            mock.patch(
+                "core.api.cortex._execute_agent_turn", side_effect=capture_execution
+            ),
+            mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
+            mock.patch("core.api.cortex.end_local_execution"),
+        ):
+            store_mock.return_value.get_snapshot.return_value.ask_apex = ask_apex
+            query_agent(
+                AgentQueryRequest(
+                    prompt="hello",
+                    agent="lynx",
+                    history=[
+                        AgentMessage(role="user", content="prior production turn")
+                    ],
+                )
+            )
+
+        self.assertEqual(captured.get("history"), [])
+        self.assertFalse(captured["disable_hud_context"])
+
     def test_sandbox_capability_policy_is_an_explicit_allowlist(self) -> None:
         def descriptor(name: str) -> CapabilityDescriptor:
             return CapabilityDescriptor(
@@ -140,21 +186,21 @@ class SandboxPolicyTests(unittest.TestCase):
             resolve_profile.return_value = get_model_profile("gemini-3.6-flash")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", neofelis_google_search_enabled=True
+                    "panthera", google_search_enabled=True
                 ),
                 frozenset({"google_search", "google_maps"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", neofelis_google_search_enabled=False
+                    "panthera", google_search_enabled=False
                 ),
                 frozenset({"google_maps"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
                     "panthera",
-                    neofelis_google_search_enabled=False,
-                    neofelis_google_maps_enabled=False,
+                    google_search_enabled=False,
+                    google_maps_enabled=False,
                 ),
                 frozenset(),
             )
@@ -162,15 +208,14 @@ class SandboxPolicyTests(unittest.TestCase):
             resolve_profile.return_value = get_model_profile("grok-4.3")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", neofelis_google_search_enabled=True
+                    "panthera", x_search_enabled=True
                 ),
                 frozenset({"x_search"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
                     "panthera",
-                    neofelis_google_search_enabled=True,
-                    delphinus_x_search_enabled=False,
+                    x_search_enabled=False,
                 ),
                 frozenset(),
             )
@@ -179,8 +224,7 @@ class SandboxPolicyTests(unittest.TestCase):
             self.assertEqual(
                 hosted_tools_for_agent(
                     "panthera",
-                    neofelis_google_search_enabled=True,
-                    orcinus_x_search_enabled=False,
+                    x_search_enabled=False,
                 ),
                 frozenset(),
             )

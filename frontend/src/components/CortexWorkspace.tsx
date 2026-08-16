@@ -23,10 +23,10 @@ import {
   modelsForLynxRuntime,
   modelsForPantheraProvider,
   providerDisplayName,
-  PANTHERA_PROVIDERS,
-  LYNX_RUNTIMES,
+  providersForCatalog,
   resolveModelCatalog,
   runtimeDisplayName,
+  runtimesForCatalog,
 } from '../lib/agents'
 
 import ReactMarkdown from 'react-markdown'
@@ -423,13 +423,14 @@ function RuntimeControls({
   const lynxStatus = props.agentsStatus.find((agent) => agent.key === 'lynx')
   const catalog = resolveModelCatalog(
     activeAgent === 'panthera' ? pantheraStatus : lynxStatus,
-    props.devModeActive,
   )
-  const pantheraModels = modelsForPantheraProvider(props.pantheraProvider, props.devModeActive, catalog)
-  const lynxModels = modelsForLynxRuntime(props.lynxRuntime, props.devModeActive, catalog)
+  const pantheraProviders = providersForCatalog(catalog)
+  const lynxRuntimes = runtimesForCatalog(catalog)
+  const pantheraModels = modelsForPantheraProvider(props.pantheraProvider, catalog)
+  const lynxModels = modelsForLynxRuntime(props.lynxRuntime, catalog)
   const hostedCapabilities = hostedCapabilitiesForModel(
     activeAgent === 'panthera' ? props.pantheraModel : props.lynxModel,
-    props.devModeActive,
+    catalog,
   )
 
   return <div className="space-y-4">
@@ -437,7 +438,7 @@ function RuntimeControls({
       <section className="space-y-2" aria-label="Panthera provider">
         <label htmlFor="cortex-panthera-provider" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Provider</label>
         <select id="cortex-panthera-provider" value={props.pantheraProvider} onChange={(event) => props.onPantheraProviderChange(event.target.value as CloudProvider)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {PANTHERA_PROVIDERS.map((provider) => <option key={provider} value={provider}>{providerDisplayName(provider)}</option>)}
+          {pantheraProviders.map((provider) => <option key={provider} value={provider}>{providerDisplayName(provider)}</option>)}
         </select>
       </section>
       <section className="space-y-2" aria-label="Panthera model">
@@ -451,7 +452,7 @@ function RuntimeControls({
       <section className="space-y-2" aria-label="Lynx runtime">
         <label htmlFor="cortex-lynx-runtime" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Runtime</label>
         <select id="cortex-lynx-runtime" value={props.lynxRuntime} onChange={(event) => props.onLynxRuntimeChange(event.target.value as LocalRuntime)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {LYNX_RUNTIMES.map((runtime) => <option key={runtime} value={runtime}>{runtimeDisplayName(runtime)}</option>)}
+          {lynxRuntimes.map((runtime) => <option key={runtime} value={runtime}>{runtimeDisplayName(runtime)}</option>)}
         </select>
       </section>
       <section className="space-y-2" aria-label="Lynx model">

@@ -43,16 +43,22 @@ class CloudStatusRecord:
     source: StatusSource
 
 
+def _route_cache_key(agent_key: str) -> str:
+    model_profile = resolve_selected_model_profile(agent_key)
+    return f"{agent_key}:{model_profile.provider}:{model_profile.model_id}"
+
+
 def cloud_status(agent_key: str) -> CloudStatusRecord:
     """Return the configured fallback or a non-expired sanitized status."""
+    cache_key = _route_cache_key(agent_key)
     now = _now()
     with _LOCK:
-        cached = _CACHE.get(agent_key)
+        cached = _CACHE.get(cache_key)
         if cached is not None and cached.expires_at > now:
             return cached
         if cached is not None:
-            _CACHE.pop(agent_key, None)
-        if agent_key in _IN_FLIGHT:
+            _CACHE.pop(cache_key, None)
+        if cache_key in _IN_FLIGHT:
             return CloudStatusRecord("verifying", None, now, now + _TRANSIENT_TTL, "verification")
     return CloudStatusRecord("configured", None, now, now, "configuration")
 
@@ -69,17 +75,18 @@ def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
     if not api_key:
         raise ValueError("Cloud verification requires configured credentials.")
 
+    cache_key = _route_cache_key(agent_key)
     with _LOCK:
-        if agent_key in _IN_FLIGHT:
+        if cache_key in _IN_FLIGHT:
             raise RuntimeError("Cloud verification is already in progress.")
-        _IN_FLIGHT.add(agent_key)
+        _IN_FLIGHT.add(cache_key)
     try:
         status, reason = _probe_model(
             model_profile.provider, model_profile.model_id, api_key
         )
         record = _record(status, reason, "verification")
         with _LOCK:
-            previous = _CACHE.get(agent_key)
+            previous = _CACHE.get(cache_key)
             if (
                 status == "verified"
                 and previous is not None
@@ -89,11 +96,11 @@ def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
             ):
                 # Metadata access does not prove inference quota or billing health.
                 return previous
-            _CACHE[agent_key] = record
+            _CACHE[cache_key] = record
         return record
     finally:
         with _LOCK:
-            _IN_FLIGHT.discard(agent_key)
+            _IN_FLIGHT.discard(cache_key)
 
 
 def record_cloud_request_success(agent_key: str) -> None:
@@ -101,9 +108,10 @@ def record_cloud_request_success(agent_key: str) -> None:
     spec = AGENT_SPECS.get(agent_key)
     if spec is None or spec.runtime != "cloud":
         return
+    cache_key = _route_cache_key(agent_key)
     record = _record("verified", None, "request")
     with _LOCK:
-        _CACHE[agent_key] = record
+        _CACHE[cache_key] = record
 
 
 def record_cloud_request_failure(agent_key: str, exc: BaseException) -> None:
@@ -114,9 +122,10 @@ def record_cloud_request_failure(agent_key: str, exc: BaseException) -> None:
     status, reason = classify_provider_failure(exc)
     if status is None:
         return
+    cache_key = _route_cache_key(agent_key)
     record = _record(status, reason, "request")
     with _LOCK:
-        _CACHE[agent_key] = record
+        _CACHE[cache_key] = record
 
 
 def clear_cloud_status_cache() -> None:

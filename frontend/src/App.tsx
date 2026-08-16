@@ -68,6 +68,7 @@ import {
   defaultModelForPantheraProvider,
   isLynxKey,
   isPantheraKey,
+  resolveModelCatalog,
 } from './lib/agents'
 import type {
   AgentKey,
@@ -408,7 +409,7 @@ export default function App(): ReactElement {
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
-  // separate from DEV_MODE's Acinonyx startup override, which remains session-only.
+  // separate from DEV_MODE's session-only sandbox override.
   useEffect(() => {
     const controller = new AbortController()
     void (async (): Promise<void> => {
@@ -1131,13 +1132,17 @@ export default function App(): ReactElement {
   }, [persistAgentSettings])
 
   const handlePantheraProviderChange = useCallback((provider: CloudProvider): void => {
-    const model = defaultModelForPantheraProvider(provider, devModeActive)
+    const catalog = resolveModelCatalog(agentsStatus.find((agent) => agent.key === 'panthera'))
+    const model = defaultModelForPantheraProvider(provider, catalog)
+    if (!model) {
+      return
+    }
     setPantheraProvider(provider)
     setPantheraModel(model)
     void persistAgentSettings({
       panthera: { provider, model },
     }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, devModeActive, persistAgentSettings])
+  }, [activeAgent, agentsStatus, persistAgentSettings])
 
   const handlePantheraModelChange = useCallback((model: string): void => {
     setPantheraModel(model)
@@ -1147,13 +1152,17 @@ export default function App(): ReactElement {
   }, [activeAgent, persistAgentSettings])
 
   const handleLynxRuntimeChange = useCallback((runtime: LocalRuntime): void => {
-    const model = defaultModelForLynxRuntime(runtime, devModeActive)
+    const catalog = resolveModelCatalog(agentsStatus.find((agent) => agent.key === 'lynx'))
+    const model = defaultModelForLynxRuntime(runtime, catalog)
+    if (!model) {
+      return
+    }
     setLynxRuntime(runtime)
     setLynxModel(model)
     void persistAgentSettings({
       lynx: { runtime, model },
     }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, devModeActive, persistAgentSettings])
+  }, [activeAgent, agentsStatus, persistAgentSettings])
 
   const handleLynxModelChange = useCallback((model: string): void => {
     setLynxModel(model)

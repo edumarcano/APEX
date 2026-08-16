@@ -48,22 +48,10 @@ def hosted_tools_for_agent(
     google_search_enabled: bool = True,
     google_maps_enabled: bool = True,
     x_search_enabled: bool = True,
-    neofelis_google_search_enabled: bool | None = None,
-    neofelis_google_maps_enabled: bool | None = None,
-    delphinus_x_search_enabled: bool | None = None,
-    orcinus_x_search_enabled: bool | None = None,
 ) -> frozenset[str]:
     """Resolve provider-hosted tools for Panthera's selected cloud model."""
     if agent_key != "panthera":
         return frozenset()
-    if neofelis_google_search_enabled is not None:
-        google_search_enabled = neofelis_google_search_enabled
-    if neofelis_google_maps_enabled is not None:
-        google_maps_enabled = neofelis_google_maps_enabled
-    if delphinus_x_search_enabled is not None:
-        x_search_enabled = delphinus_x_search_enabled
-    elif orcinus_x_search_enabled is not None:
-        x_search_enabled = orcinus_x_search_enabled
     from core.agent.catalog import resolve_selected_model_profile
 
     return hosted_tools_for_model(

@@ -63,6 +63,10 @@ class SettingsMigrationTests(unittest.TestCase):
                 self.assertEqual(migrated["panthera"]["provider"], provider)
                 self.assertEqual(migrated["panthera"]["model"], model)
                 self.assertEqual(migrated["panthera"]["effort"], "extended")
+                if legacy == "acinonyx":
+                    self.assertTrue(migrated["sandbox_mode"])
+                else:
+                    self.assertFalse(migrated["sandbox_mode"])
 
     def test_schema15_maps_legacy_local_agents_to_lynx_models(self) -> None:
         expectations = {

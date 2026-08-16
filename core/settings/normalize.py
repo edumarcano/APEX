@@ -14,7 +14,14 @@ from core.agent.catalog import (
     migrate_schema5_briefing,
     migrate_schema7_ask_apex,
 )
-from core.agent.model_catalog import get_model_profile
+from core.agent.model_catalog import (
+    cloud_models_for_provider,
+    get_model_profile,
+    local_models_for_runtime,
+    reconcile_lynx_runtime_model,
+    reconcile_panthera_provider_model,
+)
+from core.config import is_dev_mode
 from core.settings.models import (
     VALID_AGENT_KEYS,
     VALID_BRIEFING_MODES,
@@ -704,6 +711,54 @@ def _normalize_agent_settings(
             _record_error(errors, "ask_apex.lynx.reasoning_mode is not valid")
         if lynx:
             result["lynx"] = lynx
+
+    panthera_result = result.get("panthera")
+    if isinstance(panthera_result, dict):
+        provider = panthera_result.get("provider")
+        model = panthera_result.get("model")
+        if isinstance(provider, str) and isinstance(model, str):
+            reconciled_provider, reconciled_model = reconcile_panthera_provider_model(
+                provider,  # type: ignore[arg-type]
+                model,
+                dev_mode=is_dev_mode(),
+            )
+            panthera_result["provider"] = reconciled_provider
+            panthera_result["model"] = reconciled_model
+        elif isinstance(provider, str):
+            models = cloud_models_for_provider(
+                provider,  # type: ignore[arg-type]
+                dev_mode=is_dev_mode(),
+            )
+            if models:
+                panthera_result["model"] = models[0].model_id
+        elif isinstance(model, str):
+            profile = get_model_profile(model)
+            if profile is not None:
+                panthera_result["provider"] = profile.provider
+
+    lynx_result = result.get("lynx")
+    if isinstance(lynx_result, dict):
+        runtime = lynx_result.get("runtime")
+        model = lynx_result.get("model")
+        if isinstance(runtime, str) and isinstance(model, str):
+            reconciled_runtime, reconciled_model = reconcile_lynx_runtime_model(
+                runtime,  # type: ignore[arg-type]
+                model,
+                dev_mode=is_dev_mode(),
+            )
+            lynx_result["runtime"] = reconciled_runtime
+            lynx_result["model"] = reconciled_model
+        elif isinstance(runtime, str):
+            models = local_models_for_runtime(
+                runtime,  # type: ignore[arg-type]
+                dev_mode=is_dev_mode(),
+            )
+            if models:
+                lynx_result["model"] = models[0].model_id
+        elif isinstance(model, str):
+            profile = get_model_profile(model)
+            if profile is not None:
+                lynx_result["runtime"] = profile.provider
 
     return result
 

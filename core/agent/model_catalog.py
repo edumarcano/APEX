@@ -288,3 +288,61 @@ def model_has_credentials(profile: ModelProfile) -> bool:
 def model_display_label(model_id: str) -> str:
     profile = ALL_MODEL_PROFILES.get(model_id)
     return profile.display_name if profile is not None else model_id
+
+
+def reconcile_panthera_provider_model(
+    provider: CloudProvider,
+    model: str,
+    *,
+    dev_mode: bool = False,
+) -> tuple[CloudProvider, str]:
+    """Return a provider/model pair that agree on the same cloud route."""
+    profile = get_model_profile(model)
+    models_for_provider = cloud_models_for_provider(provider, dev_mode=dev_mode)
+    if profile is not None and profile.provider == provider:
+        return provider, model
+    if models_for_provider:
+        return provider, models_for_provider[0].model_id
+    default_profile = get_model_profile(DEFAULT_PANTHERA_MODEL)
+    assert default_profile is not None
+    return default_profile.provider, default_profile.model_id
+
+
+def reconcile_lynx_runtime_model(
+    runtime: LocalRuntime,
+    model: str,
+    *,
+    dev_mode: bool = False,
+) -> tuple[LocalRuntime, str]:
+    """Return a runtime/model pair that agree on the same local route."""
+    profile = get_model_profile(model)
+    models_for_runtime = local_models_for_runtime(runtime, dev_mode=dev_mode)
+    if profile is not None and profile.provider == runtime:
+        return runtime, model
+    if models_for_runtime:
+        return runtime, models_for_runtime[0].model_id
+    default_profile = get_model_profile(DEFAULT_LYNX_MODEL)
+    assert default_profile is not None
+    return default_profile.provider, default_profile.model_id
+
+
+def visible_cloud_providers(*, dev_mode: bool = False) -> tuple[CloudProvider, ...]:
+    providers: list[CloudProvider] = []
+    seen: set[str] = set()
+    for profile in visible_cloud_models(dev_mode=dev_mode):
+        if profile.provider in seen:
+            continue
+        seen.add(profile.provider)
+        providers.append(profile.provider)
+    return tuple(providers)
+
+
+def visible_local_runtimes(*, dev_mode: bool = False) -> tuple[LocalRuntime, ...]:
+    runtimes: list[LocalRuntime] = []
+    seen: set[str] = set()
+    for profile in visible_local_models(dev_mode=dev_mode):
+        if profile.provider in seen:
+            continue
+        seen.add(profile.provider)
+        runtimes.append(profile.provider)
+    return tuple(runtimes)

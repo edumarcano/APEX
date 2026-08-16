@@ -40,11 +40,12 @@ from core.agent.catalog import (
     runtime_agent_order,
 )
 from core.agent.model_catalog import (
-    VALID_CLOUD_PROVIDERS,
-    VALID_LOCAL_RUNTIMES,
+    ModelProfile,
     model_has_credentials,
     visible_cloud_models,
+    visible_cloud_providers,
     visible_local_models,
+    visible_local_runtimes,
 )
 from core.agent.sandbox_context import get_masked_briefing
 from core.agent.tool_policies import effective_native_tools
@@ -130,43 +131,32 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
-def _cloud_model_catalog(dev_mode: bool) -> tuple[list[str], list[AgentModelCatalogEntry]]:
-    return (
-        sorted(VALID_CLOUD_PROVIDERS),
-        [
-            AgentModelCatalogEntry(
-                model_id=profile.model_id,
-                display_name=profile.display_name,
-                provider=profile.provider,
-                stability=profile.stability,
-                dev_only=profile.dev_only,
-                credentials_configured=model_has_credentials(profile),
-            )
-            for profile in visible_cloud_models(dev_mode=dev_mode)
-        ],
+def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
+    return AgentModelCatalogEntry(
+        model_id=profile.model_id,
+        display_name=profile.display_name,
+        provider=profile.provider,
+        runtime=profile.runtime,
+        stability=profile.stability,
+        hosted_capabilities=sorted(profile.hosted_capabilities),
+        dev_only=profile.dev_only,
+        credentials_configured=model_has_credentials(profile),
     )
+
+
+def _cloud_model_catalog(dev_mode: bool) -> tuple[list[str], list[AgentModelCatalogEntry]]:
+    profiles = visible_cloud_models(dev_mode=dev_mode)
+    entries = [_profile_to_catalog_entry(profile) for profile in profiles]
+    return [provider for provider in visible_cloud_providers(dev_mode=dev_mode)], entries
 
 
 def _local_model_catalog(dev_mode: bool) -> tuple[list[str], list[AgentModelCatalogEntry]]:
-    return (
-        sorted(VALID_LOCAL_RUNTIMES),
-        [
-            AgentModelCatalogEntry(
-                model_id=profile.model_id,
-                display_name=profile.display_name,
-                provider=profile.provider,
-                stability=profile.stability,
-                dev_only=profile.dev_only,
-                credentials_configured=True,
-            )
-            for profile in visible_local_models(dev_mode=dev_mode)
-        ],
-    )
+    profiles = visible_local_models(dev_mode=dev_mode)
+    entries = [_profile_to_catalog_entry(profile) for profile in profiles]
+    return [runtime for runtime in visible_local_runtimes(dev_mode=dev_mode)], entries
 
 
 def _is_sandbox_agent_query(agent_key: str) -> bool:
-    if agent_key != "panthera":
-        return False
     settings = get_settings_store().get_snapshot().ask_apex
     return is_sandbox_query(
         sandbox_mode=settings.sandbox_mode,
@@ -415,7 +405,8 @@ def build_agent_statuses() -> list[AgentStatus]:
                     native_tools={},
                     runtime=spec.runtime,
                     tier=model_profile.tier,
-                    stability=model_profile.stability,
+                    stability="stable",
+                    model_stability=model_profile.stability,
                     effort_options=None,
                     context_window=(
                         profile.context_window
@@ -469,6 +460,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                     ),
                     available_providers=local_providers,
                     available_models=local_models,
+                    model_catalog=local_models,
                 )
             )
             continue
@@ -499,7 +491,8 @@ def build_agent_statuses() -> list[AgentStatus]:
                 native_tools=native_tools,
                 runtime=spec.runtime,
                 tier=model_profile.tier,
-                stability=model_profile.stability,
+                stability="stable",
+                model_stability=model_profile.stability,
                 effort_options=effort_options,
                 context_window=None,
                 context_window_options=None,
@@ -518,6 +511,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                 reason=cloud_reason,
                 available_providers=cloud_providers,
                 available_models=cloud_models,
+                model_catalog=cloud_models,
             )
         )
 

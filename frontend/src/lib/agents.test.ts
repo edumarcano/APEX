@@ -2,14 +2,36 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AGENT_KEYS,
+  defaultModelForPantheraProvider,
   formatContextWindowLabel,
   isAgentKey,
   isLynxKey,
   isPantheraKey,
   modelsForPantheraProvider,
   providerDisplayName,
+  providersForCatalog,
   usesSandboxHistory,
 } from './agents'
+import type { ModelCatalogEntry } from '../types/telemetry'
+
+const TEST_CATALOG: ModelCatalogEntry[] = [
+  {
+    model_id: 'gpt-5.6-luna',
+    display_name: 'GPT-5.6 Luna',
+    provider: 'openai',
+    runtime: 'cloud',
+    stability: 'stable',
+    hosted_capabilities: [],
+  },
+  {
+    model_id: 'gemini-3.6-flash',
+    display_name: 'Gemini 3.6 Flash',
+    provider: 'gemini',
+    runtime: 'cloud',
+    stability: 'stable',
+    hosted_capabilities: ['google_search', 'google_maps'],
+  },
+]
 
 describe('agents helpers', () => {
   it('exposes only Panthera and Lynx agent keys', () => {
@@ -29,9 +51,14 @@ describe('agents helpers', () => {
     expect(providerDisplayName('xai')).toBe('SpaceXAI')
   })
 
-  it('filters Panthera models by provider', () => {
-    expect(modelsForPantheraProvider('openai').map((model) => model.model_id)).toContain('gpt-5.6-luna')
-    expect(modelsForPantheraProvider('gemini').map((model) => model.model_id)).toContain('gemini-3.6-flash')
+  it('filters Panthera models by provider from the backend catalog', () => {
+    expect(modelsForPantheraProvider('openai', TEST_CATALOG).map((model) => model.model_id)).toContain('gpt-5.6-luna')
+    expect(modelsForPantheraProvider('gemini', TEST_CATALOG).map((model) => model.model_id)).toContain('gemini-3.6-flash')
+    expect(defaultModelForPantheraProvider('xai', TEST_CATALOG)).toBeNull()
+  })
+
+  it('derives selectable providers from the catalog', () => {
+    expect(providersForCatalog(TEST_CATALOG)).toEqual(['openai', 'gemini'])
   })
 
   it('formats known context windows compactly', () => {

@@ -133,7 +133,7 @@ Default model: OpenAI `gpt-5.6-luna`. Development-only cloud models such as Gemi
 
 Lynx is meant for on-device work through Ollama or llama.cpp. The selected runtime, GGUF or Ollama tag, context preset, and reasoning mode live in Lynx settings rather than in separate local Agent names.
 
-Default model: llama.cpp `gemma-4-E2B-Q4_K_M.gguf`. Development-only local models such as smaller Ollama Qwen3 tags, Gemma 4 E4B, and the unnamed experimental GGUF remain selectable when `DEV_MODE` is active.
+Default model: llama.cpp `gemma-4-E2B-Q4_K_M.gguf`. Development-only local models such as smaller Ollama Qwen3 tags and the unnamed experimental GGUF remain selectable when `DEV_MODE` is active. Gemma 4 E4B is a preview llama.cpp model available outside `DEV_MODE`.
 
 ### Lynx name reuse
 

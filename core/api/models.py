@@ -541,8 +541,17 @@ class AgentModelCatalogEntry(BaseModel):
     provider: Literal["openai", "gemini", "xai", "ollama", "llama_cpp"] = Field(
         description="Inference provider or local runtime for this model.",
     )
+    runtime: Literal["cloud", "local"] = Field(
+        description="Whether this model runs in the cloud or locally.",
+    )
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification for this model.",
+    )
+    hosted_capabilities: list[Literal["google_search", "google_maps", "x_search"]] = (
+        Field(
+            default_factory=list,
+            description="Provider-hosted grounding capabilities supported by this model.",
+        )
     )
     dev_only: bool = Field(
         default=False,
@@ -577,7 +586,11 @@ class AgentStatus(BaseModel):
     )
     tier: str = Field(description="Agent performance tier label.")
     stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification for this Agent.",
+        description="Release stage classification for this Apex Agent identity.",
+    )
+    model_stability: Literal["stable", "preview", "experimental"] | None = Field(
+        default=None,
+        description="Release stage classification for the selected model profile.",
     )
     effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
         default=None,
@@ -665,6 +678,10 @@ class AgentStatus(BaseModel):
     available_models: list[AgentModelCatalogEntry] | None = Field(
         default=None,
         description="Registered models available for selection in the HUD.",
+    )
+    model_catalog: list[AgentModelCatalogEntry] | None = Field(
+        default=None,
+        description="Authoritative model catalog entries for this Agent's runtime.",
     )
 
 

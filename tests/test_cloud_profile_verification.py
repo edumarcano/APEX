@@ -16,6 +16,7 @@ from core.agent.providers.cloud_verification import (
     verify_cloud_agent,
 )
 from core.api.cortex import verify_cloud_agent_endpoint
+from core.settings.models import AgentSettings, PantheraSettings
 
 
 class _ProviderError(Exception):
@@ -139,6 +140,36 @@ class CloudAgentVerificationTests(unittest.TestCase):
         with mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value=None):
             with self.assertRaises(ValueError):
                 verify_cloud_agent("panthera")
+
+    def test_verification_cache_is_scoped_to_provider_and_model(self) -> None:
+        store = mock.Mock()
+        store.get_snapshot.return_value.ask_apex = AgentSettings(
+            panthera=PantheraSettings(
+                provider="openai",
+                model="gpt-5.6-luna",
+            )
+        )
+        with (
+            mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
+            mock.patch(
+                "core.agent.providers.cloud_verification._probe_model",
+                return_value=("verified", None),
+            ),
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=store,
+            ),
+        ):
+            verify_cloud_agent("panthera")
+            self.assertEqual(cloud_status("panthera").status, "verified")
+
+            store.get_snapshot.return_value.ask_apex = AgentSettings(
+                panthera=PantheraSettings(
+                    provider="gemini",
+                    model="gemini-3.6-flash",
+                )
+            )
+            self.assertEqual(cloud_status("panthera").status, "configured")
 
     def test_endpoint_returns_sanitized_result(self) -> None:
         result = mock.Mock(status="verified", reason=None)

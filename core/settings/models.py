@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from core.agent.model_catalog import (
     DEFAULT_LYNX_MODEL,
@@ -116,6 +123,15 @@ class PantheraSettings(BaseModel):
             raise ValueError(f"Unsupported Panthera model: {value!r}")
         return value
 
+    @model_validator(mode="after")
+    def _validate_provider_model(self) -> PantheraSettings:
+        profile = get_model_profile(self.model)
+        if profile is None or profile.provider != self.provider:
+            raise ValueError(
+                f"Panthera model {self.model!r} does not belong to provider {self.provider!r}"
+            )
+        return self
+
 
 class LynxSettings(BaseModel):
     """Local runtime, model, context, and reasoning preferences."""
@@ -157,6 +173,15 @@ class LynxSettings(BaseModel):
         runtime = data.get("runtime", DEFAULT_LYNX_RUNTIME)
         model = data.get("model", DEFAULT_LYNX_MODEL)
         return _validate_lynx_reasoning_mode(value, runtime, model)
+
+    @model_validator(mode="after")
+    def _validate_runtime_model(self) -> LynxSettings:
+        profile = get_model_profile(self.model)
+        if profile is None or profile.provider != self.runtime:
+            raise ValueError(
+                f"Lynx model {self.model!r} does not belong to runtime {self.runtime!r}"
+            )
+        return self
 
 
 class AgentSettings(BaseModel):
