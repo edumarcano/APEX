@@ -15,9 +15,13 @@ from core.agent.catalog import (
     migrate_schema7_ask_apex,
 )
 from core.agent.model_catalog import (
+    DEFAULT_LYNX_MODEL,
+    DEFAULT_LYNX_RUNTIME,
     cloud_models_for_provider,
     get_model_profile,
     local_models_for_runtime,
+    reconcile_lynx_context_window,
+    reconcile_lynx_reasoning_mode,
     reconcile_lynx_runtime_model,
     reconcile_panthera_provider_model,
 )
@@ -759,6 +763,23 @@ def _normalize_agent_settings(
             profile = get_model_profile(model)
             if profile is not None:
                 lynx_result["runtime"] = profile.provider
+
+        runtime = lynx_result.get("runtime", DEFAULT_LYNX_RUNTIME)
+        model = lynx_result.get("model", DEFAULT_LYNX_MODEL)
+        if isinstance(runtime, str) and isinstance(model, str):
+            context_window = lynx_result.get("context_window")
+            if isinstance(context_window, int) and not isinstance(context_window, bool):
+                lynx_result["context_window"] = reconcile_lynx_context_window(
+                    runtime,  # type: ignore[arg-type]
+                    model,
+                    context_window,
+                )
+            reasoning_mode = lynx_result.get("reasoning_mode")
+            if isinstance(reasoning_mode, str) and reasoning_mode in {"none", "focused"}:
+                lynx_result["reasoning_mode"] = reconcile_lynx_reasoning_mode(
+                    model,
+                    reasoning_mode,  # type: ignore[arg-type]
+                )
 
     return result
 

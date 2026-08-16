@@ -40,6 +40,13 @@ export function isAgentIdentitySelectable(_agent: Pick<AgentStatus, 'key'>): boo
   return isAgentKey(_agent.key)
 }
 
+/** True when Panthera cloud verification can run for the current route. */
+export function canVerifyCloudProvider(
+  agent: Pick<AgentStatus, 'key' | 'runtime' | 'status'>,
+): boolean {
+  return agent.runtime === 'cloud' && agent.status !== 'disabled'
+}
+
 export function isLocalAgentStatus(agent: Pick<AgentStatus, 'runtime'>): boolean {
   return agent.runtime === 'local'
 }

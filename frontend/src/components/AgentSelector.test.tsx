@@ -230,4 +230,23 @@ describe('AgentSelector', () => {
 
     expect(screen.getByText('Experimental')).toBeVisible()
   })
+
+  it('disables Verify access when Panthera is disabled', async () => {
+    const user = userEvent.setup()
+    render(
+      <AgentSelector
+        activeAgent="panthera"
+        onChange={vi.fn()}
+        agentsStatus={[agent({ status: 'disabled', reason: 'Missing API key' })]}
+        agentsStatusHydrated
+        isQuerying={false}
+        verifyingAgent={null}
+        onVerify={vi.fn(async () => true)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+    expect(screen.getByRole('button', { name: 'Verify access' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use Apex Panthera' })).toBeEnabled()
+  })
 })

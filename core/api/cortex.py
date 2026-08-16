@@ -740,7 +740,7 @@ def _prepare_agent_payload(
         if prepared.briefing_id is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sandbox Panthera cannot attach saved briefing history.",
+                detail="Sandbox mode cannot attach saved briefing history.",
             )
         if prepared.history_partition != "sandbox":
             prepared = prepared.model_copy(update={"history": []})
@@ -902,7 +902,11 @@ def _execute_agent_turn(
             agent_key=agent_key,
         )
         if not is_local_profile(profile):
-            record_cloud_request_success(agent_key)
+            record_cloud_request_success(
+                agent_key,
+                provider=profile.provider,
+                model=profile.api_model,
+            )
         response.agent_used = build_agent_used_metadata(
             agent_key,
             provider=profile.provider,
@@ -917,7 +921,12 @@ def _execute_agent_turn(
         return response
     except Exception as exc:
         if not is_local_profile(profile):
-            record_cloud_request_failure(agent_key, exc)
+            record_cloud_request_failure(
+                agent_key,
+                exc,
+                provider=profile.provider,
+                model=profile.api_model,
+            )
         _LOGGER.exception(
             "Agent turn failed for model configuration %s",
             agent_key,

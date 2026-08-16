@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AGENT_KEYS,
+  canVerifyCloudProvider,
   defaultModelForPantheraProvider,
   formatContextWindowLabel,
   isAgentKey,
@@ -72,5 +73,29 @@ describe('agents helpers', () => {
     expect(usesSandboxHistory(false, true)).toBe(false)
     expect(usesSandboxHistory(true, false)).toBe(false)
     expect(usesSandboxHistory(true, true)).toBe(true)
+  })
+
+  it('allows cloud verification only when Panthera is not disabled', () => {
+    expect(
+      canVerifyCloudProvider({
+        key: 'panthera',
+        runtime: 'cloud',
+        status: 'configured',
+      }),
+    ).toBe(true)
+    expect(
+      canVerifyCloudProvider({
+        key: 'panthera',
+        runtime: 'cloud',
+        status: 'disabled',
+      }),
+    ).toBe(false)
+    expect(
+      canVerifyCloudProvider({
+        key: 'lynx',
+        runtime: 'local',
+        status: 'available',
+      }),
+    ).toBe(false)
   })
 })

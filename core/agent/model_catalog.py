@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from core.agent.providers.contract import InferenceProvider
+from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.types import LocalReasoningMode
 from core.config import (
     GEMINI_AGENT_MAX_TOOL_CALLS,
@@ -299,7 +300,11 @@ def reconcile_panthera_provider_model(
     """Return a provider/model pair that agree on the same cloud route."""
     profile = get_model_profile(model)
     models_for_provider = cloud_models_for_provider(provider, dev_mode=dev_mode)
-    if profile is not None and profile.provider == provider:
+    if (
+        profile is not None
+        and profile.provider == provider
+        and (not profile.dev_only or dev_mode)
+    ):
         return provider, model
     if models_for_provider:
         return provider, models_for_provider[0].model_id
@@ -317,7 +322,11 @@ def reconcile_lynx_runtime_model(
     """Return a runtime/model pair that agree on the same local route."""
     profile = get_model_profile(model)
     models_for_runtime = local_models_for_runtime(runtime, dev_mode=dev_mode)
-    if profile is not None and profile.provider == runtime:
+    if (
+        profile is not None
+        and profile.provider == runtime
+        and (not profile.dev_only or dev_mode)
+    ):
         return runtime, model
     if models_for_runtime:
         return runtime, models_for_runtime[0].model_id
@@ -335,6 +344,37 @@ def visible_cloud_providers(*, dev_mode: bool = False) -> tuple[CloudProvider, .
         seen.add(profile.provider)
         providers.append(profile.provider)
     return tuple(providers)
+
+
+def reconcile_lynx_context_window(
+    runtime: LocalRuntime,
+    model: str,
+    context_window: int,
+) -> int:
+    """Keep the context preset when supported; otherwise use the model default."""
+    if runtime != "llama_cpp":
+        return context_window
+    llama_runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model)
+    if llama_runtime is None:
+        return context_window
+    if context_window in llama_runtime.allowed_context_windows:
+        return context_window
+    return llama_runtime.default_context_window
+
+
+def reconcile_lynx_reasoning_mode(
+    model: str,
+    reasoning_mode: LocalReasoningMode,
+) -> LocalReasoningMode:
+    """Keep the reasoning mode when supported; otherwise use the model default."""
+    from core.agent.catalog import local_reasoning_modes_for_model
+
+    supported = local_reasoning_modes_for_model(model)
+    if reasoning_mode in supported:
+        return reasoning_mode
+    if not supported:
+        return "none"
+    return supported[0]
 
 
 def visible_local_runtimes(*, dev_mode: bool = False) -> tuple[LocalRuntime, ...]:

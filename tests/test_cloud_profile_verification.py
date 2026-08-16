@@ -93,7 +93,12 @@ class CloudAgentVerificationTests(unittest.TestCase):
         )
 
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
-        record_cloud_request_failure("panthera", _ProviderError(429, "insufficient_quota"))
+        record_cloud_request_failure(
+            "panthera",
+            _ProviderError(429, "insufficient_quota"),
+            provider="openai",
+            model="gpt-5.6-luna",
+        )
         with (
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)),
@@ -111,7 +116,12 @@ class CloudAgentVerificationTests(unittest.TestCase):
         self.assertEqual(classify_provider_failure(_ProviderError(404))[0], "model_unavailable")
         self.assertEqual(classify_provider_failure(_ProviderError(500))[0], "provider_unreachable")
 
-        record_cloud_request_failure("panthera", _ProviderError(429, "insufficient_quota"))
+        record_cloud_request_failure(
+            "panthera",
+            _ProviderError(429, "insufficient_quota"),
+            provider="openai",
+            model="gpt-5.6-luna",
+        )
         self.assertEqual(
             cloud_status("panthera").reason,
             "Provider reported exhausted quota or credits.",
@@ -169,6 +179,29 @@ class CloudAgentVerificationTests(unittest.TestCase):
                     model="gemini-3.6-flash",
                 )
             )
+            self.assertEqual(cloud_status("panthera").status, "configured")
+
+    def test_request_cache_records_the_route_that_actually_ran(self) -> None:
+        from core.agent.providers.cloud_verification import record_cloud_request_success
+
+        record_cloud_request_success(
+            "panthera",
+            provider="openai",
+            model="gpt-5.6-luna",
+        )
+        self.assertEqual(cloud_status("panthera").status, "verified")
+
+        store = mock.Mock()
+        store.get_snapshot.return_value.ask_apex = AgentSettings(
+            panthera=PantheraSettings(
+                provider="gemini",
+                model="gemini-3.6-flash",
+            )
+        )
+        with mock.patch(
+            "core.settings.get_settings_store",
+            return_value=store,
+        ):
             self.assertEqual(cloud_status("panthera").status, "configured")
 
     def test_endpoint_returns_sanitized_result(self) -> None:

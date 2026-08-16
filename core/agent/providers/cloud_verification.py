@@ -43,9 +43,17 @@ class CloudStatusRecord:
     source: StatusSource
 
 
-def _route_cache_key(agent_key: str) -> str:
-    model_profile = resolve_selected_model_profile(agent_key)
-    return f"{agent_key}:{model_profile.provider}:{model_profile.model_id}"
+def _route_cache_key(
+    agent_key: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+) -> str:
+    if provider is None or model is None:
+        model_profile = resolve_selected_model_profile(agent_key)
+        provider = model_profile.provider
+        model = model_profile.model_id
+    return f"{agent_key}:{provider}:{model}"
 
 
 def cloud_status(agent_key: str) -> CloudStatusRecord:
@@ -103,18 +111,29 @@ def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
             _IN_FLIGHT.discard(cache_key)
 
 
-def record_cloud_request_success(agent_key: str) -> None:
+def record_cloud_request_success(
+    agent_key: str,
+    *,
+    provider: str,
+    model: str,
+) -> None:
     """A completed inference is stronger evidence than a metadata probe."""
     spec = AGENT_SPECS.get(agent_key)
     if spec is None or spec.runtime != "cloud":
         return
-    cache_key = _route_cache_key(agent_key)
+    cache_key = _route_cache_key(agent_key, provider=provider, model=model)
     record = _record("verified", None, "request")
     with _LOCK:
         _CACHE[cache_key] = record
 
 
-def record_cloud_request_failure(agent_key: str, exc: BaseException) -> None:
+def record_cloud_request_failure(
+    agent_key: str,
+    exc: BaseException,
+    *,
+    provider: str,
+    model: str,
+) -> None:
     """Remember only conservative provider failure categories, never raw content."""
     spec = AGENT_SPECS.get(agent_key)
     if spec is None or spec.runtime != "cloud":
@@ -122,7 +141,7 @@ def record_cloud_request_failure(agent_key: str, exc: BaseException) -> None:
     status, reason = classify_provider_failure(exc)
     if status is None:
         return
-    cache_key = _route_cache_key(agent_key)
+    cache_key = _route_cache_key(agent_key, provider=provider, model=model)
     record = _record(status, reason, "request")
     with _LOCK:
         _CACHE[cache_key] = record
