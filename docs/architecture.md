@@ -142,7 +142,7 @@ The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
-| Panthera | OpenAI | `gpt-5.6-luna` at fixed Light effort |
+| Panthera | OpenAI | `gpt-5.6-luna` at fixed `none` reasoning |
 | Felis | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
@@ -174,9 +174,9 @@ Attached context and tool results are separately marked as untrusted model data.
 
 APEX exposes two Apex Agents. Panthera is the cloud identity; Felis is the local identity. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. Each selected model profile determines the provider or local runtime used for execution.
 
-| Agent | Default model | Effort | Maximum tool loop |
+| Agent | Default model | Reasoning | Maximum tool loop |
 |---|---|---|---|
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended when supported | Up to 6 turns / 10 calls on the default model |
+| Panthera 2.0 | OpenAI `gpt-5.6-luna` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` when supported | Up to 6 turns / 10 calls on the default model |
 | Felis 2.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Fixed for local models | Up to 4 turns / 4 calls on default llama.cpp models |
 
 Other registered cloud and local models keep their own loop limits and optional hosted-tool support. Development-only models appear in each Agent's model catalog only when `DEV_MODE` is active.

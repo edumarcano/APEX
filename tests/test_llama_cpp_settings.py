@@ -132,8 +132,15 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                 "ask_apex": {"apodemus_context_window": 8192},
             },
         )
-        with self.assertNoLogs("core.settings.normalize", level=logging.WARNING):
+        with self.assertLogs("core.settings.normalize", level=logging.WARNING) as logs:
             store = self._store()
+        self.assertTrue(
+            any(
+                "ask_apex.apodemus_context_window" in message
+                and "reset local settings" in message
+                for message in logs.output
+            )
+        )
         snap = store.get_snapshot()
         self.assertEqual(snap.ask_apex.felis.context_window, 16384)
         self.assertEqual(snap.ask_apex.felis.reasoning_mode, "none")

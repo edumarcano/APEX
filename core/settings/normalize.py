@@ -636,7 +636,6 @@ def _normalize_agent_settings(
             "panthera",
             "felis",
             "max_session_messages",
-            "apodemus_context_window",
         },
         path="ask_apex",
         layer_name=layer_name,

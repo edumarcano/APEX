@@ -116,14 +116,14 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 APEX exposes two Apex Agents: **Panthera** for cloud work and **Felis** for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. The selected model profile determines Panthera's provider or Felis's local runtime automatically.
 
-Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna` and `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent keys migrate to those models.
+Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna`; `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent settings are not migrated at runtime, so update them to the Panthera/Felis model-first format.
 
 ### Panthera
 
 | Setting group | Purpose |
 |---|---|
 | `ask_apex.panthera.model` | Registered cloud model for Panthera |
-| `ask_apex.panthera.effort` | Default Light, Focused, or Extended effort for interactive queries |
+| `ask_apex.panthera.effort` | Default model-native reasoning option for interactive queries |
 | `ask_apex.panthera.hosted_tools` | Optional Google Search, Google Maps, and X Search when the selected model supports them |
 
 | Model ID | Provider | Stability | Notes |
@@ -134,7 +134,7 @@ Current default model mappings used by documentation checks are `panthera -> gpt
 | `grok-4.3` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 | `grok-4.5` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 
-Cloud models run independently of Ollama. Panthera's default model requires `OPENAI_API_KEY`; standard Gemini models require `GEMINI_API_KEY` (while free-tier Gemini models route to `GEMINI_SANDBOX_API_KEY`); Grok models require `XAI_API_KEY`. Models that support effort expose Light, Focused, and Extended.
+Cloud models run independently of Ollama. Panthera's default model requires `OPENAI_API_KEY`; standard Gemini models require `GEMINI_API_KEY` (while free-tier Gemini models route to `GEMINI_SANDBOX_API_KEY`); Grok models require `XAI_API_KEY`. Model-native reasoning options are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`; each model exposes its supported subset.
 
 Brave MCP is the general web-search capability for Panthera when connected. Provider-hosted general web search is disabled for OpenAI and SpaceXAI. Panthera's hosted-tool toggles apply to subsequent requests only.
 
@@ -251,7 +251,7 @@ Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and p
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
+Panthera is the default cloud briefing engine and always uses `none` reasoning, independently of the selected interactive Agent or reasoning option. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
 
 ## Voice
 

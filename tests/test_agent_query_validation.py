@@ -82,6 +82,7 @@ class SandboxPolicyTests(unittest.TestCase):
                 "core.agent.catalog.resolve_selected_model_profile",
                 return_value=selected_model,
             ),
+            mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
         ):
             store_mock.return_value.get_snapshot.return_value.ask_apex = ask_apex
             query_agent(
