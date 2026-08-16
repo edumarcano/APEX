@@ -15,7 +15,7 @@ describe('useToolPreflight', () => {
       Promise.resolve({
         ok: true,
         json: async () => ({
-          agent: 'mus',
+          agent: 'felis',
           selection: {
             requested_tool_names: [],
             offered_tool_names: [],
@@ -46,7 +46,7 @@ describe('useToolPreflight', () => {
 
     renderHook(() =>
       useToolPreflight({
-        agent: 'mus',
+        agent: 'felis',
         selectedToolNames: noSelectedTools,
         toolProfileId: 'no_tools',
         prompt: '  typed draft  ',
@@ -74,7 +74,7 @@ describe('useToolPreflight', () => {
     const firstResponse = new Promise<MockResponse>((resolve) => {
       resolveFirst = resolve
     })
-    const responseFor = (agent: 'mus' | 'acinonyx'): MockResponse => ({
+    const responseFor = (agent: 'felis' | 'panthera'): MockResponse => ({
       ok: true,
       json: async () => ({
         agent,
@@ -94,9 +94,9 @@ describe('useToolPreflight', () => {
           selected_tool_schemas: 0,
           current_prompt: 2,
           total: 12,
-          configured_context_window: agent === 'mus' ? 4096 : null,
-          reserved_response_tokens: agent === 'mus' ? 512 : null,
-          remaining_estimated_capacity: agent === 'mus' ? 3572 : null,
+          configured_context_window: agent === 'felis' ? 4096 : null,
+          reserved_response_tokens: agent === 'felis' ? 512 : null,
+          remaining_estimated_capacity: agent === 'felis' ? 3572 : null,
           is_estimate: true,
         },
         warning: null,
@@ -105,37 +105,37 @@ describe('useToolPreflight', () => {
     })
     const fetchMock = vi.fn()
       .mockReturnValueOnce(firstResponse)
-      .mockResolvedValueOnce(responseFor('acinonyx'))
+      .mockResolvedValueOnce(responseFor('panthera'))
     vi.stubGlobal('fetch', fetchMock)
 
     const hook = renderHook(
-      ({ agent }: { agent: 'mus' | 'acinonyx' }) =>
+      ({ agent }: { agent: 'felis' | 'panthera' }) =>
         useToolPreflight({
           agent,
           selectedToolNames: noSelectedTools,
           toolProfileId: 'no_tools',
           enabled: true,
         }),
-      { initialProps: { agent: 'mus' } },
+      { initialProps: { agent: 'felis' } },
     )
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    hook.rerender({ agent: 'acinonyx' })
+    hook.rerender({ agent: 'panthera' })
     await waitFor(() => {
       expect(hook.result.current.estimate).toBeNull()
       expect(hook.result.current.error).toBeNull()
     })
 
-    resolveFirst?.(responseFor('mus'))
+    resolveFirst?.(responseFor('felis'))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(hook.result.current.estimate?.agent).toBe('acinonyx'))
-    expect(hook.result.current.estimate?.agent).not.toBe('mus')
+    await waitFor(() => expect(hook.result.current.estimate?.agent).toBe('panthera'))
+    expect(hook.result.current.estimate?.agent).not.toBe('felis')
   })
 
   it('clears the estimate, error, and loading state when disabled', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        agent: 'mus',
+        agent: 'felis',
         selection: {
           requested_tool_names: [],
           offered_tool_names: [],
@@ -165,7 +165,7 @@ describe('useToolPreflight', () => {
     const hook = renderHook(
       ({ enabled }: { enabled: boolean }) =>
         useToolPreflight({
-          agent: 'mus',
+          agent: 'felis',
           selectedToolNames: noSelectedTools,
           toolProfileId: 'no_tools',
           enabled,

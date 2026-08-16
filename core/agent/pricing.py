@@ -52,7 +52,7 @@ class HostedToolRate:
 # Standard paid rates, reconciled against provider documentation on 2026-08-02.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
     "gemini-3.5-flash-lite": ModelTokenRates(0.30, 2.50, 0.03),
-    "gemini-3.6-flash": ModelTokenRates(1.50, 7.50, 0.15),
+    "gemini-3.6-flash": ModelTokenRates(0.75, 3.75, 0.075),
     "gpt-5.6-luna": ModelTokenRates(
         0.20,
         1.20,
@@ -84,6 +84,15 @@ _MODEL_RATES: dict[str, ModelTokenRates] = {
 
 _LOCAL_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
 _FREE_TIER_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
+_FREE_TIER_MODELS = frozenset({"gemini-3.5-flash-lite"})
+
+
+def is_free_tier_model(model: str | None) -> bool:
+    """Return whether a model is classified under free-tier pricing."""
+    if not model:
+        return False
+    return model.strip().lower() in _FREE_TIER_MODELS
+
 
 _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
     "google_search": HostedToolRate(0.014),
@@ -110,10 +119,10 @@ def agent_pricing(
     provider: InferenceProvider,
 ) -> ProfilePricing:
     """Return the authoritative billing basis for an Apex Agent."""
-    if agent_key == "acinonyx":
-        return ProfilePricing("free_tier", _FREE_TIER_ZERO)
     if is_local_inference_provider(provider):
         return ProfilePricing("local", _LOCAL_ZERO)
+    if model.strip().lower() in _FREE_TIER_MODELS:
+        return ProfilePricing("free_tier", _FREE_TIER_ZERO)
     return ProfilePricing(
         "standard",
         lookup_model_rates(model, provider=provider) or ModelTokenRates(0.0, 0.0),

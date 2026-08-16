@@ -28,13 +28,12 @@ def _load_fixture(name: str) -> dict:
     return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _apodemus_profile(*, context_window: int = 16384):
+def _felis_profile(*, context_window: int = 16384):
     return build_llama_cpp_profile(
-        "apodemus",
-        display_name="Apex Apodemus",
-        agent_version="1.0",
+        "gemma-4-E2B-Q4_K_M.gguf",
+        display_name="Apex Felis",
+        agent_version="2.0",
         api_model="gemma-4-E2B-Q4_K_M.gguf",
-        tier="balanced",
         stability="stable",
         max_tool_turns=3,
         max_tool_calls=4,
@@ -107,20 +106,20 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         self.assertTrue(snapshot["reachable"])
         self.assertEqual(
             snapshot["installed_models"],
-            ["apodemus-132k", "apodemus-4k", "apodemus-16k", "apodemus-32k"],
+            ["gemma-4-e2b-132k", "gemma-4-e2b-4k", "gemma-4-e2b-16k", "gemma-4-e2b-32k"],
         )
         states = {row["model"]: row["state"] for row in snapshot["loaded_models"]}
-        self.assertEqual(states["apodemus-132k"], "loaded")
-        self.assertEqual(states["apodemus-16k"], "sleeping")
-        self.assertEqual(states["apodemus-32k"], "loading")
-        self.assertNotIn("apodemus-4k", states)
+        self.assertEqual(states["gemma-4-e2b-132k"], "loaded")
+        self.assertEqual(states["gemma-4-e2b-16k"], "sleeping")
+        self.assertEqual(states["gemma-4-e2b-32k"], "loading")
+        self.assertNotIn("gemma-4-e2b-4k", states)
 
         windows = {
             row["model"]: row["context_window"] for row in snapshot["loaded_models"]
         }
-        self.assertEqual(windows["apodemus-132k"], 131072)
-        self.assertEqual(windows["apodemus-16k"], 16384)
-        self.assertEqual(windows["apodemus-32k"], 32768)
+        self.assertEqual(windows["gemma-4-e2b-132k"], 131072)
+        self.assertEqual(windows["gemma-4-e2b-16k"], 16384)
+        self.assertEqual(windows["gemma-4-e2b-32k"], 32768)
 
         _args, kwargs = session.get.call_args
         self.assertTrue(str(_args[0]).endswith("/models"))
@@ -282,13 +281,13 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         get_payloads = [
             {
                 "data": [
-                    {"id": "apodemus-16k", "status": {"value": "unloaded", "args": []}}
+                    {"id": "gemma-4-e2b-16k", "status": {"value": "unloaded", "args": []}}
                 ]
             },
             {
                 "data": [
                     {
-                        "id": "apodemus-16k",
+                        "id": "gemma-4-e2b-16k",
                         "status": {
                             "value": "loaded",
                             "args": ["llama-server", "-ctx", "16384"],
@@ -299,7 +298,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
             {
                 "data": [
                     {
-                        "id": "apodemus-16k",
+                        "id": "gemma-4-e2b-16k",
                         "status": {
                             "value": "loaded",
                             "args": ["llama-server", "-ctx", "16384"],
@@ -326,12 +325,12 @@ class LlamaCppLifecycleTests(unittest.TestCase):
 
         mock_sup = MagicMock()
         with mock.patch.object(lifecycle, "_SESSION", session), mock.patch.object(
-            lifecycle, "_probe_props", return_value={"default_model": "apodemus-16k"}
+            lifecycle, "_probe_props", return_value={"default_model": "gemma-4-e2b-16k"}
         ), mock.patch(
             "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
             return_value=mock_sup,
         ):
-            self.assertTrue(self.backend.load_model(_apodemus_profile()))
+            self.assertTrue(self.backend.load_model(_felis_profile()))
 
         self.assertTrue(
             any(
@@ -344,14 +343,14 @@ class LlamaCppLifecycleTests(unittest.TestCase):
             for call in session.post.call_args_list
             if str(call.args[0]).endswith("/models/load")
         )
-        self.assertEqual(load_json, {"model": "apodemus-16k"})
+        self.assertEqual(load_json, {"model": "gemma-4-e2b-16k"})
 
     def test_unload_model_posts_and_accepts_sleeping(self) -> None:
         get_payloads = [
             {
                 "data": [
                     {
-                        "id": "apodemus-16k",
+                        "id": "gemma-4-e2b-16k",
                         "status": {
                             "value": "loaded",
                             "args": ["llama-server", "-ctx", "16384"],
@@ -362,7 +361,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
             {
                 "data": [
                     {
-                        "id": "apodemus-16k",
+                        "id": "gemma-4-e2b-16k",
                         "status": {
                             "value": "sleeping",
                             "args": ["llama-server", "-ctx", "16384"],

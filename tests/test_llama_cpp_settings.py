@@ -132,27 +132,18 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                 "ask_apex": {"apodemus_context_window": 8192},
             },
         )
-        with self.assertNoLogs("core.settings.normalize", level=logging.WARNING):
+        with self.assertLogs("core.settings.normalize", level=logging.WARNING) as logs:
             store = self._store()
+        self.assertTrue(
+            any(
+                "ask_apex.apodemus_context_window" in message
+                and "reset local settings" in message
+                for message in logs.output
+            )
+        )
         snap = store.get_snapshot()
-        self.assertEqual(
-            snap.ask_apex.local_context_windows,
-            {
-                "apodemus": 16384,
-                "neotoma": 16384,
-                "unnamed-experimental-agent": 16384,
-            },
-        )
-        self.assertEqual(
-            snap.ask_apex.local_reasoning_modes,
-            {
-                "sorex": "none",
-                "mus": "none",
-                "apodemus": "none",
-                "neotoma": "none",
-                "unnamed-experimental-agent": "none",
-            },
-        )
+        self.assertEqual(snap.ask_apex.felis.context_window, 16384)
+        self.assertEqual(snap.ask_apex.felis.reasoning_mode, "none")
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
 

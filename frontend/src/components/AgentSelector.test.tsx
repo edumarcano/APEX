@@ -7,6 +7,7 @@ import type { AgentStatus } from '../types/telemetry'
 import { AgentSelector } from './AgentSelector'
 
 function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
+  const stability = overrides.model_stability ?? 'stable'
   return {
     key: 'panthera',
     display_name: 'Apex Panthera',
@@ -16,12 +17,11 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     capabilities: ['Generalist'],
     native_tools: {},
     provider: 'openai',
-    version: '7.4',
+    version: '2.0',
     runtime: 'cloud',
-    tier: 'balanced',
-    stability: 'stable',
-    effort_options: ['light', 'focused', 'extended'],
-    default_effort: 'focused',
+    model_stability: stability,
+    reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    default_reasoning: 'medium',
     context_window: null,
     context_window_options: null,
     context_window_high_resource_options: null,
@@ -50,22 +50,22 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     reason: null,
     idle_unload_remaining_seconds: null,
     loaded_model: null,
+    model_catalog: [],
     ...overrides,
   }
 }
 
-const apodemus = agent({
-  key: 'apodemus',
-  display_name: 'Apex Apodemus',
-  description: 'Stable private local Agent for efficient tool-driven work through llama.cpp.',
+const felis = agent({
+  key: 'felis',
+  display_name: 'Apex Felis',
+  description: 'Local Agent for private on-device work.',
   configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
-  sort_order: 6,
-  stability: 'stable',
-  capabilities: ['Efficient local', 'Tool use', 'Selectable context'],
+  sort_order: 2,
+  capabilities: ['Local', 'Private'],
   provider: 'llama_cpp',
   runtime: 'local',
-  effort_options: null,
-  default_effort: null,
+  reasoning_options: null,
+  default_reasoning: null,
   status: 'available',
   status_source: 'runtime',
   pricing: {
@@ -82,125 +82,83 @@ const apodemus = agent({
   },
 })
 
-const previewLocal = agent({
-  key: 'neotoma',
-  display_name: 'Apex Neotoma',
-  description: 'Preview generalist local Agent.',
-  configured_model: 'gemma-4-E4B-Q4_K_M.gguf',
-  sort_order: 7,
-  stability: 'preview',
-  provider: 'llama_cpp',
-  runtime: 'local',
-  capabilities: ['Generalist local'],
-  status: 'available',
-  status_source: 'runtime',
-})
-
 describe('AgentSelector', () => {
-  it('formats Apodemus gguf models and labels llama.cpp', async () => {
+  it('renders segmented 2-choice buttons in Cortex without opening a popover', async () => {
     const user = userEvent.setup()
-    render(
-      <AgentSelector
-        activeAgent="apodemus"
-        onChange={vi.fn()}
-        agentsStatus={[apodemus]}
-        agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
-      />,
-    )
-
-    expect(screen.getByText('Apex Apodemus')).toBeVisible()
-    expect(
-      screen.getByText('Powered by Gemma 4 E2B Q4_K_M · Runs locally through llama.cpp'),
-    ).toBeVisible()
-
-    await user.click(screen.getByRole('button', { expanded: false }))
-    expect(screen.getByRole('button', { name: 'Use Apex Apodemus' })).toBeVisible()
-  })
-
-  it('shows preview stability badges for any agent marked preview', async () => {
-    const user = userEvent.setup()
-    render(
-      <AgentSelector
-        activeAgent="neotoma"
-        onChange={vi.fn()}
-        agentsStatus={[agent(), previewLocal, apodemus]}
-        agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
-      />,
-    )
-
-    expect(screen.getByText('Preview')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { expanded: false }))
-    expect(screen.getAllByText('Preview')).toHaveLength(2)
-
-    await user.click(screen.getByRole('tab', { name: 'Cloud agents' }))
-    expect(screen.getByRole('button', { name: 'Use Apex Panthera' })).toBeVisible()
-    expect(screen.getAllByText('Preview')).toHaveLength(1)
-  })
-
-  it('omits preview badges for stable agents', () => {
+    const onChange = vi.fn()
     render(
       <AgentSelector
         activeAgent="panthera"
-        onChange={vi.fn()}
-        agentsStatus={[agent()]}
+        onChange={onChange}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
         isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
       />,
     )
 
-    expect(screen.queryByText('Preview')).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Apex Panthera, Cloud · Generalist/i })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Apex Felis, Local · Private/i })).toBeVisible()
+
+    await user.click(screen.getByRole('radio', { name: /Apex Felis, Local · Private/i }))
+    expect(onChange).toHaveBeenCalledWith('felis')
   })
 
-  it('shows preview badge on the home presentation trigger', () => {
+  it('indicates the active agent in Cortex with checked state', () => {
     render(
       <AgentSelector
-        activeAgent="neotoma"
+        activeAgent="felis"
         onChange={vi.fn()}
-        agentsStatus={[previewLocal]}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
         isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
+      />,
+    )
+
+    const pantheraRadio = screen.getByRole('radio', { name: /Apex Panthera/i })
+    const felisRadio = screen.getByRole('radio', { name: /Apex Felis/i })
+
+    expect(pantheraRadio).toHaveAttribute('aria-checked', 'false')
+    expect(felisRadio).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('renders a compact trigger on home presentation and opens simplified popover', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <AgentSelector
+        activeAgent="panthera"
+        onChange={onChange}
+        agentsStatus={[agent(), felis]}
+        agentsStatusHydrated
+        isQuerying={false}
         presentation="home"
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Agent Neotoma, Available, Preview' })).toBeVisible()
-    expect(screen.getByText('Preview')).toBeVisible()
+    const trigger = screen.getByRole('button', { name: /Agent Panthera/i })
+    expect(trigger).toBeVisible()
+
+    await user.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Select Agent' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'Use Apex Panthera' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'Use Apex Felis' })).toBeVisible()
+
+    await user.click(screen.getByRole('option', { name: 'Use Apex Felis' }))
+    expect(onChange).toHaveBeenCalledWith('felis')
   })
 
-  it('shows experimental stability badges for any agent marked experimental', () => {
-    const experimental = agent({
-      key: 'acinonyx',
-      display_name: 'Apex Acinonyx',
-      description: 'Experimental cloud profile.',
-      configured_model: 'gemini-3.5-flash-lite',
-      sort_order: 0,
-      stability: 'experimental',
-      provider: 'gemini',
-      capabilities: ['Privacy sandbox'],
-    })
+  it('disables switching while an agent query is in flight', () => {
     render(
       <AgentSelector
-        activeAgent="acinonyx"
+        activeAgent="panthera"
         onChange={vi.fn()}
-        agentsStatus={[experimental]}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
+        isQuerying
       />,
     )
 
-    expect(screen.getByText('Experimental')).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Apex Panthera/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Apex Felis/i })).toBeDisabled()
   })
 })

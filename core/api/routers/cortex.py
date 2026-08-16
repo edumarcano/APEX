@@ -6,7 +6,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, status
 
-from core.agent.catalog import resolve_agent_selection
+from core.agent.catalog import AGENT_SPECS, resolve_agent_selection
 from core.agent.types import (
     AgentKey,
     AgentQueryRequest,
@@ -43,15 +43,14 @@ from core.api.models import (
     ToolPreflightRequest,
     ToolProfilesResponse,
 )
-from core.config import is_dev_mode
 
 router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
 
 
 def _ensure_agent_api_access(agent_key: str) -> None:
-    """Keep Acinonyx unavailable through public API routes outside DEV_MODE."""
-    if agent_key == "acinonyx" and not is_dev_mode():
+    """Reject unknown Agent keys at public API boundaries."""
+    if agent_key not in AGENT_SPECS:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Requested Agent is not available.",

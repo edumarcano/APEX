@@ -2,7 +2,7 @@
   "object": "list",
   "data": [
     {
-      "id": "apodemus-132k",
+      "id": "gemma-4-e2b-132k",
       "object": "model",
       "owned_by": "llamacpp",
       "created": 0,
@@ -20,7 +20,7 @@
       }
     },
     {
-      "id": "apodemus-4k",
+      "id": "gemma-4-e2b-4k",
       "object": "model",
       "owned_by": "llamacpp",
       "created": 0,
@@ -32,7 +32,7 @@
       }
     },
     {
-      "id": "apodemus-16k",
+      "id": "gemma-4-e2b-16k",
       "object": "model",
       "owned_by": "llamacpp",
       "created": 0,
@@ -48,7 +48,7 @@
       }
     },
     {
-      "id": "apodemus-32k",
+      "id": "gemma-4-e2b-32k",
       "object": "model",
       "owned_by": "llamacpp",
       "created": 0,

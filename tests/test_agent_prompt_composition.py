@@ -12,28 +12,47 @@ from core.agent.catalog import (
     compose_agent_system_instruction,
     resolve_effort,
 )
+from core.agent.model_catalog import get_model_profile
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.api.cortex import _execute_agent_turn
+from tests.support.agent_fixtures import (
+    EXPERIMENTAL_MODEL,
+    GEMINI_FLASH_LITE_MODEL,
+    GEMINI_FLASH_MODEL,
+    GEMMA_E2B_MODEL,
+    GEMMA_E4B_MODEL,
+    GROK_43_MODEL,
+    GROK_45_MODEL,
+    QWEN3_17B_MODEL,
+    QWEN3_4B_MODEL,
+    build_felis_profile,
+    build_panthera_profile,
+)
 
 
 class AgentIdentityTests(unittest.TestCase):
     _IDENTITIES = {
-        "acinonyx": (
-            "You are Apex Acinonyx, an Apex Agent powered by "
-            "Gemini 3.5 Flash Lite. You are the development-only privacy sandbox."
+        "panthera": (
+            "You are Apex Panthera, the cloud Apex Agent. "
+            "You run through the operator's selected cloud provider and model."
         ),
-        "panthera": "You are Apex Panthera, an Apex Agent powered by GPT-5.6 Luna.",
-        "neofelis": "You are Apex Neofelis, an Apex Agent powered by Gemini 3.6 Flash.",
-        "delphinus": "You are Apex Delphinus, an Apex Agent powered by Grok 4.3.",
-        "orcinus": "You are Apex Orcinus, an Apex Agent powered by Grok 4.5.",
-        "sorex": "You are Apex Sorex, an Apex Agent powered by Qwen3 1.7B through Ollama.",
-        "mus": "You are Apex Mus, an Apex Agent powered by Qwen3 4B Instruct through Ollama.",
-        "apodemus": "You are Apex Apodemus, an Apex Agent powered by Gemma 4 E2B through llama.cpp.",
-        "neotoma": "You are Apex Neotoma, an Apex Agent powered by Gemma 4 E4B through llama.cpp.",
-        "unnamed-experimental-agent": (
-            "You are Unnamed Experimental Agent, a technical APEX development "
-            "target powered by Qwen3.5 4B through llama.cpp."
+        "felis": (
+            "You are Apex Felis, the local Apex Agent. "
+            "You run through the operator's selected local runtime and model."
         ),
+    }
+
+    _MODEL_POWERED_PREFIXES = {
+        "gpt-5.6-luna": "You are currently powered by GPT-5.6 Luna.",
+        "gemini-3.6-flash": "You are currently powered by Gemini 3.6 Flash.",
+        "grok-4.3": "You are currently powered by Grok 4.3.",
+        "grok-4.5": "You are currently powered by Grok 4.5.",
+        "gemini-3.5-flash-lite": "You are currently powered by Gemini 3.5 Flash Lite.",
+        "qwen3:1.7b": "You are currently powered by Qwen3 1.7B.",
+        "qwen3:4b-instruct": "You are currently powered by Qwen3 4B Instruct.",
+        GEMMA_E2B_MODEL: "You are currently powered by Gemma 4 E2B.",
+        GEMMA_E4B_MODEL: "You are currently powered by Gemma 4 E4B.",
+        EXPERIMENTAL_MODEL: "You are currently powered by Qwen3.5 4B.",
     }
 
     def test_every_profile_has_the_expected_immutable_identity(self) -> None:
@@ -41,9 +60,28 @@ class AgentIdentityTests(unittest.TestCase):
         for key, identity in self._IDENTITIES.items():
             with self.subTest(agent=key):
                 self.assertEqual(AGENT_SPECS[key].identity_instruction, identity)
-                _apex_effort, native_effort = resolve_effort(key, None)
-                profile = build_concrete_agent(key, native_effort=native_effort)
+
+    def test_switching_model_preserves_agent_identity(self) -> None:
+        cases = (
+            ("panthera", GEMINI_FLASH_MODEL),
+            ("panthera", GROK_43_MODEL),
+            ("panthera", GROK_45_MODEL),
+            ("panthera", GEMINI_FLASH_LITE_MODEL),
+            ("felis", QWEN3_17B_MODEL),
+            ("felis", QWEN3_4B_MODEL),
+            ("felis", GEMMA_E2B_MODEL),
+            ("felis", GEMMA_E4B_MODEL),
+            ("felis", EXPERIMENTAL_MODEL),
+        )
+        for agent_key, model_id in cases:
+            with self.subTest(agent=agent_key, model=model_id):
+                identity = self._IDENTITIES[agent_key]
+                if agent_key == "panthera":
+                    profile = build_panthera_profile(model=model_id)
+                else:
+                    profile = build_felis_profile(model=model_id)
                 self.assertTrue(profile.system_instruction.startswith(identity))
+                self.assertIn(self._MODEL_POWERED_PREFIXES[model_id], profile.system_instruction)
 
     def test_effective_request_prompts_preserve_identity_with_runtime_overrides(self) -> None:
         captured_instructions: dict[str, str] = {}
@@ -55,6 +93,10 @@ class AgentIdentityTests(unittest.TestCase):
             ]
             return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
 
+        cases = (
+            ("panthera", "gpt-5.6-luna"),
+            ("felis", GEMMA_E2B_MODEL),
+        )
         with (
             mock.patch("core.api.cortex._create_provider", return_value=mock.Mock()),
             mock.patch("core.api.cortex.run_agent_loop", side_effect=capture_loop),
@@ -65,26 +107,32 @@ class AgentIdentityTests(unittest.TestCase):
                 "core.api.cortex.config.LOCAL_AGENT_SYSTEM_PROMPT", "Local runtime prompt."
             ),
         ):
-            for key, identity in self._IDENTITIES.items():
-                _apex_effort, native_effort = resolve_effort(key, None)
-                profile = build_concrete_agent(key, native_effort=native_effort)
+            for agent_key, model_id in cases:
+                if agent_key == "panthera":
+                    profile = build_panthera_profile(model=model_id)
+                else:
+                    profile = build_felis_profile(model=model_id)
+                model_profile = get_model_profile(model_id)
+                assert model_profile is not None
+                native_effort = resolve_effort(model_profile, None)
                 _execute_agent_turn(
-                    AgentQueryRequest(prompt="Identify yourself.", agent=key),
+                    AgentQueryRequest(prompt="Identify yourself.", agent=agent_key),
                     profile,
-                    agent_key=key,
+                    agent_key=agent_key,
                     api_key="test",
-                    resolved_apex_effort=None,
-                    resolved_native_effort=native_effort,
+                    resolved_effort=native_effort,
                     user_designation="Chief",
                 )
                 instruction = captured_instructions[profile.display_name]
-                self.assertTrue(instruction.startswith(identity))
-                self.assertEqual(instruction.count(identity), 1)
+                self.assertTrue(
+                    instruction.startswith(self._IDENTITIES[agent_key])
+                )
+                self.assertEqual(instruction.count(self._IDENTITIES[agent_key]), 1)
                 self.assertNotIn("You are APEX", instruction)
                 self.assertIn('Address the user as "Chief" when natural.', instruction)
                 expected_runtime_prompt = (
                     "Local runtime prompt."
-                    if AGENT_SPECS[key].runtime == "local"
+                    if AGENT_SPECS[agent_key].runtime == "local"
                     else "Cloud runtime prompt."
                 )
                 self.assertIn(expected_runtime_prompt, instruction)

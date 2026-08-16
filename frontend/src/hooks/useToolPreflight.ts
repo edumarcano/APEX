@@ -105,7 +105,7 @@ interface UseToolPreflightOptions {
   toolProfileId: string | null
   prompt?: string
   history?: AgentMessage[]
-  historyPartition?: 'production' | 'acinonyx'
+  historyPartition?: 'production' | 'sandbox'
   snapshotId?: string | null
   briefingId?: number | null
   enabled?: boolean

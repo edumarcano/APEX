@@ -9,12 +9,17 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 
 from core import database
-from core.api.briefing import generate_briefing, trigger_briefing
+from core.api.briefing import (
+    build_briefing_target_statuses,
+    generate_briefing,
+    trigger_briefing,
+)
 from core.api.demo import mock_briefing_history
 from core.api.models import (
     BriefingGenerateRequest,
     BriefingHistoryRecord,
     BriefingResponse,
+    BriefingTargetStatus,
     BriefingTriggerRequest,
     classify_digest_payload,
     parse_runtime_metadata,
@@ -96,3 +101,13 @@ def get_briefing_history() -> list[dict[str, Any]]:
         ) from None
 
     return [_history_record_from_row(row) for row in rows]
+
+
+@router.get(
+    "/api/v1/briefings/targets",
+    response_model=list[BriefingTargetStatus],
+    summary="Get Briefing Targets",
+)
+def get_briefing_targets() -> list[BriefingTargetStatus]:
+    """Return live availability and metadata for fixed briefing synthesis targets."""
+    return build_briefing_target_statuses()

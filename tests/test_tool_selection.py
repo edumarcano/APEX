@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
@@ -16,6 +16,7 @@ from core.agent.catalog import build_concrete_agent
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
+from tests.support.agent_fixtures import panthera_settings
 from core.agent.tool_schemas import (
     _COMPACT_BRAVE_SEARCH_SCHEMA,
     project_descriptor_for_agent,
@@ -151,7 +152,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             "core.agent.tool_catalog._native_availability",
             return_value=(True, None),
         ):
-            selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
+            selection = resolve_selected_tools("felis", ["get_weather_forecast"])
         self.assertEqual(
             selection.diagnostics.offered_tool_names,
             ["get_weather_forecast"],
@@ -165,14 +166,77 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.diagnostics.selected_schema_tokens, 0)
 
     def test_invalid_selection_is_structured_and_not_silently_dropped(self) -> None:
-        selection = resolve_selected_tools("sorex", ["not_registered"])
+        selection = resolve_selected_tools("felis", ["not_registered"])
         self.assertEqual(selection.diagnostics.rejected_tool_names, ["not_registered"])
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "invalid")
 
     def test_agent_policy_intersects_explicit_selection(self) -> None:
-        selection = resolve_selected_tools("acinonyx", ["get_active_reminders"])
+        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        snapshot = MagicMock()
+        snapshot.ask_apex = agent_settings
+        with patch("core.settings.get_settings_store") as store, patch(
+            "core.agent.tool_catalog.is_dev_mode", return_value=True
+        ):
+            store.return_value.get_snapshot.return_value = snapshot
+            selection = resolve_selected_tools("panthera", ["get_active_reminders"])
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
+
+    def test_sandbox_catalog_disables_personal_native_tools(self) -> None:
+        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        snapshot = MagicMock()
+        snapshot.ask_apex = agent_settings
+        with patch("core.settings.get_settings_store") as store, patch(
+            "core.agent.tool_catalog.is_dev_mode", return_value=True
+        ), patch(
+            "core.agent.tool_catalog._native_availability",
+            return_value=(True, None),
+        ):
+            store.return_value.get_snapshot.return_value = snapshot
+            catalog = build_tool_catalog("panthera")
+
+        reminders = next(
+            tool for tool in catalog.tools if tool.name == "get_active_reminders"
+        )
+        self.assertFalse(reminders.available)
+        self.assertFalse(reminders.allowed_for_agent)
+        self.assertIn("selected Agent policy", reminders.unavailable_reason or "")
+
+    def test_sandbox_catalog_disables_configured_undiscovered_personal_mcp_tools(
+        self,
+    ) -> None:
+        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        snapshot = MagicMock()
+        snapshot.ask_apex = agent_settings
+        server = SimpleNamespace(
+            tool_risks={"search_repositories": "read"},
+        )
+        with patch("core.settings.get_settings_store") as store, patch(
+            "core.agent.tool_catalog.is_dev_mode", return_value=True
+        ), patch(
+            "core.agent.tool_catalog._configured_mcp_tools",
+            return_value={
+                "github_search_repositories": (
+                    "github",
+                    server,
+                    "search_repositories",
+                )
+            },
+        ), patch(
+            "core.agent.tool_catalog._mcp_availability",
+            return_value=(False, "The MCP tool was not discovered."),
+        ):
+            store.return_value.get_snapshot.return_value = snapshot
+            catalog = build_tool_catalog("panthera")
+
+        github_tool = next(
+            tool
+            for tool in catalog.tools
+            if tool.name == "github_search_repositories"
+        )
+        self.assertFalse(github_tool.available)
+        self.assertFalse(github_tool.allowed_for_agent)
+        self.assertIn("selected Agent policy", github_tool.unavailable_reason or "")
 
     def test_disconnected_mcp_selection_reports_runtime_reason(self) -> None:
         selection = resolve_selected_tools("panthera", ["brave_brave_web_search"])
@@ -184,7 +248,8 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
     def test_local_projection_is_shared_by_selection_and_model_schema(self) -> None:
         descriptor = _brave_descriptor()
-        projected = project_descriptor_for_agent("mus", descriptor)
+        with patch("core.agent.catalog.resolve_felis_runtime", return_value="ollama"):
+            projected = project_descriptor_for_agent("felis", descriptor)
         self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
         self.assertIn("Read-only", projected.description)
         self.assertIn("without asking for confirmation", projected.description)
@@ -203,36 +268,28 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             expose_to_client_display=True,
         )
 
-        projected = project_descriptor_for_agent("apodemus", descriptor)
+        projected = project_descriptor_for_agent("felis", descriptor)
         self.assertIn("Read-only", projected.description)
         self.assertIn("without asking for confirmation", projected.description)
         self.assertIn("Retrieve upcoming events.", projected.description)
-        neotoma = project_descriptor_for_agent("neotoma", descriptor)
-        self.assertIn("Read-only", neotoma.description)
-        self.assertIn("without asking for confirmation", neotoma.description)
 
         cloud_projection = project_descriptor_for_agent("panthera", descriptor)
         self.assertEqual(cloud_projection.description, descriptor.description)
 
-    def test_brave_projection_is_compact_only_for_sorex_and_mus(self) -> None:
+    def test_brave_projection_is_compact_for_ollama_felis_only(self) -> None:
         descriptor = _brave_descriptor()
 
-        for agent_key in ("sorex", "mus"):
-            with self.subTest(agent=agent_key):
-                projected = project_descriptor_for_agent(agent_key, descriptor)
-                self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
-                self.assertIn("Read-only", projected.description)
-                self.assertIn("Search the public web", projected.description)
+        with patch("core.agent.catalog.resolve_felis_runtime", return_value="ollama"):
+            projected = project_descriptor_for_agent("felis", descriptor)
+            self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
+            self.assertIn("Read-only", projected.description)
+            self.assertIn("Search the public web", projected.description)
 
-        apodemus = project_descriptor_for_agent("apodemus", descriptor)
-        self.assertEqual(apodemus.input_schema, descriptor.input_schema)
-        self.assertIn("Read-only", apodemus.description)
-        self.assertIn("Search the full public web.", apodemus.description)
-
-        neotoma = project_descriptor_for_agent("neotoma", descriptor)
-        self.assertEqual(neotoma.input_schema, descriptor.input_schema)
-        self.assertIn("Read-only", neotoma.description)
-        self.assertIn("Search the full public web.", neotoma.description)
+        with patch("core.agent.catalog.resolve_felis_runtime", return_value="llama_cpp"):
+            llama_projection = project_descriptor_for_agent("felis", descriptor)
+            self.assertEqual(llama_projection.input_schema, descriptor.input_schema)
+            self.assertIn("Read-only", llama_projection.description)
+            self.assertIn("Search the full public web.", llama_projection.description)
 
         cloud = project_descriptor_for_agent("panthera", descriptor)
         self.assertEqual(cloud.input_schema, descriptor.input_schema)
@@ -245,15 +302,15 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             "core.agent.tool_catalog._native_availability",
             return_value=(True, None),
         ):
-            selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
+            selection = resolve_selected_tools("felis", ["get_weather_forecast"])
             response = run_agent_loop(
                 AgentQueryRequest(
                     prompt="Forecast",
-                    agent="sorex",
+                    agent="felis",
                     selected_tool_names=["get_weather_forecast"],
                 ),
                 provider,
-                build_concrete_agent("sorex", native_effort=None),
+                build_concrete_agent("felis", native_effort=None, model_id="qwen3:1.7b"),
                 selected_tools=list(selection.descriptors),
                 tool_selection=selection.diagnostics,
             )
@@ -269,7 +326,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="sorex",
+                    agent="felis",
                     prompt="Give me a short answer.",
                     selected_tool_names=["get_weather_forecast"],
                 )
@@ -282,20 +339,21 @@ class UnifiedToolSelectionTests(unittest.TestCase):
     def test_generic_local_overflow_is_a_warning_until_provider_budget_runs(self) -> None:
         history = [
             AgentMessage(role="user", content="Prior question"),
-            AgentMessage(role="agent", content="Prior answer " * 1_500),
+            AgentMessage(role="agent", content="Prior answer " * 15_000),
             AgentMessage(role="user", content="Another prior question"),
-            AgentMessage(role="agent", content="Another prior answer " * 1_500),
+            AgentMessage(role="agent", content="Another prior answer " * 15_000),
             AgentMessage(role="user", content="A third prior question"),
-            AgentMessage(role="agent", content="A third prior answer " * 1_500),
+            AgentMessage(role="agent", content="A third prior answer " * 15_000),
         ]
         with patch("core.api.cortex.is_dev_mode", return_value=True), patch(
             "core.agent.catalog.is_dev_mode", return_value=True
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="mus",
+                    agent="felis",
                     prompt="Current question",
                     history=history,
+                    history_partition="production",
                 )
             )
 
@@ -309,7 +367,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="sorex",
+                    agent="felis",
                     prompt="This typed prompt must be counted.",
                     selected_tool_names=["not_registered"],
                 )
@@ -389,7 +447,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             patch("core.telemetry.service.get_telemetry_service") as get_service,
         ):
             get_service.return_value.latest.return_value = healthy_snapshot
-            selection = resolve_selected_tools("sorex", ["get_weather_forecast"])
+            selection = resolve_selected_tools("felis", ["get_weather_forecast"])
 
         self.assertEqual(
             selection.diagnostics.offered_tool_names,

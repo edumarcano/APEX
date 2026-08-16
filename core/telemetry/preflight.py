@@ -42,7 +42,10 @@ from core.telemetry.models import (
     PreflightWarning,
     PreflightWarningCode,
 )
-from core.synthesis.models import APODEMUS_BRIEFING_CONTEXT_WINDOW, VALID_BRIEFING_MODES
+from core.synthesis.models import (
+    FELIS_BRIEFING_CONTEXT_WINDOW,
+    VALID_BRIEFING_MODES,
+)
 from core.telemetry.service import get_telemetry_service
 
 load_dotenv(dotenv_path=ENV_PATH)
@@ -354,9 +357,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         cloud_agent = is_cloud_agent_key(agent) if agent else False
         involves_cloud = bool(request.involves_cloud or cloud_agent)
 
-    valid_agents = set(local_agent_keys(dev_mode=True)) | set(
-        cloud_agent_keys(dev_mode=True)
-    )
+    valid_agents = set(local_agent_keys()) | set(cloud_agent_keys())
     if agent is not None and agent not in valid_agents:
         blockers.append(
             _blocker("invalid_input", f"Unknown synthesis agent: {agent!r}")
@@ -369,9 +370,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     cold_local_load = False
     if local_agent and agent is not None:
         local_context_window = (
-            APODEMUS_BRIEFING_CONTEXT_WINDOW
+            FELIS_BRIEFING_CONTEXT_WINDOW
             if (
-                agent == "apodemus"
+                agent == "felis"
                 and request.operation in {"activate_with_briefing", "generate_briefing"}
             )
             else None
@@ -399,9 +400,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             agent,
             native_effort=None,
             local_context_window=(
-                APODEMUS_BRIEFING_CONTEXT_WINDOW
+                FELIS_BRIEFING_CONTEXT_WINDOW
                 if (
-                    agent == "apodemus"
+                    agent == "felis"
                     and request.operation
                     in {"activate_with_briefing", "generate_briefing"}
                 )

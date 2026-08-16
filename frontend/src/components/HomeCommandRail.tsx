@@ -4,9 +4,9 @@ import type { BriefingMode } from '../types/settings'
 import type {
   AgentStatus,
   AgentKey,
-  LocalSettingsAgent,
   ToolCatalog,
   ToolPreflightEstimate,
+  BriefingTargetStatus,
 } from '../types/telemetry'
 
 import { AgentQueryBar } from './AgentQueryBar'
@@ -21,10 +21,11 @@ interface HomeCommandRailProps {
   activeAgent: AgentKey
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
+  briefingTargets?: BriefingTargetStatus[]
   isCortexQuerying: boolean
   verifyingCloudAgent: AgentKey | null
   onAgentChange: (agent: AgentKey) => void
-  onVerifyCloudAgent: (agent: Exclude<AgentKey, LocalSettingsAgent>) => Promise<boolean>
+  onVerifyCloudAgent: (agent: 'panthera') => Promise<boolean>
   onAgentSubmit: (
     query: string,
     agent: AgentKey,
@@ -76,6 +77,7 @@ export function HomeCommandRail({
   activeAgent,
   agentsStatus,
   agentsStatusHydrated,
+  briefingTargets,
   isCortexQuerying,
   verifyingCloudAgent,
   onAgentChange,
@@ -138,8 +140,7 @@ export function HomeCommandRail({
           <BriefingModeSelector
             value={briefingMode}
             onChange={onBriefingModeChange}
-            agents={agentsStatus}
-            hydrated={agentsStatusHydrated}
+            targets={briefingTargets}
             disabled={briefingControlsBusy}
             className="col-span-2 justify-self-center w-full max-w-[20rem]"
           />
@@ -196,8 +197,7 @@ export function HomeCommandRail({
             <BriefingModeSelector
               value={briefingMode}
               onChange={onBriefingModeChange}
-              agents={agentsStatus}
-              hydrated={agentsStatusHydrated}
+              targets={briefingTargets}
               disabled={briefingControlsBusy}
               className="home-command-grid__briefing min-w-0"
             />

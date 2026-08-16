@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.agent.types import (
     AgentKey,
@@ -40,7 +40,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
-    briefing_mode: Literal["panthera", "apodemus", "structured_digest"] | None = Field(
+    briefing_mode: Literal["panthera", "felis", "structured_digest"] | None = Field(
         default=None,
         description="Explicit briefing mode used for this run.",
     )
@@ -48,7 +48,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_provider: (
         Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"] | None
     ) = None
-    synthesis_agent: Literal["panthera", "apodemus"] | None = None
+    synthesis_agent: Literal["panthera", "felis"] | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -533,6 +533,81 @@ class LocalLoadedModelStatus(BaseModel):
     )
 
 
+class AgentModelCatalogEntry(BaseModel):
+    """One selectable cloud or local model exposed in the Agent catalog."""
+
+    model_id: str = Field(description="Stable model identifier from the registry.")
+    display_name: str = Field(description="Human-readable model label for the HUD.")
+    provider: Literal["openai", "gemini", "xai", "ollama", "llama_cpp"] = Field(
+        description="Inference provider or local runtime for this model.",
+    )
+    runtime: Literal["cloud", "local"] = Field(
+        description="Whether this model runs in the cloud or locally.",
+    )
+    stability: Literal["stable", "preview", "experimental"] = Field(
+        description="Release stage classification for this model.",
+    )
+    hosted_capabilities: list[Literal["google_search", "google_maps", "x_search"]] = (
+        Field(
+            default_factory=list,
+            description="Provider-hosted grounding capabilities supported by this model.",
+        )
+    )
+    dev_only: bool = Field(
+        default=False,
+        description="Whether this model is visible only in DEV_MODE.",
+    )
+    credentials_configured: bool = Field(
+        default=True,
+        description="Whether required provider credentials are configured.",
+    )
+    pricing: AgentPricingMetadata = Field(
+        default_factory=lambda: AgentPricingMetadata(
+            pricing_version="unknown",
+            billing_basis="standard",
+            input_per_million=0,
+            output_per_million=0,
+        ),
+        description="Versioned token pricing and billing basis for this model.",
+    )
+    reasoning_options: list[str] | None = Field(
+        default=None,
+        description="Model-native selectable reasoning options for this model.",
+    )
+    default_reasoning: str | None = Field(
+        default=None,
+        description="Default model-native reasoning option for this model.",
+    )
+    context_options: list[int] | None = Field(
+        default=None,
+        description="Selectable local context window presets for this model.",
+    )
+    default_context_window: int | None = Field(
+        default=None,
+        description="Default local context window preset for this model.",
+    )
+    high_resource_context_options: list[int] | None = Field(
+        default=None,
+        description="Context presets that carry a high-resource UI label.",
+    )
+    maximum_context_window: int | None = Field(
+        default=None,
+        description="Maximum supported context window for this model.",
+    )
+    reasoning_modes: list[LocalReasoningMode] | None = Field(
+        default=None,
+        description="Selectable local reasoning modes for this model.",
+    )
+    default_reasoning_mode: LocalReasoningMode | None = Field(
+        default=None,
+        description="Default local reasoning mode for this model.",
+    )
+    supports_encrypted_reasoning: bool = Field(
+        default=False,
+        description="Whether this model supports encrypted reasoning payloads.",
+    )
+
+
 class AgentStatus(BaseModel):
     key: str = Field(description="Stable Agent identifier used by the HUD.")
     display_name: str = Field(description="Human-readable Apex Agent label.")
@@ -554,13 +629,17 @@ class AgentStatus(BaseModel):
     runtime: Literal["cloud", "local"] = Field(
         description="Whether this Agent runs in the cloud or locally.",
     )
-    tier: str = Field(description="Agent performance tier label.")
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification for this Agent.",
-    )
-    effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
+    model_stability: Literal["stable", "preview", "experimental"] | None = Field(
         default=None,
-        description="Selectable APEX effort tiers; null for fixed-effort local Agents.",
+        description="Release stage classification for the selected model profile.",
+    )
+    reasoning_options: list[str] | None = Field(
+        default=None,
+        description="Selectable model-native reasoning options.",
+    )
+    default_reasoning: str | None = Field(
+        default=None,
+        description="Default model-native reasoning option.",
     )
     context_window: int | None = Field(
         default=None,
@@ -589,10 +668,6 @@ class AgentStatus(BaseModel):
     default_reasoning_mode: LocalReasoningMode | None = Field(
         default=None,
         description="Default local reasoning mode when no preference is stored.",
-    )
-    default_effort: Literal["light", "focused", "extended"] | None = Field(
-        default=None,
-        description="Default APEX effort tier for this Agent.",
     )
     status: AgentAvailabilityStatus = Field(
         description="Current availability state for this Agent.",
@@ -637,6 +712,48 @@ class AgentStatus(BaseModel):
         default=None,
         description="Runtime details reported by the local provider for the loaded model.",
     )
+    model_catalog: list[AgentModelCatalogEntry] = Field(
+        default_factory=list,
+        description="Authoritative model catalog entries for this Agent's runtime.",
+    )
+
+
+class BriefingTargetStatus(BaseModel):
+    """Authoritative synthesis target and live availability for one Briefing mode."""
+
+    mode: Literal["panthera", "felis", "structured_digest"] = Field(
+        description="Selectable briefing mode identifier.",
+    )
+    label: str = Field(description="Display label for the briefing mode.")
+    description: str = Field(description="Short description of the synthesis route.")
+    model_id: str | None = Field(
+        default=None,
+        description="Fixed model identifier used for synthesis.",
+    )
+    model_display_name: str | None = Field(
+        default=None,
+        description="Human-readable model label for the fixed synthesis route.",
+    )
+    provider: str | None = Field(
+        default=None,
+        description="Provider or local runtime executing the briefing synthesis.",
+    )
+    runtime: Literal["cloud", "local", "none"] = Field(
+        default="none",
+        description="Execution boundary for this briefing mode.",
+    )
+    status: AgentAvailabilityStatus = Field(
+        default="available",
+        description="Live availability status for this briefing target.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Diagnostic explanation when the briefing target is not available.",
+    )
+    pricing: AgentPricingMetadata | None = Field(
+        default=None,
+        description="Token pricing metadata for this briefing target.",
+    )
 
 
 class ToolPreflightRequest(BaseModel):
@@ -647,7 +764,7 @@ class ToolPreflightRequest(BaseModel):
     tool_profile_id: str | None = None
     prompt: str = ""
     history: list[AgentMessage] = Field(default_factory=list)
-    history_partition: Literal["production", "acinonyx"] = "production"
+    history_partition: Literal["production", "sandbox"] = "production"
     snapshot_id: str | None = None
     briefing_id: int | None = Field(default=None, ge=1)
 
@@ -699,14 +816,9 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal[
-        "mus",
-        "sorex",
-        "apodemus",
-        "neotoma",
-        "unnamed-experimental-agent",
-    ] = Field(
-        description="Local Apex Agent to pre-warm in local runtime memory."
+    agent: Literal["felis"] = Field(
+        default="felis",
+        description="Local Apex Agent to pre-warm in local runtime memory.",
     )
 
 
@@ -715,13 +827,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal[
-        "mus",
-        "sorex",
-        "apodemus",
-        "neotoma",
-        "unnamed-experimental-agent",
-    ] = Field(
+    agent: Literal["felis"] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 
@@ -744,7 +850,7 @@ class BriefingHistoryRecord(BaseModel):
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
     provider: Literal["ollama", "llama_cpp", "raw", "demo", "openai"] | None = None
-    agent: Literal["panthera", "apodemus"] | None = None
+    agent: Literal["panthera", "felis"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
@@ -841,7 +947,7 @@ class VoiceSpeakResponse(BaseModel):
 
 
 class BriefingTriggerRequest(BaseModel):
-    mode: Literal["panthera", "apodemus", "structured_digest"] | None = Field(
+    mode: Literal["panthera", "felis", "structured_digest"] | None = Field(
         default=None,
         description="Optional briefing mode override; omitted requests use the saved default.",
     )
@@ -853,7 +959,7 @@ class BriefingGenerateRequest(BaseModel):
         min_length=1,
         description="Process-current telemetry snapshot identity to synthesize from.",
     )
-    mode: Literal["panthera", "apodemus", "structured_digest"] = Field(
+    mode: Literal["panthera", "felis", "structured_digest"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
     )

@@ -15,7 +15,9 @@ from core.agent.providers.cloud_verification import (
     record_cloud_request_failure,
     verify_cloud_agent,
 )
+from core.agent.model_catalog import get_model_profile
 from core.api.cortex import verify_cloud_agent_endpoint
+from core.settings.models import AgentSettings, PantheraSettings
 
 
 class _ProviderError(Exception):
@@ -32,14 +34,17 @@ class CloudAgentVerificationTests(unittest.TestCase):
         clear_cloud_status_cache()
 
     def test_non_generative_probe_is_cached_as_verified(self) -> None:
+        openai_profile = get_model_profile("gpt-5.6-luna")
         with (
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
+            mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)) as probe,
         ):
             result = verify_cloud_agent("panthera")
 
         self.assertEqual(result.status, "verified")
-        self.assertEqual(cloud_status("panthera").status, "verified")
+        with mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile):
+            self.assertEqual(cloud_status("panthera").status, "verified")
         probe.assert_called_once_with("openai", "gpt-5.6-luna", "secret")
 
     def test_explicit_verification_forces_a_fresh_probe(self) -> None:
@@ -51,6 +56,33 @@ class CloudAgentVerificationTests(unittest.TestCase):
             verify_cloud_agent("panthera")
 
         self.assertEqual(probe.call_count, 2)
+
+    def test_explicit_verification_records_the_route_it_captured(self) -> None:
+        openai_profile = get_model_profile("gpt-5.6-luna")
+        gemini_profile = get_model_profile("gemini-3.6-flash")
+        self.assertIsNotNone(openai_profile)
+        self.assertIsNotNone(gemini_profile)
+
+        with (
+            mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
+            mock.patch(
+                "core.agent.providers.cloud_verification._probe_model",
+                return_value=("verified", None),
+            ) as probe,
+            mock.patch(
+                "core.agent.providers.cloud_verification.resolve_selected_model_profile",
+                side_effect=[openai_profile, gemini_profile],
+            ),
+        ):
+            result = verify_cloud_agent("panthera")
+
+        self.assertEqual(result.status, "verified")
+        probe.assert_called_once_with("openai", "gpt-5.6-luna", "secret")
+        with mock.patch(
+            "core.agent.providers.cloud_verification.resolve_selected_model_profile",
+            return_value=openai_profile,
+        ):
+            self.assertEqual(cloud_status("panthera").status, "verified")
 
     def test_concurrent_verification_is_rejected(self) -> None:
         probe_started = Event()
@@ -92,8 +124,15 @@ class CloudAgentVerificationTests(unittest.TestCase):
         )
 
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
-        record_cloud_request_failure("panthera", _ProviderError(429, "insufficient_quota"))
+        openai_profile = get_model_profile("gpt-5.6-luna")
+        record_cloud_request_failure(
+            "panthera",
+            _ProviderError(429, "insufficient_quota"),
+            provider="openai",
+            model="gpt-5.6-luna",
+        )
         with (
+            mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile),
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)),
         ):
@@ -110,11 +149,18 @@ class CloudAgentVerificationTests(unittest.TestCase):
         self.assertEqual(classify_provider_failure(_ProviderError(404))[0], "model_unavailable")
         self.assertEqual(classify_provider_failure(_ProviderError(500))[0], "provider_unreachable")
 
-        record_cloud_request_failure("panthera", _ProviderError(429, "insufficient_quota"))
-        self.assertEqual(
-            cloud_status("panthera").reason,
-            "Provider reported exhausted quota or credits.",
+        openai_profile = get_model_profile("gpt-5.6-luna")
+        record_cloud_request_failure(
+            "panthera",
+            _ProviderError(429, "insufficient_quota"),
+            provider="openai",
+            model="gpt-5.6-luna",
         )
+        with mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile):
+            self.assertEqual(
+                cloud_status("panthera").reason,
+                "Provider reported exhausted quota or credits.",
+            )
 
     def test_endpoint_rejects_demo_and_local_agents_without_probe(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", True), mock.patch(
@@ -131,7 +177,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
             "core.agent.catalog.is_dev_mode", return_value=True
         ), mock.patch("core.api.cortex.verify_cloud_agent") as verify:
             with self.assertRaises(HTTPException) as local_error:
-                verify_cloud_agent_endpoint("mus")
+                verify_cloud_agent_endpoint("felis")
         self.assertEqual(local_error.exception.status_code, 400)
         verify.assert_not_called()
 
@@ -139,6 +185,58 @@ class CloudAgentVerificationTests(unittest.TestCase):
         with mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value=None):
             with self.assertRaises(ValueError):
                 verify_cloud_agent("panthera")
+
+    def test_verification_cache_is_scoped_to_provider_and_model(self) -> None:
+        store = mock.Mock()
+        store.get_snapshot.return_value.ask_apex = AgentSettings(
+            panthera=PantheraSettings(
+                model="gpt-5.6-luna",
+            )
+        )
+        with (
+            mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
+            mock.patch(
+                "core.agent.providers.cloud_verification._probe_model",
+                return_value=("verified", None),
+            ),
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=store,
+            ),
+        ):
+            verify_cloud_agent("panthera")
+            self.assertEqual(cloud_status("panthera").status, "verified")
+
+            store.get_snapshot.return_value.ask_apex = AgentSettings(
+                panthera=PantheraSettings(
+                    model="gemini-3.6-flash",
+                )
+            )
+            self.assertEqual(cloud_status("panthera").status, "configured")
+
+    def test_request_cache_records_the_route_that_actually_ran(self) -> None:
+        from core.agent.providers.cloud_verification import record_cloud_request_success
+
+        openai_profile = get_model_profile("gpt-5.6-luna")
+        record_cloud_request_success(
+            "panthera",
+            provider="openai",
+            model="gpt-5.6-luna",
+        )
+        with mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile):
+            self.assertEqual(cloud_status("panthera").status, "verified")
+
+        store = mock.Mock()
+        store.get_snapshot.return_value.ask_apex = AgentSettings(
+            panthera=PantheraSettings(
+                model="gemini-3.6-flash",
+            )
+        )
+        with mock.patch(
+            "core.settings.get_settings_store",
+            return_value=store,
+        ):
+            self.assertEqual(cloud_status("panthera").status, "configured")
 
     def test_endpoint_returns_sanitized_result(self) -> None:
         result = mock.Mock(status="verified", reason=None)

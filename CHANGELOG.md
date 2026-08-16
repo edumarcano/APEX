@@ -2,6 +2,47 @@
 
 ---
 
+## Unreleased - Agent Family Consolidation (Checkpoint 0)
+
+**In progress:** August 15, 2026
+
+APEX now exposes two Apex Agents: Panthera for cloud work and Felis for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities instead of in separate genus-based Agent names; each model profile determines its provider or local runtime. Panthera and Felis are at version 2.0.
+
+---
+
+### What's New
+
+- Consolidated the product roster to Panthera and Felis. Former Agent identities such as Apodemus, Neotoma, Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, and Mus are retired rather than migrated at runtime; existing local Agent settings must be updated to the Panthera/Felis model-first format.
+- Introduced Felis as the durable local Agent identity.
+- Moved cloud and local model catalogs under Panthera and Felis settings (`ask_apex.panthera`, `ask_apex.felis`) with schema version `16`; persisted route settings contain only the selected model.
+- Renamed llama.cpp router presets from Agent-based aliases such as `apodemus-16k` to model-based aliases such as `gemma-4-e2b-16k`; existing Agent-based aliases must be updated in machine-local presets.
+- Updated briefing modes to `panthera`, `felis`, and `structured_digest`, with Panthera falling back to Felis and then Structured Digest.
+- Replaced the Acinonyx-specific development sandbox with `ask_apex.sandbox_mode` under `DEV_MODE`, using the `sandbox` history partition and a restricted non-personal tool allowlist.
+
+### Architecture Changes
+
+- Reduced `AGENT_SPECS` to Panthera and Felis in `core/agent/catalog.py`, with replaceable model profiles in `core/agent/model_catalog.py`.
+- Removed legacy Agent-key migration from settings normalization and model-catalog metadata; current settings resolve only through Panthera, Felis, and their selected model profiles.
+- Updated Cortex agent status, tool policy, synthesis routing, and local-model lifecycle to resolve configuration through Panthera and Felis.
+
+### API Changes
+
+- `GET /api/v1/agents` now returns Panthera and Felis with selected-model metadata and each Agent's `model_catalog`.
+- Settings and briefing contracts use schema version `16` with nested `panthera` and `felis` groups; provider/runtime routing is derived from the selected model.
+- `POST /api/v1/cortex/local-model/load` accepts only `felis`.
+- `POST /api/v1/cortex/query` uses `history_partition: "sandbox"` for development sandbox queries.
+
+### Frontend Changes
+
+- Updated Agent selection, briefing controls, and Cortex inspector flows for the two-Agent model and per-Agent model catalogs.
+
+### Documentation Updates
+
+- Rewrote the Agent family guidance in `docs/identity-and-naming.md`, including Felis and Panthera 2.0 / Felis 2.0.
+- Updated `docs/api.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/privacy.md`, `docs/cli.md`, `docs/getting-started.md`, `docs/decisions.md`, `docs/design-system.md`, `benchmarks/README.md`, `docs/examples/llama-cpp-apex-agents.preset.ini`, and `README.md`.
+- Updated `scripts/check_docs.py` for the consolidated Agent and model documentation checks.
+
+---
 
 ## v1.20.0 - Cortex: Verified Personal Actions & Headless Control
 

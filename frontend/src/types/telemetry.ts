@@ -12,7 +12,7 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'apodemus'
+export type SynthesisAgent = 'panthera' | 'felis'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -82,21 +82,18 @@ export interface WeatherTimelinePoint {
 }
 
 export type AgentRuntime = 'cloud' | 'local'
-export type CloudEffort = 'light' | 'focused' | 'extended'
-export type CloudSettingsAgent = 'panthera' | 'neofelis' | 'delphinus' | 'orcinus'
-export type LocalSettingsAgent =
-  | 'sorex'
-  | 'mus'
-  | 'apodemus'
-  | 'neotoma'
-  | 'unnamed-experimental-agent'
+export type CloudEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+export type CloudProvider = 'openai' | 'gemini' | 'xai'
+export type LocalRuntime = 'ollama' | 'llama_cpp'
+export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
 
-export type CloudAgent = CloudSettingsAgent
-
-export type AgentKey =
-  | CloudSettingsAgent
-  | LocalSettingsAgent
-  | 'acinonyx'
+export type AgentKey = 'panthera' | 'felis'
 
 export type ToolCatalogGroupKind = 'apex_family' | 'mcp_server'
 
@@ -225,6 +222,27 @@ export interface AgentPricingMetadata {
   long_context_cached_input_per_million: number | null
 }
 
+export interface ModelCatalogEntry {
+  model_id: string
+  display_name: string
+  provider: CloudProvider | LocalRuntime
+  runtime: AgentRuntime
+  stability: AgentStability
+  hosted_capabilities: HostedTool[]
+  pricing?: AgentPricingMetadata
+  reasoning_options?: CloudEffort[] | null
+  default_reasoning?: CloudEffort | null
+  context_options?: number[] | null
+  default_context_window?: number | null
+  high_resource_context_options?: number[] | null
+  maximum_context_window?: number | null
+  reasoning_modes?: LocalReasoningMode[] | null
+  default_reasoning_mode?: LocalReasoningMode | null
+  supports_encrypted_reasoning?: boolean
+  dev_only?: boolean
+  credentials_configured?: boolean
+}
+
 export interface LocalLoadedModelStatus {
   provider: 'ollama' | 'llama_cpp'
   name: string
@@ -238,24 +256,20 @@ export interface LocalLoadedModelStatus {
   expires_at: string | null
 }
 
-/** @deprecated Prefer LocalLoadedModelStatus */
-export type LoadedOllamaModelStatus = LocalLoadedModelStatus
-
 export interface AgentStatus {
   key: AgentKey
   description: string
   configured_model: string
   native_tools: Record<string, boolean>
   display_name: string
-  provider: 'ollama' | 'llama_cpp' | 'gemini' | 'openai' | 'xai'
+  provider: CloudProvider | LocalRuntime
   version: string
   sort_order: number
   capabilities: string[]
   runtime: AgentRuntime
-  tier: string
-  stability: AgentStability
-  effort_options: CloudEffort[] | null
-  default_effort: CloudEffort | null
+  model_stability: AgentStability | null
+  reasoning_options?: CloudEffort[] | null
+  default_reasoning?: CloudEffort | null
   context_window: number | null
   context_window_options: number[] | null
   context_window_high_resource_options: number[] | null
@@ -273,12 +287,14 @@ export interface AgentStatus {
   reason: string | null
   idle_unload_remaining_seconds: number | null
   loaded_model: LocalLoadedModelStatus | null
+  model_catalog: ModelCatalogEntry[]
 }
 
 export interface AgentInitialSelection {
   runtime: AgentRuntime
   agent: AgentKey
   effort: CloudEffort | null
+  sandboxMode?: boolean
 }
 
 export interface DigestPayload {
@@ -324,7 +340,20 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'apodemus' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'felis' | 'structured_digest'
+
+export interface BriefingTargetStatus {
+  mode: BriefingMode
+  label: string
+  description: string
+  model_id: string | null
+  model_display_name: string | null
+  provider: string | null
+  runtime: 'cloud' | 'local' | 'none'
+  status: AgentAvailabilityStatus
+  reason: string | null
+  pricing: AgentPricingMetadata | null
+}
 
 export type PreflightOperation =
   | 'activate'

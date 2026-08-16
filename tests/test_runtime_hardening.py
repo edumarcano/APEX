@@ -11,6 +11,7 @@ from core.agent import tools as agent_tools
 from core.agent.capabilities import get_capability_descriptor
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
+from core.agent.model_catalog import get_model_profile
 from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.api.models import RuntimeMetadata
@@ -147,12 +148,17 @@ class StableAgentErrorTests(unittest.TestCase):
         def failing_dispatcher(_name: str, _arguments: dict[str, object]) -> object:
             raise RuntimeError("private-dispatcher-detail")
 
-        response = run_agent_loop(
-            AgentQueryRequest(prompt="Check weather", agent="neofelis"),
-            provider,
-            build_concrete_agent(
-                "neofelis", native_effort=resolve_effort("neofelis", None)[1]
+        panthera_profile = build_concrete_agent(
+            "panthera",
+            native_effort=resolve_effort(
+                get_model_profile("gemini-3.6-flash"), None
             ),
+            model_id="gemini-3.6-flash",
+        )
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Check weather", agent="panthera"),
+            provider,
+            panthera_profile,
             tools_dispatcher=failing_dispatcher,
             selected_tools=[get_capability_descriptor("get_weather_forecast")],  # type: ignore[list-item]
         )

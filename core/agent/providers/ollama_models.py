@@ -5,10 +5,7 @@ from pydantic import BaseModel, Field
 from core.agent.types import LocalReasoningMode
 from core.config import (
     LOCAL_AGENT_SYSTEM_PROMPT,
-    MUS_CPU_LIMIT,
-    MUS_RAM_LIMIT,
-    SOREX_CPU_LIMIT,
-    SOREX_RAM_LIMIT,
+    OLLAMA_RESOURCE_GATES,
 )
 
 
@@ -20,9 +17,6 @@ class OllamaModelProfile(BaseModel):
         description="Version of the named Apex Agent product identity."
     )
     api_model: str = Field(description="Exact Ollama model tag string.")
-    tier: Literal["lightweight", "balanced", "capable"] = Field(
-        description="Computational performance classification for local inference."
-    )
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )
@@ -136,7 +130,7 @@ class OllamaRuntimeConfig(BaseModel):
 
 
 OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
-    "sorex": OllamaRuntimeConfig(
+    "qwen3:1.7b": OllamaRuntimeConfig(
         default_temperature=0.2,
         context_window=4096,
         tool_select_max_tokens=128,
@@ -144,10 +138,10 @@ OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
         num_thread=4,
         generation_timeout=120,
         think=False,
-        ram_limit=SOREX_RAM_LIMIT,
-        cpu_limit=SOREX_CPU_LIMIT,
+        ram_limit=OLLAMA_RESOURCE_GATES["qwen3:1.7b"][0],
+        cpu_limit=OLLAMA_RESOURCE_GATES["qwen3:1.7b"][1],
     ),
-    "mus": OllamaRuntimeConfig(
+    "qwen3:4b-instruct": OllamaRuntimeConfig(
         default_temperature=0.2,
         context_window=4096,
         tool_select_max_tokens=128,
@@ -155,9 +149,9 @@ OLLAMA_RUNTIME_CONFIGS: dict[str, OllamaRuntimeConfig] = {
         num_thread=6,
         generation_timeout=150,
         think=False,
-        ram_limit=MUS_RAM_LIMIT,
-        cpu_limit=MUS_CPU_LIMIT,
+        ram_limit=OLLAMA_RESOURCE_GATES["qwen3:4b-instruct"][0],
+        cpu_limit=OLLAMA_RESOURCE_GATES["qwen3:4b-instruct"][1],
     ),
 }
 
-OLLAMA_HIGH_RESOURCE_AGENTS: frozenset[str] = frozenset({"mus"})
+OLLAMA_HIGH_RESOURCE_MODELS: frozenset[str] = frozenset({"qwen3:4b-instruct"})

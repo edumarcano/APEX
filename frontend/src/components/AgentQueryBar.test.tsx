@@ -10,21 +10,20 @@ import type {
 
 import { AgentQueryBar } from './AgentQueryBar'
 
-const mus: AgentStatus = {
-  key: 'mus',
-  display_name: 'Apex Mus',
+const felis: AgentStatus = {
+  key: 'felis',
+  display_name: 'Apex Felis',
   description: 'Balanced local profile.',
-  configured_model: 'qwen3:4b-instruct',
-  sort_order: 5,
+  configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
+  sort_order: 2,
   capabilities: ['Larger model'],
   native_tools: {},
-  provider: 'ollama',
-  version: '7.4',
+  provider: 'llama_cpp',
+  version: '2.0',
   runtime: 'local',
-  tier: 'balanced',
-  stability: 'stable',
-  effort_options: null,
-  default_effort: null,
+  model_stability: 'stable',
+  reasoning_options: null,
+  default_reasoning: null,
   context_window: null,
   context_window_options: null,
   context_window_high_resource_options: null,
@@ -53,10 +52,11 @@ const mus: AgentStatus = {
   reason: null,
   idle_unload_remaining_seconds: null,
   loaded_model: null,
+  model_catalog: [],
 }
 
 const catalog: ToolCatalog = {
-  agent: 'mus',
+  agent: 'felis',
   groups: [],
   tools: [],
   profiles: [],
@@ -64,12 +64,12 @@ const catalog: ToolCatalog = {
   default_profile_name: 'No APEX Tools',
   default_selected_tool_names: [],
   provider_hosted_tools: [],
-  context_window: 4096,
+  context_window: 16384,
   reserved_response_tokens: 512,
 }
 
 const overflowPreflight: ToolPreflightEstimate = {
-  agent: 'mus',
+  agent: 'felis',
   selection: {
     requested_tool_names: ['get_weather_forecast'],
     offered_tool_names: ['get_weather_forecast'],
@@ -102,9 +102,9 @@ function renderBar(
   return render(
     <AgentQueryBar
       presentation="cortex"
-      activeAgent="mus"
+      activeAgent="felis"
       onSubmit={onSubmit}
-      agentsStatus={[mus]}
+      agentsStatus={[felis]}
       catalog={catalog}
       selectedToolNames={['get_weather_forecast']}
       activeToolProfileId="custom_weather"
@@ -160,7 +160,7 @@ describe('AgentQueryBar unified tool selection', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       'Check status',
-      'mus',
+      'felis',
       ['get_weather_forecast'],
       'custom_weather',
     )
@@ -232,9 +232,9 @@ describe('AgentQueryBar unified tool selection', () => {
     view.rerender(
       <AgentQueryBar
         presentation="cortex"
-        activeAgent="mus"
+        activeAgent="felis"
         onSubmit={onSubmit}
-        agentsStatus={[mus]}
+        agentsStatus={[felis]}
         catalog={catalog}
         selectedToolNames={['get_weather_forecast']}
         activeToolProfileId="custom_weather"
@@ -247,7 +247,7 @@ describe('AgentQueryBar unified tool selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
     expect(onSubmit).toHaveBeenCalledWith(
       'Shorten this prompt',
-      'mus',
+      'felis',
       ['get_weather_forecast'],
       'custom_weather',
     )

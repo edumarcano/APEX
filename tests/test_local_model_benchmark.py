@@ -40,8 +40,8 @@ class BenchmarkUtilityTests(unittest.TestCase):
             self.assertTrue(set(case["expected_tools"]).issubset(case["tools"]))
 
     def test_context_change_requires_reload_but_reasoning_change_does_not(self) -> None:
-        same_alias = LocalModelRef(provider="llama_cpp", model="neotoma-16k")
-        changed_alias = LocalModelRef(provider="llama_cpp", model="neotoma-32k")
+        same_alias = LocalModelRef(provider="llama_cpp", model="gemma-4-e4b-16k")
+        changed_alias = LocalModelRef(provider="llama_cpp", model="gemma-4-e4b-32k")
 
         self.assertFalse(benchmark.requires_model_reload(same_alias, same_alias))
         self.assertTrue(benchmark.requires_model_reload(same_alias, changed_alias))
@@ -81,7 +81,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
             ],
             "sampled_at": 0.0,
         }
-        known = LocalModelRef(provider="llama_cpp", model="apodemus-16k")
+        known = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
 
         with (
             mock.patch.object(
@@ -101,7 +101,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
         backend.unload_model.assert_not_called()
 
     def test_unload_failure_aborts_before_next_configuration(self) -> None:
-        reference = LocalModelRef(provider="llama_cpp", model="apodemus-16k")
+        reference = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._allowed_refs = frozenset({reference})
         runner._owned_model = True
@@ -130,14 +130,14 @@ class BenchmarkUtilityTests(unittest.TestCase):
         unload.assert_called_once()
 
     def test_prepare_unloads_before_loading_a_different_alias(self) -> None:
-        first = LocalModelRef(provider="llama_cpp", model="apodemus-16k")
-        second = LocalModelRef(provider="llama_cpp", model="apodemus-32k")
+        first = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
+        second = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-32k")
         events: list[str] = []
         snapshots = {
             "llama_cpp": {
                 "provider": "llama_cpp",
                 "reachable": True,
-                "installed_models": ["apodemus-32k"],
+                "installed_models": ["gemma-4-e2b-32k"],
                 "loaded_models": [],
                 "sampled_at": 0.0,
             }
@@ -147,22 +147,22 @@ class BenchmarkUtilityTests(unittest.TestCase):
         backend.enabled = True
         profile = SimpleNamespace(
             provider="llama_cpp",
-            runtime_model_id="apodemus-32k",
+            runtime_model_id="gemma-4-e2b-32k",
             context_window=32768,
             reasoning_mode="none",
             ram_limit=90.0,
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="apodemus",
+            agent="felis",
             provider="llama_cpp",
             model="model.gguf",
-            runtime_alias="apodemus-32k",
+            runtime_alias="gemma-4-e2b-32k",
             context=32768,
             reasoning="none",
             profile=profile,
-            agent_key="apodemus",
-            tool_projection_agent="apodemus",
+            agent_key="felis",
+            tool_projection_agent="felis",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._allowed_refs = frozenset({first, second})
@@ -205,22 +205,22 @@ class BenchmarkUtilityTests(unittest.TestCase):
     def test_resource_recovery_requires_consecutive_open_samples(self) -> None:
         profile = SimpleNamespace(
             provider="llama_cpp",
-            runtime_model_id="neotoma-16k",
+            runtime_model_id="gemma-4-e4b-16k",
             context_window=16384,
             reasoning_mode="none",
             ram_limit=90.0,
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="neotoma",
+            agent="felis",
             provider="llama_cpp",
             model="model.gguf",
-            runtime_alias="neotoma-16k",
+            runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
             profile=profile,
-            agent_key="neotoma",
-            tool_projection_agent="neotoma",
+            agent_key="felis",
+            tool_projection_agent="felis",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.resource_recovery_timeout_seconds = 5.0
@@ -250,22 +250,22 @@ class BenchmarkUtilityTests(unittest.TestCase):
     def test_resource_blocked_is_distinct_from_model_failure(self) -> None:
         profile = SimpleNamespace(
             provider="llama_cpp",
-            runtime_model_id="neotoma-16k",
+            runtime_model_id="gemma-4-e4b-16k",
             context_window=16384,
             reasoning_mode="none",
             ram_limit=90.0,
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="neotoma",
+            agent="felis",
             provider="llama_cpp",
             model="model.gguf",
-            runtime_alias="neotoma-16k",
+            runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
             profile=profile,
-            agent_key="neotoma",
-            tool_projection_agent="neotoma",
+            agent_key="felis",
+            tool_projection_agent="felis",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._prepare_configuration = mock.Mock(
@@ -324,17 +324,17 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertTrue(result["task_success"])
 
     def test_context_mismatch_still_cleans_up_loaded_model(self) -> None:
-        reference = LocalModelRef(provider="llama_cpp", model="apodemus-16k")
+        reference = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
         configuration = benchmark.BenchmarkConfiguration(
-            agent="apodemus",
+            agent="felis",
             provider="llama_cpp",
             model="model.gguf",
-            runtime_alias="apodemus-16k",
+            runtime_alias="gemma-4-e2b-16k",
             context=16384,
             reasoning="none",
             profile=SimpleNamespace(),
-            agent_key="apodemus",
-            tool_projection_agent="apodemus",
+            agent_key="felis",
+            tool_projection_agent="felis",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.configurations = (configuration,)
@@ -373,12 +373,25 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertEqual(cleaned_refs, [reference])
 
     def test_warmup_is_not_counted_as_a_measured_repetition(self) -> None:
-        configurations = benchmark.build_configurations(
-            agents=("apodemus",),
-            context=16384,
-            all_contexts=False,
-            reasoning_modes=("none",),
-        )
+        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_FELIS_MODEL)
+        assert default_profile is not None
+        with (
+            mock.patch.object(
+                benchmark,
+                "resolve_selected_model_profile",
+                return_value=default_profile,
+            ),
+            mock.patch(
+                "core.agent.catalog.resolve_selected_model_profile",
+                return_value=default_profile,
+            ),
+        ):
+            configurations = benchmark.build_configurations(
+                agents=("felis",),
+                context=16384,
+                all_contexts=False,
+                reasoning_modes=("none",),
+            )
         calls: list[str] = []
         response = AgentQueryResponse(answer="ready", agent_used={})
 

@@ -94,8 +94,8 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
-| Cloud reasoning | OpenAI, Google, and SpaceXAI Apex Agents; see Configuration for current model IDs |
-| Local Agent infrastructure | Ollama with Qwen3 development Agents; llama.cpp with the Apodemus stable local Agent and Neotoma preview local Agent |
+| Cloud reasoning | Panthera through OpenAI, Google, or SpaceXAI; see Configuration for current model IDs |
+| Local Agent infrastructure | Felis through Ollama development models or llama.cpp with Gemma and Qwen options |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
 | Validation | unittest, Vitest, ESLint, TypeScript, Vite build |

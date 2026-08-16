@@ -142,10 +142,10 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
                 "core.agent.local_runtime.coordinator._known_local_model_refs",
                 return_value=frozenset(
                     {
-                        LocalModelRef(provider="ollama", model="sorex-model"),
-                        LocalModelRef(provider="ollama", model="mus-model"),
-                        LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
-                        LocalModelRef(provider="llama_cpp", model="apodemus-4k"),
+                        LocalModelRef(provider="ollama", model="qwen-17b-model"),
+                        LocalModelRef(provider="ollama", model="qwen-4b-model"),
+                        LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
+                        LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
                     }
                 ),
             ),
@@ -192,8 +192,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(reason, "cpu_overloaded")
 
     def test_same_target_already_active_is_noop(self) -> None:
-        profile = _FakeProfile(api_model="mus-model")
-        self.backend.resident.add("mus-model")
+        profile = _FakeProfile(api_model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
         self.backend.load_calls.clear()
@@ -202,70 +202,70 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         coord.end_local_execution()
 
     def test_cold_target_load(self) -> None:
-        profile = _FakeProfile(api_model="mus-model")
+        profile = _FakeProfile(api_model="qwen-4b-model")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
-        self.assertEqual(self.backend.load_calls, ["mus-model"])
+        self.assertEqual(self.backend.load_calls, ["qwen-4b-model"])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="mus-model"),
+            LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
         coord.end_local_execution()
 
     def test_target_already_resident_bypasses_reload_path(self) -> None:
-        profile = _FakeProfile(api_model="sorex-model")
-        self.backend.resident.add("sorex-model")
+        profile = _FakeProfile(api_model="qwen-17b-model")
+        self.backend.resident.add("qwen-17b-model")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
-        self.assertEqual(self.backend.load_calls, ["sorex-model"])
+        self.assertEqual(self.backend.load_calls, ["qwen-17b-model"])
         coord.end_local_execution()
 
     def test_switch_unloads_competing_known_model(self) -> None:
-        self.backend.resident.add("sorex-model")
+        self.backend.resident.add("qwen-17b-model")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="sorex-model")
+            LocalModelRef(provider="ollama", model="qwen-17b-model")
         )
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="mus-model")))
-        self.assertEqual(self.backend.unload_calls, ["sorex-model"])
-        self.assertEqual(self.backend.load_calls, ["mus-model"])
-        self.assertNotIn("sorex-model", self.backend.resident)
+        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
+        self.assertEqual(self.backend.unload_calls, ["qwen-17b-model"])
+        self.assertEqual(self.backend.load_calls, ["qwen-4b-model"])
+        self.assertNotIn("qwen-17b-model", self.backend.resident)
         coord.end_local_execution()
 
     def test_unknown_external_model_is_not_auto_unloaded(self) -> None:
         self.backend.resident.add("external-model")
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="mus-model")))
+        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
         self.assertEqual(self.backend.unload_calls, [])
         self.assertIn("external-model", self.backend.resident)
         coord.end_local_execution()
 
     def test_failed_unload_aborts_switch(self) -> None:
-        self.backend.resident.add("sorex-model")
-        self.backend.fail_unload.add("sorex-model")
+        self.backend.resident.add("qwen-17b-model")
+        self.backend.fail_unload.add("qwen-17b-model")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="sorex-model")
+            LocalModelRef(provider="ollama", model="qwen-17b-model")
         )
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="mus-model")))
+        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
         self.assertEqual(self.backend.load_calls, [])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="sorex-model"),
+            LocalModelRef(provider="ollama", model="qwen-17b-model"),
         )
         coord.end_local_execution()
 
     def test_failed_load_leaves_no_false_active_state(self) -> None:
-        self.backend.fail_load.add("mus-model")
+        self.backend.fail_load.add("qwen-4b-model")
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="mus-model")))
+        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
         self.assertIsNone(coord.get_active_local_model())
         self.assertIsNone(coord.get_loading_local_model())
         coord.end_local_execution()
 
     def test_activity_resets_idle_countdown(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.clock["now"] = 1030.0
         self.assertEqual(coord.get_idle_unload_remaining_seconds(), 30)
@@ -273,8 +273,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(coord.get_idle_unload_remaining_seconds(), 60)
 
     def test_idle_worker_skips_active_execution(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         self.assertTrue(coord.try_begin_local_execution())
@@ -284,8 +284,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         coord.end_local_execution()
 
     def test_idle_unload_holds_execution_slot_through_unload(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         self.backend.unload_entered = threading.Event()
@@ -303,26 +303,26 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coord.get_active_local_model())
 
     def test_idle_unload_success(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
-        self.assertEqual(self.backend.unload_calls, ["mus-model"])
+        self.assertEqual(self.backend.unload_calls, ["qwen-4b-model"])
         self.assertIsNone(coord.get_active_local_model())
 
     def test_idle_unload_failed_verification_keeps_active(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
-        self.backend.fail_unload.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
+        self.backend.fail_unload.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
         self.assertEqual(coord.get_active_local_model(), ref)
 
     def test_provider_restart_clears_stale_ready_state(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.assertTrue(coord.is_local_model_ready(ref))
         self.backend.resident.clear()
@@ -330,30 +330,30 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coord.get_active_local_model())
 
     def test_external_unload_clears_stale_ready_state(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
-        self.backend.resident.discard("mus-model")
+        self.backend.resident.discard("qwen-4b-model")
         self.assertFalse(coord.is_local_model_ready(ref))
         with coord._state_lock:
             self.assertIsNone(coord._active_local_model)
 
     def test_stale_tracked_target_forces_verified_reload(self) -> None:
-        profile = _FakeProfile(api_model="mus-model")
-        self.backend.resident.add("mus-model")
+        profile = _FakeProfile(api_model="qwen-4b-model")
+        self.backend.resident.add("qwen-4b-model")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
         self.backend.load_calls.clear()
-        self.backend.resident.discard("mus-model")
+        self.backend.resident.discard("qwen-4b-model")
         self.assertTrue(coord.switch_local_model(profile))
-        self.assertEqual(self.backend.load_calls, ["mus-model"])
-        self.assertIn("mus-model", self.backend.resident)
+        self.assertEqual(self.backend.load_calls, ["qwen-4b-model"])
+        self.assertIn("qwen-4b-model", self.backend.resident)
         coord.end_local_execution()
 
     def test_stale_ready_miss_exposes_cold_load_gate(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="mus-model")
-        profile = _FakeProfile(api_model="mus-model", ram_limit=40.0, cpu_limit=40.0)
-        self.backend.resident.add("mus-model")
+        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
+        profile = _FakeProfile(api_model="qwen-4b-model", ram_limit=40.0, cpu_limit=40.0)
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(ref)
         self.backend.resident.clear()
 
@@ -367,20 +367,20 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(reason, "insufficient_ram")
 
     def test_restart_reconciliation_adopts_single_resident(self) -> None:
-        self.backend.resident.add("mus-model")
+        self.backend.resident.add("qwen-4b-model")
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="mus-model"),
+            LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
 
     def test_restart_reconciliation_leaves_multiple_untracked(self) -> None:
-        self.backend.resident.update({"mus-model", "sorex-model"})
+        self.backend.resident.update({"qwen-4b-model", "qwen-17b-model"})
         self.assertIsNone(coord.get_active_local_model())
 
     def test_restart_reconciliation_skips_during_switch(self) -> None:
-        self.backend.resident.add("sorex-model")
+        self.backend.resident.add("qwen-17b-model")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="sorex-model")
+            LocalModelRef(provider="ollama", model="qwen-17b-model")
         )
         self.backend.unload_entered = threading.Event()
         self.backend.unload_gate = threading.Event()
@@ -390,7 +390,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
             self.assertTrue(coord.try_begin_local_execution())
             try:
                 results.append(
-                    coord.switch_local_model(_FakeProfile(api_model="mus-model"))
+                    coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model"))
                 )
             finally:
                 coord.end_local_execution()
@@ -403,7 +403,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coord.get_active_local_model())
         self.assertEqual(
             coord.get_loading_local_model(),
-            LocalModelRef(provider="ollama", model="mus-model"),
+            LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
         self.backend.unload_gate.set()
         switcher.join(timeout=2.0)
@@ -411,83 +411,83 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(results, [True])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="mus-model"),
+            LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
 
     def test_profile_protocol_compliance(self) -> None:
-        profile = _FakeProfile(api_model="mus-model", high_resource=True)
+        profile = _FakeProfile(api_model="qwen-4b-model", high_resource=True)
         self.assertIsInstance(profile, LocalModelProfile)
-        sorex = _FakeProfile(api_model="sorex-model", high_resource=False)
+        sorex = _FakeProfile(api_model="qwen-17b-model", high_resource=False)
         self.assertFalse(sorex.high_resource)
         self.assertTrue(profile.high_resource)
 
     def test_mus_to_apodemus_unloads_ollama_first(self) -> None:
-        self.backend.resident.add("mus-model")
+        self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="mus-model")
+            LocalModelRef(provider="ollama", model="qwen-4b-model")
         )
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(
             coord.switch_local_model(
-                _FakeProfile(api_model="apodemus-16k", provider="llama_cpp")
+                _FakeProfile(api_model="gemma-e2b-16k", provider="llama_cpp")
             )
         )
-        self.assertEqual(self.backend.unload_calls, ["mus-model"])
-        self.assertEqual(self.llama_backend.load_calls, ["apodemus-16k"])
-        self.assertNotIn("mus-model", self.backend.resident)
-        self.assertIn("apodemus-16k", self.llama_backend.resident)
+        self.assertEqual(self.backend.unload_calls, ["qwen-4b-model"])
+        self.assertEqual(self.llama_backend.load_calls, ["gemma-e2b-16k"])
+        self.assertNotIn("qwen-4b-model", self.backend.resident)
+        self.assertIn("gemma-e2b-16k", self.llama_backend.resident)
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="llama_cpp", model="apodemus-16k"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
         )
         coord.end_local_execution()
 
     def test_apodemus_to_sorex_unloads_llama_cpp_first(self) -> None:
-        self.llama_backend.resident.add("apodemus-16k")
+        self.llama_backend.resident.add("gemma-e2b-16k")
         coord.register_local_activity(
-            LocalModelRef(provider="llama_cpp", model="apodemus-16k")
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
         )
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(
             coord.switch_local_model(
-                _FakeProfile(api_model="sorex-model", provider="ollama")
+                _FakeProfile(api_model="qwen-17b-model", provider="ollama")
             )
         )
-        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-16k"])
-        self.assertEqual(self.backend.load_calls, ["sorex-model"])
-        self.assertNotIn("apodemus-16k", self.llama_backend.resident)
+        self.assertEqual(self.llama_backend.unload_calls, ["gemma-e2b-16k"])
+        self.assertEqual(self.backend.load_calls, ["qwen-17b-model"])
+        self.assertNotIn("gemma-e2b-16k", self.llama_backend.resident)
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="sorex-model"),
+            LocalModelRef(provider="ollama", model="qwen-17b-model"),
         )
         coord.end_local_execution()
 
     def test_failed_cross_provider_unload_blocks_target_load(self) -> None:
-        self.backend.resident.add("mus-model")
-        self.backend.fail_unload.add("mus-model")
+        self.backend.resident.add("qwen-4b-model")
+        self.backend.fail_unload.add("qwen-4b-model")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="mus-model")
+            LocalModelRef(provider="ollama", model="qwen-4b-model")
         )
         self.assertTrue(coord.try_begin_local_execution())
         self.assertFalse(
             coord.switch_local_model(
-                _FakeProfile(api_model="apodemus-16k", provider="llama_cpp")
+                _FakeProfile(api_model="gemma-e2b-16k", provider="llama_cpp")
             )
         )
         self.assertEqual(self.llama_backend.load_calls, [])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="mus-model"),
+            LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
         coord.end_local_execution()
 
     def test_idle_unload_targets_active_provider(self) -> None:
-        ref = LocalModelRef(provider="llama_cpp", model="apodemus-16k")
-        self.llama_backend.resident.add("apodemus-16k")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
+        self.llama_backend.resident.add("gemma-e2b-16k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
-        self.assertEqual(self.llama_backend.unload_calls, ["apodemus-16k"])
+        self.assertEqual(self.llama_backend.unload_calls, ["gemma-e2b-16k"])
         self.assertEqual(self.backend.unload_calls, [])
         self.assertIsNone(coord.get_active_local_model())
 

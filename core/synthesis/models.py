@@ -6,17 +6,18 @@ from pydantic import BaseModel, Field
 
 from core.agent.types import CostEstimate, TokenUsage
 
-APODEMUS_BRIEFING_CONTEXT_WINDOW = 16_384
+FELIS_BRIEFING_CONTEXT_WINDOW = 16_384
+APODEMUS_BRIEFING_CONTEXT_WINDOW = FELIS_BRIEFING_CONTEXT_WINDOW
 
 SynthesisProvider = Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"]
-SynthesisAgent = Literal["panthera", "apodemus"]
-BriefingMode = Literal["panthera", "apodemus", "structured_digest"]
+SynthesisAgent = Literal["panthera", "felis"]
+BriefingMode = Literal["panthera", "felis", "structured_digest"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
 
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "apodemus", "structured_digest"}
+    {"panthera", "felis", "structured_digest"}
 )
-LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"apodemus"})
+LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"felis"})
 
 
 def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
@@ -25,13 +26,13 @@ def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
     if normalized == "raw":
         return "structured_digest"
     if normalized == "local":
-        return "apodemus"
+        return "felis"
     if normalized == "cloud":
         return "panthera"
     if normalized == "comet":
         return "panthera"
-    if normalized in {"lynx", "acinonyx", "neofelis"}:
-        return "apodemus"
+    if normalized in {"felis", "acinonyx", "neofelis", "apodemus"}:
+        return "felis"
     if normalized in VALID_BRIEFING_MODES:
         return normalized  # type: ignore[return-value]
     return "panthera"

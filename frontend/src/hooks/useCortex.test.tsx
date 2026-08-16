@@ -8,7 +8,7 @@ describe('useCortex', () => {
     vi.restoreAllMocks()
   })
 
-  it('keeps Acinonyx history in its explicit sandbox partition', async () => {
+  it('keeps sandbox history in its explicit sandbox partition', async () => {
     const queryBodies: Record<string, unknown>[] = []
     let answerNumber = 0
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
@@ -26,18 +26,21 @@ describe('useCortex', () => {
       })
     })
 
-    const { result } = renderHook(() => useCortex(false, 'acinonyx'))
+    const { result } = renderHook(() => useCortex(false, {
+      devModeActive: true,
+      sandboxMode: true,
+    }))
 
     await act(async () => {
-      await result.current.queryAgent('first question', 'acinonyx')
+      await result.current.queryAgent('first question', 'panthera')
     })
     await act(async () => {
-      await result.current.queryAgent('second question', 'acinonyx')
+      await result.current.queryAgent('second question', 'panthera')
     })
 
     expect(queryBodies).toHaveLength(2)
     expect(queryBodies[0].history).toEqual([])
-    expect(queryBodies[0].history_partition).toBe('acinonyx')
+    expect(queryBodies[0].history_partition).toBe('sandbox')
     expect(queryBodies[1].history).toEqual([
       { role: 'user', content: 'first question' },
       { role: 'agent', content: 'answer 1', tool_outputs: [] },
@@ -75,7 +78,7 @@ describe('useCortex', () => {
       return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
 
-    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    const { result } = renderHook(() => useCortex(false))
     await act(async () => {
       await result.current.queryAgent('inspect', 'panthera', { sessionId: 'cortex-session-1' })
     })
@@ -98,7 +101,7 @@ describe('useCortex', () => {
         rejectRequest = reject
       })
     })
-    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    const { result } = renderHook(() => useCortex(false))
 
     let pending: Promise<void>
     act(() => {
@@ -134,7 +137,7 @@ describe('useCortex', () => {
       })
     })
 
-    const { result } = renderHook(() => useCortex(false, 'panthera'))
+    const { result } = renderHook(() => useCortex(false))
     await act(async () => {
       await result.current.queryAgent('old question', 'panthera', {
         sessionId: 'old-session',

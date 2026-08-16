@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
   actionReject: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/reject`,
   actionVerify: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/verify`,
   briefingHistory: `${API_BASE}/api/v1/briefings/history`,
+  briefingTargets: `${API_BASE}/api/v1/briefings/targets`,
   briefingsGenerate: `${API_BASE}/api/v1/briefings/generate`,
   config: `${API_BASE}/api/v1/config`,
   diagnostics: `${API_BASE}/api/v1/diagnostics`,

@@ -15,6 +15,18 @@ from core.api.cortex import (
 )
 
 
+def _felis_settings_mock(*, context_window: int = 16384) -> mock.Mock:
+    settings = mock.Mock()
+    settings.ask_apex.agent = "felis"
+    settings.ask_apex.felis.model = "gemma-4-E2B-Q4_K_M.gguf"
+    settings.ask_apex.felis.context_window = context_window
+    settings.ask_apex.panthera.hosted_tools.google_search = True
+    settings.ask_apex.panthera.hosted_tools.google_maps = True
+    settings.ask_apex.panthera.hosted_tools.x_search = True
+    settings.ask_apex.panthera.model = "gpt-5.6-luna"
+    return settings
+
+
 def _ollama_snapshot(*installed: str) -> dict:
     return {
         "provider": "ollama",
@@ -30,6 +42,8 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend = mock.Mock()
         backend.enabled = True
         backend.is_model_resident.side_effect = [False, True]
+        settings = _felis_settings_mock()
+        settings.ask_apex.felis.model = "qwen3:4b-instruct"
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
@@ -41,10 +55,14 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 "core.api.cortex.get_provider_snapshot",
                 return_value=_ollama_snapshot("qwen3:4b-instruct"),
             ) as snapshot,
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
+            ),
         ):
-            response = load_local_model_endpoint("mus")
+            response = load_local_model_endpoint("felis")
 
-        self.assertEqual(response.agent, "mus")
+        self.assertEqual(response.agent, "felis")
         gate.assert_called_once()
         switch.assert_called_once()
         self.assertGreaterEqual(snapshot.call_count, 2)
@@ -56,7 +74,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             "core.api.cortex.try_begin_local_execution"
         ) as begin:
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("mus")
+                load_local_model_endpoint("felis")
 
         self.assertEqual(raised.exception.status_code, 403)
         begin.assert_not_called()
@@ -70,18 +88,23 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=False),
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("mus")
+                load_local_model_endpoint("felis")
 
         self.assertEqual(raised.exception.status_code, 409)
 
     def test_load_rejects_missing_configured_alias(self) -> None:
         backend = mock.Mock()
         backend.enabled = True
+        settings = _felis_settings_mock()
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
             mock.patch("core.api.cortex.end_local_execution") as end_execution,
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
+            ),
             mock.patch(
                 "core.api.cortex.get_provider_snapshot",
                 return_value=_ollama_snapshot("qwen3:1.7b"),
@@ -89,7 +112,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.switch_local_model") as switch,
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("mus")
+                load_local_model_endpoint("felis")
 
         self.assertEqual(raised.exception.status_code, 503)
         self.assertIn("not configured", raised.exception.detail)
@@ -115,7 +138,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.switch_local_model") as switch,
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("mus")
+                load_local_model_endpoint("felis")
 
         self.assertEqual(raised.exception.status_code, 503)
         self.assertIn("unreachable", raised.exception.detail)
@@ -138,7 +161,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("sorex")
+                load_local_model_endpoint("felis")
 
         self.assertEqual(raised.exception.status_code, 503)
 
@@ -254,11 +277,11 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 503)
         end_execution.assert_called_once()
 
-    def test_apodemus_status_reports_missing_selected_alias(self) -> None:
+    def test_felis_status_reports_missing_selected_alias(self) -> None:
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-4k"],
+            "installed_models": ["gemma-4-e2b-4k"],
             "loaded_models": [],
             "sampled_at": 0.0,
         }
@@ -270,8 +293,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.enabled = True
         llama_backend.get_status_snapshot.return_value = snapshot
 
-        settings = mock.Mock()
-        settings.ask_apex.local_context_windows = {"apodemus": 16384, "neotoma": 16384}
+        settings = _felis_settings_mock()
 
         with (
             mock.patch(
@@ -295,7 +317,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
             mock.patch(
-                "core.api.cortex.get_settings_store",
+                "core.settings.get_settings_store",
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),
             mock.patch.dict(
@@ -305,19 +327,19 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        self.assertEqual(profiles["apodemus"].status, "model_not_installed")
-        self.assertIn("not installed or configured", profiles["apodemus"].reason or "")
+        self.assertEqual(profiles["felis"].status, "model_not_installed")
+        self.assertIn("not installed or configured", profiles["felis"].reason or "")
 
-    def test_apodemus_status_reports_router_load_failure(self) -> None:
+    def test_felis_status_reports_router_load_failure(self) -> None:
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-16k"],
+            "installed_models": ["gemma-4-e2b-16k"],
             "loaded_models": [
                 {
                     "provider": "llama_cpp",
-                    "name": "apodemus-16k",
-                    "model": "apodemus-16k",
+                    "name": "gemma-4-e2b-16k",
+                    "model": "gemma-4-e2b-16k",
                     "state": "failed",
                     "context_window": None,
                     "size_bytes": None,
@@ -337,8 +359,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.enabled = True
         llama_backend.get_status_snapshot.return_value = snapshot
 
-        settings = mock.Mock()
-        settings.ask_apex.local_context_windows = {"apodemus": 16384, "neotoma": 16384}
+        settings = _felis_settings_mock()
 
         with (
             mock.patch(
@@ -362,7 +383,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
             mock.patch(
-                "core.api.cortex.get_settings_store",
+                "core.settings.get_settings_store",
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),
             mock.patch.dict(
@@ -372,17 +393,17 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        apodemus = profiles["apodemus"]
-        self.assertNotEqual(apodemus.status, "available")
-        self.assertEqual(apodemus.status, "provider_error")
-        self.assertFalse(apodemus.active)
+        felis = profiles["felis"]
+        self.assertNotEqual(felis.status, "available")
+        self.assertEqual(felis.status, "provider_error")
+        self.assertFalse(felis.active)
         self.assertEqual(
-            apodemus.reason,
+            felis.reason,
             "llama.cpp reported that the selected model preset failed to load.",
         )
-        self.assertIsNotNone(apodemus.loaded_model)
-        assert apodemus.loaded_model is not None
-        self.assertEqual(apodemus.loaded_model.state, "failed")
+        self.assertIsNotNone(felis.loaded_model)
+        assert felis.loaded_model is not None
+        self.assertEqual(felis.loaded_model.state, "failed")
 
     def test_query_rejects_missing_local_alias_with_provider_label(self) -> None:
         from core.agent.types import AgentQueryRequest
@@ -391,13 +412,13 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend = mock.Mock()
         backend.enabled = True
         settings = mock.Mock()
+        settings = _felis_settings_mock()
         settings.ask_apex.enabled = True
-        settings.ask_apex.local_context_windows = {"apodemus": 16384, "neotoma": 16384}
         settings.user_designation = ""
         missing = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-4k"],
+            "installed_models": ["gemma-4-e2b-4k"],
             "loaded_models": [],
             "sampled_at": 0.0,
         }
@@ -409,15 +430,15 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.get_provider_snapshot", return_value=missing),
             mock.patch("core.api.cortex.switch_local_model") as switch,
             mock.patch(
-                "core.api.cortex.get_settings_store",
+                "core.settings.get_settings_store",
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
-                query_agent(AgentQueryRequest(prompt="hello", agent="apodemus"))
+                query_agent(AgentQueryRequest(prompt="hello", agent="felis"))
 
         self.assertEqual(raised.exception.status_code, 503)
-        self.assertIn("apodemus-16k", raised.exception.detail)
+        self.assertIn("gemma-4-e2b-16k", raised.exception.detail)
         self.assertIn("llama.cpp", raised.exception.detail)
         self.assertNotIn("Ollama", raised.exception.detail)
         switch.assert_not_called()
@@ -455,8 +476,8 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        self.assertFalse(profiles["mus"].active)
-        self.assertIsNone(profiles["mus"].idle_unload_remaining_seconds)
+        self.assertFalse(profiles["felis"].active)
+        self.assertIsNone(profiles["felis"].idle_unload_remaining_seconds)
 
 
 if __name__ == "__main__":

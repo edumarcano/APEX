@@ -115,9 +115,6 @@ class LlamaCppModelProfile(BaseModel):
     api_model: str = Field(
         description="Configured GGUF model identity shown in Agent metadata."
     )
-    tier: Literal["lightweight", "balanced", "capable"] = Field(
-        description="Computational performance classification for local inference."
-    )
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )
@@ -219,43 +216,43 @@ class LlamaCppModelProfile(BaseModel):
         return self
 
 
-def llama_cpp_runtime_config(agent_key: str) -> LlamaCppRuntimeConfig:
-    """Return the registered llama.cpp runtime configuration for an Agent."""
+def llama_cpp_runtime_config(model_id: str) -> LlamaCppRuntimeConfig:
+    """Return the registered llama.cpp runtime configuration for a model."""
     try:
-        return LLAMA_CPP_RUNTIME_CONFIGS[agent_key]
+        return LLAMA_CPP_RUNTIME_CONFIGS[model_id]
     except KeyError as exc:
-        raise ValueError(f"Unsupported llama.cpp Agent: {agent_key!r}") from exc
+        raise ValueError(f"Unsupported llama.cpp model: {model_id!r}") from exc
 
 
-def resolve_llama_cpp_context_window(agent_key: str, value: int | None) -> int:
-    """Resolve a persisted context preference using the Agent's runtime data."""
-    runtime = llama_cpp_runtime_config(agent_key)
+def resolve_llama_cpp_context_window(model_id: str, value: int | None) -> int:
+    """Resolve a persisted context preference using the model's runtime data."""
+    runtime = llama_cpp_runtime_config(model_id)
     if value is None:
         return runtime.default_context_window
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(
-            f"Unsupported llama.cpp context window for {agent_key}: {value!r}"
+            f"Unsupported llama.cpp context window for {model_id}: {value!r}"
         )
     if value not in runtime.allowed_context_windows:
         raise ValueError(
-            f"Unsupported llama.cpp context window for {agent_key}: {value!r}"
+            f"Unsupported llama.cpp context window for {model_id}: {value!r}"
         )
     return value
 
 
-def llama_cpp_runtime_model_id(agent_key: str, context_window: int) -> str:
-    """Return the stable router alias for an Agent's selected context."""
-    runtime = llama_cpp_runtime_config(agent_key)
-    resolved_context = resolve_llama_cpp_context_window(agent_key, context_window)
+def llama_cpp_runtime_model_id(model_id: str, context_window: int) -> str:
+    """Return the stable router alias for a model's selected context."""
+    runtime = llama_cpp_runtime_config(model_id)
+    resolved_context = resolve_llama_cpp_context_window(model_id, context_window)
     return runtime.runtime_model_ids[resolved_context]
 
 
 def llama_cpp_context_window_for_runtime_model_id(
-    agent_key: str,
+    model_id: str,
     runtime_model_id: str,
 ) -> int | None:
     """Return the configured context for a resident llama.cpp router alias."""
-    runtime = llama_cpp_runtime_config(agent_key)
+    runtime = llama_cpp_runtime_config(model_id)
     for context_window, model_id in runtime.runtime_model_ids.items():
         if model_id == runtime_model_id:
             return context_window
@@ -263,32 +260,31 @@ def llama_cpp_context_window_for_runtime_model_id(
 
 
 def resolve_llama_cpp_reasoning_mode(
-    agent_key: str,
+    model_id: str,
     value: str | None,
 ) -> LocalReasoningMode:
     """Resolve a persisted reasoning preference against runtime capabilities."""
-    runtime = llama_cpp_runtime_config(agent_key)
+    runtime = llama_cpp_runtime_config(model_id)
     if value is None:
         return runtime.default_reasoning_mode
     if value not in runtime.supported_reasoning_modes:
         raise ValueError(
-            f"Unsupported llama.cpp reasoning mode for {agent_key}: {value!r}"
+            f"Unsupported llama.cpp reasoning mode for {model_id}: {value!r}"
         )
     return value  # type: ignore[return-value]
 
 
-def _resource_limits(agent_key: str) -> tuple[float, float]:
-    """Return configured resource gates without embedding Agent conditionals."""
-    return LLAMA_CPP_RESOURCE_GATES.get(agent_key, (82.0, 92.0))
+def _resource_limits(model_id: str) -> tuple[float, float]:
+    """Return configured resource gates for a registered model."""
+    return LLAMA_CPP_RESOURCE_GATES.get(model_id, (82.0, 92.0))
 
 
 def build_llama_cpp_profile(
-    agent_key: str,
+    model_id: str,
     *,
     display_name: str,
     agent_version: str,
     api_model: str,
-    tier: Literal["lightweight", "balanced", "capable"],
     stability: Literal["stable", "preview", "experimental"],
     max_tool_turns: int,
     max_tool_calls: int,
@@ -296,10 +292,10 @@ def build_llama_cpp_profile(
     context_window: int | None = None,
     reasoning_mode: LocalReasoningMode | None = None,
 ) -> LlamaCppModelProfile:
-    """Build one concrete profile from the registered Agent runtime data."""
-    runtime = llama_cpp_runtime_config(agent_key)
-    resolved_context = resolve_llama_cpp_context_window(agent_key, context_window)
-    resolved_reasoning = resolve_llama_cpp_reasoning_mode(agent_key, reasoning_mode)
+    """Build one concrete profile from the registered model runtime data."""
+    runtime = llama_cpp_runtime_config(model_id)
+    resolved_context = resolve_llama_cpp_context_window(model_id, context_window)
+    resolved_reasoning = resolve_llama_cpp_reasoning_mode(model_id, reasoning_mode)
     if resolved_reasoning == "focused":
         tool_select_max_tokens = runtime.focused_tool_select_max_tokens
         final_answer_max_tokens = runtime.focused_final_answer_max_tokens
@@ -310,7 +306,6 @@ def build_llama_cpp_profile(
         display_name=display_name,
         agent_version=agent_version,
         api_model=api_model,
-        tier=tier,
         stability=stability,
         default_temperature=runtime.default_temperature,
         max_tool_turns=max_tool_turns,
@@ -323,7 +318,7 @@ def build_llama_cpp_profile(
         supported_reasoning_modes=runtime.supported_reasoning_modes,
         default_reasoning_mode=runtime.default_reasoning_mode,
         reasoning_mode=resolved_reasoning,
-        runtime_model_id=llama_cpp_runtime_model_id(agent_key, resolved_context),
+        runtime_model_id=llama_cpp_runtime_model_id(model_id, resolved_context),
         tool_select_max_tokens=tool_select_max_tokens,
         final_answer_max_tokens=final_answer_max_tokens,
         generation_timeout=runtime.generation_timeout,
@@ -369,58 +364,78 @@ def _runtime_config(
     )
 
 
+def _gemma_e2b_aliases() -> dict[int, str]:
+    return {
+        4096: "gemma-4-e2b-4k",
+        16384: "gemma-4-e2b-16k",
+        32768: "gemma-4-e2b-32k",
+        131072: "gemma-4-e2b-132k",
+    }
+
+
+def _gemma_e4b_aliases() -> dict[int, str]:
+    return {
+        4096: "gemma-4-e4b-4k",
+        16384: "gemma-4-e4b-16k",
+        32768: "gemma-4-e4b-32k",
+        65536: "gemma-4-e4b-64k",
+    }
+
+
+def _qwen35_aliases() -> dict[int, str]:
+    return {
+        4096: "qwen3.5-4b-4k",
+        16384: "qwen3.5-4b-16k",
+        32768: "qwen3.5-4b-32k",
+    }
+
+
 LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
-    "apodemus": _runtime_config(
+    "gemma-4-E2B-Q4_K_M.gguf": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 131072),
         high_resource_context_options=(131072,),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
         maximum_context_window=131072,
-        runtime_model_ids={
-            4096: "apodemus-4k",
-            16384: "apodemus-16k",
-            32768: "apodemus-32k",
-            131072: "apodemus-132k",
-        },
-        resource_limits=_resource_limits("apodemus"),
+        runtime_model_ids=_gemma_e2b_aliases(),
+        resource_limits=_resource_limits("gemma-4-E2B-Q4_K_M.gguf"),
         tool_select_max_tokens=256,
         final_answer_max_tokens=768,
         focused_tool_select_max_tokens=1536,
         focused_final_answer_max_tokens=1536,
     ),
-    "neotoma": _runtime_config(
+    "gemma-4-E4B-Q4_K_M.gguf": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 65536),
         high_resource_context_options=(65536,),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
         maximum_context_window=131072,
-        runtime_model_ids={
-            4096: "neotoma-4k",
-            16384: "neotoma-16k",
-            32768: "neotoma-32k",
-            65536: "neotoma-64k",
-        },
-        resource_limits=_resource_limits("neotoma"),
+        runtime_model_ids=_gemma_e4b_aliases(),
+        resource_limits=_resource_limits("gemma-4-E4B-Q4_K_M.gguf"),
         tool_select_max_tokens=256,
         final_answer_max_tokens=768,
         focused_tool_select_max_tokens=1536,
         focused_final_answer_max_tokens=1536,
     ),
-    "unnamed-experimental-agent": _runtime_config(
+    "Qwen3.5-4B-Q4_K_M.gguf": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768),
         high_resource_context_options=(),
         supported_reasoning_modes=("none", "focused"),
         default_context_window=16384,
         maximum_context_window=262144,
-        runtime_model_ids={
-            4096: "unnamed-experimental-agent-4k",
-            16384: "unnamed-experimental-agent-16k",
-            32768: "unnamed-experimental-agent-32k",
-        },
-        resource_limits=_resource_limits("unnamed-experimental-agent"),
+        runtime_model_ids=_qwen35_aliases(),
+        resource_limits=_resource_limits("Qwen3.5-4B-Q4_K_M.gguf"),
         tool_select_max_tokens=256,
         final_answer_max_tokens=768,
         focused_tool_select_max_tokens=1536,
         focused_final_answer_max_tokens=1536,
     ),
 }
+
+
+def model_id_for_llama_cpp_alias(runtime_model_id: str) -> str | None:
+    """Return the registered model ID for a router alias, if known."""
+    for model_id, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items():
+        if runtime_model_id in runtime.runtime_model_ids.values():
+            return model_id
+    return None

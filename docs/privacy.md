@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates behavior APE
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to OpenAI; Apodemus sends it to the local llama.cpp router | Normal-mode transcript/digest in SQLite | Apodemus or Structured Digest |
+| Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Felis sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Felis or Structured Digest |
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Small task cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, selected-list cache, and action evidence | Leave integration disconnected |
@@ -70,23 +70,23 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing generation picks the weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts that may be sent to a model. Text is cleaned, limited in size, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera through OpenAI and Apodemus through llama.cpp receive the same selected facts. There is no Ollama briefing path. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
+Panthera through the selected cloud provider and Felis through its fixed Gemma E2B llama.cpp briefing path receive the same selected facts. The interactive Felis model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Felis requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
 
 These boundaries reduce prompt-injection risk. They do not authorize actions, and model text is never treated as approval for a write.
 
 ### Panthera briefing policy boundary
 
-The Panthera briefing path sends briefing input to the OpenAI Responses API. That input can include personal facts such as calendar events, reminders, and limited email subjects.
+The Panthera briefing path sends briefing input to the selected cloud provider. With the default OpenAI model, that input goes to the OpenAI Responses API and can include personal facts such as calendar events, reminders, and limited email subjects.
 
 OpenAI states that API inputs and outputs are not used to train or improve its models by default. Abuse-monitoring and endpoint-specific retention still apply, and eligible accounts may have more restrictive retention controls. See OpenAI's [API data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint).
 
 This is provider policy, not a guarantee implemented by APEX. Review the linked current terms before sending sensitive data.
 
-Selecting Apodemus or Structured Digest avoids sending briefing synthesis data to OpenAI.
+Selecting Felis or Structured Digest avoids sending briefing synthesis data to a cloud provider.
 
 ## Interactive Agent data
 
-Interactive Agent work is separate from briefing synthesis. A cloud Agent can receive the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and results from tools it uses. A local Agent receives the same applicable categories through its configured Ollama or llama.cpp host.
+Interactive Agent work is separate from briefing synthesis. Panthera can receive the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and results from tools it uses. Felis receives the same applicable categories through its configured Ollama or llama.cpp host.
 
 The optional user designation is stored only in gitignored `config.local.json` and is omitted when empty.
 
@@ -96,7 +96,7 @@ HUD context is opt-in for each request. A briefing is attached only through a va
 
 Conversation history lives in the browser tab and is lost on reload. The backend has no chat-session store. Local context trimming can remove old complete interactions when needed, but diagnostics report only counts rather than prompt or tool-result content.
 
-Acinonyx is a development-only Gemini sandbox with history kept separate from normal-mode Agents. It can receive only the small non-personal allowlist defined for it, plus a masked development briefing. It does not receive full telemetry, Gmail, Calendar, Microsoft To Do, normal briefing history, private GitHub/MCP data, files, images, or normal-mode conversation history.
+`DEV_MODE` sandbox queries keep history in the `sandbox` partition and can receive only the small non-personal allowlist defined for sandbox mode, plus a masked development briefing. They do not receive full telemetry, Gmail, Calendar, Microsoft To Do, normal briefing history, private GitHub/MCP data, files, images, or normal-mode conversation history.
 
 ### Native personal-data tools
 
@@ -110,7 +110,7 @@ Direct Home edits, deletion, completion, and reopening are operator commands. Ag
 
 Enabled MCP providers receive only the arguments sent to the selected tool. GitHub can receive repository, issue, pull-request, and code-search queries; Brave receives web or news search; Alpha Vantage receives market-research parameters.
 
-Neofelis can use provider-hosted Google Search or Google Maps grounding when enabled. Delphinus and Orcinus can use provider-hosted X Search when their settings are enabled. These calls are separate from APEX-managed tool calls and may have their own provider charges. Panthera has no OpenAI hosted search, and SpaceXAI general web search is not enabled.
+Panthera can use provider-hosted Google Search or Google Maps grounding and X Search when the selected model and persisted hosted-tool settings allow them. These calls are separate from APEX-managed tool calls and may have their own provider charges. OpenAI general hosted search and SpaceXAI general web search are not enabled.
 
 Imported results are marked untrusted and limited in size before model or HUD delivery. MCP presets are disabled by default, must be allowlisted and locally risk-classified, and are never part of scheduled briefing telemetry.
 
@@ -147,7 +147,7 @@ New connectors and providers still require a privacy review because external exc
 ## Runtime modes
 
 - `DEMO_MODE=true` uses static mock data, skips live connectors, and does not write normal-mode briefing history or access the production action ledger.
-- `DEV_MODE=true` can still collect Gmail, Calendar, and reminders, but returned personal text is masked before briefing synthesis or Acinonyx context use.
+- `DEV_MODE=true` can still collect Gmail, Calendar, and reminders, but returned personal text is masked before briefing synthesis or sandbox context use.
 - Normal mode calls only enabled connectors. Disabling a connector skips its request and excludes it from briefing input and Sync Health.
 
 See [Configuration](configuration.md) for exact mode ownership and [Architecture](architecture.md) for the process and trust model.

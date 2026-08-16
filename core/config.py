@@ -18,14 +18,9 @@ __all__ = [
     "GEMINI_AGENT_MAX_TURNS",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
-    "AGENT_QUERIES_ENABLED",
     "CONFIG_PATH",
-    "DEFAULT_CLOUD_AGENT",
     "MAX_SESSION_MESSAGES",
-    "MUS_CPU_LIMIT",
-    "MUS_RAM_LIMIT",
-    "SOREX_CPU_LIMIT",
-    "SOREX_RAM_LIMIT",
+    "OLLAMA_RESOURCE_GATES",
     "OLLAMA_ENABLED",
     "OLLAMA_HOST",
     "OLLAMA_IDLE_UNLOAD_MINUTES",
@@ -37,10 +32,6 @@ __all__ = [
     "LLAMA_CPP_MANUAL_UNLOAD_ENABLED",
     "LLAMA_CPP_REQUEST_TIMEOUT_SECONDS",
     "LLAMA_CPP_RESOURCE_GATES",
-    "APODEMUS_RAM_LIMIT",
-    "APODEMUS_CPU_LIMIT",
-    "NEOTOMA_RAM_LIMIT",
-    "NEOTOMA_CPU_LIMIT",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -315,11 +306,6 @@ _module_map = load_module_flags()
 MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
 MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
 
-_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset(
-    {"panthera", "neofelis", "delphinus", "orcinus"}
-)
-
-
 def _parse_config_bool(raw: Any, *, key: str, default: bool) -> bool:
     """Coerce a config value to bool with logging on invalid input."""
     if isinstance(raw, bool):
@@ -450,43 +436,12 @@ def _parse_resource_gate(
     return ram, cpu
 
 
-def _parse_cloud_agent(raw: Any, *, key: str, default: str) -> str:
-    """Validate a cloud Agent identifier against the supported roster."""
-    if not isinstance(raw, str):
-        if raw is not None:
-            _LOGGER.warning("Config key %r must be a string; using default %r.", key, default)
-        return default
-
-    normalized = raw.strip().lower()
-    if normalized in _VALID_CLOUD_PROFILES:
-        return normalized
-
-    _LOGGER.warning(
-        "Config key %r=%r is not in %s; using default %r.",
-        key,
-        raw,
-        sorted(_VALID_CLOUD_PROFILES),
-        default,
-    )
-    return default
-
-
 try:
     _agent_settings_cfg = _CONFIG_DATA.get("ask_apex", {})
     if not isinstance(_agent_settings_cfg, dict):
         _LOGGER.warning('Config key "ask_apex" must be a JSON object; using defaults.')
         _agent_settings_cfg = {}
 
-    AGENT_QUERIES_ENABLED: Final[bool] = _parse_config_bool(
-        _agent_settings_cfg.get("enabled"),
-        key="ask_apex.enabled",
-        default=True,
-    )
-    DEFAULT_CLOUD_AGENT: Final[str] = _parse_cloud_agent(
-        _agent_settings_cfg.get("cloud_agent"),
-        key="ask_apex.cloud_agent",
-        default="panthera",
-    )
     MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
         _agent_settings_cfg.get("max_session_messages"),
         key="ask_apex.max_session_messages",
@@ -496,8 +451,6 @@ try:
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
-    AGENT_QUERIES_ENABLED = True
-    DEFAULT_CLOUD_AGENT = "panthera"
     MAX_SESSION_MESSAGES = 6
 
 try:
@@ -579,23 +532,22 @@ try:
             )
         _resource_gates = {}
 
-    _sorex_ram, _sorex_cpu = _parse_resource_gate(
-        _resource_gates.get("sorex") or _resource_gates.get("lynx"),
-        profile="sorex",
-        default_ram=_DEFAULT_SOREX_RAM,
-        default_cpu=_DEFAULT_SOREX_CPU,
+    _ollama_resource_limits: dict[str, tuple[float, float]] = {}
+    for model_id, default_ram, default_cpu in (
+        ("qwen3:1.7b", _DEFAULT_SOREX_RAM, _DEFAULT_SOREX_CPU),
+        ("qwen3:4b-instruct", _DEFAULT_MUS_RAM, _DEFAULT_MUS_CPU),
+    ):
+        gate = _resource_gates.get(model_id)
+        _ollama_resource_limits[model_id] = _parse_resource_gate(
+            gate,
+            profile=model_id,
+            default_ram=default_ram,
+            default_cpu=default_cpu,
+            gate_root="ollama",
+        )
+    OLLAMA_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
+        _ollama_resource_limits
     )
-    SOREX_RAM_LIMIT: Final[float] = _sorex_ram
-    SOREX_CPU_LIMIT: Final[float] = _sorex_cpu
-
-    _mus_ram, _mus_cpu = _parse_resource_gate(
-        _resource_gates.get("mus") or _resource_gates.get("acinonyx"),
-        profile="mus",
-        default_ram=_DEFAULT_MUS_RAM,
-        default_cpu=_DEFAULT_MUS_CPU,
-    )
-    MUS_RAM_LIMIT: Final[float] = _mus_ram
-    MUS_CPU_LIMIT: Final[float] = _mus_cpu
 except Exception as exc:
     _LOGGER.warning("Unable to parse ollama config: %s; using defaults.", exc)
     OLLAMA_ENABLED = True
@@ -603,10 +555,10 @@ except Exception as exc:
     OLLAMA_IDLE_UNLOAD_MINUTES = 5
     OLLAMA_SINGLE_LOADED_MODEL = True
     OLLAMA_MANUAL_UNLOAD_ENABLED = True
-    SOREX_RAM_LIMIT = _DEFAULT_SOREX_RAM
-    SOREX_CPU_LIMIT = _DEFAULT_SOREX_CPU
-    MUS_RAM_LIMIT = _DEFAULT_MUS_RAM
-    MUS_CPU_LIMIT = _DEFAULT_MUS_CPU
+    OLLAMA_RESOURCE_GATES = {
+        "qwen3:1.7b": (_DEFAULT_SOREX_RAM, _DEFAULT_SOREX_CPU),
+        "qwen3:4b-instruct": (_DEFAULT_MUS_RAM, _DEFAULT_MUS_CPU),
+    }
 
 _DEFAULT_LLAMA_CPP_RAM: Final[float] = 82.0
 _DEFAULT_LLAMA_CPP_CPU: Final[float] = 92.0
@@ -664,17 +616,15 @@ try:
         _llama_resource_gates = {}
 
     _llama_cpp_resource_limits: dict[str, tuple[float, float]] = {}
-    for _profile, _profile_gate in (
-        ("apodemus", _llama_resource_gates.get("apodemus")),
-        ("neotoma", _llama_resource_gates.get("neotoma")),
-        (
-            "unnamed-experimental-agent",
-            _llama_resource_gates.get("unnamed-experimental-agent"),
-        ),
+    for model_id in (
+        "gemma-4-E2B-Q4_K_M.gguf",
+        "gemma-4-E4B-Q4_K_M.gguf",
+        "Qwen3.5-4B-Q4_K_M.gguf",
     ):
-        _llama_cpp_resource_limits[_profile] = _parse_resource_gate(
-            _profile_gate,
-            profile=_profile,
+        gate = _llama_resource_gates.get(model_id)
+        _llama_cpp_resource_limits[model_id] = _parse_resource_gate(
+            gate,
+            profile=model_id,
             default_ram=_DEFAULT_LLAMA_CPP_RAM,
             default_cpu=_DEFAULT_LLAMA_CPP_CPU,
             gate_root="llama_cpp",
@@ -682,10 +632,6 @@ try:
     LLAMA_CPP_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
         _llama_cpp_resource_limits
     )
-    APODEMUS_RAM_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
-    APODEMUS_CPU_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]
-    NEOTOMA_RAM_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["neotoma"][0]
-    NEOTOMA_CPU_LIMIT: Final[float] = LLAMA_CPP_RESOURCE_GATES["neotoma"][1]
 except Exception as exc:
     _LOGGER.warning("Unable to parse llama_cpp config: %s; using defaults.", exc)
     LLAMA_CPP_ENABLED = False
@@ -694,14 +640,10 @@ except Exception as exc:
     LLAMA_CPP_MANUAL_UNLOAD_ENABLED = True
     LLAMA_CPP_REQUEST_TIMEOUT_SECONDS = 180
     LLAMA_CPP_RESOURCE_GATES = {
-        "apodemus": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
-        "neotoma": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
-        "unnamed-experimental-agent": (
+        "gemma-4-E2B-Q4_K_M.gguf": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+        "gemma-4-E4B-Q4_K_M.gguf": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
+        "Qwen3.5-4B-Q4_K_M.gguf": (
             _DEFAULT_LLAMA_CPP_RAM,
             _DEFAULT_LLAMA_CPP_CPU,
         ),
     }
-    APODEMUS_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][0]
-    APODEMUS_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["apodemus"][1]
-    NEOTOMA_RAM_LIMIT = LLAMA_CPP_RESOURCE_GATES["neotoma"][0]
-    NEOTOMA_CPU_LIMIT = LLAMA_CPP_RESOURCE_GATES["neotoma"][1]

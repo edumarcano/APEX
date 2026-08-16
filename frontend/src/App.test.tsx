@@ -7,7 +7,8 @@ import App from './App'
 import type { AgentKey, ToolCatalog } from './types/telemetry'
 
 const appMocks = vi.hoisted(() => ({
-  initialAgent: 'neofelis' as AgentKey,
+  initialAgent: 'panthera' as AgentKey,
+  devModeActive: false,
   refreshAgentsStatus: vi.fn().mockResolvedValue(undefined),
   queryAgent: vi.fn().mockResolvedValue(undefined),
   clearCortexSession: vi.fn(),
@@ -100,13 +101,19 @@ vi.mock('./components/SystemDiagnostics', () => ({
 vi.mock('./components/CortexWorkspace', () => ({
   CortexWorkspace: ({
     activeAgent,
+    devModeActive,
+    sandboxMode,
     onLocalContextWindowChange,
-    onGoogleSearchChange,
+    onHostedToolChange,
+    onSandboxModeChange,
     toolCatalog,
   }: {
     activeAgent: AgentKey
-    onLocalContextWindowChange: (agent: AgentKey, contextWindow: number) => Promise<boolean>
-    onGoogleSearchChange: (enabled: boolean) => void
+    devModeActive: boolean
+    sandboxMode: boolean
+    onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
+    onHostedToolChange: (tool: 'google_search' | 'google_maps' | 'x_search', enabled: boolean) => void
+    onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
   }) => {
     const authoritativeContextWindow = toolCatalog?.context_window ?? null
@@ -128,7 +135,7 @@ vi.mock('./components/CortexWorkspace', () => ({
       setSelectedContextWindow(contextWindow)
       setPendingTarget(contextWindow)
       try {
-        const persisted = await onLocalContextWindowChange(activeAgent, contextWindow)
+        const persisted = await onLocalContextWindowChange(contextWindow)
         if (!persisted) {
           setPendingTarget(null)
           setSelectedContextWindow(rollbackContextWindow)
@@ -147,9 +154,9 @@ vi.mock('./components/CortexWorkspace', () => ({
         <output data-testid="catalog-context-window">
           {toolCatalog?.context_window ?? ''}
         </output>
-        {activeAgent === 'apodemus' || activeAgent === 'neotoma' ? (
+        {activeAgent === 'felis' ? (
           <select
-            aria-label="Local context window"
+            aria-label="Context window"
             value={String(selectedContextWindow ?? '')}
             onChange={(event) => {
               void handleContextWindowChange(Number(event.target.value))
@@ -159,10 +166,18 @@ vi.mock('./components/CortexWorkspace', () => ({
             <option value="32768">32K</option>
           </select>
         ) : (
-          <button type="button" onClick={() => onGoogleSearchChange(true)}>
+          <button type="button" onClick={() => onHostedToolChange('google_search', true)}>
             Enable Google Search
           </button>
         )}
+        {devModeActive ? (
+          <input
+            aria-label="Sandbox mode"
+            type="checkbox"
+            checked={sandboxMode}
+            onChange={(event) => onSandboxModeChange(event.target.checked)}
+          />
+        ) : null}
       </div>
     )
   },
@@ -173,12 +188,12 @@ vi.mock('./hooks/useApexData', () => ({
     activeReminders: [],
     createReminder: appMocks.createReminder,
     demoModeActive: false,
-    devModeActive: false,
+    devModeActive: appMocks.devModeActive,
     agentQueriesEnabled: true,
     marketEnabled: false,
     defaultAgent: appMocks.initialAgent,
     agentInitialSelection: {
-      runtime: appMocks.initialAgent === 'apodemus' || appMocks.initialAgent === 'neotoma' ? 'local' : 'cloud',
+      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
       agent: appMocks.initialAgent,
       effort: 'focused',
     },
@@ -226,11 +241,19 @@ vi.mock('./hooks/useCortex', () => ({
     agentsStatus: [{
       key: appMocks.initialAgent,
       display_name: `Apex ${appMocks.initialAgent}`,
-      runtime: appMocks.initialAgent === 'apodemus' || appMocks.initialAgent === 'neotoma' ? 'local' : 'cloud',
-      status: appMocks.initialAgent === 'apodemus' || appMocks.initialAgent === 'neotoma' ? 'available' : 'configured',
+      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+      status: appMocks.initialAgent === 'felis' ? 'available' : 'configured',
       active: true,
       loading: false,
       loaded_model: null,
+      model_catalog: [{
+        model_id: appMocks.initialAgent === 'felis' ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
+        display_name: appMocks.initialAgent === 'felis' ? 'Gemma 4 E2B' : 'GPT-5.6 Luna',
+        provider: appMocks.initialAgent === 'felis' ? 'llama_cpp' : 'openai',
+        runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+        stability: 'stable',
+        hosted_capabilities: [],
+      }],
     }],
     agentsStatusHydrated: true,
     queryAgent: appMocks.queryAgent,
@@ -321,8 +344,8 @@ function catalogFor(
     default_profile_name: 'No APEX Tools',
     default_selected_tool_names: [],
     provider_hosted_tools: googleSearchEnabled ? ['google_search'] : [],
-    context_window: agent === 'apodemus' || agent === 'neotoma' ? contextWindow : null,
-    reserved_response_tokens: agent === 'apodemus' || agent === 'neotoma' ? 512 : null,
+    context_window: agent === 'felis' ? contextWindow : null,
+    reserved_response_tokens: agent === 'felis' ? 512 : null,
   }
 }
 
@@ -330,9 +353,10 @@ function settingsResponse(
   agent: AgentKey,
   googleSearchEnabled = false,
   contextWindow = 16384,
+  sandboxMode = false,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 13,
+    schema_version: 16,
     settings: {
       user_designation: '',
       features: {
@@ -348,24 +372,22 @@ function settingsResponse(
       market: { symbols: [] },
       ask_apex: {
         enabled: true,
-        runtime: agent === 'apodemus' || agent === 'neotoma' ? 'local' : 'cloud',
-        cloud_agent: 'neofelis',
-        effort: 'focused',
-          local_agent: agent === 'apodemus' || agent === 'neotoma' ? agent : 'apodemus',
-        local_context_windows: {
-          apodemus: contextWindow,
-          neotoma: 16384,
+        agent,
+        sandbox_mode: sandboxMode,
+        panthera: {
+          model: 'gemini-3.6-flash',
+          effort: 'medium',
+          hosted_tools: {
+            google_search: googleSearchEnabled,
+            google_maps: false,
+            x_search: false,
+          },
         },
-        local_reasoning_modes: {
-          sorex: 'none',
-          mus: 'none',
-          apodemus: 'none',
-          neotoma: 'none',
+        felis: {
+          model: 'gemma-4-E2B-Q4_K_M.gguf',
+          context_window: contextWindow,
+          reasoning_mode: 'none',
         },
-        neofelis_google_search_enabled: googleSearchEnabled,
-        neofelis_google_maps_enabled: false,
-        delphinus_x_search_enabled: false,
-        orcinus_x_search_enabled: false,
       },
       tool_profiles: {
         custom_profiles: [],
@@ -402,16 +424,17 @@ function settingsResponse(
 
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
-    appMocks.initialAgent = 'neofelis'
+    appMocks.initialAgent = 'panthera'
+    appMocks.devModeActive = false
     appMocks.weatherSnapshot = null
     vi.restoreAllMocks()
   })
 
-  it('refreshes the current Neofelis catalog after enabling Google Search', async () => {
+  it('refreshes the current Panthera catalog after enabling Google Search', async () => {
     const user = userEvent.setup()
     const settingsPatch = deferred<Response>()
     const catalogRequests: AgentKey[] = []
-    let neofelisCatalogRequests = 0
+    let pantheraCatalogRequests = 0
 
     vi.stubGlobal(
       'fetch',
@@ -421,7 +444,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const googleSearchEnabled =
-            agent === 'neofelis' && neofelisCatalogRequests++ > 0
+            agent === 'panthera' && pantheraCatalogRequests++ > 0
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, googleSearchEnabled)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -437,27 +460,27 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('neofelis'))
-    await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('neofelis'))
+    await waitFor(() => expect(catalogRequests).toContain('panthera'))
+    await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('panthera'))
     expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('')
 
     await user.click(screen.getByRole('button', { name: 'Enable Google Search' }))
-    expect(catalogRequests.filter((agent) => agent === 'neofelis')).toHaveLength(1)
+    expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(1)
 
-    settingsPatch.resolve(settingsResponse('neofelis', true))
+    settingsPatch.resolve(settingsResponse('panthera', true))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'neofelis')).toHaveLength(2)
+      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
       expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('google_search')
     })
   })
 
-  it('refreshes the current Apodemus catalog after changing its context window', async () => {
-    appMocks.initialAgent = 'apodemus'
+  it('refreshes the current Felis catalog after changing its context window', async () => {
+    appMocks.initialAgent = 'felis'
     const user = userEvent.setup()
     const settingsPatch = deferred<Response>()
     const catalogRequests: AgentKey[] = []
-    let apodemusCatalogRequests = 0
+    let felisCatalogRequests = 0
 
     vi.stubGlobal(
       'fetch',
@@ -467,7 +490,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const refreshedContextWindow =
-            agent === 'apodemus' && apodemusCatalogRequests++ > 0 ? 32768 : 16384
+            agent === 'felis' && felisCatalogRequests++ > 0 ? 32768 : 16384
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, false, refreshedContextWindow)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -483,22 +506,61 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('apodemus'))
+    await waitFor(() => expect(catalogRequests).toContain('felis'))
     await waitFor(() => {
-      expect(screen.getByTestId('active-agent')).toHaveTextContent('apodemus')
+      expect(screen.getByTestId('active-agent')).toHaveTextContent('felis')
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('16384')
     })
 
-    const contextSelect = screen.getByRole('combobox', { name: 'Local context window' })
+    const contextSelect = screen.getByRole('combobox', { name: 'Context window' })
     await user.selectOptions(contextSelect, '32768')
     expect(contextSelect).toHaveValue('32768')
-    expect(catalogRequests.filter((agent) => agent === 'apodemus')).toHaveLength(1)
+    expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(1)
 
-    settingsPatch.resolve(settingsResponse('apodemus', false, 32768))
+    settingsPatch.resolve(settingsResponse('felis', false, 32768))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'apodemus')).toHaveLength(2)
+      expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(2)
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('32768')
+    })
+  })
+
+  it('refreshes the current catalog after toggling sandbox mode', async () => {
+    appMocks.devModeActive = true
+    const user = userEvent.setup()
+    const catalogRequests: AgentKey[] = []
+    let sandboxPatch: Record<string, unknown> | null = null
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = new URL(String(input))
+        if (url.pathname.endsWith('/cortex/tool-catalog')) {
+          const agent = url.searchParams.get('agent') as AgentKey
+          catalogRequests.push(agent)
+          return Promise.resolve(new Response(
+            JSON.stringify(catalogFor(agent)),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ))
+        }
+        if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
+          sandboxPatch = JSON.parse(String(init.body)) as Record<string, unknown>
+          return Promise.resolve(settingsResponse('panthera', false, 16384, true))
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }))
+      }),
+    )
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await waitFor(() => expect(catalogRequests).toContain('panthera'))
+
+    await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
+
+    await waitFor(() => {
+      expect(sandboxPatch).toEqual({ ask_apex: { sandbox_mode: true } })
+      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
     })
   })
 

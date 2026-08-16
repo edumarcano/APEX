@@ -247,10 +247,17 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
 ]
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'panthera',
-  'apodemus',
+  'felis',
 ]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
-const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+]
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
   return typeof value === 'string' && values.includes(value as T) ? value as T : null
@@ -895,7 +902,7 @@ export function useApexData(): UseApexDataReturn {
               }
               briefingDefaultMode = parseEnum(body.briefing_default_mode, [
                 'panthera',
-                'apodemus',
+                'felis',
                 'structured_digest',
               ] as const) ?? undefined
               voiceMode = parseEnum(body.voice_mode, ['off', 'manual', 'automatic'] as const) ?? undefined

@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `14`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `16`.
 
 | Group | Editable values |
 |---|---|
@@ -50,7 +50,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Agent queries | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Tool profiles | Saved custom tool profiles and per-Agent defaults; edited through Cortex Tools and persisted in `config.local.json` |
-| Briefing | Panthera, Apodemus, or Structured Digest mode selected in the Home command rail |
+| Briefing | Panthera, Felis, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
@@ -77,13 +77,13 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 ### Development
 
-`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and normal-mode run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or Acinonyx context use.
+`DEV_MODE=true` keeps the servers, database, and connectors active while suppressing configured-network warnings and normal-mode run logging. Gmail, Calendar, and reminders can still be collected, but subjects, event details, and reminder text are masked before briefing synthesis or sandbox context use.
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
 - `raw`: deterministic output without a model call
-- `local`: Apodemus synthesis with deterministic fallback
-- `cloud`: Panthera with Apodemus and deterministic fallback
+- `local`: Felis synthesis with deterministic fallback
+- `cloud`: Panthera with Felis and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -114,37 +114,55 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 ## Briefing modes and Agents
 
-### Cloud Agents
+APEX exposes two Apex Agents: **Panthera** for cloud work and **Felis** for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. The selected model profile determines Panthera's provider or Felis's local runtime automatically.
 
-| Agent key and display name | Provider and model | Role |
-|---|---|---|
-| `acinonyx`: Acinonyx 1.0 | Google `gemini-3.5-flash-lite` | Development-only sandbox with isolated history, masked current briefing context, and non-personal tools |
-| `panthera`: Panthera 1.0 | OpenAI `gpt-5.6-luna` | Default cloud Agent |
-| `neofelis`: Neofelis 1.0 | Google `gemini-3.6-flash` | Persisted optional Google Search and Maps grounding |
-| `delphinus`: Delphinus 1.0 | SpaceXAI `grok-4.3` | Focused SpaceXAI cloud Agent with persisted optional X Search |
-| `orcinus`: Orcinus 1.0 | SpaceXAI `grok-4.5` | Extended SpaceXAI cloud Agent with persisted optional X Search |
+Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna`; `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent settings are not migrated at runtime, so update them to the Panthera/Felis model-first format.
 
-Cloud Agents run independently of Ollama. Panthera requires `OPENAI_API_KEY`; Neofelis requires `GEMINI_API_KEY`; Delphinus and Orcinus require `XAI_API_KEY`; and Acinonyx requires `GEMINI_SANDBOX_API_KEY`. All cloud Agents support Light, Focused, and Extended effort. In development mode Acinonyx remains the effective Agent while preserving the saved cloud effort.
+### Panthera
 
-Brave MCP is the general web-search capability for every cloud Agent when connected. Provider-hosted general web search is disabled for OpenAI and SpaceXAI. Neofelis's Google Search and Maps controls, and the X Search controls for Delphinus and Orcinus, apply to subsequent requests only.
+| Setting group | Purpose |
+|---|---|
+| `ask_apex.panthera.model` | Registered cloud model for Panthera |
+| `ask_apex.panthera.effort` | Default model-native reasoning option for interactive queries |
+| `ask_apex.panthera.hosted_tools` | Optional Google Search, Google Maps, and X Search when the selected model supports them |
 
-The `acinonyx` Agent uses `gemini-3.5-flash-lite` and remains hidden outside development mode. Its dedicated free-tier project means APEX reports zero provider token cost for that Agent.
+| Model ID | Provider | Stability | Notes |
+|---|---|---|---|
+| `gpt-5.6-luna` | OpenAI | Stable | Default Panthera model |
+| `gemini-3.6-flash` | Google | Stable | Optional Google Search and Maps grounding; `DEV_MODE` only |
+| `gemini-3.5-flash-lite` | Google | Stable | `DEV_MODE` only |
+| `grok-4.3` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
+| `grok-4.5` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 
-### Local Agents
+Cloud models run independently of Ollama. Panthera's default model requires `OPENAI_API_KEY`; standard Gemini models require `GEMINI_API_KEY` (while free-tier Gemini models route to `GEMINI_SANDBOX_API_KEY`); Grok models require `XAI_API_KEY`. Model-native reasoning options are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`; each model exposes its supported subset.
 
-| Agent key and display name | Provider and model | Intended use |
-|---|---|---|
-| `sorex`: Sorex 1.0 | Ollama `qwen3:1.7b` | Lightweight fixed-effort local Agent |
-| `mus`: Mus 1.0 | Ollama `qwen3:4b-instruct` | Balanced fixed-effort local Agent |
-| `apodemus`: Apodemus 1.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Stable efficient local Agent and explicit briefing synthesizer with selectable context |
-| `neotoma`: Neotoma 1.0 | llama.cpp `gemma-4-E4B-Q4_K_M.gguf` | Preview generalist local Agent with selectable context |
-| `unnamed-experimental-agent`: Unnamed Experimental Agent 1.0 | llama.cpp `Qwen3.5-4B-Q4_K_M.gguf` | Development-only technical model-evaluation target with selectable context |
+Brave MCP is the general web-search capability for Panthera when connected. Provider-hosted general web search is disabled for OpenAI and SpaceXAI. Panthera's hosted-tool toggles apply to subsequent requests only.
+
+### Felis
+
+| Setting group | Purpose |
+|---|---|
+| `ask_apex.felis.model` | Registered local model for Felis |
+| `ask_apex.felis.context_window` | Selected llama.cpp context preset when applicable |
+| `ask_apex.felis.reasoning_mode` | `none` or `focused` when the selected model supports reasoning |
+
+| Model ID | Runtime | Stability | Notes |
+|---|---|---|---|
+| `gemma-4-E2B-Q4_K_M.gguf` | llama.cpp | Stable | Default Felis model |
+| `gemma-4-E4B-Q4_K_M.gguf` | llama.cpp | Experimental | Larger local option |
+| `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | Fast multilingual reasoning option |
+| `qwen3:1.7b` | Ollama | Stable | Lightweight option; `DEV_MODE` only |
+| `qwen3:4b-instruct` | Ollama | Stable | Balanced option; `DEV_MODE` only |
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`.
 
-APEX allows one local generation at a time and keeps one selected local model resident across Ollama and llama.cpp. CPU and RAM checks apply before cold loads, and idle models unload after the configured timeout. Outside `DEV_MODE`, the user-facing Agent roster is Panthera, Apodemus, and Neotoma; `DEV_MODE` also surfaces the registered development Agents.
+APEX allows one local generation at a time and keeps one selected local model resident across Ollama and llama.cpp. CPU and RAM checks apply before cold loads, and idle models unload after the configured timeout. The user-facing Agent roster is Panthera and Felis. `DEV_MODE` additionally surfaces development-only models in each Agent's model catalog.
 
-For repeatable local Agent and candidate-model comparisons, see [Local Model Benchmarking](../benchmarks/README.md). Benchmark results remain machine-specific and gitignored.
+For repeatable Felis and candidate-model comparisons, see [Local Model Benchmarking](../benchmarks/README.md). Benchmark results remain machine-specific and gitignored.
+
+### Development sandbox mode
+
+`ask_apex.sandbox_mode` applies only when `DEV_MODE=true`. In sandbox mode, Panthera and Felis queries use a restricted non-personal tool allowlist, keep history in the `sandbox` partition, and can attach only the process-current masked development briefing identified by its matching `snapshot_id`.
 
 #### llama.cpp configuration
 
@@ -158,9 +176,9 @@ For repeatable local Agent and candidate-model comparisons, see [Local Model Ben
 | `llama_cpp.idle_unload_timeout_minutes` | `5` | No | Same idle range as Ollama |
 | `llama_cpp.manual_unload_enabled` | `true` | No | Allows HUD unload |
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
-| `llama_cpp.resource_gates.apodemus` | RAM/CPU limits | No | Cold-load gates for Apodemus |
-| `llama_cpp.resource_gates.neotoma` | RAM/CPU limits | No | Cold-load gates for Neotoma |
-| `llama_cpp.resource_gates.unnamed-experimental-agent` | RAM/CPU limits | No | Cold-load gates for the development-only evaluation target |
+| `llama_cpp.resource_gates` entry for `gemma-4-E2B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the default Felis model |
+| `llama_cpp.resource_gates` entry for `gemma-4-E4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Felis model |
+| `llama_cpp.resource_gates` entry for `Qwen3.5-4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Felis model |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 
@@ -185,7 +203,7 @@ APEX does not install, bundle, or update llama.cpp, and it does not download mod
 - **External mode** (`managed: false`): you start `llama-server` yourself. APEX only talks to the configured loopback URL over HTTP.
 - **Managed mode** (`managed: true`): when llama.cpp is enabled and the router is unreachable, APEX starts your installed executable with the configured preset. If the router is already reachable, APEX uses it as an external server and does not spawn a duplicate process. APEX terminates only a child process it launched, never an externally started server.
 
-Configure Apodemus, Neotoma, and Unnamed Experimental Agent aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git.
+Configure Felis llama.cpp aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git. Configure presets using model-based aliases.
 
 ```ini
 version = 1
@@ -195,11 +213,11 @@ jinja = true
 reasoning = auto
 parallel = 1
 
-[apodemus-4k]
+[gemma-4-e2b-4k]
 model = C:\path\to\gemma-4-E2B-Q4_K_M.gguf
 ctx-size = 4096
 
-; Include the remaining Apodemus and Neotoma aliases from the tracked preset.
+; Include the remaining model-based aliases from the tracked preset.
 ```
 
 Recommended Windows launch for external mode (reconcile flag names against the build's `--help`). Managed mode uses the same argument sequence when APEX starts the process:
@@ -215,25 +233,25 @@ llama-server.exe `
 
 `--models-max 1` keeps a single resident model at the router. `--no-models-autoload` requires explicit `/models/load` so APEX remains the admission owner. Do not enable llama.cpp idle sleeping in this reference setup; APEX owns the HUD idle unload timer. Initial Windows validation used the `llama-b10276-bin-win-cpu-x64` package without hard-pinning that build in code.
 
-Installed aliases come only from the router's `/models` list. A missing `apodemus-16k` (or other selected preset) is reported as not configured rather than fabricated by APEX.
+Installed aliases come only from the router's `/models` list. A missing `gemma-4-e2b-16k` (or other selected preset) is reported as not configured rather than fabricated by APEX.
 
 #### Local context preferences
 
-`ask_apex.local_context_windows` stores independent selectable context preferences by local Agent. Apodemus accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; Neotoma accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; Unnamed Experimental Agent accepts `4096`, `16384`, or `32768` and defaults to `16384`. Apodemus's `131072` and Neotoma's `65536` presets are marked high-resource in Cortex; none of the Unnamed Experimental Agent presets are currently marked high-resource. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time that Agent loads without triggering an automatic model load.
+`ask_apex.felis.context_window` stores the selected llama.cpp context preset for interactive Felis requests in Cortex. The default Felis model accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; `gemma-4-E4B-Q4_K_M.gguf` accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; `Qwen3.5-4B-Q4_K_M.gguf` accepts `4096`, `16384`, or `32768` and defaults to `16384`. The default model's `131072` and the E4B model's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time Felis loads without triggering an automatic model load. Briefing synthesis ignores this interactive model selection and always uses `gemma-4-E2B-Q4_K_M.gguf` at its dedicated 16K context.
 
-Apodemus and Neotoma model maximum metadata is `131072`, while Unnamed Experimental Agent model maximum metadata is `262144`; the larger native maximum is not fully exposed as a preset.
+Model maximum metadata can exceed the presets APEX exposes. The larger native maximum is not fully exposed as a selectable preset.
 
 #### Local reasoning preferences
 
-`ask_apex.local_reasoning_modes` stores an independent reasoning preference for each local Agent. All local Agents default to `none`; Mus and Sorex currently expose only `none`, while Apodemus, Neotoma, and Unnamed Experimental Agent expose `none` and `focused`. The Cortex inspector shows the Reasoning selector only when the active Agent advertises both modes, and a change applies to the next response without unloading the resident model.
+`ask_apex.felis.reasoning_mode` stores the reasoning preference for interactive Felis requests. Felis defaults to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. The Cortex inspector shows the Reasoning selector only when the active model advertises both modes, and a change applies to the next response without unloading the resident model. Briefing synthesis always disables reasoning.
 
 For llama.cpp, `none` sends `reasoning_effort: "none"` with `chat_template_kwargs.enable_thinking` set to `false`; `focused` omits that request field and sets `enable_thinking` to `true` so the model template can use its native reasoning behavior. Focused llama.cpp profiles use a larger model-configured completion ceiling because native thinking consumes the same completion budget as the visible answer. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
-Existing `ask_apex.apodemus_context_window` values are migrated into `ask_apex.local_context_windows.apodemus` when settings are normalized. Retired Apodemus `8K` preferences migrate to `16K`. Current Agent mappings used by documentation checks are `apodemus -> gemma-4-E2B-Q4_K_M.gguf`, `neotoma -> gemma-4-E4B-Q4_K_M.gguf`, and `unnamed-experimental-agent -> Qwen3.5-4B-Q4_K_M.gguf`.
+Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and per-Agent llama.cpp resource-gate keys are migrated into the consolidated Felis and model-based configuration during settings normalization.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Apodemus once before returning Structured Digest. An explicit Apodemus briefing request falls directly to Structured Digest on failure; it never silently substitutes another local Agent. Apodemus cold-load briefing synthesis uses the dedicated 16K context, while an already-resident Apodemus load reuses its actual configured context alias.
+Panthera is the default cloud briefing engine and always uses `none` reasoning, independently of the selected interactive Agent or reasoning option. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
 
 ## Voice
 

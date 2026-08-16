@@ -31,14 +31,24 @@ from core.agent.catalog import (
     credential_missing_error,
     credential_missing_message,
     is_agent_visible,
+    is_sandbox_query,
     agent_has_credentials,
     local_context_window_for_agent,
     local_reasoning_mode_for_agent,
-    resolve_effort,
+    local_reasoning_modes_for_model,
+    resolve_effort_for_agent,
+    resolve_selected_model_profile,
     runtime_agent_order,
 )
+from core.agent.model_catalog import (
+    ModelProfile,
+    model_has_credentials,
+    visible_cloud_models,
+    visible_local_models,
+)
+from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.sandbox_context import get_masked_briefing
-from core.agent.tool_policies import hosted_tools_for_agent
+from core.agent.tool_policies import effective_native_tools
 from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
@@ -81,6 +91,7 @@ from core.agent.types import (
 )
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
+    AgentModelCatalogEntry,
     AgentStatus,
     CloudAgentVerificationResponse,
     LocalLoadResponse,
@@ -110,6 +121,112 @@ _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "insufficient_ram": "Current memory pressure exceeds threshold",
     "cpu_overloaded": "Current CPU utilization exceeds threshold",
 }
+
+_PROVIDER_DISPLAY_NAMES: dict[str, str] = {
+    "gemini": "Google",
+    "ollama": "Ollama",
+    "llama_cpp": "llama.cpp",
+    "openai": "OpenAI",
+    "xai": "SpaceXAI",
+}
+
+
+def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
+    agent_key = "panthera" if profile.runtime == "cloud" else "felis"
+    pricing = agent_pricing(
+        agent_key,
+        model=profile.model_id,
+        provider=profile.provider,
+    )
+    rates = pricing.rates
+    return AgentPricingMetadata(
+        pricing_version=PRICING_VERSION,
+        billing_basis=pricing.billing_basis,  # type: ignore[arg-type]
+        input_per_million=rates.input_per_million,
+        output_per_million=rates.output_per_million,
+        cached_input_per_million=rates.cached_input_per_million,
+        long_context_threshold_tokens=rates.long_context_threshold_tokens,
+        long_context_input_per_million=rates.long_context_input_per_million,
+        long_context_output_per_million=rates.long_context_output_per_million,
+        long_context_cached_input_per_million=rates.long_context_cached_input_per_million,
+    )
+
+
+def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
+    llama_runtime = (
+        LLAMA_CPP_RUNTIME_CONFIGS.get(profile.model_id)
+        if profile.provider == "llama_cpp"
+        else None
+    )
+    reasoning_modes_tuple = (
+        local_reasoning_modes_for_model(profile.model_id)
+        if profile.runtime == "local"
+        else ()
+    )
+    context_options = list(llama_runtime.allowed_context_windows) if llama_runtime else None
+    default_context_window = llama_runtime.default_context_window if llama_runtime else None
+    high_resource_context_options = (
+        list(llama_runtime.high_resource_context_options) if llama_runtime else None
+    )
+    maximum_context_window = (
+        profile.maximum_context_window
+        if profile.maximum_context_window is not None
+        else (llama_runtime.maximum_context_window if llama_runtime else None)
+    )
+    reasoning_modes = list(reasoning_modes_tuple) if reasoning_modes_tuple else None
+    default_reasoning_mode = (
+        llama_runtime.default_reasoning_mode
+        if llama_runtime
+        else (reasoning_modes[0] if reasoning_modes else None)
+    )
+    reasoning_options: list[str] | None = (
+        list(profile.reasoning_options) if profile.reasoning_options else None
+    )
+    default_reasoning = profile.default_reasoning
+
+    return AgentModelCatalogEntry(
+        model_id=profile.model_id,
+        display_name=profile.display_name,
+        provider=profile.provider,
+        runtime=profile.runtime,
+        stability=profile.stability,
+        hosted_capabilities=sorted(profile.hosted_capabilities),
+        dev_only=profile.dev_only,
+        credentials_configured=model_has_credentials(profile),
+        pricing=_model_pricing_metadata(profile),
+        reasoning_options=reasoning_options,
+        default_reasoning=default_reasoning,
+        context_options=context_options,
+        default_context_window=default_context_window,
+        high_resource_context_options=high_resource_context_options,
+        maximum_context_window=maximum_context_window,
+        reasoning_modes=reasoning_modes,
+        default_reasoning_mode=default_reasoning_mode,
+        supports_encrypted_reasoning=profile.supports_encrypted_reasoning,
+    )
+
+
+def _cloud_model_catalog(dev_mode: bool) -> list[AgentModelCatalogEntry]:
+    profiles = visible_cloud_models(dev_mode=dev_mode)
+    return [_profile_to_catalog_entry(profile) for profile in profiles]
+
+
+def _local_model_catalog(dev_mode: bool) -> list[AgentModelCatalogEntry]:
+    profiles = visible_local_models(dev_mode=dev_mode)
+    return [_profile_to_catalog_entry(profile) for profile in profiles]
+
+
+def _is_sandbox_agent_query(agent_key: str) -> bool:
+    settings = get_settings_store().get_snapshot().ask_apex
+    return is_sandbox_query(
+        sandbox_mode=settings.sandbox_mode,
+        dev_mode=is_dev_mode(),
+    )
+
+
+def _panthera_hosted_tool_settings() -> tuple[bool, bool, bool]:
+    hosted = get_settings_store().get_snapshot().ask_apex.panthera.hosted_tools
+    return hosted.google_search, hosted.google_maps, hosted.x_search
 
 
 def _local_provider_label(provider: str) -> str:
@@ -149,24 +266,8 @@ def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
 
 
 def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
-    spec = AGENT_SPECS[agent_key]
-    pricing = agent_pricing(
-        agent_key,
-        model=spec.api_model,
-        provider=spec.provider,
-    )
-    rates = pricing.rates
-    return AgentPricingMetadata(
-        pricing_version=PRICING_VERSION,
-        billing_basis=pricing.billing_basis,  # type: ignore[arg-type]
-        input_per_million=rates.input_per_million,
-        output_per_million=rates.output_per_million,
-        cached_input_per_million=rates.cached_input_per_million,
-        long_context_threshold_tokens=rates.long_context_threshold_tokens,
-        long_context_input_per_million=rates.long_context_input_per_million,
-        long_context_output_per_million=rates.long_context_output_per_million,
-        long_context_cached_input_per_million=rates.long_context_cached_input_per_million,
-    )
+    model_profile = resolve_selected_model_profile(agent_key)
+    return _model_pricing_metadata(model_profile)
 
 
 def _resolve_local_agent_status(
@@ -240,11 +341,14 @@ def _resolve_cloud_agent_status(
     if agent_has_credentials(agent_key):
         result = cloud_status(agent_key)
         return result.status, result.reason, result.source, result.checked_at
-    spec = AGENT_SPECS[agent_key]
-    env_key = spec.credential_env or "API_KEY"
+    model_profile = resolve_selected_model_profile(agent_key)
+    env_key = model_profile.credential_env or "API_KEY"
+    provider_label = _PROVIDER_DISPLAY_NAMES.get(
+        model_profile.provider, model_profile.provider
+    )
     return (
         "disabled",
-        f"{spec.provider.title()} API key is not configured ({env_key})",
+        f"{provider_label} API key is not configured ({env_key})",
         "configuration",
         None,
     )
@@ -272,7 +376,6 @@ def build_agent_statuses() -> list[AgentStatus]:
     loading = get_loading_local_model()
     idle_remaining = get_idle_unload_remaining_seconds()
     dev_mode = is_dev_mode()
-    agent_settings = get_settings_store().get_snapshot().ask_apex
     vitals = get_system_vitals()
 
     snapshots: dict[str, Any] = {}
@@ -280,12 +383,12 @@ def build_agent_statuses() -> list[AgentStatus]:
         snapshots[backend.provider] = backend.get_status_snapshot()
 
     agents: list[AgentStatus] = []
+    cloud_models = _cloud_model_catalog(dev_mode)
+    local_models = _local_model_catalog(dev_mode)
 
-    for sort_order, key in enumerate(runtime_agent_order(dev_mode=dev_mode)):
+    for sort_order, key in enumerate(runtime_agent_order()):
         spec = AGENT_SPECS[key]
-        effort_options = (
-            ["light", "focused", "extended"] if spec.supports_effort else None
-        )
+        model_profile = resolve_selected_model_profile(key)
 
         if spec.runtime == "local":
             profile = build_concrete_agent(
@@ -338,16 +441,14 @@ def build_agent_statuses() -> list[AgentStatus]:
                     key=key,
                     display_name=spec.display_name,
                     description=spec.description,
-                    provider=spec.provider,
+                    provider=profile.provider,
                     version=spec.agent_version,
-                    configured_model=spec.api_model,
+                    configured_model=model_profile.model_id,
                     sort_order=sort_order,
                     capabilities=list(spec.capability_tags),
                     native_tools={},
                     runtime=spec.runtime,
-                    tier=spec.tier,
-                    stability=spec.stability,
-                    effort_options=effort_options,
+                    model_stability=model_profile.stability,
                     context_window=(
                         profile.context_window
                         if hasattr(profile, "allowed_context_windows")
@@ -383,7 +484,6 @@ def build_agent_statuses() -> list[AgentStatus]:
                         if hasattr(profile, "default_reasoning_mode")
                         else None
                     ),
-                    default_effort=spec.default_effort,
                     status=agent_status,
                     status_source="runtime",
                     pricing=_agent_pricing_metadata(key),
@@ -398,49 +498,41 @@ def build_agent_statuses() -> list[AgentStatus]:
                         if status_model is not None
                         else None
                     ),
+                    model_catalog=local_models,
                 )
             )
             continue
 
-        agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(key)
-        hosted_tools = hosted_tools_for_agent(
-            key,
-            neofelis_google_search_enabled=(
-                agent_settings.neofelis_google_search_enabled
-            ),
-            neofelis_google_maps_enabled=(
-                agent_settings.neofelis_google_maps_enabled
-            ),
-            delphinus_x_search_enabled=(
-                agent_settings.delphinus_x_search_enabled
-            ),
-            orcinus_x_search_enabled=(
-                agent_settings.orcinus_x_search_enabled
-            ),
+        agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(
+            key
         )
-        known_native_tools = {
-            "neofelis": ("google_search", "google_maps"),
-            "delphinus": ("x_search",),
-            "orcinus": ("x_search",),
-        }.get(key, ())
+        google_search, google_maps, x_search = _panthera_hosted_tool_settings()
+        native_tools = effective_native_tools(
+            model_profile,
+            google_search_enabled=google_search,
+            google_maps_enabled=google_maps,
+            x_search_enabled=x_search,
+        )
+        reasoning_options = (
+            list(model_profile.reasoning_options)
+            if model_profile.reasoning_options
+            else None
+        )
         agents.append(
             AgentStatus(
                 key=key,
                 display_name=spec.display_name,
                 description=spec.description,
-                provider=spec.provider,
+                provider=model_profile.provider,
                 version=spec.agent_version,
-                configured_model=spec.api_model,
+                configured_model=model_profile.model_id,
                 sort_order=sort_order,
                 capabilities=list(spec.capability_tags),
-                native_tools={
-                    tool_name: tool_name in hosted_tools
-                    for tool_name in known_native_tools
-                },
+                native_tools=native_tools,
                 runtime=spec.runtime,
-                tier=spec.tier,
-                stability=spec.stability,
-                effort_options=effort_options,
+                model_stability=model_profile.stability,
+                reasoning_options=reasoning_options,
+                default_reasoning=model_profile.default_reasoning,
                 context_window=None,
                 context_window_options=None,
                 context_window_high_resource_options=None,
@@ -448,7 +540,6 @@ def build_agent_statuses() -> list[AgentStatus]:
                 reasoning_mode=None,
                 reasoning_mode_options=None,
                 default_reasoning_mode=None,
-                default_effort=spec.default_effort,
                 status=agent_status,
                 status_source=status_source,
                 status_checked_at=checked_at,
@@ -456,6 +547,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                 active=False,
                 loading=False,
                 reason=cloud_reason,
+                model_catalog=cloud_models,
             )
         )
 
@@ -680,13 +772,13 @@ def _prepare_agent_payload(
             )
         }
     )
-    if agent_key == "acinonyx":
+    if _is_sandbox_agent_query(agent_key):
         if prepared.briefing_id is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Acinonyx cannot attach saved briefing history.",
+                detail="Sandbox mode cannot attach saved briefing history.",
             )
-        if prepared.history_partition != "acinonyx":
+        if prepared.history_partition != "sandbox":
             prepared = prepared.model_copy(update={"history": []})
     elif prepared.history_partition != "production":
         prepared = prepared.model_copy(update={"history": []})
@@ -704,7 +796,7 @@ def _build_hud_context(
     """
     sections: list[str] = []
 
-    if agent_key == "acinonyx":
+    if _is_sandbox_agent_query(agent_key):
         if payload.snapshot_id is None:
             return ""
         masked = get_masked_briefing(payload.snapshot_id)
@@ -721,7 +813,7 @@ def _build_hud_context(
             f"- Active Summary Insights: {insight_text if insight_text else 'None'}"
         )
 
-    if agent_key != "acinonyx" and payload.briefing_id is not None:
+    if not _is_sandbox_agent_query(agent_key) and payload.briefing_id is not None:
         record = database.fetch_briefing_by_id(payload.briefing_id)
         if record is not None:
             insights_list = record["digest"].get("insights", [])
@@ -739,7 +831,7 @@ def _build_hud_context(
                 f"{insight_text if insight_text else 'None'}"
             )
 
-    if agent_key != "acinonyx" and payload.snapshot_id is not None:
+    if not _is_sandbox_agent_query(agent_key) and payload.snapshot_id is not None:
         from core.telemetry.service import get_telemetry_service
 
         snapshot = get_telemetry_service().latest()
@@ -772,19 +864,18 @@ def _build_hud_context(
     )
 
 
-def _create_provider(agent_key: str, api_key: str):
-    spec = AGENT_SPECS[agent_key]
-    if spec.provider == "gemini":
+def _create_provider(profile: AgentModelProfile, api_key: str):
+    if profile.provider == "gemini":
         return GeminiProvider(api_key=api_key)
-    if spec.provider == "openai":
+    if profile.provider == "openai":
         return OpenAIProvider(api_key=api_key)
-    if spec.provider == "xai":
+    if profile.provider == "xai":
         return XAIProvider(api_key=api_key)
-    if spec.provider == "ollama":
+    if profile.provider == "ollama":
         return OllamaProvider()
-    if spec.provider == "llama_cpp":
+    if profile.provider == "llama_cpp":
         return LlamaCppProvider()
-    raise ValueError(f"Unsupported inference provider: {spec.provider!r}")
+    raise ValueError(f"Unsupported inference provider: {profile.provider!r}")
 
 
 def _execute_agent_turn(
@@ -793,8 +884,7 @@ def _execute_agent_turn(
     *,
     agent_key: str,
     api_key: str | None,
-    resolved_apex_effort,
-    resolved_native_effort,
+    resolved_effort: NativeEffort | None,
     selected_tools: list[CapabilityDescriptor] | None = None,
     tool_selection: ToolSelectionDiagnostics | None = None,
     disable_hud_context: bool = False,
@@ -809,17 +899,17 @@ def _execute_agent_turn(
         )
 
         if is_local_profile(profile):
-            if AGENT_SPECS[agent_key].provider == "ollama":
+            if profile.provider == "ollama":
                 provider = OllamaProvider()
-            elif AGENT_SPECS[agent_key].provider == "llama_cpp":
+            elif profile.provider == "llama_cpp":
                 provider = LlamaCppProvider()
             else:
                 raise ValueError(
-                    f"Unsupported local provider: {AGENT_SPECS[agent_key].provider!r}"
+                    f"Unsupported local provider: {profile.provider!r}"
                 )
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
         else:
-            provider = _create_provider(agent_key, api_key or "")
+            provider = _create_provider(profile, api_key or "")
             base_prompt = config.AGENT_SYSTEM_PROMPT
 
         local_system_instruction = (
@@ -847,19 +937,30 @@ def _execute_agent_turn(
             agent_key=agent_key,
         )
         if not is_local_profile(profile):
-            record_cloud_request_success(agent_key)
+            record_cloud_request_success(
+                agent_key,
+                provider=profile.provider,
+                model=profile.api_model,
+            )
         response.agent_used = build_agent_used_metadata(
             agent_key,
+            provider=profile.provider,
             configured_model=profile.api_model,
             resolved_model=response.resolved_model,
             requested_effort=payload.effort,
-            resolved_apex_effort=resolved_apex_effort,
-            resolved_native_effort=resolved_native_effort,
+            resolved_effort=resolved_effort,
+            model_stability=getattr(profile, "stability", None),
+            hosted_tools=getattr(profile, "hosted_tools", None),
         )
         return response
     except Exception as exc:
         if not is_local_profile(profile):
-            record_cloud_request_failure(agent_key, exc)
+            record_cloud_request_failure(
+                agent_key,
+                exc,
+                provider=profile.provider,
+                model=profile.api_model,
+            )
         _LOGGER.exception(
             "Agent turn failed for model configuration %s",
             agent_key,
@@ -869,11 +970,13 @@ def _execute_agent_turn(
             answer=answer,
             agent_used=build_agent_used_metadata(
                 agent_key,
+                provider=profile.provider,
                 configured_model=profile.api_model,
                 resolved_model=None,
                 requested_effort=payload.effort,
-                resolved_apex_effort=resolved_apex_effort,
-                resolved_native_effort=resolved_native_effort,
+                resolved_effort=resolved_effort,
+                model_stability=getattr(profile, "stability", None),
+                hosted_tools=getattr(profile, "hosted_tools", None),
             ),
             session_id=payload.session_id,
             error=error_detail,
@@ -919,11 +1022,7 @@ def _estimate_agent_request(
     """Estimate the model-facing request from the canonical execution inputs."""
     hud_context = _build_hud_context(payload, agent_key=agent_key)
     if is_local_profile(profile):
-        base_prompt = (
-            config.LOCAL_AGENT_SYSTEM_PROMPT
-            if agent_key != "acinonyx"
-            else config.AGENT_SYSTEM_PROMPT
-        )
+        base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
     else:
         base_prompt = config.AGENT_SYSTEM_PROMPT
     system_instruction = compose_agent_system_instruction(
@@ -1009,18 +1108,17 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
             detail=f"Agent {agent_key!r} is not available.",
         )
     settings = get_settings_store().get_snapshot()
-    resolved_apex_effort, resolved_native_effort = resolve_effort(agent_key, None)
+    google_search, google_maps, x_search = _panthera_hosted_tool_settings()
+    resolved_effort = resolve_effort_for_agent(agent_key, None)
     profile = build_concrete_agent(
         agent_key,
-        native_effort=resolved_native_effort,
+        native_effort=resolved_effort,
         local_context_window=local_context_window_for_agent(agent_key),
         local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
-        neofelis_google_search_enabled=settings.ask_apex.neofelis_google_search_enabled,
-        neofelis_google_maps_enabled=settings.ask_apex.neofelis_google_maps_enabled,
-        delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
-        orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
+        google_search_enabled=google_search,
+        google_maps_enabled=google_maps,
+        x_search_enabled=x_search,
     )
-    del resolved_apex_effort
     query_payload_kwargs: dict[str, Any] = {
         "prompt": payload.prompt,
         "agent": agent_key,
@@ -1083,23 +1181,18 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             detail="Effort cannot be set for local Agents.",
         )
 
-    resolved_apex_effort, resolved_native_effort = resolve_effort(
-        agent_key, payload.effort
-    )
+    resolved_effort = resolve_effort_for_agent(agent_key, payload.effort)
     settings = get_settings_store().get_snapshot()
+    google_search, google_maps, x_search = _panthera_hosted_tool_settings()
+    model_profile = resolve_selected_model_profile(agent_key)
     profile = build_concrete_agent(
         agent_key,
-        native_effort=resolved_native_effort,
+        native_effort=resolved_effort,
         local_context_window=local_context_window_for_agent(agent_key),
         local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
-        neofelis_google_search_enabled=(
-            settings.ask_apex.neofelis_google_search_enabled
-        ),
-        neofelis_google_maps_enabled=(
-            settings.ask_apex.neofelis_google_maps_enabled
-        ),
-        delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
-        orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
+        google_search_enabled=google_search,
+        google_maps_enabled=google_maps,
+        x_search_enabled=x_search,
     )
     selection = resolve_selected_tools(
         agent_key,
@@ -1115,16 +1208,18 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
     if DEMO_MODE:
         return run_demo_agent_query(payload, tool_selection=selection.diagnostics)
 
-    if spec.credential_env and not agent_has_credentials(agent_key):
+    if model_profile.credential_env and not agent_has_credentials(agent_key):
         return AgentQueryResponse(
             answer=credential_missing_message(agent_key),
             agent_used=build_agent_used_metadata(
                 agent_key,
+                provider=profile.provider,
                 configured_model=profile.api_model,
                 resolved_model=None,
                 requested_effort=payload.effort,
-                resolved_apex_effort=resolved_apex_effort,
-                resolved_native_effort=resolved_native_effort,
+                resolved_effort=resolved_effort,
+                model_stability=getattr(profile, "stability", None),
+                hosted_tools=getattr(profile, "hosted_tools", None),
             ),
             session_id=payload.session_id,
             error=credential_missing_error(agent_key),
@@ -1186,8 +1281,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 profile,
                 agent_key=agent_key,
                 api_key=None,
-                resolved_apex_effort=resolved_apex_effort,
-                resolved_native_effort=resolved_native_effort,
+                resolved_effort=resolved_effort,
                 selected_tools=list(selection.descriptors),
                 tool_selection=selection.diagnostics,
                 disable_hud_context=False,
@@ -1197,18 +1291,17 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             end_local_execution()
 
     api_key = None
-    if spec.credential_env:
+    if model_profile.credential_env:
         import os
 
-        api_key = os.getenv(spec.credential_env)
+        api_key = os.getenv(model_profile.credential_env)
 
     return _execute_agent_turn(
         payload,
         profile,
         agent_key=agent_key,
         api_key=api_key,
-        resolved_apex_effort=resolved_apex_effort,
-        resolved_native_effort=resolved_native_effort,
+        resolved_effort=resolved_effort,
         selected_tools=list(selection.descriptors),
         tool_selection=selection.diagnostics,
         disable_hud_context=False,

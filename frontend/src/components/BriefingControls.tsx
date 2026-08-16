@@ -21,9 +21,8 @@ import { createPortal } from 'react-dom'
 
 import type { BriefingMode } from '../types/settings'
 import type {
-  AgentStatus,
-  AgentKey,
   AgentAvailabilityStatus,
+  BriefingTargetStatus,
 } from '../types/telemetry'
 
 import { AgentMark } from './AgentMark'
@@ -35,11 +34,11 @@ interface BriefingOption {
 }
 
 const CLOUD_OPTIONS: readonly BriefingOption[] = [
-  { key: 'panthera', label: 'Panthera', description: 'Full briefing · cloud synthesis' },
+  { key: 'panthera', label: 'Apex Panthera', description: 'Full briefing · GPT-5.6 Luna' },
 ]
 
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'apodemus', label: 'Apodemus', description: 'Full briefing · efficient llama.cpp synthesis' },
+  { key: 'felis', label: 'Apex Felis', description: 'Full briefing · Gemma 4 E2B' },
   {
     key: 'structured_digest',
     label: 'Structured Digest',
@@ -57,9 +56,9 @@ const SECTIONS: readonly {
   { title: 'Local', icon: Cpu, options: LOCAL_OPTIONS },
 ]
 
-const MODE_LABELS: Record<BriefingMode, string> = {
-  panthera: 'Panthera',
-  apodemus: 'Apodemus',
+const MODE_LABELS: Record<string, string> = {
+  panthera: 'Apex Panthera',
+  felis: 'Apex Felis',
   structured_digest: 'Structured Digest',
 }
 
@@ -84,32 +83,10 @@ const STATUS_REASONS: Record<AgentAvailabilityStatus, string> = {
   cpu_overloaded: 'Current CPU utilization exceeds threshold',
 }
 
-interface ModeAvailability {
-  status: AgentAvailabilityStatus
-  reason: string | null
-}
-
-function agentForMode(mode: BriefingMode): AgentKey | null {
-  return mode === 'structured_digest' ? null : mode
-}
-
-function resolveBriefingModeAvailability(
-  mode: BriefingMode,
-  agents: AgentStatus[],
-  hydrated: boolean,
-): ModeAvailability {
-  if (mode === 'structured_digest') {
-    return { status: 'available', reason: null }
-  }
-  if (!hydrated) {
-    return { status: 'unknown', reason: STATUS_REASONS.unknown }
-  }
-  const agent = agentForMode(mode)
-  const match = agents.find((entry) => entry.key === agent)
-  return match
-    ? { status: match.status, reason: match.reason }
-    : { status: 'unknown', reason: 'Mode status unavailable' }
-}
+import {
+  resolveBriefingModeAvailability,
+  type BriefingModeAvailability as ModeAvailability,
+} from '../lib/agents'
 
 function statusLedClass(status: AgentAvailabilityStatus): string {
   if (status === 'available' || status === 'configured' || status === 'verified') return 'hud-led--live'
@@ -122,7 +99,9 @@ function statusReason(availability: ModeAvailability): string {
   return availability.reason?.trim() || STATUS_REASONS[availability.status] || availability.status
 }
 
-function modeDescription(mode: BriefingMode): string {
+function modeDescription(mode: BriefingMode, targets?: BriefingTargetStatus[]): string {
+  const target = targets?.find((option) => option.mode === mode)
+  if (target?.description) return target.description
   return ALL_OPTIONS.find((option) => option.key === mode)?.description ?? 'Briefing synthesis'
 }
 
@@ -130,16 +109,15 @@ function compactRate(value: number): string {
   return `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
 }
 
-function modeCost(mode: BriefingMode, agents: AgentStatus[]): string {
+function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[]): string {
   if (mode === 'structured_digest') return 'No model cost'
-  const agent = agents.find((entry) => entry.key === mode)
-  if (!agent) {
-    return mode === 'apodemus'
-      ? 'No provider token charge'
-      : 'Pricing unavailable'
+  const target = targets?.find((entry) => entry.mode === mode)
+  if (target?.pricing) {
+    if (target.pricing.billing_basis === 'local') return 'No provider token charge'
+    if (target.pricing.billing_basis === 'free_tier') return 'Free tier'
+    return `In ${compactRate(target.pricing.input_per_million)} · Out ${compactRate(target.pricing.output_per_million)} / 1M`
   }
-  if (agent.pricing.billing_basis === 'local') return 'No provider token charge'
-  return `In ${compactRate(agent.pricing.input_per_million)} · Out ${compactRate(agent.pricing.output_per_million)} / 1M`
+  return 'Pricing unavailable'
 }
 
 function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
@@ -162,8 +140,7 @@ function dropdownPosition(trigger: HTMLButtonElement): CSSProperties {
 export interface BriefingModeSelectorProps {
   value: BriefingMode
   onChange: (mode: BriefingMode) => void
-  agents: AgentStatus[]
-  hydrated: boolean
+  targets?: BriefingTargetStatus[]
   disabled: boolean
   className?: string
 }
@@ -171,8 +148,7 @@ export interface BriefingModeSelectorProps {
 export function BriefingModeSelector({
   value,
   onChange,
-  agents,
-  hydrated,
+  targets,
   disabled,
   className = '',
 }: BriefingModeSelectorProps): ReactElement {
@@ -181,7 +157,7 @@ export function BriefingModeSelector({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
-  const activeAvailability = resolveBriefingModeAvailability(value, agents, hydrated)
+  const activeAvailability = resolveBriefingModeAvailability(value, targets)
 
   const close = useCallback((restoreFocus = false): void => {
     setOpen(false)
@@ -278,7 +254,7 @@ export function BriefingModeSelector({
       >
         <BriefingModeMark mode={value} />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
-        <span className="min-w-0 flex-1 text-left"><span className="block truncate uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value)}</span></span>
+        <span className="min-w-0 flex-1 text-left"><span className="block truncate uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span></span>
         <ChevronDown className={`ml-auto size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
@@ -309,7 +285,7 @@ export function BriefingModeSelector({
                 <ul role="group" aria-label={section.title} className="space-y-1">
                   {section.options.map((option) => {
                     const index = ALL_OPTIONS.findIndex((entry) => entry.key === option.key)
-                    const availability = resolveBriefingModeAvailability(option.key, agents, hydrated)
+                    const availability = resolveBriefingModeAvailability(option.key, targets)
                     const unavailable = !['available', 'configured', 'verified'].includes(availability.status)
                     const selected = option.key === value
                     return (
@@ -336,8 +312,8 @@ export function BriefingModeSelector({
                           <BriefingModeMark mode={option.key} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
-                            <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key)}</span>
-                            <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, agents)}</span>
+                            <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key, targets)}</span>
+                            <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
                           </span>
                           {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
                         </button>

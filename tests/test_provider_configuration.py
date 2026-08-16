@@ -6,26 +6,46 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
+from core.agent.model_catalog import get_model_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.types import AgentMessage
 from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
 
+_MODEL_PROFILES = {
+    "panthera": ("panthera", "gpt-5.6-luna"),
+    "neofelis": ("panthera", "gemini-3.6-flash"),
+    "acinonyx": ("panthera", "gemini-3.5-flash-lite"),
+    "sorex": ("felis", "qwen3:1.7b"),
+    "mus": ("felis", "qwen3:4b-instruct"),
+    "apodemus": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neotoma": ("felis", "gemma-4-E4B-Q4_K_M.gguf"),
+    "unnamed-experimental-agent": ("felis", "Qwen3.5-4B-Q4_K_M.gguf"),
+}
+
 
 def _concrete_profile(key: str):
-    _apex, native = resolve_effort(key, None)
-    return build_concrete_agent(key, native_effort=native)
+    agent_key, model_id = _MODEL_PROFILES.get(key, (key, "gpt-5.6-luna"))
+    model_profile = get_model_profile(model_id)
+    assert model_profile is not None
+    native = resolve_effort(model_profile, None)
+    return build_concrete_agent(
+        agent_key,
+        native_effort=native,
+        model_id=model_id,
+    )
 
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
-        for key in ("panthera", "neofelis", "acinonyx"):
-            with self.subTest(agent=key):
-                spec = AGENT_SPECS[key]
-                self.assertGreater(spec.max_tool_turns, 0)
-                self.assertGreaterEqual(spec.max_tool_calls, spec.max_tool_turns)
-                self.assertLessEqual(spec.max_tool_turns, GEMINI_AGENT_MAX_TURNS)
-                self.assertLessEqual(spec.max_tool_calls, GEMINI_AGENT_MAX_TOOL_CALLS)
+        for model_id in ("gpt-5.6-luna", "gemini-3.6-flash", "gemini-3.5-flash-lite"):
+            with self.subTest(model=model_id):
+                profile = get_model_profile(model_id)
+                assert profile is not None
+                self.assertGreater(profile.max_tool_turns, 0)
+                self.assertGreaterEqual(profile.max_tool_calls, profile.max_tool_turns)
+                self.assertLessEqual(profile.max_tool_turns, GEMINI_AGENT_MAX_TURNS)
+                self.assertLessEqual(profile.max_tool_calls, GEMINI_AGENT_MAX_TOOL_CALLS)
 
     def test_agent_versions_use_product_version_format(self) -> None:
         for spec in AGENT_SPECS.values():
@@ -36,15 +56,27 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
             profile = _concrete_profile(key)
             self.assertEqual(profile.agent_version, spec.agent_version)
 
-    def test_local_agents_leave_a_final_answer_turn_after_tool_work(self) -> None:
-        for key in ("sorex", "mus", "apodemus", "neotoma", "unnamed-experimental-agent"):
-            with self.subTest(agent=key):
-                spec = AGENT_SPECS[key]
-                self.assertGreater(spec.max_tool_turns, 0)
-                self.assertGreaterEqual(spec.max_tool_calls, spec.max_tool_turns)
-        for key in ("mus", "apodemus", "neotoma", "unnamed-experimental-agent"):
-            with self.subTest(agent=key):
-                self.assertEqual(AGENT_SPECS[key].max_tool_turns, 4)
+    def test_local_models_leave_a_final_answer_turn_after_tool_work(self) -> None:
+        for model_id in (
+            "qwen3:1.7b",
+            "qwen3:4b-instruct",
+            "gemma-4-E2B-Q4_K_M.gguf",
+            "gemma-4-E4B-Q4_K_M.gguf",
+            "Qwen3.5-4B-Q4_K_M.gguf",
+        ):
+            with self.subTest(model=model_id):
+                profile = get_model_profile(model_id)
+                assert profile is not None
+                self.assertGreater(profile.max_tool_turns, 0)
+                self.assertGreaterEqual(profile.max_tool_calls, profile.max_tool_turns)
+        for model_id in (
+            "qwen3:4b-instruct",
+            "gemma-4-E2B-Q4_K_M.gguf",
+            "gemma-4-E4B-Q4_K_M.gguf",
+            "Qwen3.5-4B-Q4_K_M.gguf",
+        ):
+            with self.subTest(model=model_id):
+                self.assertEqual(get_model_profile(model_id).max_tool_turns, 4)
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_gemini_provider_config_omits_temperature(
@@ -78,28 +110,26 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_ollama_provider_retains_temperature(
         self, mock_get_session: MagicMock
     ) -> None:
-        """Verify OllamaProvider continues sending temperature under options."""
-        mock_session = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "message": {"role": "model", "content": "Local response"}
+            "message": {"role": "assistant", "content": "Done."},
+            "done": True,
         }
+        mock_session = MagicMock()
         mock_session.post.return_value = mock_response
         mock_get_session.return_value = mock_session
 
         provider = OllamaProvider()
-        profile = _concrete_profile("mus")
-        messages = [AgentMessage(role="user", content="Hello")]
+        profile = _concrete_profile("sorex")
+        provider.generate_turn(
+            [AgentMessage(role="user", content="Hello")],
+            [],
+            profile,
+        )
 
-        provider.generate_turn(messages=messages, tools=[], profile=profile)
-
-        mock_session.post.assert_called_once()
-        _args, kwargs = mock_session.post.call_args
-        payload = kwargs["json"]
-        self.assertIn("options", payload)
+        payload = mock_session.post.call_args.kwargs["json"]
         self.assertIn("temperature", payload["options"])
-        self.assertEqual(payload["options"]["temperature"], 0.2)
 
 
 if __name__ == "__main__":

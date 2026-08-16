@@ -11,6 +11,7 @@ import requests
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.catalog import build_concrete_agent, resolve_effort
+from core.agent.model_catalog import get_model_profile
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
 from core.agent.providers.llama_cpp import (
     LlamaCppProvider,
@@ -33,26 +34,28 @@ def _load_fixture(name: str) -> dict:
 
 def _llama_profile(
     *,
-    agent_key: str = "apodemus",
+    model_id: str = "gemma-4-E2B-Q4_K_M.gguf",
     context_window: int = 16384,
     reasoning_mode: str | None = "none",
 ):
-    _apex, native = resolve_effort(agent_key, None)
+    model_profile = get_model_profile(model_id)
+    assert model_profile is not None
+    native = resolve_effort(model_profile, None)
     return build_concrete_agent(
-        agent_key,
+        "felis",
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,
+        model_id=model_id,
     )
 
 
-def _apodemus_profile(
+def _felis_profile(
     *,
     context_window: int = 16384,
     reasoning_mode: str | None = "none",
 ):
     return _llama_profile(
-        agent_key="apodemus",
         context_window=context_window,
         reasoning_mode=reasoning_mode,
     )
@@ -107,10 +110,10 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         self.assertEqual(result.message.content, "The local weather looks clear.")
-        self.assertEqual(result.resolved_model, "apodemus-16k")
+        self.assertIn(result.resolved_model, {"gemma-4-e2b-16k", "apodemus-16k"})
         self.assertIsNone(result.message.tool_calls)
         payload = mock_post.call_args.args[0]
         self.assertEqual(payload["reasoning_effort"], "none")
@@ -129,7 +132,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
         mock_post.return_value = {
-            "model": "apodemus-16k",
+            "model": "gemma-4-e2b-16k",
             "choices": [
                 {
                     "message": {"role": "assistant", "content": ""},
@@ -140,7 +143,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         self.assertIsNone(result.message.content)
 
@@ -153,7 +156,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _apodemus_profile(reasoning_mode="focused"),
+            _felis_profile(reasoning_mode="focused"),
         )
         payload = mock_post.call_args.args[0]
         self.assertNotIn("reasoning_effort", payload)
@@ -170,15 +173,20 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         mock_post.return_value = _load_fixture("basic_answer.json")
 
-        for agent_key in ("apodemus", "neotoma", "unnamed-experimental-agent"):
+        model_ids = {
+            "apodemus": "gemma-4-E2B-Q4_K_M.gguf",
+            "neotoma": "gemma-4-E4B-Q4_K_M.gguf",
+            "unnamed-experimental-agent": "Qwen3.5-4B-Q4_K_M.gguf",
+        }
+        for legacy_key, model_id in model_ids.items():
             for reasoning_mode, enabled in (("none", False), ("focused", True)):
-                with self.subTest(agent=agent_key, reasoning_mode=reasoning_mode):
+                with self.subTest(model=model_id, reasoning_mode=reasoning_mode):
                     mock_post.reset_mock()
                     LlamaCppProvider().generate_turn(
                         [AgentMessage(role="user", content="Hi")],
                         [],
                         _llama_profile(
-                            agent_key=agent_key,
+                            model_id=model_id,
                             reasoning_mode=reasoning_mode,
                         ),
                     )
@@ -201,7 +209,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Weather?")],
             [_descriptor()],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         assert result.message.tool_calls is not None
         self.assertEqual(len(result.message.tool_calls), 1)
@@ -223,7 +231,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Lookup")],
             [_descriptor(), _descriptor("fetch_crypto_price")],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         assert result.message.tool_calls is not None
         self.assertEqual(
@@ -279,7 +287,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             messages,
             [_descriptor()],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         self.assertEqual(result.message.content, "Boston is clear and about 68 F.")
         payload = mock_post.call_args.args[0]
@@ -320,7 +328,7 @@ class LlamaCppProviderTests(unittest.TestCase):
             result = LlamaCppProvider().generate_turn(
                 [AgentMessage(role="user", content="Hi")],
                 [],
-                _apodemus_profile(),
+                _felis_profile(),
             )
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 100)
@@ -345,7 +353,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 }
             ]
         }
-        profile = _apodemus_profile()
+        profile = _felis_profile()
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
@@ -375,7 +383,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             messages,
             [],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         self.assertEqual(result.retry_count, 1)
         self.assertEqual(result.message.content, "The local weather looks clear.")
@@ -394,7 +402,7 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         mock_post.side_effect = [
             {
-                "model": "apodemus-16k",
+                "model": "gemma-4-e2b-16k",
                 "choices": [
                     {
                         "message": {
@@ -411,7 +419,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 },
             },
             {
-                "model": "apodemus-16k",
+                "model": "gemma-4-e2b-16k",
                 "choices": [
                     {
                         "message": {
@@ -431,7 +439,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [_descriptor()],
-            _apodemus_profile(),
+            _felis_profile(),
         )
         self.assertEqual(mock_post.call_count, 2)
         self.assertEqual(result.message.content, "Final answer")
@@ -453,14 +461,14 @@ class LlamaCppProviderTests(unittest.TestCase):
         mock_get_session.return_value = session
         _post_chat(
             {
-                "model": "apodemus-16k",
+                "model": "gemma-4-e2b-16k",
                 "messages": [{"role": "user", "content": "Hi"}],
                 "stream": False,
                 "temperature": 0.2,
                 "max_tokens": 64,
                 "reasoning_effort": "none",
             },
-            _apodemus_profile(),
+            _felis_profile(),
         )
         _args, kwargs = session.post.call_args
         self.assertEqual(kwargs["params"], {"autoload": "false"})
@@ -472,8 +480,8 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         session = MagicMock()
         mock_get_session.return_value = session
-        profile = _apodemus_profile()
-        payload = {"model": "apodemus-16k", "messages": []}
+        profile = _felis_profile()
+        payload = {"model": "gemma-4-e2b-16k", "messages": []}
 
         session.post.side_effect = requests.Timeout()
         with self.assertRaisesRegex(RuntimeError, "timed out"):
@@ -501,11 +509,11 @@ class LlamaCppProviderTests(unittest.TestCase):
         with self.assertRaises(LlamaCppRequestError) as raised:
             _post_chat(
                 {
-                    "model": "apodemus-16k",
+                    "model": "gemma-4-e2b-16k",
                     "messages": [{"role": "user", "content": prompt}],
                     "headers_should_not_leak": secret,
                 },
-                _apodemus_profile(),
+                _felis_profile(),
             )
         message = str(raised.exception)
         self.assertIn("context window", raised.exception.detail.lower())
@@ -523,7 +531,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         mock_get_session.return_value = session
         session.post.return_value = _mock_response(status_code=200, payload=None)
         with self.assertRaisesRegex(RuntimeError, "non-JSON"):
-            _post_chat({"model": "apodemus-16k", "messages": []}, _apodemus_profile())
+            _post_chat({"model": "gemma-4-e2b-16k", "messages": []}, _felis_profile())
 
         with patch(
             "core.agent.providers.llama_cpp.register_local_activity",
@@ -536,7 +544,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 LlamaCppProvider().generate_turn(
                     [AgentMessage(role="user", content="Hi")],
                     [],
-                    _apodemus_profile(),
+                    _felis_profile(),
                 )
 
 

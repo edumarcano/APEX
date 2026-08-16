@@ -18,6 +18,7 @@ from core.agent.capabilities import (
     list_agent_capabilities,
     namespaced_capability_name,
 )
+from core.agent.sandbox_policy import is_sandbox_active, is_sandbox_capability_allowed
 from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
@@ -31,7 +32,7 @@ from core.agent.types import (
     ToolCatalogTool,
     ToolProfileMetadata,
 )
-from core.config import DEMO_MODE, PROJECT_ROOT
+from core.config import DEMO_MODE, PROJECT_ROOT, is_dev_mode
 from core.mcp import get_mcp_manager, load_mcp_config
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
 
@@ -314,12 +315,20 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot()
+    sandbox_active = is_sandbox_active(
+        sandbox_mode=settings.ask_apex.sandbox_mode,
+        dev_mode=is_dev_mode(),
+    )
+    google_search, google_maps, x_search = (
+        settings.ask_apex.panthera.hosted_tools.google_search,
+        settings.ask_apex.panthera.hosted_tools.google_maps,
+        settings.ask_apex.panthera.hosted_tools.x_search,
+    )
     hosted_tools = hosted_tools_for_agent(
         agent_key,
-        neofelis_google_search_enabled=settings.ask_apex.neofelis_google_search_enabled,
-        neofelis_google_maps_enabled=settings.ask_apex.neofelis_google_maps_enabled,
-        delphinus_x_search_enabled=settings.ask_apex.delphinus_x_search_enabled,
-        orcinus_x_search_enabled=settings.ask_apex.orcinus_x_search_enabled,
+        google_search_enabled=google_search,
+        google_maps_enabled=google_maps,
+        x_search_enabled=x_search,
     )
     config = load_mcp_config()
     configured_mcp = _configured_mcp_tools(config)
@@ -346,7 +355,12 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
 
     allowed = {
         descriptor.name
-        for descriptor in filter_agent_capabilities(agent_key, descriptors.values())
+        for descriptor in filter_agent_capabilities(
+            agent_key,
+            descriptors.values(),
+            sandbox_mode=settings.ask_apex.sandbox_mode,
+            dev_mode=is_dev_mode(),
+        )
         if descriptor.expose_to_agent
         and (descriptor.risk == "read" or action_allowed(descriptor))
     }
@@ -412,12 +426,8 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
             name, config=config, configured=configured_mcp
         )
         risk = server_config.tool_risks.get(remote_name, "read")
-        allowed_for_agent = (
-            risk == "read"
-            and (
-                agent_key != "acinonyx"
-                or name.startswith(("brave_", "alphavantage_"))
-            )
+        allowed_for_agent = risk == "read" and (
+            not sandbox_active or is_sandbox_capability_allowed(name)
         )
         if not allowed_for_agent:
             unavailable_reason = (
@@ -448,8 +458,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
             server_id = server_id_for_tool(name)
             origin = "mcp" if server_id is not None else "native"
             allowed_for_agent = (
-                agent_key != "acinonyx"
-                or name.startswith(("brave_", "alphavantage_"))
+                not sandbox_active or is_sandbox_capability_allowed(name)
             )
             catalog_tools[name] = ToolCatalogTool(
                 name=name,
