@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2, ShieldCheck } from 'lucide-react'
+import { Check, ChevronDown, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
 import {
   useEffect,
   useMemo,
@@ -18,8 +18,9 @@ import {
   formatContextWindowLabel,
   providerDisplayName,
   runtimeDisplayName,
-  stabilityLabel,
 } from '../lib/agents'
+
+import { ModelMark } from './ModelMark'
 
 interface ModelSelectorProps {
   activeAgent: AgentKey
@@ -71,20 +72,17 @@ function statusDotClass(status: AgentAvailabilityStatus): string {
 }
 
 function stabilityBadge(stability: AgentStability | null | undefined, className = ''): ReactElement | null {
-  const label = stabilityLabel(stability)
-  if (!label) return null
+  if (!stability || stability === 'stable') return null
   const experimental = stability === 'experimental'
   return (
     <span
       className={`rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
         experimental
           ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200'
-          : stability === 'preview'
-            ? 'border-amber-300/30 bg-amber-400/10 text-amber-200'
-            : 'border-white/10 bg-white/5 text-zinc-300'
+          : 'border-amber-300/30 bg-amber-400/10 text-amber-200'
       }${className ? ` ${className}` : ''}`}
     >
-      {label}
+      {experimental ? 'Experimental' : 'Preview'}
     </span>
   )
 }
@@ -105,16 +103,18 @@ function capabilityTags(entry: ModelCatalogEntry): string[] {
   if (entry.supports_effort || (entry.reasoning_modes && entry.reasoning_modes.length > 1)) {
     tags.push('Reasoning')
   }
+  if (entry.runtime === 'local' && (entry.context_options?.length || entry.default_context_window)) {
+    tags.push('Selectable context')
+  } else if (entry.maximum_context_window) {
+    const formatted = formatContextWindowLabel(entry.maximum_context_window)
+    if (formatted) tags.push(`${formatted} context`)
+  } else if (entry.pricing?.long_context_threshold_tokens) {
+    const formatted = formatContextWindowLabel(entry.pricing.long_context_threshold_tokens)
+    if (formatted) tags.push(`${formatted}+ context`)
+  }
   if (entry.hosted_capabilities.includes('google_search')) tags.push('Search')
   if (entry.hosted_capabilities.includes('google_maps')) tags.push('Maps')
   if (entry.hosted_capabilities.includes('x_search')) tags.push('X Search')
-  if (entry.runtime === 'local' && entry.default_context_window) {
-    tags.push(`${formatContextWindowLabel(entry.default_context_window)} default context`)
-  } else if (entry.pricing?.long_context_threshold_tokens) {
-    tags.push(`${formatContextWindowLabel(entry.pricing.long_context_threshold_tokens)}+ context`)
-  } else if (entry.maximum_context_window) {
-    tags.push(`${formatContextWindowLabel(entry.maximum_context_window)} context`)
-  }
   return tags
 }
 
@@ -202,6 +202,7 @@ export function ModelSelector({
         : 'bg-zinc-500'
 
   const selectedCapabilities = selectedModel ? capabilityTags(selectedModel) : []
+  const isFreeTier = selectedModel?.pricing?.billing_basis === 'free_tier'
   const providerLabel = selectedModel
     ? selectedModel.runtime === 'local'
       ? runtimeDisplayName(selectedModel.provider as 'ollama' | 'llama_cpp')
@@ -238,6 +239,11 @@ export function ModelSelector({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
+                <ModelMark
+                  modelId={selectedModel?.model_id ?? selectedModelId}
+                  provider={selectedModel?.provider}
+                  size={18}
+                />
                 <span className="truncate font-orbitron text-xs font-semibold text-white">
                   {selectedModel?.display_name ?? selectedModelId}
                 </span>
@@ -245,12 +251,6 @@ export function ModelSelector({
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                 <span>{providerLabel}</span>
-                {selectedModel ? (
-                  <>
-                    <span className="text-zinc-600">·</span>
-                    <span className="capitalize text-zinc-400">{stabilityLabel(selectedModel.stability)}</span>
-                  </>
-                ) : null}
                 {selectedModel?.dev_only ? (
                   <span className="rounded border border-purple-400/30 bg-purple-500/10 px-1 py-0 font-mono text-[8px] uppercase tracking-wider text-purple-200">
                     DEV
@@ -295,6 +295,13 @@ export function ModelSelector({
             </button>
           ) : null}
         </div>
+
+        {isFreeTier ? (
+          <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">
+            <ShieldAlert className="size-3 shrink-0 text-amber-400" aria-hidden />
+            <span>Free tier · Content may be used to improve Google products</span>
+          </div>
+        ) : null}
 
         {selectedCapabilities.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1">
@@ -351,6 +358,11 @@ export function ModelSelector({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
+                        <ModelMark
+                          modelId={model.model_id}
+                          provider={model.provider}
+                          size={16}
+                        />
                         <span className="font-orbitron text-xs font-semibold text-white">
                           {model.display_name}
                         </span>
@@ -363,8 +375,6 @@ export function ModelSelector({
                       </div>
                       <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                         <span>{provLabel}</span>
-                        <span className="text-zinc-600">·</span>
-                        <span className="capitalize">{stabilityLabel(model.stability)}</span>
                       </p>
                     </div>
                     {selected ? (

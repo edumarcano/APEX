@@ -66,9 +66,11 @@ import {
 import {
   isLynxKey,
   isPantheraKey,
+  resolveBriefingModeAvailability,
 } from './lib/agents'
 import type {
   AgentKey,
+  BriefingTargetStatus,
   CloudEffort,
   HostedTool,
   LocalReasoningMode,
@@ -218,6 +220,7 @@ export default function App(): ReactElement {
   const [isReminderRefreshPending, setIsReminderRefreshPending] = useState(false)
   const [reminderActionError, setReminderActionError] = useState<string | null>(null)
   const [marketPollKey, setMarketPollKey] = useState(0)
+  const [briefingTargets, setBriefingTargets] = useState<BriefingTargetStatus[]>([])
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
   useEffect(() => {
@@ -632,18 +635,33 @@ export default function App(): ReactElement {
     }
   }, [activated, handleStartApex, preflight.dialogOpen, preflight.isChecking])
 
+  useEffect(() => {
+    let ignore = false
+    void fetch(API_ENDPOINTS.briefingTargets)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!ignore && Array.isArray(data)) {
+          setBriefingTargets(data as BriefingTargetStatus[])
+        }
+      })
+      .catch(() => {})
+    return () => {
+      ignore = true
+    }
+  }, [agentsStatusHydrated])
+
   const hasSnapshot = telemetry.snapshot !== null
   const briefingControlsBusy =
     preflight.isChecking || preflight.dialogOpen || isBriefingRunning || isTelemetryCollecting
-  const selectedBriefingAgent = synthesisAgentForMode(briefingMode)
-  const briefingModeAvailable =
-    selectedBriefingAgent === null ||
-    (agentsStatusHydrated &&
-      agentsStatus.some(
-        (agent) =>
-          agent.key === selectedBriefingAgent &&
-          ['available', 'configured', 'verified'].includes(agent.status),
-      ))
+  const briefingModeAvailable = useMemo(() => {
+    const availability = resolveBriefingModeAvailability(
+      briefingMode,
+      agentsStatus,
+      agentsStatusHydrated,
+      briefingTargets,
+    )
+    return ['available', 'configured', 'verified'].includes(availability.status)
+  }, [briefingMode, agentsStatus, agentsStatusHydrated, briefingTargets])
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
     [isRefreshingAll, telemetry.refreshingConnectors],
@@ -1475,6 +1493,7 @@ export default function App(): ReactElement {
                   startDisabled={preflight.isChecking}
                   briefingMode={briefingMode}
                   onBriefingModeChange={handleBriefingModeChange}
+                  briefingTargets={briefingTargets}
                   briefingControlsBusy={briefingControlsBusy}
                   briefingModeAvailable={briefingModeAvailable}
                   hasSnapshot={hasSnapshot}

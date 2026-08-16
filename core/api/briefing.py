@@ -16,6 +16,7 @@ from core.agent.sandbox_context import publish_masked_briefing
 from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.api.models import (
     BriefingResponse,
+    BriefingTargetStatus,
     DigestPayload,
     RuntimeMetadata,
     TelemetryPayload,
@@ -707,3 +708,89 @@ def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
                 _TRIGGER_LOCK.release()
             global_pipeline_state.reset()
             raise
+
+
+def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
+    """Return status and pricing for fixed Panthera, Lynx, and Structured Digest briefing targets."""
+    import os
+    from core.agent.model_catalog import (
+        DEFAULT_LYNX_MODEL,
+        DEFAULT_PANTHERA_MODEL,
+        get_model_profile,
+    )
+    from core.agent.local_runtime.registry import get_local_runtime_backend
+    from core.api.cortex import _model_pricing_metadata
+
+    panthera_profile = get_model_profile(DEFAULT_PANTHERA_MODEL)
+    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    panthera_status = "configured" if openai_configured else "disabled"
+    panthera_reason = (
+        None
+        if openai_configured
+        else "OpenAI API key is not configured (OPENAI_API_KEY)"
+    )
+    panthera_pricing = (
+        _model_pricing_metadata(panthera_profile) if panthera_profile else None
+    )
+
+    lynx_profile = get_model_profile(DEFAULT_LYNX_MODEL)
+    llama_backend = get_local_runtime_backend("llama_cpp")
+    lynx_status = "available"
+    lynx_reason = None
+    if not llama_backend.enabled:
+        lynx_status = "disabled"
+        lynx_reason = "llama.cpp runtime is disabled in settings"
+    else:
+        snapshot = llama_backend.get_status_snapshot()
+        if not snapshot.get("reachable"):
+            lynx_status = "provider_unreachable"
+            lynx_reason = "llama.cpp is unreachable"
+        elif (
+            lynx_profile
+            and lynx_profile.model_id not in snapshot.get("installed_models", [])
+        ):
+            lynx_status = "model_not_installed"
+            lynx_reason = f"Model {lynx_profile.model_id} is not installed"
+
+    lynx_pricing = (
+        _model_pricing_metadata(lynx_profile) if lynx_profile else None
+    )
+
+    return [
+        BriefingTargetStatus(
+            mode="panthera",
+            label="Panthera",
+            description=f"Full briefing · {panthera_profile.display_name if panthera_profile else 'GPT-5.6 Luna'}",
+            model_id=panthera_profile.model_id if panthera_profile else DEFAULT_PANTHERA_MODEL,
+            model_display_name=panthera_profile.display_name if panthera_profile else "GPT-5.6 Luna",
+            provider="openai",
+            runtime="cloud",
+            status=panthera_status,
+            reason=panthera_reason,
+            pricing=panthera_pricing,
+        ),
+        BriefingTargetStatus(
+            mode="lynx",
+            label="Lynx",
+            description=f"Full briefing · {lynx_profile.display_name if lynx_profile else 'Gemma 4 E2B'}",
+            model_id=lynx_profile.model_id if lynx_profile else DEFAULT_LYNX_MODEL,
+            model_display_name=lynx_profile.display_name if lynx_profile else "Gemma 4 E2B",
+            provider="llama_cpp",
+            runtime="local",
+            status=lynx_status,
+            reason=lynx_reason,
+            pricing=lynx_pricing,
+        ),
+        BriefingTargetStatus(
+            mode="structured_digest",
+            label="Structured Digest",
+            description="Structured facts · no model or synthesis",
+            model_id=None,
+            model_display_name=None,
+            provider=None,
+            runtime="none",
+            status="available",
+            reason=None,
+            pricing=None,
+        ),
+    ]

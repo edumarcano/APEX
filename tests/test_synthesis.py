@@ -471,7 +471,7 @@ class ProfileAndPersistenceTests(unittest.TestCase):
                 for model_id in (ACINONYX_MODEL, NEOFELIS_MODEL)
             },
             {
-                ACINONYX_MODEL: ("experimental", "gemini"),
+                ACINONYX_MODEL: ("stable", "gemini"),
                 NEOFELIS_MODEL: ("stable", "gemini"),
             },
         )

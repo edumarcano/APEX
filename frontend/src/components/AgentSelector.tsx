@@ -158,7 +158,6 @@ export function AgentSelector({
             const selected = key === activeAgent
             const selectable = status ? isAgentIdentitySelectable(status) : true
             const name = status ? agentShortName(status.display_name) : key === 'panthera' ? 'Panthera' : 'Lynx'
-            const subtitle = AGENT_SUBTITLES[key]
             const tag = AGENT_TAGS[key]
 
             return (
@@ -167,7 +166,7 @@ export function AgentSelector({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                aria-label={`${name}, ${subtitle}`}
+                aria-label={`${name}, ${tag}`}
                 disabled={!selectable || isQuerying}
                 onClick={() => onChange(key)}
                 className={`relative flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] ${
@@ -188,9 +187,6 @@ export function AgentSelector({
                   ) : null}
                 </div>
                 <span className="text-[11px] leading-tight text-zinc-400">
-                  {subtitle}
-                </span>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">
                   {tag}
                 </span>
               </button>

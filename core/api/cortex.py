@@ -170,7 +170,11 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
     high_resource_context_options = (
         list(llama_runtime.high_resource_context_options) if llama_runtime else None
     )
-    maximum_context_window = llama_runtime.maximum_context_window if llama_runtime else None
+    maximum_context_window = (
+        profile.maximum_context_window
+        if profile.maximum_context_window is not None
+        else (llama_runtime.maximum_context_window if llama_runtime else None)
+    )
     reasoning_modes = list(reasoning_modes_tuple) if reasoning_modes_tuple else None
     default_reasoning_mode = (
         llama_runtime.default_reasoning_mode

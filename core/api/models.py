@@ -734,6 +734,44 @@ class AgentStatus(BaseModel):
     )
 
 
+class BriefingTargetStatus(BaseModel):
+    """Authoritative synthesis target and live availability for one Briefing mode."""
+
+    mode: Literal["panthera", "lynx", "structured_digest"] = Field(
+        description="Selectable briefing mode identifier.",
+    )
+    label: str = Field(description="Display label for the briefing mode.")
+    description: str = Field(description="Short description of the synthesis route.")
+    model_id: str | None = Field(
+        default=None,
+        description="Fixed model identifier used for synthesis.",
+    )
+    model_display_name: str | None = Field(
+        default=None,
+        description="Human-readable model label for the fixed synthesis route.",
+    )
+    provider: str | None = Field(
+        default=None,
+        description="Provider or local runtime executing the briefing synthesis.",
+    )
+    runtime: Literal["cloud", "local", "none"] = Field(
+        default="none",
+        description="Execution boundary for this briefing mode.",
+    )
+    status: AgentAvailabilityStatus = Field(
+        default="available",
+        description="Live availability status for this briefing target.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Diagnostic explanation when the briefing target is not available.",
+    )
+    pricing: AgentPricingMetadata | None = Field(
+        default=None,
+        description="Token pricing metadata for this briefing target.",
+    )
+
+
 class ToolPreflightRequest(BaseModel):
     """Inputs for the next-request tool/context token estimate."""
 

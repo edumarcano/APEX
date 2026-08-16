@@ -39,6 +39,7 @@ class ModelProfile:
     supports_encrypted_reasoning: bool
     hosted_capabilities: frozenset[HostedTool]
     dev_only: bool = False
+    maximum_context_window: int | None = None
 
 
 # Cloud models available under Panthera
@@ -70,13 +71,14 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_effort=True,
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset({"google_search", "google_maps"}),
+        maximum_context_window=1_048_576,
     ),
     "gemini-3.5-flash-lite": ModelProfile(
         model_id="gemini-3.5-flash-lite",
         display_name="Gemini 3.5 Flash Lite",
         provider="gemini",
         runtime="cloud",
-        stability="experimental",
+        stability="stable",
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
@@ -85,6 +87,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset(),
         dev_only=True,
+        maximum_context_window=1_048_576,
     ),
     "grok-4.3": ModelProfile(
         model_id="grok-4.3",
@@ -100,6 +103,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset({"x_search"}),
         dev_only=True,
+        maximum_context_window=200_000,
     ),
     "grok-4.5": ModelProfile(
         model_id="grok-4.5",
@@ -115,6 +119,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset({"x_search"}),
         dev_only=True,
+        maximum_context_window=200_000,
     ),
 }
 

@@ -339,6 +339,24 @@ class BriefingDeliveryTests(unittest.TestCase):
         self.assertTrue(response.json()["metadata"]["spoken"])
         self.assertTrue(save.call_args.args[2]["spoken"])
 
+    def test_get_briefing_targets_returns_fixed_targets(self) -> None:
+        response = self.client.get("/api/v1/briefings/targets")
+        self.assertEqual(response.status_code, 200)
+        targets = response.json()
+        self.assertEqual([t["mode"] for t in targets], ["panthera", "lynx", "structured_digest"])
+        panthera = next(t for t in targets if t["mode"] == "panthera")
+        self.assertEqual(panthera["model_id"], "gpt-5.6-luna")
+        self.assertEqual(panthera["provider"], "openai")
+        self.assertEqual(panthera["runtime"], "cloud")
+        self.assertIsNotNone(panthera["pricing"])
+        lynx = next(t for t in targets if t["mode"] == "lynx")
+        self.assertEqual(lynx["model_id"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(lynx["provider"], "llama_cpp")
+        self.assertEqual(lynx["runtime"], "local")
+        structured = next(t for t in targets if t["mode"] == "structured_digest")
+        self.assertEqual(structured["runtime"], "none")
+        self.assertEqual(structured["status"], "available")
+
 
 class SettingsV3NormalizeTests(unittest.TestCase):
     def test_missing_v3_fields_default_safely(self) -> None:

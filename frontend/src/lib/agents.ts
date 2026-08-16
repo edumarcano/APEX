@@ -1,8 +1,11 @@
+import type { BriefingMode } from '../types/settings'
 import type {
+  AgentAvailabilityStatus,
   AgentKey,
   AgentRuntime,
   AgentStability,
   AgentStatus,
+  BriefingTargetStatus,
   HostedTool,
   LocalRuntime,
   ModelCatalogEntry,
@@ -70,12 +73,18 @@ export function runtimeDisplayName(runtime: LocalRuntime): string {
   return runtime === 'ollama' ? 'Ollama' : 'llama.cpp'
 }
 
-/** Compact label for known context-window sizes (e.g. 8192 → 8K). */
+/** Compact label for known context-window sizes (e.g. 8192 → 8K, 1048576 → 1M). */
 export function formatContextWindowLabel(
   tokens: number | null | undefined,
 ): string | null {
   if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens <= 0) {
     return null
+  }
+  if (tokens % 1048576 === 0) {
+    return `${tokens / 1048576}M`
+  }
+  if (tokens % 1000000 === 0) {
+    return `${tokens / 1000000}M`
   }
   if (tokens === 131072) {
     return '132K'
@@ -144,14 +153,41 @@ export function usesSandboxHistory(
 }
 
 export function stabilityLabel(stability: AgentStability | null | undefined): string | null {
-  if (!stability) {
+  if (!stability || stability === 'stable') {
     return null
-  }
-  if (stability === 'stable') {
-    return 'Stable'
   }
   if (stability === 'preview') {
     return 'Preview'
   }
   return 'Experimental'
+}
+
+export interface BriefingModeAvailability {
+  status: AgentAvailabilityStatus
+  reason: string | null
+}
+
+export function resolveBriefingModeAvailability(
+  mode: BriefingMode,
+  agents: AgentStatus[],
+  hydrated: boolean,
+  targets?: BriefingTargetStatus[],
+): BriefingModeAvailability {
+  if (mode === 'structured_digest') {
+    return { status: 'available', reason: null }
+  }
+  if (targets && targets.length > 0) {
+    const target = targets.find((entry) => entry.mode === mode)
+    if (target) {
+      return { status: target.status, reason: target.reason }
+    }
+  }
+  if (!hydrated) {
+    return { status: 'unknown', reason: 'Checking mode availability…' }
+  }
+  const agentKey = mode === 'panthera' ? 'panthera' : mode === 'lynx' ? 'lynx' : null
+  const match = agents.find((entry) => entry.key === agentKey)
+  return match
+    ? { status: match.status, reason: match.reason }
+    : { status: 'unknown', reason: 'Mode status unavailable' }
 }

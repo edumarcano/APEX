@@ -147,7 +147,7 @@ const pantheraStatus: AgentStatus = {
 }
 
 describe('ModelSelector', () => {
-  it('renders selected model card with pricing, capabilities, and stability badge', () => {
+  it('renders selected model card with pricing, capabilities, and no badge for stable models', () => {
     render(
       <ModelSelector
         activeAgent="panthera"
@@ -159,12 +159,30 @@ describe('ModelSelector', () => {
     )
 
     expect(screen.getByText('GPT-5.6 Luna')).toBeVisible()
-    expect(screen.getByText('OpenAI')).toBeVisible()
-    expect(screen.getAllByText('Stable').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('OpenAI').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('Stable')).toBeNull()
     expect(screen.getByText('$0.20/M in · $1.20/M out')).toBeVisible()
     expect(screen.getByText('Reasoning')).toBeVisible()
     expect(screen.getByText('272K+ context')).toBeVisible()
     expect(screen.getByText('Verified')).toBeVisible()
+  })
+
+  it('renders privacy banner when free-tier model is selected', () => {
+    render(
+      <ModelSelector
+        activeAgent="panthera"
+        selectedModelId="gemini-3.5-flash-lite"
+        onModelChange={vi.fn()}
+        catalog={cloudModels}
+        activeStatus={pantheraStatus}
+      />,
+    )
+
+    expect(screen.getByText('Gemini 3.5 Flash Lite')).toBeVisible()
+    expect(screen.getByText('Free tier')).toBeVisible()
+    expect(
+      screen.getByText('Free tier · Content may be used to improve Google products'),
+    ).toBeVisible()
   })
 
   it('opens model browser when trigger card is clicked and allows selecting a new model', async () => {
@@ -218,7 +236,7 @@ describe('ModelSelector', () => {
     expect(screen.getByText('llama.cpp')).toBeVisible()
     expect(screen.getByText('Local · No provider charge')).toBeVisible()
     expect(screen.getByText('Loaded')).toBeVisible()
-    expect(screen.getByText('16K default context')).toBeVisible()
+    expect(screen.getByText('Selectable context')).toBeVisible()
   })
 
   it('provides a verify access action on cloud models', async () => {

@@ -342,6 +342,19 @@ export interface TelemetryRefreshRequest {
 
 export type BriefingMode = 'panthera' | 'lynx' | 'structured_digest'
 
+export interface BriefingTargetStatus {
+  mode: BriefingMode
+  label: string
+  description: string
+  model_id: string | null
+  model_display_name: string | null
+  provider: string | null
+  runtime: 'cloud' | 'local' | 'none'
+  status: AgentAvailabilityStatus
+  reason: string | null
+  pricing: AgentPricingMetadata | null
+}
+
 export type PreflightOperation =
   | 'activate'
   | 'activate_with_briefing'

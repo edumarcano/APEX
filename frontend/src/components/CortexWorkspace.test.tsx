@@ -222,7 +222,7 @@ describe('CortexWorkspace', () => {
     const onAgentChange = vi.fn()
     const user = userEvent.setup()
     render(<CortexWorkspace {...workspaceProps({ onAgentChange, agentsStatus: [panthera, lynx] })} />)
-    const lynxRadio = screen.getByRole('radio', { name: /Lynx, Private on-device/i })
+    const lynxRadio = screen.getByRole('radio', { name: /Lynx, Local · Private/i })
     expect(lynxRadio).toBeInTheDocument()
     await user.click(lynxRadio)
     expect(onAgentChange).toHaveBeenCalledWith('lynx')

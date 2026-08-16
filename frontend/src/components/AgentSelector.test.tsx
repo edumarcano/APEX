@@ -97,10 +97,10 @@ describe('AgentSelector', () => {
       />,
     )
 
-    expect(screen.getByRole('radio', { name: /Panthera, Cloud intelligence/i })).toBeVisible()
-    expect(screen.getByRole('radio', { name: /Lynx, Private on-device/i })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Panthera, Cloud · Generalist/i })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Lynx, Local · Private/i })).toBeVisible()
 
-    await user.click(screen.getByRole('radio', { name: /Lynx, Private on-device/i }))
+    await user.click(screen.getByRole('radio', { name: /Lynx, Local · Private/i }))
     expect(onChange).toHaveBeenCalledWith('lynx')
   })
 

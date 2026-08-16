@@ -6,6 +6,7 @@ import type {
   AgentKey,
   ToolCatalog,
   ToolPreflightEstimate,
+  BriefingTargetStatus,
 } from '../types/telemetry'
 
 import { AgentQueryBar } from './AgentQueryBar'
@@ -20,6 +21,7 @@ interface HomeCommandRailProps {
   activeAgent: AgentKey
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
+  briefingTargets?: BriefingTargetStatus[]
   isCortexQuerying: boolean
   verifyingCloudAgent: AgentKey | null
   onAgentChange: (agent: AgentKey) => void
@@ -75,6 +77,7 @@ export function HomeCommandRail({
   activeAgent,
   agentsStatus,
   agentsStatusHydrated,
+  briefingTargets,
   isCortexQuerying,
   verifyingCloudAgent,
   onAgentChange,
@@ -138,6 +141,7 @@ export function HomeCommandRail({
             value={briefingMode}
             onChange={onBriefingModeChange}
             agents={agentsStatus}
+            targets={briefingTargets}
             hydrated={agentsStatusHydrated}
             disabled={briefingControlsBusy}
             className="col-span-2 justify-self-center w-full max-w-[20rem]"
@@ -196,6 +200,7 @@ export function HomeCommandRail({
               value={briefingMode}
               onChange={onBriefingModeChange}
               agents={agentsStatus}
+              targets={briefingTargets}
               hydrated={agentsStatusHydrated}
               disabled={briefingControlsBusy}
               className="home-command-grid__briefing min-w-0"
