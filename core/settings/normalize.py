@@ -117,7 +117,7 @@ def normalize_layer(
     """
     Normalize a single config layer for editable settings.
 
-    - Migrate legacy schema-5 ask_apex keys to schema-6 shape.
+    - Validate the current ask_apex shape and reject stale Agent/provider/runtime keys.
     - Map legacy TTS engine ``piper`` to ``pyttsx3``.
     - Warn and drop unknown keys under editable sections.
     """

@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `15`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `16`.
 
 | Group | Editable values |
 |---|---|
@@ -130,7 +130,7 @@ Current default model mappings used by documentation checks are `panthera -> gpt
 |---|---|---|---|
 | `gpt-5.6-luna` | OpenAI | Stable | Default Panthera model |
 | `gemini-3.6-flash` | Google | Stable | Optional Google Search and Maps grounding; `DEV_MODE` only |
-| `gemini-3.5-flash-lite` | Google | Experimental | `DEV_MODE` only |
+| `gemini-3.5-flash-lite` | Google | Stable | `DEV_MODE` only |
 | `grok-4.3` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 | `grok-4.5` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 

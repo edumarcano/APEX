@@ -2,7 +2,7 @@
 
 This document explains the names used throughout APEX and the reasoning behind them. It covers the current Apex Agent roster and how former Agent identities relate to today's model configuration.
 
-The current product roster is Apex Panthera and Apex Felis. Cloud provider, local runtime, and model selection live underneath those two Agent identities in settings and Cortex.
+The current product roster is Apex Panthera and Apex Felis. Model selection lives underneath those two Agent identities in settings and Cortex; the selected model determines the cloud provider or local runtime.
 
 The naming system uses biological metaphors to communicate differences in role, scale, and capability. It is not meant to be a strict scientific classification or permanent ranking.
 
@@ -67,7 +67,7 @@ An **Agent query** is a request sent to the selected Apex Agent. It is the inter
 
 ### Cortex workspace
 
-The **Cortex workspace** is the detailed interface for working with Apex Agents. It contains Agent selection, provider and model controls, effort and reasoning controls, tools, local-runtime controls, conversation history, and execution information.
+The **Cortex workspace** is the detailed interface for working with Apex Agents. It contains Agent and model selection, effort and reasoning controls, tools, local-model lifecycle controls, conversation history, and execution information. The selected model determines the provider or local runtime.
 
 ### Cortex Engine
 
@@ -111,8 +111,8 @@ flowchart TB
     FAMILY --> PANTHERA["Panthera 2.0<br/>Cloud Agent · Stable"]
     FAMILY --> FELIS["Felis 2.0<br/>Local Agent · Stable"]
 
-    PANTHERA --> CLOUDCFG["Cloud configuration<br/>Provider · model · effort · hosted tools"]
-    FELIS --> LOCALCFG["Local configuration<br/>Runtime · model · context · reasoning"]
+    PANTHERA --> CLOUDCFG["Cloud configuration<br/>Model · effort · hosted tools"]
+    FELIS --> LOCALCFG["Local configuration<br/>Model · context · reasoning"]
 ```
 
 For current model IDs, context sizes, provider controls, and runtime behavior, see [Configuration](configuration.md) and [Architecture](architecture.md).
@@ -123,7 +123,7 @@ For current model IDs, context sizes, provider controls, and runtime behavior, s
 
 *Panthera* includes lions, tigers, leopards, jaguars, and snow leopards. Their range and adaptability fit Panthera's role as the cloud Agent.
 
-Panthera is meant for thoughtful answers, planning, and complex everyday work across many kinds of tasks. It is the generalist cloud identity. The selected OpenAI, Google, or SpaceXAI model, effort level, and optional provider-hosted grounding controls live in Panthera settings rather than in separate Agent names.
+Panthera is meant for thoughtful answers, planning, and complex everyday work across many kinds of tasks. It is the generalist cloud identity. The selected model, model-native reasoning option, and optional provider-hosted grounding controls live in Panthera settings; the model profile determines the provider.
 
 Default model: OpenAI `gpt-5.6-luna`. Development-only cloud models such as Gemini Flash Lite and Grok variants remain selectable when `DEV_MODE` is active.
 
@@ -133,9 +133,9 @@ Default model: OpenAI `gpt-5.6-luna`. Development-only cloud models such as Gemi
 
 *Felis* is the genus of small cats, known for agility, stealth, and operating closely within local territory. That fits Felis's role as the private, on-device local Agent.
 
-Felis is meant for on-device work through Ollama or llama.cpp. The selected runtime, GGUF or Ollama tag, context preset, and reasoning mode live in Felis settings rather than in separate local Agent names.
+Felis is meant for on-device work through Ollama or llama.cpp. The selected model, context preset, and reasoning mode live in Felis settings; the model profile determines whether execution uses Ollama or llama.cpp.
 
-Default model: llama.cpp `gemma-4-E2B-Q4_K_M.gguf`. Development-only local models such as smaller Ollama Qwen3 tags and the unnamed experimental GGUF remain selectable when `DEV_MODE` is active. Gemma 4 E4B is an experimental llama.cpp model available outside `DEV_MODE`.
+Default model: llama.cpp `gemma-4-E2B-Q4_K_M.gguf`. Development-only local models such as smaller Ollama Qwen3 tags remain selectable when `DEV_MODE` is active. Named experimental local models such as Qwen3.5 4B and Gemma 4 E4B are available outside `DEV_MODE`.
 
 ## Registered models are not Agents
 

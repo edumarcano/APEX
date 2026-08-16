@@ -7,7 +7,7 @@ This reference explains the current system: which process owns each responsibili
 For the meanings and design rationale behind these terms, see [Identity and Naming](identity-and-naming.md).
 
 - **APEX** is the complete product and local operating environment.
-- **Apex Agents** are named workers: Apex Panthera for cloud work and Apex Lynx for local work.
+- **Apex Agents** are named workers: Apex Panthera for cloud work and Apex Felis for local work.
 - **Cortex Engine** is the backend that runs Agent requests, coordinates context and tools, calls providers, and manages local-model lifecycle.
 - **Cortex workspace** is the interface for operating and configuring Apex Agents.
 - **Home workspace** presents telemetry, briefings, connector health, reminders, and compact Agent access.
@@ -42,7 +42,7 @@ flowchart TB
 |---|---|---|---|---|
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
-| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Lynx/llama.cpp, or Structured Digest |
+| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Felis/llama.cpp, or Structured Digest |
 | Cortex query | User prompt | Browser history plus backend turn execution | No chat-session store | Selected Agent and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
@@ -64,7 +64,7 @@ flowchart LR
     CONNECTORS --> SNAPSHOT["Process-current telemetry snapshot"]
 
     SNAPSHOT --> BRIEF
-    BRIEF --> SYNTHESIS["Panthera, Lynx, or Structured Digest"]
+    BRIEF --> SYNTHESIS["Panthera, Felis, or Structured Digest"]
     SYNTHESIS --> LEDGER[("SQLite briefing ledger")]
 
     ASK --> CORTEX["Cortex Engine"]
@@ -187,7 +187,7 @@ Each non-demo Agent request begins with the selected Agent's identity instructio
 
 Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `DEV_MODE` sandbox queries use a restricted non-personal allowlist instead of the full registry.
 
-`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models, available provider/runtime and model catalogs, effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
 The Home command rail owns the visible briefing-mode selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
 
