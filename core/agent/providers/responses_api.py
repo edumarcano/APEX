@@ -30,6 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 
 ResponsesProviderKind = Literal["openai", "xai"]
 
+# Native hosted tools that must never be attached by APEX adapters in v1.19
+# branch 1 (Brave remains the general search path when connected later).
 _FORBIDDEN_NATIVE_TOOLS = frozenset(
     {
         "web_search",
@@ -127,6 +129,8 @@ def _messages_to_responses_input(
             if message.provider_output_items:
                 items.extend(message.provider_output_items)
                 continue
+            # Fallback reconstruction when opaque items are unavailable
+            # (e.g. browser-trimmed history without provider payloads).
             if message.content:
                 items.append(
                     {
@@ -251,6 +255,8 @@ def _parse_usage(raw_usage: Any) -> TokenUsage | None:
 
     visible_output = output_tokens if isinstance(output_tokens, int) else None
     if visible_output is not None and isinstance(reasoning, int):
+        # The Responses API nests reasoning inside output_tokens; TokenUsage
+        # keeps them separate so cost is not charged twice.
         visible_output = max(visible_output - reasoning, 0)
 
     return TokenUsage(
@@ -265,6 +271,7 @@ def _parse_usage(raw_usage: Any) -> TokenUsage | None:
 def _extract_citations(output_items: list[dict[str, Any]]) -> list[Citation]:
     citations: list[Citation] = []
     for item in output_items:
+        # Provider-hosted search annotations appear on message content parts.
         content = item.get("content")
         if not isinstance(content, list):
             continue
@@ -395,6 +402,8 @@ class ResponsesApiProvider:
         if request_tools:
             request["tools"] = request_tools
         if profile.reasoning_effort:
+            # Only reasoning models accept these fields; sending them to a
+            # non-reasoning model is rejected by the API.
             request["reasoning"] = {"effort": profile.reasoning_effort}
             if profile.supports_encrypted_reasoning:
                 request["include"] = ["reasoning.encrypted_content"]
@@ -462,4 +471,4 @@ def _responses_wait_seconds(attempt: int, exc: BaseException) -> float:
         return exponential_backoff_seconds(attempt)
     if isinstance(exc, APIStatusError) and exc.status_code == 429:
         return exponential_backoff_seconds(attempt)
-    return fixed_backoff_seconds(attempt)
+    return fixed_backoff_seconds(attempt, exc)
