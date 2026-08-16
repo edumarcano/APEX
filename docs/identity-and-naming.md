@@ -1,33 +1,24 @@
 # APEX Identity and Naming
 
-This document explains the names used throughout APEX and the reasoning behind them. It covers the current Apex Agent roster and how former Agent identities relate to today's model configuration.
+This document explains the main names used in APEX and why they exist. The goal is to keep the naming easy to understand as the project grows.
 
-The current product roster is Apex Panthera and Apex Felis. Model selection lives underneath those two Agent identities in settings and Cortex; the selected model determines the cloud provider or local runtime.
-
-The naming system uses biological metaphors to communicate differences in role, scale, and capability. It is not meant to be a strict scientific classification or permanent ranking.
+APEX currently has two Agents: **Apex Panthera** for cloud models and **Apex Felis** for local models. The model can change without changing the Agent name.
 
 ## APEX
 
 **APEX** stands for **Automated Personal Environment Xylem**.
 
-An apex is the highest point of a structure. In APEX, it represents the place where information from across a personal digital environment comes together into one view.
+An apex is the highest point of a structure. In APEX, it represents the place where information from across a personal digital environment comes together.
 
-Xylem is the plant tissue that carries water and minerals upward. APEX uses that as an analogy for collecting signals from calendars, messages, reminders, weather, markets, system telemetry, and other sources and bringing the useful parts into one interface.
+Xylem is the plant tissue that carries water and minerals upward. The name fits the idea behind APEX: collecting useful signals from calendars, messages, reminders, weather, markets, system telemetry, and other sources and bringing them into one place.
 
-The name also suggests an **apex predator**, which connects the product to the genus-based names used by Apex Agents.
+The name also suggests an **apex predator**, which connects naturally to the animal names used for the Agents.
 
 ## The APEX logo
 
 The logo combines the same ideas visually.
 
-Its outer structure forms an **A** and resembles the levels of a food-chain pyramid leading to an apex. The inner structure resembles a trunk or xylem channel carrying information upward.
-
-The logo therefore combines:
-
-- the letter **A** for APEX;
-- a food-chain pyramid leading to an apex predator;
-- a trunk or xylem channel carrying information upward;
-- and the apex where that information comes together.
+Its outer shape forms an **A** and resembles the levels of a food-chain pyramid leading to an apex. The middle resembles a trunk or xylem channel carrying information upward.
 
 <p align="center">
   <img
@@ -37,132 +28,150 @@ The logo therefore combines:
   >
 </p>
 
-## Product vocabulary
-
-The main APEX terms refer to different parts of the system.
+## The main names
 
 ```text
 APEX
-├── Home workspace
-│   └── Telemetry, briefings, health, reminders, and compact Agent access
+├── Home
 └── Cortex
     ├── Cortex workspace
     ├── Cortex Engine
     └── Apex Agents
-        ├── Apex Panthera (Cloud · Generalist)
-        └── Apex Felis (Local · Private)
+        ├── Apex Panthera
+        │   └── Cloud model
+        └── Apex Felis
+            └── Local model
 ```
 
 ### APEX
 
-**APEX** is the complete application. It includes Home, Cortex, telemetry, briefings, voice, connectors, settings, and the available Agents.
+**APEX** is the whole application. It includes Home, Cortex, telemetry, briefings, voice, connectors, settings, and the Agents.
 
 ### Home
 
-**Home** is the main operational workspace. It shows the current state of the user's environment through telemetry, briefings, connector health, reminders, system status, and compact controls.
+**Home** is the main day-to-day workspace. It shows things such as telemetry, briefings, connector health, reminders, and system status.
 
-### Agent queries
+### Cortex
 
-An **Agent query** is a request sent to the selected Apex Agent. It is the interaction surface, not the Agent itself.
+**Cortex** is where I work with the Agents in more detail.
 
-### Cortex workspace
+The **Cortex workspace** contains conversations, Agent and model selection, reasoning and local-model controls, tools, history, and execution details.
 
-The **Cortex workspace** is the detailed interface for working with Apex Agents. It contains Agent and model selection, effort and reasoning controls, tools, local-model lifecycle controls, conversation history, and execution information. The selected model determines the provider or local runtime.
+The **Cortex Engine** is the backend that runs Agent requests, gathers context and tools, sends work to the selected model, and manages local models when needed.
 
-### Cortex Engine
+### Apex Agent
 
-The **Cortex Engine** is the backend that runs Agent requests, coordinates context and tools, calls the selected provider or local runtime, and manages local-model lifecycle.
+An **Apex Agent** is a named role in APEX. It is not the same thing as a model.
 
-### Apex Agents
+An Agent can have its own instructions, tools, context rules, memory behavior, privacy rules, and other behavior. Those things can stay the same even when the model underneath the Agent changes.
 
-**Apex Agents** are the named workers used through Cortex. APEX currently exposes two durable Agent identities:
+### Model
 
-- **Apex Panthera** (`Cloud · Generalist`) for cloud work through a selected provider and model.
-- **Apex Felis** (`Local · Private`) for local on-device work through Ollama or llama.cpp and a selected model.
+A **model** is the AI model used by an Agent for a request.
 
-Where space is tight—such as very small pills, badges, and mobile controls—compact labels use short forms (`Panthera` / `Felis`).
+The model also determines where it runs. A cloud model already implies its provider, and a local model already implies its runtime, so APEX does not need separate provider or runtime choices on top of model selection.
 
-Model, context, reasoning, effort, tool policy, and cost profile are configuration underneath the Agent identity rather than separate product Agents. The selected model profile supplies the provider or local runtime automatically.
+### Agent query
 
-## Why Agents use genus names
+An **Agent query** is simply a request sent to the selected Agent.
 
-Apex Agents use animal genera as product identities. The names create one family while still allowing relationships between Agents to suggest differences in speed, scale, specialization, and capability.
+## Why there are only two Agents
 
-The genus name represents the Agent's role in APEX, not only the model behind it. Panthera and Felis are meant to survive model changes when their roles remain useful.
+Earlier versions of APEX gave many individual models or configurations their own Agent names. That made the Agent list grow along with the model list.
 
-An Agent can include its model, tools, instructions, context and memory rules, routing choices, and other behavior that does not belong to the raw model itself.
+The current system keeps the distinction simpler:
 
-## Agent versioning
-
-An Agent version belongs to that Agent identity. It is separate from the APEX application version and the provider model version.
-
-Panthera and Felis are currently at **2.0**. That major version marks the Agent Family Consolidation checkpoint: two durable Agent identities with replaceable model configuration underneath them. A meaningful model or capability upgrade can increase the minor version, while a provider migration or major role or privacy change can increase the major version. This is a simple record of Agent evolution rather than strict semantic versioning.
-
-## The Apex Agent family
-
-APEX now keeps the product roster intentionally small. Panthera and Felis are the only Apex Agents in the UI and API. Former genus-based names belong to project history rather than active configuration or runtime compatibility.
-
-```mermaid
-flowchart TB
-    ENGINE["Cortex Engine<br/>Shared execution, tools, context, and runtime"]
-    FAMILY["Apex Agent family"]
-
-    ENGINE --> FAMILY
-    FAMILY --> PANTHERA["Panthera 2.0<br/>Cloud Agent · Stable"]
-    FAMILY --> FELIS["Felis 2.0<br/>Local Agent · Stable"]
-
-    PANTHERA --> CLOUDCFG["Cloud configuration<br/>Model · effort · hosted tools"]
-    FELIS --> LOCALCFG["Local configuration<br/>Model · context · reasoning"]
+```text
+Agent
+└── Model
+    └── Provider or local runtime
 ```
 
-For current model IDs, context sizes, provider controls, and runtime behavior, see [Configuration](configuration.md) and [Architecture](architecture.md).
+There are two Agents because there are two useful long-term roles:
+
+- **Apex Panthera** — `Cloud · Generalist`
+- **Apex Felis** — `Local · Private`
+
+Panthera can move between supported cloud models without becoming a different Agent. Felis can move between supported local models or runtimes without becoming a different Agent.
+
+Things such as reasoning levels, context sizes, hosted tools, model stability, and runtime-specific options belong to the selected model rather than becoming separate Agent identities.
 
 ## Apex Panthera
 
-**Status:** Visibility: Primary / Stability: Stable / Version: 2.0
+**Apex Panthera** is the cloud Agent.
 
-*Panthera* includes lions, tigers, leopards, jaguars, and snow leopards. Their range and adaptability fit Panthera's role as the cloud Agent.
+*Panthera* is the genus of big cats, including lions, tigers, leopards, jaguars, and snow leopards. The name fits an Agent that can reach beyond the local machine and use larger cloud models.
 
-Panthera is meant for thoughtful answers, planning, and complex everyday work across many kinds of tasks. It is the generalist cloud identity. The selected model, model-native reasoning option, and optional provider-hosted grounding controls live in Panthera settings; the model profile determines the provider.
+Panthera is the general-purpose Agent for cloud work: answering questions, planning, research, and other tasks where a cloud model makes sense.
 
-Default model: OpenAI `gpt-5.6-luna`. Development-only cloud models such as Gemini Flash Lite and Grok variants remain selectable when `DEV_MODE` is active.
+Its selected model can come from different supported providers. Changing the model or provider does not change Panthera's identity.
 
 ## Apex Felis
 
-**Status:** Visibility: Primary / Stability: Stable / Version: 2.0
+**Apex Felis** is the local Agent.
 
-*Felis* is the genus of small cats, known for agility, stealth, and operating closely within local territory. That fits Felis's role as the private, on-device local Agent.
+*Felis* is the genus that includes the domestic cat and several closely related small wild cats. The name fits an Agent that stays close to home: local, private, and running on the user's own machine.
 
-Felis is meant for on-device work through Ollama or llama.cpp. The selected model, context preset, and reasoning mode live in Felis settings; the model profile determines whether execution uses Ollama or llama.cpp.
+Felis is for work that should stay local or use locally managed models.
 
-Default model: llama.cpp `gemma-4-E2B-Q4_K_M.gguf`. Development-only local models such as smaller Ollama Qwen3 tags remain selectable when `DEV_MODE` is active. Named experimental local models such as Qwen3.5 4B and Gemma 4 E4B are available outside `DEV_MODE`.
+Its selected model determines whether APEX uses a local runtime such as Ollama or llama.cpp. Changing the model, quantization, context size, or runtime does not make it a different Agent.
 
-## Registered models are not Agents
+## Agent and model are different things
 
-The model catalog under Panthera and Felis contains registered models provided by OpenAI, Google, SpaceXAI, Ollama, and llama.cpp.
+The easiest way to think about the split is:
 
-These models are replaceable execution choices configured underneath Panthera and Felis. They are not separate Apex Agents in the product vocabulary.
+- **Agent** — what role the user is choosing.
+- **Model** — what AI model does the work.
+- **Provider or runtime** — where that model runs.
+- **Model settings** — the controls that particular model supports.
 
-## The Agent family is not permanent
+Adding a new model should usually mean adding it under Panthera or Felis, not creating another Agent.
 
-The Agent family can change as APEX changes. Agents may be introduced, combined, renamed, or removed when their roles stop being useful.
+A new Agent only makes sense if APEX eventually needs a genuinely different role that would still be useful even if its underlying model changed.
 
-The product roster should stay small. A visible Agent should earn its place by doing something meaningfully different in the product, while `DEV_MODE` can keep broader model and sandbox options available for testing.
+## Agent rules and model support
+
+An Agent can allow a feature, but the selected model still needs to support it.
+
+For example, Panthera may allow hosted search, but APEX should only show that option for models that actually provide it. The same applies to reasoning levels, context sizes, and other model-specific features.
+
+This lets Panthera and Felis stay simple while the models underneath them can have different capabilities.
+
+## Naming conventions
+
+- Use **APEX** when referring to the product by itself.
+- Use **Apex** when it is part of a longer name, such as **Apex Panthera** or **Apex Felis**.
+- Use **Apex Panthera** and **Apex Felis** as the full Agent names.
+- Use **Panthera** and **Felis** when the shorter name is clearer or space is limited.
+- Model, provider, and runtime names should stay model, provider, and runtime names rather than becoming Agent names.
+- Code follows normal naming conventions, so identifiers do not need to copy the product capitalization exactly.
+
+## Why Panthera and Felis
+
+The animal naming is meant to give the two Agents some identity without tying them to a vendor or model generation.
+
+**Panthera** suggests a larger range and fits the cloud Agent.
+
+**Felis** suggests something smaller and closer to home, which fits the local Agent.
+
+The names are just a simple product metaphor. They are not meant to rank the Agents by intelligence or capability.
+
+## Development and experimental models
+
+Development-only models, experimental models, and Sandbox Mode do not need separate Agent names.
+
+They remain options under Panthera or Felis. This keeps testing flexible without growing the permanent Agent list again.
 
 ## Previous naming
 
-Before the current two-Agent model, APEX went through earlier naming schemes.
+Earlier versions of APEX used several different profile and Agent names. Over time, those names became too closely tied to individual models, providers, and local configurations.
 
-The first mixed celestial cloud-profile names with animal local-profile names. The cloud profiles were Comet, Nova, and Pulsar. The local profiles were Lynx, Acinonyx, and Neofelis.
+Panthera and Felis replace that approach with one cloud Agent and one local Agent. The older names remain part of the project's history, but they are no longer active runtime or settings identities.
 
-The second replaced that split with one genus-based Agent family: Acinonyx, Neofelis, Apodemus, Neotoma, Sorex, Mus, Delphinus, and Orcinus.
+The changelog and release history keep the details of those earlier versions.
 
-The current design consolidates that family to Panthera for cloud work and Felis for local work. The terminology also moved from **profiles** to **Apex Agents**, and now from many genus Agents to two durable Agent identities with model configuration underneath them.
+## In short
 
-## Closing idea
+APEX is the product. Cortex is where the Agents live. Panthera is the cloud Agent, and Felis is the local Agent. Models sit underneath those two names and can change over time without forcing the Agent system to change with them.
 
-The naming system is meant to make APEX memorable while still communicating real differences between its parts.
-
-APEX describes information moving upward through a personal environment. The logo turns that movement into a visual path toward the peak. Cortex runs Panthera and Felis, and their genera suggest the cloud/local split in scale, privacy, and capability.
-
-For runtime responsibilities and system boundaries, see [Architecture](architecture.md). For the visual language, see the [Design System](design-system.md).
+For runtime details, see [Architecture](architecture.md). For current models and settings, see [Configuration](configuration.md). For visual treatment, see the [Design System](design-system.md).
