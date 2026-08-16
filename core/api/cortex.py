@@ -181,9 +181,11 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         if llama_runtime
         else (reasoning_modes[0] if reasoning_modes else None)
     )
-    effort_options: list[Literal["light", "focused", "extended"]] | None = (
-        ["light", "focused", "extended"] if profile.supports_effort else None
+    effort_options: list[str] | None = (
+        list(profile.reasoning_options) if profile.reasoning_options else None
     )
+    reasoning_options = effort_options
+    default_reasoning = profile.default_reasoning
 
     return AgentModelCatalogEntry(
         model_id=profile.model_id,
@@ -196,8 +198,10 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         credentials_configured=model_has_credentials(profile),
         pricing=_model_pricing_metadata(profile),
         supports_effort=profile.supports_effort,
-        default_effort=profile.default_effort,
+        default_effort=profile.default_reasoning,
         effort_options=effort_options,
+        reasoning_options=reasoning_options,
+        default_reasoning=default_reasoning,
         context_options=context_options,
         default_context_window=default_context_window,
         high_resource_context_options=high_resource_context_options,
@@ -524,7 +528,9 @@ def build_agent_statuses() -> list[AgentStatus]:
             x_search_enabled=x_search,
         )
         effort_options = (
-            ["light", "focused", "extended"] if model_profile.supports_effort else None
+            list(model_profile.reasoning_options)
+            if model_profile.reasoning_options
+            else None
         )
         agents.append(
             AgentStatus(
@@ -542,6 +548,8 @@ def build_agent_statuses() -> list[AgentStatus]:
                 stability="stable",
                 model_stability=model_profile.stability,
                 effort_options=effort_options,
+                reasoning_options=effort_options,
+                default_reasoning=model_profile.default_reasoning,
                 context_window=None,
                 context_window_options=None,
                 context_window_high_resource_options=None,
@@ -549,7 +557,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                 reasoning_mode=None,
                 reasoning_mode_options=None,
                 default_reasoning_mode=None,
-                default_effort=model_profile.default_effort,
+                default_effort=model_profile.default_reasoning,
                 status=agent_status,
                 status_source=status_source,
                 status_checked_at=checked_at,

@@ -34,12 +34,20 @@ class ModelProfile:
     credential_env: str | None
     max_tool_turns: int
     max_tool_calls: int
-    default_effort: Literal["light", "focused", "extended"] | None
-    supports_effort: bool
     supports_encrypted_reasoning: bool
     hosted_capabilities: frozenset[HostedTool]
+    reasoning_options: tuple[str, ...] = ()
+    default_reasoning: str | None = None
     dev_only: bool = False
     maximum_context_window: int | None = None
+
+    @property
+    def supports_effort(self) -> bool:
+        return bool(self.reasoning_options)
+
+    @property
+    def default_effort(self) -> str | None:
+        return self.default_reasoning
 
 
 # Cloud models available under Panthera
@@ -53,8 +61,8 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="OPENAI_API_KEY",
         max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
-        default_effort="focused",
-        supports_effort=True,
+        reasoning_options=("none", "minimal", "low", "medium", "high", "xhigh"),
+        default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset(),
     ),
@@ -67,8 +75,8 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        default_effort="focused",
-        supports_effort=True,
+        reasoning_options=("minimal", "low", "medium", "high"),
+        default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset({"google_search", "google_maps"}),
         maximum_context_window=1_048_576,
@@ -82,8 +90,8 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        default_effort="focused",
-        supports_effort=True,
+        reasoning_options=("minimal", "low", "medium", "high"),
+        default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset(),
         dev_only=True,
@@ -98,8 +106,8 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="XAI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        default_effort="focused",
-        supports_effort=True,
+        reasoning_options=("low", "medium", "high"),
+        default_reasoning="medium",
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset({"x_search"}),
         dev_only=True,
@@ -114,8 +122,8 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="XAI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        default_effort="extended",
-        supports_effort=True,
+        reasoning_options=("low", "medium", "high"),
+        default_reasoning="high",
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset({"x_search"}),
         dev_only=True,
@@ -134,8 +142,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=2,
         max_tool_calls=3,
-        default_effort=None,
-        supports_effort=False,
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
         dev_only=True,
@@ -149,8 +155,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        default_effort=None,
-        supports_effort=False,
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
         dev_only=True,
@@ -164,8 +168,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        default_effort=None,
-        supports_effort=False,
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
     ),
@@ -178,8 +180,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        default_effort=None,
-        supports_effort=False,
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
     ),
@@ -192,8 +192,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        default_effort=None,
-        supports_effort=False,
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
         dev_only=True,
@@ -369,6 +367,26 @@ def reconcile_lynx_reasoning_mode(
     if not supported:
         return "none"
     return supported[0]
+
+
+def reconcile_panthera_reasoning(
+    model: str,
+    reasoning: str | None,
+) -> str | None:
+    """Keep the reasoning level when supported by the model; otherwise use model default."""
+    profile = get_model_profile(model)
+    if profile is None or not profile.reasoning_options:
+        return None
+    if reasoning in profile.reasoning_options:
+        return reasoning
+    legacy_map = {"light": "low", "focused": "medium", "extended": "high"}
+    mapped = legacy_map.get(reasoning or "")
+    if mapped in profile.reasoning_options:
+        return mapped
+    return profile.default_reasoning
+
+
+reconcile_panthera_effort = reconcile_panthera_reasoning
 
 
 def visible_local_runtimes(*, dev_mode: bool = False) -> tuple[LocalRuntime, ...]:

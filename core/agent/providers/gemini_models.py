@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-GeminiThinkingLevel = Literal["low", "medium", "high"]
+GeminiThinkingLevel = Literal["minimal", "low", "medium", "high"]
 
 
 class GeminiModelProfile(BaseModel):

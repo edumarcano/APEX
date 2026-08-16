@@ -188,7 +188,7 @@ interface PersistAgentSettingsOptions {
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [activeAgent, setAgent] = useState<AgentKey>('panthera')
-  const [cloudEffort, setCloudEffort] = useState<CloudEffort>('focused')
+  const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
@@ -1136,10 +1136,19 @@ export default function App(): ReactElement {
 
   const handlePantheraModelChange = useCallback((model: string): void => {
     setPantheraModel(model)
+    const pantheraStatus = agentsStatus.find((agent) => agent.key === 'panthera')
+    const entry = (pantheraStatus?.model_catalog ?? []).find((m) => m.model_id === model)
+    let nextEffort = cloudEffort
+    if (entry?.effort_options && entry.effort_options.length > 0) {
+      if (!entry.effort_options.includes(cloudEffort)) {
+        nextEffort = entry.default_effort ?? entry.effort_options[0] ?? 'medium'
+        setCloudEffort(nextEffort)
+      }
+    }
     void persistAgentSettings({
-      panthera: { model },
+      panthera: { model, effort: nextEffort },
     }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, persistAgentSettings])
+  }, [activeAgent, agentsStatus, cloudEffort, persistAgentSettings])
 
   const handleLynxModelChange = useCallback((model: string): void => {
     setLynxModel(model)

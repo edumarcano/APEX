@@ -55,7 +55,9 @@ class ResponsesModelProfile:
         max_tool_turns: int,
         max_tool_calls: int,
         system_instruction: str,
-        reasoning_effort: Literal["low", "medium", "high"] | None = None,
+        reasoning_effort: (
+            Literal["none", "minimal", "low", "medium", "high", "xhigh"] | str | None
+        ) = None,
         hosted_tools: frozenset[Literal["x_search"]] = frozenset(),
         supports_encrypted_reasoning: bool = True,
     ) -> None:

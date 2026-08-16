@@ -27,18 +27,18 @@ class AgentSelectionTests(unittest.TestCase):
         mode, profile, effort = resolve_agent_selection(
             agent_settings, dev_mode=True
         )
-        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "focused"))
+        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "medium"))
         self.assertTrue(agent_settings.sandbox_mode)
 
     def test_cloud_settings_resolve_profile_and_effort(self) -> None:
         agent_settings = panthera_settings(
             model="gemini-3.6-flash",
-            effort="extended",
+            effort="high",
         )
         mode, profile, effort = resolve_agent_selection(
             agent_settings, dev_mode=False
         )
-        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "extended"))
+        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "high"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
         agent_settings = lynx_settings(model="qwen3:1.7b")
@@ -184,7 +184,10 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         self.assertEqual(luna_entry.pricing.billing_basis, "standard")
         self.assertEqual(luna_entry.pricing.input_per_million, 0.2)
         self.assertTrue(luna_entry.supports_effort)
-        self.assertEqual(luna_entry.effort_options, ["light", "focused", "extended"])
+        self.assertEqual(
+            luna_entry.effort_options,
+            ["none", "minimal", "low", "medium", "high", "xhigh"],
+        )
 
         lynx = next(item for item in profiles if item.key == "lynx")
         self.assertTrue(lynx.model_catalog)
@@ -220,6 +223,78 @@ class ProfileStatusMetadataTests(unittest.TestCase):
                         profile.reasoning_mode_options,
                     )
                     self.assertIn(profile.reasoning_mode, profile.reasoning_mode_options)
+
+
+class ModelNativeReasoningTests(unittest.TestCase):
+    def test_model_profiles_define_native_reasoning_options(self) -> None:
+        from core.agent.model_catalog import get_model_profile
+
+        luna = get_model_profile("gpt-5.6-luna")
+        assert luna is not None
+        self.assertEqual(
+            luna.reasoning_options,
+            ("none", "minimal", "low", "medium", "high", "xhigh"),
+        )
+        self.assertEqual(luna.default_reasoning, "medium")
+
+        gemini_flash = get_model_profile("gemini-3.6-flash")
+        assert gemini_flash is not None
+        self.assertEqual(
+            gemini_flash.reasoning_options,
+            ("minimal", "low", "medium", "high"),
+        )
+        self.assertEqual(gemini_flash.default_reasoning, "medium")
+
+        gemini_lite = get_model_profile("gemini-3.5-flash-lite")
+        assert gemini_lite is not None
+        self.assertEqual(
+            gemini_lite.reasoning_options,
+            ("minimal", "low", "medium", "high"),
+        )
+        self.assertEqual(gemini_lite.default_reasoning, "medium")
+
+        grok_43 = get_model_profile("grok-4.3")
+        assert grok_43 is not None
+        self.assertEqual(
+            grok_43.reasoning_options,
+            ("low", "medium", "high"),
+        )
+        self.assertEqual(grok_43.default_reasoning, "medium")
+
+        grok_45 = get_model_profile("grok-4.5")
+        assert grok_45 is not None
+        self.assertEqual(
+            grok_45.reasoning_options,
+            ("low", "medium", "high"),
+        )
+        self.assertEqual(grok_45.default_reasoning, "high")
+
+        local_gemma = get_model_profile("gemma-4-E2B-Q4_K_M.gguf")
+        assert local_gemma is not None
+        self.assertEqual(local_gemma.reasoning_options, ())
+        self.assertIsNone(local_gemma.default_reasoning)
+
+    def test_reasoning_resolution_preserves_supported_native_levels(self) -> None:
+        from core.agent.catalog import resolve_effort
+        from core.agent.model_catalog import get_model_profile
+
+        luna = get_model_profile("gpt-5.6-luna")
+        assert luna is not None
+        for option in ("none", "minimal", "low", "medium", "high", "xhigh"):
+            _apex, native = resolve_effort(luna, option)
+            self.assertEqual(native, option)
+
+        # Unsupported option for Grok falls back to model default
+        grok = get_model_profile("grok-4.3")
+        assert grok is not None
+        _apex, native = resolve_effort(grok, "minimal")
+        self.assertEqual(native, "medium")
+
+        # Unsupported option for Gemini falls back to default
+        gemini = get_model_profile("gemini-3.6-flash")
+        assert gemini is not None
+        _apex, native = resolve_effort(gemini, "xhigh")
+        self.assertEqual(native, "medium")
 
 
 if __name__ == "__main__":

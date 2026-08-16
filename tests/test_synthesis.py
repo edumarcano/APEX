@@ -449,8 +449,24 @@ class RoutingTests(unittest.TestCase):
 class ProfileAndPersistenceTests(unittest.TestCase):
     def test_gemini_models_map_effort_to_thinking_level(self) -> None:
         expected = {
-            ACINONYX_MODEL: {"light": "low", "focused": "medium", "extended": "high"},
-            NEOFELIS_MODEL: {"light": "low", "focused": "medium", "extended": "high"},
+            ACINONYX_MODEL: {
+                "minimal": "minimal",
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "light": "low",
+                "focused": "medium",
+                "extended": "high",
+            },
+            NEOFELIS_MODEL: {
+                "minimal": "minimal",
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "light": "low",
+                "focused": "medium",
+                "extended": "high",
+            },
         }
         for model_id, efforts in expected.items():
             with self.subTest(model=model_id):

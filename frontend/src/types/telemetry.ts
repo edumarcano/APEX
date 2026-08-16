@@ -82,7 +82,17 @@ export interface WeatherTimelinePoint {
 }
 
 export type AgentRuntime = 'cloud' | 'local'
-export type CloudEffort = 'light' | 'focused' | 'extended'
+export type CloudEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'light'
+  | 'focused'
+  | 'extended'
+  | string
 export type CloudProvider = 'openai' | 'gemini' | 'xai'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
@@ -227,6 +237,8 @@ export interface ModelCatalogEntry {
   supports_effort?: boolean
   default_effort?: CloudEffort | null
   effort_options?: CloudEffort[] | null
+  reasoning_options?: string[] | null
+  default_reasoning?: string | null
   context_options?: number[] | null
   default_context_window?: number | null
   high_resource_context_options?: number[] | null
@@ -270,6 +282,8 @@ export interface AgentStatus {
   model_stability: AgentStability | null
   effort_options: CloudEffort[] | null
   default_effort: CloudEffort | null
+  reasoning_options?: string[] | null
+  default_reasoning?: string | null
   context_window: number | null
   context_window_options: number[] | null
   context_window_high_resource_options: number[] | null

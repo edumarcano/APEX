@@ -17,6 +17,7 @@ import type {
 import type { PantheraHostedToolsSettings } from '../types/settings'
 import {
   formatContextWindowLabel,
+  formatReasoningLabel,
   hostedCapabilitiesForModel,
   providerDisplayName,
   resolveModelCatalog,
@@ -242,7 +243,7 @@ function LocalReasoningControl({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option === 'none' ? 'None' : 'Focused'}
+            {option === 'none' ? 'None' : 'High'}
           </option>
         ))}
       </select>
@@ -445,7 +446,7 @@ function RuntimeControls({
             verifyingAgent={props.verifyingCloudAgent}
             onVerify={props.onVerifyCloudAgent}
           />
-          {supportsEffort && pantheraStatus?.effort_options?.length ? (
+          {supportsEffort && (selectedModelEntry?.effort_options?.length || pantheraStatus?.effort_options?.length) ? (
             <section className="space-y-2">
               <label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                 Reasoning effort
@@ -456,9 +457,9 @@ function RuntimeControls({
                 onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)}
                 className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]"
               >
-                {pantheraStatus.effort_options.map((effort) => (
+                {(selectedModelEntry?.effort_options ?? pantheraStatus?.effort_options ?? []).map((effort) => (
                   <option key={effort} value={effort}>
-                    {effort.slice(0, 1).toUpperCase()}{effort.slice(1)}
+                    {formatReasoningLabel(effort)}
                   </option>
                 ))}
               </select>

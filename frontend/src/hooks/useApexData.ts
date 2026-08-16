@@ -250,7 +250,17 @@ const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
   'lynx',
 ]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
-const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'light',
+  'focused',
+  'extended',
+]
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
   return typeof value === 'string' && values.includes(value as T) ? value as T : null

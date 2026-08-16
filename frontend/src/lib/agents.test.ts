@@ -4,6 +4,7 @@ import {
   AGENT_KEYS,
   canVerifyCloudProvider,
   formatContextWindowLabel,
+  formatReasoningLabel,
   isAgentKey,
   isLynxKey,
   isPantheraKey,
@@ -34,6 +35,17 @@ describe('agents helpers', () => {
     expect(formatContextWindowLabel(32768)).toBe('32K')
     expect(formatContextWindowLabel(131072)).toBe('132K')
     expect(formatContextWindowLabel(null)).toBeNull()
+  })
+
+  it('humanizes model reasoning options without changing canonical value meaning', () => {
+    expect(formatReasoningLabel('none')).toBe('None')
+    expect(formatReasoningLabel('minimal')).toBe('Minimal')
+    expect(formatReasoningLabel('low')).toBe('Low')
+    expect(formatReasoningLabel('medium')).toBe('Medium')
+    expect(formatReasoningLabel('high')).toBe('High')
+    expect(formatReasoningLabel('xhigh')).toBe('Extra High')
+    expect(formatReasoningLabel('extra_high')).toBe('Extra High')
+    expect(formatReasoningLabel(null)).toBe('')
   })
 
   it('uses sandbox history only in DEV_MODE with sandbox enabled', () => {

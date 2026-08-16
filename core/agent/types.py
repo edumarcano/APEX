@@ -22,7 +22,9 @@ ToolCatalogGroupKind: TypeAlias = Literal["apex_family", "mcp_server"]
 
 AgentKey: TypeAlias = Literal["panthera", "lynx"]
 LocalReasoningMode: TypeAlias = Literal["none", "focused"]
-ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
+ApexEffort: TypeAlias = Literal[
+    "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
+]
 
 CostCompleteness = Literal["complete", "partial", "unavailable"]
 

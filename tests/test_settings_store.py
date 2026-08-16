@@ -79,7 +79,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(snap.ask_apex.enabled)
         self.assertEqual(snap.ask_apex.agent, "panthera")
         self.assertEqual(snap.ask_apex.panthera.model, "gpt-5.6-luna")
-        self.assertEqual(snap.ask_apex.panthera.effort, "focused")
+        self.assertEqual(snap.ask_apex.panthera.effort, "medium")
         self.assertEqual(snap.ask_apex.lynx.model, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(snap.user_designation, "")
         self.assertEqual(snap.voice.engine, "google")
@@ -198,7 +198,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
                 ask_apex=AgentSettingsPatch(
                     panthera=PantheraSettingsPatch(
                         model="grok-4.5",
-                        effort="extended",
+                        effort="high",
                     ),
                     lynx=LynxSettingsPatch(
                         model="qwen3:1.7b",
@@ -212,7 +212,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
 
         self.assertFalse(agent_settings.enabled)
         self.assertEqual(agent_settings.panthera.model, "grok-4.5")
-        self.assertEqual(agent_settings.panthera.effort, "extended")
+        self.assertEqual(agent_settings.panthera.effort, "high")
         self.assertEqual(agent_settings.lynx.model, "qwen3:1.7b")
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertNotIn("provider", written["ask_apex"]["panthera"])

@@ -102,6 +102,29 @@ export function runtimeForAgentKey(agent: AgentKey): AgentRuntime {
   return isLynxKey(agent) ? 'local' : 'cloud'
 }
 
+/** Humanize reasoning level without changing its canonical meaning. */
+export function formatReasoningLabel(option: string | null | undefined): string {
+  if (!option) return ''
+  switch (option.trim().toLowerCase()) {
+    case 'none':
+      return 'None'
+    case 'minimal':
+      return 'Minimal'
+    case 'low':
+      return 'Low'
+    case 'medium':
+      return 'Medium'
+    case 'high':
+      return 'High'
+    case 'xhigh':
+    case 'extra_high':
+    case 'extra high':
+      return 'Extra High'
+    default:
+      return option.charAt(0).toUpperCase() + option.slice(1)
+  }
+}
+
 export function resolveModelCatalog(
   agentStatus: AgentStatus | undefined,
 ): ModelCatalogEntry[] {
@@ -120,6 +143,8 @@ export function resolveModelCatalog(
       supports_effort: Boolean(agentStatus.effort_options?.length),
       default_effort: agentStatus.default_effort,
       effort_options: agentStatus.effort_options,
+      reasoning_options: agentStatus.reasoning_options ?? agentStatus.effort_options,
+      default_reasoning: agentStatus.default_reasoning ?? agentStatus.default_effort,
       context_options: agentStatus.context_window_options,
       default_context_window: agentStatus.default_context_window,
       high_resource_context_options: agentStatus.context_window_high_resource_options,

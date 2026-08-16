@@ -25,7 +25,9 @@ AgentKey = Literal["panthera", "lynx"]
 CloudProvider = Literal["openai", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
-CloudEffort = Literal["light", "focused", "extended"]
+CloudEffort = Literal[
+    "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
+]
 BriefingMode = Literal["panthera", "lynx", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
@@ -35,7 +37,9 @@ VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "lynx"})
 VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
 VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
-VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
+VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
+    {"none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"}
+)
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "lynx", "structured_digest"}
 )
@@ -102,7 +106,7 @@ class PantheraSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     model: str = DEFAULT_PANTHERA_MODEL
-    effort: CloudEffort = "focused"
+    effort: CloudEffort = "medium"
     hosted_tools: PantheraHostedToolsSettings = Field(
         default_factory=PantheraHostedToolsSettings
     )

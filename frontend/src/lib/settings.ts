@@ -100,7 +100,17 @@ export function filterAgentSettingsForDevMode(
   )
 }
 
-const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'light',
+  'focused',
+  'extended',
+]
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
   'lynx',

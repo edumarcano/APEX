@@ -574,13 +574,21 @@ class AgentModelCatalogEntry(BaseModel):
         default=False,
         description="Whether this model supports reasoning effort settings.",
     )
-    default_effort: Literal["light", "focused", "extended"] | None = Field(
+    default_effort: str | None = Field(
         default=None,
         description="Default reasoning effort for this model.",
     )
-    effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
+    effort_options: list[str] | None = Field(
         default=None,
         description="Selectable reasoning effort options for this model.",
+    )
+    reasoning_options: list[str] | None = Field(
+        default=None,
+        description="Model-native selectable reasoning options for this model.",
+    )
+    default_reasoning: str | None = Field(
+        default=None,
+        description="Default model-native reasoning option for this model.",
     )
     context_options: list[int] | None = Field(
         default=None,
@@ -641,9 +649,17 @@ class AgentStatus(BaseModel):
         default=None,
         description="Release stage classification for the selected model profile.",
     )
-    effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
+    effort_options: list[str] | None = Field(
         default=None,
-        description="Selectable APEX effort tiers; null for fixed-effort local Agents.",
+        description="Selectable model-native reasoning options; null for fixed-effort local Agents.",
+    )
+    reasoning_options: list[str] | None = Field(
+        default=None,
+        description="Selectable model-native reasoning options.",
+    )
+    default_reasoning: str | None = Field(
+        default=None,
+        description="Default model-native reasoning option.",
     )
     context_window: int | None = Field(
         default=None,
@@ -673,9 +689,9 @@ class AgentStatus(BaseModel):
         default=None,
         description="Default local reasoning mode when no preference is stored.",
     )
-    default_effort: Literal["light", "focused", "extended"] | None = Field(
+    default_effort: str | None = Field(
         default=None,
-        description="Default APEX effort tier for this Agent.",
+        description="Default model-native reasoning effort for this Agent.",
     )
     status: AgentAvailabilityStatus = Field(
         description="Current availability state for this Agent.",

@@ -24,6 +24,7 @@ from core.agent.model_catalog import (
     reconcile_lynx_reasoning_mode,
     reconcile_lynx_runtime_model,
     reconcile_panthera_provider_model,
+    reconcile_panthera_reasoning,
 )
 from core.config import is_dev_mode
 from core.settings.models import (
@@ -692,10 +693,22 @@ def _normalize_agent_settings(
             if models:
                 panthera["model"] = models[0].model_id
         effort = panthera_raw.get("effort")
-        if isinstance(effort, str) and effort.strip().lower() in VALID_CLOUD_EFFORTS:
-            panthera["effort"] = effort.strip().lower()
+        if isinstance(effort, str):
+            effort_str = effort.strip().lower()
+            legacy_map = {"light": "low", "focused": "medium", "extended": "high"}
+            effort_str = legacy_map.get(effort_str, effort_str)
+            if effort_str in VALID_CLOUD_EFFORTS:
+                panthera["effort"] = effort_str
+            else:
+                _record_error(errors, "ask_apex.panthera.effort is not valid")
         elif effort is not None:
             _record_error(errors, "ask_apex.panthera.effort is not valid")
+        if "model" in panthera:
+            reconciled_effort = reconcile_panthera_reasoning(
+                panthera["model"], panthera.get("effort")
+            )
+            if reconciled_effort is not None:
+                panthera["effort"] = reconciled_effort
         hosted_raw = panthera_raw.get("hosted_tools")
         if isinstance(hosted_raw, dict):
             hosted: dict[str, bool] = {}

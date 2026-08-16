@@ -146,7 +146,17 @@ const VALID_PROVIDERS: readonly AgentStatus['provider'][] = [
 
 const VALID_AGENT_RUNTIMES: readonly AgentStatus['runtime'][] = ['cloud', 'local']
 
-const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = ['light', 'focused', 'extended']
+const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'light',
+  'focused',
+  'extended',
+]
 
 const VALID_AGENT_STABILITY: readonly AgentStability[] = [
   'stable',
@@ -320,6 +330,8 @@ function parseModelCatalog(value: unknown): ModelCatalogEntry[] | null {
       supports_effort: typeof record.supports_effort === 'boolean' ? record.supports_effort : undefined,
       default_effort: isCloudEffort(record.default_effort) ? record.default_effort : null,
       effort_options: parseCloudEffortList(record.effort_options),
+      reasoning_options: Array.isArray(record.reasoning_options) ? record.reasoning_options.filter((x): x is string => typeof x === 'string') : null,
+      default_reasoning: typeof record.default_reasoning === 'string' ? record.default_reasoning : null,
       context_options: contextOptions,
       default_context_window: parseNullableFiniteNumber(record.default_context_window),
       high_resource_context_options: highResourceContextOptions,
@@ -557,6 +569,8 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     model_stability: modelStability,
     effort_options: effortOptions,
     default_effort: defaultEffort,
+    reasoning_options: Array.isArray(record.reasoning_options) ? record.reasoning_options.filter((x): x is string => typeof x === 'string') : effortOptions,
+    default_reasoning: typeof record.default_reasoning === 'string' ? record.default_reasoning : defaultEffort,
     context_window: contextWindow,
     context_window_options: contextWindowOptions,
     context_window_high_resource_options: contextWindowHighResourceOptions,

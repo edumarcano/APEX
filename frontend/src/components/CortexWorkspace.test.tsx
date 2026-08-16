@@ -9,7 +9,7 @@ import type { AgentStatus, ToolCatalog, ToolPreflightEstimate } from '../types/t
 import type { ApexLogoProps } from './ApexLogo'
 
 const panthera: AgentStatus = {
-  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '2.0', runtime: 'cloud', tier: 'balanced', stability: 'stable', model_stability: 'stable', effort_options: ['light', 'focused', 'extended'], default_effort: 'focused', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '2.0', runtime: 'cloud', tier: 'balanced', stability: 'stable', model_stability: 'stable', effort_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], default_effort: 'medium', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
 }
 const lynx: AgentStatus = { ...panthera, key: 'lynx', display_name: 'Apex Lynx', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
 const toolCatalog: ToolCatalog = {
@@ -235,8 +235,8 @@ describe('CortexWorkspace', () => {
     render(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera', agentsStatus: [panthera, lynx], onEffortChange, onVerifyCloudAgent })} />)
 
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'extended')
-    expect(onEffortChange).toHaveBeenCalledWith('extended')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'xhigh')
+    expect(onEffortChange).toHaveBeenCalledWith('xhigh')
     expect(screen.getByText('$0.20/M in · $1.20/M out')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Verify' }))
     expect(onVerifyCloudAgent).toHaveBeenCalledWith('panthera')
@@ -561,5 +561,47 @@ describe('CortexWorkspace', () => {
 
     expect(screen.getByText('SpaceXAI / panthera')).toBeInTheDocument()
     expect(screen.queryByText('xai / panthera')).not.toBeInTheDocument()
+  })
+
+  it('renders model-native reasoning options dynamically for the selected cloud model', () => {
+    const onEffortChange = vi.fn()
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'panthera',
+          pantheraModel: 'gpt-5.6-luna',
+          cloudEffort: 'medium',
+          agentsStatus: [panthera],
+          onEffortChange,
+        })}
+      />,
+    )
+
+    const effortSelect = screen.getByLabelText('Reasoning effort')
+    expect(effortSelect).toHaveValue('medium')
+    expect(screen.getByRole('option', { name: 'None' })).toHaveValue('none')
+    expect(screen.getByRole('option', { name: 'Minimal' })).toHaveValue('minimal')
+    expect(screen.getByRole('option', { name: 'Low' })).toHaveValue('low')
+    expect(screen.getByRole('option', { name: 'Medium' })).toHaveValue('medium')
+    expect(screen.getByRole('option', { name: 'High' })).toHaveValue('high')
+    expect(screen.getByRole('option', { name: 'Extra High' })).toHaveValue('xhigh')
+  })
+
+  it('renders None and High labels for local Lynx reasoning mode', () => {
+    render(
+      <CortexWorkspace
+        {...workspaceProps({
+          activeAgent: 'lynx',
+          lynxModel: 'gemma-4-E2B-Q4_K_M.gguf',
+          agentsStatus: [lynx],
+        })}
+      />,
+    )
+
+    const reasoningSelect = screen.getByLabelText('Reasoning')
+    expect(reasoningSelect).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'None' })).toHaveValue('none')
+    expect(screen.getByRole('option', { name: 'High' })).toHaveValue('focused')
+    expect(screen.queryByRole('option', { name: 'Focused' })).not.toBeInTheDocument()
   })
 })

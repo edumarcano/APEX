@@ -42,8 +42,10 @@ from core.config import (
 
 AgentKey: TypeAlias = Literal["panthera", "lynx"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
-ApexEffort: TypeAlias = Literal["light", "focused", "extended"]
-NativeEffort: TypeAlias = Literal["low", "medium", "high"]
+ApexEffort: TypeAlias = Literal[
+    "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
+]
+NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
 CloudProvider: TypeAlias = Literal["openai", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
@@ -61,7 +63,7 @@ _SCHEMA5_CLOUD_PROFILES: frozenset[str] = frozenset({"comet", "nova", "pulsar"})
 _SCHEMA5_LOCAL_PROFILES: frozenset[str] = frozenset({"lynx", "acinonyx", "neofelis"})
 _SCHEMA5_ALL_PROFILES: frozenset[str] = _SCHEMA5_CLOUD_PROFILES | _SCHEMA5_LOCAL_PROFILES
 
-_APEX_TO_NATIVE_EFFORT: dict[str, NativeEffort] = {
+_APEX_TO_NATIVE_EFFORT: dict[str, str] = {
     "light": "low",
     "focused": "medium",
     "extended": "high",
@@ -127,29 +129,32 @@ def is_agent_visible(key: str, *, dev_mode: bool | None = None) -> bool:
     return key in AGENT_SPECS
 
 
-def apex_effort_to_native(effort: ApexEffort) -> NativeEffort:
-    return _APEX_TO_NATIVE_EFFORT[effort]
+def apex_effort_to_native(effort: str) -> str:
+    return _APEX_TO_NATIVE_EFFORT.get(effort, effort)
 
 
 def resolve_effort_for_agent(
     agent_key: str,
-    requested: ApexEffort | None,
-) -> tuple[ApexEffort | None, NativeEffort | None]:
+    requested: str | None,
+) -> tuple[str | None, str | None]:
     """Resolve effort for the model currently selected for an Agent."""
     return resolve_effort(resolve_selected_model_profile(agent_key), requested)
 
 
 def resolve_effort(
     model_profile: ModelProfile,
-    requested: ApexEffort | None,
-) -> tuple[ApexEffort | None, NativeEffort | None]:
-    """Resolve APEX and provider-native effort for a model."""
-    if not model_profile.supports_effort:
+    requested: str | None,
+) -> tuple[str | None, str | None]:
+    """Resolve model-native reasoning effort for a model."""
+    if not model_profile.reasoning_options:
         return None, None
-    apex_effort = requested or model_profile.default_effort
-    if apex_effort is None:
-        return None, None
-    return apex_effort, apex_effort_to_native(apex_effort)
+    if requested:
+        cleaned = requested.strip().lower()
+        mapped = _APEX_TO_NATIVE_EFFORT.get(cleaned, cleaned)
+        if mapped in model_profile.reasoning_options:
+            return mapped, mapped
+    default = model_profile.default_reasoning
+    return default, default
 
 
 def agent_has_credentials(agent_key: str) -> bool:
@@ -255,7 +260,11 @@ def build_concrete_agent(
     )
 
     if model_profile.provider == "gemini":
-        thinking: GeminiThinkingLevel = native_effort or "medium"
+        thinking: GeminiThinkingLevel = (
+            native_effort
+            or model_profile.default_reasoning
+            or "medium"  # type: ignore[assignment]
+        )
         return GeminiModelProfile(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
@@ -315,6 +324,15 @@ def build_concrete_agent(
             context_window=local_context_window,
             reasoning_mode=resolved_reasoning_mode,
         )
+    effective_effort = (
+        native_effort
+        if native_effort is not None
+        else (
+            model_profile.default_reasoning
+            if model_profile.reasoning_options
+            else None
+        )
+    )
     return ResponsesModelProfile(
         provider=model_profile.provider,  # type: ignore[arg-type]
         display_name=spec.display_name,
@@ -323,7 +341,7 @@ def build_concrete_agent(
         max_tool_turns=model_profile.max_tool_turns,
         max_tool_calls=model_profile.max_tool_calls,
         system_instruction=system_instruction,
-        reasoning_effort=native_effort,
+        reasoning_effort=effective_effort,
         hosted_tools=hosted_tools_for_model(
             model_profile,
             google_search_enabled=google_search_enabled,
@@ -609,7 +627,7 @@ def resolve_agent_selection(
     spec = AGENT_SPECS[agent]
     if spec.runtime == "local":
         return "local", agent, None
-    effort = getattr(agent_settings.panthera, "effort", "focused")
+    effort = getattr(agent_settings.panthera, "effort", "medium")
     return "cloud", agent, effort
 
 
@@ -705,7 +723,7 @@ def _canonicalize_agent_routes(raw: dict[str, Any]) -> dict[str, Any]:
 def default_panthera_settings() -> dict[str, Any]:
     return {
         "model": DEFAULT_PANTHERA_MODEL,
-        "effort": "focused",
+        "effort": "medium",
         "hosted_tools": {
             "google_search": True,
             "google_maps": True,
