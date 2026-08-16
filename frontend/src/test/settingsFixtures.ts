@@ -29,7 +29,6 @@ export const BASE_SETTINGS: RuntimeSettings = {
     agent: 'panthera',
     sandbox_mode: false,
     panthera: {
-      provider: 'openai',
       model: 'gpt-5.6-luna',
       effort: 'focused',
       hosted_tools: {
@@ -39,7 +38,6 @@ export const BASE_SETTINGS: RuntimeSettings = {
       },
     },
     lynx: {
-      runtime: 'llama_cpp',
       model: 'gemma-4-E2B-Q4_K_M.gguf',
       context_window: 16384,
       reasoning_mode: 'none',
@@ -78,7 +76,7 @@ export function buildSettingsResponse(
   overrides: Partial<SettingsResponse> = {},
 ): SettingsResponse {
   return {
-    schema_version: 15,
+    schema_version: 16,
     settings,
     local_file_present: false,
     local_override_active: false,

@@ -65,8 +65,8 @@ class ModelCatalogReconcileTests(unittest.TestCase):
             )
 
         panthera = normalized["ask_apex"]["panthera"]
-        self.assertEqual(panthera["provider"], "openai")
         self.assertEqual(panthera["model"], "gpt-5.6-luna")
+        self.assertNotIn("provider", panthera)
 
     def test_normalize_layer_reconciles_model_only_dev_only_panthera(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):
@@ -82,8 +82,8 @@ class ModelCatalogReconcileTests(unittest.TestCase):
             )
 
         panthera = normalized["ask_apex"]["panthera"]
-        self.assertEqual(panthera["provider"], "openai")
         self.assertEqual(panthera["model"], "gpt-5.6-luna")
+        self.assertNotIn("provider", panthera)
 
     def test_normalize_layer_reconciles_saved_dev_only_lynx_route(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):
@@ -100,8 +100,8 @@ class ModelCatalogReconcileTests(unittest.TestCase):
             )
 
         lynx = normalized["ask_apex"]["lynx"]
-        self.assertEqual(lynx["runtime"], "llama_cpp")
         self.assertEqual(lynx["model"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertNotIn("runtime", lynx)
 
     def test_normalize_layer_reconciles_model_only_dev_only_lynx(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):
@@ -117,8 +117,8 @@ class ModelCatalogReconcileTests(unittest.TestCase):
             )
 
         lynx = normalized["ask_apex"]["lynx"]
-        self.assertEqual(lynx["runtime"], "llama_cpp")
         self.assertEqual(lynx["model"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertNotIn("runtime", lynx)
 
     def test_lynx_model_change_reconciles_incompatible_context_window(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):

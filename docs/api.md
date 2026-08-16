@@ -85,11 +85,11 @@ Returns boot-time HUD values such as Agent query enablement, the effective Agent
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `15`.
+Returns the resolved settings envelope. The current contract version is `16`.
 
 ```json
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -101,13 +101,11 @@ Returns the resolved settings envelope. The current contract version is `15`.
       "agent": "panthera",
       "sandbox_mode": false,
       "panthera": {
-        "provider": "openai",
         "model": "gpt-5.6-luna",
         "effort": "focused",
         "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
       },
       "lynx": {
-        "runtime": "llama_cpp",
         "model": "gemma-4-E2B-Q4_K_M.gguf",
         "context_window": 16384,
         "reasoning_mode": "none"
@@ -128,7 +126,7 @@ Returns the resolved settings envelope. The current contract version is `15`.
 }
 ```
 
-`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults.
+`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Panthera and Lynx settings persist only the selected model; the model catalog derives the cloud provider or local runtime. The selected provider/runtime remains in Agent execution metadata and historical records. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 

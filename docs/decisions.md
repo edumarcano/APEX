@@ -184,7 +184,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Consolidate the Agent family to Panthera and Lynx
 
-**Decision.** APEX exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Provider, runtime, model, context, reasoning, effort, and hosted-tool settings live underneath those identities.
+**Decision.** APEX exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities; each model profile determines its provider or local runtime.
 
 **Why.** The earlier genus-based roster made every model/provider combination look like a separate product Agent. That was useful for experimentation, but the normal UI became broader than the roles APEX actually distinguishes today: cloud versus local.
 

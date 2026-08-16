@@ -218,15 +218,13 @@ def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
 
 
 def resolve_panthera_provider() -> CloudProvider:
-    from core.settings import get_settings_store
-
-    return get_settings_store().get_snapshot().ask_apex.panthera.provider
+    profile = resolve_selected_model_profile("panthera")
+    return profile.provider  # type: ignore[return-value]
 
 
 def resolve_lynx_runtime() -> LocalRuntime:
-    from core.settings import get_settings_store
-
-    return get_settings_store().get_snapshot().ask_apex.lynx.runtime
+    profile = resolve_selected_model_profile("lynx")
+    return profile.provider  # type: ignore[return-value]
 
 
 def build_concrete_agent(
@@ -398,12 +396,12 @@ def is_cloud_agent_key(agent_key: str) -> bool:
 def local_context_window_for_agent(agent_key: str) -> int | None:
     if agent_key != "lynx":
         return None
+    profile = resolve_selected_model_profile("lynx")
+    if profile.provider != "llama_cpp":
+        return None
     from core.settings import get_settings_store
 
-    settings = get_settings_store().get_snapshot().ask_apex
-    if settings.lynx.runtime != "llama_cpp":
-        return None
-    return settings.lynx.context_window
+    return get_settings_store().get_snapshot().ask_apex.lynx.context_window
 
 
 def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
@@ -619,18 +617,19 @@ def resolve_agent_selection(
 
 
 def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
-    """Convert schema-14 ask_apex to schema-15 Panthera/Lynx shape."""
+    """Convert historical ask_apex shapes to the model-only Agent shape."""
     if "agent" in raw and (
         isinstance(raw.get("panthera"), dict) or isinstance(raw.get("lynx"), dict)
     ):
-        return raw
+        return _canonicalize_agent_routes(raw)
     if isinstance(raw.get("panthera"), dict) or isinstance(raw.get("lynx"), dict):
+        canonical = _canonicalize_agent_routes(raw)
         return {
             "enabled": raw.get("enabled", True),
             "agent": raw.get("agent", "panthera"),
             "sandbox_mode": bool(raw.get("sandbox_mode", False)),
-            "panthera": raw.get("panthera", default_panthera_settings()),
-            "lynx": raw.get("lynx", default_lynx_settings()),
+            "panthera": canonical.get("panthera", default_panthera_settings()),
+            "lynx": canonical.get("lynx", default_lynx_settings()),
         }
 
     from core.agent.model_catalog import LEGACY_AGENT_MIGRATION
@@ -641,10 +640,10 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     local_agent = str(legacy.get("local_agent", "apodemus")).strip().lower()
     effort = legacy.get("effort", "focused")
 
-    _, panthera_provider, panthera_model = LEGACY_AGENT_MIGRATION.get(
+    _, _, panthera_model = LEGACY_AGENT_MIGRATION.get(
         cloud_agent, ("panthera", "openai", DEFAULT_PANTHERA_MODEL)
     )
-    _, lynx_runtime, lynx_model = LEGACY_AGENT_MIGRATION.get(
+    _, _, lynx_model = LEGACY_AGENT_MIGRATION.get(
         local_agent, ("lynx", DEFAULT_LYNX_RUNTIME, DEFAULT_LYNX_MODEL)
     )
 
@@ -677,13 +676,11 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
         "agent": agent,
         "sandbox_mode": sandbox_mode,
         "panthera": {
-            "provider": panthera_provider,
             "model": panthera_model,
             "effort": effort if effort in {"light", "focused", "extended"} else "focused",
             "hosted_tools": hosted_tools,
         },
         "lynx": {
-            "runtime": lynx_runtime,
             "model": lynx_model,
             "context_window": context_window,
             "reasoning_mode": reasoning_mode,
@@ -692,9 +689,24 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _canonicalize_agent_routes(raw: dict[str, Any]) -> dict[str, Any]:
+    """Drop provider/runtime fields from historical nested Agent settings."""
+    canonical = dict(raw)
+    panthera = raw.get("panthera")
+    if isinstance(panthera, dict):
+        panthera_settings = dict(panthera)
+        panthera_settings.pop("provider", None)
+        canonical["panthera"] = panthera_settings
+    lynx = raw.get("lynx")
+    if isinstance(lynx, dict):
+        lynx_settings = dict(lynx)
+        lynx_settings.pop("runtime", None)
+        canonical["lynx"] = lynx_settings
+    return canonical
+
+
 def default_panthera_settings() -> dict[str, Any]:
     return {
-        "provider": "openai",
         "model": DEFAULT_PANTHERA_MODEL,
         "effort": "focused",
         "hosted_tools": {
@@ -707,7 +719,6 @@ def default_panthera_settings() -> dict[str, Any]:
 
 def default_lynx_settings() -> dict[str, Any]:
     return {
-        "runtime": DEFAULT_LYNX_RUNTIME,
         "model": DEFAULT_LYNX_MODEL,
         "context_window": llama_cpp_runtime_config(DEFAULT_LYNX_MODEL).default_context_window,
         "reasoning_mode": "none",

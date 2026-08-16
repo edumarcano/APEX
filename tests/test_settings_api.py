@@ -77,7 +77,7 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 15)
+        self.assertEqual(payload["schema_version"], 16)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
@@ -85,6 +85,8 @@ class SettingsApiTests(unittest.TestCase):
         self.assertTrue(payload["settings"]["modules"]["f1"])
         self.assertEqual(payload["settings"]["ask_apex"]["agent"], "panthera")
         self.assertEqual(payload["settings"]["ask_apex"]["panthera"]["model"], "gpt-5.6-luna")
+        self.assertNotIn("provider", payload["settings"]["ask_apex"]["panthera"])
+        self.assertNotIn("runtime", payload["settings"]["ask_apex"]["lynx"])
         self.assertTrue(payload["settings"]["ask_apex"]["panthera"]["hosted_tools"]["google_maps"])
         self.assertTrue(payload["settings"]["ask_apex"]["panthera"]["hosted_tools"]["x_search"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
@@ -178,6 +180,8 @@ class SettingsApiTests(unittest.TestCase):
         for payload in (
             {"features": {"weather": True, "unknown": True}},
             {"briefing": {"default_mode": "acinonyx"}},
+            {"ask_apex": {"panthera": {"provider": "gemini"}}},
+            {"ask_apex": {"lynx": {"runtime": "ollama"}}},
         ):
             with self.subTest(payload=payload):
                 response = self.client.patch("/api/v1/settings", json=payload)
@@ -347,7 +351,7 @@ class SettingsApiTests(unittest.TestCase):
                     "ask_apex": {
                         "enabled": False,
                         "agent": "lynx",
-                        "lynx": {"runtime": "ollama", "model": "qwen3:1.7b"},
+                        "lynx": {"model": "qwen3:1.7b"},
                     }
                 }
             )
@@ -376,7 +380,6 @@ class SettingsApiTests(unittest.TestCase):
             json={
                 "ask_apex": {
                     "panthera": {
-                        "provider": "gemini",
                         "model": "gemini-3.6-flash",
                     }
                 }

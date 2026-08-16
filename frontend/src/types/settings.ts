@@ -1,9 +1,7 @@
 import type {
   AgentKey,
   CloudEffort,
-  CloudProvider,
   LocalReasoningMode,
-  LocalRuntime,
   TtsEngine,
 } from './telemetry'
 
@@ -63,14 +61,12 @@ export interface PantheraHostedToolsSettings {
 }
 
 export interface PantheraSettings {
-  provider: CloudProvider
   model: string
   effort: CloudEffort
   hosted_tools: PantheraHostedToolsSettings
 }
 
 export interface LynxSettings {
-  runtime: LocalRuntime
   model: string
   context_window: number
   reasoning_mode: LocalReasoningMode
@@ -166,14 +162,12 @@ export interface PantheraHostedToolsPatch {
 }
 
 export interface PantheraSettingsPatch {
-  provider?: CloudProvider
   model?: string
   effort?: CloudEffort
   hosted_tools?: PantheraHostedToolsPatch
 }
 
 export interface LynxSettingsPatch {
-  runtime?: LocalRuntime
   model?: string
   context_window?: number
   reasoning_mode?: LocalReasoningMode

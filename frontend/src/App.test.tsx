@@ -332,7 +332,7 @@ function settingsResponse(
   contextWindow = 16384,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 15,
+    schema_version: 16,
     settings: {
       user_designation: '',
       features: {
@@ -351,7 +351,6 @@ function settingsResponse(
         agent,
         sandbox_mode: false,
         panthera: {
-          provider: 'gemini',
           model: 'gemini-3.6-flash',
           effort: 'focused',
           hosted_tools: {
@@ -361,7 +360,6 @@ function settingsResponse(
           },
         },
         lynx: {
-          runtime: 'llama_cpp',
           model: 'gemma-4-E2B-Q4_K_M.gguf',
           context_window: contextWindow,
           reasoning_mode: 'none',

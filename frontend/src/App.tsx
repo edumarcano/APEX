@@ -64,19 +64,14 @@ import {
   resolveInitialAgentSelection,
 } from './lib/settings'
 import {
-  defaultModelForLynxRuntime,
-  defaultModelForPantheraProvider,
   isLynxKey,
   isPantheraKey,
-  resolveModelCatalog,
 } from './lib/agents'
 import type {
   AgentKey,
   CloudEffort,
-  CloudProvider,
   HostedTool,
   LocalReasoningMode,
-  LocalRuntime,
 } from './types/telemetry'
 import type {
   BriefingMode,
@@ -171,18 +166,14 @@ function applyAskApexSettings(
   askApex: SettingsResponse['settings']['ask_apex'],
   setters: {
     setCloudEffort: (effort: CloudEffort) => void
-    setPantheraProvider: (provider: CloudProvider) => void
     setPantheraModel: (model: string) => void
-    setLynxRuntime: (runtime: LocalRuntime) => void
     setLynxModel: (model: string) => void
     setSandboxMode: (enabled: boolean) => void
     setPantheraHostedTools: (tools: PantheraHostedToolsSettings) => void
   },
 ): void {
   setters.setCloudEffort(askApex.panthera.effort)
-  setters.setPantheraProvider(askApex.panthera.provider)
   setters.setPantheraModel(askApex.panthera.model)
-  setters.setLynxRuntime(askApex.lynx.runtime)
   setters.setLynxModel(askApex.lynx.model)
   setters.setSandboxMode(askApex.sandbox_mode)
   setters.setPantheraHostedTools({ ...askApex.panthera.hosted_tools })
@@ -200,9 +191,7 @@ export default function App(): ReactElement {
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
-  const [pantheraProvider, setPantheraProvider] = useState<CloudProvider>('openai')
   const [pantheraModel, setPantheraModel] = useState('gpt-5.6-luna')
-  const [lynxRuntime, setLynxRuntime] = useState<LocalRuntime>('llama_cpp')
   const [lynxModel, setLynxModel] = useState('gemma-4-E2B-Q4_K_M.gguf')
   const [sandboxMode, setSandboxMode] = useState(false)
   const [pantheraHostedTools, setPantheraHostedTools] = useState<PantheraHostedToolsSettings>({
@@ -383,9 +372,7 @@ export default function App(): ReactElement {
       }
       applyAskApexSettings(response.settings.ask_apex, {
         setCloudEffort,
-        setPantheraProvider,
         setPantheraModel,
-        setLynxRuntime,
         setLynxModel,
         setSandboxMode,
         setPantheraHostedTools,
@@ -433,9 +420,7 @@ export default function App(): ReactElement {
           if (parsed) {
             applyAskApexSettings(parsed.settings.ask_apex, {
               setCloudEffort,
-              setPantheraProvider,
               setPantheraModel,
-              setLynxRuntime,
               setLynxModel,
               setSandboxMode,
               setPantheraHostedTools,
@@ -1131,38 +1116,12 @@ export default function App(): ReactElement {
     void persistAgentSettings({ agent }, agent, { refreshToolCatalog: false })
   }, [persistAgentSettings])
 
-  const handlePantheraProviderChange = useCallback((provider: CloudProvider): void => {
-    const catalog = resolveModelCatalog(agentsStatus.find((agent) => agent.key === 'panthera'))
-    const model = defaultModelForPantheraProvider(provider, catalog)
-    if (!model) {
-      return
-    }
-    setPantheraProvider(provider)
-    setPantheraModel(model)
-    void persistAgentSettings({
-      panthera: { provider, model },
-    }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, agentsStatus, persistAgentSettings])
-
   const handlePantheraModelChange = useCallback((model: string): void => {
     setPantheraModel(model)
     void persistAgentSettings({
       panthera: { model },
     }, activeAgent, { refreshToolCatalog: true })
   }, [activeAgent, persistAgentSettings])
-
-  const handleLynxRuntimeChange = useCallback((runtime: LocalRuntime): void => {
-    const catalog = resolveModelCatalog(agentsStatus.find((agent) => agent.key === 'lynx'))
-    const model = defaultModelForLynxRuntime(runtime, catalog)
-    if (!model) {
-      return
-    }
-    setLynxRuntime(runtime)
-    setLynxModel(model)
-    void persistAgentSettings({
-      lynx: { runtime, model },
-    }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, agentsStatus, persistAgentSettings])
 
   const handleLynxModelChange = useCallback((model: string): void => {
     setLynxModel(model)
@@ -1721,9 +1680,7 @@ export default function App(): ReactElement {
           <CortexWorkspace
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
-            pantheraProvider={pantheraProvider}
             pantheraModel={pantheraModel}
-            lynxRuntime={lynxRuntime}
             lynxModel={lynxModel}
             pantheraHostedTools={pantheraHostedTools}
             devModeActive={devModeActive}
@@ -1768,9 +1725,7 @@ export default function App(): ReactElement {
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
             onAgentChange={handleAgentChange}
-            onPantheraProviderChange={handlePantheraProviderChange}
             onPantheraModelChange={handlePantheraModelChange}
-            onLynxRuntimeChange={handleLynxRuntimeChange}
             onLynxModelChange={handleLynxModelChange}
             onEffortChange={handleEffortChange}
             onHostedToolChange={handleHostedToolChange}

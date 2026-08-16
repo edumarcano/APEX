@@ -18,7 +18,6 @@ from core.api.cortex import (
 def _lynx_settings_mock(*, context_window: int = 16384) -> mock.Mock:
     settings = mock.Mock()
     settings.ask_apex.agent = "lynx"
-    settings.ask_apex.lynx.runtime = "llama_cpp"
     settings.ask_apex.lynx.model = "gemma-4-E2B-Q4_K_M.gguf"
     settings.ask_apex.lynx.context_window = context_window
     settings.ask_apex.panthera.hosted_tools.google_search = True
@@ -43,7 +42,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend.enabled = True
         backend.is_model_resident.side_effect = [False, True]
         settings = _lynx_settings_mock()
-        settings.ask_apex.lynx.runtime = "ollama"
         settings.ask_apex.lynx.model = "qwen3:4b-instruct"
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
@@ -96,11 +94,16 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
     def test_load_rejects_missing_configured_alias(self) -> None:
         backend = mock.Mock()
         backend.enabled = True
+        settings = _lynx_settings_mock()
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
             mock.patch("core.api.cortex.end_local_execution") as end_execution,
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
+            ),
             mock.patch(
                 "core.api.cortex.get_provider_snapshot",
                 return_value=_ollama_snapshot("qwen3:1.7b"),

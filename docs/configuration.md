@@ -114,7 +114,7 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 ## Briefing modes and Agents
 
-APEX exposes two Apex Agents: **Panthera** for cloud work and **Lynx** for local work. Provider, runtime, model, context, reasoning, effort, and hosted-tool settings live underneath those identities.
+APEX exposes two Apex Agents: **Panthera** for cloud work and **Lynx** for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. The selected model profile determines Panthera's provider or Lynx's local runtime automatically.
 
 Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna` and `lynx -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent keys migrate to those models.
 
@@ -122,7 +122,6 @@ Current default model mappings used by documentation checks are `panthera -> gpt
 
 | Setting group | Purpose |
 |---|---|
-| `ask_apex.panthera.provider` | Cloud provider: `openai`, `gemini`, or `xai` |
 | `ask_apex.panthera.model` | Registered cloud model for Panthera |
 | `ask_apex.panthera.effort` | Default Light, Focused, or Extended effort for interactive queries |
 | `ask_apex.panthera.hosted_tools` | Optional Google Search, Google Maps, and X Search when the selected model supports them |
@@ -143,7 +142,6 @@ Brave MCP is the general web-search capability for Panthera when connected. Prov
 
 | Setting group | Purpose |
 |---|---|
-| `ask_apex.lynx.runtime` | Local runtime: `ollama` or `llama_cpp` |
 | `ask_apex.lynx.model` | Registered local model for Lynx |
 | `ask_apex.lynx.context_window` | Selected llama.cpp context preset when applicable |
 | `ask_apex.lynx.reasoning_mode` | `none` or `focused` when the selected model supports reasoning |

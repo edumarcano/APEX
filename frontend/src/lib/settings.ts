@@ -7,8 +7,6 @@ import type {
   AgentKey,
   AgentInitialSelection,
   CloudEffort,
-  CloudProvider,
-  LocalRuntime,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
@@ -36,8 +34,6 @@ import type {
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
 const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'lynx']
-const VALID_CLOUD_PROVIDERS: readonly CloudProvider[] = ['openai', 'gemini', 'xai']
-const VALID_LOCAL_RUNTIMES: readonly LocalRuntime[] = ['ollama', 'llama_cpp']
 
 export { isLocalAgentKey, isPantheraKey, isLynxKey } from './agents'
 
@@ -130,20 +126,6 @@ function isAgentKey(value: unknown): value is AgentKey {
   return typeof value === 'string' && (VALID_AGENT_KEYS as readonly string[]).includes(value)
 }
 
-function isCloudProvider(value: unknown): value is CloudProvider {
-  return (
-    typeof value === 'string' &&
-    (VALID_CLOUD_PROVIDERS as readonly string[]).includes(value)
-  )
-}
-
-function isLocalRuntime(value: unknown): value is LocalRuntime {
-  return (
-    typeof value === 'string' &&
-    (VALID_LOCAL_RUNTIMES as readonly string[]).includes(value)
-  )
-}
-
 function isCloudEffort(value: unknown): value is CloudEffort {
   return (
     typeof value === 'string' && (VALID_CLOUD_EFFORTS as readonly string[]).includes(value)
@@ -202,7 +184,7 @@ function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['pan
   if (!isRecord(value)) {
     return null
   }
-  if (!isCloudProvider(value.provider) || typeof value.model !== 'string' || !value.model.trim()) {
+  if (typeof value.model !== 'string' || !value.model.trim()) {
     return null
   }
   if (!isCloudEffort(value.effort)) {
@@ -213,7 +195,6 @@ function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['pan
     return null
   }
   return {
-    provider: value.provider,
     model: value.model.trim(),
     effort: value.effort,
     hosted_tools: hostedTools,
@@ -225,7 +206,6 @@ function parseLynxSettings(value: unknown): RuntimeSettings['ask_apex']['lynx'] 
     return null
   }
   if (
-    !isLocalRuntime(value.runtime) ||
     typeof value.model !== 'string' ||
     !value.model.trim() ||
     typeof value.context_window !== 'number' ||
@@ -236,7 +216,6 @@ function parseLynxSettings(value: unknown): RuntimeSettings['ask_apex']['lynx'] 
     return null
   }
   return {
-    runtime: value.runtime,
     model: value.model.trim(),
     context_window: value.context_window,
     reasoning_mode: value.reasoning_mode,

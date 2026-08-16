@@ -15,10 +15,7 @@ from pydantic import (
 
 from core.agent.model_catalog import (
     DEFAULT_LYNX_MODEL,
-    DEFAULT_LYNX_RUNTIME,
     DEFAULT_PANTHERA_MODEL,
-    VALID_CLOUD_PROVIDERS,
-    VALID_LOCAL_RUNTIMES,
     get_model_profile,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
@@ -35,6 +32,8 @@ VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "lynx"})
+VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
+VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset({"light", "focused", "extended"})
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
@@ -44,7 +43,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 15
+SETTINGS_SCHEMA_VERSION: int = 16
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -62,10 +61,11 @@ def _default_lynx_context_window() -> int:
     return LLAMA_CPP_RUNTIME_CONFIGS[DEFAULT_LYNX_MODEL].default_context_window
 
 
-def _validate_lynx_context_window(value: int, runtime: LocalRuntime, model: str) -> int:
-    if runtime != "llama_cpp":
-        return value
+def _validate_lynx_context_window(value: int, model: str) -> int:
+    profile = get_model_profile(model)
     llama_runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model)
+    if profile is None or profile.provider != "llama_cpp":
+        return value
     if llama_runtime is None or value not in llama_runtime.allowed_context_windows:
         raise ValueError(
             f"Unsupported local context preset for model {model!r}: {value!r}"
@@ -74,7 +74,7 @@ def _validate_lynx_context_window(value: int, runtime: LocalRuntime, model: str)
 
 
 def _validate_lynx_reasoning_mode(
-    value: LocalReasoningMode, runtime: LocalRuntime, model: str
+    value: LocalReasoningMode, model: str
 ) -> LocalReasoningMode:
     from core.agent.catalog import local_reasoning_modes_for_model
 
@@ -97,23 +97,15 @@ class PantheraHostedToolsSettings(BaseModel):
 
 
 class PantheraSettings(BaseModel):
-    """Cloud provider, model, effort, and hosted-tool preferences."""
+    """Cloud model, effort, and hosted-tool preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    provider: CloudProvider = "openai"
     model: str = DEFAULT_PANTHERA_MODEL
     effort: CloudEffort = "focused"
     hosted_tools: PantheraHostedToolsSettings = Field(
         default_factory=PantheraHostedToolsSettings
     )
-
-    @field_validator("provider")
-    @classmethod
-    def _validate_provider(cls, value: str) -> str:
-        if value not in VALID_CLOUD_PROVIDERS:
-            raise ValueError(f"Unsupported cloud provider: {value!r}")
-        return value
 
     @field_validator("model")
     @classmethod
@@ -124,31 +116,21 @@ class PantheraSettings(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _validate_provider_model(self) -> PantheraSettings:
+    def _validate_cloud_model(self) -> PantheraSettings:
         profile = get_model_profile(self.model)
-        if profile is None or profile.provider != self.provider:
-            raise ValueError(
-                f"Panthera model {self.model!r} does not belong to provider {self.provider!r}"
-            )
+        if profile is None or profile.runtime != "cloud":
+            raise ValueError(f"Unsupported Panthera model: {self.model!r}")
         return self
 
 
 class LynxSettings(BaseModel):
-    """Local runtime, model, context, and reasoning preferences."""
+    """Local model, context, and reasoning preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    runtime: LocalRuntime = DEFAULT_LYNX_RUNTIME
     model: str = DEFAULT_LYNX_MODEL
     context_window: StrictInt = Field(default_factory=_default_lynx_context_window)
     reasoning_mode: LocalReasoningMode = "none"
-
-    @field_validator("runtime")
-    @classmethod
-    def _validate_runtime(cls, value: str) -> str:
-        if value not in VALID_LOCAL_RUNTIMES:
-            raise ValueError(f"Unsupported local runtime: {value!r}")
-        return value
 
     @field_validator("model")
     @classmethod
@@ -162,25 +144,21 @@ class LynxSettings(BaseModel):
     @classmethod
     def _validate_context(cls, value: int, info) -> int:
         data = info.data
-        runtime = data.get("runtime", DEFAULT_LYNX_RUNTIME)
         model = data.get("model", DEFAULT_LYNX_MODEL)
-        return _validate_lynx_context_window(value, runtime, model)
+        return _validate_lynx_context_window(value, model)
 
     @field_validator("reasoning_mode")
     @classmethod
     def _validate_reasoning(cls, value: LocalReasoningMode, info) -> LocalReasoningMode:
         data = info.data
-        runtime = data.get("runtime", DEFAULT_LYNX_RUNTIME)
         model = data.get("model", DEFAULT_LYNX_MODEL)
-        return _validate_lynx_reasoning_mode(value, runtime, model)
+        return _validate_lynx_reasoning_mode(value, model)
 
     @model_validator(mode="after")
-    def _validate_runtime_model(self) -> LynxSettings:
+    def _validate_local_model(self) -> LynxSettings:
         profile = get_model_profile(self.model)
-        if profile is None or profile.provider != self.runtime:
-            raise ValueError(
-                f"Lynx model {self.model!r} does not belong to runtime {self.runtime!r}"
-            )
+        if profile is None or profile.runtime != "local":
+            raise ValueError(f"Unsupported Lynx model: {self.model!r}")
         return self
 
 
@@ -431,7 +409,6 @@ class PantheraHostedToolsPatch(BaseModel):
 class PantheraSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: CloudProvider | None = None
     model: str | None = None
     effort: CloudEffort | None = None
     hosted_tools: PantheraHostedToolsPatch | None = None
@@ -440,7 +417,6 @@ class PantheraSettingsPatch(BaseModel):
 class LynxSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    runtime: LocalRuntime | None = None
     model: str | None = None
     context_window: StrictInt | None = None
     reasoning_mode: LocalReasoningMode | None = None

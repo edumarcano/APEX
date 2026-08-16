@@ -26,7 +26,6 @@ GEMMA_E4B_ALIAS = "gemma-4-e4b-16k"
 
 def panthera_settings(
     *,
-    provider: str = "openai",
     model: str = "gpt-5.6-luna",
     effort: str = "focused",
     google_search: bool = True,
@@ -36,7 +35,6 @@ def panthera_settings(
     return AgentSettings(
         agent="panthera",
         panthera=PantheraSettings(
-            provider=provider,  # type: ignore[arg-type]
             model=model,
             effort=effort,  # type: ignore[arg-type]
             hosted_tools=PantheraHostedToolsSettings(
@@ -50,13 +48,11 @@ def panthera_settings(
 
 def lynx_settings(
     *,
-    runtime: str = "llama_cpp",
     model: str = APODEMUS_MODEL,
     context_window: int | None = None,
     reasoning_mode: str = "none",
 ) -> AgentSettings:
     kwargs: dict[str, object] = {
-        "runtime": runtime,  # type: ignore[arg-type]
         "model": model,
         "reasoning_mode": reasoning_mode,  # type: ignore[arg-type]
     }

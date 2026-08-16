@@ -135,6 +135,7 @@ class ProviderContractTests(unittest.TestCase):
                         native_effort=None,
                         local_context_window=context_window,
                         local_reasoning_mode=profile.reasoning_mode,
+                        model_id=profile.api_model,
                     )
                     self.assertEqual(selected.context_window, context_window)
                     self.assertEqual(

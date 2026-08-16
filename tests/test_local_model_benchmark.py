@@ -373,12 +373,25 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertEqual(cleaned_refs, [reference])
 
     def test_warmup_is_not_counted_as_a_measured_repetition(self) -> None:
-        configurations = benchmark.build_configurations(
-            agents=("lynx",),
-            context=16384,
-            all_contexts=False,
-            reasoning_modes=("none",),
-        )
+        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_LYNX_MODEL)
+        assert default_profile is not None
+        with (
+            mock.patch.object(
+                benchmark,
+                "resolve_selected_model_profile",
+                return_value=default_profile,
+            ),
+            mock.patch(
+                "core.agent.catalog.resolve_selected_model_profile",
+                return_value=default_profile,
+            ),
+        ):
+            configurations = benchmark.build_configurations(
+                agents=("lynx",),
+                context=16384,
+                all_contexts=False,
+                reasoning_modes=("none",),
+            )
         calls: list[str] = []
         response = AgentQueryResponse(answer="ready", agent_used={})
 

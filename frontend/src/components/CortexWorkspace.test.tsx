@@ -87,9 +87,7 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
   return {
     activeAgent: 'panthera',
     cloudEffort: 'focused',
-    pantheraProvider: 'openai',
     pantheraModel: 'gpt-5.6-luna',
-    lynxRuntime: 'llama_cpp',
     lynxModel: 'gemma-4-E2B-Q4_K_M.gguf',
     pantheraHostedTools: { google_search: true, google_maps: true, x_search: true },
     devModeActive: false,
@@ -119,9 +117,7 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
     snapshotAvailable: true,
     onSnapshotAttachedChange: vi.fn(),
     onAgentChange: vi.fn(),
-    onPantheraProviderChange: vi.fn(),
     onPantheraModelChange: vi.fn(),
-    onLynxRuntimeChange: vi.fn(),
     onLynxModelChange: vi.fn(),
     onEffortChange: vi.fn(),
     onHostedToolChange: vi.fn(),
@@ -250,6 +246,24 @@ describe('CortexWorkspace', () => {
     expect(screen.getByText(/In \$0\.20\/1M/)).toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'Verify access' })[0])
     expect(onVerifyCloudAgent).toHaveBeenCalledWith('panthera')
+  })
+
+  it('exposes model selection while routing provider and runtime in the backend', () => {
+    const { rerender } = render(
+      <CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />,
+    )
+
+    expect(
+      within(screen.getByRole('region', { name: 'Panthera model' })).getByRole('combobox'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Panthera provider' })).not.toBeInTheDocument()
+
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx] })} />)
+    expect(
+      within(screen.getByRole('region', { name: 'Lynx model' })).getByRole('combobox'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Lynx runtime' })).not.toBeInTheDocument()
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />)
   })
 
   it('keeps agent marks accessible for Panthera and Lynx', async () => {

@@ -7,11 +7,9 @@ import type {
   AgentStatus,
   AgentKey,
   CloudEffort,
-  CloudProvider,
   HostedTool,
   LocalContextUsage,
   LocalReasoningMode,
-  LocalRuntime,
   ToolCatalog,
   ToolPreflightEstimate,
   ToolOutputItem,
@@ -20,13 +18,8 @@ import type { PantheraHostedToolsSettings } from '../types/settings'
 import {
   formatContextWindowLabel,
   hostedCapabilitiesForModel,
-  modelsForLynxRuntime,
-  modelsForPantheraProvider,
   providerDisplayName,
-  providersForCatalog,
   resolveModelCatalog,
-  runtimeDisplayName,
-  runtimesForCatalog,
 } from '../lib/agents'
 
 import ReactMarkdown from 'react-markdown'
@@ -42,9 +35,7 @@ import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 interface CortexWorkspaceProps {
   activeAgent: AgentKey
   cloudEffort: CloudEffort
-  pantheraProvider: CloudProvider
   pantheraModel: string
-  lynxRuntime: LocalRuntime
   lynxModel: string
   pantheraHostedTools: PantheraHostedToolsSettings
   devModeActive: boolean
@@ -89,9 +80,7 @@ interface CortexWorkspaceProps {
   snapshotAvailable: boolean
   onSnapshotAttachedChange: (attached: boolean) => void
   onAgentChange: (agent: AgentKey) => void
-  onPantheraProviderChange: (provider: CloudProvider) => void
   onPantheraModelChange: (model: string) => void
-  onLynxRuntimeChange: (runtime: LocalRuntime) => void
   onLynxModelChange: (model: string) => void
   onEffortChange: (effort: CloudEffort) => void
   onHostedToolChange: (tool: HostedTool, enabled: boolean) => void
@@ -424,10 +413,9 @@ function RuntimeControls({
   const catalog = resolveModelCatalog(
     activeAgent === 'panthera' ? pantheraStatus : lynxStatus,
   )
-  const pantheraProviders = providersForCatalog(catalog)
-  const lynxRuntimes = runtimesForCatalog(catalog)
-  const pantheraModels = modelsForPantheraProvider(props.pantheraProvider, catalog)
-  const lynxModels = modelsForLynxRuntime(props.lynxRuntime, catalog)
+  const models = catalog.filter(
+    (entry) => entry.runtime === (activeAgent === 'panthera' ? 'cloud' : 'local'),
+  )
   const hostedCapabilities = hostedCapabilitiesForModel(
     activeAgent === 'panthera' ? props.pantheraModel : props.lynxModel,
     catalog,
@@ -435,30 +423,18 @@ function RuntimeControls({
 
   return <div className="space-y-4">
     {activeAgent === 'panthera' ? <>
-      <section className="space-y-2" aria-label="Panthera provider">
-        <label htmlFor="cortex-panthera-provider" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Provider</label>
-        <select id="cortex-panthera-provider" value={props.pantheraProvider} onChange={(event) => props.onPantheraProviderChange(event.target.value as CloudProvider)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {pantheraProviders.map((provider) => <option key={provider} value={provider}>{providerDisplayName(provider)}</option>)}
-        </select>
-      </section>
       <section className="space-y-2" aria-label="Panthera model">
         <label htmlFor="cortex-panthera-model" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Model</label>
         <select id="cortex-panthera-model" value={props.pantheraModel} onChange={(event) => props.onPantheraModelChange(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {pantheraModels.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
+          {models.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
         </select>
       </section>
       {pantheraStatus?.effort_options?.length ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{pantheraStatus.effort_options.map((effort) => <option key={effort} value={effort}>{effort.slice(0, 1).toUpperCase()}{effort.slice(1)}</option>)}</select></section> : null}
     </> : <>
-      <section className="space-y-2" aria-label="Lynx runtime">
-        <label htmlFor="cortex-lynx-runtime" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Runtime</label>
-        <select id="cortex-lynx-runtime" value={props.lynxRuntime} onChange={(event) => props.onLynxRuntimeChange(event.target.value as LocalRuntime)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {lynxRuntimes.map((runtime) => <option key={runtime} value={runtime}>{runtimeDisplayName(runtime)}</option>)}
-        </select>
-      </section>
       <section className="space-y-2" aria-label="Lynx model">
         <label htmlFor="cortex-lynx-model" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Model</label>
         <select id="cortex-lynx-model" value={props.lynxModel} onChange={(event) => props.onLynxModelChange(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {lynxModels.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
+          {models.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
         </select>
       </section>
       {activeStatus ? <>

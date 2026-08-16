@@ -197,12 +197,10 @@ class SettingsStoreLoadTests(unittest.TestCase):
             SettingsPatch(
                 ask_apex=AgentSettingsPatch(
                     panthera=PantheraSettingsPatch(
-                        provider="xai",
                         model="grok-4.5",
                         effort="extended",
                     ),
                     lynx=LynxSettingsPatch(
-                        runtime="ollama",
                         model="qwen3:1.7b",
                     ),
                 )
@@ -216,6 +214,9 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertEqual(agent_settings.panthera.model, "grok-4.5")
         self.assertEqual(agent_settings.panthera.effort, "extended")
         self.assertEqual(agent_settings.lynx.model, "qwen3:1.7b")
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertNotIn("provider", written["ask_apex"]["panthera"])
+        self.assertNotIn("runtime", written["ask_apex"]["lynx"])
 
     def test_lynx_briefing_mode_survives_reload(self) -> None:
         store = self._store()
@@ -546,7 +547,7 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch(
                 ask_apex=AgentSettingsPatch(
                     panthera=PantheraSettingsPatch(
-                        provider="gemini", model="gemini-3.6-flash"
+                        model="gemini-3.6-flash"
                     )
                 )
             )
@@ -555,7 +556,7 @@ class SettingsStorePatchTests(unittest.TestCase):
             SettingsPatch(
                 ask_apex=AgentSettingsPatch(
                     panthera=PantheraSettingsPatch(
-                        provider="xai", model="grok-4.5"
+                        model="grok-4.5"
                     )
                 )
             )

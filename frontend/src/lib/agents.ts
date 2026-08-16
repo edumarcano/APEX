@@ -3,16 +3,12 @@ import type {
   AgentRuntime,
   AgentStability,
   AgentStatus,
-  CloudProvider,
   HostedTool,
   LocalRuntime,
   ModelCatalogEntry,
 } from '../types/telemetry'
 
 export const AGENT_KEYS = ['panthera', 'lynx'] as const satisfies readonly AgentKey[]
-
-export const PANTHERA_PROVIDERS = ['openai', 'gemini', 'xai'] as const satisfies readonly CloudProvider[]
-export const LYNX_RUNTIMES = ['ollama', 'llama_cpp'] as const satisfies readonly LocalRuntime[]
 
 export function isPantheraKey(value: unknown): value is 'panthera' {
   return value === 'panthera'
@@ -100,46 +96,6 @@ export function resolveModelCatalog(
   return agentStatus?.model_catalog ?? []
 }
 
-export function providersForCatalog(
-  catalog: readonly ModelCatalogEntry[],
-): CloudProvider[] {
-  const available = new Set(
-    catalog
-      .filter((entry) => entry.runtime === 'cloud')
-      .map((entry) => entry.provider as CloudProvider),
-  )
-  return PANTHERA_PROVIDERS.filter((provider) => available.has(provider))
-}
-
-export function runtimesForCatalog(
-  catalog: readonly ModelCatalogEntry[],
-): LocalRuntime[] {
-  const available = new Set(
-    catalog
-      .filter((entry) => entry.runtime === 'local')
-      .map((entry) => entry.provider as LocalRuntime),
-  )
-  return LYNX_RUNTIMES.filter((runtime) => available.has(runtime))
-}
-
-export function modelsForPantheraProvider(
-  provider: CloudProvider,
-  catalog: readonly ModelCatalogEntry[],
-): ModelCatalogEntry[] {
-  return catalog.filter(
-    (entry) => entry.runtime === 'cloud' && entry.provider === provider,
-  )
-}
-
-export function modelsForLynxRuntime(
-  runtime: LocalRuntime,
-  catalog: readonly ModelCatalogEntry[],
-): ModelCatalogEntry[] {
-  return catalog.filter(
-    (entry) => entry.runtime === 'local' && entry.provider === runtime,
-  )
-}
-
 export function findModelCatalogEntry(
   modelId: string,
   catalog: readonly ModelCatalogEntry[],
@@ -152,20 +108,6 @@ export function hostedCapabilitiesForModel(
   catalog: readonly ModelCatalogEntry[],
 ): HostedTool[] {
   return findModelCatalogEntry(modelId, catalog)?.hosted_capabilities ?? []
-}
-
-export function defaultModelForPantheraProvider(
-  provider: CloudProvider,
-  catalog: readonly ModelCatalogEntry[],
-): string | null {
-  return modelsForPantheraProvider(provider, catalog)[0]?.model_id ?? null
-}
-
-export function defaultModelForLynxRuntime(
-  runtime: LocalRuntime,
-  catalog: readonly ModelCatalogEntry[],
-): string | null {
-  return modelsForLynxRuntime(runtime, catalog)[0]?.model_id ?? null
 }
 
 export function usesSandboxHistory(

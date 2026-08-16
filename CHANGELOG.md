@@ -6,7 +6,7 @@
 
 **In progress:** August 15, 2026
 
-APEX now exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Provider, runtime, model, context, reasoning, effort, and hosted-tool settings live underneath those identities instead of in separate genus-based Agent names. Panthera and Lynx are at version 2.0.
+APEX now exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities instead of in separate genus-based Agent names; each model profile determines its provider or local runtime. Panthera and Lynx are at version 2.0.
 
 ---
 
@@ -14,7 +14,7 @@ APEX now exposes two Apex Agents: Panthera for cloud work and Lynx for local wor
 
 - Consolidated the product roster to Panthera and Lynx. Former genus-based Agents such as Apodemus, Neotoma, Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, and Mus map to registered model configuration and settings migration targets instead of separate Apex Agents.
 - Reclaimed Lynx as the durable local Agent identity. The name previously belonged to an earlier local profile era and was later retired in favor of Apodemus and Neotoma.
-- Moved cloud and local model catalogs under Panthera and Lynx settings (`ask_apex.panthera`, `ask_apex.lynx`) with schema version `15`.
+- Moved cloud and local model catalogs under Panthera and Lynx settings (`ask_apex.panthera`, `ask_apex.lynx`) with schema version `16`; persisted route settings contain only the selected model.
 - Renamed llama.cpp router presets from Agent-based aliases such as `apodemus-16k` to model-based aliases such as `gemma-4-e2b-16k`, while keeping legacy alias resolution for existing machine-local presets.
 - Updated briefing modes to `panthera`, `lynx`, and `structured_digest`, with Panthera falling back to Lynx and then Structured Digest.
 - Replaced the Acinonyx-specific development sandbox with `ask_apex.sandbox_mode` under `DEV_MODE`, using the `sandbox` history partition and a restricted non-personal tool allowlist.
@@ -28,7 +28,7 @@ APEX now exposes two Apex Agents: Panthera for cloud work and Lynx for local wor
 ### API Changes
 
 - `GET /api/v1/agents` now returns Panthera and Lynx with `available_providers`, `available_models`, and selected-model metadata.
-- Settings and briefing contracts use schema version `15` with nested `panthera` and `lynx` groups.
+- Settings and briefing contracts use schema version `16` with nested `panthera` and `lynx` groups; provider/runtime routing is derived from the selected model.
 - `POST /api/v1/cortex/local-model/load` accepts only `lynx`.
 - `POST /api/v1/cortex/query` uses `history_partition: "sandbox"` for development sandbox queries.
 

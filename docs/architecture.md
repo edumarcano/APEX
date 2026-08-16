@@ -172,7 +172,7 @@ Attached context and tool results are separately marked as untrusted model data.
 
 ### Panthera and Lynx
 
-APEX exposes two Apex Agents. Panthera is the cloud identity; Lynx is the local identity. Provider, runtime, model, context, reasoning, effort, and hosted-tool settings live underneath those identities.
+APEX exposes two Apex Agents. Panthera is the cloud identity; Lynx is the local identity. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. Each selected model profile determines the provider or local runtime used for execution.
 
 | Agent | Default model | Effort | Maximum tool loop |
 |---|---|---|---|

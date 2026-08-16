@@ -183,7 +183,6 @@ class CloudAgentVerificationTests(unittest.TestCase):
         store = mock.Mock()
         store.get_snapshot.return_value.ask_apex = AgentSettings(
             panthera=PantheraSettings(
-                provider="openai",
                 model="gpt-5.6-luna",
             )
         )
@@ -203,7 +202,6 @@ class CloudAgentVerificationTests(unittest.TestCase):
 
             store.get_snapshot.return_value.ask_apex = AgentSettings(
                 panthera=PantheraSettings(
-                    provider="gemini",
                     model="gemini-3.6-flash",
                 )
             )
@@ -222,7 +220,6 @@ class CloudAgentVerificationTests(unittest.TestCase):
         store = mock.Mock()
         store.get_snapshot.return_value.ask_apex = AgentSettings(
             panthera=PantheraSettings(
-                provider="gemini",
                 model="gemini-3.6-flash",
             )
         )

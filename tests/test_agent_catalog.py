@@ -32,7 +32,6 @@ class AgentSelectionTests(unittest.TestCase):
 
     def test_cloud_settings_resolve_profile_and_effort(self) -> None:
         agent_settings = panthera_settings(
-            provider="gemini",
             model="gemini-3.6-flash",
             effort="extended",
         )
@@ -42,14 +41,14 @@ class AgentSelectionTests(unittest.TestCase):
         self.assertEqual((mode, profile, effort), ("cloud", "panthera", "extended"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
-        agent_settings = lynx_settings(runtime="ollama", model="qwen3:1.7b")
+        agent_settings = lynx_settings(model="qwen3:1.7b")
         mode, profile, effort = resolve_agent_selection(
             agent_settings, dev_mode=False
         )
         self.assertEqual((mode, profile, effort), ("local", "lynx", None))
 
     def test_dev_only_local_model_remains_selectable_in_dev_mode(self) -> None:
-        agent_settings = lynx_settings(runtime="ollama", model="qwen3:4b-instruct")
+        agent_settings = lynx_settings(model="qwen3:4b-instruct")
         self.assertTrue(is_agent_visible("lynx", dev_mode=True))
         self.assertEqual(agent_settings.lynx.model, "qwen3:4b-instruct")
 

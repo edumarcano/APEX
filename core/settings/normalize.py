@@ -664,16 +664,33 @@ def _normalize_agent_settings(
     panthera_raw = migrated.get("panthera")
     if isinstance(panthera_raw, dict):
         panthera: dict[str, Any] = {}
-        provider = panthera_raw.get("provider")
-        if isinstance(provider, str) and provider.strip().lower() in VALID_CLOUD_PROVIDERS:
-            panthera["provider"] = provider.strip().lower()
-        elif provider is not None:
-            _record_error(errors, "ask_apex.panthera.provider is not valid")
+        legacy_provider = panthera_raw.get("provider")
+        if (
+            isinstance(legacy_provider, str)
+            and legacy_provider.strip().lower() in VALID_CLOUD_PROVIDERS
+        ):
+            legacy_provider = legacy_provider.strip().lower()
+        else:
+            legacy_provider = None
         model = panthera_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
-            panthera["model"] = model.strip()
+            profile = get_model_profile(model.strip())
+            assert profile is not None
+            _, reconciled_model = reconcile_panthera_provider_model(
+                profile.provider,  # type: ignore[arg-type]
+                model.strip(),
+                dev_mode=is_dev_mode(),
+            )
+            panthera["model"] = reconciled_model
         elif model is not None:
             _record_error(errors, "ask_apex.panthera.model is not valid")
+        elif isinstance(legacy_provider, str):
+            models = cloud_models_for_provider(
+                legacy_provider,  # type: ignore[arg-type]
+                dev_mode=is_dev_mode(),
+            )
+            if models:
+                panthera["model"] = models[0].model_id
         effort = panthera_raw.get("effort")
         if isinstance(effort, str) and effort.strip().lower() in VALID_CLOUD_EFFORTS:
             panthera["effort"] = effort.strip().lower()
@@ -693,16 +710,33 @@ def _normalize_agent_settings(
     lynx_raw = migrated.get("lynx")
     if isinstance(lynx_raw, dict):
         lynx: dict[str, Any] = {}
-        runtime = lynx_raw.get("runtime")
-        if isinstance(runtime, str) and runtime.strip().lower() in VALID_LOCAL_RUNTIMES:
-            lynx["runtime"] = runtime.strip().lower()
-        elif runtime is not None:
-            _record_error(errors, "ask_apex.lynx.runtime is not valid")
+        legacy_runtime = lynx_raw.get("runtime")
+        if (
+            isinstance(legacy_runtime, str)
+            and legacy_runtime.strip().lower() in VALID_LOCAL_RUNTIMES
+        ):
+            legacy_runtime = legacy_runtime.strip().lower()
+        else:
+            legacy_runtime = None
         model = lynx_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
-            lynx["model"] = model.strip()
+            profile = get_model_profile(model.strip())
+            assert profile is not None
+            _, reconciled_model = reconcile_lynx_runtime_model(
+                profile.provider,  # type: ignore[arg-type]
+                model.strip(),
+                dev_mode=is_dev_mode(),
+            )
+            lynx["model"] = reconciled_model
         elif model is not None:
             _record_error(errors, "ask_apex.lynx.model is not valid")
+        elif isinstance(legacy_runtime, str):
+            models = local_models_for_runtime(
+                legacy_runtime,  # type: ignore[arg-type]
+                dev_mode=is_dev_mode(),
+            )
+            if models:
+                lynx["model"] = models[0].model_id
         context_window = lynx_raw.get("context_window")
         if isinstance(context_window, int) and not isinstance(context_window, bool):
             lynx["context_window"] = context_window
@@ -716,69 +750,16 @@ def _normalize_agent_settings(
         if lynx:
             result["lynx"] = lynx
 
-    panthera_result = result.get("panthera")
-    if isinstance(panthera_result, dict):
-        provider = panthera_result.get("provider")
-        model = panthera_result.get("model")
-        if isinstance(provider, str) and isinstance(model, str):
-            reconciled_provider, reconciled_model = reconcile_panthera_provider_model(
-                provider,  # type: ignore[arg-type]
-                model,
-                dev_mode=is_dev_mode(),
-            )
-            panthera_result["provider"] = reconciled_provider
-            panthera_result["model"] = reconciled_model
-        elif isinstance(provider, str):
-            models = cloud_models_for_provider(
-                provider,  # type: ignore[arg-type]
-                dev_mode=is_dev_mode(),
-            )
-            if models:
-                panthera_result["model"] = models[0].model_id
-        elif isinstance(model, str):
-            profile = get_model_profile(model)
-            if profile is not None:
-                reconciled_provider, reconciled_model = reconcile_panthera_provider_model(
-                    profile.provider,
-                    model,
-                    dev_mode=is_dev_mode(),
-                )
-                panthera_result["provider"] = reconciled_provider
-                panthera_result["model"] = reconciled_model
-
     lynx_result = result.get("lynx")
     if isinstance(lynx_result, dict):
-        runtime = lynx_result.get("runtime")
-        model = lynx_result.get("model")
-        if isinstance(runtime, str) and isinstance(model, str):
-            reconciled_runtime, reconciled_model = reconcile_lynx_runtime_model(
-                runtime,  # type: ignore[arg-type]
-                model,
-                dev_mode=is_dev_mode(),
-            )
-            lynx_result["runtime"] = reconciled_runtime
-            lynx_result["model"] = reconciled_model
-        elif isinstance(runtime, str):
-            models = local_models_for_runtime(
-                runtime,  # type: ignore[arg-type]
-                dev_mode=is_dev_mode(),
-            )
-            if models:
-                lynx_result["model"] = models[0].model_id
-        elif isinstance(model, str):
-            profile = get_model_profile(model)
-            if profile is not None:
-                reconciled_runtime, reconciled_model = reconcile_lynx_runtime_model(
-                    profile.provider,
-                    model,
-                    dev_mode=is_dev_mode(),
-                )
-                lynx_result["runtime"] = reconciled_runtime
-                lynx_result["model"] = reconciled_model
-
-        runtime = lynx_result.get("runtime", DEFAULT_LYNX_RUNTIME)
         model = lynx_result.get("model", DEFAULT_LYNX_MODEL)
-        if isinstance(runtime, str) and isinstance(model, str):
+        profile = get_model_profile(model) if isinstance(model, str) else None
+        runtime = (
+            profile.provider
+            if profile is not None and profile.runtime == "local"
+            else DEFAULT_LYNX_RUNTIME
+        )
+        if isinstance(model, str):
             context_window = lynx_result.get("context_window")
             if isinstance(context_window, int) and not isinstance(context_window, bool):
                 lynx_result["context_window"] = reconcile_lynx_context_window(

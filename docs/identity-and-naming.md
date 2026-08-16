@@ -80,7 +80,7 @@ The **Cortex Engine** is the backend that runs Agent requests, coordinates conte
 - **Panthera** for cloud work through a selected provider and model.
 - **Lynx** for local on-device work through Ollama or llama.cpp and a selected model.
 
-Provider, runtime, model, context, reasoning, effort, tool policy, and cost profile are configuration underneath the Agent identity rather than separate product Agents.
+Model, context, reasoning, effort, tool policy, and cost profile are configuration underneath the Agent identity rather than separate product Agents. The selected model profile supplies the provider or local runtime automatically.
 
 ## Why Agents use genus names
 

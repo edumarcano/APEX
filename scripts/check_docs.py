@@ -456,13 +456,23 @@ def check_default_briefing_provider(
     """Keep README briefing paths aligned with the current synthesis contract."""
     import json
 
-    from core.agent.catalog import AGENT_SPECS, resolve_selected_model_profile
+    from core.agent.catalog import AGENT_SPECS
+    from core.agent.model_catalog import get_model_profile
     from core.synthesis.models import VALID_BRIEFING_MODES
 
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+    agent_settings = config.get("ask_apex", {})
+
+    def provider_for_mode(mode: str) -> str:
+        model_id = agent_settings.get(mode, {}).get("model")
+        profile = get_model_profile(model_id) if isinstance(model_id, str) else None
+        if profile is None:
+            raise ValueError(f"Tracked config selects an unknown {mode} model: {model_id!r}")
+        return profile.provider
+
     default_mode = config.get("briefing", {}).get("default_mode", "panthera")
     if default_mode in AGENT_SPECS:
-        provider = resolve_selected_model_profile(default_mode).provider
+        provider = provider_for_mode(default_mode)
         expected = PROVIDER_DISPLAY_NAMES[provider]
     else:
         expected = "Structured Digest"
@@ -502,7 +512,7 @@ def check_default_briefing_provider(
         expected_paths = {
             "Structured Digest"
             if mode == "structured_digest"
-            else PROVIDER_DISPLAY_NAMES[resolve_selected_model_profile(mode).provider]
+            else PROVIDER_DISPLAY_NAMES[provider_for_mode(mode)]
             for mode in VALID_BRIEFING_MODES
         }
         for provider in sorted(expected_paths):
