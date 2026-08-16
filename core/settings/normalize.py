@@ -738,7 +738,13 @@ def _normalize_agent_settings(
         elif isinstance(model, str):
             profile = get_model_profile(model)
             if profile is not None:
-                panthera_result["provider"] = profile.provider
+                reconciled_provider, reconciled_model = reconcile_panthera_provider_model(
+                    profile.provider,
+                    model,
+                    dev_mode=is_dev_mode(),
+                )
+                panthera_result["provider"] = reconciled_provider
+                panthera_result["model"] = reconciled_model
 
     lynx_result = result.get("lynx")
     if isinstance(lynx_result, dict):
@@ -762,7 +768,13 @@ def _normalize_agent_settings(
         elif isinstance(model, str):
             profile = get_model_profile(model)
             if profile is not None:
-                lynx_result["runtime"] = profile.provider
+                reconciled_runtime, reconciled_model = reconcile_lynx_runtime_model(
+                    profile.provider,
+                    model,
+                    dev_mode=is_dev_mode(),
+                )
+                lynx_result["runtime"] = reconciled_runtime
+                lynx_result["model"] = reconciled_model
 
         runtime = lynx_result.get("runtime", DEFAULT_LYNX_RUNTIME)
         model = lynx_result.get("model", DEFAULT_LYNX_MODEL)

@@ -83,7 +83,11 @@ def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
     if not api_key:
         raise ValueError("Cloud verification requires configured credentials.")
 
-    cache_key = _route_cache_key(agent_key)
+    cache_key = _route_cache_key(
+        agent_key,
+        provider=model_profile.provider,
+        model=model_profile.model_id,
+    )
     with _LOCK:
         if cache_key in _IN_FLIGHT:
             raise RuntimeError("Cloud verification is already in progress.")

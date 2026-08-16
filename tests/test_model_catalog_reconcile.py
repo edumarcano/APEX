@@ -68,6 +68,23 @@ class ModelCatalogReconcileTests(unittest.TestCase):
         self.assertEqual(panthera["provider"], "openai")
         self.assertEqual(panthera["model"], "gpt-5.6-luna")
 
+    def test_normalize_layer_reconciles_model_only_dev_only_panthera(self) -> None:
+        with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):
+            normalized = normalize_layer(
+                {
+                    "ask_apex": {
+                        "panthera": {
+                            "model": "grok-4.5",
+                        }
+                    }
+                },
+                layer_name="config.local.json",
+            )
+
+        panthera = normalized["ask_apex"]["panthera"]
+        self.assertEqual(panthera["provider"], "openai")
+        self.assertEqual(panthera["model"], "gpt-5.6-luna")
+
     def test_normalize_layer_reconciles_saved_dev_only_lynx_route(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):
             normalized = normalize_layer(
@@ -76,6 +93,23 @@ class ModelCatalogReconcileTests(unittest.TestCase):
                         "lynx": {
                             "runtime": "ollama",
                             "model": "qwen3:4b-instruct",
+                        }
+                    }
+                },
+                layer_name="config.local.json",
+            )
+
+        lynx = normalized["ask_apex"]["lynx"]
+        self.assertEqual(lynx["runtime"], "llama_cpp")
+        self.assertEqual(lynx["model"], "gemma-4-E2B-Q4_K_M.gguf")
+
+    def test_normalize_layer_reconciles_model_only_dev_only_lynx(self) -> None:
+        with mock.patch("core.settings.normalize.is_dev_mode", return_value=False):
+            normalized = normalize_layer(
+                {
+                    "ask_apex": {
+                        "lynx": {
+                            "model": "qwen3:1.7b",
                         }
                     }
                 },
