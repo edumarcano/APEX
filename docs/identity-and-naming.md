@@ -100,7 +100,7 @@ Things such as reasoning levels, context sizes, hosted tools, model stability, a
 
 **Apex Panthera** is the cloud Agent.
 
-*Panthera* is the genus that includes lions, tigers, leopards, jaguars, and snow leopards. The name fits an Agent that can reach beyond the local machine and use larger cloud models.
+*Panthera* is the genus of big cats, including lions, tigers, leopards, jaguars, and snow leopards. The name fits an Agent that can reach beyond the local machine and use larger cloud models.
 
 Panthera is the general-purpose Agent for cloud work: answering questions, planning, research, and other tasks where a cloud model makes sense.
 
@@ -110,7 +110,7 @@ Its selected model can come from different supported providers. Changing the mod
 
 **Apex Felis** is the local Agent.
 
-*Felis* is the genus of small cats. The name fits an Agent that stays close to home: local, private, and running on the user's own machine.
+*Felis* is the genus that includes the domestic cat and several closely related small wild cats. The name fits an Agent that stays close to home: local, private, and running on the user's own machine.
 
 Felis is for work that should stay local or use locally managed models.
 
