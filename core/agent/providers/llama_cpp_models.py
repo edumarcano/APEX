@@ -17,39 +17,88 @@ from core.agent.types import LocalReasoningMode
 class LlamaCppRuntimeConfig(BaseModel):
     """Data-driven runtime capabilities for one registered llama.cpp Agent."""
 
-    default_temperature: float = Field(description="Sampling temperature used by this local runtime profile.")
-    allowed_context_windows: tuple[int, ...] = Field(description="Discrete context presets exposed by the HUD.")
-    default_context_window: int = Field(description="Context preset used when no persisted preference exists.")
-    high_resource_context_options: tuple[int, ...] = Field(description="Context presets that receive a high-resource UI label.")
-    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(description="Provider-supported local reasoning modes for this Agent.")
-    default_reasoning_mode: LocalReasoningMode = Field(default="none", description="Reasoning mode used when no persisted preference exists.")
-    maximum_context_window: int = Field(description="Native model context metadata, not an exposed preset.")
-    runtime_model_ids: dict[int, str] = Field(description="Context-window-to-router-alias mapping for this Agent.")
-    tool_select_max_tokens: int = Field(description="Token ceiling when the model is selecting a tool.")
-    final_answer_max_tokens: int = Field(description="Token ceiling for the final text response.")
-    focused_tool_select_max_tokens: int = Field(description="Completion ceiling for tool selection when native reasoning is enabled.")
-    focused_final_answer_max_tokens: int = Field(description="Completion ceiling for final answers when native reasoning is enabled.")
-    generation_timeout: int = Field(description="Hard timeout in seconds for a single model generation call.")
-    ram_limit: float = Field(description="Maximum host RAM utilization percentage before load is gated.")
-    cpu_limit: float = Field(description="Maximum host CPU utilization percentage before load is gated.")
-    parallel_tool_calls: bool = Field(description="Whether the provider may emit multiple structured tool calls.")
+    default_temperature: float = Field(
+        description="Sampling temperature used by this local runtime profile."
+    )
+    allowed_context_windows: tuple[int, ...] = Field(
+        description="Discrete context presets exposed by the HUD."
+    )
+    default_context_window: int = Field(
+        description="Context preset used when no persisted preference exists."
+    )
+    high_resource_context_options: tuple[int, ...] = Field(
+        description="Context presets that receive a high-resource UI label."
+    )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        description="Provider-supported local reasoning modes for this Agent."
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        default="none",
+        description="Reasoning mode used when no persisted preference exists.",
+    )
+    maximum_context_window: int = Field(
+        description="Native model context metadata, not an exposed preset."
+    )
+    runtime_model_ids: dict[int, str] = Field(
+        description="Context-window-to-router-alias mapping for this Agent."
+    )
+    tool_select_max_tokens: int = Field(
+        description="Token ceiling when the model is selecting a tool."
+    )
+    final_answer_max_tokens: int = Field(
+        description="Token ceiling for the final text response."
+    )
+    focused_tool_select_max_tokens: int = Field(
+        description=(
+            "Completion ceiling for tool selection when native reasoning is enabled."
+        )
+    )
+    focused_final_answer_max_tokens: int = Field(
+        description=(
+            "Completion ceiling for final answers when native reasoning is enabled."
+        )
+    )
+    generation_timeout: int = Field(
+        description="Hard timeout in seconds for a single model generation call."
+    )
+    ram_limit: float = Field(
+        description="Maximum host RAM utilization percentage before load is gated."
+    )
+    cpu_limit: float = Field(
+        description="Maximum host CPU utilization percentage before load is gated."
+    )
+    parallel_tool_calls: bool = Field(
+        description="Whether the provider may emit multiple structured tool calls."
+    )
 
     @model_validator(mode="after")
     def _validate_runtime_contract(self) -> LlamaCppRuntimeConfig:
         if self.default_context_window not in self.allowed_context_windows:
-            raise ValueError("default_context_window must be one of allowed_context_windows")
+            raise ValueError(
+                "default_context_window must be one of allowed_context_windows"
+            )
         if self.maximum_context_window < max(self.allowed_context_windows):
-            raise ValueError("maximum_context_window must be at least every allowed context value")
+            raise ValueError(
+                "maximum_context_window must be at least every allowed context value"
+            )
         if set(self.runtime_model_ids) != set(self.allowed_context_windows):
-            raise ValueError("runtime_model_ids must provide exactly one alias per allowed context")
-        if not set(self.high_resource_context_options).issubset(self.allowed_context_windows):
-            raise ValueError("high_resource_context_options must be allowed context presets")
+            raise ValueError(
+                "runtime_model_ids must provide exactly one alias per allowed context"
+            )
+        if not set(self.high_resource_context_options).issubset(
+            self.allowed_context_windows
+        ):
+            raise ValueError(
+                "high_resource_context_options must be allowed context presets"
+            )
         if not self.supported_reasoning_modes:
             raise ValueError("supported_reasoning_modes must not be empty")
         if "none" not in self.supported_reasoning_modes:
             raise ValueError("supported_reasoning_modes must include 'none'")
         if self.default_reasoning_mode not in self.supported_reasoning_modes:
-            raise ValueError("default_reasoning_mode must be a supported reasoning mode")
+            raise ValueError(
+                "default_reasoning_mode must be a supported reasoning mode"
+            )
         return self
 
 
@@ -60,39 +109,95 @@ class LlamaCppModelProfile(BaseModel):
     runtime: ClassVar[Literal["local"]] = "local"
 
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    api_model: str = Field(description="Configured GGUF model identity shown in Agent metadata.")
-    stability: Literal["stable", "preview", "experimental"] = Field(description="Release stage classification of the target model.")
-    default_temperature: float = Field(description="Lower temperature values minimize tool-calling hallucinations.")
-    max_tool_turns: int = Field(description="Turn boundary ceiling to prevent infinite loops.")
-    max_tool_calls: int = Field(description="Maximum individual tool executions allowed per session.")
-    context_window: int = Field(description="Selected input token context window for this load.")
-    default_context_window: int = Field(description="Context preset used when no persisted preference exists.")
-    maximum_context_window: int = Field(description="Model maximum context metadata; not a selectable preset.")
-    allowed_context_windows: tuple[int, ...] = Field(description="Discrete selectable context presets for this Agent.")
-    high_resource_context_options: tuple[int, ...] = Field(description="Context presets that receive a high-resource UI label.")
-    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(description="Provider-supported local reasoning modes for this Agent.")
-    default_reasoning_mode: LocalReasoningMode = Field(description="Reasoning mode used when no persisted preference exists.")
-    reasoning_mode: LocalReasoningMode = Field(description="Resolved reasoning mode for the next provider request.")
-    runtime_model_id: str = Field(description="Resolved llama.cpp router alias used for load and residency checks.")
-    tool_select_max_tokens: int = Field(description="Token ceiling when the model is selecting a tool.")
-    final_answer_max_tokens: int = Field(description="Token ceiling for the final text response.")
-    generation_timeout: int = Field(description="Hard timeout in seconds for a single model generation call.")
-    ram_limit: float = Field(description="Maximum host RAM utilization percentage before load is gated.")
-    cpu_limit: float = Field(description="Maximum host CPU utilization percentage before load is gated.")
-    high_resource: bool = Field(default=False, description="Whether cold loads of this Agent warrant a high-resource warning.")
-    parallel_tool_calls: bool = Field(description="Whether the provider may emit multiple structured tool calls.")
-    system_instruction: str = Field(description="Base persona and behavioral instructions for the local agent.")
+    api_model: str = Field(
+        description="Configured GGUF model identity shown in Agent metadata."
+    )
+    stability: Literal["stable", "preview", "experimental"] = Field(
+        description="Release stage classification of the target model."
+    )
+    default_temperature: float = Field(
+        description="Lower temperature values minimize tool-calling hallucinations.",
+    )
+    max_tool_turns: int = Field(
+        description="Turn boundary ceiling to prevent infinite loops."
+    )
+    max_tool_calls: int = Field(
+        description="Maximum individual tool executions allowed per session.",
+    )
+    context_window: int = Field(
+        description="Selected input token context window for this load."
+    )
+    default_context_window: int = Field(
+        description="Context preset used when no persisted preference exists."
+    )
+    maximum_context_window: int = Field(
+        description="Model maximum context metadata; not a selectable preset.",
+    )
+    allowed_context_windows: tuple[int, ...] = Field(
+        description="Discrete selectable context presets for this Agent.",
+    )
+    high_resource_context_options: tuple[int, ...] = Field(
+        description="Context presets that receive a high-resource UI label."
+    )
+    supported_reasoning_modes: tuple[LocalReasoningMode, ...] = Field(
+        description="Provider-supported local reasoning modes for this Agent."
+    )
+    default_reasoning_mode: LocalReasoningMode = Field(
+        description="Reasoning mode used when no persisted preference exists."
+    )
+    reasoning_mode: LocalReasoningMode = Field(
+        description="Resolved reasoning mode for the next provider request."
+    )
+    runtime_model_id: str = Field(
+        description="Resolved llama.cpp router alias used for load and residency checks."
+    )
+    tool_select_max_tokens: int = Field(
+        description="Token ceiling when the model is selecting a tool."
+    )
+    final_answer_max_tokens: int = Field(
+        description="Token ceiling for the final text response."
+    )
+    generation_timeout: int = Field(
+        description="Hard timeout in seconds for a single model generation call."
+    )
+    ram_limit: float = Field(
+        description="Maximum host RAM utilization percentage before load is gated."
+    )
+    cpu_limit: float = Field(
+        description="Maximum host CPU utilization percentage before load is gated."
+    )
+    high_resource: bool = Field(
+        default=False,
+        description="Whether cold loads of this Agent warrant a high-resource warning.",
+    )
+    parallel_tool_calls: bool = Field(
+        description="Whether the provider may emit multiple structured tool calls.",
+    )
+    system_instruction: str = Field(
+        description="Base persona and behavioral instructions for the local agent.",
+    )
 
     @model_validator(mode="after")
     def _validate_context_contract(self) -> LlamaCppModelProfile:
         if self.context_window not in self.allowed_context_windows:
-            raise ValueError(f"context_window {self.context_window} is not in allowed_context_windows {self.allowed_context_windows}")
+            raise ValueError(
+                f"context_window {self.context_window} is not in "
+                f"allowed_context_windows {self.allowed_context_windows}"
+            )
         if self.default_context_window not in self.allowed_context_windows:
-            raise ValueError("default_context_window must be one of allowed_context_windows")
-        if not set(self.high_resource_context_options).issubset(self.allowed_context_windows):
-            raise ValueError("high_resource_context_options must be allowed context presets")
+            raise ValueError(
+                "default_context_window must be one of allowed_context_windows"
+            )
+        if not set(self.high_resource_context_options).issubset(
+            self.allowed_context_windows
+        ):
+            raise ValueError(
+                "high_resource_context_options must be allowed context presets"
+            )
         if self.maximum_context_window < max(self.allowed_context_windows):
-            raise ValueError("maximum_context_window must be at least every allowed context value")
+            raise ValueError(
+                "maximum_context_window must be at least every allowed context value"
+            )
         if not self.runtime_model_id.strip():
             raise ValueError("runtime_model_id must not be empty")
         if not self.supported_reasoning_modes:
@@ -100,7 +205,9 @@ class LlamaCppModelProfile(BaseModel):
         if "none" not in self.supported_reasoning_modes:
             raise ValueError("supported_reasoning_modes must include 'none'")
         if self.default_reasoning_mode not in self.supported_reasoning_modes:
-            raise ValueError("default_reasoning_mode must be a supported reasoning mode")
+            raise ValueError(
+                "default_reasoning_mode must be a supported reasoning mode"
+            )
         if self.reasoning_mode not in self.supported_reasoning_modes:
             raise ValueError("reasoning_mode must be a supported reasoning mode")
         return self
@@ -120,9 +227,13 @@ def resolve_llama_cpp_context_window(model_id: str, value: int | None) -> int:
     if value is None:
         return runtime.default_context_window
     if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"Unsupported llama.cpp context window for {model_id}: {value!r}")
+        raise ValueError(
+            f"Unsupported llama.cpp context window for {model_id}: {value!r}"
+        )
     if value not in runtime.allowed_context_windows:
-        raise ValueError(f"Unsupported llama.cpp context window for {model_id}: {value!r}")
+        raise ValueError(
+            f"Unsupported llama.cpp context window for {model_id}: {value!r}"
+        )
     return value
 
 
@@ -133,7 +244,10 @@ def llama_cpp_runtime_model_id(model_id: str, context_window: int) -> str:
     return runtime.runtime_model_ids[resolved_context]
 
 
-def llama_cpp_context_window_for_runtime_model_id(model_id: str, runtime_model_id: str) -> int | None:
+def llama_cpp_context_window_for_runtime_model_id(
+    model_id: str,
+    runtime_model_id: str,
+) -> int | None:
     """Return the configured context for a resident llama.cpp router alias."""
     runtime = llama_cpp_runtime_config(model_id)
     for context_window, model_id in runtime.runtime_model_ids.items():
@@ -142,13 +256,18 @@ def llama_cpp_context_window_for_runtime_model_id(model_id: str, runtime_model_i
     return None
 
 
-def resolve_llama_cpp_reasoning_mode(model_id: str, value: str | None) -> LocalReasoningMode:
+def resolve_llama_cpp_reasoning_mode(
+    model_id: str,
+    value: str | None,
+) -> LocalReasoningMode:
     """Resolve a persisted reasoning preference against runtime capabilities."""
     runtime = llama_cpp_runtime_config(model_id)
     if value is None:
         return runtime.default_reasoning_mode
     if value not in runtime.supported_reasoning_modes:
-        raise ValueError(f"Unsupported llama.cpp reasoning mode for {model_id}: {value!r}")
+        raise ValueError(
+            f"Unsupported llama.cpp reasoning mode for {model_id}: {value!r}"
+        )
     return value  # type: ignore[return-value]
 
 
@@ -241,15 +360,29 @@ def _runtime_config(
 
 
 def _gemma_e2b_aliases() -> dict[int, str]:
-    return {4096: "gemma-4-e2b-4k", 16384: "gemma-4-e2b-16k", 32768: "gemma-4-e2b-32k", 131072: "gemma-4-e2b-132k"}
+    return {
+        4096: "gemma-4-e2b-4k",
+        16384: "gemma-4-e2b-16k",
+        32768: "gemma-4-e2b-32k",
+        131072: "gemma-4-e2b-132k",
+    }
 
 
 def _gemma_e4b_aliases() -> dict[int, str]:
-    return {4096: "gemma-4-e4b-4k", 16384: "gemma-4-e4b-16k", 32768: "gemma-4-e4b-32k", 65536: "gemma-4-e4b-64k"}
+    return {
+        4096: "gemma-4-e4b-4k",
+        16384: "gemma-4-e4b-16k",
+        32768: "gemma-4-e4b-32k",
+        65536: "gemma-4-e4b-64k",
+    }
 
 
 def _qwen35_aliases() -> dict[int, str]:
-    return {4096: "qwen3.5-4b-4k", 16384: "qwen3.5-4b-16k", 32768: "qwen3.5-4b-32k"}
+    return {
+        4096: "qwen3.5-4b-4k",
+        16384: "qwen3.5-4b-16k",
+        32768: "qwen3.5-4b-32k",
+    }
 
 
 LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
