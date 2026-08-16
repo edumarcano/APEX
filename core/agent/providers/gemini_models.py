@@ -11,9 +11,6 @@ class GeminiModelProfile(BaseModel):
         description="Version of the named Apex Agent product identity."
     )
     api_model: str = Field(description="Exact Gemini API model identifier string.")
-    tier: Literal["fast", "balanced", "advanced"] = Field(
-        description="Computational performance classification."
-    )
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )

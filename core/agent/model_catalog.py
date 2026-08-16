@@ -34,7 +34,6 @@ class ModelProfile:
     credential_env: str | None
     max_tool_turns: int
     max_tool_calls: int
-    tier: str
     default_effort: Literal["light", "focused", "extended"] | None
     supports_effort: bool
     supports_encrypted_reasoning: bool
@@ -53,7 +52,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="OPENAI_API_KEY",
         max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="balanced",
         default_effort="focused",
         supports_effort=True,
         supports_encrypted_reasoning=True,
@@ -68,7 +66,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="advanced",
         default_effort="focused",
         supports_effort=True,
         supports_encrypted_reasoning=True,
@@ -83,7 +80,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="fast",
         default_effort="focused",
         supports_effort=True,
         supports_encrypted_reasoning=True,
@@ -99,7 +95,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="XAI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="balanced",
         default_effort="focused",
         supports_effort=True,
         supports_encrypted_reasoning=False,
@@ -115,7 +110,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env="XAI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        tier="advanced",
         default_effort="extended",
         supports_effort=True,
         supports_encrypted_reasoning=False,
@@ -135,7 +129,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=2,
         max_tool_calls=3,
-        tier="lightweight",
         default_effort=None,
         supports_effort=False,
         supports_encrypted_reasoning=False,
@@ -151,7 +144,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        tier="balanced",
         default_effort=None,
         supports_effort=False,
         supports_encrypted_reasoning=False,
@@ -167,7 +159,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        tier="balanced",
         default_effort=None,
         supports_effort=False,
         supports_encrypted_reasoning=False,
@@ -182,7 +173,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        tier="balanced",
         default_effort=None,
         supports_effort=False,
         supports_encrypted_reasoning=False,
@@ -197,7 +187,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,
-        tier="balanced",
         default_effort=None,
         supports_effort=False,
         supports_encrypted_reasoning=False,

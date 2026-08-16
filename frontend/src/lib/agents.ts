@@ -83,6 +83,9 @@ export function formatContextWindowLabel(
   if (tokens % 1024 === 0) {
     return `${tokens / 1024}K`
   }
+  if (tokens % 1000 === 0) {
+    return `${tokens / 1000}K`
+  }
   return String(tokens)
 }
 
@@ -93,7 +96,30 @@ export function runtimeForAgentKey(agent: AgentKey): AgentRuntime {
 export function resolveModelCatalog(
   agentStatus: AgentStatus | undefined,
 ): ModelCatalogEntry[] {
-  return agentStatus?.model_catalog ?? []
+  if (!agentStatus) return []
+  if (agentStatus.model_catalog && agentStatus.model_catalog.length > 0) {
+    return agentStatus.model_catalog
+  }
+  return [
+    {
+      model_id: agentStatus.configured_model,
+      display_name: agentStatus.configured_model,
+      provider: agentStatus.provider,
+      runtime: agentStatus.runtime,
+      stability: agentStatus.model_stability ?? agentStatus.stability,
+      pricing: agentStatus.pricing,
+      supports_effort: Boolean(agentStatus.effort_options?.length),
+      default_effort: agentStatus.default_effort,
+      effort_options: agentStatus.effort_options,
+      context_options: agentStatus.context_window_options,
+      default_context_window: agentStatus.default_context_window,
+      high_resource_context_options: agentStatus.context_window_high_resource_options,
+      maximum_context_window: agentStatus.context_window,
+      reasoning_modes: agentStatus.reasoning_mode_options,
+      default_reasoning_mode: agentStatus.default_reasoning_mode,
+      hosted_capabilities: [],
+    },
+  ]
 }
 
 export function findModelCatalogEntry(

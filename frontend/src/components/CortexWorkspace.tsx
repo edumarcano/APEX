@@ -30,6 +30,7 @@ import { CortexActions } from './CortexActions'
 import { ApexLogo, type ApexLogoProps } from './ApexLogo'
 import { AgentQueryBar } from './AgentQueryBar'
 import { AgentSelector } from './AgentSelector'
+import { ModelSelector } from './ModelSelector'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 
 interface CortexWorkspaceProps {
@@ -421,35 +422,138 @@ function RuntimeControls({
     catalog,
   )
 
-  return <div className="space-y-4">
-    {activeAgent === 'panthera' ? <>
-      <section className="space-y-2" aria-label="Panthera model">
-        <label htmlFor="cortex-panthera-model" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Model</label>
-        <select id="cortex-panthera-model" value={props.pantheraModel} onChange={(event) => props.onPantheraModelChange(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {models.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
-        </select>
-      </section>
-      {pantheraStatus?.effort_options?.length ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{pantheraStatus.effort_options.map((effort) => <option key={effort} value={effort}>{effort.slice(0, 1).toUpperCase()}{effort.slice(1)}</option>)}</select></section> : null}
-    </> : <>
-      <section className="space-y-2" aria-label="Lynx model">
-        <label htmlFor="cortex-lynx-model" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Model</label>
-        <select id="cortex-lynx-model" value={props.lynxModel} onChange={(event) => props.onLynxModelChange(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">
-          {models.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}
-        </select>
-      </section>
-      {activeStatus ? <>
-        <LocalModelLifecycle agent={activeStatus} busy={props.lifecycleBusy} actionPending={props.lifecycleActionPending} onLoad={props.onLoadLocalModel} onUnload={props.onUnloadLocalModel} />
-        {activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? <LocalReasoningControl key={`${activeStatus.key}-reasoning`} agent={activeStatus} disabled={props.isQuerying || Boolean(props.submissionPending)} onChange={props.onLocalReasoningModeChange} /> : null}
-        {activeStatus.context_window_options?.length ? <LocalContextControl key={`${activeStatus.key}-context`} agent={activeStatus} disabled={localContextLocked} onChange={props.onLocalContextWindowChange} /> : null}
-      </> : null}
-    </>}
-    {hostedCapabilities.length > 0 ? <GroundingControls note="Apex Brave Search remains the standard search capability when connected.">
-      {hostedCapabilities.includes('google_search') ? <GroundingToggle label="Google Search" detail="Provider grounding for later requests" checked={props.pantheraHostedTools.google_search} onChange={(enabled) => props.onHostedToolChange('google_search', enabled)} /> : null}
-      {hostedCapabilities.includes('google_maps') ? <GroundingToggle label="Google Maps" detail="Provider grounding for later requests" checked={props.pantheraHostedTools.google_maps} onChange={(enabled) => props.onHostedToolChange('google_maps', enabled)} /> : null}
-      {hostedCapabilities.includes('x_search') ? <GroundingToggle label="X Search" detail="Provider grounding for later requests" checked={props.pantheraHostedTools.x_search} onChange={(enabled) => props.onHostedToolChange('x_search', enabled)} /> : null}
-    </GroundingControls> : null}
-    {props.devModeActive ? <section className="space-y-2" aria-label="Sandbox mode"><label className="flex items-center justify-between gap-3 rounded-lg border border-cyan-300/20 bg-cyan-950/10 px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-cyan-100">Sandbox mode</span><span className="block text-[11px] text-zinc-500">Isolated history and masked context for DEV_MODE queries.</span></span><input aria-label="Sandbox mode" type="checkbox" checked={props.sandboxMode} onChange={(event) => props.onSandboxModeChange(event.target.checked)} className="size-4 accent-cyan-400" /></label></section> : null}
-  </div>
+  const selectedModelEntry = models.find(
+    (entry) => entry.model_id === (activeAgent === 'panthera' ? props.pantheraModel : props.lynxModel),
+  )
+  const supportsEffort =
+    selectedModelEntry?.supports_effort !== undefined
+      ? selectedModelEntry.supports_effort
+      : Boolean(pantheraStatus?.effort_options?.length)
+
+  return (
+    <div className="space-y-4">
+      {activeAgent === 'panthera' ? (
+        <>
+          <ModelSelector
+            activeAgent="panthera"
+            selectedModelId={props.pantheraModel}
+            onModelChange={props.onPantheraModelChange}
+            catalog={models}
+            activeStatus={pantheraStatus ?? null}
+            disabled={props.isQuerying}
+            isQuerying={props.isQuerying}
+            verifyingAgent={props.verifyingCloudAgent}
+            onVerify={props.onVerifyCloudAgent}
+          />
+          {supportsEffort && pantheraStatus?.effort_options?.length ? (
+            <section className="space-y-2">
+              <label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                Reasoning effort
+              </label>
+              <select
+                id="cortex-effort"
+                value={props.cloudEffort}
+                onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)}
+                className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]"
+              >
+                {pantheraStatus.effort_options.map((effort) => (
+                  <option key={effort} value={effort}>
+                    {effort.slice(0, 1).toUpperCase()}{effort.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <ModelSelector
+            activeAgent="lynx"
+            selectedModelId={props.lynxModel}
+            onModelChange={props.onLynxModelChange}
+            catalog={models}
+            activeStatus={lynxStatus ?? null}
+            disabled={props.isQuerying}
+            isQuerying={props.isQuerying}
+          />
+          {activeStatus ? (
+            <>
+              {activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? (
+                <LocalReasoningControl
+                  key={`${activeStatus.key}-reasoning`}
+                  agent={activeStatus}
+                  disabled={props.isQuerying || Boolean(props.submissionPending)}
+                  onChange={props.onLocalReasoningModeChange}
+                />
+              ) : null}
+              {activeStatus.context_window_options?.length ? (
+                <LocalContextControl
+                  key={`${activeStatus.key}-context`}
+                  agent={activeStatus}
+                  disabled={localContextLocked}
+                  onChange={props.onLocalContextWindowChange}
+                />
+              ) : null}
+              <LocalModelLifecycle
+                agent={activeStatus}
+                busy={props.lifecycleBusy}
+                actionPending={props.lifecycleActionPending}
+                onLoad={props.onLoadLocalModel}
+                onUnload={props.onUnloadLocalModel}
+              />
+            </>
+          ) : null}
+        </>
+      )}
+
+      {hostedCapabilities.length > 0 ? (
+        <GroundingControls note="Apex Brave Search remains the standard search capability when connected.">
+          {hostedCapabilities.includes('google_search') ? (
+            <GroundingToggle
+              label="Google Search"
+              detail="Provider grounding for later requests"
+              checked={props.pantheraHostedTools.google_search}
+              onChange={(enabled) => props.onHostedToolChange('google_search', enabled)}
+            />
+          ) : null}
+          {hostedCapabilities.includes('google_maps') ? (
+            <GroundingToggle
+              label="Google Maps"
+              detail="Provider grounding for later requests"
+              checked={props.pantheraHostedTools.google_maps}
+              onChange={(enabled) => props.onHostedToolChange('google_maps', enabled)}
+            />
+          ) : null}
+          {hostedCapabilities.includes('x_search') ? (
+            <GroundingToggle
+              label="X Search"
+              detail="Provider grounding for later requests"
+              checked={props.pantheraHostedTools.x_search}
+              onChange={(enabled) => props.onHostedToolChange('x_search', enabled)}
+            />
+          ) : null}
+        </GroundingControls>
+      ) : null}
+
+      {props.devModeActive ? (
+        <section className="space-y-2" aria-label="Sandbox mode">
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-cyan-300/20 bg-cyan-950/10 px-3 py-2">
+            <span>
+              <span className="block font-mono text-[10px] uppercase tracking-wider text-cyan-100">Sandbox mode</span>
+              <span className="block text-[11px] text-zinc-500">Isolated history and masked context for DEV_MODE queries.</span>
+            </span>
+            <input
+              aria-label="Sandbox mode"
+              type="checkbox"
+              checked={props.sandboxMode}
+              onChange={(event) => props.onSandboxModeChange(event.target.checked)}
+              className="size-4 accent-cyan-400"
+            />
+          </label>
+        </section>
+      ) : null}
+    </div>
+  )
 }
 
 function ContextControl(props: CortexWorkspaceProps): ReactElement {

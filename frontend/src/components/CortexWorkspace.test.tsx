@@ -218,20 +218,17 @@ describe('CortexWorkspace', () => {
     )
   })
 
-  it('shows only the selected profile until its anchored selector is opened', async () => {
+  it('switches active agent directly via the segmented agent cards', async () => {
     const onAgentChange = vi.fn()
     const user = userEvent.setup()
     render(<CortexWorkspace {...workspaceProps({ onAgentChange, agentsStatus: [panthera, lynx] })} />)
-    expect(screen.queryByRole('button', { name: 'Use Apex Lynx' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Apex Panthera/ }))
-    const profileDialog = screen.getByRole('dialog', { name: 'Select agent' })
-    expect(profileDialog).toBeInTheDocument()
-    expect(profileDialog).toHaveAttribute('id', 'cortex-agent-popover')
-    await user.click(screen.getByRole('button', { name: 'Use Apex Lynx' }))
+    const lynxRadio = screen.getByRole('radio', { name: /Lynx, Private on-device/i })
+    expect(lynxRadio).toBeInTheDocument()
+    await user.click(lynxRadio)
     expect(onAgentChange).toHaveBeenCalledWith('lynx')
   })
 
-  it('uses backend card tags, pricing, effort options, and verification actions', async () => {
+  it('uses backend pricing, effort options, and verification actions on the model selector', async () => {
     const onEffortChange = vi.fn()
     const onVerifyCloudAgent = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
@@ -240,40 +237,35 @@ describe('CortexWorkspace', () => {
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'extended')
     expect(onEffortChange).toHaveBeenCalledWith('extended')
-    await user.click(screen.getByRole('button', { name: /Apex Panthera/ }))
-    expect(screen.getByText('Generalist')).toBeInTheDocument()
-    expect(screen.getByText('Planning')).toBeInTheDocument()
-    expect(screen.getByText(/In \$0\.20\/1M/)).toBeInTheDocument()
-    await user.click(screen.getAllByRole('button', { name: 'Verify access' })[0])
+    expect(screen.getByText('$0.20/M in · $1.20/M out')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Verify' }))
     expect(onVerifyCloudAgent).toHaveBeenCalledWith('panthera')
   })
 
-  it('exposes model selection while routing provider and runtime in the backend', () => {
+  it('exposes model selection with rich model browser popover', async () => {
+    const user = userEvent.setup()
+    const onPantheraModelChange = vi.fn()
     const { rerender } = render(
-      <CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />,
+      <CortexWorkspace {...workspaceProps({ activeAgent: 'panthera', onPantheraModelChange })} />,
     )
 
-    expect(
-      within(screen.getByRole('region', { name: 'Panthera model' })).getByRole('combobox'),
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Panthera provider' })).not.toBeInTheDocument()
+    const modelRegion = screen.getByRole('region', { name: 'Model selection' })
+    expect(modelRegion).toBeInTheDocument()
+    expect(within(modelRegion).getByText('gpt-5.6-luna')).toBeInTheDocument()
+    await user.click(within(modelRegion).getByRole('button', { expanded: false }))
+    expect(screen.getByRole('listbox', { name: 'Select model for panthera' })).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx] })} />)
-    expect(
-      within(screen.getByRole('region', { name: 'Lynx model' })).getByRole('combobox'),
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Lynx runtime' })).not.toBeInTheDocument()
+    const lynxModelRegion = screen.getByRole('region', { name: 'Model selection' })
+    expect(within(lynxModelRegion).getAllByText('gemma-4-E2B-Q4_K_M.gguf').length).toBeGreaterThanOrEqual(1)
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />)
   })
 
-  it('keeps agent marks accessible for Panthera and Lynx', async () => {
-    const user = userEvent.setup()
+  it('keeps agent marks accessible for Panthera and Lynx', () => {
     render(<CortexWorkspace {...workspaceProps({ agentsStatus: [panthera, lynx] })} />)
 
-    await user.click(screen.getByRole('button', { name: /Apex Panthera/ }))
-    const profileDialog = screen.getByRole('dialog', { name: 'Select agent' })
-    expect(within(profileDialog).getByLabelText('Panthera agent mark')).toBeInTheDocument()
-    expect(within(profileDialog).getByLabelText('Lynx agent mark')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Panthera agent mark').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByLabelText('Lynx agent mark').length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows local lifecycle controls only for local profiles and disables them during activity', () => {
@@ -289,16 +281,17 @@ describe('CortexWorkspace', () => {
 
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {
     const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx] })} />)
-    expect(screen.getByText('Unloaded')).toBeInTheDocument()
+    const lifecycleRegion = screen.getByLabelText('Local model lifecycle')
+    expect(within(lifecycleRegion).getByText('Unloaded')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, active: true }] })} />)
-    expect(screen.getByText('Loaded')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loaded')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, loading: true }] })} />)
-    expect(screen.getByText('Loading')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loading…')).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
-    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Unavailable')).toBeInTheDocument()
     expect(screen.getByText('Ollama is offline')).toBeInTheDocument()
   })
 

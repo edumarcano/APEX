@@ -115,9 +115,6 @@ class LlamaCppModelProfile(BaseModel):
     api_model: str = Field(
         description="Configured GGUF model identity shown in Agent metadata."
     )
-    tier: Literal["lightweight", "balanced", "capable"] = Field(
-        description="Computational performance classification for local inference."
-    )
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )
@@ -288,7 +285,6 @@ def build_llama_cpp_profile(
     display_name: str,
     agent_version: str,
     api_model: str,
-    tier: Literal["lightweight", "balanced", "capable"],
     stability: Literal["stable", "preview", "experimental"],
     max_tool_turns: int,
     max_tool_calls: int,
@@ -310,7 +306,6 @@ def build_llama_cpp_profile(
         display_name=display_name,
         agent_version=agent_version,
         api_model=api_model,
-        tier=tier,
         stability=stability,
         default_temperature=runtime.default_temperature,
         max_tool_turns=max_tool_turns,

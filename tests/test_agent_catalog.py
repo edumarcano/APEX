@@ -179,6 +179,23 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             panthera.native_tools,
             {"google_search": False, "google_maps": True, "x_search": False},
         )
+        self.assertTrue(panthera.model_catalog)
+        luna_entry = next(entry for entry in panthera.model_catalog if entry.model_id == "gpt-5.6-luna")
+        self.assertEqual(luna_entry.pricing.billing_basis, "standard")
+        self.assertEqual(luna_entry.pricing.input_per_million, 0.2)
+        self.assertTrue(luna_entry.supports_effort)
+        self.assertEqual(luna_entry.effort_options, ["light", "focused", "extended"])
+
+        lynx = next(item for item in profiles if item.key == "lynx")
+        self.assertTrue(lynx.model_catalog)
+        gemma_entry = next(entry for entry in lynx.model_catalog if entry.model_id == "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(gemma_entry.pricing.billing_basis, "local")
+        self.assertEqual(gemma_entry.pricing.input_per_million, 0.0)
+        self.assertFalse(gemma_entry.supports_effort)
+        self.assertTrue(gemma_entry.context_options)
+        self.assertIn(16384, gemma_entry.context_options)
+        self.assertEqual(gemma_entry.reasoning_modes, ["none", "focused"])
+
         for profile in profiles:
             with self.subTest(agent=profile.key):
                 self.assertTrue(profile.configured_model)

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2, ShieldCheck } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom'
 
 import type { AgentStatus, AgentKey, AgentAvailabilityStatus } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
-import { providerDisplayName, runtimeDisplayName, isAgentIdentitySelectable, canVerifyCloudProvider } from '../lib/agents'
+import { isAgentIdentitySelectable } from '../lib/agents'
 
 import { AgentMark } from './AgentMark'
 
@@ -23,9 +23,19 @@ interface AgentSelectorProps {
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
   isQuerying: boolean
-  verifyingAgent: AgentKey | null
-  onVerify: (agent: 'panthera') => Promise<boolean>
+  verifyingAgent?: AgentKey | null
+  onVerify?: (agent: 'panthera') => Promise<boolean>
   presentation?: 'cortex' | 'home'
+}
+
+const AGENT_SUBTITLES: Record<AgentKey, string> = {
+  panthera: 'Cloud intelligence',
+  lynx: 'Private on-device',
+}
+
+const AGENT_TAGS: Record<AgentKey, string> = {
+  panthera: 'Cloud · Generalist',
+  lynx: 'Local · Private',
 }
 
 const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
@@ -35,46 +45,6 @@ const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
   provider_unreachable: 'Provider unreachable', provider_error: 'Provider error', unknown: 'Checking availability',
   disabled: 'Unavailable', ollama_unreachable: 'Ollama unavailable', model_not_installed: 'Not installed',
   insufficient_ram: 'Insufficient memory', cpu_overloaded: 'CPU busy',
-}
-
-function fallbackName(agent: AgentKey): string {
-  return `APEX ${agent.slice(0, 1).toUpperCase()}${agent.slice(1)}`
-}
-
-function formatModel(model: string): string {
-  if (/\.gguf$/i.test(model)) {
-    return model
-      .replace(/\.gguf$/i, '')
-      .split('-')
-      .filter(Boolean)
-      .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-      .join(' ')
-  }
-  return model
-    .replace(/^gpt-(\d+\.\d+)-(.+)$/i, (_, version: string, variant: string) => `GPT-${version} ${variant}`)
-    .replace(/^gemini-(\d+\.\d+)-(.+)$/i, (_, version: string, variant: string) => `Gemini ${version} ${variant}`)
-    .replace(/^grok-(\d+\.\d+)$/i, (_, version: string) => `Grok ${version}`)
-    .replace(/^qwen(\d+):(\d+)b-(.+)$/i, (_, generation: string, size: string, variant: string) => `Qwen${generation} ${size}B ${variant}`)
-    .split(/[-\s]/)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function poweredBy(agent: AgentStatus): string {
-  const providerLabel = agent.runtime === 'local'
-    ? runtimeDisplayName(agent.provider as 'ollama' | 'llama_cpp')
-    : providerDisplayName(agent.provider)
-  const suffix =
-    agent.runtime === 'local'
-      ? ` · Runs locally through ${providerLabel}`
-      : ''
-  return `Powered by ${formatModel(agent.configured_model)}${suffix}`
-}
-
-function statusClass(status: AgentAvailabilityStatus): string {
-  if (status === 'available' || status === 'configured' || status === 'verified') return 'text-emerald-300'
-  if (status === 'unknown' || status === 'busy' || status === 'verifying' || status === 'rate_limited') return 'text-amber-200'
-  return 'text-[#DC2626]'
 }
 
 function statusDotClass(status: AgentAvailabilityStatus): string {
@@ -90,11 +60,9 @@ function statusDotClass(status: AgentAvailabilityStatus): string {
   return 'bg-[#DC2626] shadow-[0_0_7px_rgba(220,38,38,0.8)]'
 }
 
-function rate(value: number): string { return `$${value.toFixed(2)}/1M` }
-
 function popoverPosition(trigger: HTMLButtonElement): CSSProperties {
   const rect = trigger.getBoundingClientRect()
-  const width = Math.min(440, window.innerWidth - 24)
+  const width = Math.min(360, window.innerWidth - 24)
   return {
     bottom: window.innerHeight - rect.top + 8,
     left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
@@ -102,26 +70,13 @@ function popoverPosition(trigger: HTMLButtonElement): CSSProperties {
   }
 }
 
-function stabilityLabel(stability: AgentStatus['stability']): string | null {
-  return stability === 'preview' ? 'Preview' : stability === 'experimental' ? 'Experimental' : null
-}
-
-function stabilityBadge(stability: AgentStatus['stability'], className = ''): ReactElement | null {
-  const label = stabilityLabel(stability)
-  if (!label) return null
-  const experimental = stability === 'experimental'
-  return (
-    <span
-      className={`rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${experimental ? 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200' : 'border-amber-300/25 bg-amber-400/10 text-amber-200'}${className ? ` ${className}` : ''}`}
-    >
-      {label}
-    </span>
-  )
-}
-
 export function AgentSelector({
-  activeAgent, onChange, agentsStatus, agentsStatusHydrated,
-  isQuerying, verifyingAgent, onVerify, presentation = 'cortex',
+  activeAgent,
+  onChange,
+  agentsStatus,
+  agentsStatusHydrated,
+  isQuerying,
+  presentation = 'cortex',
 }: AgentSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -130,14 +85,18 @@ export function AgentSelector({
   const activeStatus = agentsStatus.find((agent) => agent.key === activeAgent)
   const home = presentation === 'home'
 
-  const agents = useMemo(() => agentsStatus
-    .sort((left, right) => left.sort_order - right.sort_order), [agentsStatus])
+  const agents = useMemo(
+    () => [...agentsStatus].sort((left, right) => left.sort_order - right.sort_order),
+    [agentsStatus],
+  )
 
   useEffect(() => {
     if (!isOpen) return
     const closeOnOutsidePointer = (event: PointerEvent): void => {
       const target = event.target as Node
-      if (!popoverRef.current?.contains(target) && !triggerRef.current?.contains(target)) setIsOpen(false)
+      if (!popoverRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
+        setIsOpen(false)
+      }
     }
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
@@ -147,7 +106,10 @@ export function AgentSelector({
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     document.addEventListener('keydown', closeOnEscape)
-    const focusTimer = window.setTimeout(() => popoverRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(), 0)
+    const focusTimer = window.setTimeout(
+      () => popoverRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(),
+      0,
+    )
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
       document.removeEventListener('keydown', closeOnEscape)
@@ -176,71 +138,164 @@ export function AgentSelector({
     window.setTimeout(() => triggerRef.current?.focus(), 0)
   }
 
-  const renderCard = (agent: AgentStatus): ReactElement => {
-    const selected = agent.key === activeAgent
-    const isCloud = agent.runtime === 'cloud'
-    const selectable = isAgentIdentitySelectable(agent)
-    const canVerify = canVerifyCloudProvider(agent)
-    const verifyPending = verifyingAgent === agent.key || agent.status === 'verifying'
-    return <article key={agent.key} className={`rounded-xl border p-3 ${selected ? 'border-[#7E22CE]/55 bg-[#7E22CE]/12' : 'border-white/10 bg-white/[0.02]'}`}>
-      <button type="button" disabled={!selectable} aria-pressed={selected} aria-label={`Use ${agent.display_name}`} onClick={() => selectAgent(agent.key)} className={`w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] ${!selectable ? 'cursor-not-allowed opacity-55' : ''}`}>
-        <span className="flex items-start gap-3"><AgentMark agent={agent.key} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{agent.display_name}</span>{selected ? <Check className="size-4 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}</span><span className="mt-1 block text-xs leading-relaxed text-zinc-400">{agent.description}</span></span></span>
-        <span className="mt-3 block border-t border-white/10 pt-2 font-mono text-[10px] text-zinc-400">{poweredBy(agent)}</span>
-        <span className="mt-2 flex flex-wrap items-center gap-1.5">{agent.capabilities.map((capability) => <span key={capability} className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400">{capability}</span>)}{stabilityBadge(agent.model_stability ?? agent.stability)}<span className={`ml-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{agent.status === 'unknown' || verifyPending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}{STATUS_LABELS[agent.status]}</span></span>
-      </button>
-      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2"><span className="font-mono text-[9px] text-zinc-500">{agent.pricing.billing_basis === 'free_tier' ? 'Free tier' : agent.pricing.billing_basis === 'local' ? 'No provider token charge' : `In ${rate(agent.pricing.input_per_million)} · Out ${rate(agent.pricing.output_per_million)}`}</span>{agent.pricing.long_context_threshold_tokens ? <span className="font-mono text-[9px] text-zinc-600">Higher long-context rates may apply</span> : null}{isCloud ? <button type="button" disabled={!canVerify || Boolean(verifyingAgent) || isQuerying} onClick={() => void onVerify('panthera')} className="ml-auto inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/55 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"><ShieldCheck className="size-3" aria-hidden />{verifyPending ? 'Verifying' : 'Verify access'}</button> : null}</div>
-      {agent.reason ? <p className="mt-2 text-[10px] text-red-200">{agent.reason}</p> : null}
-    </article>
+  // --- Cortex Presentation: Compact 2-choice segmented selector ---
+  if (!home) {
+    if (!agentsStatusHydrated && agents.length === 0) {
+      return (
+        <section aria-label="Agent selector" className="rounded-xl border border-white/10 bg-white/[0.02] p-3 font-mono text-[10px] text-zinc-500">
+          Loading agent catalog…
+        </section>
+      )
+    }
+
+    const durableAgents: AgentKey[] = ['panthera', 'lynx']
+
+    return (
+      <section aria-label="Agent selector" className="space-y-1.5">
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Execution boundary">
+          {durableAgents.map((key) => {
+            const status = agentsStatus.find((agent) => agent.key === key)
+            const selected = key === activeAgent
+            const selectable = status ? isAgentIdentitySelectable(status) : true
+            const name = status ? agentShortName(status.display_name) : key === 'panthera' ? 'Panthera' : 'Lynx'
+            const subtitle = AGENT_SUBTITLES[key]
+            const tag = AGENT_TAGS[key]
+
+            return (
+              <button
+                key={key}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={`${name}, ${subtitle}`}
+                disabled={!selectable || isQuerying}
+                onClick={() => onChange(key)}
+                className={`relative flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] ${
+                  selected
+                    ? 'border-[#7E22CE]/65 bg-[#7E22CE]/15 shadow-[0_0_16px_rgba(126,34,206,0.25)]'
+                    : 'border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'
+                } ${!selectable ? 'cursor-not-allowed opacity-45' : ''}`}
+              >
+                <div className="flex w-full items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <AgentMark agent={key} size="compact" />
+                    <span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">
+                      {name}
+                    </span>
+                  </div>
+                  {selected ? (
+                    <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-hidden />
+                  ) : null}
+                </div>
+                <span className="text-[11px] leading-tight text-zinc-400">
+                  {subtitle}
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">
+                  {tag}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+    )
   }
+
+  // --- Home Presentation: Compact Dropdown Trigger & Popover ---
+  const activeAvailability = activeStatus?.status ?? 'unknown'
+  const activeName = activeStatus ? agentShortName(activeStatus.display_name) : activeAgent === 'panthera' ? 'Panthera' : 'Lynx'
 
   const renderHomeOption = (agent: AgentStatus): ReactElement => {
     const selected = agent.key === activeAgent
     const selectable = isAgentIdentitySelectable(agent)
-    return <li key={agent.key} role="presentation">
-      <button
-        type="button"
-        role="option"
-        disabled={!selectable}
-        aria-selected={selected}
-        aria-label={`Use ${agent.display_name}`}
-        onClick={() => selectAgent(agent.key)}
-        className={`flex min-h-16 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none ${selected ? 'bg-[#7E22CE]/12 ring-1 ring-[#7E22CE]/35' : ''} ${selectable ? 'hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15' : 'cursor-not-allowed opacity-45'}`}
-      >
-        <AgentMark agent={agent.key} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{agentShortName(agent.display_name)}</span>
-          <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{agent.description}</span>
-        </span>
-        <span className="flex shrink-0 flex-col items-end gap-0.5">
-          <span className={`font-mono text-[9px] uppercase tracking-wider ${statusClass(agent.status)}`}>{STATUS_LABELS[agent.status]}</span>
-          {stabilityBadge(agent.model_stability ?? agent.stability, 'px-0 py-0 text-[8px] border-0 bg-transparent')}
-        </span>
-        {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}
-      </button>
-      {!selectable && agent.reason ? <p className="px-2.5 pb-2 font-mono text-[9px] text-red-200">{agent.reason}</p> : null}
-    </li>
+    const shortName = agentShortName(agent.display_name)
+    const subtitle = AGENT_SUBTITLES[agent.key] ?? agent.description
+
+    return (
+      <li key={agent.key} role="presentation">
+        <button
+          type="button"
+          role="option"
+          disabled={!selectable}
+          aria-selected={selected}
+          aria-label={`Use ${agent.display_name}`}
+          onClick={() => selectAgent(agent.key)}
+          className={`flex min-h-14 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none ${
+            selected ? 'bg-[#7E22CE]/12 ring-1 ring-[#7E22CE]/35' : ''
+          } ${selectable ? 'hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15' : 'cursor-not-allowed opacity-45'}`}
+        >
+          <AgentMark agent={agent.key} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
+              {shortName}
+            </span>
+            <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
+              {subtitle}
+            </span>
+          </span>
+          <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">
+            {agent.runtime === 'cloud' ? 'Cloud' : 'Local'}
+          </span>
+          {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}
+        </button>
+      </li>
+    )
   }
 
-  const activeAvailability = activeStatus?.status ?? 'unknown'
-  const activeName = activeStatus?.display_name ?? fallbackName(activeAgent)
-  const shortActiveName = agentShortName(activeName)
-  const activeStabilityLabel = activeStatus ? stabilityLabel(activeStatus.model_stability ?? activeStatus.stability) : null
-  if (!agentsStatusHydrated && !activeStatus) {
-    return <section aria-label="Agent selector" className={home ? 'flex h-10 w-full items-center rounded-lg border border-white/10 bg-black/25 px-3 font-mono text-[10px] text-zinc-500 sm:w-36' : 'rounded-xl border border-white/10 bg-white/[0.02] p-3 font-mono text-[10px] text-zinc-500'}>Loading agent catalog…</section>
-  }
-  const popover = isOpen ? home
-    ? <div ref={popoverRef} id="home-agent-popover" role="dialog" aria-label="Select Agent" style={position ?? undefined} className="fixed z-[100] max-h-[min(62vh,32rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl scrollbar-thin">
-        <div className="border-b border-white/10 px-2 pb-2 pt-1">
-          <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">Agent</p>
-          <p className="mt-1 text-[10px] text-zinc-500">Applies to your next Agent query.</p>
-        </div>
-        <ul role="listbox" aria-label="Agents" className="space-y-1 py-1.5">{agents.map(renderHomeOption)}</ul>
+  const popover = isOpen && (
+    <div
+      ref={popoverRef}
+      id="home-agent-popover"
+      role="dialog"
+      aria-label="Select Agent"
+      style={position ?? undefined}
+      className="fixed z-[100] max-h-[min(62vh,32rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl scrollbar-thin"
+    >
+      <div className="border-b border-white/10 px-2 pb-2 pt-1">
+        <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">
+          Agent
+        </p>
+        <p className="mt-1 text-[10px] text-zinc-500">
+          Applies to your next Agent query.
+        </p>
       </div>
-    : <div ref={popoverRef} id="cortex-agent-popover" role="dialog" aria-label="Select agent" className="absolute left-0 right-0 top-full z-40 mt-2 max-h-[min(62vh,38rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-xl scrollbar-thin"><div className="space-y-2">{agents.map(renderCard)}</div></div>
-    : null
+      <ul role="listbox" aria-label="Agents" className="space-y-1 py-1.5">
+        {agents.map(renderHomeOption)}
+      </ul>
+    </div>
+  )
 
-  return <section aria-label="Agent selector" className={home ? 'relative w-full sm:w-auto' : 'relative'}>
-    <button ref={triggerRef} type="button" aria-expanded={isOpen} aria-haspopup="dialog" aria-controls={home ? 'home-agent-popover' : 'cortex-agent-popover'} aria-label={home ? `Agent ${shortActiveName}, ${STATUS_LABELS[activeAvailability]}${activeStabilityLabel ? `, ${activeStabilityLabel}` : ''}` : undefined} title={home ? `${shortActiveName}: ${STATUS_LABELS[activeAvailability]}${activeStabilityLabel ? ` · ${activeStabilityLabel}` : ''}` : undefined} onClick={() => setIsOpen((open) => !open)} className={home ? 'flex h-10 w-full items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] sm:w-auto sm:min-w-36' : 'w-full rounded-xl border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-3 text-left transition-colors hover:border-[#C084FC]/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]'}>{home ? <><AgentMark agent={activeAgent} /><span data-slot="home-agent-status-dot" data-status={activeAvailability} className={`size-1.5 shrink-0 rounded-full ${statusDotClass(activeAvailability)}`} aria-hidden /><span className="min-w-0 flex-1"><span className="flex items-center gap-1.5"><span className="truncate font-mono text-[10px] uppercase tracking-wider text-zinc-200">{shortActiveName}</span>{activeStatus ? stabilityBadge(activeStatus.model_stability ?? activeStatus.stability, 'px-1 py-0 text-[8px]') : null}</span></span><ChevronDown className={`size-3.5 shrink-0 text-zinc-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></> : <><span className="flex items-center gap-3"><AgentMark agent={activeAgent} size="card" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="flex min-w-0 items-center gap-2"><span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">{activeName}</span>{activeStatus ? stabilityBadge(activeStatus.model_stability ?? activeStatus.stability) : null}</span><ChevronDown className={`size-4 shrink-0 text-[#D8B4FE] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden /></span>{activeStatus ? <span className="mt-1 block font-mono text-[10px] text-zinc-400">{poweredBy(activeStatus)}</span> : null}</span></span><span className={`mt-2 block font-mono text-[9px] uppercase tracking-wider ${statusClass(activeAvailability)}`}>{STATUS_LABELS[activeAvailability]}</span></>}</button>
-    {home ? popover && position ? createPortal(popover, document.body) : null : popover}
-  </section>
+  return (
+    <section aria-label="Agent selector" className="relative w-full sm:w-auto">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-controls="home-agent-popover"
+        aria-label={`Agent ${activeName}, ${STATUS_LABELS[activeAvailability]}`}
+        title={`${activeName}: ${STATUS_LABELS[activeAvailability]}`}
+        onClick={() => setIsOpen((open) => !open)}
+        className="flex h-10 w-full items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] sm:w-auto sm:min-w-36"
+      >
+        <AgentMark agent={activeAgent} />
+        <span
+          data-slot="home-agent-status-dot"
+          data-status={activeAvailability}
+          className={`size-1.5 shrink-0 rounded-full ${statusDotClass(activeAvailability)}`}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1">
+          <span className="truncate font-mono text-[10px] uppercase tracking-wider text-zinc-200">
+            {activeName}
+          </span>
+        </span>
+        <ChevronDown
+          className={`size-3.5 shrink-0 text-zinc-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {popover && position ? createPortal(popover, document.body) : null}
+    </section>
+  )
 }

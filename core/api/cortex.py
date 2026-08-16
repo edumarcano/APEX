@@ -35,6 +35,7 @@ from core.agent.catalog import (
     agent_has_credentials,
     local_context_window_for_agent,
     local_reasoning_mode_for_agent,
+    local_reasoning_modes_for_model,
     resolve_effort_for_agent,
     resolve_selected_model_profile,
     runtime_agent_order,
@@ -47,6 +48,7 @@ from core.agent.model_catalog import (
     visible_local_models,
     visible_local_runtimes,
 )
+from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.sandbox_context import get_masked_briefing
 from core.agent.tool_policies import effective_native_tools
 from core.agent.loop import is_local_profile
@@ -131,7 +133,54 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
+def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
+    agent_key = "panthera" if profile.runtime == "cloud" else "lynx"
+    pricing = agent_pricing(
+        agent_key,
+        model=profile.model_id,
+        provider=profile.provider,
+    )
+    rates = pricing.rates
+    return AgentPricingMetadata(
+        pricing_version=PRICING_VERSION,
+        billing_basis=pricing.billing_basis,  # type: ignore[arg-type]
+        input_per_million=rates.input_per_million,
+        output_per_million=rates.output_per_million,
+        cached_input_per_million=rates.cached_input_per_million,
+        long_context_threshold_tokens=rates.long_context_threshold_tokens,
+        long_context_input_per_million=rates.long_context_input_per_million,
+        long_context_output_per_million=rates.long_context_output_per_million,
+        long_context_cached_input_per_million=rates.long_context_cached_input_per_million,
+    )
+
+
 def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
+    llama_runtime = (
+        LLAMA_CPP_RUNTIME_CONFIGS.get(profile.model_id)
+        if profile.provider == "llama_cpp"
+        else None
+    )
+    reasoning_modes_tuple = (
+        local_reasoning_modes_for_model(profile.model_id)
+        if profile.runtime == "local"
+        else ()
+    )
+    context_options = list(llama_runtime.allowed_context_windows) if llama_runtime else None
+    default_context_window = llama_runtime.default_context_window if llama_runtime else None
+    high_resource_context_options = (
+        list(llama_runtime.high_resource_context_options) if llama_runtime else None
+    )
+    maximum_context_window = llama_runtime.maximum_context_window if llama_runtime else None
+    reasoning_modes = list(reasoning_modes_tuple) if reasoning_modes_tuple else None
+    default_reasoning_mode = (
+        llama_runtime.default_reasoning_mode
+        if llama_runtime
+        else (reasoning_modes[0] if reasoning_modes else None)
+    )
+    effort_options: list[Literal["light", "focused", "extended"]] | None = (
+        ["light", "focused", "extended"] if profile.supports_effort else None
+    )
+
     return AgentModelCatalogEntry(
         model_id=profile.model_id,
         display_name=profile.display_name,
@@ -141,6 +190,17 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         hosted_capabilities=sorted(profile.hosted_capabilities),
         dev_only=profile.dev_only,
         credentials_configured=model_has_credentials(profile),
+        pricing=_model_pricing_metadata(profile),
+        supports_effort=profile.supports_effort,
+        default_effort=profile.default_effort,
+        effort_options=effort_options,
+        context_options=context_options,
+        default_context_window=default_context_window,
+        high_resource_context_options=high_resource_context_options,
+        maximum_context_window=maximum_context_window,
+        reasoning_modes=reasoning_modes,
+        default_reasoning_mode=default_reasoning_mode,
+        supports_encrypted_reasoning=profile.supports_encrypted_reasoning,
     )
 
 
@@ -207,23 +267,7 @@ def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
 
 def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
     model_profile = resolve_selected_model_profile(agent_key)
-    pricing = agent_pricing(
-        agent_key,
-        model=model_profile.model_id,
-        provider=model_profile.provider,
-    )
-    rates = pricing.rates
-    return AgentPricingMetadata(
-        pricing_version=PRICING_VERSION,
-        billing_basis=pricing.billing_basis,  # type: ignore[arg-type]
-        input_per_million=rates.input_per_million,
-        output_per_million=rates.output_per_million,
-        cached_input_per_million=rates.cached_input_per_million,
-        long_context_threshold_tokens=rates.long_context_threshold_tokens,
-        long_context_input_per_million=rates.long_context_input_per_million,
-        long_context_output_per_million=rates.long_context_output_per_million,
-        long_context_cached_input_per_million=rates.long_context_cached_input_per_million,
-    )
+    return _model_pricing_metadata(model_profile)
 
 
 def _resolve_local_agent_status(
@@ -404,7 +448,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                     capabilities=list(spec.capability_tags),
                     native_tools={},
                     runtime=spec.runtime,
-                    tier=model_profile.tier,
+                    tier="standard",
                     stability="stable",
                     model_stability=model_profile.stability,
                     effort_options=None,
@@ -490,7 +534,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                 capabilities=list(spec.capability_tags),
                 native_tools=native_tools,
                 runtime=spec.runtime,
-                tier=model_profile.tier,
+                tier="standard",
                 stability="stable",
                 model_stability=model_profile.stability,
                 effort_options=effort_options,

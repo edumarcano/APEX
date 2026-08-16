@@ -561,6 +561,55 @@ class AgentModelCatalogEntry(BaseModel):
         default=True,
         description="Whether required provider credentials are configured.",
     )
+    pricing: AgentPricingMetadata = Field(
+        default_factory=lambda: AgentPricingMetadata(
+            pricing_version="unknown",
+            billing_basis="standard",
+            input_per_million=0,
+            output_per_million=0,
+        ),
+        description="Versioned token pricing and billing basis for this model.",
+    )
+    supports_effort: bool = Field(
+        default=False,
+        description="Whether this model supports reasoning effort settings.",
+    )
+    default_effort: Literal["light", "focused", "extended"] | None = Field(
+        default=None,
+        description="Default reasoning effort for this model.",
+    )
+    effort_options: list[Literal["light", "focused", "extended"]] | None = Field(
+        default=None,
+        description="Selectable reasoning effort options for this model.",
+    )
+    context_options: list[int] | None = Field(
+        default=None,
+        description="Selectable local context window presets for this model.",
+    )
+    default_context_window: int | None = Field(
+        default=None,
+        description="Default local context window preset for this model.",
+    )
+    high_resource_context_options: list[int] | None = Field(
+        default=None,
+        description="Context presets that carry a high-resource UI label.",
+    )
+    maximum_context_window: int | None = Field(
+        default=None,
+        description="Maximum supported context window for this model.",
+    )
+    reasoning_modes: list[LocalReasoningMode] | None = Field(
+        default=None,
+        description="Selectable local reasoning modes for this model.",
+    )
+    default_reasoning_mode: LocalReasoningMode | None = Field(
+        default=None,
+        description="Default local reasoning mode for this model.",
+    )
+    supports_encrypted_reasoning: bool = Field(
+        default=False,
+        description="Whether this model supports encrypted reasoning payloads.",
+    )
 
 
 class AgentStatus(BaseModel):

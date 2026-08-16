@@ -572,7 +572,6 @@ def _build_candidate_configuration(
         display_name="Benchmark candidate",
         agent_version="benchmark-v0",
         api_model=model_name,
-        tier=lynx_profile.tier,  # type: ignore[arg-type]
         stability=lynx_profile.stability,
         max_tool_turns=lynx_profile.max_tool_turns,
         max_tool_calls=lynx_profile.max_tool_calls,

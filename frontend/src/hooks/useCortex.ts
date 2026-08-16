@@ -293,6 +293,17 @@ function parseModelCatalog(value: unknown): ModelCatalogEntry[] | null {
     ) {
       return []
     }
+    const contextOptions =
+      Array.isArray(record.context_options) &&
+      record.context_options.every((v) => typeof v === 'number' && Number.isInteger(v) && v > 0)
+        ? (record.context_options as number[])
+        : null
+    const highResourceContextOptions =
+      Array.isArray(record.high_resource_context_options) &&
+      record.high_resource_context_options.every((v) => typeof v === 'number' && Number.isInteger(v) && v > 0)
+        ? (record.high_resource_context_options as number[])
+        : null
+
     return [{
       model_id: record.model_id,
       display_name: record.display_name,
@@ -305,6 +316,19 @@ function parseModelCatalog(value: unknown): ModelCatalogEntry[] | null {
           capability === 'google_maps' ||
           capability === 'x_search',
       ),
+      pricing: record.pricing ? parseAgentPricing(record.pricing) : undefined,
+      supports_effort: typeof record.supports_effort === 'boolean' ? record.supports_effort : undefined,
+      default_effort: isCloudEffort(record.default_effort) ? record.default_effort : null,
+      effort_options: parseCloudEffortList(record.effort_options),
+      context_options: contextOptions,
+      default_context_window: parseNullableFiniteNumber(record.default_context_window),
+      high_resource_context_options: highResourceContextOptions,
+      maximum_context_window: parseNullableFiniteNumber(record.maximum_context_window),
+      reasoning_modes: parseLocalReasoningModeList(record.reasoning_modes),
+      default_reasoning_mode: isLocalReasoningMode(record.default_reasoning_mode) ? record.default_reasoning_mode : null,
+      supports_encrypted_reasoning: typeof record.supports_encrypted_reasoning === 'boolean' ? record.supports_encrypted_reasoning : undefined,
+      dev_only: typeof record.dev_only === 'boolean' ? record.dev_only : undefined,
+      credentials_configured: typeof record.credentials_configured === 'boolean' ? record.credentials_configured : undefined,
     }]
   })
   return parsed.length === value.length ? parsed : null

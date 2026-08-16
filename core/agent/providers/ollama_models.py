@@ -20,9 +20,6 @@ class OllamaModelProfile(BaseModel):
         description="Version of the named Apex Agent product identity."
     )
     api_model: str = Field(description="Exact Ollama model tag string.")
-    tier: Literal["lightweight", "balanced", "capable"] = Field(
-        description="Computational performance classification for local inference."
-    )
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
     )

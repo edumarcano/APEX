@@ -260,7 +260,6 @@ def build_concrete_agent(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
             api_model=model_profile.model_id,
-            tier=model_profile.tier,  # type: ignore[arg-type]
             stability=model_profile.stability,
             thinking_level=thinking,
             max_tool_turns=model_profile.max_tool_turns,
@@ -282,7 +281,6 @@ def build_concrete_agent(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
             api_model=model_profile.model_id,
-            tier=model_profile.tier,  # type: ignore[arg-type]
             stability=model_profile.stability,
             default_temperature=runtime.default_temperature,
             max_tool_turns=model_profile.max_tool_turns,
@@ -310,7 +308,6 @@ def build_concrete_agent(
             display_name=spec.display_name,
             agent_version=spec.agent_version,
             api_model=model_profile.model_id,
-            tier=model_profile.tier,  # type: ignore[arg-type]
             stability=model_profile.stability,
             max_tool_turns=model_profile.max_tool_turns,
             max_tool_calls=model_profile.max_tool_calls,

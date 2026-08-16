@@ -83,170 +83,85 @@ const lynx = agent({
   },
 })
 
-const previewLynx = agent({
-  key: 'lynx',
-  display_name: 'Apex Lynx',
-  description: 'Preview local Agent.',
-  configured_model: 'gemma-4-E4B-Q4_K_M.gguf',
-  sort_order: 2,
-  stability: 'preview',
-  model_stability: 'preview',
-  provider: 'llama_cpp',
-  runtime: 'local',
-  capabilities: ['Local'],
-  status: 'available',
-  status_source: 'runtime',
-})
-
 describe('AgentSelector', () => {
-  it('formats Lynx gguf models and labels llama.cpp', async () => {
-    const user = userEvent.setup()
-    render(
-      <AgentSelector
-        activeAgent="lynx"
-        onChange={vi.fn()}
-        agentsStatus={[lynx]}
-        agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
-      />,
-    )
-
-    expect(screen.getByText('Apex Lynx')).toBeVisible()
-    expect(
-      screen.getByText('Powered by Gemma 4 E2B Q4_K_M · Runs locally through llama.cpp'),
-    ).toBeVisible()
-
-    await user.click(screen.getByRole('button', { expanded: false }))
-    expect(screen.getByRole('button', { name: 'Use Apex Lynx' })).toBeVisible()
-  })
-
-  it('shows preview stability badges for any agent marked preview', async () => {
-    const user = userEvent.setup()
-    render(
-      <AgentSelector
-        activeAgent="lynx"
-        onChange={vi.fn()}
-        agentsStatus={[agent(), previewLynx]}
-        agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
-      />,
-    )
-
-    expect(screen.getByText('Preview')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { expanded: false }))
-    expect(screen.getAllByText('Preview')).toHaveLength(2)
-    expect(screen.getByRole('button', { name: 'Use Apex Panthera' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Use Apex Lynx' })).toBeVisible()
-  })
-
-  it('omits preview badges for stable agents', () => {
-    render(
-      <AgentSelector
-        activeAgent="panthera"
-        onChange={vi.fn()}
-        agentsStatus={[agent()]}
-        agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
-      />,
-    )
-
-    expect(screen.queryByText('Preview')).not.toBeInTheDocument()
-  })
-
-  it('shows preview badge on the home presentation trigger', () => {
-    render(
-      <AgentSelector
-        activeAgent="lynx"
-        onChange={vi.fn()}
-        agentsStatus={[previewLynx]}
-        agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
-        presentation="home"
-      />,
-    )
-
-    expect(screen.getByRole('button', { name: 'Agent Lynx, Available, Preview' })).toBeVisible()
-    expect(screen.getByText('Preview')).toBeVisible()
-  })
-
-  it('allows Lynx selection when the local runtime is not yet ready', async () => {
+  it('renders segmented 2-choice buttons in Cortex without opening a popover', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    const notReady = agent({
-      ...lynx,
-      status: 'model_not_installed',
-      reason: 'Model is not installed or configured locally',
-    })
-
     render(
       <AgentSelector
         activeAgent="panthera"
         onChange={onChange}
-        agentsStatus={[agent(), notReady]}
+        agentsStatus={[agent(), lynx]}
         agentsStatusHydrated
         isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
       />,
     )
 
-    await user.click(screen.getByRole('button', { expanded: false }))
-    await user.click(screen.getByRole('button', { name: 'Use Apex Lynx' }))
+    expect(screen.getByRole('radio', { name: /Panthera, Cloud intelligence/i })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Lynx, Private on-device/i })).toBeVisible()
+
+    await user.click(screen.getByRole('radio', { name: /Lynx, Private on-device/i }))
     expect(onChange).toHaveBeenCalledWith('lynx')
   })
 
-  it('shows experimental stability badges for any agent marked experimental', () => {
-    const experimental = agent({
-      key: 'panthera',
-      display_name: 'Apex Panthera',
-      description: 'Experimental cloud model.',
-      configured_model: 'gemini-3.5-flash-lite',
-      sort_order: 1,
-      stability: 'experimental',
-      model_stability: 'experimental',
-      provider: 'gemini',
-      capabilities: ['Privacy sandbox'],
-    })
+  it('indicates the active agent in Cortex with checked state', () => {
     render(
       <AgentSelector
-        activeAgent="panthera"
+        activeAgent="lynx"
         onChange={vi.fn()}
-        agentsStatus={[experimental]}
+        agentsStatus={[agent(), lynx]}
         agentsStatusHydrated
         isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
       />,
     )
 
-    expect(screen.getByText('Experimental')).toBeVisible()
+    const pantheraRadio = screen.getByRole('radio', { name: /Panthera/i })
+    const lynxRadio = screen.getByRole('radio', { name: /Lynx/i })
+
+    expect(pantheraRadio).toHaveAttribute('aria-checked', 'false')
+    expect(lynxRadio).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('disables Verify access when Panthera is disabled', async () => {
+  it('renders a compact trigger on home presentation and opens simplified popover', async () => {
     const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <AgentSelector
+        activeAgent="panthera"
+        onChange={onChange}
+        agentsStatus={[agent(), lynx]}
+        agentsStatusHydrated
+        isQuerying={false}
+        presentation="home"
+      />,
+    )
+
+    const trigger = screen.getByRole('button', { name: /Agent Panthera/i })
+    expect(trigger).toBeVisible()
+
+    await user.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Select Agent' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'Use Apex Panthera' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'Use Apex Lynx' })).toBeVisible()
+
+    await user.click(screen.getByRole('option', { name: 'Use Apex Lynx' }))
+    expect(onChange).toHaveBeenCalledWith('lynx')
+  })
+
+  it('disables switching while an agent query is in flight', () => {
     render(
       <AgentSelector
         activeAgent="panthera"
         onChange={vi.fn()}
-        agentsStatus={[agent({ status: 'disabled', reason: 'Missing API key' })]}
+        agentsStatus={[agent(), lynx]}
         agentsStatusHydrated
-        isQuerying={false}
-        verifyingAgent={null}
-        onVerify={vi.fn(async () => true)}
+        isQuerying
       />,
     )
 
-    await user.click(screen.getByRole('button', { expanded: false }))
-    expect(screen.getByRole('button', { name: 'Verify access' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Use Apex Panthera' })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /Panthera/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Lynx/i })).toBeDisabled()
   })
 })
+
+

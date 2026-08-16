@@ -34,14 +34,17 @@ class CloudAgentVerificationTests(unittest.TestCase):
         clear_cloud_status_cache()
 
     def test_non_generative_probe_is_cached_as_verified(self) -> None:
+        openai_profile = get_model_profile("gpt-5.6-luna")
         with (
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
+            mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)) as probe,
         ):
             result = verify_cloud_agent("panthera")
 
         self.assertEqual(result.status, "verified")
-        self.assertEqual(cloud_status("panthera").status, "verified")
+        with mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile):
+            self.assertEqual(cloud_status("panthera").status, "verified")
         probe.assert_called_once_with("openai", "gpt-5.6-luna", "secret")
 
     def test_explicit_verification_forces_a_fresh_probe(self) -> None:
@@ -121,6 +124,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
         )
 
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
+        openai_profile = get_model_profile("gpt-5.6-luna")
         record_cloud_request_failure(
             "panthera",
             _ProviderError(429, "insufficient_quota"),
@@ -128,6 +132,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
             model="gpt-5.6-luna",
         )
         with (
+            mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile),
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)),
         ):
@@ -144,16 +149,18 @@ class CloudAgentVerificationTests(unittest.TestCase):
         self.assertEqual(classify_provider_failure(_ProviderError(404))[0], "model_unavailable")
         self.assertEqual(classify_provider_failure(_ProviderError(500))[0], "provider_unreachable")
 
+        openai_profile = get_model_profile("gpt-5.6-luna")
         record_cloud_request_failure(
             "panthera",
             _ProviderError(429, "insufficient_quota"),
             provider="openai",
             model="gpt-5.6-luna",
         )
-        self.assertEqual(
-            cloud_status("panthera").reason,
-            "Provider reported exhausted quota or credits.",
-        )
+        with mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile):
+            self.assertEqual(
+                cloud_status("panthera").reason,
+                "Provider reported exhausted quota or credits.",
+            )
 
     def test_endpoint_rejects_demo_and_local_agents_without_probe(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", True), mock.patch(
@@ -210,12 +217,14 @@ class CloudAgentVerificationTests(unittest.TestCase):
     def test_request_cache_records_the_route_that_actually_ran(self) -> None:
         from core.agent.providers.cloud_verification import record_cloud_request_success
 
+        openai_profile = get_model_profile("gpt-5.6-luna")
         record_cloud_request_success(
             "panthera",
             provider="openai",
             model="gpt-5.6-luna",
         )
-        self.assertEqual(cloud_status("panthera").status, "verified")
+        with mock.patch("core.agent.providers.cloud_verification.resolve_selected_model_profile", return_value=openai_profile):
+            self.assertEqual(cloud_status("panthera").status, "verified")
 
         store = mock.Mock()
         store.get_snapshot.return_value.ask_apex = AgentSettings(

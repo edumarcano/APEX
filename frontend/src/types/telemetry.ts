@@ -223,6 +223,19 @@ export interface ModelCatalogEntry {
   runtime: AgentRuntime
   stability: AgentStability
   hosted_capabilities: HostedTool[]
+  pricing?: AgentPricingMetadata
+  supports_effort?: boolean
+  default_effort?: CloudEffort | null
+  effort_options?: CloudEffort[] | null
+  context_options?: number[] | null
+  default_context_window?: number | null
+  high_resource_context_options?: number[] | null
+  maximum_context_window?: number | null
+  reasoning_modes?: LocalReasoningMode[] | null
+  default_reasoning_mode?: LocalReasoningMode | null
+  supports_encrypted_reasoning?: boolean
+  dev_only?: boolean
+  credentials_configured?: boolean
 }
 
 export interface LocalLoadedModelStatus {

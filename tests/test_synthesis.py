@@ -478,7 +478,7 @@ class ProfileAndPersistenceTests(unittest.TestCase):
 
     def test_lynx_ollama_model_specs(self) -> None:
         profile = build_lynx_profile(model=MUS_MODEL)
-        self.assertEqual((profile.tier, profile.stability), ("balanced", "stable"))
+        self.assertEqual(profile.stability, "stable")
         self.assertEqual((profile.api_model, profile.context_window), ("qwen3:4b-instruct", 4096))
         self.assertEqual((profile.final_answer_max_tokens, profile.generation_timeout), (768, 150))
 

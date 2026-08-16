@@ -34,7 +34,6 @@ def _lynx_profile(*, context_window: int = 16384):
         display_name="Apex Lynx",
         agent_version="2.0",
         api_model="gemma-4-E2B-Q4_K_M.gguf",
-        tier="balanced",
         stability="stable",
         max_tool_turns=3,
         max_tool_calls=4,
