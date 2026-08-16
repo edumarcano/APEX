@@ -69,6 +69,7 @@ describe('assistant boot hydration', () => {
       panthera: { effort: 'extended', hosted_tools: { google_search: false } },
       lynx: { context_window: 32768, reasoning_mode: 'focused' },
     })).toEqual({
+      sandbox_mode: true,
       panthera: { effort: 'extended', hosted_tools: { google_search: false } },
       lynx: { context_window: 32768, reasoning_mode: 'focused' },
     })

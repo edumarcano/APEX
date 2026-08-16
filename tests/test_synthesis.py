@@ -4,7 +4,7 @@ import sqlite3
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.agent.model_catalog import get_model_profile
+from core.agent.model_catalog import DEFAULT_PANTHERA_MODEL, get_model_profile
 from core.agent.catalog import resolve_effort
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.contract import ProviderTurnResult
@@ -81,6 +81,33 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.provider, "openai")
         self.assertEqual(result.resolved_model, "gpt-5.6-luna")
         self.assertEqual(result.provider_ms, 123.4)
+
+    def test_panthera_briefing_ignores_non_openai_selected_model(self) -> None:
+        router = SynthesisRouter()
+        turn = ProviderTurnResult(
+            message=AgentMessage(
+                role="agent",
+                content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
+            ),
+            resolved_model=DEFAULT_PANTHERA_MODEL,
+        )
+        for selected_model in ("gemini-3.6-flash", "grok-4.3"):
+            with self.subTest(selected_model=selected_model), patch.dict(
+                "os.environ", {"OPENAI_API_KEY": "test-key"}, clear=False
+            ), patch(
+                "core.agent.catalog.resolve_selected_model_profile",
+                return_value=get_model_profile(selected_model),
+            ), patch(
+                "core.synthesis.router.OpenAIProvider.generate_turn",
+                return_value=turn,
+            ) as generate:
+                result = router._panthera(sample_input())
+
+            _messages, _tools, profile = generate.call_args.args
+            self.assertEqual(profile.api_model, DEFAULT_PANTHERA_MODEL)
+            self.assertEqual(profile.provider, "openai")
+            self.assertEqual(result.provider, "openai")
+            self.assertEqual(result.resolved_model, DEFAULT_PANTHERA_MODEL)
 
     def test_panthera_falls_back_to_lynx(self) -> None:
         router = SynthesisRouter()

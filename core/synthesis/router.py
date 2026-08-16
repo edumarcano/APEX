@@ -15,7 +15,11 @@ from core.agent.catalog import (
     local_model_refs_for_model,
     resolve_selected_model_profile,
 )
-from core.agent.model_catalog import DEFAULT_LYNX_MODEL, get_model_profile
+from core.agent.model_catalog import (
+    DEFAULT_LYNX_MODEL,
+    DEFAULT_PANTHERA_MODEL,
+    get_model_profile,
+)
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.local_runtime.contract import LocalModelRef
@@ -61,6 +65,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS = 512
 _LYNX_BRIEFING_MODEL = DEFAULT_LYNX_MODEL
+_PANTHERA_BRIEFING_MODEL = DEFAULT_PANTHERA_MODEL
 
 
 StateCallback = Callable[[str, str | None, str | None, str | None], None]
@@ -290,7 +295,11 @@ class SynthesisRouter:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("openai_unavailable")
-        agent = build_concrete_agent("panthera", native_effort="low")
+        agent = build_concrete_agent(
+            "panthera",
+            native_effort="low",
+            model_id=_PANTHERA_BRIEFING_MODEL,
+        )
         self._state("generating", "openai", "panthera", None)
         turn = OpenAIProvider(api_key).generate_turn(
             [AgentMessage(role="user", content=wrap_untrusted_payload(source))],

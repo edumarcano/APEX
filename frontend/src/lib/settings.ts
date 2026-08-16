@@ -86,7 +86,7 @@ export function resolveHistoryPartition(
   return usesSandboxHistory(devModeActive, sandboxMode) ? 'sandbox' : 'production'
 }
 
-const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'lynx'])
+const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'lynx', 'sandbox_mode'])
 
 /**
  * Keep session-only agent selection out of persisted DEV_MODE settings,

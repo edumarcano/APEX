@@ -84,6 +84,7 @@ _MODEL_RATES: dict[str, ModelTokenRates] = {
 
 _LOCAL_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
 _FREE_TIER_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
+_FREE_TIER_MODELS = frozenset({"gemini-3.5-flash-lite"})
 
 _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
     "google_search": HostedToolRate(0.014),
@@ -112,6 +113,8 @@ def agent_pricing(
     """Return the authoritative billing basis for an Apex Agent."""
     if is_local_inference_provider(provider):
         return ProfilePricing("local", _LOCAL_ZERO)
+    if model.strip().lower() in _FREE_TIER_MODELS:
+        return ProfilePricing("free_tier", _FREE_TIER_ZERO)
     return ProfilePricing(
         "standard",
         lookup_model_rates(model, provider=provider) or ModelTokenRates(0.0, 0.0),

@@ -20,7 +20,12 @@ from core.agent.catalog import (
 )
 from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef
 from core.agent.loop import is_local_profile, run_agent_loop
-from core.agent.pricing import PRICING_VERSION, _MODEL_RATES, estimate_inference_cost
+from core.agent.pricing import (
+    PRICING_VERSION,
+    _MODEL_RATES,
+    agent_pricing,
+    estimate_inference_cost,
+)
 from core.agent.providers.contract import (
     ProviderToolEvent,
     ProviderTurnResult,
@@ -477,6 +482,18 @@ class PricingRegistryTests(unittest.TestCase):
         # cached at $0.04, and 1M output at $1.80.
         self.assertAlmostEqual(estimate.token_cost or 0.0, 2.056, places=4)
 
+    def test_gemini_flash_lite_uses_free_tier_billing(self) -> None:
+        pricing = agent_pricing(
+            "panthera",
+            model="gemini-3.5-flash-lite",
+            provider="gemini",
+        )
+
+        self.assertEqual(pricing.billing_basis, "free_tier")
+        self.assertEqual(pricing.rates.input_per_million, 0.0)
+        self.assertEqual(pricing.rates.output_per_million, 0.0)
+        self.assertEqual(pricing.rates.cached_input_per_million, 0.0)
+
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(
             model="gemini-3.6-flash",
@@ -527,7 +544,7 @@ class PricingRegistryTests(unittest.TestCase):
         # output at the 7.50 output rate.
         self.assertAlmostEqual(estimate.token_cost or 0.0, 15.96, places=4)
 
-    def test_experimental_gemini_model_pricing_uses_model_rates(self) -> None:
+    def test_experimental_gemini_model_pricing_uses_free_tier(self) -> None:
         estimate = estimate_inference_cost(
             model="gemini-3.5-flash-lite",
             configured_model="gemini-3.5-flash-lite",
@@ -535,8 +552,7 @@ class PricingRegistryTests(unittest.TestCase):
             agent_key="panthera",
             usage=TokenUsage(input_tokens=1000, output_tokens=200),
         )
-        # 1k input at $0.30/M + 200 output at $2.50/M
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 0.0008, places=6)
+        self.assertEqual(estimate.token_cost, 0.0)
         self.assertEqual(estimate.completeness, "complete")
 
     def test_long_context_rates_apply_after_the_provider_threshold(self) -> None:

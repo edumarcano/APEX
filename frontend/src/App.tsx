@@ -1150,7 +1150,7 @@ export default function App(): ReactElement {
 
   const handleSandboxModeChange = useCallback((enabled: boolean): void => {
     setSandboxMode(enabled)
-    void persistAgentSettings({ sandbox_mode: enabled }, activeAgent, { refreshToolCatalog: false })
+    void persistAgentSettings({ sandbox_mode: enabled }, activeAgent, { refreshToolCatalog: true })
   }, [activeAgent, persistAgentSettings])
 
   const handleLocalContextWindowChange = useCallback((

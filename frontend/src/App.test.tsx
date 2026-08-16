@@ -8,6 +8,7 @@ import type { AgentKey, ToolCatalog } from './types/telemetry'
 
 const appMocks = vi.hoisted(() => ({
   initialAgent: 'panthera' as AgentKey,
+  devModeActive: false,
   refreshAgentsStatus: vi.fn().mockResolvedValue(undefined),
   queryAgent: vi.fn().mockResolvedValue(undefined),
   clearCortexSession: vi.fn(),
@@ -100,13 +101,19 @@ vi.mock('./components/SystemDiagnostics', () => ({
 vi.mock('./components/CortexWorkspace', () => ({
   CortexWorkspace: ({
     activeAgent,
+    devModeActive,
+    sandboxMode,
     onLocalContextWindowChange,
     onHostedToolChange,
+    onSandboxModeChange,
     toolCatalog,
   }: {
     activeAgent: AgentKey
+    devModeActive: boolean
+    sandboxMode: boolean
     onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
     onHostedToolChange: (tool: 'google_search' | 'google_maps' | 'x_search', enabled: boolean) => void
+    onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
   }) => {
     const authoritativeContextWindow = toolCatalog?.context_window ?? null
@@ -163,6 +170,14 @@ vi.mock('./components/CortexWorkspace', () => ({
             Enable Google Search
           </button>
         )}
+        {devModeActive ? (
+          <input
+            aria-label="Sandbox mode"
+            type="checkbox"
+            checked={sandboxMode}
+            onChange={(event) => onSandboxModeChange(event.target.checked)}
+          />
+        ) : null}
       </div>
     )
   },
@@ -173,7 +188,7 @@ vi.mock('./hooks/useApexData', () => ({
     activeReminders: [],
     createReminder: appMocks.createReminder,
     demoModeActive: false,
-    devModeActive: false,
+    devModeActive: appMocks.devModeActive,
     agentQueriesEnabled: true,
     marketEnabled: false,
     defaultAgent: appMocks.initialAgent,
@@ -330,6 +345,7 @@ function settingsResponse(
   agent: AgentKey,
   googleSearchEnabled = false,
   contextWindow = 16384,
+  sandboxMode = false,
 ): Response {
   return new Response(JSON.stringify({
     schema_version: 16,
@@ -349,7 +365,7 @@ function settingsResponse(
       ask_apex: {
         enabled: true,
         agent,
-        sandbox_mode: false,
+        sandbox_mode: sandboxMode,
         panthera: {
           model: 'gemini-3.6-flash',
           effort: 'focused',
@@ -401,6 +417,7 @@ function settingsResponse(
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'panthera'
+    appMocks.devModeActive = false
     appMocks.weatherSnapshot = null
     vi.restoreAllMocks()
   })
@@ -497,6 +514,45 @@ describe('App catalog-affecting settings', () => {
     await waitFor(() => {
       expect(catalogRequests.filter((agent) => agent === 'lynx')).toHaveLength(2)
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('32768')
+    })
+  })
+
+  it('refreshes the current catalog after toggling sandbox mode', async () => {
+    appMocks.devModeActive = true
+    const user = userEvent.setup()
+    const catalogRequests: AgentKey[] = []
+    let sandboxPatch: Record<string, unknown> | null = null
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = new URL(String(input))
+        if (url.pathname.endsWith('/cortex/tool-catalog')) {
+          const agent = url.searchParams.get('agent') as AgentKey
+          catalogRequests.push(agent)
+          return Promise.resolve(new Response(
+            JSON.stringify(catalogFor(agent)),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ))
+        }
+        if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
+          sandboxPatch = JSON.parse(String(init.body)) as Record<string, unknown>
+          return Promise.resolve(settingsResponse('panthera', false, 16384, true))
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }))
+      }),
+    )
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await waitFor(() => expect(catalogRequests).toContain('panthera'))
+
+    await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
+
+    await waitFor(() => {
+      expect(sandboxPatch).toEqual({ ask_apex: { sandbox_mode: true } })
+      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
     })
   })
 
