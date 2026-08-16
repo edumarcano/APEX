@@ -37,7 +37,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
         x_search: true,
       },
     },
-    lynx: {
+    felis: {
       model: 'gemma-4-E2B-Q4_K_M.gguf',
       context_window: 16384,
       reasoning_mode: 'none',

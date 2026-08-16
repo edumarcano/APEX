@@ -15,14 +15,14 @@ from core.agent.catalog import (
     migrate_schema7_ask_apex,
 )
 from core.agent.model_catalog import (
-    DEFAULT_LYNX_MODEL,
-    DEFAULT_LYNX_RUNTIME,
+    DEFAULT_FELIS_MODEL,
+    DEFAULT_FELIS_RUNTIME,
     cloud_models_for_provider,
     get_model_profile,
     local_models_for_runtime,
-    reconcile_lynx_context_window,
-    reconcile_lynx_reasoning_mode,
-    reconcile_lynx_runtime_model,
+    reconcile_felis_context_window,
+    reconcile_felis_reasoning_mode,
+    reconcile_felis_runtime_model,
     reconcile_panthera_provider_model,
     reconcile_panthera_reasoning,
 )
@@ -39,10 +39,10 @@ from core.settings.models import (
     AgentSettings,
     BriefingSettings,
     FeaturesSettings,
+    FelisSettings,
     FootballSettings,
     FootballTeamSettings,
     LlamaCppSettings,
-    LynxSettings,
     MicrosoftTodoSettings,
     MarketSettings,
     McpServerEnablementSettings,
@@ -650,17 +650,16 @@ def _normalize_agent_settings(
         _record_error(errors, "ask_apex.enabled must be a boolean")
 
     agent = migrated.get("agent", "panthera")
-    if isinstance(agent, str):
-        normalized_agent = agent.strip().lower()
-        if normalized_agent in VALID_AGENT_KEYS:
-            result["agent"] = normalized_agent
-        else:
-            _record_error(errors, "ask_apex.agent is not valid")
+    if agent in VALID_AGENT_KEYS:
+        result["agent"] = agent
+    elif agent is not None:
+        _record_error(errors, "ask_apex.agent is not valid")
 
-    if isinstance(migrated.get("sandbox_mode"), bool):
-        result["sandbox_mode"] = migrated["sandbox_mode"]
-    elif migrated.get("sandbox_mode") is not None:
-        _record_error(errors, "ask_apex.sandbox_mode must be a boolean")
+    if "sandbox_mode" in migrated:
+        if isinstance(migrated["sandbox_mode"], bool):
+            result["sandbox_mode"] = migrated["sandbox_mode"]
+        elif migrated["sandbox_mode"] is not None:
+            _record_error(errors, "ask_apex.sandbox_mode must be a boolean")
 
     panthera_raw = migrated.get("panthera")
     if isinstance(panthera_raw, dict):
@@ -695,8 +694,6 @@ def _normalize_agent_settings(
         effort = panthera_raw.get("effort")
         if isinstance(effort, str):
             effort_str = effort.strip().lower()
-            legacy_map = {"light": "low", "focused": "medium", "extended": "high"}
-            effort_str = legacy_map.get(effort_str, effort_str)
             if effort_str in VALID_CLOUD_EFFORTS:
                 panthera["effort"] = effort_str
             else:
@@ -720,10 +717,10 @@ def _normalize_agent_settings(
         if panthera:
             result["panthera"] = panthera
 
-    lynx_raw = migrated.get("lynx")
-    if isinstance(lynx_raw, dict):
-        lynx: dict[str, Any] = {}
-        legacy_runtime = lynx_raw.get("runtime")
+    felis_raw = migrated.get("felis")
+    if isinstance(felis_raw, dict):
+        felis: dict[str, Any] = {}
+        legacy_runtime = felis_raw.get("runtime")
         if (
             isinstance(legacy_runtime, str)
             and legacy_runtime.strip().lower() in VALID_LOCAL_RUNTIMES
@@ -731,58 +728,58 @@ def _normalize_agent_settings(
             legacy_runtime = legacy_runtime.strip().lower()
         else:
             legacy_runtime = None
-        model = lynx_raw.get("model")
+        model = felis_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
             profile = get_model_profile(model.strip())
             assert profile is not None
-            _, reconciled_model = reconcile_lynx_runtime_model(
+            _, reconciled_model = reconcile_felis_runtime_model(
                 profile.provider,  # type: ignore[arg-type]
                 model.strip(),
                 dev_mode=is_dev_mode(),
             )
-            lynx["model"] = reconciled_model
+            felis["model"] = reconciled_model
         elif model is not None:
-            _record_error(errors, "ask_apex.lynx.model is not valid")
+            _record_error(errors, "ask_apex.felis.model is not valid")
         elif isinstance(legacy_runtime, str):
             models = local_models_for_runtime(
                 legacy_runtime,  # type: ignore[arg-type]
                 dev_mode=is_dev_mode(),
             )
             if models:
-                lynx["model"] = models[0].model_id
-        context_window = lynx_raw.get("context_window")
+                felis["model"] = models[0].model_id
+        context_window = felis_raw.get("context_window")
         if isinstance(context_window, int) and not isinstance(context_window, bool):
-            lynx["context_window"] = context_window
+            felis["context_window"] = context_window
         elif context_window is not None:
-            _record_error(errors, "ask_apex.lynx.context_window must be an integer")
-        reasoning_mode = lynx_raw.get("reasoning_mode")
+            _record_error(errors, "ask_apex.felis.context_window must be an integer")
+        reasoning_mode = felis_raw.get("reasoning_mode")
         if isinstance(reasoning_mode, str) and reasoning_mode in {"none", "focused"}:
-            lynx["reasoning_mode"] = reasoning_mode
+            felis["reasoning_mode"] = reasoning_mode
         elif reasoning_mode is not None:
-            _record_error(errors, "ask_apex.lynx.reasoning_mode is not valid")
-        if lynx:
-            result["lynx"] = lynx
+            _record_error(errors, "ask_apex.felis.reasoning_mode is not valid")
+        if felis:
+            result["felis"] = felis
 
-    lynx_result = result.get("lynx")
-    if isinstance(lynx_result, dict):
-        model = lynx_result.get("model", DEFAULT_LYNX_MODEL)
+    felis_result = result.get("felis")
+    if isinstance(felis_result, dict):
+        model = felis_result.get("model", DEFAULT_FELIS_MODEL)
         profile = get_model_profile(model) if isinstance(model, str) else None
         runtime = (
             profile.provider
             if profile is not None and profile.runtime == "local"
-            else DEFAULT_LYNX_RUNTIME
+            else DEFAULT_FELIS_RUNTIME
         )
         if isinstance(model, str):
-            context_window = lynx_result.get("context_window")
+            context_window = felis_result.get("context_window")
             if isinstance(context_window, int) and not isinstance(context_window, bool):
-                lynx_result["context_window"] = reconcile_lynx_context_window(
+                felis_result["context_window"] = reconcile_felis_context_window(
                     runtime,  # type: ignore[arg-type]
                     model,
                     context_window,
                 )
-            reasoning_mode = lynx_result.get("reasoning_mode")
+            reasoning_mode = felis_result.get("reasoning_mode")
             if isinstance(reasoning_mode, str) and reasoning_mode in {"none", "focused"}:
-                lynx_result["reasoning_mode"] = reconcile_lynx_reasoning_mode(
+                felis_result["reasoning_mode"] = reconcile_felis_reasoning_mode(
                     model,
                     reasoning_mode,  # type: ignore[arg-type]
                 )
@@ -1069,7 +1066,7 @@ def _coerce_briefing_mode(
         return None
     normalized = raw.strip().lower()
     if normalized == "apodemus":
-        normalized = "lynx"
+        normalized = "felis"
     if normalized in VALID_BRIEFING_MODES:
         return normalized
     _record_error(errors, "briefing.default_mode is not a valid mode")
@@ -1259,7 +1256,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     briefing_migrated = migrate_schema5_briefing(briefing_raw, schema5=False)
     default_mode = briefing_migrated.get("default_mode", "panthera")
     if default_mode == "apodemus":
-        default_mode = "lynx"
+        default_mode = "felis"
     if default_mode not in VALID_BRIEFING_MODES:
         default_mode = "panthera"
     briefing = BriefingSettings(
@@ -1355,7 +1352,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "agent": snapshot.ask_apex.agent,
             "sandbox_mode": snapshot.ask_apex.sandbox_mode,
             "panthera": snapshot.ask_apex.panthera.model_dump(),
-            "lynx": snapshot.ask_apex.lynx.model_dump(),
+            "felis": snapshot.ask_apex.felis.model_dump(),
         },
         "tool_profiles": snapshot.tool_profiles.model_dump(),
         "briefing": {

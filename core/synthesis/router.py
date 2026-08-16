@@ -16,7 +16,7 @@ from core.agent.catalog import (
     resolve_selected_model_profile,
 )
 from core.agent.model_catalog import (
-    DEFAULT_LYNX_MODEL,
+    DEFAULT_FELIS_MODEL,
     DEFAULT_PANTHERA_MODEL,
     get_model_profile,
 )
@@ -52,7 +52,7 @@ from core.synthesis.formatting import (
     wrap_untrusted_payload,
 )
 from core.synthesis.models import (
-    LYNX_BRIEFING_CONTEXT_WINDOW,
+    FELIS_BRIEFING_CONTEXT_WINDOW,
     LOCAL_BRIEFING_AGENTS,
     BriefingMode,
     SynthesisInput,
@@ -64,7 +64,7 @@ from core.settings import get_settings_store
 _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS = 512
-_LYNX_BRIEFING_MODEL = DEFAULT_LYNX_MODEL
+_FELIS_BRIEFING_MODEL = DEFAULT_FELIS_MODEL
 _PANTHERA_BRIEFING_MODEL = DEFAULT_PANTHERA_MODEL
 
 
@@ -73,7 +73,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
 @dataclass
 class WarmupHandle:
-    agent_key: str = "lynx"
+    agent_key: str = "felis"
     model_ref: LocalModelRef | None = None
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
@@ -97,29 +97,29 @@ def resident_agent_key() -> str | None:
     return agent_key_for_local_model_ref(tracked) if tracked is not None else None
 
 
-def _resident_lynx_briefing_model() -> LocalModelRef | None:
-    """Return the resident fixed Lynx briefing model, when it is loaded."""
+def _resident_felis_briefing_model() -> LocalModelRef | None:
+    """Return the resident fixed Felis briefing model, when it is loaded."""
     resident = resident_local_model_ref()
     if resident is None:
         return None
     return (
         resident
-        if resident in local_model_refs_for_model(_LYNX_BRIEFING_MODEL)
+        if resident in local_model_refs_for_model(_FELIS_BRIEFING_MODEL)
         else None
     )
 
 
-def _lynx_briefing_provider() -> str:
-    """Return the provider for Lynx's fixed briefing model."""
-    profile = get_model_profile(_LYNX_BRIEFING_MODEL)
+def _felis_briefing_provider() -> str:
+    """Return the provider for Felis's fixed briefing model."""
+    profile = get_model_profile(_FELIS_BRIEFING_MODEL)
     if profile is None:
-        raise RuntimeError("lynx_briefing_model_invalid")
+        raise RuntimeError("felis_briefing_model_invalid")
     return profile.provider
 
 
 def _briefing_provider_for_agent(agent_key: str) -> str:
-    if agent_key == "lynx":
-        return _lynx_briefing_provider()
+    if agent_key == "felis":
+        return _felis_briefing_provider()
     return resolve_selected_model_profile(agent_key).provider
 
 
@@ -170,8 +170,8 @@ class SynthesisRouter:
             handle.finished_at = time.monotonic()
             handle.event.set()
             return handle
-        if agent_key == "lynx":
-            context_window = context_window or LYNX_BRIEFING_CONTEXT_WINDOW
+        if agent_key == "felis":
+            context_window = context_window or FELIS_BRIEFING_CONTEXT_WINDOW
             reasoning_mode = reasoning_mode or "none"
         try:
             agent = build_concrete_agent(
@@ -179,7 +179,7 @@ class SynthesisRouter:
                 native_effort=None,
                 local_context_window=context_window,
                 local_reasoning_mode=reasoning_mode,
-                model_id=_LYNX_BRIEFING_MODEL if agent_key == "lynx" else None,
+                model_id=_FELIS_BRIEFING_MODEL if agent_key == "felis" else None,
             )
             backend = get_local_runtime_backend(agent.provider)
         except Exception:
@@ -247,20 +247,20 @@ class SynthesisRouter:
             return None
         if mode not in LOCAL_BRIEFING_AGENTS:
             return None
-        resident_ref = _resident_lynx_briefing_model() if mode == "lynx" else None
+        resident_ref = _resident_felis_briefing_model() if mode == "felis" else None
         if resident_ref is not None:
             self._state(
                 "ready",
-                _lynx_briefing_provider(),
+                _felis_briefing_provider(),
                 mode,
                 None,
             )
             return None
         # Explicit local selection warms the selected Agent.
-        if mode == "lynx":
+        if mode == "felis":
             return self.start_agent_warmup(
                 mode,
-                context_window=LYNX_BRIEFING_CONTEXT_WINDOW,
+                context_window=FELIS_BRIEFING_CONTEXT_WINDOW,
                 reasoning_mode="none",
             )
         return self.start_agent_warmup(mode)
@@ -339,11 +339,11 @@ class SynthesisRouter:
         """Build the provider profile for a local briefing Agent."""
         context_window: int | None = None
         if AGENT_SPECS[agent_key].runtime == "local":
-            context_window = LYNX_BRIEFING_CONTEXT_WINDOW
+            context_window = FELIS_BRIEFING_CONTEXT_WINDOW
             if resident_ref is not None and resident_ref.provider == "llama_cpp":
                 model_id = (
-                    _LYNX_BRIEFING_MODEL
-                    if agent_key == "lynx"
+                    _FELIS_BRIEFING_MODEL
+                    if agent_key == "felis"
                     else resolve_selected_model_profile(agent_key).model_id
                 )
                 context_window = (
@@ -363,7 +363,7 @@ class SynthesisRouter:
             native_effort=None,
             local_context_window=context_window,
             local_reasoning_mode="none",
-            model_id=_LYNX_BRIEFING_MODEL if agent_key == "lynx" else None,
+            model_id=_FELIS_BRIEFING_MODEL if agent_key == "felis" else None,
         ).model_copy(
             update={
                 "final_answer_max_tokens": _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS,
@@ -429,7 +429,7 @@ class SynthesisRouter:
     ) -> SynthesisResult:
         """Honor an explicitly selected local Agent; never silently substitute another."""
         resident_ref = (
-            _resident_lynx_briefing_model() if agent_key == "lynx" else None
+            _resident_felis_briefing_model() if agent_key == "felis" else None
         )
         if resident_ref is not None:
             try:
@@ -479,7 +479,7 @@ class SynthesisRouter:
             return self._structured_digest_fallback(source, reason, warmup.elapsed_ms)
 
     def _synthesize_panthera(self, source: SynthesisInput) -> SynthesisResult:
-        """Route Panthera failure through Lynx, then Structured Digest."""
+        """Route Panthera failure through Felis, then Structured Digest."""
         fallback_steps: list[str] = []
         try:
             result = self._panthera(source)
@@ -487,14 +487,14 @@ class SynthesisRouter:
             return result
         except Exception as exc:
             _LOGGER.error(
-                "Panthera briefing synthesis failed; falling back to Lynx/Structured Digest. "
+                "Panthera briefing synthesis failed; falling back to Felis/Structured Digest. "
                 "error_type=%s",
                 type(exc).__name__,
             )
             reason = str(exc) if str(exc).startswith("openai_") else "openai_error"
             fallback_steps.append(f"panthera:{reason}")
 
-        for agent_key in ("lynx",):
+        for agent_key in ("felis",):
             result, local_reason = self._try_panthera_local_fallback(source, agent_key)
             if result is not None:
                 fallback_steps.append(f"{agent_key}:resolved")
@@ -518,7 +518,7 @@ class SynthesisRouter:
     ) -> tuple[SynthesisResult | None, str]:
         """Attempt one ordered local fallback without substituting agents."""
         resident_ref = (
-            _resident_lynx_briefing_model() if agent_key == "lynx" else None
+            _resident_felis_briefing_model() if agent_key == "felis" else None
         )
         if resident_ref is not None:
             try:

@@ -10,15 +10,15 @@ import type {
 
 import { AgentQueryBar } from './AgentQueryBar'
 
-const lynx: AgentStatus = {
-  key: 'lynx',
-  display_name: 'Apex Lynx',
+const felis: AgentStatus = {
+  key: 'felis',
+  display_name: 'Apex Felis',
   description: 'Balanced local profile.',
-  configured_model: 'qwen3:4b-instruct',
+  configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
   sort_order: 2,
   capabilities: ['Larger model'],
   native_tools: {},
-  provider: 'ollama',
+  provider: 'llama_cpp',
   version: '2.0',
   runtime: 'local',
   tier: 'balanced',
@@ -57,7 +57,7 @@ const lynx: AgentStatus = {
 }
 
 const catalog: ToolCatalog = {
-  agent: 'lynx',
+  agent: 'felis',
   groups: [],
   tools: [],
   profiles: [],
@@ -65,12 +65,12 @@ const catalog: ToolCatalog = {
   default_profile_name: 'No APEX Tools',
   default_selected_tool_names: [],
   provider_hosted_tools: [],
-  context_window: 4096,
+  context_window: 16384,
   reserved_response_tokens: 512,
 }
 
 const overflowPreflight: ToolPreflightEstimate = {
-  agent: 'lynx',
+  agent: 'felis',
   selection: {
     requested_tool_names: ['get_weather_forecast'],
     offered_tool_names: ['get_weather_forecast'],
@@ -103,9 +103,9 @@ function renderBar(
   return render(
     <AgentQueryBar
       presentation="cortex"
-      activeAgent="lynx"
+      activeAgent="felis"
       onSubmit={onSubmit}
-      agentsStatus={[lynx]}
+      agentsStatus={[felis]}
       catalog={catalog}
       selectedToolNames={['get_weather_forecast']}
       activeToolProfileId="custom_weather"
@@ -161,7 +161,7 @@ describe('AgentQueryBar unified tool selection', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       'Check status',
-      'lynx',
+      'felis',
       ['get_weather_forecast'],
       'custom_weather',
     )
@@ -233,9 +233,9 @@ describe('AgentQueryBar unified tool selection', () => {
     view.rerender(
       <AgentQueryBar
         presentation="cortex"
-        activeAgent="lynx"
+        activeAgent="felis"
         onSubmit={onSubmit}
-        agentsStatus={[lynx]}
+        agentsStatus={[felis]}
         catalog={catalog}
         selectedToolNames={['get_weather_forecast']}
         activeToolProfileId="custom_weather"
@@ -248,7 +248,7 @@ describe('AgentQueryBar unified tool selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
     expect(onSubmit).toHaveBeenCalledWith(
       'Shorten this prompt',
-      'lynx',
+      'felis',
       ['get_weather_forecast'],
       'custom_weather',
     )

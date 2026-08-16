@@ -3,9 +3,9 @@ import type { ReactElement } from 'react'
 
 import type { AgentKey } from '../types/telemetry'
 
-const AGENT_MARKS: Record<AgentKey, { icon: typeof Crown; label: string; className: string }> = {
+const AGENT_MARKS: Record<string, { icon: typeof Crown; label: string; className: string }> = {
   panthera: { icon: Crown, label: 'Panthera agent mark', className: 'border-purple-300/25 bg-purple-400/10 text-purple-200' },
-  lynx: { icon: CircleGauge, label: 'Lynx agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
+  felis: { icon: CircleGauge, label: 'Felis agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
 }
 
 interface AgentMarkProps {

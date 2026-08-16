@@ -12,7 +12,7 @@ export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
-export type BriefingMode = 'panthera' | 'lynx' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'felis' | 'structured_digest'
 
 export interface LlamaCppSettings {
   enabled: boolean
@@ -66,7 +66,7 @@ export interface PantheraSettings {
   hosted_tools: PantheraHostedToolsSettings
 }
 
-export interface LynxSettings {
+export interface FelisSettings {
   model: string
   context_window: number
   reasoning_mode: LocalReasoningMode
@@ -77,7 +77,7 @@ export interface AgentSettings {
   agent: AgentKey
   sandbox_mode: boolean
   panthera: PantheraSettings
-  lynx: LynxSettings
+  felis: FelisSettings
 }
 
 export interface ToolProfileSettings {
@@ -167,7 +167,7 @@ export interface PantheraSettingsPatch {
   hosted_tools?: PantheraHostedToolsPatch
 }
 
-export interface LynxSettingsPatch {
+export interface FelisSettingsPatch {
   model?: string
   context_window?: number
   reasoning_mode?: LocalReasoningMode
@@ -178,7 +178,7 @@ export interface AgentSettingsPatch {
   agent?: AgentKey
   sandbox_mode?: boolean
   panthera?: PantheraSettingsPatch
-  lynx?: LynxSettingsPatch
+  felis?: FelisSettingsPatch
 }
 
 export interface ToolProfilesPatch {

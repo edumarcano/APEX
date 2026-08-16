@@ -35,11 +35,11 @@ interface BriefingOption {
 }
 
 const CLOUD_OPTIONS: readonly BriefingOption[] = [
-  { key: 'panthera', label: 'Panthera', description: 'Full briefing · GPT-5.6 Luna' },
+  { key: 'panthera', label: 'Apex Panthera', description: 'Full briefing · GPT-5.6 Luna' },
 ]
 
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'lynx', label: 'Lynx', description: 'Full briefing · Gemma 4 E2B' },
+  { key: 'felis', label: 'Apex Felis', description: 'Full briefing · Gemma 4 E2B' },
   {
     key: 'structured_digest',
     label: 'Structured Digest',
@@ -57,9 +57,9 @@ const SECTIONS: readonly {
   { title: 'Local', icon: Cpu, options: LOCAL_OPTIONS },
 ]
 
-const MODE_LABELS: Record<BriefingMode, string> = {
-  panthera: 'Panthera',
-  lynx: 'Lynx',
+const MODE_LABELS: Record<string, string> = {
+  panthera: 'Apex Panthera',
+  felis: 'Apex Felis',
   structured_digest: 'Structured Digest',
 }
 
@@ -125,7 +125,7 @@ function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[], agents?:
       return `In ${compactRate(agent.pricing.input_per_million)} · Out ${compactRate(agent.pricing.output_per_million)} / 1M`
     }
   }
-  if (mode === 'lynx') return 'No provider token charge'
+  if (mode === 'felis') return 'No provider token charge'
   if (mode === 'panthera') return 'In $0.20 · Out $1.20 / 1M'
   return 'Pricing unavailable'
 }

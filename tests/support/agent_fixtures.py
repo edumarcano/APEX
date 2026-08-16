@@ -6,7 +6,7 @@ from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.model_catalog import get_model_profile
 from core.settings.models import (
     AgentSettings,
-    LynxSettings,
+    FelisSettings,
     PantheraHostedToolsSettings,
     PantheraSettings,
 )
@@ -46,7 +46,7 @@ def panthera_settings(
     )
 
 
-def lynx_settings(
+def felis_settings(
     *,
     model: str = APODEMUS_MODEL,
     context_window: int | None = None,
@@ -58,10 +58,10 @@ def lynx_settings(
     }
     if context_window is not None:
         kwargs["context_window"] = context_window
-    return AgentSettings(agent="lynx", lynx=LynxSettings(**kwargs))
+    return AgentSettings(agent="felis", felis=FelisSettings(**kwargs))
 
 
-def build_lynx_profile(
+def build_felis_profile(
     *,
     model: str = APODEMUS_MODEL,
     context_window: int | None = None,
@@ -71,7 +71,7 @@ def build_lynx_profile(
     assert profile is not None
     _apex, native = resolve_effort(profile, None)
     return build_concrete_agent(
-        "lynx",
+        "felis",
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,  # type: ignore[arg-type]

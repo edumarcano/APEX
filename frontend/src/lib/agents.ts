@@ -11,18 +11,18 @@ import type {
   ModelCatalogEntry,
 } from '../types/telemetry'
 
-export const AGENT_KEYS = ['panthera', 'lynx'] as const satisfies readonly AgentKey[]
+export const AGENT_KEYS = ['panthera', 'felis'] as const satisfies readonly AgentKey[]
 
 export function isPantheraKey(value: unknown): value is 'panthera' {
   return value === 'panthera'
 }
 
-export function isLynxKey(value: unknown): value is 'lynx' {
-  return value === 'lynx'
+export function isFelisKey(value: unknown): value is 'felis' {
+  return value === 'felis'
 }
 
-export function isLocalAgentKey(value: unknown): value is 'lynx' {
-  return value === 'lynx'
+export function isLocalAgentKey(value: unknown): value is 'felis' {
+  return value === 'felis'
 }
 
 export function isCloudAgentKey(value: unknown): value is 'panthera' {
@@ -31,7 +31,7 @@ export function isCloudAgentKey(value: unknown): value is 'panthera' {
 
 /** True for any selectable Cortex Agent key. */
 export function isAgentKey(value: unknown): value is AgentKey {
-  return isPantheraKey(value) || isLynxKey(value)
+  return isPantheraKey(value) || isFelisKey(value)
 }
 
 /** True when the operator may switch HUD focus to this Agent identity. */
@@ -99,7 +99,7 @@ export function formatContextWindowLabel(
 }
 
 export function runtimeForAgentKey(agent: AgentKey): AgentRuntime {
-  return isLynxKey(agent) ? 'local' : 'cloud'
+  return isLocalAgentKey(agent) ? 'local' : 'cloud'
 }
 
 /** Humanize reasoning level without changing its canonical meaning. */
@@ -210,7 +210,7 @@ export function resolveBriefingModeAvailability(
   if (!hydrated) {
     return { status: 'unknown', reason: 'Checking mode availability…' }
   }
-  const agentKey = mode === 'panthera' ? 'panthera' : mode === 'lynx' ? 'lynx' : null
+  const agentKey = mode === 'panthera' ? 'panthera' : mode === 'felis' ? 'felis' : null
   const match = agents.find((entry) => entry.key === agentKey)
   return match
     ? { status: match.status, reason: match.reason }

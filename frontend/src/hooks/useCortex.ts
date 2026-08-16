@@ -113,7 +113,7 @@ interface AgentQueryResponseBody {
   resolved_tool_selection?: ToolSelectionDiagnostics
 }
 
-const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'lynx']
+const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'felis']
 
 const VALID_AGENT_STATUSES: readonly AgentAvailabilityStatus[] = [
   'available',
@@ -1042,7 +1042,7 @@ export function useCortex(
       const response = await fetch(AGENT_LOCAL_LOAD_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'lynx' }),
+        body: JSON.stringify({ agent: 'felis' }),
       })
       if (!response.ok) {
         console.warn(`[useCortex] Local model load failed (${response.status}).`)

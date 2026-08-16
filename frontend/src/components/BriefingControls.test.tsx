@@ -50,7 +50,7 @@ function profile(
 
 const AVAILABLE_PROFILES = [
   profile('panthera'),
-  profile('lynx'),
+  profile('felis'),
 ]
 
 function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSelector>> = {}) {
@@ -70,7 +70,7 @@ describe('BriefingModeSelector', () => {
     const user = userEvent.setup()
     renderSelector()
 
-    await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing: apex panthera/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
     expect(screen.getByText('Briefing Synthesis')).toBeVisible()
@@ -95,12 +95,12 @@ describe('BriefingModeSelector', () => {
       onChange: onModeChange,
       agents: [
         profile('panthera'),
-        profile('lynx', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
+        profile('felis', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
       ],
     })
 
-    await user.click(screen.getByRole('button', { name: /briefing: panthera/i }))
-    expect(screen.getByRole('option', { name: /^Lynx\b/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /briefing: apex panthera/i }))
+    expect(screen.getByRole('option', { name: /felis/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured_digest')
@@ -110,7 +110,7 @@ describe('BriefingModeSelector', () => {
   it('closes on Escape and restores focus to the selector', async () => {
     const user = userEvent.setup()
     renderSelector()
-    const trigger = screen.getByRole('button', { name: /briefing: panthera/i })
+    const trigger = screen.getByRole('button', { name: /briefing: apex panthera/i })
 
     await user.click(trigger)
     expect(screen.getByRole('listbox')).toBeInTheDocument()
@@ -123,8 +123,8 @@ describe('BriefingModeSelector', () => {
   it('shows the selected mode description rather than pricing while closed', () => {
     renderSelector()
 
-    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toHaveTextContent(/Full briefing/)
-    expect(screen.getByRole('button', { name: /briefing: panthera/i })).not.toHaveTextContent(/In \$/)
+    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).toHaveTextContent(/Full briefing/)
+    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).not.toHaveTextContent(/In \$/)
   })
 })
 

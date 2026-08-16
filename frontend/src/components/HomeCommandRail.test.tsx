@@ -8,10 +8,10 @@ import type { AgentStatus, AgentKey, ToolCatalog } from '../types/telemetry'
 import { HomeCommandRail } from './HomeCommandRail'
 
 function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
-  const local = key === 'lynx'
+  const local = key === 'felis'
   return {
     key,
-    display_name: key === 'panthera' ? 'Apex Panthera' : 'Apex Lynx',
+    display_name: key === 'panthera' ? 'Apex Panthera' : 'Apex Felis',
     description: `${key} profile.`,
     configured_model: local ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
     sort_order: key === 'panthera' ? 1 : 2,
@@ -64,7 +64,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     activated: true,
     agentQueriesEnabled: true,
     activeAgent: 'panthera',
-    agentsStatus: [profile('panthera'), profile('lynx')],
+    agentsStatus: [profile('panthera'), profile('felis')],
     agentsStatusHydrated: true,
     isCortexQuerying: false,
     verifyingCloudAgent: null,
@@ -102,7 +102,7 @@ describe('HomeCommandRail', () => {
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
-    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
     expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
   })
@@ -121,9 +121,9 @@ describe('HomeCommandRail', () => {
     expect(selector).toHaveAttribute('id', 'home-agent-popover')
     expect(screen.queryByText(/powered by/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /verify access/i })).toBeNull()
-    await user.click(within(screen.getByRole('listbox', { name: 'Agents' })).getByRole('option', { name: 'Use Apex Lynx' }))
+    await user.click(within(screen.getByRole('listbox', { name: 'Agents' })).getByRole('option', { name: 'Use Apex Felis' }))
 
-    expect(onAgentChange).toHaveBeenCalledWith('lynx')
+    expect(onAgentChange).toHaveBeenCalledWith('felis')
     expect(onBriefingModeChange).not.toHaveBeenCalled()
   })
 
@@ -131,7 +131,7 @@ describe('HomeCommandRail', () => {
     renderRail({ agentQueriesEnabled: false })
 
     expect(screen.queryByLabelText('Agent query bar')).toBeNull()
-    expect(screen.getByRole('button', { name: /briefing: panthera/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
   })
@@ -150,30 +150,30 @@ describe('HomeCommandRail', () => {
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
-    const activeLynx = { ...profile('lynx'), active: true, display_name: 'Apex Lynx' }
+    const activeFelis = { ...profile('felis'), active: true, display_name: 'Apex Felis' }
     const user = userEvent.setup()
-    renderRail({ activeLocalModel: activeLynx, onUnloadLocalModel })
+    renderRail({ activeLocalModel: activeFelis, onUnloadLocalModel })
 
     expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
     expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
     const actions = document.querySelector<HTMLElement>('[data-slot="home-briefing-actions"]')
     const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
-    expect(runtime).toHaveTextContent('Lynx · llama.cpp · Loaded')
+    expect(runtime).toHaveTextContent('Felis · llama.cpp · Loaded')
     expect(actions).not.toContainElement(runtime)
-    await user.click(screen.getByRole('button', { name: 'Unload Apex Lynx' }))
+    await user.click(screen.getByRole('button', { name: 'Unload Apex Felis' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })
 
-  it('includes known Lynx context in the local runtime strip', () => {
-    const activeLynx = {
-      ...profile('lynx'),
+  it('includes known Felis context in the local runtime strip', () => {
+    const activeFelis = {
+      ...profile('felis'),
       active: true,
-      display_name: 'Apex Lynx',
+      display_name: 'Apex Felis',
       loaded_model: {
         provider: 'llama_cpp' as const,
-        name: 'lynx-16k',
-        model: 'lynx-16k',
+        name: 'felis-16k',
+        model: 'felis-16k',
         state: 'loaded' as const,
         context_window: 16384,
         size_bytes: null,
@@ -183,15 +183,15 @@ describe('HomeCommandRail', () => {
         expires_at: null,
       },
     }
-    renderRail({ activeLocalModel: activeLynx })
+    renderRail({ activeLocalModel: activeFelis })
 
-    expect(screen.getByText('Lynx · llama.cpp · 16K · Loaded')).toBeVisible()
+    expect(screen.getByText('Felis · llama.cpp · 16K · Loaded')).toBeVisible()
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
-    renderRail({ activeLocalModel: null, loadingLocalAgent: profile('lynx') })
+    renderRail({ activeLocalModel: null, loadingLocalAgent: profile('felis') })
 
-    expect(screen.getByText('Lynx · llama.cpp · Loading')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Unload Apex Lynx' })).toBeDisabled()
+    expect(screen.getByText('Felis · llama.cpp · Loading')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Unload Apex Felis' })).toBeDisabled()
   })
 })

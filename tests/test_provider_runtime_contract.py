@@ -51,16 +51,16 @@ from core.agent.model_catalog import get_model_profile
 
 _LEGACY_PROFILE_MAP: dict[str, tuple[str, str]] = {
     "panthera": ("panthera", "gpt-5.6-luna"),
-    "lynx": ("lynx", "gemma-4-E2B-Q4_K_M.gguf"),
+    "felis": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
     "neofelis": ("panthera", "gemini-3.6-flash"),
     "delphinus": ("panthera", "grok-4.3"),
     "orcinus": ("panthera", "grok-4.5"),
     "acinonyx": ("panthera", "gemini-3.5-flash-lite"),
-    "sorex": ("lynx", "qwen3:1.7b"),
-    "mus": ("lynx", "qwen3:4b-instruct"),
-    "apodemus": ("lynx", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neotoma": ("lynx", "gemma-4-E4B-Q4_K_M.gguf"),
-    "unnamed-experimental-agent": ("lynx", "Qwen3.5-4B-Q4_K_M.gguf"),
+    "sorex": ("felis", "qwen3:1.7b"),
+    "mus": ("felis", "qwen3:4b-instruct"),
+    "apodemus": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neotoma": ("felis", "gemma-4-E4B-Q4_K_M.gguf"),
+    "unnamed-experimental-agent": ("felis", "Qwen3.5-4B-Q4_K_M.gguf"),
 }
 
 
@@ -93,7 +93,7 @@ class ProviderContractTests(unittest.TestCase):
             resolve_inference_provider(_concrete_profile("sorex")), "ollama"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("lynx")), "llama_cpp"
+            resolve_inference_provider(_concrete_profile("felis")), "llama_cpp"
         )
         self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
@@ -168,7 +168,7 @@ class ProviderContractTests(unittest.TestCase):
             self.assertTrue(refs)
             selected = next(iter(refs))
             self.assertEqual(selected.provider, profile.provider)
-            self.assertEqual(agent_key_for_local_model_ref(selected), "lynx")
+            self.assertEqual(agent_key_for_local_model_ref(selected), "felis")
 
         known = known_local_model_refs()
         self.assertTrue(known)
@@ -181,7 +181,7 @@ class ProviderContractTests(unittest.TestCase):
     def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
         profile = _concrete_profile("apodemus")
         focused = build_concrete_agent(
-            "lynx",
+            "felis",
             native_effort=None,
             local_reasoning_mode="focused",
             model_id="gemma-4-E2B-Q4_K_M.gguf",
@@ -193,7 +193,7 @@ class ProviderContractTests(unittest.TestCase):
             with self.subTest(model=legacy_key):
                 _, model_id = _LEGACY_PROFILE_MAP[legacy_key]
                 profile = build_concrete_agent(
-                    "lynx",
+                    "felis",
                     native_effort=None,
                     local_reasoning_mode="focused",
                     model_id=model_id,
@@ -237,7 +237,7 @@ class ProviderContractTests(unittest.TestCase):
 
         provider = Provider()
         response = run_agent_loop(
-            AgentQueryRequest(prompt="hello", agent="lynx"),
+            AgentQueryRequest(prompt="hello", agent="felis"),
             provider,
             profile,  # type: ignore[arg-type]
         )
@@ -908,10 +908,10 @@ class ResponsesAdapterTests(unittest.TestCase):
 
 
 class PublicRosterTests(unittest.TestCase):
-    def test_unified_registry_exposes_panthera_and_lynx(self) -> None:
-        self.assertEqual(set(AGENT_SPECS), {"panthera", "lynx"})
+    def test_unified_registry_exposes_panthera_and_felis(self) -> None:
+        self.assertEqual(set(AGENT_SPECS), {"panthera", "felis"})
         self.assertEqual(AGENT_SPECS["panthera"].runtime, "cloud")
-        self.assertEqual(AGENT_SPECS["lynx"].runtime, "local")
+        self.assertEqual(AGENT_SPECS["felis"].runtime, "local")
 
 
 if __name__ == "__main__":

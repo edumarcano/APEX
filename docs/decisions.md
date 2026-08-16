@@ -156,7 +156,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Lynx, and Structured Digest rather than choosing one automatically without showing the user.
+**Decision.** The HUD offers Panthera, Felis, and Structured Digest rather than choosing one automatically without showing the user.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free output are meaningful personal choices. The selected mode should make that choice visible before execution.
 
@@ -182,9 +182,9 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ## Local inference
 
-### Consolidate the Agent family to Panthera and Lynx
+### Consolidate the Agent family to Panthera and Felis
 
-**Decision.** APEX exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities; each model profile determines its provider or local runtime.
+**Decision.** APEX exposes two Apex Agents: Panthera for cloud work and Felis for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities; each model profile determines its provider or local runtime.
 
 **Why.** The earlier genus-based roster made every model/provider combination look like a separate product Agent. That was useful for experimentation, but the normal UI became broader than the roles APEX actually distinguishes today: cloud versus local.
 
@@ -192,7 +192,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Use named Agents instead of raw model IDs in the HUD
 
-**Decision.** Cortex exposes Panthera and Lynx rather than raw provider model IDs. Each Agent card shows the selected model and exposes the registered model catalog underneath it.
+**Decision.** Cortex exposes Panthera and Felis rather than raw provider model IDs. Each Agent card shows the selected model and exposes the registered model catalog underneath it.
 
 **Why.** The names communicate the cloud/local split while provider model IDs remain implementation details. An Agent identity can survive a model change as long as its role still makes sense.
 
@@ -232,7 +232,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Use stable runtime aliases for llama.cpp models
 
-**Decision.** Lynx loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider. Legacy Agent-based alias names still resolve for existing presets.
+**Decision.** Felis loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider. Legacy Agent-based alias names still resolve for existing presets.
 
 **Why.** I want a small set of tested context sizes so loading, memory checks, and documentation stay predictable while model paths remain behind stable aliases.
 
@@ -240,19 +240,19 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Make local reasoning capability-driven and private
 
-**Decision.** Lynx reasoning preferences default to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. For llama.cpp, `none` sends `reasoning_effort: "none"`, while `focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
+**Decision.** Felis reasoning preferences default to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. For llama.cpp, `none` sends `reasoning_effort: "none"`, while `focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
 
-**Why.** Local models do not all support the same reasoning controls as cloud models. The HUD only shows reasoning options that the selected Lynx model actually supports, and hidden reasoning stays out of the visible response.
+**Why.** Local models do not all support the same reasoning controls as cloud models. The HUD only shows reasoning options that the selected Felis model actually supports, and hidden reasoning stays out of the visible response.
 
 **Trade-off.** Focused mode has no separate APEX reasoning-token budget or telemetry. llama.cpp runtime data only gives conservative completion headroom, and model-specific sampling stays unchanged until benchmarks justify tuning it.
 
-### Keep Lynx as an explicit briefing mode
+### Keep Felis as an explicit briefing mode
 
-**Decision.** Lynx is an explicit briefing mode and Panthera's only local fallback before Structured Digest.
+**Decision.** Felis is an explicit briefing mode and Panthera's only local fallback before Structured Digest.
 
-**Why.** Choosing Lynx should mean using Lynx, not silently replacing it with another local model. Cold loads use a 16K context, while an already loaded compatible llama.cpp alias can be reused.
+**Why.** Choosing Felis should mean using Felis, not silently replacing it with another local model. Cold loads use a 16K context, while an already loaded compatible llama.cpp alias can be reused.
 
-**Trade-off.** If the configured local runtime is unavailable or blocked by resource checks, an explicit Lynx request falls directly to Structured Digest.
+**Trade-off.** If the configured local runtime is unavailable or blocked by resource checks, an explicit Felis request falls directly to Structured Digest.
 
 ## Security
 

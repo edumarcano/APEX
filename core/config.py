@@ -582,7 +582,7 @@ try:
     _sorex_ram, _sorex_cpu = _parse_resource_gate(
         _resource_gates.get("qwen3:1.7b")
         or _resource_gates.get("sorex")
-        or _resource_gates.get("lynx"),
+        or _resource_gates.get("felis"),
         profile="qwen3:1.7b",
         default_ram=_DEFAULT_SOREX_RAM,
         default_cpu=_DEFAULT_SOREX_CPU,
@@ -686,9 +686,9 @@ try:
     LLAMA_CPP_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
         _llama_cpp_resource_limits
     )
-    _default_lynx_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
-    APODEMUS_RAM_LIMIT: Final[float] = _default_lynx_gate[0]
-    APODEMUS_CPU_LIMIT: Final[float] = _default_lynx_gate[1]
+    _default_felis_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
+    APODEMUS_RAM_LIMIT: Final[float] = _default_felis_gate[0]
+    APODEMUS_CPU_LIMIT: Final[float] = _default_felis_gate[1]
     _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
     NEOTOMA_RAM_LIMIT: Final[float] = _default_neotoma_gate[0]
     NEOTOMA_CPU_LIMIT: Final[float] = _default_neotoma_gate[1]
@@ -707,15 +707,9 @@ except Exception as exc:
             _DEFAULT_LLAMA_CPP_CPU,
         ),
     }
-    _default_lynx_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
-    APODEMUS_RAM_LIMIT = _default_lynx_gate[0]
-    APODEMUS_CPU_LIMIT = _default_lynx_gate[1]
-    _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
-    NEOTOMA_RAM_LIMIT = _default_neotoma_gate[0]
-    NEOTOMA_CPU_LIMIT = _default_neotoma_gate[1]
-    _default_lynx_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
-    APODEMUS_RAM_LIMIT = _default_lynx_gate[0]
-    APODEMUS_CPU_LIMIT = _default_lynx_gate[1]
+    _default_felis_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
+    APODEMUS_RAM_LIMIT = _default_felis_gate[0]
+    APODEMUS_CPU_LIMIT = _default_felis_gate[1]
     _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
     NEOTOMA_RAM_LIMIT = _default_neotoma_gate[0]
     NEOTOMA_CPU_LIMIT = _default_neotoma_gate[1]

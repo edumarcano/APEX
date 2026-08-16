@@ -124,8 +124,8 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Market data | `ALPHA_VANTAGE_API_KEY` in `.env` plus ticker symbols in Runtime Settings |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
-| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags for development-only Lynx models |
-| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with model-based Lynx aliases |
+| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags for development-only Felis models |
+| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with model-based Felis aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.ReadWrite` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
@@ -133,18 +133,18 @@ See [Configuration](configuration.md) for ownership, precedence, modes, Agent na
 
 ## Install local Ollama models
 
-Install and start [Ollama](https://ollama.com), then pull only the development-only Lynx models you want to test:
+Install and start [Ollama](https://ollama.com), then pull only the development-only Felis models you want to test:
 
 ```powershell
 ollama pull qwen3:1.7b
 ollama pull qwen3:4b-instruct
 ```
 
-These map to development-only Lynx model options. Missing tags appear as unavailable in the HUD instead of failing at selection time. They are surfaced in the Lynx model catalog only in `DEV_MODE`.
+These map to development-only Felis model options. Missing tags appear as unavailable in the HUD instead of failing at selection time. They are surfaced in the Felis model catalog only in `DEV_MODE`.
 
 ## Optional llama.cpp path
 
-llama.cpp is not required to start APEX. When you want Apex Lynx through llama.cpp:
+llama.cpp is not required to start APEX. When you want Apex Felis through llama.cpp:
 
 1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
 2. Copy [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini) to a machine-local path, set the GGUF placeholders, and keep that copy untracked.
@@ -154,7 +154,7 @@ llama.cpp is not required to start APEX. When you want Apex Lynx through llama.c
 4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
 5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
 
-Lynx defaults to request-level `none` reasoning. Its Cortex Reasoning control can select `focused` for supported llama.cpp models without unloading the model; hidden reasoning is discarded before display.
+Felis defaults to request-level `none` reasoning. Its Cortex Reasoning control can select `focused` for supported llama.cpp models without unloading the model; hidden reasoning is discarded before display.
 
 A manual smoke script is available when a router is running:
 
@@ -197,7 +197,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### A local model is unavailable
 
-Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For Lynx through llama.cpp, confirm the router lists the selected model-based runtime alias. Cold loads can also be blocked by the model's CPU or RAM gate.
+Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For Felis through llama.cpp, confirm the router lists the selected model-based runtime alias. Cold loads can also be blocked by the model's CPU or RAM gate.
 
 ### Live connectors return no data
 

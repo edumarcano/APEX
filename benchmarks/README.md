@@ -1,6 +1,6 @@
 # Local model benchmark v0
 
-This directory contains a lightweight developer utility for comparing Lynx
+This directory contains a lightweight developer utility for comparing Felis
 local models on one Windows development machine. It is intentionally not a
 benchmark service: results are local files, there is no frontend or database
 history, and the case set is kept small enough for a manual model comparison.
@@ -11,27 +11,27 @@ From the repository root:
 
 ```powershell
 uv run python scripts/benchmark_local_models.py `
-  --agents lynx `
+  --agents felis `
   --context 16384 `
   --reasoning none `
   --repetitions 3
 ```
 
-To compare every registered llama.cpp context preset for the current Lynx model:
+To compare every registered llama.cpp context preset for the current Felis model:
 
 ```powershell
 uv run python scripts/benchmark_local_models.py `
-  --agents lynx `
+  --agents felis `
   --all-contexts
 ```
 
-The command also accepts development-only Ollama models when Lynx is configured to use Ollama. Ollama uses its fixed configured context; `--context 4096` is accepted for clarity.
+The command also accepts development-only Ollama models when Felis is configured to use Ollama. Ollama uses its fixed configured context; `--context 4096` is accepted for clarity.
 Repeat `--reasoning` to compare `none` and `focused` without reloading the same
 runtime alias:
 
 ```powershell
 uv run python scripts/benchmark_local_models.py `
-  --agents lynx `
+  --agents felis `
   --context 16384 `
   --reasoning none `
   --reasoning focused
@@ -96,7 +96,7 @@ separate rates for task success, required tool selection, schema validity,
 multi-tool completion, unnecessary tool calls, and failures. There is no
 LLM-as-judge or weighted overall score.
 
-The benchmark measures configured Lynx models as shipped, including Lynx's
+The benchmark measures configured Felis models as shipped, including Felis's
 identity instruction; it is not a neutral underlying-model test.
 
 ## Results

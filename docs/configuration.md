@@ -50,7 +50,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Agent queries | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
 | Tool profiles | Saved custom tool profiles and per-Agent defaults; edited through Cortex Tools and persisted in `config.local.json` |
-| Briefing | Panthera, Lynx, or Structured Digest mode selected in the Home command rail |
+| Briefing | Panthera, Felis, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
@@ -82,8 +82,8 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
 - `raw`: deterministic output without a model call
-- `local`: Lynx synthesis with deterministic fallback
-- `cloud`: Panthera with Lynx and deterministic fallback
+- `local`: Felis synthesis with deterministic fallback
+- `cloud`: Panthera with Felis and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -114,9 +114,9 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 ## Briefing modes and Agents
 
-APEX exposes two Apex Agents: **Panthera** for cloud work and **Lynx** for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. The selected model profile determines Panthera's provider or Lynx's local runtime automatically.
+APEX exposes two Apex Agents: **Panthera** for cloud work and **Felis** for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. The selected model profile determines Panthera's provider or Felis's local runtime automatically.
 
-Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna` and `lynx -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent keys migrate to those models.
+Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna` and `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent keys migrate to those models.
 
 ### Panthera
 
@@ -138,17 +138,17 @@ Cloud models run independently of Ollama. Panthera's default model requires `OPE
 
 Brave MCP is the general web-search capability for Panthera when connected. Provider-hosted general web search is disabled for OpenAI and SpaceXAI. Panthera's hosted-tool toggles apply to subsequent requests only.
 
-### Lynx
+### Felis
 
 | Setting group | Purpose |
 |---|---|
-| `ask_apex.lynx.model` | Registered local model for Lynx |
-| `ask_apex.lynx.context_window` | Selected llama.cpp context preset when applicable |
-| `ask_apex.lynx.reasoning_mode` | `none` or `focused` when the selected model supports reasoning |
+| `ask_apex.felis.model` | Registered local model for Felis |
+| `ask_apex.felis.context_window` | Selected llama.cpp context preset when applicable |
+| `ask_apex.felis.reasoning_mode` | `none` or `focused` when the selected model supports reasoning |
 
 | Model ID | Runtime | Stability | Notes |
 |---|---|---|---|
-| `gemma-4-E2B-Q4_K_M.gguf` | llama.cpp | Stable | Default Lynx model |
+| `gemma-4-E2B-Q4_K_M.gguf` | llama.cpp | Stable | Default Felis model |
 | `gemma-4-E4B-Q4_K_M.gguf` | llama.cpp | Experimental | Larger local option |
 | `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | Fast multilingual reasoning option |
 | `qwen3:1.7b` | Ollama | Stable | Lightweight option; `DEV_MODE` only |
@@ -156,13 +156,13 @@ Brave MCP is the general web-search capability for Panthera when connected. Prov
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`.
 
-APEX allows one local generation at a time and keeps one selected local model resident across Ollama and llama.cpp. CPU and RAM checks apply before cold loads, and idle models unload after the configured timeout. The user-facing Agent roster is Panthera and Lynx. `DEV_MODE` additionally surfaces development-only models in each Agent's model catalog.
+APEX allows one local generation at a time and keeps one selected local model resident across Ollama and llama.cpp. CPU and RAM checks apply before cold loads, and idle models unload after the configured timeout. The user-facing Agent roster is Panthera and Felis. `DEV_MODE` additionally surfaces development-only models in each Agent's model catalog.
 
-For repeatable Lynx and candidate-model comparisons, see [Local Model Benchmarking](../benchmarks/README.md). Benchmark results remain machine-specific and gitignored.
+For repeatable Felis and candidate-model comparisons, see [Local Model Benchmarking](../benchmarks/README.md). Benchmark results remain machine-specific and gitignored.
 
 ### Development sandbox mode
 
-`ask_apex.sandbox_mode` applies only when `DEV_MODE=true`. In sandbox mode, Panthera and Lynx queries use a restricted non-personal tool allowlist, keep history in the `sandbox` partition, and can attach only the process-current masked development briefing identified by its matching `snapshot_id`.
+`ask_apex.sandbox_mode` applies only when `DEV_MODE=true`. In sandbox mode, Panthera and Felis queries use a restricted non-personal tool allowlist, keep history in the `sandbox` partition, and can attach only the process-current masked development briefing identified by its matching `snapshot_id`.
 
 #### llama.cpp configuration
 
@@ -176,9 +176,9 @@ For repeatable Lynx and candidate-model comparisons, see [Local Model Benchmarki
 | `llama_cpp.idle_unload_timeout_minutes` | `5` | No | Same idle range as Ollama |
 | `llama_cpp.manual_unload_enabled` | `true` | No | Allows HUD unload |
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
-| `llama_cpp.resource_gates` entry for `gemma-4-E2B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the default Lynx model |
-| `llama_cpp.resource_gates` entry for `gemma-4-E4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Lynx model |
-| `llama_cpp.resource_gates` entry for `Qwen3.5-4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Lynx model |
+| `llama_cpp.resource_gates` entry for `gemma-4-E2B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the default Felis model |
+| `llama_cpp.resource_gates` entry for `gemma-4-E4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Felis model |
+| `llama_cpp.resource_gates` entry for `Qwen3.5-4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Felis model |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 
@@ -203,7 +203,7 @@ APEX does not install, bundle, or update llama.cpp, and it does not download mod
 - **External mode** (`managed: false`): you start `llama-server` yourself. APEX only talks to the configured loopback URL over HTTP.
 - **Managed mode** (`managed: true`): when llama.cpp is enabled and the router is unreachable, APEX starts your installed executable with the configured preset. If the router is already reachable, APEX uses it as an external server and does not spawn a duplicate process. APEX terminates only a child process it launched, never an externally started server.
 
-Configure Lynx llama.cpp aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git. Legacy Agent-based alias names such as `apodemus-16k` still resolve, but new presets should use model-based aliases.
+Configure Felis llama.cpp aliases with one preset per exposed context size. A tracked placeholder is in [`docs/examples/llama-cpp-apex-agents.preset.ini`](examples/llama-cpp-apex-agents.preset.ini). Copy it to an untracked machine-local path, replace the GGUF placeholders, and keep absolute paths out of git. Legacy Agent-based alias names such as `apodemus-16k` still resolve, but new presets should use model-based aliases.
 
 ```ini
 version = 1
@@ -237,21 +237,21 @@ Installed aliases come only from the router's `/models` list. A missing `gemma-4
 
 #### Local context preferences
 
-`ask_apex.lynx.context_window` stores the selected llama.cpp context preset for interactive Lynx requests in Cortex. The default Lynx model accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; `gemma-4-E4B-Q4_K_M.gguf` accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; `Qwen3.5-4B-Q4_K_M.gguf` accepts `4096`, `16384`, or `32768` and defaults to `16384`. The default model's `131072` and the E4B model's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time Lynx loads without triggering an automatic model load. Briefing synthesis ignores this interactive model selection and always uses `gemma-4-E2B-Q4_K_M.gguf` at its dedicated 16K context.
+`ask_apex.felis.context_window` stores the selected llama.cpp context preset for interactive Felis requests in Cortex. The default Felis model accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; `gemma-4-E4B-Q4_K_M.gguf` accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; `Qwen3.5-4B-Q4_K_M.gguf` accepts `4096`, `16384`, or `32768` and defaults to `16384`. The default model's `131072` and the E4B model's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time Felis loads without triggering an automatic model load. Briefing synthesis ignores this interactive model selection and always uses `gemma-4-E2B-Q4_K_M.gguf` at its dedicated 16K context.
 
 Model maximum metadata can exceed the presets APEX exposes. The larger native maximum is not fully exposed as a selectable preset.
 
 #### Local reasoning preferences
 
-`ask_apex.lynx.reasoning_mode` stores the reasoning preference for interactive Lynx requests. Lynx defaults to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. The Cortex inspector shows the Reasoning selector only when the active model advertises both modes, and a change applies to the next response without unloading the resident model. Briefing synthesis always disables reasoning.
+`ask_apex.felis.reasoning_mode` stores the reasoning preference for interactive Felis requests. Felis defaults to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. The Cortex inspector shows the Reasoning selector only when the active model advertises both modes, and a change applies to the next response without unloading the resident model. Briefing synthesis always disables reasoning.
 
 For llama.cpp, `none` sends `reasoning_effort: "none"` with `chat_template_kwargs.enable_thinking` set to `false`; `focused` omits that request field and sets `enable_thinking` to `true` so the model template can use its native reasoning behavior. Focused llama.cpp profiles use a larger model-configured completion ceiling because native thinking consumes the same completion budget as the visible answer. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
-Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and per-Agent llama.cpp resource-gate keys are migrated into the consolidated Lynx and model-based configuration during settings normalization.
+Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and per-Agent llama.cpp resource-gate keys are migrated into the consolidated Felis and model-based configuration during settings normalization.
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Lynx once before returning Structured Digest. Lynx briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Lynx model, runtime, context, or reasoning settings. An explicit Lynx briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Lynx cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
 
 ## Voice
 

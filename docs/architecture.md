@@ -136,17 +136,17 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` generates a briefing from the current process snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Lynx/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Felis/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
 | Panthera | OpenAI | `gpt-5.6-luna` at fixed Light effort |
-| Lynx | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
+| Felis | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local model. The Panthera path falls back to Lynx once, then Structured Digest; an explicit Lynx failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path ends in Structured Digest with a stable fallback reason.
+An explicit local mode is not silently replaced by another local model. The Panthera path falls back to Felis once, then Structured Digest; an explicit Felis failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path ends in Structured Digest with a stable fallback reason.
 
 Normal-mode generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and keeps the newest 50 rows. Demo mode returns static history and performs no normal-mode write.
 
@@ -170,14 +170,14 @@ HUD context is explicit:
 
 Attached context and tool results are separately marked as untrusted model data. Unknown or stale identifiers are omitted rather than replaced with another record.
 
-### Panthera and Lynx
+### Panthera and Felis
 
-APEX exposes two Apex Agents. Panthera is the cloud identity; Lynx is the local identity. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. Each selected model profile determines the provider or local runtime used for execution.
+APEX exposes two Apex Agents. Panthera is the cloud identity; Felis is the local identity. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. Each selected model profile determines the provider or local runtime used for execution.
 
 | Agent | Default model | Effort | Maximum tool loop |
 |---|---|---|---|
 | Panthera 2.0 | OpenAI `gpt-5.6-luna` | Light, Focused, Extended when supported | Up to 6 turns / 10 calls on the default model |
-| Lynx 2.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Fixed for local models | Up to 4 turns / 4 calls on default llama.cpp models |
+| Felis 2.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Fixed for local models | Up to 4 turns / 4 calls on default llama.cpp models |
 
 Other registered cloud and local models keep their own loop limits and optional hosted-tool support. Development-only models appear in each Agent's model catalog only when `DEV_MODE` is active.
 
@@ -187,15 +187,15 @@ Each non-demo Agent request begins with the selected Agent's identity instructio
 
 Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `DEV_MODE` sandbox queries use a restricted non-personal allowlist instead of the full registry.
 
-`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Lynx, their selected models, available provider/runtime and model catalogs, effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models, available provider/runtime and model catalogs, effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
 The Home command rail owns the visible briefing-mode selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
 
 ### Explicit tool selection
 
-Panthera and Lynx use the same explicit capability descriptors. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for Panthera and No APEX Tools for Lynx. The resolver combines the selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns per-tool failures instead of silently dropping a request. Local context preflight is only an estimate; the provider serializes the real request, trims older complete interactions, and applies its own allowance and safety margin before deciding whether the request fits. Provider-hosted Google and X grounding remains outside these profiles and is controlled separately.
+Panthera and Felis use the same explicit capability descriptors. The browser's Tools selector sends stable selected names and an optional profile ID; an empty list means no APEX-managed or MCP schemas. Omitted selection preserves the migration default of All APEX Tools for Panthera and No APEX Tools for Felis. The resolver combines the selection with Agent policy, `expose_to_agent`, permitted risk, runtime availability, and persistent MCP allowlists. It returns per-tool failures instead of silently dropping a request. Local context preflight is only an estimate; the provider serializes the real request, trims older complete interactions, and applies its own allowance and safety margin before deciding whether the request fits. Provider-hosted Google and X grounding remains outside these profiles and is controlled separately.
 
-One non-blocking execution lock covers local inference across providers. A concurrent Lynx request receives `429`; a cold load that fails availability or resource checks receives `503`.
+One non-blocking execution lock covers local inference across providers. A concurrent Felis request receives `429`; a cold load that fails availability or resource checks receives `503`.
 
 ## Capability and MCP boundary
 
@@ -213,7 +213,7 @@ The MCP manager owns connection, discovery, registration, recovery, and shutdown
 
 ## Local model lifecycle
 
-Local Lynx work shares one runtime coordinator across Ollama and llama.cpp:
+Local Felis work shares one runtime coordinator across Ollama and llama.cpp:
 
 ```mermaid
 flowchart TB

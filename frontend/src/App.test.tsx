@@ -154,7 +154,7 @@ vi.mock('./components/CortexWorkspace', () => ({
         <output data-testid="catalog-context-window">
           {toolCatalog?.context_window ?? ''}
         </output>
-        {activeAgent === 'lynx' ? (
+        {activeAgent === 'felis' ? (
           <select
             aria-label="Context window"
             value={String(selectedContextWindow ?? '')}
@@ -193,7 +193,7 @@ vi.mock('./hooks/useApexData', () => ({
     marketEnabled: false,
     defaultAgent: appMocks.initialAgent,
     agentInitialSelection: {
-      runtime: appMocks.initialAgent === 'lynx' ? 'local' : 'cloud',
+      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
       agent: appMocks.initialAgent,
       effort: 'focused',
     },
@@ -241,8 +241,8 @@ vi.mock('./hooks/useCortex', () => ({
     agentsStatus: [{
       key: appMocks.initialAgent,
       display_name: `Apex ${appMocks.initialAgent}`,
-      runtime: appMocks.initialAgent === 'lynx' ? 'local' : 'cloud',
-      status: appMocks.initialAgent === 'lynx' ? 'available' : 'configured',
+      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+      status: appMocks.initialAgent === 'felis' ? 'available' : 'configured',
       active: true,
       loading: false,
       loaded_model: null,
@@ -336,8 +336,8 @@ function catalogFor(
     default_profile_name: 'No APEX Tools',
     default_selected_tool_names: [],
     provider_hosted_tools: googleSearchEnabled ? ['google_search'] : [],
-    context_window: agent === 'lynx' ? contextWindow : null,
-    reserved_response_tokens: agent === 'lynx' ? 512 : null,
+    context_window: agent === 'felis' ? contextWindow : null,
+    reserved_response_tokens: agent === 'felis' ? 512 : null,
   }
 }
 
@@ -375,7 +375,7 @@ function settingsResponse(
             x_search: false,
           },
         },
-        lynx: {
+        felis: {
           model: 'gemma-4-E2B-Q4_K_M.gguf',
           context_window: contextWindow,
           reasoning_mode: 'none',
@@ -467,12 +467,12 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
-  it('refreshes the current Lynx catalog after changing its context window', async () => {
-    appMocks.initialAgent = 'lynx'
+  it('refreshes the current Felis catalog after changing its context window', async () => {
+    appMocks.initialAgent = 'felis'
     const user = userEvent.setup()
     const settingsPatch = deferred<Response>()
     const catalogRequests: AgentKey[] = []
-    let lynxCatalogRequests = 0
+    let felisCatalogRequests = 0
 
     vi.stubGlobal(
       'fetch',
@@ -482,7 +482,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const refreshedContextWindow =
-            agent === 'lynx' && lynxCatalogRequests++ > 0 ? 32768 : 16384
+            agent === 'felis' && felisCatalogRequests++ > 0 ? 32768 : 16384
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, false, refreshedContextWindow)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -498,21 +498,21 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('lynx'))
+    await waitFor(() => expect(catalogRequests).toContain('felis'))
     await waitFor(() => {
-      expect(screen.getByTestId('active-agent')).toHaveTextContent('lynx')
+      expect(screen.getByTestId('active-agent')).toHaveTextContent('felis')
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('16384')
     })
 
     const contextSelect = screen.getByRole('combobox', { name: 'Context window' })
     await user.selectOptions(contextSelect, '32768')
     expect(contextSelect).toHaveValue('32768')
-    expect(catalogRequests.filter((agent) => agent === 'lynx')).toHaveLength(1)
+    expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(1)
 
-    settingsPatch.resolve(settingsResponse('lynx', false, 32768))
+    settingsPatch.resolve(settingsResponse('felis', false, 32768))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'lynx')).toHaveLength(2)
+      expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(2)
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('32768')
     })
   })

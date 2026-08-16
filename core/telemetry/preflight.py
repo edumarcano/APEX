@@ -42,7 +42,10 @@ from core.telemetry.models import (
     PreflightWarning,
     PreflightWarningCode,
 )
-from core.synthesis.models import LYNX_BRIEFING_CONTEXT_WINDOW, VALID_BRIEFING_MODES
+from core.synthesis.models import (
+    FELIS_BRIEFING_CONTEXT_WINDOW,
+    VALID_BRIEFING_MODES,
+)
 from core.telemetry.service import get_telemetry_service
 
 load_dotenv(dotenv_path=ENV_PATH)
@@ -369,9 +372,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     cold_local_load = False
     if local_agent and agent is not None:
         local_context_window = (
-            LYNX_BRIEFING_CONTEXT_WINDOW
+            FELIS_BRIEFING_CONTEXT_WINDOW
             if (
-                agent == "lynx"
+                agent == "felis"
                 and request.operation in {"activate_with_briefing", "generate_briefing"}
             )
             else None
@@ -399,9 +402,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             agent,
             native_effort=None,
             local_context_window=(
-                LYNX_BRIEFING_CONTEXT_WINDOW
+                FELIS_BRIEFING_CONTEXT_WINDOW
                 if (
-                    agent == "lynx"
+                    agent == "felis"
                     and request.operation
                     in {"activate_with_briefing", "generate_briefing"}
                 )

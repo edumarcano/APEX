@@ -17,8 +17,8 @@ from core.agent.catalog import (
 from core.agent.types import AgentQueryRequest
 from core.api.cortex import build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
-from core.settings.models import AgentSettings, LynxSettings, PantheraSettings
-from tests.support.agent_fixtures import lynx_settings, panthera_settings
+from core.settings.models import AgentSettings, FelisSettings, PantheraSettings
+from tests.support.agent_fixtures import felis_settings, panthera_settings
 
 
 class AgentSelectionTests(unittest.TestCase):
@@ -41,16 +41,16 @@ class AgentSelectionTests(unittest.TestCase):
         self.assertEqual((mode, profile, effort), ("cloud", "panthera", "high"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
-        agent_settings = lynx_settings(model="qwen3:1.7b")
+        agent_settings = felis_settings(model="qwen3:1.7b")
         mode, profile, effort = resolve_agent_selection(
             agent_settings, dev_mode=False
         )
-        self.assertEqual((mode, profile, effort), ("local", "lynx", None))
+        self.assertEqual((mode, profile, effort), ("local", "felis", None))
 
     def test_dev_only_local_model_remains_selectable_in_dev_mode(self) -> None:
-        agent_settings = lynx_settings(model="qwen3:4b-instruct")
-        self.assertTrue(is_agent_visible("lynx", dev_mode=True))
-        self.assertEqual(agent_settings.lynx.model, "qwen3:4b-instruct")
+        agent_settings = felis_settings(model="qwen3:4b-instruct")
+        self.assertTrue(is_agent_visible("felis", dev_mode=True))
+        self.assertEqual(agent_settings.felis.model, "qwen3:4b-instruct")
 
 
 class CredentialIsolationTests(unittest.TestCase):
@@ -131,11 +131,11 @@ class CredentialIsolationTests(unittest.TestCase):
 
 
 class DemoRosterTests(unittest.TestCase):
-    def test_runtime_roster_exposes_panthera_and_lynx(self) -> None:
+    def test_runtime_roster_exposes_panthera_and_felis(self) -> None:
         visible = runtime_agent_order(dev_mode=False)
-        self.assertEqual(visible, ("panthera", "lynx"))
+        self.assertEqual(visible, ("panthera", "felis"))
         development = runtime_agent_order(dev_mode=True)
-        self.assertEqual(development, ("panthera", "lynx"))
+        self.assertEqual(development, ("panthera", "felis"))
 
     def test_demo_agent_query_rejects_unknown_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
@@ -216,9 +216,9 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             ["none", "minimal", "low", "medium", "high", "xhigh"],
         )
 
-        lynx = next(item for item in profiles if item.key == "lynx")
-        self.assertTrue(lynx.model_catalog)
-        gemma_entry = next(entry for entry in lynx.model_catalog if entry.model_id == "gemma-4-E2B-Q4_K_M.gguf")
+        felis = next(item for item in profiles if item.key == "felis")
+        self.assertTrue(felis.model_catalog)
+        gemma_entry = next(entry for entry in felis.model_catalog if entry.model_id == "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(gemma_entry.pricing.billing_basis, "local")
         self.assertEqual(gemma_entry.pricing.input_per_million, 0.0)
         self.assertFalse(gemma_entry.supports_effort)
@@ -332,7 +332,7 @@ class ModelNativeReasoningTests(unittest.TestCase):
 
         all_models = {**CLOUD_MODEL_PROFILES, **LOCAL_MODEL_PROFILES}
         for model_id, model_profile in all_models.items():
-            agent_key = "panthera" if model_profile.runtime == "cloud" else "lynx"
+            agent_key = "panthera" if model_profile.runtime == "cloud" else "felis"
             concrete = build_concrete_agent(
                 agent_key,
                 native_effort="medium",

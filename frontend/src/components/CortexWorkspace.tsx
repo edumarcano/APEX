@@ -38,7 +38,7 @@ interface CortexWorkspaceProps {
   activeAgent: AgentKey
   cloudEffort: CloudEffort
   pantheraModel: string
-  lynxModel: string
+  felisModel?: string
   pantheraHostedTools: PantheraHostedToolsSettings
   devModeActive: boolean
   sandboxMode: boolean
@@ -83,7 +83,7 @@ interface CortexWorkspaceProps {
   onSnapshotAttachedChange: (attached: boolean) => void
   onAgentChange: (agent: AgentKey) => void
   onPantheraModelChange: (model: string) => void
-  onLynxModelChange: (model: string) => void
+  onFelisModelChange?: (model: string) => void
   onEffortChange: (effort: CloudEffort) => void
   onHostedToolChange: (tool: HostedTool, enabled: boolean) => void
   onSandboxModeChange: (enabled: boolean) => void
@@ -410,21 +410,23 @@ function RuntimeControls({
   activeStatus: AgentStatus | null
   localContextLocked: boolean
 }): ReactElement {
+  const localModel = props.felisModel ?? 'gemma-4-E2B-Q4_K_M.gguf'
+  const onLocalModelChange = props.onFelisModelChange ?? (() => {})
   const pantheraStatus = props.agentsStatus.find((agent) => agent.key === 'panthera')
-  const lynxStatus = props.agentsStatus.find((agent) => agent.key === 'lynx')
+  const felisStatus = props.agentsStatus.find((agent) => agent.key === 'felis')
   const catalog = resolveModelCatalog(
-    activeAgent === 'panthera' ? pantheraStatus : lynxStatus,
+    activeAgent === 'panthera' ? pantheraStatus : felisStatus,
   )
   const models = catalog.filter(
     (entry) => entry.runtime === (activeAgent === 'panthera' ? 'cloud' : 'local'),
   )
   const hostedCapabilities = hostedCapabilitiesForModel(
-    activeAgent === 'panthera' ? props.pantheraModel : props.lynxModel,
+    activeAgent === 'panthera' ? props.pantheraModel : localModel,
     catalog,
   )
 
   const selectedModelEntry = models.find(
-    (entry) => entry.model_id === (activeAgent === 'panthera' ? props.pantheraModel : props.lynxModel),
+    (entry) => entry.model_id === (activeAgent === 'panthera' ? props.pantheraModel : localModel),
   )
   const supportsEffort =
     selectedModelEntry?.supports_effort !== undefined
@@ -469,11 +471,11 @@ function RuntimeControls({
       ) : (
         <>
           <ModelSelector
-            activeAgent="lynx"
-            selectedModelId={props.lynxModel}
-            onModelChange={props.onLynxModelChange}
+            activeAgent="felis"
+            selectedModelId={localModel}
+            onModelChange={onLocalModelChange}
             catalog={models}
-            activeStatus={lynxStatus ?? null}
+            activeStatus={felisStatus ?? null}
             disabled={props.isQuerying}
             isQuerying={props.isQuerying}
           />

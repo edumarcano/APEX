@@ -11,7 +11,7 @@ import type { ApexLogoProps } from './ApexLogo'
 const panthera: AgentStatus = {
   key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '2.0', runtime: 'cloud', tier: 'balanced', stability: 'stable', model_stability: 'stable', effort_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], default_effort: 'medium', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
 }
-const lynx: AgentStatus = { ...panthera, key: 'lynx', display_name: 'Apex Lynx', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
+const felis: AgentStatus = { ...panthera, key: 'felis', display_name: 'Apex Felis', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
 const toolCatalog: ToolCatalog = {
   agent: 'panthera',
   groups: [{
@@ -88,12 +88,12 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
     activeAgent: 'panthera',
     cloudEffort: 'focused',
     pantheraModel: 'gpt-5.6-luna',
-    lynxModel: 'gemma-4-E2B-Q4_K_M.gguf',
+    felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
     pantheraHostedTools: { google_search: true, google_maps: true, x_search: true },
     devModeActive: false,
     sandboxMode: false,
     agentQueriesEnabled: true,
-    agentsStatus: [panthera, lynx],
+    agentsStatus: [panthera, felis],
     agentsStatusHydrated: true,
     history: [],
     latestTrace: [],
@@ -118,7 +118,7 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
     onSnapshotAttachedChange: vi.fn(),
     onAgentChange: vi.fn(),
     onPantheraModelChange: vi.fn(),
-    onLynxModelChange: vi.fn(),
+    onFelisModelChange: vi.fn(),
     onEffortChange: vi.fn(),
     onHostedToolChange: vi.fn(),
     onSandboxModeChange: vi.fn(),
@@ -221,18 +221,18 @@ describe('CortexWorkspace', () => {
   it('switches active agent directly via the segmented agent cards', async () => {
     const onAgentChange = vi.fn()
     const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ onAgentChange, agentsStatus: [panthera, lynx] })} />)
-    const lynxRadio = screen.getByRole('radio', { name: /Lynx, Local · Private/i })
-    expect(lynxRadio).toBeInTheDocument()
-    await user.click(lynxRadio)
-    expect(onAgentChange).toHaveBeenCalledWith('lynx')
+    render(<CortexWorkspace {...workspaceProps({ onAgentChange, agentsStatus: [panthera, felis] })} />)
+    const felisRadio = screen.getByRole('radio', { name: /Apex Felis.*Local · Private/i })
+    expect(felisRadio).toBeInTheDocument()
+    await user.click(felisRadio)
+    expect(onAgentChange).toHaveBeenCalledWith('felis')
   })
 
   it('uses backend pricing, effort options, and verification actions on the model selector', async () => {
     const onEffortChange = vi.fn()
     const onVerifyCloudAgent = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera', agentsStatus: [panthera, lynx], onEffortChange, onVerifyCloudAgent })} />)
+    render(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera', agentsStatus: [panthera, felis], onEffortChange, onVerifyCloudAgent })} />)
 
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'xhigh')
@@ -255,49 +255,49 @@ describe('CortexWorkspace', () => {
     await user.click(within(modelRegion).getByRole('button', { expanded: false }))
     expect(screen.getByRole('listbox', { name: 'Select model for panthera' })).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx] })} />)
-    const lynxModelRegion = screen.getByRole('region', { name: 'Model selection' })
-    expect(within(lynxModelRegion).getAllByText('gemma-4-E2B-Q4_K_M.gguf').length).toBeGreaterThanOrEqual(1)
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })} />)
+    const felisModelRegion = screen.getByRole('region', { name: 'Model selection' })
+    expect(within(felisModelRegion).getAllByText('gemma-4-E2B-Q4_K_M.gguf').length).toBeGreaterThanOrEqual(1)
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />)
   })
 
-  it('keeps agent marks accessible for Panthera and Lynx', () => {
-    render(<CortexWorkspace {...workspaceProps({ agentsStatus: [panthera, lynx] })} />)
+  it('keeps agent marks accessible for Panthera and Felis', () => {
+    render(<CortexWorkspace {...workspaceProps({ agentsStatus: [panthera, felis] })} />)
 
     expect(screen.getAllByLabelText('Panthera agent mark').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByLabelText('Lynx agent mark').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByLabelText('Felis agent mark').length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows local lifecycle controls only for local profiles and disables them during activity', () => {
     const onLoadLocalModel = vi.fn().mockResolvedValue(true)
-    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx], onLoadLocalModel })} />)
+    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis], onLoadLocalModel })} />)
     expect(screen.getByLabelText('Local model lifecycle')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Load model' })).toBeEnabled()
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx], lifecycleBusy: true, onLoadLocalModel })} />)
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis], lifecycleBusy: true, onLoadLocalModel })} />)
     expect(screen.getByRole('button', { name: 'Load model' })).toBeDisabled()
     rerender(<CortexWorkspace {...workspaceProps()} />)
     expect(screen.queryByLabelText('Local model lifecycle')).not.toBeInTheDocument()
   })
 
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {
-    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [lynx] })} />)
+    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })} />)
     const lifecycleRegion = screen.getByLabelText('Local model lifecycle')
     expect(within(lifecycleRegion).getByText('Unloaded')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, active: true }] })} />)
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true }] })} />)
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loaded')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, loading: true }] })} />)
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, loading: true }] })} />)
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loading…')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Unavailable')).toBeInTheDocument()
     expect(screen.getByText('Ollama is offline')).toBeInTheDocument()
   })
 
   it('shows the active local model auto-unload countdown in the lifecycle card', () => {
     vi.useFakeTimers()
-    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', agentsStatus: [{ ...lynx, active: true, idle_unload_remaining_seconds: 300 }] })} />)
+    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 300 }] })} />)
     expect(screen.getByText('Auto-unload in 05:00')).toBeInTheDocument()
 
     act(() => {
@@ -305,19 +305,19 @@ describe('CortexWorkspace', () => {
     })
     expect(screen.getByText('Auto-unload in 04:59')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'lynx', lifecycleBusy: true, agentsStatus: [{ ...lynx, active: true, idle_unload_remaining_seconds: 299 }] })} />)
+    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', lifecycleBusy: true, agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 299 }] })} />)
     expect(screen.getByText('In use · auto-unload paused')).toBeInTheDocument()
   })
 
-  it('shows context and reasoning selectors for Lynx', async () => {
+  it('shows context and reasoning selectors for Felis', async () => {
     const user = userEvent.setup()
     const onLocalContextWindowChange = vi.fn().mockResolvedValue(true)
     const onLocalReasoningModeChange = vi.fn().mockResolvedValue(true)
     render(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
           onLocalContextWindowChange,
           onLocalReasoningModeChange,
         })}
@@ -352,8 +352,8 @@ describe('CortexWorkspace', () => {
     render(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
           onLocalContextWindowChange,
           onLocalReasoningModeChange,
         })}
@@ -385,8 +385,8 @@ describe('CortexWorkspace', () => {
     const { rerender } = render(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
           onLocalContextWindowChange,
         })}
       />,
@@ -400,8 +400,8 @@ describe('CortexWorkspace', () => {
     rerender(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [{ ...lynx, context_window: 32768 }],
+          activeAgent: 'felis',
+          agentsStatus: [{ ...felis, context_window: 32768 }],
           onLocalContextWindowChange,
         })}
       />,
@@ -419,8 +419,8 @@ describe('CortexWorkspace', () => {
     const { rerender } = render(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
           onLocalContextWindowChange,
         })}
       />,
@@ -438,8 +438,8 @@ describe('CortexWorkspace', () => {
     rerender(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
           onLocalContextWindowChange,
         })}
       />,
@@ -455,8 +455,8 @@ describe('CortexWorkspace', () => {
     const { rerender } = render(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
         })}
       />,
     )
@@ -465,8 +465,8 @@ describe('CortexWorkspace', () => {
     rerender(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [{ ...lynx, loading: true }],
+          activeAgent: 'felis',
+          agentsStatus: [{ ...felis, loading: true }],
         })}
       />,
     )
@@ -475,8 +475,8 @@ describe('CortexWorkspace', () => {
     rerender(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          agentsStatus: [felis],
           lifecycleBusy: true,
         })}
       />,
@@ -587,13 +587,13 @@ describe('CortexWorkspace', () => {
     expect(screen.getByRole('option', { name: 'Extra High' })).toHaveValue('xhigh')
   })
 
-  it('renders None and High labels for local Lynx reasoning mode', () => {
+  it('renders None and High labels for local Felis reasoning mode', () => {
     render(
       <CortexWorkspace
         {...workspaceProps({
-          activeAgent: 'lynx',
-          lynxModel: 'gemma-4-E2B-Q4_K_M.gguf',
-          agentsStatus: [lynx],
+          activeAgent: 'felis',
+          felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
+          agentsStatus: [felis],
         })}
       />,
     )

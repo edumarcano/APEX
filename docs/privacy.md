@@ -10,7 +10,7 @@ APEX is local-first, not entirely offline. This reference separates behavior APE
 |---|---|---|---|---|
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
-| Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Lynx sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Lynx or Structured Digest |
+| Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Felis sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Felis or Structured Digest |
 | Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
 | Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Small task cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, selected-list cache, and action evidence | Leave integration disconnected |
@@ -70,7 +70,7 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing generation picks the weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts that may be sent to a model. Text is cleaned, limited in size, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera through the selected cloud provider and Lynx through its fixed Gemma E2B llama.cpp briefing path receive the same selected facts. The interactive Lynx model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Lynx requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
+Panthera through the selected cloud provider and Felis through its fixed Gemma E2B llama.cpp briefing path receive the same selected facts. The interactive Felis model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Felis requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
 
 These boundaries reduce prompt-injection risk. They do not authorize actions, and model text is never treated as approval for a write.
 
@@ -82,11 +82,11 @@ OpenAI states that API inputs and outputs are not used to train or improve its m
 
 This is provider policy, not a guarantee implemented by APEX. Review the linked current terms before sending sensitive data.
 
-Selecting Lynx or Structured Digest avoids sending briefing synthesis data to a cloud provider.
+Selecting Felis or Structured Digest avoids sending briefing synthesis data to a cloud provider.
 
 ## Interactive Agent data
 
-Interactive Agent work is separate from briefing synthesis. Panthera can receive the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and results from tools it uses. Lynx receives the same applicable categories through its configured Ollama or llama.cpp host.
+Interactive Agent work is separate from briefing synthesis. Panthera can receive the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and results from tools it uses. Felis receives the same applicable categories through its configured Ollama or llama.cpp host.
 
 The optional user designation is stored only in gitignored `config.local.json` and is omitted when empty.
 

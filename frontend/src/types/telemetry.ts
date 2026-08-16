@@ -12,7 +12,7 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'lynx'
+export type SynthesisAgent = 'panthera' | 'felis'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -97,7 +97,7 @@ export type CloudProvider = 'openai' | 'gemini' | 'xai'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
 
-export type AgentKey = 'panthera' | 'lynx'
+export type AgentKey = 'panthera' | 'felis'
 
 export type ToolCatalogGroupKind = 'apex_family' | 'mcp_server'
 
@@ -354,7 +354,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'lynx' | 'structured_digest'
+export type BriefingMode = 'panthera' | 'felis' | 'structured_digest'
 
 export interface BriefingTargetStatus {
   mode: BriefingMode

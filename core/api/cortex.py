@@ -134,7 +134,7 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
 
 
 def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
-    agent_key = "panthera" if profile.runtime == "cloud" else "lynx"
+    agent_key = "panthera" if profile.runtime == "cloud" else "felis"
     pricing = agent_pricing(
         agent_key,
         model=profile.model_id,

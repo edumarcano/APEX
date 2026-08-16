@@ -212,10 +212,10 @@ describe('ModelSelector', () => {
   })
 
   it('renders local model card with no provider charge, context, and residency state', () => {
-    const lynxStatus: AgentStatus = {
+    const felisStatus: AgentStatus = {
       ...pantheraStatus,
-      key: 'lynx',
-      display_name: 'Apex Lynx',
+      key: 'felis',
+      display_name: 'Apex Felis',
       configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
       provider: 'llama_cpp',
       runtime: 'local',
@@ -225,11 +225,11 @@ describe('ModelSelector', () => {
 
     render(
       <ModelSelector
-        activeAgent="lynx"
+        activeAgent="felis"
         selectedModelId="gemma-4-E2B-Q4_K_M.gguf"
         onModelChange={vi.fn()}
         catalog={localModels}
-        activeStatus={lynxStatus}
+        activeStatus={felisStatus}
       />,
     )
 

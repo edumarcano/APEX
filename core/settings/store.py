@@ -382,9 +382,9 @@ def _remove_derived_agent_routes(payload: dict[str, Any]) -> None:
     panthera = ask_apex.get("panthera")
     if isinstance(panthera, dict):
         panthera.pop("provider", None)
-    lynx = ask_apex.get("lynx")
-    if isinstance(lynx, dict):
-        lynx.pop("runtime", None)
+    felis = ask_apex.get("felis")
+    if isinstance(felis, dict):
+        felis.pop("runtime", None)
 
 
 _STORE: RuntimeSettingsStore | None = None

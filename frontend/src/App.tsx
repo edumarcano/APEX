@@ -64,7 +64,7 @@ import {
   resolveInitialAgentSelection,
 } from './lib/settings'
 import {
-  isLynxKey,
+  isFelisKey,
   isPantheraKey,
   resolveBriefingModeAvailability,
 } from './lib/agents'
@@ -128,7 +128,7 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
 
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
-  'lynx',
+  'felis',
   'structured_digest',
 ]
 
@@ -169,14 +169,14 @@ function applyAskApexSettings(
   setters: {
     setCloudEffort: (effort: CloudEffort) => void
     setPantheraModel: (model: string) => void
-    setLynxModel: (model: string) => void
+    setFelisModel: (model: string) => void
     setSandboxMode: (enabled: boolean) => void
     setPantheraHostedTools: (tools: PantheraHostedToolsSettings) => void
   },
 ): void {
   setters.setCloudEffort(askApex.panthera.effort)
   setters.setPantheraModel(askApex.panthera.model)
-  setters.setLynxModel(askApex.lynx.model)
+  setters.setFelisModel(askApex.felis?.model ?? 'gemma-4-E2B-Q4_K_M.gguf')
   setters.setSandboxMode(askApex.sandbox_mode)
   setters.setPantheraHostedTools({ ...askApex.panthera.hosted_tools })
 }
@@ -194,7 +194,7 @@ export default function App(): ReactElement {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
   const [pantheraModel, setPantheraModel] = useState('gpt-5.6-luna')
-  const [lynxModel, setLynxModel] = useState('gemma-4-E2B-Q4_K_M.gguf')
+  const [felisModel, setFelisModel] = useState('gemma-4-E2B-Q4_K_M.gguf')
   const [sandboxMode, setSandboxMode] = useState(false)
   const [pantheraHostedTools, setPantheraHostedTools] = useState<PantheraHostedToolsSettings>({
     google_search: true,
@@ -376,7 +376,7 @@ export default function App(): ReactElement {
       applyAskApexSettings(response.settings.ask_apex, {
         setCloudEffort,
         setPantheraModel,
-        setLynxModel,
+        setFelisModel,
         setSandboxMode,
         setPantheraHostedTools,
       })
@@ -424,7 +424,7 @@ export default function App(): ReactElement {
             applyAskApexSettings(parsed.settings.ask_apex, {
               setCloudEffort,
               setPantheraModel,
-              setLynxModel,
+              setFelisModel,
               setSandboxMode,
               setPantheraHostedTools,
             })
@@ -460,7 +460,7 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    isLynxKey(activeQueryAgent) ||
+    isFelisKey(activeQueryAgent) ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 
@@ -485,7 +485,7 @@ export default function App(): ReactElement {
     loadingLocalAgent !== null ||
     (liveSynthesis?.loading === true &&
       (liveSynthesis.provider === 'llama_cpp' ||
-        (liveSynthesis.agent !== undefined && isLynxKey(liveSynthesis.agent))))
+        (liveSynthesis.agent !== undefined && isFelisKey(liveSynthesis.agent))))
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??
@@ -1150,10 +1150,10 @@ export default function App(): ReactElement {
     }, activeAgent, { refreshToolCatalog: true })
   }, [activeAgent, agentsStatus, cloudEffort, persistAgentSettings])
 
-  const handleLynxModelChange = useCallback((model: string): void => {
-    setLynxModel(model)
+  const handleFelisModelChange = useCallback((model: string): void => {
+    setFelisModel(model)
     void persistAgentSettings({
-      lynx: { model },
+      felis: { model },
     }, activeAgent, { refreshToolCatalog: true })
   }, [activeAgent, persistAgentSettings])
 
@@ -1184,8 +1184,10 @@ export default function App(): ReactElement {
     contextWindow: number,
   ): Promise<boolean> => {
     return persistAgentSettings(
-      { lynx: { context_window: contextWindow } },
-      'lynx',
+      {
+        felis: { context_window: contextWindow },
+      },
+      'felis',
       { refreshToolCatalog: true },
     )
   }, [persistAgentSettings])
@@ -1194,8 +1196,10 @@ export default function App(): ReactElement {
     reasoningMode: LocalReasoningMode,
   ): Promise<boolean> => {
     return persistAgentSettings(
-      { lynx: { reasoning_mode: reasoningMode } },
-      'lynx',
+      {
+        felis: { reasoning_mode: reasoningMode },
+      },
+      'felis',
       { refreshToolCatalog: false },
     )
   }, [persistAgentSettings])
@@ -1709,7 +1713,7 @@ export default function App(): ReactElement {
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
             pantheraModel={pantheraModel}
-            lynxModel={lynxModel}
+            felisModel={felisModel}
             pantheraHostedTools={pantheraHostedTools}
             devModeActive={devModeActive}
             sandboxMode={sandboxMode}
@@ -1754,7 +1758,7 @@ export default function App(): ReactElement {
             onSnapshotAttachedChange={setSnapshotAttached}
             onAgentChange={handleAgentChange}
             onPantheraModelChange={handlePantheraModelChange}
-            onLynxModelChange={handleLynxModelChange}
+            onFelisModelChange={handleFelisModelChange}
             onEffortChange={handleEffortChange}
             onHostedToolChange={handleHostedToolChange}
             onSandboxModeChange={handleSandboxModeChange}

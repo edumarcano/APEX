@@ -79,10 +79,10 @@ def project_descriptor_for_agent(
     """
     projected = descriptor
     uses_compact_brave = False
-    if agent_key == "lynx" and descriptor.name == "brave_brave_web_search":
-        from core.agent.catalog import resolve_lynx_runtime
+    if agent_key == "felis" and descriptor.name == "brave_brave_web_search":
+        import core.agent.catalog as catalog
 
-        uses_compact_brave = resolve_lynx_runtime() == "ollama"
+        uses_compact_brave = catalog.resolve_felis_runtime() == "ollama"
     elif (
         agent_key in {"sorex", "mus"}
         and descriptor.name == "brave_brave_web_search"

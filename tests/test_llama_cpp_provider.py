@@ -42,7 +42,7 @@ def _llama_profile(
     assert model_profile is not None
     _apex, native = resolve_effort(model_profile, None)
     return build_concrete_agent(
-        "lynx",
+        "felis",
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,
@@ -50,7 +50,7 @@ def _llama_profile(
     )
 
 
-def _lynx_profile(
+def _felis_profile(
     *,
     context_window: int = 16384,
     reasoning_mode: str | None = "none",
@@ -110,7 +110,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _lynx_profile(),
+            _felis_profile(),
         )
         self.assertEqual(result.message.content, "The local weather looks clear.")
         self.assertIn(result.resolved_model, {"gemma-4-e2b-16k", "apodemus-16k"})
@@ -143,7 +143,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _lynx_profile(),
+            _felis_profile(),
         )
         self.assertIsNone(result.message.content)
 
@@ -156,7 +156,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _lynx_profile(reasoning_mode="focused"),
+            _felis_profile(reasoning_mode="focused"),
         )
         payload = mock_post.call_args.args[0]
         self.assertNotIn("reasoning_effort", payload)
@@ -209,7 +209,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Weather?")],
             [_descriptor()],
-            _lynx_profile(),
+            _felis_profile(),
         )
         assert result.message.tool_calls is not None
         self.assertEqual(len(result.message.tool_calls), 1)
@@ -231,7 +231,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Lookup")],
             [_descriptor(), _descriptor("fetch_crypto_price")],
-            _lynx_profile(),
+            _felis_profile(),
         )
         assert result.message.tool_calls is not None
         self.assertEqual(
@@ -287,7 +287,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             messages,
             [_descriptor()],
-            _lynx_profile(),
+            _felis_profile(),
         )
         self.assertEqual(result.message.content, "Boston is clear and about 68 F.")
         payload = mock_post.call_args.args[0]
@@ -328,7 +328,7 @@ class LlamaCppProviderTests(unittest.TestCase):
             result = LlamaCppProvider().generate_turn(
                 [AgentMessage(role="user", content="Hi")],
                 [],
-                _lynx_profile(),
+                _felis_profile(),
             )
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 100)
@@ -353,7 +353,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 }
             ]
         }
-        profile = _lynx_profile()
+        profile = _felis_profile()
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
@@ -383,7 +383,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             messages,
             [],
-            _lynx_profile(),
+            _felis_profile(),
         )
         self.assertEqual(result.retry_count, 1)
         self.assertEqual(result.message.content, "The local weather looks clear.")
@@ -439,7 +439,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         result = LlamaCppProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [_descriptor()],
-            _lynx_profile(),
+            _felis_profile(),
         )
         self.assertEqual(mock_post.call_count, 2)
         self.assertEqual(result.message.content, "Final answer")
@@ -468,7 +468,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 "max_tokens": 64,
                 "reasoning_effort": "none",
             },
-            _lynx_profile(),
+            _felis_profile(),
         )
         _args, kwargs = session.post.call_args
         self.assertEqual(kwargs["params"], {"autoload": "false"})
@@ -480,7 +480,7 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         session = MagicMock()
         mock_get_session.return_value = session
-        profile = _lynx_profile()
+        profile = _felis_profile()
         payload = {"model": "gemma-4-e2b-16k", "messages": []}
 
         session.post.side_effect = requests.Timeout()
@@ -513,7 +513,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                     "messages": [{"role": "user", "content": prompt}],
                     "headers_should_not_leak": secret,
                 },
-                _lynx_profile(),
+                _felis_profile(),
             )
         message = str(raised.exception)
         self.assertIn("context window", raised.exception.detail.lower())
@@ -531,7 +531,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         mock_get_session.return_value = session
         session.post.return_value = _mock_response(status_code=200, payload=None)
         with self.assertRaisesRegex(RuntimeError, "non-JSON"):
-            _post_chat({"model": "gemma-4-e2b-16k", "messages": []}, _lynx_profile())
+            _post_chat({"model": "gemma-4-e2b-16k", "messages": []}, _felis_profile())
 
         with patch(
             "core.agent.providers.llama_cpp.register_local_activity",
@@ -544,7 +544,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                 LlamaCppProvider().generate_turn(
                     [AgentMessage(role="user", content="Hi")],
                     [],
-                    _lynx_profile(),
+                    _felis_profile(),
                 )
 
 

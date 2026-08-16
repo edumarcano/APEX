@@ -135,8 +135,8 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         with self.assertNoLogs("core.settings.normalize", level=logging.WARNING):
             store = self._store()
         snap = store.get_snapshot()
-        self.assertEqual(snap.ask_apex.lynx.context_window, 16384)
-        self.assertEqual(snap.ask_apex.lynx.reasoning_mode, "none")
+        self.assertEqual(snap.ask_apex.felis.context_window, 16384)
+        self.assertEqual(snap.ask_apex.felis.reasoning_mode, "none")
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
 

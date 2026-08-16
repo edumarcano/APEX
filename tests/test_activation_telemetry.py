@@ -138,13 +138,13 @@ class TelemetryApiTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "lynx",
+                    "agent": "felis",
                     "panthera": {
                         "provider": "openai",
                         "model": "gpt-5.6-luna",
                         "effort": "focused",
                     },
-                    "lynx": {
+                    "felis": {
                         "runtime": "ollama",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",
@@ -460,7 +460,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "activate",
-                    "synthesis_agent": "lynx",
+                    "synthesis_agent": "felis",
                     "involves_cloud": False,
                 },
             )
@@ -631,14 +631,14 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_preflight_loaded_local_model_skips_cold_load_checks(self) -> None:
         local_snapshot = {
-            "provider": "ollama",
+            "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["qwen3:1.7b"],
+            "installed_models": ["gemma-4-E2B-Q4_K_M.gguf", "gemma-4-e2b-16k"],
             "loaded_models": [
                 {
-                    "provider": "ollama",
-                    "name": "qwen3:1.7b",
-                    "model": "qwen3:1.7b",
+                    "provider": "llama_cpp",
+                    "name": "gemma-4-e2b-16k",
+                    "model": "gemma-4-e2b-16k",
                     "state": "loaded",
                     "size_bytes": None,
                     "size_vram_bytes": None,
@@ -667,7 +667,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "cortex_query", "synthesis_agent": "lynx"},
+                json={"operation": "cortex_query", "synthesis_agent": "felis"},
             )
 
         payload = response.json()
@@ -787,13 +787,13 @@ class TriggerWithoutGateTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "lynx",
+                    "agent": "felis",
                     "panthera": {
                         "provider": "openai",
                         "model": "gpt-5.6-luna",
                         "effort": "focused",
                     },
-                    "lynx": {
+                    "felis": {
                         "runtime": "ollama",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",

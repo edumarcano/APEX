@@ -58,13 +58,13 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "lynx",
+                    "agent": "felis",
                     "panthera": {
                         "provider": "openai",
                         "model": "gpt-5.6-luna",
                         "effort": "focused",
                     },
-                    "lynx": {
+                    "felis": {
                         "runtime": "ollama",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",
@@ -90,9 +90,11 @@ class ProfileBusyStatusTests(unittest.TestCase):
 
     def test_local_agents_busy_when_execution_active(self) -> None:
         snapshot = {
-            "provider": "ollama",
+            "provider": "llama_cpp",
             "reachable": True,
             "installed_models": [
+                "gemma-4-E2B-Q4_K_M.gguf",
+                "gemma-4-e2b-16k",
                 "qwen3:1.7b",
                 "qwen3:4b-instruct",
             ],
@@ -100,7 +102,7 @@ class ProfileBusyStatusTests(unittest.TestCase):
             "sampled_at": 0.0,
         }
         backend = mock.Mock()
-        backend.provider = "ollama"
+        backend.provider = "llama_cpp"
         backend.enabled = True
         backend.get_status_snapshot.return_value = snapshot
         with (
@@ -139,9 +141,9 @@ class ProfileBusyStatusTests(unittest.TestCase):
             profiles = build_agent_statuses()
 
         by_key = {entry.key: entry for entry in profiles}
-        self.assertEqual(by_key["lynx"].status, "busy")
+        self.assertEqual(by_key["felis"].status, "busy")
         self.assertEqual(
-            by_key["lynx"].reason,
+            by_key["felis"].reason,
             "Briefing synthesis is using local inference.",
         )
         self.assertEqual(by_key["panthera"].status, "configured")
@@ -297,13 +299,13 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "lynx",
+                    "agent": "felis",
                     "panthera": {
                         "provider": "openai",
                         "model": "gpt-5.6-luna",
                         "effort": "focused",
                     },
-                    "lynx": {
+                    "felis": {
                         "runtime": "ollama",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",

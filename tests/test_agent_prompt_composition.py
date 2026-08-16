@@ -25,7 +25,7 @@ from tests.support.agent_fixtures import (
     NEOTOMA_MODEL,
     ORCINUS_MODEL,
     SOREX_MODEL,
-    build_lynx_profile,
+    build_felis_profile,
     build_panthera_profile,
 )
 
@@ -36,8 +36,8 @@ class AgentIdentityTests(unittest.TestCase):
             "You are Apex Panthera, the cloud Apex Agent. "
             "You run through the operator's selected cloud provider and model."
         ),
-        "lynx": (
-            "You are Apex Lynx, the local Apex Agent. "
+        "felis": (
+            "You are Apex Felis, the local Apex Agent. "
             "You run through the operator's selected local runtime and model."
         ),
     }
@@ -67,11 +67,11 @@ class AgentIdentityTests(unittest.TestCase):
             ("panthera", DELPHINUS_MODEL),
             ("panthera", ORCINUS_MODEL),
             ("panthera", ACINONYX_MODEL),
-            ("lynx", SOREX_MODEL),
-            ("lynx", MUS_MODEL),
-            ("lynx", APODEMUS_MODEL),
-            ("lynx", NEOTOMA_MODEL),
-            ("lynx", EXPERIMENTAL_MODEL),
+            ("felis", SOREX_MODEL),
+            ("felis", MUS_MODEL),
+            ("felis", APODEMUS_MODEL),
+            ("felis", NEOTOMA_MODEL),
+            ("felis", EXPERIMENTAL_MODEL),
         )
         for agent_key, model_id in cases:
             with self.subTest(agent=agent_key, model=model_id):
@@ -79,7 +79,7 @@ class AgentIdentityTests(unittest.TestCase):
                 if agent_key == "panthera":
                     profile = build_panthera_profile(model=model_id)
                 else:
-                    profile = build_lynx_profile(model=model_id)
+                    profile = build_felis_profile(model=model_id)
                 self.assertTrue(profile.system_instruction.startswith(identity))
                 self.assertIn(self._MODEL_POWERED_PREFIXES[model_id], profile.system_instruction)
 
@@ -95,7 +95,7 @@ class AgentIdentityTests(unittest.TestCase):
 
         cases = (
             ("panthera", "gpt-5.6-luna"),
-            ("lynx", APODEMUS_MODEL),
+            ("felis", APODEMUS_MODEL),
         )
         with (
             mock.patch("core.api.cortex._create_provider", return_value=mock.Mock()),
@@ -111,7 +111,7 @@ class AgentIdentityTests(unittest.TestCase):
                 if agent_key == "panthera":
                     profile = build_panthera_profile(model=model_id)
                 else:
-                    profile = build_lynx_profile(model=model_id)
+                    profile = build_felis_profile(model=model_id)
                 model_profile = get_model_profile(model_id)
                 assert model_profile is not None
                 _apex_effort, native_effort = resolve_effort(model_profile, None)

@@ -24,7 +24,7 @@ class SettingsMigrationTests(unittest.TestCase):
                 self.assertEqual(migrated["local_agent"], "apodemus")
 
     def test_legacy_local_agents_map_to_local_apodemus(self) -> None:
-        for legacy in ("lynx", "acinonyx", "neofelis"):
+        for legacy in ("acinonyx", "neofelis"):
             with self.subTest(legacy=legacy):
                 migrated = migrate_schema7_ask_apex({"default_profile": legacy})
                 self.assertEqual(migrated["runtime"], "local")
@@ -35,7 +35,6 @@ class SettingsMigrationTests(unittest.TestCase):
     def test_legacy_briefing_modes_map_to_panthera(self) -> None:
         for legacy in (
             "comet",
-            "lynx",
             "acinonyx",
             "neofelis",
             "pulsar",
@@ -68,7 +67,7 @@ class SettingsMigrationTests(unittest.TestCase):
                 else:
                     self.assertFalse(migrated["sandbox_mode"])
 
-    def test_schema15_maps_legacy_local_agents_to_lynx_models(self) -> None:
+    def test_schema15_maps_legacy_local_agents_to_felis_models(self) -> None:
         expectations = {
             "apodemus": "gemma-4-E2B-Q4_K_M.gguf",
             "neotoma": "gemma-4-E4B-Q4_K_M.gguf",
@@ -80,9 +79,9 @@ class SettingsMigrationTests(unittest.TestCase):
                 migrated = migrate_schema15_ask_apex(
                     {"runtime": "local", "local_agent": legacy}
                 )
-                self.assertEqual(migrated["agent"], "lynx")
-                self.assertEqual(migrated["lynx"]["model"], model)
-                self.assertNotIn("runtime", migrated["lynx"])
+                self.assertEqual(migrated["agent"], "felis")
+                self.assertEqual(migrated["felis"]["model"], model)
+                self.assertNotIn("runtime", migrated["felis"])
 
     def test_schema15_preserves_hosted_tool_toggles(self) -> None:
         migrated = migrate_schema15_ask_apex(

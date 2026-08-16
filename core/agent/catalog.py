@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 from core.agent.model_catalog import (
-    DEFAULT_LYNX_MODEL,
-    DEFAULT_LYNX_RUNTIME,
+    DEFAULT_FELIS_MODEL,
+    DEFAULT_FELIS_RUNTIME,
     DEFAULT_PANTHERA_MODEL,
     LOCAL_MODEL_PROFILES,
     ModelProfile,
@@ -40,7 +40,7 @@ from core.config import (
     is_dev_mode,
 )
 
-AgentKey: TypeAlias = Literal["panthera", "lynx"]
+AgentKey: TypeAlias = Literal["panthera", "felis"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 ApexEffort: TypeAlias = Literal[
     "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
@@ -49,7 +49,7 @@ NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "x
 CloudProvider: TypeAlias = Literal["openai", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
-VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "lynx"})
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
 
 _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "gemini": "Google",
@@ -60,7 +60,7 @@ _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
 }
 
 _SCHEMA5_CLOUD_PROFILES: frozenset[str] = frozenset({"comet", "nova", "pulsar"})
-_SCHEMA5_LOCAL_PROFILES: frozenset[str] = frozenset({"lynx", "acinonyx", "neofelis"})
+_SCHEMA5_LOCAL_PROFILES: frozenset[str] = frozenset({"felis", "acinonyx", "neofelis"})
 _SCHEMA5_ALL_PROFILES: frozenset[str] = _SCHEMA5_CLOUD_PROFILES | _SCHEMA5_LOCAL_PROFILES
 
 _APEX_TO_NATIVE_EFFORT: dict[str, str] = {
@@ -103,12 +103,12 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         runtime="cloud",
         capability_tags=("Cloud", "Generalist", "Planning"),
     ),
-    "lynx": AgentSpec(
-        key="lynx",
-        display_name="Apex Lynx",
+    "felis": AgentSpec(
+        key="felis",
+        display_name="Apex Felis",
         description="Local Agent for private on-device work through Ollama or llama.cpp.",
         identity_instruction=(
-            "You are Apex Lynx, the local Apex Agent. "
+            "You are Apex Felis, the local Apex Agent. "
             "You run through the operator's selected local runtime and model."
         ),
         agent_version="2.0",
@@ -117,7 +117,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     ),
 }
 
-_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("panthera", "lynx")
+_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("panthera", "felis")
 
 
 def runtime_agent_order(*, dev_mode: bool | None = None) -> tuple[str, ...]:
@@ -212,8 +212,8 @@ def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
     settings = get_settings_store().get_snapshot().ask_apex
     if agent_key == "panthera":
         model_id = settings.panthera.model
-    elif agent_key == "lynx":
-        model_id = settings.lynx.model
+    elif agent_key == "felis":
+        model_id = settings.felis.model
     else:
         raise ValueError(f"Unknown Agent key: {agent_key!r}")
     profile = get_model_profile(model_id)
@@ -227,9 +227,10 @@ def resolve_panthera_provider() -> CloudProvider:
     return profile.provider  # type: ignore[return-value]
 
 
-def resolve_lynx_runtime() -> LocalRuntime:
-    profile = resolve_selected_model_profile("lynx")
+def resolve_felis_runtime() -> LocalRuntime:
+    profile = resolve_selected_model_profile("felis")
     return profile.provider  # type: ignore[return-value]
+
 
 
 def build_concrete_agent(
@@ -391,7 +392,7 @@ def is_sandbox_query(*, sandbox_mode: bool, dev_mode: bool | None = None) -> boo
 
 
 def local_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
-    return ("lynx",)
+    return ("felis",)
 
 
 def cloud_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
@@ -409,14 +410,14 @@ def is_cloud_agent_key(agent_key: str) -> bool:
 
 
 def local_context_window_for_agent(agent_key: str) -> int | None:
-    if agent_key != "lynx":
+    if agent_key != "felis":
         return None
-    profile = resolve_selected_model_profile("lynx")
+    profile = resolve_selected_model_profile("felis")
     if profile.provider != "llama_cpp":
         return None
     from core.settings import get_settings_store
 
-    return get_settings_store().get_snapshot().ask_apex.lynx.context_window
+    return get_settings_store().get_snapshot().ask_apex.felis.context_window
 
 
 def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
@@ -435,11 +436,11 @@ def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, 
 
 
 def local_reasoning_modes_for_agent(agent_key: str) -> tuple[LocalReasoningMode, ...]:
-    if agent_key != "lynx":
+    if agent_key != "felis":
         return ()
     from core.settings import get_settings_store
 
-    model_id = get_settings_store().get_snapshot().ask_apex.lynx.model
+    model_id = get_settings_store().get_snapshot().ask_apex.felis.model
     return local_reasoning_modes_for_model(model_id)
 
 
@@ -449,7 +450,7 @@ def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
         return None
     from core.settings import get_settings_store
 
-    value = get_settings_store().get_snapshot().ask_apex.lynx.reasoning_mode
+    value = get_settings_store().get_snapshot().ask_apex.felis.reasoning_mode
     if value in supported:
         return value
     if "none" in supported:
@@ -467,8 +468,8 @@ def _resolve_local_reasoning_mode(
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot().ask_apex
-    if settings.lynx.model == model_id and settings.lynx.reasoning_mode in supported:
-        return settings.lynx.reasoning_mode
+    if settings.felis.model == model_id and settings.felis.reasoning_mode in supported:
+        return settings.felis.reasoning_mode
     if "none" in supported:
         return "none"
     return supported[0] if supported else "none"
@@ -479,10 +480,10 @@ def local_model_ref_for_agent(
     *,
     local_context_window: int | None = None,
 ) -> LocalModelRef:
-    if agent_key != "lynx":
+    if agent_key != "felis":
         raise ValueError(f"Agent {agent_key!r} is not a local Agent")
     profile = build_concrete_agent(
-        agent_key,
+        "felis",
         native_effort=None,
         local_context_window=local_context_window,
     )
@@ -523,9 +524,9 @@ def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
 
 
 def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
-    if agent_key != "lynx":
+    if agent_key != "felis":
         return frozenset()
-    model_id = resolve_selected_model_profile(agent_key).model_id
+    model_id = resolve_selected_model_profile("felis").model_id
     return local_model_refs_for_model(model_id)
 
 
@@ -533,12 +534,12 @@ def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
     if ref.provider == "llama_cpp":
         normalized = resolve_llama_cpp_router_alias(ref.model)
         if model_id_for_llama_cpp_alias(normalized) is not None:
-            return "lynx"
+            return "felis"
     for model_id, profile in LOCAL_MODEL_PROFILES.items():
         if profile.provider != ref.provider:
             continue
         if ref in local_model_refs_for_model(model_id):
-            return "lynx"
+            return "felis"
     return None
 
 
@@ -595,6 +596,8 @@ def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
 
 def migrate_schema7_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     """Convert schema-7 historical ``ask_apex`` keys to schema-8 shape."""
+    if "agent" in raw or "panthera" in raw or "felis" in raw:
+        return raw
     legacy = migrate_schema5_ask_apex(raw)
     if "runtime" in legacy:
         return legacy
@@ -634,17 +637,22 @@ def resolve_agent_selection(
 def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     """Convert historical ask_apex shapes to the model-only Agent shape."""
     if "agent" in raw and (
-        isinstance(raw.get("panthera"), dict) or isinstance(raw.get("lynx"), dict)
+        isinstance(raw.get("panthera"), dict)
+        or isinstance(raw.get("felis"), dict)
     ):
         return _canonicalize_agent_routes(raw)
-    if isinstance(raw.get("panthera"), dict) or isinstance(raw.get("lynx"), dict):
+    if (
+        isinstance(raw.get("panthera"), dict)
+        or isinstance(raw.get("felis"), dict)
+    ):
         canonical = _canonicalize_agent_routes(raw)
+        agent = raw.get("agent", "panthera")
         return {
             "enabled": raw.get("enabled", True),
-            "agent": raw.get("agent", "panthera"),
+            "agent": agent,
             "sandbox_mode": bool(raw.get("sandbox_mode", False)),
             "panthera": canonical.get("panthera", default_panthera_settings()),
-            "lynx": canonical.get("lynx", default_lynx_settings()),
+            "felis": canonical.get("felis", default_felis_settings()),
         }
 
     from core.agent.model_catalog import LEGACY_AGENT_MIGRATION
@@ -658,11 +666,11 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
     _, _, panthera_model = LEGACY_AGENT_MIGRATION.get(
         cloud_agent, ("panthera", "openai", DEFAULT_PANTHERA_MODEL)
     )
-    _, _, lynx_model = LEGACY_AGENT_MIGRATION.get(
-        local_agent, ("lynx", DEFAULT_LYNX_RUNTIME, DEFAULT_LYNX_MODEL)
+    _, _, felis_model = LEGACY_AGENT_MIGRATION.get(
+        local_agent, ("felis", DEFAULT_FELIS_RUNTIME, DEFAULT_FELIS_MODEL)
     )
 
-    context_window = llama_cpp_runtime_config(DEFAULT_LYNX_MODEL).default_context_window
+    context_window = llama_cpp_runtime_config(DEFAULT_FELIS_MODEL).default_context_window
     reasoning_mode = "none"
     local_context_windows = legacy.get("local_context_windows", {})
     if isinstance(local_context_windows, dict):
@@ -684,7 +692,7 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
         ),
     }
 
-    agent = "lynx" if runtime == "local" else "panthera"
+    agent = "felis" if runtime == "local" else "panthera"
     sandbox_mode = cloud_agent == "acinonyx"
     migrated: dict[str, Any] = {
         "enabled": legacy.get("enabled", True),
@@ -695,8 +703,8 @@ def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
             "effort": effort if effort in {"light", "focused", "extended"} else "focused",
             "hosted_tools": hosted_tools,
         },
-        "lynx": {
-            "model": lynx_model,
+        "felis": {
+            "model": felis_model,
             "context_window": context_window,
             "reasoning_mode": reasoning_mode,
         },
@@ -712,11 +720,11 @@ def _canonicalize_agent_routes(raw: dict[str, Any]) -> dict[str, Any]:
         panthera_settings = dict(panthera)
         panthera_settings.pop("provider", None)
         canonical["panthera"] = panthera_settings
-    lynx = raw.get("lynx")
-    if isinstance(lynx, dict):
-        lynx_settings = dict(lynx)
-        lynx_settings.pop("runtime", None)
-        canonical["lynx"] = lynx_settings
+    felis = raw.get("felis")
+    if isinstance(felis, dict):
+        felis_settings = dict(felis)
+        felis_settings.pop("runtime", None)
+        canonical["felis"] = felis_settings
     return canonical
 
 
@@ -732,9 +740,9 @@ def default_panthera_settings() -> dict[str, Any]:
     }
 
 
-def default_lynx_settings() -> dict[str, Any]:
+def default_felis_settings() -> dict[str, Any]:
     return {
-        "model": DEFAULT_LYNX_MODEL,
-        "context_window": llama_cpp_runtime_config(DEFAULT_LYNX_MODEL).default_context_window,
+        "model": DEFAULT_FELIS_MODEL,
+        "context_window": llama_cpp_runtime_config(DEFAULT_FELIS_MODEL).default_context_window,
         "reasoning_mode": "none",
     }

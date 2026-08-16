@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.support.agent_fixtures import build_lynx_profile
+from tests.support.agent_fixtures import build_felis_profile
 from core.agent.loop import build_agent_failure_details
 from core.agent.providers.llama_cpp import (
     _budget_payload as llama_cpp_budget_payload,
@@ -33,7 +33,7 @@ def _history_with_large_prior_interactions() -> list[AgentMessage]:
 
 class LocalProviderBudgetTests(unittest.TestCase):
     def test_ollama_trims_complete_history_and_applies_allowance_and_margin(self) -> None:
-        profile = build_lynx_profile(model="qwen3:4b-instruct")
+        profile = build_felis_profile(model="qwen3:4b-instruct")
         payload, estimated, dropped = ollama_budget_payload(
             _history_with_large_prior_interactions(),
             [],
@@ -60,7 +60,7 @@ class LocalProviderBudgetTests(unittest.TestCase):
     def test_llama_cpp_trims_complete_history_and_applies_allowance_and_margin(
         self,
     ) -> None:
-        profile = build_lynx_profile()
+        profile = build_felis_profile()
         payload, estimated, dropped = llama_cpp_budget_payload(
             _history_with_large_prior_interactions(),
             [],
@@ -81,10 +81,10 @@ class LocalProviderBudgetTests(unittest.TestCase):
         self.assertEqual(payload["max_tokens"], profile.final_answer_max_tokens)
 
     def test_current_interaction_is_rejected_after_history_is_exhausted(self) -> None:
-        ollama_profile = build_lynx_profile(model="qwen3:4b-instruct").model_copy(
+        ollama_profile = build_felis_profile(model="qwen3:4b-instruct").model_copy(
             update={"context_window": 2048, "final_answer_max_tokens": 128}
         )
-        llama_profile = build_lynx_profile().model_copy(
+        llama_profile = build_felis_profile().model_copy(
             update={"context_window": 4096, "final_answer_max_tokens": 128}
         )
         current = [
@@ -112,7 +112,7 @@ class LocalProviderBudgetTests(unittest.TestCase):
             )
 
     def test_provider_overflow_error_is_actionable(self) -> None:
-        profile = build_lynx_profile(model="qwen3:4b-instruct")
+        profile = build_felis_profile(model="qwen3:4b-instruct")
         answer, detail = build_agent_failure_details(
             profile,
             RuntimeError(
@@ -126,7 +126,7 @@ class LocalProviderBudgetTests(unittest.TestCase):
         self.assertIn("provider-authoritative history trimming", detail)
 
     def test_provider_estimates_include_the_same_template_allowance(self) -> None:
-        profile = build_lynx_profile(model="qwen3:4b-instruct")
+        profile = build_felis_profile(model="qwen3:4b-instruct")
         payload, estimated, _dropped = ollama_budget_payload(
             [AgentMessage(role="user", content="Current question")],
             [],
@@ -138,7 +138,7 @@ class LocalProviderBudgetTests(unittest.TestCase):
             estimated,
             ollama_estimate_payload_tokens(payload),
         )
-        llama_profile = build_lynx_profile()
+        llama_profile = build_felis_profile()
         llama_payload, llama_estimated, _llama_dropped = llama_cpp_budget_payload(
             [AgentMessage(role="user", content="Current question")],
             [],

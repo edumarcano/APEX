@@ -86,7 +86,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(payload["settings"]["ask_apex"]["agent"], "panthera")
         self.assertEqual(payload["settings"]["ask_apex"]["panthera"]["model"], "gpt-5.6-luna")
         self.assertNotIn("provider", payload["settings"]["ask_apex"]["panthera"])
-        self.assertNotIn("runtime", payload["settings"]["ask_apex"]["lynx"])
+        self.assertNotIn("runtime", payload["settings"]["ask_apex"]["felis"])
         self.assertTrue(payload["settings"]["ask_apex"]["panthera"]["hosted_tools"]["google_maps"])
         self.assertTrue(payload["settings"]["ask_apex"]["panthera"]["hosted_tools"]["x_search"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
@@ -134,29 +134,29 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(boot.status_code, 200)
         self.assertFalse(boot.json()["market_enabled"])
 
-    def test_lynx_briefing_default_mode_persists_and_is_restored_on_boot(self) -> None:
+    def test_felis_briefing_default_mode_persists_and_is_restored_on_boot(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"briefing": {"default_mode": "lynx"}},
+            json={"briefing": {"default_mode": "felis"}},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "lynx")
+        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "felis")
 
         boot = self.client.get("/api/v1/config")
         self.assertEqual(boot.status_code, 200)
-        self.assertEqual(boot.json()["briefing_default_mode"], "lynx")
+        self.assertEqual(boot.json()["briefing_default_mode"], "felis")
 
         reloaded = self.client.get("/api/v1/settings")
-        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "lynx")
+        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "felis")
 
-    def test_dev_local_synthesis_reports_lynx(self) -> None:
+    def test_dev_local_synthesis_reports_felis(self) -> None:
         with mock.patch("core.api.routers.system.is_dev_mode", return_value=True), mock.patch(
             "core.api.routers.system.DEV_AI_SYNTHESIS", "local"
         ), mock.patch("core.api.routers.system.DEMO_MODE", False):
             response = self.client.get("/api/v1/config")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["synthesis_agent"], "lynx")
+        self.assertEqual(response.json()["synthesis_agent"], "felis")
 
     def test_partial_patch_persists_and_returns_resolved(self) -> None:
         response = self.client.patch(
@@ -181,7 +181,7 @@ class SettingsApiTests(unittest.TestCase):
             {"features": {"weather": True, "unknown": True}},
             {"briefing": {"default_mode": "acinonyx"}},
             {"ask_apex": {"panthera": {"provider": "gemini"}}},
-            {"ask_apex": {"lynx": {"runtime": "ollama"}}},
+            {"ask_apex": {"felis": {"runtime": "ollama"}}},
         ):
             with self.subTest(payload=payload):
                 response = self.client.patch("/api/v1/settings", json=payload)
@@ -350,8 +350,8 @@ class SettingsApiTests(unittest.TestCase):
                 {
                     "ask_apex": {
                         "enabled": False,
-                        "agent": "lynx",
-                        "lynx": {"model": "qwen3:1.7b"},
+                        "agent": "felis",
+                        "felis": {"model": "qwen3:1.7b"},
                     }
                 }
             )
@@ -360,8 +360,8 @@ class SettingsApiTests(unittest.TestCase):
             response = self.client.get("/api/v1/config")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["default_agent"], "lynx")
-        self.assertEqual(payload["agent_initial_selection"]["agent"], "lynx")
+        self.assertEqual(payload["default_agent"], "felis")
+        self.assertEqual(payload["agent_initial_selection"]["agent"], "felis")
         self.assertFalse(payload["ask_apex_enabled"])
         self.assertIn("max_session_messages", payload)
         self.assertIn("dev_mode_active", payload)
@@ -375,16 +375,17 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_unavailable_model_remains_valid_panthera_selection(self) -> None:
-        response = self.client.patch(
-            "/api/v1/settings",
-            json={
-                "ask_apex": {
-                    "panthera": {
-                        "model": "gemini-3.6-flash",
+        with mock.patch("core.settings.normalize.is_dev_mode", return_value=True):
+            response = self.client.patch(
+                "/api/v1/settings",
+                json={
+                    "ask_apex": {
+                        "panthera": {
+                            "model": "gemini-3.6-flash",
+                        }
                     }
-                }
-            },
-        )
+                },
+            )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["settings"]["ask_apex"]["panthera"]["model"],

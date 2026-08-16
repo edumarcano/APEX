@@ -89,7 +89,7 @@ describe('useToolCatalog per-Agent hydration', () => {
     expect(hook.result.current.selectedToolNames).toEqual(['get_weather_forecast'])
     expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
 
-    hook.rerender({ agent: 'lynx' })
+    hook.rerender({ agent: 'felis' })
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
     expect(hook.result.current.selectedToolNames).toEqual([])
     expect(hook.result.current.activeToolProfileId).toBe('no_tools')
@@ -102,7 +102,7 @@ describe('useToolCatalog per-Agent hydration', () => {
 
   it('does not retain a stored profile identity when names no longer match it', async () => {
     sessionStorage.setItem(
-      'apex.tool-selection.lynx',
+      'apex.tool-selection.felis',
       JSON.stringify({
         names: ['unknown_tool'],
         profileId: 'saved_weather',
@@ -113,12 +113,12 @@ describe('useToolCatalog per-Agent hydration', () => {
       vi.fn(() =>
         Promise.resolve({
           ok: true,
-          json: async () => catalogFor('lynx'),
+          json: async () => catalogFor('felis'),
         }),
       ),
     )
 
-    const hook = renderHook(() => useToolCatalog('lynx'))
+    const hook = renderHook(() => useToolCatalog('felis'))
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
 
     expect(hook.result.current.selectedToolNames).toEqual(['unknown_tool'])
@@ -241,7 +241,7 @@ describe('useToolCatalog per-Agent hydration', () => {
     })
     await waitFor(() => expect(pendingResponses).toHaveLength(2))
 
-    hook.rerender({ agent: 'lynx' })
+    hook.rerender({ agent: 'felis' })
     await waitFor(() => {
       expect(pendingResponses).toHaveLength(3)
       expect(hook.result.current.catalog).toBeNull()
@@ -253,14 +253,14 @@ describe('useToolCatalog per-Agent hydration', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(3)
 
-    const lynxResponse = pendingResponses.find((request) => request.agent === 'lynx')
+    const felisResponse = pendingResponses.find((request) => request.agent === 'felis')
     const oldPantheraResponse = pendingResponses[1]
-    lynxResponse?.resolve({
+    felisResponse?.resolve({
       ok: true,
-      json: async () => catalogFor('lynx'),
+      json: async () => catalogFor('felis'),
     })
     await waitFor(() => {
-      expect(hook.result.current.catalog?.agent).toBe('lynx')
+      expect(hook.result.current.catalog?.agent).toBe('felis')
       expect(hook.result.current.selectionReady).toBe(true)
     })
 
@@ -272,7 +272,7 @@ describe('useToolCatalog per-Agent hydration', () => {
       await Promise.resolve()
     })
 
-    expect(hook.result.current.catalog?.agent).toBe('lynx')
+    expect(hook.result.current.catalog?.agent).toBe('felis')
     expect(hook.result.current.selectionReady).toBe(true)
   })
 })

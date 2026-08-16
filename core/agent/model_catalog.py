@@ -1,4 +1,4 @@
-"""Registered model profiles for Panthera and Lynx execution."""
+"""Registered model profiles for Panthera and Felis execution."""
 
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-# Local models available under Lynx
+# Local models available under Felis
 LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
     "qwen3:1.7b": ModelProfile(
         model_id="qwen3:1.7b",
@@ -211,8 +211,8 @@ ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 DEFAULT_PANTHERA_MODEL = "gpt-5.6-luna"
-DEFAULT_LYNX_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
-DEFAULT_LYNX_RUNTIME: LocalRuntime = "llama_cpp"
+DEFAULT_FELIS_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
+DEFAULT_FELIS_RUNTIME: LocalRuntime = "llama_cpp"
 
 # Legacy agent key → (agent, provider/runtime, model) for schema-15 migration
 LEGACY_AGENT_MIGRATION: dict[str, tuple[str, str, str]] = {
@@ -221,15 +221,16 @@ LEGACY_AGENT_MIGRATION: dict[str, tuple[str, str, str]] = {
     "neofelis": ("panthera", "gemini", "gemini-3.6-flash"),
     "delphinus": ("panthera", "xai", "grok-4.3"),
     "orcinus": ("panthera", "xai", "grok-4.5"),
-    "sorex": ("lynx", "ollama", "qwen3:1.7b"),
-    "mus": ("lynx", "ollama", "qwen3:4b-instruct"),
-    "apodemus": ("lynx", "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neotoma": ("lynx", "llama_cpp", "gemma-4-E4B-Q4_K_M.gguf"),
+    "sorex": ("felis", "ollama", "qwen3:1.7b"),
+    "mus": ("felis", "ollama", "qwen3:4b-instruct"),
+    "apodemus": ("felis", "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neotoma": ("felis", "llama_cpp", "gemma-4-E4B-Q4_K_M.gguf"),
     "unnamed-experimental-agent": (
-        "lynx",
+        "felis",
         "llama_cpp",
         "Qwen3.5-4B-Q4_K_M.gguf",
     ),
+    "felis": ("felis", "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"),
 }
 
 
@@ -312,7 +313,7 @@ def reconcile_panthera_provider_model(
     return default_profile.provider, default_profile.model_id
 
 
-def reconcile_lynx_runtime_model(
+def reconcile_felis_runtime_model(
     runtime: LocalRuntime,
     model: str,
     *,
@@ -329,7 +330,7 @@ def reconcile_lynx_runtime_model(
         return runtime, model
     if models_for_runtime:
         return runtime, models_for_runtime[0].model_id
-    default_profile = get_model_profile(DEFAULT_LYNX_MODEL)
+    default_profile = get_model_profile(DEFAULT_FELIS_MODEL)
     assert default_profile is not None
     return default_profile.provider, default_profile.model_id
 
@@ -345,7 +346,7 @@ def visible_cloud_providers(*, dev_mode: bool = False) -> tuple[CloudProvider, .
     return tuple(providers)
 
 
-def reconcile_lynx_context_window(
+def reconcile_felis_context_window(
     runtime: LocalRuntime,
     model: str,
     context_window: int,
@@ -361,7 +362,7 @@ def reconcile_lynx_context_window(
     return llama_runtime.default_context_window
 
 
-def reconcile_lynx_reasoning_mode(
+def reconcile_felis_reasoning_mode(
     model: str,
     reasoning_mode: LocalReasoningMode,
 ) -> LocalReasoningMode:

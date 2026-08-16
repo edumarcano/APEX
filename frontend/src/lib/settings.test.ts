@@ -41,9 +41,9 @@ describe('assistant boot hydration', () => {
       effort: 'focused',
       sandboxMode: true,
     })
-    expect(resolveAppliedAgentSelection(response, 'lynx', true)).toEqual({
+    expect(resolveAppliedAgentSelection(response, 'felis', true)).toEqual({
       runtime: 'local',
-      agent: 'lynx',
+      agent: 'felis',
       effort: null,
       sandboxMode: true,
     })
@@ -62,16 +62,16 @@ describe('assistant boot hydration', () => {
     expect(defaultSandboxMode(undefined)).toBe(true)
   })
 
-  it('keeps nested Panthera and Lynx preferences while filtering DEV_MODE identity fields', () => {
+  it('keeps nested Panthera and Felis preferences while filtering DEV_MODE identity fields', () => {
     expect(filterAgentSettingsForDevMode({
-      agent: 'lynx',
+      agent: 'felis',
       sandbox_mode: true,
       panthera: { effort: 'extended', hosted_tools: { google_search: false } },
-      lynx: { context_window: 32768, reasoning_mode: 'focused' },
+      felis: { context_window: 32768, reasoning_mode: 'focused' },
     })).toEqual({
       sandbox_mode: true,
       panthera: { effort: 'extended', hosted_tools: { google_search: false } },
-      lynx: { context_window: 32768, reasoning_mode: 'focused' },
+      felis: { context_window: 32768, reasoning_mode: 'focused' },
     })
   })
 
@@ -98,9 +98,9 @@ describe('settings response parsing', () => {
     ['sandbox mode', ['settings', 'ask_apex', 'sandbox_mode'], 'yes'],
     ['panthera model', ['settings', 'ask_apex', 'panthera', 'model'], ''],
     ['panthera effort', ['settings', 'ask_apex', 'panthera', 'effort'], 'invalid'],
-    ['lynx model', ['settings', 'ask_apex', 'lynx', 'model'], ''],
-    ['lynx context window', ['settings', 'ask_apex', 'lynx', 'context_window'], 0],
-    ['lynx reasoning mode', ['settings', 'ask_apex', 'lynx', 'reasoning_mode'], 'invalid'],
+    ['felis model', ['settings', 'ask_apex', 'felis', 'model'], ''],
+    ['felis context window', ['settings', 'ask_apex', 'felis', 'context_window'], 0],
+    ['felis reasoning mode', ['settings', 'ask_apex', 'felis', 'reasoning_mode'], 'invalid'],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['removed Apodemus briefing mode', ['settings', 'briefing', 'default_mode'], 'apodemus'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
@@ -139,8 +139,8 @@ describe('settings response parsing', () => {
   })
 })
 
-describe('settings editing utilities', () => {
-  it('clones every nested settings section', () => {
+describe('settings cloning and mutations', () => {
+  it('deep clones settings values to isolate draft mutations', () => {
     const clone = cloneRuntimeSettings(BASE_SETTINGS)
 
     expect(clone).toEqual(BASE_SETTINGS)
@@ -149,7 +149,7 @@ describe('settings editing utilities', () => {
     expect(clone.modules).not.toBe(BASE_SETTINGS.modules)
     expect(clone.ask_apex).not.toBe(BASE_SETTINGS.ask_apex)
     expect(clone.ask_apex.panthera).not.toBe(BASE_SETTINGS.ask_apex.panthera)
-    expect(clone.ask_apex.lynx).not.toBe(BASE_SETTINGS.ask_apex.lynx)
+    expect(clone.ask_apex.felis).not.toBe(BASE_SETTINGS.ask_apex.felis)
     expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
     expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
@@ -161,9 +161,9 @@ describe('settings editing utilities', () => {
     expect(
       resolveAgentKey({
         ...BASE_SETTINGS.ask_apex,
-        agent: 'lynx',
+        agent: 'felis',
       }),
-    ).toBe('lynx')
+    ).toBe('felis')
   })
 
   it('includes football teams and market symbols in settings patches', () => {
@@ -182,9 +182,9 @@ describe('settings editing utilities', () => {
     draft.user_designation = 'Chief'
     draft.features.weather = false
     draft.features.market = false
-    draft.ask_apex.agent = 'lynx'
-    draft.ask_apex.lynx.context_window = 32768
-    draft.briefing.default_mode = 'lynx'
+    draft.ask_apex.agent = 'felis'
+    draft.ask_apex.felis.context_window = 32768
+    draft.briefing.default_mode = 'felis'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
     draft.mcp.enabled = true
@@ -194,13 +194,13 @@ describe('settings editing utilities', () => {
       user_designation: 'Chief',
       features: { weather: false, market: false },
       ask_apex: {
-        agent: 'lynx',
-        lynx: {
-          ...BASE_SETTINGS.ask_apex.lynx,
+        agent: 'felis',
+        felis: {
+          ...BASE_SETTINGS.ask_apex.felis,
           context_window: 32768,
         },
       },
-      briefing: { default_mode: 'lynx' },
+      briefing: { default_mode: 'felis' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
         enabled: true,

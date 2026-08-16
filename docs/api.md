@@ -82,7 +82,7 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective Panthera or Lynx selection from saved settings.
+Returns boot-time HUD values such as Agent query enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective Panthera or Felis selection from saved settings.
 
 ### GET `/api/v1/settings`
 
@@ -106,7 +106,7 @@ Returns the resolved settings envelope. The current contract version is `16`.
         "effort": "focused",
         "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
       },
-      "lynx": {
+      "felis": {
         "model": "gemma-4-E2B-Q4_K_M.gguf",
         "context_window": 16384,
         "reasoning_mode": "none"
@@ -127,7 +127,7 @@ Returns the resolved settings envelope. The current contract version is `16`.
 }
 ```
 
-`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Panthera and Lynx settings persist only the selected model; the model catalog derives the cloud provider or local runtime. The selected provider/runtime remains in Agent execution metadata and historical records. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults.
+`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Panthera and Felis settings persist only the selected model; the model catalog derives the cloud provider or local runtime. The selected provider/runtime remains in Agent execution metadata and historical records. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
@@ -146,7 +146,7 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-`ask_apex.lynx.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
+`ask_apex.felis.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
 Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
@@ -216,7 +216,7 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 { "mode": "panthera" }
 ```
 
-The body is optional. Valid modes are `panthera`, `lynx`, and `structured_digest`. The `lynx` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; Cortex's interactive Lynx model and runtime settings do not affect it.
+The body is optional. Valid modes are `panthera`, `felis`, and `structured_digest`. The `felis` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; Cortex's interactive Felis model and runtime settings do not affect it.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.
@@ -243,7 +243,7 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 
 ### GET `/api/v1/briefings/targets`
 
-Returns live availability and metadata for fixed briefing synthesis targets (`panthera`, `lynx`, `structured_digest`).
+Returns live availability and metadata for fixed briefing synthesis targets (`panthera`, `felis`, `structured_digest`).
 
 ## Reminders
 
@@ -356,13 +356,13 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
-Returns visible Apex Agents in stable product order. The response contains exactly Panthera and Lynx. Each entry supplies its full display name, description, selected provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, available provider/runtime and model catalogs, versioned pricing metadata, and availability/lifecycle diagnostics.
+Returns visible Apex Agents in stable product order. The response contains exactly Panthera and Felis. Each entry supplies its full display name, description, selected provider and configured model, version, runtime, tier, stability, supported effort levels, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, available provider/runtime and model catalogs, versioned pricing metadata, and availability/lifecycle diagnostics.
 
 Development-only models appear in each Agent's `available_models` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
-Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Lynx publishes its selected context and reasoning values, options, and defaults when the selected model supports them. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Felis publishes its selected context and reasoning values, options, and defaults when the selected model supports them. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
-Registered cloud models under Panthera include `gpt-5.6-luna`, and development-only `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Lynx include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b` and `qwen3:4b-instruct`.
+Registered cloud models under Panthera include `gpt-5.6-luna`, and development-only `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Felis include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b` and `qwen3:4b-instruct`.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
@@ -378,10 +378,10 @@ Runs one user-triggered, non-generative metadata check for a visible credential-
 Pre-warms one installed local Agent before a request:
 
 ```json
-{ "agent": "lynx" }
+{ "agent": "felis" }
 ```
 
-`agent` must be `lynx`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
+`agent` must be `felis`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
 
 - `403` — demo mode disallows model calls.
 - `409` — a local generation or lifecycle action is active.
@@ -418,7 +418,7 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is the literal `production` normal-mode partition or `sandbox` for `DEV_MODE` sandbox queries; the backend discards history that crosses those partitions. Sandbox queries reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Lynx. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model supports effort and is rejected for Lynx. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Felis. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model supports effort and is rejected for Felis. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `400` — selected tools are invalid, outside policy, or unavailable.
 - A provider-authoritative local context overflow is returned as an actionable
@@ -428,7 +428,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded by the selected model profile. The default Panthera model can use up to 6 model turns and 10 tool calls; other cloud models can use up to 4 turns and 6 calls; the lightweight Ollama development model uses up to 2/3 turns/calls, while the default Lynx llama.cpp models use up to 4 turns/4 calls. The last model turn is answer-only, leaving Lynx up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
+Cortex Engine Agent loops are bounded by the selected model profile. The default Panthera model can use up to 6 model turns and 10 tool calls; other cloud models can use up to 4 turns and 6 calls; the lightweight Ollama development model uses up to 2/3 turns/calls, while the default Felis llama.cpp models use up to 4 turns/4 calls. The last model turn is answer-only, leaving Felis up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
 
 ## Actions
 

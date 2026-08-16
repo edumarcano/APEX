@@ -566,11 +566,11 @@ def public_openapi_routes() -> set[tuple[str, str]]:
 
 
 def current_agent_profiles() -> dict[str, str]:
-    from core.agent.model_catalog import DEFAULT_LYNX_MODEL, DEFAULT_PANTHERA_MODEL
+    from core.agent.model_catalog import DEFAULT_FELIS_MODEL, DEFAULT_PANTHERA_MODEL
 
     return {
         "panthera": DEFAULT_PANTHERA_MODEL,
-        "lynx": DEFAULT_LYNX_MODEL,
+        "felis": DEFAULT_FELIS_MODEL,
     }
 
 

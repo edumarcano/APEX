@@ -56,9 +56,9 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
   }
 }
 
-const lynx = agent({
-  key: 'lynx',
-  display_name: 'Apex Lynx',
+const felis = agent({
+  key: 'felis',
+  display_name: 'Apex Felis',
   description: 'Local Agent for private on-device work.',
   configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
   sort_order: 2,
@@ -91,35 +91,35 @@ describe('AgentSelector', () => {
       <AgentSelector
         activeAgent="panthera"
         onChange={onChange}
-        agentsStatus={[agent(), lynx]}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
         isQuerying={false}
       />,
     )
 
-    expect(screen.getByRole('radio', { name: /Panthera, Cloud · Generalist/i })).toBeVisible()
-    expect(screen.getByRole('radio', { name: /Lynx, Local · Private/i })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Apex Panthera, Cloud · Generalist/i })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Apex Felis, Local · Private/i })).toBeVisible()
 
-    await user.click(screen.getByRole('radio', { name: /Lynx, Local · Private/i }))
-    expect(onChange).toHaveBeenCalledWith('lynx')
+    await user.click(screen.getByRole('radio', { name: /Apex Felis, Local · Private/i }))
+    expect(onChange).toHaveBeenCalledWith('felis')
   })
 
   it('indicates the active agent in Cortex with checked state', () => {
     render(
       <AgentSelector
-        activeAgent="lynx"
+        activeAgent="felis"
         onChange={vi.fn()}
-        agentsStatus={[agent(), lynx]}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
         isQuerying={false}
       />,
     )
 
-    const pantheraRadio = screen.getByRole('radio', { name: /Panthera/i })
-    const lynxRadio = screen.getByRole('radio', { name: /Lynx/i })
+    const pantheraRadio = screen.getByRole('radio', { name: /Apex Panthera/i })
+    const felisRadio = screen.getByRole('radio', { name: /Apex Felis/i })
 
     expect(pantheraRadio).toHaveAttribute('aria-checked', 'false')
-    expect(lynxRadio).toHaveAttribute('aria-checked', 'true')
+    expect(felisRadio).toHaveAttribute('aria-checked', 'true')
   })
 
   it('renders a compact trigger on home presentation and opens simplified popover', async () => {
@@ -129,7 +129,7 @@ describe('AgentSelector', () => {
       <AgentSelector
         activeAgent="panthera"
         onChange={onChange}
-        agentsStatus={[agent(), lynx]}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
         isQuerying={false}
         presentation="home"
@@ -142,10 +142,10 @@ describe('AgentSelector', () => {
     await user.click(trigger)
     expect(screen.getByRole('dialog', { name: 'Select Agent' })).toBeVisible()
     expect(screen.getByRole('option', { name: 'Use Apex Panthera' })).toBeVisible()
-    expect(screen.getByRole('option', { name: 'Use Apex Lynx' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'Use Apex Felis' })).toBeVisible()
 
-    await user.click(screen.getByRole('option', { name: 'Use Apex Lynx' }))
-    expect(onChange).toHaveBeenCalledWith('lynx')
+    await user.click(screen.getByRole('option', { name: 'Use Apex Felis' }))
+    expect(onChange).toHaveBeenCalledWith('felis')
   })
 
   it('disables switching while an agent query is in flight', () => {
@@ -153,14 +153,14 @@ describe('AgentSelector', () => {
       <AgentSelector
         activeAgent="panthera"
         onChange={vi.fn()}
-        agentsStatus={[agent(), lynx]}
+        agentsStatus={[agent(), felis]}
         agentsStatusHydrated
         isQuerying
       />,
     )
 
-    expect(screen.getByRole('radio', { name: /Panthera/i })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: /Lynx/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Apex Panthera/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Apex Felis/i })).toBeDisabled()
   })
 })
 

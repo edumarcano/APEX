@@ -6,19 +6,20 @@ import {
   formatContextWindowLabel,
   formatReasoningLabel,
   isAgentKey,
-  isLynxKey,
+  isFelisKey,
   isPantheraKey,
   providerDisplayName,
   usesSandboxHistory,
 } from './agents'
 
 describe('agents helpers', () => {
-  it('exposes only Panthera and Lynx agent keys', () => {
-    expect(AGENT_KEYS).toEqual(['panthera', 'lynx'])
-    expect(isLynxKey('lynx')).toBe(true)
+  it('exposes only Panthera and Felis agent keys', () => {
+    expect(AGENT_KEYS).toEqual(['panthera', 'felis'])
+    expect(isFelisKey('felis')).toBe(true)
     expect(isPantheraKey('panthera')).toBe(true)
     expect(isAgentKey('panthera')).toBe(true)
-    expect(isAgentKey('lynx')).toBe(true)
+    expect(isAgentKey('felis')).toBe(true)
+    expect(isAgentKey('lynx')).toBe(false)
     expect(isAgentKey('apodemus')).toBe(false)
     expect(isAgentKey('unknown')).toBe(false)
   })
@@ -71,7 +72,7 @@ describe('agents helpers', () => {
     ).toBe(false)
     expect(
       canVerifyCloudProvider({
-        key: 'lynx',
+        key: 'felis',
         runtime: 'local',
         status: 'available',
       }),

@@ -33,9 +33,9 @@ import type {
 } from '../types/settings'
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
-const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'lynx']
+const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'felis']
 
-export { isLocalAgentKey, isPantheraKey, isLynxKey } from './agents'
+export { isLocalAgentKey, isPantheraKey, isFelisKey } from './agents'
 
 export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
@@ -86,11 +86,11 @@ export function resolveHistoryPartition(
   return usesSandboxHistory(devModeActive, sandboxMode) ? 'sandbox' : 'production'
 }
 
-const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'lynx', 'sandbox_mode'])
+const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'felis', 'sandbox_mode'])
 
 /**
  * Keep session-only agent selection out of persisted DEV_MODE settings,
- * while allowing nested Panthera and Lynx preferences to remain configurable.
+ * while allowing nested Panthera and Felis preferences to remain configurable.
  */
 export function filterAgentSettingsForDevMode(
   agentSettings: Record<string, unknown>,
@@ -113,7 +113,7 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
 ]
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
-  'lynx',
+  'felis',
   'structured_digest',
 ]
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
@@ -211,7 +211,7 @@ function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['pan
   }
 }
 
-function parseLynxSettings(value: unknown): RuntimeSettings['ask_apex']['lynx'] | null {
+function parseFelisSettings(value: unknown): RuntimeSettings['ask_apex']['felis'] | null {
   if (!isRecord(value)) {
     return null
   }
@@ -457,8 +457,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     return null
   }
   const panthera = parsePantheraSettings(value.ask_apex.panthera)
-  const lynx = parseLynxSettings(value.ask_apex.lynx)
-  if (!panthera || !lynx) {
+  const felis = parseFelisSettings(value.ask_apex.felis)
+  if (!panthera || !felis) {
     return null
   }
   if (!isBriefingMode(value.briefing.default_mode)) {
@@ -484,7 +484,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       agent: value.ask_apex.agent,
       sandbox_mode: value.ask_apex.sandbox_mode,
       panthera,
-      lynx,
+      felis,
     },
     ...(hasToolProfiles ? { tool_profiles } : {}),
     briefing: {
@@ -522,7 +522,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
         ...settings.ask_apex.panthera,
         hosted_tools: { ...settings.ask_apex.panthera.hosted_tools },
       },
-      lynx: { ...settings.ask_apex.lynx },
+      felis: { ...settings.ask_apex.felis },
     },
     ...(settings.tool_profiles
       ? {

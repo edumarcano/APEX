@@ -206,17 +206,17 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             stale = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": "stale", "mode": "lynx"},
+                json={"snapshot_id": "stale", "mode": "felis"},
             )
             response = self.client.post(
                 "/api/v1/briefings/generate",
-                json={"snapshot_id": snap.snapshot_id, "mode": "lynx"},
+                json={"snapshot_id": snap.snapshot_id, "mode": "felis"},
             )
         self.assertEqual(stale.status_code, 409)
         self.assertEqual(response.status_code, 200)
         metadata = response.json()["metadata"]
         self.assertEqual(metadata["snapshot_id"], "demo-current")
-        self.assertEqual(metadata["briefing_mode"], "lynx")
+        self.assertEqual(metadata["briefing_mode"], "felis")
 
     def test_removed_ollama_briefing_modes_are_rejected(self) -> None:
         snap = self._seed_snapshot("briefing-mode-validation")
@@ -343,37 +343,43 @@ class BriefingDeliveryTests(unittest.TestCase):
         response = self.client.get("/api/v1/briefings/targets")
         self.assertEqual(response.status_code, 200)
         targets = response.json()
-        self.assertEqual([t["mode"] for t in targets], ["panthera", "lynx", "structured_digest"])
+        self.assertEqual([t["mode"] for t in targets], ["panthera", "felis", "structured_digest"])
         panthera = next(t for t in targets if t["mode"] == "panthera")
         self.assertEqual(panthera["model_id"], "gpt-5.6-luna")
         self.assertEqual(panthera["provider"], "openai")
         self.assertEqual(panthera["runtime"], "cloud")
         self.assertIsNotNone(panthera["pricing"])
-        lynx = next(t for t in targets if t["mode"] == "lynx")
-        self.assertEqual(lynx["model_id"], "gemma-4-E2B-Q4_K_M.gguf")
-        self.assertEqual(lynx["provider"], "llama_cpp")
-        self.assertEqual(lynx["runtime"], "local")
+        felis = next(t for t in targets if t["mode"] == "felis")
+        self.assertEqual(felis["model_id"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(felis["provider"], "llama_cpp")
+        self.assertEqual(felis["runtime"], "local")
         structured = next(t for t in targets if t["mode"] == "structured_digest")
         self.assertEqual(structured["runtime"], "none")
         self.assertEqual(structured["status"], "available")
 
-    def test_get_briefing_targets_lynx_available_with_runtime_alias(self) -> None:
+    def test_get_briefing_targets_felis_available_with_runtime_alias(self) -> None:
         backend_mock = mock.MagicMock(enabled=True)
         backend_mock.get_status_snapshot.return_value = {
             "reachable": True,
             "installed_models": ["gemma-4-e2b-16k"],
         }
-        with mock.patch(
-            "core.agent.local_runtime.registry.get_local_runtime_backend",
-            return_value=backend_mock,
+        with (
+            mock.patch(
+                "core.agent.local_runtime.registry.get_local_runtime_backend",
+                return_value=backend_mock,
+            ),
+            mock.patch(
+                "core.agent.local_runtime.coordinator.get_system_vitals",
+                return_value={"cpu": 0.0, "ram": 0.0},
+            ),
         ):
             response = self.client.get("/api/v1/briefings/targets")
             self.assertEqual(response.status_code, 200)
-            lynx = next(t for t in response.json() if t["mode"] == "lynx")
-            self.assertEqual(lynx["status"], "available")
-            self.assertIsNone(lynx["reason"])
+            felis = next(t for t in response.json() if t["mode"] == "felis")
+            self.assertEqual(felis["status"], "available")
+            self.assertIsNone(felis["reason"])
 
-    def test_get_briefing_targets_lynx_not_installed_when_aliases_absent(self) -> None:
+    def test_get_briefing_targets_felis_not_installed_when_aliases_absent(self) -> None:
         backend_mock = mock.MagicMock(enabled=True)
         backend_mock.get_status_snapshot.return_value = {
             "reachable": True,
@@ -385,11 +391,11 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             response = self.client.get("/api/v1/briefings/targets")
             self.assertEqual(response.status_code, 200)
-            lynx = next(t for t in response.json() if t["mode"] == "lynx")
-            self.assertEqual(lynx["status"], "model_not_installed")
-            self.assertIn("gemma-4-E2B-Q4_K_M.gguf", lynx["reason"])
+            felis = next(t for t in response.json() if t["mode"] == "felis")
+            self.assertEqual(felis["status"], "model_not_installed")
+            self.assertIn("gemma-4-E2B-Q4_K_M.gguf", felis["reason"])
 
-    def test_get_briefing_targets_lynx_provider_unreachable(self) -> None:
+    def test_get_briefing_targets_felis_provider_unreachable(self) -> None:
         backend_mock = mock.MagicMock(enabled=True)
         backend_mock.get_status_snapshot.return_value = {
             "reachable": False,
@@ -401,11 +407,11 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             response = self.client.get("/api/v1/briefings/targets")
             self.assertEqual(response.status_code, 200)
-            lynx = next(t for t in response.json() if t["mode"] == "lynx")
-            self.assertEqual(lynx["status"], "provider_unreachable")
-            self.assertEqual(lynx["reason"], "llama.cpp is unreachable")
+            felis = next(t for t in response.json() if t["mode"] == "felis")
+            self.assertEqual(felis["status"], "provider_unreachable")
+            self.assertEqual(felis["reason"], "llama.cpp is unreachable")
 
-    def test_get_briefing_targets_lynx_insufficient_ram(self) -> None:
+    def test_get_briefing_targets_felis_insufficient_ram(self) -> None:
         backend_mock = mock.MagicMock(enabled=True)
         backend_mock.get_status_snapshot.return_value = {
             "reachable": True,
@@ -421,11 +427,11 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             response = self.client.get("/api/v1/briefings/targets")
             self.assertEqual(response.status_code, 200)
-            lynx = next(t for t in response.json() if t["mode"] == "lynx")
-            self.assertEqual(lynx["status"], "insufficient_ram")
-            self.assertIn("memory pressure", lynx["reason"])
+            felis = next(t for t in response.json() if t["mode"] == "felis")
+            self.assertEqual(felis["status"], "insufficient_ram")
+            self.assertIn("memory pressure", felis["reason"])
 
-    def test_get_briefing_targets_lynx_available_when_already_resident(self) -> None:
+    def test_get_briefing_targets_felis_available_when_already_resident(self) -> None:
         backend_mock = mock.MagicMock(enabled=True)
         backend_mock.get_status_snapshot.return_value = {
             "reachable": True,
@@ -443,9 +449,9 @@ class BriefingDeliveryTests(unittest.TestCase):
         ):
             response = self.client.get("/api/v1/briefings/targets")
             self.assertEqual(response.status_code, 200)
-            lynx = next(t for t in response.json() if t["mode"] == "lynx")
-            self.assertEqual(lynx["status"], "available")
-            self.assertIsNone(lynx["reason"])
+            felis = next(t for t in response.json() if t["mode"] == "felis")
+            self.assertEqual(felis["status"], "available")
+            self.assertIsNone(felis["reason"])
 
 
 class SettingsV3NormalizeTests(unittest.TestCase):

@@ -6,30 +6,30 @@
 
 **In progress:** August 15, 2026
 
-APEX now exposes two Apex Agents: Panthera for cloud work and Lynx for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities instead of in separate genus-based Agent names; each model profile determines its provider or local runtime. Panthera and Lynx are at version 2.0.
+APEX now exposes two Apex Agents: Panthera for cloud work and Felis for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities instead of in separate genus-based Agent names; each model profile determines its provider or local runtime. Panthera and Felis are at version 2.0.
 
 ---
 
 ### What's New
 
-- Consolidated the product roster to Panthera and Lynx. Former genus-based Agents such as Apodemus, Neotoma, Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, and Mus map to registered model configuration and settings migration targets instead of separate Apex Agents.
-- Reclaimed Lynx as the durable local Agent identity. The name previously belonged to an earlier local profile era and was later retired in favor of Apodemus and Neotoma.
-- Moved cloud and local model catalogs under Panthera and Lynx settings (`ask_apex.panthera`, `ask_apex.lynx`) with schema version `16`; persisted route settings contain only the selected model.
+- Consolidated the product roster to Panthera and Felis. Former genus-based Agents such as Apodemus, Neotoma, Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, and Mus map to registered model configuration and settings migration targets instead of separate Apex Agents.
+- Introduced Felis as the durable local Agent identity.
+- Moved cloud and local model catalogs under Panthera and Felis settings (`ask_apex.panthera`, `ask_apex.felis`) with schema version `16`; persisted route settings contain only the selected model.
 - Renamed llama.cpp router presets from Agent-based aliases such as `apodemus-16k` to model-based aliases such as `gemma-4-e2b-16k`, while keeping legacy alias resolution for existing machine-local presets.
-- Updated briefing modes to `panthera`, `lynx`, and `structured_digest`, with Panthera falling back to Lynx and then Structured Digest.
+- Updated briefing modes to `panthera`, `felis`, and `structured_digest`, with Panthera falling back to Felis and then Structured Digest.
 - Replaced the Acinonyx-specific development sandbox with `ask_apex.sandbox_mode` under `DEV_MODE`, using the `sandbox` history partition and a restricted non-personal tool allowlist.
 
 ### Architecture Changes
 
-- Reduced `AGENT_SPECS` to Panthera and Lynx in `core/agent/catalog.py`, with replaceable model profiles in `core/agent/model_catalog.py`.
+- Reduced `AGENT_SPECS` to Panthera and Felis in `core/agent/catalog.py`, with replaceable model profiles in `core/agent/model_catalog.py`.
 - Added legacy Agent-key migration in settings normalization and model-catalog metadata for former cloud and local Agents.
-- Updated Cortex agent status, tool policy, synthesis routing, and local-model lifecycle to resolve configuration through Panthera and Lynx.
+- Updated Cortex agent status, tool policy, synthesis routing, and local-model lifecycle to resolve configuration through Panthera and Felis.
 
 ### API Changes
 
-- `GET /api/v1/agents` now returns Panthera and Lynx with `available_providers`, `available_models`, and selected-model metadata.
-- Settings and briefing contracts use schema version `16` with nested `panthera` and `lynx` groups; provider/runtime routing is derived from the selected model.
-- `POST /api/v1/cortex/local-model/load` accepts only `lynx`.
+- `GET /api/v1/agents` now returns Panthera and Felis with `available_providers`, `available_models`, and selected-model metadata.
+- Settings and briefing contracts use schema version `16` with nested `panthera` and `felis` groups; provider/runtime routing is derived from the selected model.
+- `POST /api/v1/cortex/local-model/load` accepts only `felis`.
 - `POST /api/v1/cortex/query` uses `history_partition: "sandbox"` for development sandbox queries.
 
 ### Frontend Changes
@@ -38,7 +38,7 @@ APEX now exposes two Apex Agents: Panthera for cloud work and Lynx for local wor
 
 ### Documentation Updates
 
-- Rewrote the Agent family guidance in `docs/identity-and-naming.md`, including Lynx name reuse and Panthera 2.0 / Lynx 2.0.
+- Rewrote the Agent family guidance in `docs/identity-and-naming.md`, including Felis and Panthera 2.0 / Felis 2.0.
 - Updated `docs/api.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/privacy.md`, `docs/cli.md`, `docs/getting-started.md`, `docs/decisions.md`, `docs/design-system.md`, `benchmarks/README.md`, `docs/examples/llama-cpp-apex-agents.preset.ini`, and `README.md`.
 - Updated `scripts/check_docs.py` for the consolidated Agent and model documentation checks.
 

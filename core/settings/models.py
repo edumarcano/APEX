@@ -14,26 +14,26 @@ from pydantic import (
 )
 
 from core.agent.model_catalog import (
-    DEFAULT_LYNX_MODEL,
+    DEFAULT_FELIS_MODEL,
     DEFAULT_PANTHERA_MODEL,
     get_model_profile,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.types import LocalReasoningMode
 
-AgentKey = Literal["panthera", "lynx"]
+AgentKey = Literal["panthera", "felis"]
 CloudProvider = Literal["openai", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal[
     "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
 ]
-BriefingMode = Literal["panthera", "lynx", "structured_digest"]
+BriefingMode = Literal["panthera", "felis", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
-VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "lynx"})
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
 VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
 VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
@@ -41,7 +41,7 @@ VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
     {"none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"}
 )
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "lynx", "structured_digest"}
+    {"panthera", "felis", "structured_digest"}
 )
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
@@ -61,11 +61,11 @@ LlamaCppServerState = Literal[
 LlamaCppServerOwnership = Literal["none", "external", "apex"]
 
 
-def _default_lynx_context_window() -> int:
-    return LLAMA_CPP_RUNTIME_CONFIGS[DEFAULT_LYNX_MODEL].default_context_window
+def _default_felis_context_window() -> int:
+    return LLAMA_CPP_RUNTIME_CONFIGS[DEFAULT_FELIS_MODEL].default_context_window
 
 
-def _validate_lynx_context_window(value: int, model: str) -> int:
+def _validate_felis_context_window(value: int, model: str) -> int:
     profile = get_model_profile(model)
     llama_runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model)
     if profile is None or profile.provider != "llama_cpp":
@@ -77,7 +77,7 @@ def _validate_lynx_context_window(value: int, model: str) -> int:
     return value
 
 
-def _validate_lynx_reasoning_mode(
+def _validate_felis_reasoning_mode(
     value: LocalReasoningMode, model: str
 ) -> LocalReasoningMode:
     from core.agent.catalog import local_reasoning_modes_for_model
@@ -127,13 +127,13 @@ class PantheraSettings(BaseModel):
         return self
 
 
-class LynxSettings(BaseModel):
+class FelisSettings(BaseModel):
     """Local model, context, and reasoning preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    model: str = DEFAULT_LYNX_MODEL
-    context_window: StrictInt = Field(default_factory=_default_lynx_context_window)
+    model: str = DEFAULT_FELIS_MODEL
+    context_window: StrictInt = Field(default_factory=_default_felis_context_window)
     reasoning_mode: LocalReasoningMode = "none"
 
     @field_validator("model")
@@ -141,28 +141,28 @@ class LynxSettings(BaseModel):
     def _validate_model(cls, value: str) -> str:
         profile = get_model_profile(value)
         if profile is None or profile.runtime != "local":
-            raise ValueError(f"Unsupported Lynx model: {value!r}")
+            raise ValueError(f"Unsupported Felis model: {value!r}")
         return value
 
     @field_validator("context_window")
     @classmethod
     def _validate_context(cls, value: int, info) -> int:
         data = info.data
-        model = data.get("model", DEFAULT_LYNX_MODEL)
-        return _validate_lynx_context_window(value, model)
+        model = data.get("model", DEFAULT_FELIS_MODEL)
+        return _validate_felis_context_window(value, model)
 
     @field_validator("reasoning_mode")
     @classmethod
     def _validate_reasoning(cls, value: LocalReasoningMode, info) -> LocalReasoningMode:
         data = info.data
-        model = data.get("model", DEFAULT_LYNX_MODEL)
-        return _validate_lynx_reasoning_mode(value, model)
+        model = data.get("model", DEFAULT_FELIS_MODEL)
+        return _validate_felis_reasoning_mode(value, model)
 
     @model_validator(mode="after")
-    def _validate_local_model(self) -> LynxSettings:
+    def _validate_local_model(self) -> FelisSettings:
         profile = get_model_profile(self.model)
         if profile is None or profile.runtime != "local":
-            raise ValueError(f"Unsupported Lynx model: {self.model!r}")
+            raise ValueError(f"Unsupported Felis model: {self.model!r}")
         return self
 
 
@@ -175,7 +175,7 @@ class AgentSettings(BaseModel):
     agent: AgentKey = "panthera"
     sandbox_mode: bool = False
     panthera: PantheraSettings = Field(default_factory=PantheraSettings)
-    lynx: LynxSettings = Field(default_factory=LynxSettings)
+    felis: FelisSettings = Field(default_factory=FelisSettings)
 
     @field_validator("agent")
     @classmethod
@@ -418,7 +418,7 @@ class PantheraSettingsPatch(BaseModel):
     hosted_tools: PantheraHostedToolsPatch | None = None
 
 
-class LynxSettingsPatch(BaseModel):
+class FelisSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str | None = None
@@ -435,7 +435,7 @@ class AgentSettingsPatch(BaseModel):
     agent: AgentKey | None = None
     sandbox_mode: bool | None = None
     panthera: PantheraSettingsPatch | None = None
-    lynx: LynxSettingsPatch | None = None
+    felis: FelisSettingsPatch | None = None
 
 
 class ToolProfilesPatch(BaseModel):

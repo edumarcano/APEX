@@ -28,14 +28,10 @@ interface AgentSelectorProps {
   presentation?: 'cortex' | 'home'
 }
 
-const AGENT_SUBTITLES: Record<AgentKey, string> = {
-  panthera: 'Cloud intelligence',
-  lynx: 'Private on-device',
-}
 
-const AGENT_TAGS: Record<AgentKey, string> = {
+const AGENT_TAGS: Record<string, string> = {
   panthera: 'Cloud · Generalist',
-  lynx: 'Local · Private',
+  felis: 'Local · Private',
 }
 
 const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
@@ -138,7 +134,7 @@ export function AgentSelector({
     window.setTimeout(() => triggerRef.current?.focus(), 0)
   }
 
-  // --- Cortex Presentation: Compact 2-choice segmented selector ---
+  // --- Cortex Presentation: 2-choice segmented selector with full identity ---
   if (!home) {
     if (!agentsStatusHydrated && agents.length === 0) {
       return (
@@ -148,7 +144,7 @@ export function AgentSelector({
       )
     }
 
-    const durableAgents: AgentKey[] = ['panthera', 'lynx']
+    const durableAgents: AgentKey[] = ['panthera', 'felis']
 
     return (
       <section aria-label="Agent selector" className="space-y-1.5">
@@ -157,8 +153,8 @@ export function AgentSelector({
             const status = agentsStatus.find((agent) => agent.key === key)
             const selected = key === activeAgent
             const selectable = status ? isAgentIdentitySelectable(status) : true
-            const name = status ? agentShortName(status.display_name) : key === 'panthera' ? 'Panthera' : 'Lynx'
-            const tag = AGENT_TAGS[key]
+            const fullName = status?.display_name || (key === 'panthera' ? 'Apex Panthera' : 'Apex Felis')
+            const tag = AGENT_TAGS[key] || (key === 'panthera' ? 'Cloud · Generalist' : 'Local · Private')
 
             return (
               <button
@@ -166,7 +162,7 @@ export function AgentSelector({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                aria-label={`${name}, ${tag}`}
+                aria-label={`${fullName}, ${tag}`}
                 disabled={!selectable || isQuerying}
                 onClick={() => onChange(key)}
                 className={`relative flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] ${
@@ -181,7 +177,7 @@ export function AgentSelector({
                 <div className="flex items-center gap-1.5 pr-4">
                   <AgentMark agent={key} size="compact" />
                   <span className="font-orbitron text-xs font-semibold uppercase tracking-[0.08em] text-white">
-                    {name}
+                    {fullName}
                   </span>
                 </div>
                 <span className="text-[11px] leading-tight text-zinc-400">
@@ -197,13 +193,12 @@ export function AgentSelector({
 
   // --- Home Presentation: Compact Dropdown Trigger & Popover ---
   const activeAvailability = activeStatus?.status ?? 'unknown'
-  const activeName = activeStatus ? agentShortName(activeStatus.display_name) : activeAgent === 'panthera' ? 'Panthera' : 'Lynx'
+  const activeName = activeStatus ? agentShortName(activeStatus.display_name) : activeAgent === 'panthera' ? 'Panthera' : 'Felis'
 
   const renderHomeOption = (agent: AgentStatus): ReactElement => {
     const selected = agent.key === activeAgent
     const selectable = isAgentIdentitySelectable(agent)
-    const shortName = agentShortName(agent.display_name)
-    const subtitle = AGENT_SUBTITLES[agent.key] ?? agent.description
+    const tag = AGENT_TAGS[agent.key] ?? agent.description
 
     return (
       <li key={agent.key} role="presentation">
@@ -220,15 +215,12 @@ export function AgentSelector({
         >
           <AgentMark agent={agent.key} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
-              {shortName}
+            <span className="block truncate font-orbitron text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-100">
+              {agent.display_name}
             </span>
-            <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-              {subtitle}
+            <span className="mt-0.5 block truncate text-[10px] text-zinc-400">
+              {tag}
             </span>
-          </span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">
-            {agent.runtime === 'cloud' ? 'Cloud' : 'Local'}
           </span>
           {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-label="Selected" /> : null}
         </button>

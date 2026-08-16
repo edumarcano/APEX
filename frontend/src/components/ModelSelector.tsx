@@ -329,7 +329,7 @@ export function ModelSelector({
               Select Model
             </p>
             <p className="mt-0.5 text-[10px] text-zinc-500">
-              Choose the intelligence profile for {activeAgent === 'panthera' ? 'Panthera' : 'Lynx'}.
+              Choose the intelligence profile for {activeAgent === 'panthera' ? 'Panthera' : 'Felis'}.
             </p>
           </div>
 

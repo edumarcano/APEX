@@ -27,7 +27,7 @@ class LocalEffortRejectionTests(unittest.TestCase):
                 query_agent(
                     AgentQueryRequest(
                         prompt="hello",
-                        agent="lynx",
+                        agent="felis",
                         effort="focused",
                     )
                 )
@@ -94,7 +94,7 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertFalse(captured["disable_tools"])
         self.assertFalse(captured["disable_hud_context"])
 
-    def test_sandbox_lynx_rejects_production_history(self) -> None:
+    def test_sandbox_felis_rejects_production_history(self) -> None:
         captured: dict[str, object] = {}
 
         def capture_execution(payload, *_args, **kwargs):
@@ -130,7 +130,7 @@ class SandboxPolicyTests(unittest.TestCase):
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    agent="lynx",
+                    agent="felis",
                     history=[
                         AgentMessage(role="user", content="prior production turn")
                     ],

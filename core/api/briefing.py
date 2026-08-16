@@ -711,10 +711,10 @@ def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
 
 
 def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
-    """Return status and pricing for fixed Panthera, Lynx, and Structured Digest briefing targets."""
+    """Return status and pricing for fixed Panthera, Felis, and Structured Digest briefing targets."""
     import os
     from core.agent.model_catalog import (
-        DEFAULT_LYNX_MODEL,
+        DEFAULT_FELIS_MODEL,
         DEFAULT_PANTHERA_MODEL,
         get_model_profile,
     )
@@ -736,26 +736,26 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
         _model_pricing_metadata(panthera_profile) if panthera_profile else None
     )
 
-    lynx_profile = get_model_profile(DEFAULT_LYNX_MODEL)
+    felis_profile = get_model_profile(DEFAULT_FELIS_MODEL)
     llama_backend = get_local_runtime_backend("llama_cpp")
-    lynx_status = "available"
-    lynx_reason = None
+    felis_status = "available"
+    felis_reason = None
     if not llama_backend.enabled:
-        lynx_status = "disabled"
-        lynx_reason = "llama.cpp runtime is disabled in settings"
+        felis_status = "disabled"
+        felis_reason = "llama.cpp runtime is disabled in settings"
     else:
         snapshot = llama_backend.get_status_snapshot()
         if not snapshot.get("reachable"):
-            lynx_status = "provider_unreachable"
-            lynx_reason = "llama.cpp is unreachable"
-        elif lynx_profile:
+            felis_status = "provider_unreachable"
+            felis_reason = "llama.cpp is unreachable"
+        elif felis_profile:
             installed_models = set(snapshot.get("installed_models", []))
             known_aliases = {
-                ref.model for ref in local_model_refs_for_model(lynx_profile.model_id)
-            } | {lynx_profile.model_id}
+                ref.model for ref in local_model_refs_for_model(felis_profile.model_id)
+            } | {felis_profile.model_id}
             if not (installed_models & known_aliases):
-                lynx_status = "model_not_installed"
-                lynx_reason = f"Model {lynx_profile.model_id} is not installed"
+                felis_status = "model_not_installed"
+                felis_reason = f"Model {felis_profile.model_id} is not installed"
             else:
                 loaded_models = snapshot.get("loaded_models", [])
                 is_resident = any(
@@ -764,26 +764,26 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
                     for m in loaded_models
                 )
                 if not is_resident:
-                    runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(lynx_profile.model_id)
+                    runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(felis_profile.model_id)
                     ram_limit = runtime_config.ram_limit if runtime_config else 0.85
                     cpu_limit = runtime_config.cpu_limit if runtime_config else 0.90
                     gate_open, gate_reason = coordinator.check_resource_gate(
                         ram_limit, cpu_limit, vitals=coordinator.get_system_vitals()
                     )
                     if not gate_open and gate_reason is not None:
-                        lynx_status = gate_reason
-                        lynx_reason = _PROFILE_STATUS_REASONS.get(
+                        felis_status = gate_reason
+                        felis_reason = _PROFILE_STATUS_REASONS.get(
                             gate_reason, f"Current {gate_reason} exceeds threshold"
                         )
 
-    lynx_pricing = (
-        _model_pricing_metadata(lynx_profile) if lynx_profile else None
+    felis_pricing = (
+        _model_pricing_metadata(felis_profile) if felis_profile else None
     )
 
     return [
         BriefingTargetStatus(
             mode="panthera",
-            label="Panthera",
+            label="Apex Panthera",
             description=f"Full briefing · {panthera_profile.display_name if panthera_profile else 'GPT-5.6 Luna'}",
             model_id=panthera_profile.model_id if panthera_profile else DEFAULT_PANTHERA_MODEL,
             model_display_name=panthera_profile.display_name if panthera_profile else "GPT-5.6 Luna",
@@ -794,16 +794,16 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
             pricing=panthera_pricing,
         ),
         BriefingTargetStatus(
-            mode="lynx",
-            label="Lynx",
-            description=f"Full briefing · {lynx_profile.display_name if lynx_profile else 'Gemma 4 E2B'}",
-            model_id=lynx_profile.model_id if lynx_profile else DEFAULT_LYNX_MODEL,
-            model_display_name=lynx_profile.display_name if lynx_profile else "Gemma 4 E2B",
+            mode="felis",
+            label="Apex Felis",
+            description=f"Full briefing · {felis_profile.display_name if felis_profile else 'Gemma 4 E2B'}",
+            model_id=felis_profile.model_id if felis_profile else DEFAULT_FELIS_MODEL,
+            model_display_name=felis_profile.display_name if felis_profile else "Gemma 4 E2B",
             provider="llama_cpp",
             runtime="local",
-            status=lynx_status,
-            reason=lynx_reason,
-            pricing=lynx_pricing,
+            status=felis_status,
+            reason=felis_reason,
+            pricing=felis_pricing,
         ),
         BriefingTargetStatus(
             mode="structured_digest",
