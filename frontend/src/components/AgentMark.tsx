@@ -1,11 +1,11 @@
-import { Gem, Zap } from 'lucide-react'
+import { Crown, CircleGauge } from 'lucide-react'
 import type { ReactElement } from 'react'
 
 import type { AgentKey } from '../types/telemetry'
 
-const AGENT_MARKS: Record<AgentKey, { icon: typeof Gem; label: string; className: string }> = {
-  panthera: { icon: Gem, label: 'Panthera agent mark', className: 'border-purple-300/25 bg-purple-400/10 text-purple-200' },
-  lynx: { icon: Zap, label: 'Lynx agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
+const AGENT_MARKS: Record<AgentKey, { icon: typeof Crown; label: string; className: string }> = {
+  panthera: { icon: Crown, label: 'Panthera agent mark', className: 'border-purple-300/25 bg-purple-400/10 text-purple-200' },
+  lynx: { icon: CircleGauge, label: 'Lynx agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
 }
 
 interface AgentMarkProps {
