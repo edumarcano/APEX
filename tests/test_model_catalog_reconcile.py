@@ -34,6 +34,16 @@ class ModelCatalogReconcileTests(unittest.TestCase):
 
         self.assertEqual((runtime, model), ("llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"))
 
+    def test_lynx_qwen35_model_remains_when_dev_mode_false(self) -> None:
+        with mock.patch("core.config.is_dev_mode", return_value=False):
+            runtime, model = reconcile_lynx_runtime_model(
+                "llama_cpp",
+                "Qwen3.5-4B-Q4_K_M.gguf",
+                dev_mode=False,
+            )
+
+        self.assertEqual((runtime, model), ("llama_cpp", "Qwen3.5-4B-Q4_K_M.gguf"))
+
     def test_dev_only_selections_remain_when_dev_mode_true(self) -> None:
         with mock.patch("core.config.is_dev_mode", return_value=True):
             panthera = reconcile_panthera_provider_model(

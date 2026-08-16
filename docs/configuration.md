@@ -150,7 +150,7 @@ Brave MCP is the general web-search capability for Panthera when connected. Prov
 |---|---|---|---|
 | `gemma-4-E2B-Q4_K_M.gguf` | llama.cpp | Stable | Default Lynx model |
 | `gemma-4-E4B-Q4_K_M.gguf` | llama.cpp | Experimental | Larger local option |
-| `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | `DEV_MODE` only |
+| `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | Fast multilingual reasoning option |
 | `qwen3:1.7b` | Ollama | Stable | Lightweight option; `DEV_MODE` only |
 | `qwen3:4b-instruct` | Ollama | Stable | Balanced option; `DEV_MODE` only |
 
@@ -178,7 +178,7 @@ For repeatable Lynx and candidate-model comparisons, see [Local Model Benchmarki
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
 | `llama_cpp.resource_gates` entry for `gemma-4-E2B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the default Lynx model |
 | `llama_cpp.resource_gates` entry for `gemma-4-E4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Lynx model |
-| `llama_cpp.resource_gates` entry for `Qwen3.5-4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the development-only evaluation model |
+| `llama_cpp.resource_gates` entry for `Qwen3.5-4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Lynx model |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.
 

@@ -175,16 +175,14 @@ export function AgentSelector({
                     : 'border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'
                 } ${!selectable ? 'cursor-not-allowed opacity-45' : ''}`}
               >
-                <div className="flex w-full items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <AgentMark agent={key} size="compact" />
-                    <span className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] text-white">
-                      {name}
-                    </span>
-                  </div>
-                  {selected ? (
-                    <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-hidden />
-                  ) : null}
+                {selected ? (
+                  <Check className="absolute right-2.5 top-2.5 size-3.5 text-[#39FF88]" aria-hidden />
+                ) : null}
+                <div className="flex items-center gap-1.5 pr-4">
+                  <AgentMark agent={key} size="compact" />
+                  <span className="font-orbitron text-xs font-semibold uppercase tracking-[0.08em] text-white">
+                    {name}
+                  </span>
                 </div>
                 <span className="text-[11px] leading-tight text-zinc-400">
                   {tag}

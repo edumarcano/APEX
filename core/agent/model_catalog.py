@@ -202,7 +202,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         max_tool_calls=4,
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
-        dev_only=True,
     ),
 }
 
