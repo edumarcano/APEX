@@ -357,6 +357,96 @@ class BriefingDeliveryTests(unittest.TestCase):
         self.assertEqual(structured["runtime"], "none")
         self.assertEqual(structured["status"], "available")
 
+    def test_get_briefing_targets_lynx_available_with_runtime_alias(self) -> None:
+        backend_mock = mock.MagicMock(enabled=True)
+        backend_mock.get_status_snapshot.return_value = {
+            "reachable": True,
+            "installed_models": ["gemma-4-e2b-16k"],
+        }
+        with mock.patch(
+            "core.agent.local_runtime.registry.get_local_runtime_backend",
+            return_value=backend_mock,
+        ):
+            response = self.client.get("/api/v1/briefings/targets")
+            self.assertEqual(response.status_code, 200)
+            lynx = next(t for t in response.json() if t["mode"] == "lynx")
+            self.assertEqual(lynx["status"], "available")
+            self.assertIsNone(lynx["reason"])
+
+    def test_get_briefing_targets_lynx_not_installed_when_aliases_absent(self) -> None:
+        backend_mock = mock.MagicMock(enabled=True)
+        backend_mock.get_status_snapshot.return_value = {
+            "reachable": True,
+            "installed_models": ["unrelated-model-alias"],
+        }
+        with mock.patch(
+            "core.agent.local_runtime.registry.get_local_runtime_backend",
+            return_value=backend_mock,
+        ):
+            response = self.client.get("/api/v1/briefings/targets")
+            self.assertEqual(response.status_code, 200)
+            lynx = next(t for t in response.json() if t["mode"] == "lynx")
+            self.assertEqual(lynx["status"], "model_not_installed")
+            self.assertIn("gemma-4-E2B-Q4_K_M.gguf", lynx["reason"])
+
+    def test_get_briefing_targets_lynx_provider_unreachable(self) -> None:
+        backend_mock = mock.MagicMock(enabled=True)
+        backend_mock.get_status_snapshot.return_value = {
+            "reachable": False,
+            "installed_models": [],
+        }
+        with mock.patch(
+            "core.agent.local_runtime.registry.get_local_runtime_backend",
+            return_value=backend_mock,
+        ):
+            response = self.client.get("/api/v1/briefings/targets")
+            self.assertEqual(response.status_code, 200)
+            lynx = next(t for t in response.json() if t["mode"] == "lynx")
+            self.assertEqual(lynx["status"], "provider_unreachable")
+            self.assertEqual(lynx["reason"], "llama.cpp is unreachable")
+
+    def test_get_briefing_targets_lynx_insufficient_ram(self) -> None:
+        backend_mock = mock.MagicMock(enabled=True)
+        backend_mock.get_status_snapshot.return_value = {
+            "reachable": True,
+            "installed_models": ["gemma-4-e2b-16k"],
+            "loaded_models": [],
+        }
+        with mock.patch(
+            "core.agent.local_runtime.registry.get_local_runtime_backend",
+            return_value=backend_mock,
+        ), mock.patch(
+            "core.agent.local_runtime.coordinator.check_resource_gate",
+            return_value=(False, "insufficient_ram"),
+        ):
+            response = self.client.get("/api/v1/briefings/targets")
+            self.assertEqual(response.status_code, 200)
+            lynx = next(t for t in response.json() if t["mode"] == "lynx")
+            self.assertEqual(lynx["status"], "insufficient_ram")
+            self.assertIn("memory pressure", lynx["reason"])
+
+    def test_get_briefing_targets_lynx_available_when_already_resident(self) -> None:
+        backend_mock = mock.MagicMock(enabled=True)
+        backend_mock.get_status_snapshot.return_value = {
+            "reachable": True,
+            "installed_models": ["gemma-4-e2b-16k"],
+            "loaded_models": [
+                {"name": "gemma-4-e2b-16k", "model": "gemma-4-e2b-16k", "state": "loaded"}
+            ],
+        }
+        with mock.patch(
+            "core.agent.local_runtime.registry.get_local_runtime_backend",
+            return_value=backend_mock,
+        ), mock.patch(
+            "core.agent.local_runtime.coordinator.check_resource_gate",
+            return_value=(False, "insufficient_ram"),
+        ):
+            response = self.client.get("/api/v1/briefings/targets")
+            self.assertEqual(response.status_code, 200)
+            lynx = next(t for t in response.json() if t["mode"] == "lynx")
+            self.assertEqual(lynx["status"], "available")
+            self.assertIsNone(lynx["reason"])
+
 
 class SettingsV3NormalizeTests(unittest.TestCase):
     def test_missing_v3_fields_default_safely(self) -> None:
