@@ -281,7 +281,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-4k"],
+            "installed_models": ["gemma-4-e2b-4k"],
             "loaded_models": [],
             "sampled_at": 0.0,
         }
@@ -393,17 +393,17 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        apodemus = profiles["felis"]
-        self.assertNotEqual(apodemus.status, "available")
-        self.assertEqual(apodemus.status, "provider_error")
-        self.assertFalse(apodemus.active)
+        felis = profiles["felis"]
+        self.assertNotEqual(felis.status, "available")
+        self.assertEqual(felis.status, "provider_error")
+        self.assertFalse(felis.active)
         self.assertEqual(
-            apodemus.reason,
+            felis.reason,
             "llama.cpp reported that the selected model preset failed to load.",
         )
-        self.assertIsNotNone(apodemus.loaded_model)
-        assert apodemus.loaded_model is not None
-        self.assertEqual(apodemus.loaded_model.state, "failed")
+        self.assertIsNotNone(felis.loaded_model)
+        assert felis.loaded_model is not None
+        self.assertEqual(felis.loaded_model.state, "failed")
 
     def test_query_rejects_missing_local_alias_with_provider_label(self) -> None:
         from core.agent.types import AgentQueryRequest
@@ -418,7 +418,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         missing = {
             "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["apodemus-4k"],
+            "installed_models": ["gemma-4-e2b-4k"],
             "loaded_models": [],
             "sampled_at": 0.0,
         }

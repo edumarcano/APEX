@@ -2,7 +2,7 @@
   "id": "chatcmpl-fixture-parallel-tools",
   "object": "chat.completion",
   "created": 1710000002,
-  "model": "apodemus-16k",
+  "model": "gemma-4-e2b-16k",
   "choices": [
     {
       "index": 0,

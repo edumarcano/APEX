@@ -390,21 +390,6 @@ def _qwen35_aliases() -> dict[int, str]:
     }
 
 
-# Legacy router aliases kept for existing llama.cpp preset files.
-LLAMA_CPP_LEGACY_ALIAS_MAP: dict[str, str] = {
-    "apodemus-4k": "gemma-4-e2b-4k",
-    "apodemus-16k": "gemma-4-e2b-16k",
-    "apodemus-32k": "gemma-4-e2b-32k",
-    "apodemus-132k": "gemma-4-e2b-132k",
-    "neotoma-4k": "gemma-4-e4b-4k",
-    "neotoma-16k": "gemma-4-e4b-16k",
-    "neotoma-32k": "gemma-4-e4b-32k",
-    "neotoma-64k": "gemma-4-e4b-64k",
-    "unnamed-experimental-agent-4k": "qwen3.5-4b-4k",
-    "unnamed-experimental-agent-16k": "qwen3.5-4b-16k",
-    "unnamed-experimental-agent-32k": "qwen3.5-4b-32k",
-}
-
 LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
     "gemma-4-E2B-Q4_K_M.gguf": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 131072),
@@ -448,17 +433,9 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
 }
 
 
-def resolve_llama_cpp_router_alias(runtime_model_id: str) -> str:
-    """Normalize a legacy router alias to the current model-based alias."""
-    return LLAMA_CPP_LEGACY_ALIAS_MAP.get(runtime_model_id, runtime_model_id)
-
-
 def model_id_for_llama_cpp_alias(runtime_model_id: str) -> str | None:
     """Return the registered model ID for a router alias, if known."""
-    normalized = resolve_llama_cpp_router_alias(runtime_model_id)
     for model_id, runtime in LLAMA_CPP_RUNTIME_CONFIGS.items():
-        if normalized in runtime.runtime_model_ids.values():
-            return model_id
         if runtime_model_id in runtime.runtime_model_ids.values():
             return model_id
     return None

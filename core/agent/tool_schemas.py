@@ -83,11 +83,6 @@ def project_descriptor_for_agent(
         import core.agent.catalog as catalog
 
         uses_compact_brave = catalog.resolve_felis_runtime() == "ollama"
-    elif (
-        agent_key in {"sorex", "mus"}
-        and descriptor.name == "brave_brave_web_search"
-    ):
-        uses_compact_brave = True
     if uses_compact_brave:
         projected = descriptor.model_copy(
             update={

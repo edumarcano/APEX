@@ -22,10 +22,7 @@ __all__ = [
     "CONFIG_PATH",
     "DEFAULT_CLOUD_AGENT",
     "MAX_SESSION_MESSAGES",
-    "MUS_CPU_LIMIT",
-    "MUS_RAM_LIMIT",
-    "SOREX_CPU_LIMIT",
-    "SOREX_RAM_LIMIT",
+    "OLLAMA_RESOURCE_GATES",
     "OLLAMA_ENABLED",
     "OLLAMA_HOST",
     "OLLAMA_IDLE_UNLOAD_MINUTES",
@@ -37,10 +34,6 @@ __all__ = [
     "LLAMA_CPP_MANUAL_UNLOAD_ENABLED",
     "LLAMA_CPP_REQUEST_TIMEOUT_SECONDS",
     "LLAMA_CPP_RESOURCE_GATES",
-    "APODEMUS_RAM_LIMIT",
-    "APODEMUS_CPU_LIMIT",
-    "NEOTOMA_RAM_LIMIT",
-    "NEOTOMA_CPU_LIMIT",
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
@@ -315,9 +308,7 @@ _module_map = load_module_flags()
 MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
 MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
 
-_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset(
-    {"panthera", "neofelis", "delphinus", "orcinus"}
-)
+_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset({"panthera"})
 
 
 def _parse_config_bool(raw: Any, *, key: str, default: bool) -> bool:
@@ -579,27 +570,22 @@ try:
             )
         _resource_gates = {}
 
-    _sorex_ram, _sorex_cpu = _parse_resource_gate(
-        _resource_gates.get("qwen3:1.7b")
-        or _resource_gates.get("sorex")
-        or _resource_gates.get("felis"),
-        profile="qwen3:1.7b",
-        default_ram=_DEFAULT_SOREX_RAM,
-        default_cpu=_DEFAULT_SOREX_CPU,
+    _ollama_resource_limits: dict[str, tuple[float, float]] = {}
+    for model_id, default_ram, default_cpu in (
+        ("qwen3:1.7b", _DEFAULT_SOREX_RAM, _DEFAULT_SOREX_CPU),
+        ("qwen3:4b-instruct", _DEFAULT_MUS_RAM, _DEFAULT_MUS_CPU),
+    ):
+        gate = _resource_gates.get(model_id)
+        _ollama_resource_limits[model_id] = _parse_resource_gate(
+            gate,
+            profile=model_id,
+            default_ram=default_ram,
+            default_cpu=default_cpu,
+            gate_root="ollama",
+        )
+    OLLAMA_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
+        _ollama_resource_limits
     )
-    SOREX_RAM_LIMIT: Final[float] = _sorex_ram
-    SOREX_CPU_LIMIT: Final[float] = _sorex_cpu
-
-    _mus_ram, _mus_cpu = _parse_resource_gate(
-        _resource_gates.get("qwen3:4b-instruct")
-        or _resource_gates.get("mus")
-        or _resource_gates.get("acinonyx"),
-        profile="qwen3:4b-instruct",
-        default_ram=_DEFAULT_MUS_RAM,
-        default_cpu=_DEFAULT_MUS_CPU,
-    )
-    MUS_RAM_LIMIT: Final[float] = _mus_ram
-    MUS_CPU_LIMIT: Final[float] = _mus_cpu
 except Exception as exc:
     _LOGGER.warning("Unable to parse ollama config: %s; using defaults.", exc)
     OLLAMA_ENABLED = True
@@ -607,10 +593,10 @@ except Exception as exc:
     OLLAMA_IDLE_UNLOAD_MINUTES = 5
     OLLAMA_SINGLE_LOADED_MODEL = True
     OLLAMA_MANUAL_UNLOAD_ENABLED = True
-    SOREX_RAM_LIMIT = _DEFAULT_SOREX_RAM
-    SOREX_CPU_LIMIT = _DEFAULT_SOREX_CPU
-    MUS_RAM_LIMIT = _DEFAULT_MUS_RAM
-    MUS_CPU_LIMIT = _DEFAULT_MUS_CPU
+    OLLAMA_RESOURCE_GATES = {
+        "qwen3:1.7b": (_DEFAULT_SOREX_RAM, _DEFAULT_SOREX_CPU),
+        "qwen3:4b-instruct": (_DEFAULT_MUS_RAM, _DEFAULT_MUS_CPU),
+    }
 
 _DEFAULT_LLAMA_CPP_RAM: Final[float] = 82.0
 _DEFAULT_LLAMA_CPP_CPU: Final[float] = 92.0
@@ -668,14 +654,12 @@ try:
         _llama_resource_gates = {}
 
     _llama_cpp_resource_limits: dict[str, tuple[float, float]] = {}
-    for model_id, legacy_key in (
-        ("gemma-4-E2B-Q4_K_M.gguf", "apodemus"),
-        ("gemma-4-E4B-Q4_K_M.gguf", "neotoma"),
-        ("Qwen3.5-4B-Q4_K_M.gguf", "unnamed-experimental-agent"),
+    for model_id in (
+        "gemma-4-E2B-Q4_K_M.gguf",
+        "gemma-4-E4B-Q4_K_M.gguf",
+        "Qwen3.5-4B-Q4_K_M.gguf",
     ):
-        gate = _llama_resource_gates.get(model_id) or _llama_resource_gates.get(
-            legacy_key
-        )
+        gate = _llama_resource_gates.get(model_id)
         _llama_cpp_resource_limits[model_id] = _parse_resource_gate(
             gate,
             profile=model_id,
@@ -686,12 +670,6 @@ try:
     LLAMA_CPP_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
         _llama_cpp_resource_limits
     )
-    _default_felis_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
-    APODEMUS_RAM_LIMIT: Final[float] = _default_felis_gate[0]
-    APODEMUS_CPU_LIMIT: Final[float] = _default_felis_gate[1]
-    _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
-    NEOTOMA_RAM_LIMIT: Final[float] = _default_neotoma_gate[0]
-    NEOTOMA_CPU_LIMIT: Final[float] = _default_neotoma_gate[1]
 except Exception as exc:
     _LOGGER.warning("Unable to parse llama_cpp config: %s; using defaults.", exc)
     LLAMA_CPP_ENABLED = False
@@ -707,9 +685,3 @@ except Exception as exc:
             _DEFAULT_LLAMA_CPP_CPU,
         ),
     }
-    _default_felis_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E2B-Q4_K_M.gguf"]
-    APODEMUS_RAM_LIMIT = _default_felis_gate[0]
-    APODEMUS_CPU_LIMIT = _default_felis_gate[1]
-    _default_neotoma_gate = LLAMA_CPP_RESOURCE_GATES["gemma-4-E4B-Q4_K_M.gguf"]
-    NEOTOMA_RAM_LIMIT = _default_neotoma_gate[0]
-    NEOTOMA_CPU_LIMIT = _default_neotoma_gate[1]

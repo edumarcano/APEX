@@ -28,7 +28,7 @@ class LocalEffortRejectionTests(unittest.TestCase):
                     AgentQueryRequest(
                         prompt="hello",
                         agent="felis",
-                        effort="focused",
+                        effort="medium",
                     )
                 )
         self.assertEqual(ctx.exception.status_code, 400)

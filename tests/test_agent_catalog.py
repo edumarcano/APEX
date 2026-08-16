@@ -24,9 +24,7 @@ from tests.support.agent_fixtures import felis_settings, panthera_settings
 class AgentSelectionTests(unittest.TestCase):
     def test_sandbox_mode_selects_panthera_with_sandbox_flag(self) -> None:
         agent_settings = AgentSettings(sandbox_mode=True)
-        mode, profile, effort = resolve_agent_selection(
-            agent_settings, dev_mode=True
-        )
+        mode, profile, effort = resolve_agent_selection(agent_settings)
         self.assertEqual((mode, profile, effort), ("cloud", "panthera", "medium"))
         self.assertTrue(agent_settings.sandbox_mode)
 
@@ -35,21 +33,17 @@ class AgentSelectionTests(unittest.TestCase):
             model="gemini-3.6-flash",
             effort="high",
         )
-        mode, profile, effort = resolve_agent_selection(
-            agent_settings, dev_mode=False
-        )
+        mode, profile, effort = resolve_agent_selection(agent_settings)
         self.assertEqual((mode, profile, effort), ("cloud", "panthera", "high"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
         agent_settings = felis_settings(model="qwen3:1.7b")
-        mode, profile, effort = resolve_agent_selection(
-            agent_settings, dev_mode=False
-        )
+        mode, profile, effort = resolve_agent_selection(agent_settings)
         self.assertEqual((mode, profile, effort), ("local", "felis", None))
 
     def test_dev_only_local_model_remains_selectable_in_dev_mode(self) -> None:
         agent_settings = felis_settings(model="qwen3:4b-instruct")
-        self.assertTrue(is_agent_visible("felis", dev_mode=True))
+        self.assertTrue(is_agent_visible("felis"))
         self.assertEqual(agent_settings.felis.model, "qwen3:4b-instruct")
 
 
@@ -132,10 +126,8 @@ class CredentialIsolationTests(unittest.TestCase):
 
 class DemoRosterTests(unittest.TestCase):
     def test_runtime_roster_exposes_panthera_and_felis(self) -> None:
-        visible = runtime_agent_order(dev_mode=False)
+        visible = runtime_agent_order()
         self.assertEqual(visible, ("panthera", "felis"))
-        development = runtime_agent_order(dev_mode=True)
-        self.assertEqual(development, ("panthera", "felis"))
 
     def test_demo_agent_query_rejects_unknown_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
@@ -210,9 +202,8 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         luna_entry = next(entry for entry in panthera.model_catalog if entry.model_id == "gpt-5.6-luna")
         self.assertEqual(luna_entry.pricing.billing_basis, "standard")
         self.assertEqual(luna_entry.pricing.input_per_million, 0.2)
-        self.assertTrue(luna_entry.supports_effort)
         self.assertEqual(
-            luna_entry.effort_options,
+            luna_entry.reasoning_options,
             ["none", "minimal", "low", "medium", "high", "xhigh"],
         )
 
@@ -221,7 +212,7 @@ class ProfileStatusMetadataTests(unittest.TestCase):
         gemma_entry = next(entry for entry in felis.model_catalog if entry.model_id == "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(gemma_entry.pricing.billing_basis, "local")
         self.assertEqual(gemma_entry.pricing.input_per_million, 0.0)
-        self.assertFalse(gemma_entry.supports_effort)
+        self.assertIsNone(gemma_entry.reasoning_options)
         self.assertTrue(gemma_entry.context_options)
         self.assertIn(16384, gemma_entry.context_options)
         self.assertEqual(gemma_entry.reasoning_modes, ["none", "focused"])
@@ -308,19 +299,19 @@ class ModelNativeReasoningTests(unittest.TestCase):
         luna = get_model_profile("gpt-5.6-luna")
         assert luna is not None
         for option in ("none", "minimal", "low", "medium", "high", "xhigh"):
-            _apex, native = resolve_effort(luna, option)
+            native = resolve_effort(luna, option)
             self.assertEqual(native, option)
 
         # Unsupported option for Grok falls back to model default
         grok = get_model_profile("grok-4.3")
         assert grok is not None
-        _apex, native = resolve_effort(grok, "minimal")
+        native = resolve_effort(grok, "minimal")
         self.assertEqual(native, "medium")
 
         # Unsupported option for Gemini falls back to default
         gemini = get_model_profile("gemini-3.6-flash")
         assert gemini is not None
-        _apex, native = resolve_effort(gemini, "xhigh")
+        native = resolve_effort(gemini, "xhigh")
         self.assertEqual(native, "medium")
 
     def test_concrete_agent_profiles_define_provider(self) -> None:

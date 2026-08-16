@@ -106,20 +106,20 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         self.assertTrue(snapshot["reachable"])
         self.assertEqual(
             snapshot["installed_models"],
-            ["apodemus-132k", "apodemus-4k", "apodemus-16k", "apodemus-32k"],
+            ["gemma-4-e2b-132k", "gemma-4-e2b-4k", "gemma-4-e2b-16k", "gemma-4-e2b-32k"],
         )
         states = {row["model"]: row["state"] for row in snapshot["loaded_models"]}
-        self.assertEqual(states["apodemus-132k"], "loaded")
-        self.assertEqual(states["apodemus-16k"], "sleeping")
-        self.assertEqual(states["apodemus-32k"], "loading")
-        self.assertNotIn("apodemus-4k", states)
+        self.assertEqual(states["gemma-4-e2b-132k"], "loaded")
+        self.assertEqual(states["gemma-4-e2b-16k"], "sleeping")
+        self.assertEqual(states["gemma-4-e2b-32k"], "loading")
+        self.assertNotIn("gemma-4-e2b-4k", states)
 
         windows = {
             row["model"]: row["context_window"] for row in snapshot["loaded_models"]
         }
-        self.assertEqual(windows["apodemus-132k"], 131072)
-        self.assertEqual(windows["apodemus-16k"], 16384)
-        self.assertEqual(windows["apodemus-32k"], 32768)
+        self.assertEqual(windows["gemma-4-e2b-132k"], 131072)
+        self.assertEqual(windows["gemma-4-e2b-16k"], 16384)
+        self.assertEqual(windows["gemma-4-e2b-32k"], 32768)
 
         _args, kwargs = session.get.call_args
         self.assertTrue(str(_args[0]).endswith("/models"))

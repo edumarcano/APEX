@@ -428,10 +428,8 @@ function RuntimeControls({
   const selectedModelEntry = models.find(
     (entry) => entry.model_id === (activeAgent === 'panthera' ? props.pantheraModel : localModel),
   )
-  const supportsEffort =
-    selectedModelEntry?.supports_effort !== undefined
-      ? selectedModelEntry.supports_effort
-      : Boolean(pantheraStatus?.effort_options?.length)
+  const reasoningOptions = selectedModelEntry?.reasoning_options ?? pantheraStatus?.reasoning_options ?? []
+  const supportsEffort = Boolean(reasoningOptions.length)
 
   return (
     <div className="space-y-4">
@@ -448,7 +446,7 @@ function RuntimeControls({
             verifyingAgent={props.verifyingCloudAgent}
             onVerify={props.onVerifyCloudAgent}
           />
-          {supportsEffort && (selectedModelEntry?.effort_options?.length || pantheraStatus?.effort_options?.length) ? (
+          {supportsEffort && reasoningOptions.length > 0 ? (
             <section className="space-y-2">
               <label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                 Reasoning effort
@@ -459,7 +457,7 @@ function RuntimeControls({
                 onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)}
                 className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]"
               >
-                {(selectedModelEntry?.effort_options ?? pantheraStatus?.effort_options ?? []).map((effort) => (
+                {reasoningOptions.map((effort) => (
                   <option key={effort} value={effort}>
                     {formatReasoningLabel(effort)}
                   </option>

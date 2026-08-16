@@ -41,10 +41,14 @@ class SettingsApiTests(unittest.TestCase):
             "modules": {"football": False, "f1": True},
             "ask_apex": {
                 "enabled": True,
-                "mode": "cloud",
-                "cloud_agent": "panthera",
-                "effort": "focused",
-                "local_agent": "mus",
+                "agent": "panthera",
+                "panthera": {
+                    "model": "gpt-5.6-luna",
+                    "effort": "medium",
+                },
+                "felis": {
+                    "model": "gemma-4-E2B-Q4_K_M.gguf",
+                },
             },
             "tts_settings": {
                 "primary_tts": "google",

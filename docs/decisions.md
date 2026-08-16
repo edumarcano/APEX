@@ -200,7 +200,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Separate development-only models from product Agents
 
-**Decision.** Development-only models remain in the registered model catalog and appear in each Agent's `available_models` list only when `DEV_MODE` is active. They are not separate Apex Agents.
+**Decision.** Development-only models remain in the registered model catalog and appear in each Agent's `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
 **Why.** I still need safe places to try alternate cloud and local models without expanding the normal product roster again.
 

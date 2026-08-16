@@ -5,13 +5,61 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CortexWorkspace } from './CortexWorkspace'
-import type { AgentStatus, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
+import type { AgentStatus, CloudEffort, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 import type { ApexLogoProps } from './ApexLogo'
 
+const pantheraModelCatalog = [
+  {
+    model_id: 'gpt-5.6-luna',
+    display_name: 'GPT-5.6 Luna',
+    provider: 'openai' as const,
+    runtime: 'cloud' as const,
+    stability: 'stable' as const,
+    hosted_capabilities: [],
+    pricing: {
+      currency: 'USD' as const,
+      pricing_version: '2026.08.02',
+      billing_basis: 'standard' as const,
+      input_per_million: 0.2,
+      output_per_million: 1.2,
+      cached_input_per_million: 0.02,
+      long_context_threshold_tokens: 272000,
+      long_context_input_per_million: 0.4,
+      long_context_output_per_million: 1.8,
+      long_context_cached_input_per_million: 0.04,
+    },
+    reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as CloudEffort[],
+    default_reasoning: 'medium' as CloudEffort,
+  },
+]
+
+const felisModelCatalog = [
+  {
+    model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+    display_name: 'Gemma 4 E2B',
+    provider: 'llama_cpp' as const,
+    runtime: 'local' as const,
+    stability: 'stable' as const,
+    hosted_capabilities: [],
+    pricing: {
+      currency: 'USD' as const,
+      pricing_version: '2026.08.02',
+      billing_basis: 'local' as const,
+      input_per_million: 0,
+      output_per_million: 0,
+      cached_input_per_million: 0,
+      long_context_threshold_tokens: null,
+      long_context_input_per_million: null,
+      long_context_output_per_million: null,
+      long_context_cached_input_per_million: null,
+    },
+  },
+]
+
 const panthera: AgentStatus = {
-  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '2.0', runtime: 'cloud', tier: 'balanced', stability: 'stable', model_stability: 'stable', effort_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], default_effort: 'medium', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', version: '2.0', runtime: 'cloud', model_stability: 'stable', reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], default_reasoning: 'medium', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null, model_catalog: pantheraModelCatalog,
 }
-const felis: AgentStatus = { ...panthera, key: 'felis', display_name: 'Apex Felis', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], effort_options: null, default_effort: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 } }
+const felis: AgentStatus = { ...panthera, key: 'felis', display_name: 'Apex Felis', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], reasoning_options: null, default_reasoning: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 }, model_catalog: felisModelCatalog }
 const toolCatalog: ToolCatalog = {
   agent: 'panthera',
   groups: [{
@@ -86,7 +134,7 @@ const toolCatalog: ToolCatalog = {
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
     activeAgent: 'panthera',
-    cloudEffort: 'focused',
+    cloudEffort: 'medium',
     pantheraModel: 'gpt-5.6-luna',
     felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
     pantheraHostedTools: { google_search: true, google_maps: true, x_search: true },
@@ -251,13 +299,13 @@ describe('CortexWorkspace', () => {
 
     const modelRegion = screen.getByRole('region', { name: 'Model selection' })
     expect(modelRegion).toBeInTheDocument()
-    expect(within(modelRegion).getByText('gpt-5.6-luna')).toBeInTheDocument()
+    expect(within(modelRegion).getByText('GPT-5.6 Luna')).toBeInTheDocument()
     await user.click(within(modelRegion).getByRole('button', { expanded: false }))
     expect(screen.getByRole('listbox', { name: 'Select model for panthera' })).toBeInTheDocument()
 
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })} />)
     const felisModelRegion = screen.getByRole('region', { name: 'Model selection' })
-    expect(within(felisModelRegion).getAllByText('gemma-4-E2B-Q4_K_M.gguf').length).toBeGreaterThanOrEqual(1)
+    expect(within(felisModelRegion).getAllByText('Gemma 4 E2B').length).toBeGreaterThanOrEqual(1)
     rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />)
   })
 
@@ -550,7 +598,7 @@ describe('CortexWorkspace', () => {
             content: 'Research complete.',
             metadata: {
               agent: {
-                key: 'panthera', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'extended', resolvedEffort: 'high',
+                key: 'panthera', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'high', resolvedEffort: 'high',
               },
               usage: null, timing: null, cost: null, citations: [], grounding: null, toolSelection: null,
             },

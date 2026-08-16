@@ -181,10 +181,9 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         if llama_runtime
         else (reasoning_modes[0] if reasoning_modes else None)
     )
-    effort_options: list[str] | None = (
+    reasoning_options: list[str] | None = (
         list(profile.reasoning_options) if profile.reasoning_options else None
     )
-    reasoning_options = effort_options
     default_reasoning = profile.default_reasoning
 
     return AgentModelCatalogEntry(
@@ -197,9 +196,6 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         dev_only=profile.dev_only,
         credentials_configured=model_has_credentials(profile),
         pricing=_model_pricing_metadata(profile),
-        supports_effort=profile.supports_effort,
-        default_effort=profile.default_reasoning,
-        effort_options=effort_options,
         reasoning_options=reasoning_options,
         default_reasoning=default_reasoning,
         context_options=context_options,
@@ -212,16 +208,14 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
     )
 
 
-def _cloud_model_catalog(dev_mode: bool) -> tuple[list[str], list[AgentModelCatalogEntry]]:
+def _cloud_model_catalog(dev_mode: bool) -> list[AgentModelCatalogEntry]:
     profiles = visible_cloud_models(dev_mode=dev_mode)
-    entries = [_profile_to_catalog_entry(profile) for profile in profiles]
-    return [provider for provider in visible_cloud_providers(dev_mode=dev_mode)], entries
+    return [_profile_to_catalog_entry(profile) for profile in profiles]
 
 
-def _local_model_catalog(dev_mode: bool) -> tuple[list[str], list[AgentModelCatalogEntry]]:
+def _local_model_catalog(dev_mode: bool) -> list[AgentModelCatalogEntry]:
     profiles = visible_local_models(dev_mode=dev_mode)
-    entries = [_profile_to_catalog_entry(profile) for profile in profiles]
-    return [runtime for runtime in visible_local_runtimes(dev_mode=dev_mode)], entries
+    return [_profile_to_catalog_entry(profile) for profile in profiles]
 
 
 def _is_sandbox_agent_query(agent_key: str) -> bool:
@@ -391,10 +385,10 @@ def build_agent_statuses() -> list[AgentStatus]:
         snapshots[backend.provider] = backend.get_status_snapshot()
 
     agents: list[AgentStatus] = []
-    cloud_providers, cloud_models = _cloud_model_catalog(dev_mode)
-    local_providers, local_models = _local_model_catalog(dev_mode)
+    cloud_models = _cloud_model_catalog(dev_mode)
+    local_models = _local_model_catalog(dev_mode)
 
-    for sort_order, key in enumerate(runtime_agent_order(dev_mode=dev_mode)):
+    for sort_order, key in enumerate(runtime_agent_order()):
         spec = AGENT_SPECS[key]
         model_profile = resolve_selected_model_profile(key)
 
@@ -456,10 +450,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                     capabilities=list(spec.capability_tags),
                     native_tools={},
                     runtime=spec.runtime,
-                    tier="standard",
-                    stability="stable",
                     model_stability=model_profile.stability,
-                    effort_options=None,
                     context_window=(
                         profile.context_window
                         if hasattr(profile, "allowed_context_windows")
@@ -495,7 +486,6 @@ def build_agent_statuses() -> list[AgentStatus]:
                         if hasattr(profile, "default_reasoning_mode")
                         else None
                     ),
-                    default_effort=None,
                     status=agent_status,
                     status_source="runtime",
                     pricing=_agent_pricing_metadata(key),
@@ -510,8 +500,6 @@ def build_agent_statuses() -> list[AgentStatus]:
                         if status_model is not None
                         else None
                     ),
-                    available_providers=local_providers,
-                    available_models=local_models,
                     model_catalog=local_models,
                 )
             )
@@ -527,7 +515,7 @@ def build_agent_statuses() -> list[AgentStatus]:
             google_maps_enabled=google_maps,
             x_search_enabled=x_search,
         )
-        effort_options = (
+        reasoning_options = (
             list(model_profile.reasoning_options)
             if model_profile.reasoning_options
             else None
@@ -544,11 +532,8 @@ def build_agent_statuses() -> list[AgentStatus]:
                 capabilities=list(spec.capability_tags),
                 native_tools=native_tools,
                 runtime=spec.runtime,
-                tier="standard",
-                stability="stable",
                 model_stability=model_profile.stability,
-                effort_options=effort_options,
-                reasoning_options=effort_options,
+                reasoning_options=reasoning_options,
                 default_reasoning=model_profile.default_reasoning,
                 context_window=None,
                 context_window_options=None,
@@ -557,7 +542,6 @@ def build_agent_statuses() -> list[AgentStatus]:
                 reasoning_mode=None,
                 reasoning_mode_options=None,
                 default_reasoning_mode=None,
-                default_effort=model_profile.default_reasoning,
                 status=agent_status,
                 status_source=status_source,
                 status_checked_at=checked_at,
@@ -565,8 +549,6 @@ def build_agent_statuses() -> list[AgentStatus]:
                 active=False,
                 loading=False,
                 reason=cloud_reason,
-                available_providers=cloud_providers,
-                available_models=cloud_models,
                 model_catalog=cloud_models,
             )
         )
@@ -904,8 +886,7 @@ def _execute_agent_turn(
     *,
     agent_key: str,
     api_key: str | None,
-    resolved_apex_effort,
-    resolved_native_effort,
+    resolved_effort: NativeEffort | None,
     selected_tools: list[CapabilityDescriptor] | None = None,
     tool_selection: ToolSelectionDiagnostics | None = None,
     disable_hud_context: bool = False,
@@ -969,8 +950,7 @@ def _execute_agent_turn(
             configured_model=profile.api_model,
             resolved_model=response.resolved_model,
             requested_effort=payload.effort,
-            resolved_apex_effort=resolved_apex_effort,
-            resolved_native_effort=resolved_native_effort,
+            resolved_effort=resolved_effort,
             model_stability=getattr(profile, "stability", None),
             hosted_tools=getattr(profile, "hosted_tools", None),
         )
@@ -996,8 +976,7 @@ def _execute_agent_turn(
                 configured_model=profile.api_model,
                 resolved_model=None,
                 requested_effort=payload.effort,
-                resolved_apex_effort=resolved_apex_effort,
-                resolved_native_effort=resolved_native_effort,
+                resolved_effort=resolved_effort,
                 model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
@@ -1132,19 +1111,16 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         )
     settings = get_settings_store().get_snapshot()
     google_search, google_maps, x_search = _panthera_hosted_tool_settings()
-    resolved_apex_effort, resolved_native_effort = resolve_effort_for_agent(
-        agent_key, None
-    )
+    resolved_effort = resolve_effort_for_agent(agent_key, None)
     profile = build_concrete_agent(
         agent_key,
-        native_effort=resolved_native_effort,
+        native_effort=resolved_effort,
         local_context_window=local_context_window_for_agent(agent_key),
         local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
         x_search_enabled=x_search,
     )
-    del resolved_apex_effort
     query_payload_kwargs: dict[str, Any] = {
         "prompt": payload.prompt,
         "agent": agent_key,
@@ -1207,15 +1183,13 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
             detail="Effort cannot be set for local Agents.",
         )
 
-    resolved_apex_effort, resolved_native_effort = resolve_effort_for_agent(
-        agent_key, payload.effort
-    )
+    resolved_effort = resolve_effort_for_agent(agent_key, payload.effort)
     settings = get_settings_store().get_snapshot()
     google_search, google_maps, x_search = _panthera_hosted_tool_settings()
     model_profile = resolve_selected_model_profile(agent_key)
     profile = build_concrete_agent(
         agent_key,
-        native_effort=resolved_native_effort,
+        native_effort=resolved_effort,
         local_context_window=local_context_window_for_agent(agent_key),
         local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
         google_search_enabled=google_search,
@@ -1245,8 +1219,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 configured_model=profile.api_model,
                 resolved_model=None,
                 requested_effort=payload.effort,
-                resolved_apex_effort=resolved_apex_effort,
-                resolved_native_effort=resolved_native_effort,
+                resolved_effort=resolved_effort,
                 model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
@@ -1310,8 +1283,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 profile,
                 agent_key=agent_key,
                 api_key=None,
-                resolved_apex_effort=resolved_apex_effort,
-                resolved_native_effort=resolved_native_effort,
+                resolved_effort=resolved_effort,
                 selected_tools=list(selection.descriptors),
                 tool_selection=selection.diagnostics,
                 disable_hud_context=False,
@@ -1331,8 +1303,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         profile,
         agent_key=agent_key,
         api_key=api_key,
-        resolved_apex_effort=resolved_apex_effort,
-        resolved_native_effort=resolved_native_effort,
+        resolved_effort=resolved_effort,
         selected_tools=list(selection.descriptors),
         tool_selection=selection.diagnostics,
         disable_hud_context=False,

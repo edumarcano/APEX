@@ -45,7 +45,6 @@ describe('agents helpers', () => {
     expect(formatReasoningLabel('medium')).toBe('Medium')
     expect(formatReasoningLabel('high')).toBe('High')
     expect(formatReasoningLabel('xhigh')).toBe('Extra High')
-    expect(formatReasoningLabel('extra_high')).toBe('Extra High')
     expect(formatReasoningLabel(null)).toBe('')
   })
 

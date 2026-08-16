@@ -106,7 +106,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertIsNone(store.load_warning)
 
     def test_invalid_local_model_falls_back_to_default_felis_model(self) -> None:
-        self.base["ask_apex"]["local_agent"] = "not-an-agent"
+        self.base["ask_apex"] = {"felis": {"model": "not-a-model"}}
         _write_json(self.config_path, self.base)
         self.assertEqual(
             self._store().get_snapshot().ask_apex.felis.model,
@@ -119,7 +119,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             {
                 "user_designation": "  Chief  ",
                 "features": {"news": True},
-                "ask_apex": {"enabled": False, "default_profile": "nova"},
+                "ask_apex": {"enabled": False, "agent": "panthera"},
                 "tts_settings": {"primary_tts": "kokoro"},
             },
         )
@@ -179,23 +179,6 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(store.local_override_active)
         self.assertEqual([(team.id, team.name) for team in store.get_snapshot().football.teams], [(1, "One")])
 
-    def test_legacy_local_profiles_migrate_to_felis(self) -> None:
-        expectations = {
-            "felis": "gemma-4-E2B-Q4_K_M.gguf",
-            "acinonyx": "gemma-4-E2B-Q4_K_M.gguf",
-            "neofelis": "gemma-4-E2B-Q4_K_M.gguf",
-        }
-        for profile, model in expectations.items():
-            with self.subTest(agent=profile):
-                _write_json(
-                    self.local_path,
-                    {"ask_apex": {"default_profile": profile}},
-                )
-                store = self._store()
-                snap = store.get_snapshot().ask_apex
-                self.assertEqual(snap.agent, "felis")
-                self.assertEqual(snap.felis.model, model)
-
     def test_recursive_precedence(self) -> None:
         base = {"features": {"weather": True, "sports": False}, "modules": {"f1": True}}
         local = {"features": {"sports": True}, "modules": {"football": True}}
@@ -208,7 +191,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             },
         )
 
-    def test_partial_schema15_agent_settings_overlay_preserves_base_selection(self) -> None:
+    def test_partial_agent_settings_overlay_preserves_base_selection(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=True):
             store = self._store()
             store.apply_patch(
@@ -232,9 +215,6 @@ class SettingsStoreLoadTests(unittest.TestCase):
             self.assertEqual(agent_settings.panthera.model, "grok-4.5")
             self.assertEqual(agent_settings.panthera.effort, "high")
             self.assertEqual(agent_settings.felis.model, "qwen3:1.7b")
-            written = json.loads(self.local_path.read_text(encoding="utf-8"))
-            self.assertNotIn("provider", written["ask_apex"]["panthera"])
-            self.assertNotIn("runtime", written["ask_apex"]["felis"])
 
     def test_felis_briefing_mode_survives_reload(self) -> None:
         store = self._store()
@@ -254,44 +234,6 @@ class SettingsStoreLoadTests(unittest.TestCase):
             snap.features.weather = False  # type: ignore[misc]
         again = store.get_snapshot()
         self.assertTrue(again.features.weather)
-
-    def test_legacy_key_normalization_per_layer(self) -> None:
-        _write_json(
-            self.config_path,
-            {
-                "ask_apex": {"cloud_agent": "pulsar"},
-                "tts_settings": {"primary_tts": "piper", "voice_gender": "male"},
-            },
-        )
-        store = self._store()
-        snap = store.get_snapshot()
-        self.assertEqual(snap.ask_apex.agent, "panthera")
-        self.assertEqual(snap.voice.engine, "pyttsx3")
-        self.assertEqual(snap.voice.gender, "male")
-
-    def test_new_key_precedence_when_both_exist(self) -> None:
-        _write_json(
-            self.config_path,
-            {
-                "ask_apex": {
-                    "cloud_agent": "comet",
-                    "default_profile": "nova",
-                }
-            },
-        )
-        store = self._store()
-        self.assertEqual(store.get_snapshot().ask_apex.agent, "panthera")
-
-        normalized = normalize_layer(
-            {
-                "ask_apex": {
-                    "default_profile": "pulsar",
-                    "cloud_agent": "comet",
-                }
-            },
-            layer_name="test",
-        )
-        self.assertEqual(normalized["ask_apex"]["agent"], "panthera")
 
     def test_malformed_local_uses_base_with_warning(self) -> None:
         self.local_path.write_text("{not-json", encoding="utf-8")
@@ -317,7 +259,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             {
                 "features": {"weather": "yes", "unknown_feature": True},
                 "modules": {"f1": False, "hockey": True},
-                "ask_apex": {"default_profile": "not-a-profile", "mystery": 1},
+                "ask_apex": {"agent": "invalid-agent", "mystery": 1},
                 "tts_settings": {"primary_tts": "watson", "extra": True},
                 "totally_unknown": {"x": 1},
             },
@@ -365,7 +307,7 @@ class SettingsStorePatchTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "agent": "panthera"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",
@@ -607,7 +549,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "default_profile": "comet"},
+                "ask_apex": {"enabled": True, "agent": "panthera"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",

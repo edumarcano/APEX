@@ -100,7 +100,7 @@ function formatPricing(entry: ModelCatalogEntry | null | undefined): string {
 
 function capabilityTags(entry: ModelCatalogEntry): string[] {
   const tags: string[] = []
-  if (entry.supports_effort || (entry.reasoning_modes && entry.reasoning_modes.length > 1)) {
+  if ((entry.reasoning_options && entry.reasoning_options.length > 0) || (entry.reasoning_modes && entry.reasoning_modes.length > 1)) {
     tags.push('Reasoning')
   }
   if (entry.runtime === 'local' && (entry.context_options?.length || entry.default_context_window)) {

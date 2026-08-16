@@ -49,26 +49,17 @@ from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCa
 
 from core.agent.model_catalog import get_model_profile
 
-_LEGACY_PROFILE_MAP: dict[str, tuple[str, str]] = {
-    "panthera": ("panthera", "gpt-5.6-luna"),
-    "felis": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neofelis": ("panthera", "gemini-3.6-flash"),
-    "delphinus": ("panthera", "grok-4.3"),
-    "orcinus": ("panthera", "grok-4.5"),
-    "acinonyx": ("panthera", "gemini-3.5-flash-lite"),
-    "sorex": ("felis", "qwen3:1.7b"),
-    "mus": ("felis", "qwen3:4b-instruct"),
-    "apodemus": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neotoma": ("felis", "gemma-4-E4B-Q4_K_M.gguf"),
-    "unnamed-experimental-agent": ("felis", "Qwen3.5-4B-Q4_K_M.gguf"),
-}
-
-
-def _concrete_profile(key: str):
-    agent_key, model_id = _LEGACY_PROFILE_MAP.get(key, (key, "gpt-5.6-luna"))
+def _concrete_profile(key_or_model: str = "gpt-5.6-luna"):
+    if key_or_model == "panthera":
+        model_id = "gpt-5.6-luna"
+    elif key_or_model == "felis":
+        model_id = "gemma-4-E2B-Q4_K_M.gguf"
+    else:
+        model_id = key_or_model
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
-    _apex, native = resolve_effort(model_profile, None)
+    native = resolve_effort(model_profile, None)
+    agent_key = "felis" if model_profile.runtime == "local" else "panthera"
     return build_concrete_agent(
         agent_key,
         native_effort=native,
@@ -84,16 +75,16 @@ def _concrete_profile(key: str):
 class ProviderContractTests(unittest.TestCase):
     def test_resolve_inference_provider_for_existing_profiles(self) -> None:
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("neofelis")), "gemini"
+            resolve_inference_provider(_concrete_profile("gemini-3.6-flash")), "gemini"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("panthera")), "openai"
+            resolve_inference_provider(_concrete_profile("gpt-5.6-luna")), "openai"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("sorex")), "ollama"
+            resolve_inference_provider(_concrete_profile("qwen3:1.7b")), "ollama"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("felis")), "llama_cpp"
+            resolve_inference_provider(_concrete_profile("gemma-4-E2B-Q4_K_M.gguf")), "llama_cpp"
         )
         self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
@@ -154,15 +145,14 @@ class ProviderContractTests(unittest.TestCase):
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
         from core.agent.catalog import local_model_refs_for_model
 
-        for legacy_key in (
-            "sorex",
-            "mus",
-            "apodemus",
-            "neotoma",
-            "unnamed-experimental-agent",
+        for model_id in (
+            "qwen3:1.7b",
+            "qwen3:4b-instruct",
+            "gemma-4-E2B-Q4_K_M.gguf",
+            "gemma-4-E4B-Q4_K_M.gguf",
+            "Qwen3.5-4B-Q4_K_M.gguf",
         ):
-            profile = _concrete_profile(legacy_key)
-            _, model_id = _LEGACY_PROFILE_MAP[legacy_key]
+            profile = _concrete_profile(model_id)
             self.assertTrue(is_local_profile(profile))
             refs = local_model_refs_for_model(model_id)
             self.assertTrue(refs)
@@ -179,7 +169,6 @@ class ProviderContractTests(unittest.TestCase):
         )
 
     def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
-        profile = _concrete_profile("apodemus")
         focused = build_concrete_agent(
             "felis",
             native_effort=None,
@@ -189,9 +178,8 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(focused.reasoning_mode, "focused")
 
     def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
-        for legacy_key in ("apodemus", "neotoma", "unnamed-experimental-agent"):
-            with self.subTest(model=legacy_key):
-                _, model_id = _LEGACY_PROFILE_MAP[legacy_key]
+        for model_id in ("gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf"):
+            with self.subTest(model=model_id):
                 profile = build_concrete_agent(
                     "felis",
                     native_effort=None,
@@ -258,7 +246,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(merged.total_tokens, 22)
 
     def test_loop_aggregates_usage_timing_cost_and_apex_origin(self) -> None:
-        profile = _concrete_profile("neofelis")
+        profile = _concrete_profile("gemini-3.6-flash")
 
         class Provider:
             def __init__(self) -> None:
@@ -347,7 +335,7 @@ class ProviderContractTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Search?", agent="panthera"),
             Provider(),
-            _concrete_profile("neofelis"),
+            _concrete_profile("gemini-3.6-flash"),
         )
 
         trace = response.tool_trace[0]
@@ -385,7 +373,7 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _concrete_profile("sorex"),
+            _concrete_profile("qwen3:1.7b"),
         )
 
         self.assertEqual(result.message.content, "Local answer")
@@ -409,10 +397,10 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _concrete_profile("sorex"),
+            _concrete_profile("qwen3:1.7b"),
         )
 
-        self.assertEqual(result.resolved_model, _concrete_profile("sorex").api_model)
+        self.assertEqual(result.resolved_model, _concrete_profile("qwen3:1.7b").api_model)
         self.assertIsNone(result.usage)
 
     @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
@@ -439,7 +427,7 @@ class OllamaContractTests(unittest.TestCase):
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [self._descriptor()],
-            _concrete_profile("sorex"),
+            _concrete_profile("qwen3:1.7b"),
         )
 
         self.assertEqual(mock_post.call_count, 2)
@@ -620,7 +608,7 @@ class RetryHelperTests(unittest.TestCase):
         result = GeminiProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hello")],
             [],
-            _concrete_profile("neofelis"),
+            _concrete_profile("gemini-3.6-flash"),
         )
         self.assertEqual(result.message.content, "Recovered")
         self.assertEqual(result.retry_count, 1)
@@ -838,7 +826,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        delphinus_profile = _concrete_profile("delphinus")
+        delphinus_profile = _concrete_profile("grok-4.3")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
@@ -860,7 +848,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        orcinus_profile = _concrete_profile("orcinus")
+        orcinus_profile = _concrete_profile("grok-4.5")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
@@ -890,7 +878,7 @@ class ResponsesAdapterTests(unittest.TestCase):
             },
         )
 
-        delphinus_profile = _concrete_profile("delphinus")
+        delphinus_profile = _concrete_profile("grok-4.3")
         with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
             with self.assertRaises(APIStatusError):
                 XAIProvider(api_key="test").generate_turn(

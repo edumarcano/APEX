@@ -40,7 +40,7 @@ def _llama_profile(
 ):
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
-    _apex, native = resolve_effort(model_profile, None)
+    native = resolve_effort(model_profile, None)
     return build_concrete_agent(
         "felis",
         native_effort=native,

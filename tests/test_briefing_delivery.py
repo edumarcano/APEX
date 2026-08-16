@@ -172,7 +172,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             provider="openai",
             agent="panthera",
             resolved_model="gpt-5.6-luna",
-            fallback_steps=["panthera:openai_timeout", "apodemus:local_model_missing"],
+            fallback_steps=["panthera:openai_timeout", "felis:local_model_missing"],
             provider_ms=321.5,
             usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
             cost_estimate=CostEstimate(

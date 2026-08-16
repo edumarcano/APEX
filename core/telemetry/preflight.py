@@ -357,9 +357,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         cloud_agent = is_cloud_agent_key(agent) if agent else False
         involves_cloud = bool(request.involves_cloud or cloud_agent)
 
-    valid_agents = set(local_agent_keys(dev_mode=True)) | set(
-        cloud_agent_keys(dev_mode=True)
-    )
+    valid_agents = set(local_agent_keys()) | set(cloud_agent_keys())
     if agent is not None and agent not in valid_agents:
         blockers.append(
             _blocker("invalid_input", f"Unknown synthesis agent: {agent!r}")

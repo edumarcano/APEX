@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--model",
-        default="apodemus-16k",
+        default="gemma-4-e2b-16k",
         help="Runtime alias to exercise",
     )
     parser.add_argument(

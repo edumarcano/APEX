@@ -100,7 +100,7 @@ Panthera and Felis are currently at **2.0**. That major version marks the Agent 
 
 ## The Apex Agent family
 
-APEX now keeps the product roster intentionally small. Panthera and Felis are the only Apex Agents in the normal UI. Former genus-based Agents such as Apodemus, Neotoma, Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, Mus, and Lynx remain available only as legacy keys, migration targets, or development-only model entries in the registered model catalog.
+APEX now keeps the product roster intentionally small. Panthera and Felis are the only Apex Agents in the UI and API. Former genus-based names belong to project history rather than active configuration or runtime compatibility.
 
 ```mermaid
 flowchart TB
@@ -139,14 +139,9 @@ Default model: llama.cpp `gemma-4-E2B-Q4_K_M.gguf`. Development-only local model
 
 ## Registered models are not Agents
 
-The model catalog under Panthera and Felis still includes development-only entries that preserve former Agent mappings:
+The model catalog under Panthera and Felis contains registered models provided by OpenAI, Google, SpaceXAI, Ollama, and llama.cpp.
 
-| Former Agent key | Current Agent | Example model |
-|---|---|---|
-| Acinonyx, Neofelis, Delphinus, Orcinus | Panthera | `gemini-3.5-flash-lite`, `gemini-3.6-flash`, `grok-4.3`, `grok-4.5` |
-| Sorex, Mus, Apodemus, Neotoma, Lynx, Unnamed Experimental Agent | Felis | `qwen3:1.7b`, `qwen3:4b-instruct`, `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf` |
-
-These models are replaceable execution choices. They are not separate Apex Agents in the current product vocabulary.
+These models are replaceable execution choices configured underneath Panthera and Felis. They are not separate Apex Agents in the product vocabulary.
 
 ## The Agent family is not permanent
 

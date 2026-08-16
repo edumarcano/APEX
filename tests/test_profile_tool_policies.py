@@ -27,9 +27,9 @@ from core.api.cortex import _build_hud_context
 from core.api.briefing import _mask_dev_personal_results
 from core.connectors.models import ConnectorResult
 from tests.support.agent_fixtures import (
-    DELPHINUS_MODEL,
-    NEOFELIS_MODEL,
-    ORCINUS_MODEL,
+    GEMINI_FLASH_MODEL,
+    GROK_43_MODEL,
+    GROK_45_MODEL,
     build_panthera_profile,
 )
 
@@ -37,9 +37,9 @@ from tests.support.agent_fixtures import (
 class HostedGroundingTests(unittest.TestCase):
     def test_hosted_grounding_stays_outside_apex_tool_schema_profiles(self) -> None:
         expected = {
-            NEOFELIS_MODEL: {"google_search", "google_maps"},
-            DELPHINUS_MODEL: {"x_search"},
-            ORCINUS_MODEL: {"x_search"},
+            GEMINI_FLASH_MODEL: {"google_search", "google_maps"},
+            GROK_43_MODEL: {"x_search"},
+            GROK_45_MODEL: {"x_search"},
         }
         for model_id, hosted_names in expected.items():
             profile = build_panthera_profile(model=model_id)
@@ -128,7 +128,7 @@ class HostedGroundingTests(unittest.TestCase):
                     ),
                 )
 
-        profile = build_panthera_profile(model=NEOFELIS_MODEL)
+        profile = build_panthera_profile(model=GEMINI_FLASH_MODEL)
         response = run_agent_loop(
             AgentQueryRequest(prompt="Find current information", agent="panthera"),
             Provider(),
@@ -150,7 +150,7 @@ class HostedGroundingTests(unittest.TestCase):
         client.responses.create.return_value = SimpleNamespace(
             output=[], model="grok-4.3", usage=None
         )
-        profile = build_panthera_profile(model=DELPHINUS_MODEL)
+        profile = build_panthera_profile(model=GROK_43_MODEL)
 
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="What is happening on X?")],

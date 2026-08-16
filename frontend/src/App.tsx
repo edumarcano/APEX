@@ -656,12 +656,11 @@ export default function App(): ReactElement {
   const briefingModeAvailable = useMemo(() => {
     const availability = resolveBriefingModeAvailability(
       briefingMode,
-      agentsStatus,
       agentsStatusHydrated,
       briefingTargets,
     )
     return ['available', 'configured', 'verified'].includes(availability.status)
-  }, [briefingMode, agentsStatus, agentsStatusHydrated, briefingTargets])
+  }, [briefingMode, agentsStatusHydrated, briefingTargets])
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
     [isRefreshingAll, telemetry.refreshingConnectors],
@@ -1139,9 +1138,9 @@ export default function App(): ReactElement {
     const pantheraStatus = agentsStatus.find((agent) => agent.key === 'panthera')
     const entry = (pantheraStatus?.model_catalog ?? []).find((m) => m.model_id === model)
     let nextEffort = cloudEffort
-    if (entry?.effort_options && entry.effort_options.length > 0) {
-      if (!entry.effort_options.includes(cloudEffort)) {
-        nextEffort = entry.default_effort ?? entry.effort_options[0] ?? 'medium'
+    if (entry?.reasoning_options && entry.reasoning_options.length > 0) {
+      if (!entry.reasoning_options.includes(cloudEffort)) {
+        nextEffort = entry.default_reasoning ?? entry.reasoning_options[0] ?? 'medium'
         setCloudEffort(nextEffort)
       }
     }

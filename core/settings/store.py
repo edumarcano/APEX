@@ -220,7 +220,6 @@ class RuntimeSettingsStore:
 
         latest_raw = self._load_latest_raw_for_write()
         next_raw = recursive_overlay(latest_raw, patch_ondisk)
-        _remove_derived_agent_routes(next_raw)
         next_issues = NormalizationIssues()
         next_local = normalize_layer(
             next_raw,
@@ -372,19 +371,6 @@ class RuntimeSettingsStore:
 def copy_dict(value: dict[str, Any]) -> dict[str, Any]:
     """Return a deep-ish copy of a JSON-compatible dict."""
     return json.loads(json.dumps(value))
-
-
-def _remove_derived_agent_routes(payload: dict[str, Any]) -> None:
-    """Keep provider/runtime routing metadata out of persisted Agent settings."""
-    ask_apex = payload.get("ask_apex")
-    if not isinstance(ask_apex, dict):
-        return
-    panthera = ask_apex.get("panthera")
-    if isinstance(panthera, dict):
-        panthera.pop("provider", None)
-    felis = ask_apex.get("felis")
-    if isinstance(felis, dict):
-        felis.pop("runtime", None)
 
 
 _STORE: RuntimeSettingsStore | None = None

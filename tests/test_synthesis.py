@@ -12,12 +12,12 @@ from core.agent.types import AgentMessage
 from core.synthesis.models import CalendarFact, F1Fact, SynthesisInput, SynthesisResult
 from core.synthesis.router import SynthesisRouter, WarmupHandle
 from tests.support.agent_fixtures import (
-    ACINONYX_MODEL,
-    APODEMUS_MODEL,
+    GEMINI_FLASH_LITE_MODEL,
+    GEMINI_FLASH_MODEL,
     GEMMA_E2B_ALIAS,
-    MUS_MODEL,
-    NEOFELIS_MODEL,
-    SOREX_MODEL,
+    GEMMA_E2B_MODEL,
+    QWEN3_17B_MODEL,
+    QWEN3_4B_MODEL,
     build_felis_profile,
     build_panthera_profile,
 )
@@ -208,7 +208,7 @@ class RoutingTests(unittest.TestCase):
             router, "start_agent_warmup", return_value=handle
         ), patch(
             "core.synthesis.router.resolve_selected_model_profile",
-            return_value=get_model_profile(MUS_MODEL),
+            return_value=get_model_profile(QWEN3_4B_MODEL),
         ), patch(
             "core.synthesis.router.try_begin_local_execution", return_value=True
         ), patch("core.synthesis.router.end_local_execution"), patch(
@@ -223,7 +223,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, GEMMA_E2B_ALIAS)
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
-        self.assertEqual(profile.api_model, APODEMUS_MODEL)
+        self.assertEqual(profile.api_model, GEMMA_E2B_MODEL)
         self.assertEqual(profile.runtime_model_id, GEMMA_E2B_ALIAS)
         self.assertEqual(profile.context_window, 16_384)
         self.assertEqual(profile.reasoning_mode, "none")
@@ -307,7 +307,7 @@ class RoutingTests(unittest.TestCase):
             return_value=snapshot,
         ), patch(
             "core.synthesis.router.resolve_selected_model_profile",
-            return_value=get_model_profile(MUS_MODEL),
+            return_value=get_model_profile(QWEN3_4B_MODEL),
         ), patch(
             "core.synthesis.router.is_local_model_ready", return_value=False
         ), patch(
@@ -325,7 +325,7 @@ class RoutingTests(unittest.TestCase):
             LocalModelRef(provider="llama_cpp", model=GEMMA_E2B_ALIAS),
         )
         loaded_profile = switch_model.call_args.args[0]
-        self.assertEqual(loaded_profile.api_model, APODEMUS_MODEL)
+        self.assertEqual(loaded_profile.api_model, GEMMA_E2B_MODEL)
         self.assertEqual(loaded_profile.context_window, 16_384)
         self.assertEqual(loaded_profile.reasoning_mode, "none")
 
@@ -436,31 +436,31 @@ class RoutingTests(unittest.TestCase):
     def test_local_provider_stability_map(self) -> None:
         self.assertEqual(
             {
-                APODEMUS_MODEL: ("stable", "llama_cpp"),
-                SOREX_MODEL: ("stable", "ollama"),
-                MUS_MODEL: ("stable", "ollama"),
+                GEMMA_E2B_MODEL: ("stable", "llama_cpp"),
+                QWEN3_17B_MODEL: ("stable", "ollama"),
+                QWEN3_4B_MODEL: ("stable", "ollama"),
             },
             {
-                APODEMUS_MODEL: ("stable", "llama_cpp"),
-                SOREX_MODEL: ("stable", "ollama"),
-                MUS_MODEL: ("stable", "ollama"),
+                GEMMA_E2B_MODEL: ("stable", "llama_cpp"),
+                QWEN3_17B_MODEL: ("stable", "ollama"),
+                QWEN3_4B_MODEL: ("stable", "ollama"),
             },
         )
 
     def test_cloud_provider_stability_map(self) -> None:
         self.assertEqual(
             {
-                ACINONYX_MODEL: ("stable", "gemini"),
-                NEOFELIS_MODEL: ("stable", "gemini"),
+                GEMINI_FLASH_LITE_MODEL: ("stable", "gemini"),
+                GEMINI_FLASH_MODEL: ("stable", "gemini"),
             },
             {
-                ACINONYX_MODEL: ("stable", "gemini"),
-                NEOFELIS_MODEL: ("stable", "gemini"),
+                GEMINI_FLASH_LITE_MODEL: ("stable", "gemini"),
+                GEMINI_FLASH_MODEL: ("stable", "gemini"),
             },
         )
 
     def test_felis_ollama_model_specs(self) -> None:
-        profile = build_felis_profile(model=MUS_MODEL)
+        profile = build_felis_profile(model=QWEN3_4B_MODEL)
         self.assertEqual(profile.stability, "stable")
         self.assertEqual((profile.api_model, profile.context_window), ("qwen3:4b-instruct", 4096))
         self.assertEqual((profile.final_answer_max_tokens, profile.generation_timeout), (768, 150))
@@ -482,23 +482,17 @@ class RoutingTests(unittest.TestCase):
 class ProfileAndPersistenceTests(unittest.TestCase):
     def test_gemini_models_map_effort_to_thinking_level(self) -> None:
         expected = {
-            ACINONYX_MODEL: {
+            GEMINI_FLASH_LITE_MODEL: {
                 "minimal": "minimal",
                 "low": "low",
                 "medium": "medium",
                 "high": "high",
-                "light": "low",
-                "focused": "medium",
-                "extended": "high",
             },
-            NEOFELIS_MODEL: {
+            GEMINI_FLASH_MODEL: {
                 "minimal": "minimal",
                 "low": "low",
                 "medium": "medium",
                 "high": "high",
-                "light": "low",
-                "focused": "medium",
-                "extended": "high",
             },
         }
         for model_id, efforts in expected.items():
@@ -506,7 +500,7 @@ class ProfileAndPersistenceTests(unittest.TestCase):
                 model_profile = get_model_profile(model_id)
                 assert model_profile is not None
                 for effort, thinking in efforts.items():
-                    _apex, native = resolve_effort(model_profile, effort)  # type: ignore[arg-type]
+                    native = resolve_effort(model_profile, effort)  # type: ignore[arg-type]
                     profile = build_panthera_profile(model=model_id, effort=effort)
                     self.assertEqual(profile.thinking_level, thinking)
 
@@ -517,11 +511,11 @@ class ProfileAndPersistenceTests(unittest.TestCase):
                     get_model_profile(model_id).stability,
                     get_model_profile(model_id).provider,
                 )
-                for model_id in (ACINONYX_MODEL, NEOFELIS_MODEL)
+                for model_id in (GEMINI_FLASH_LITE_MODEL, GEMINI_FLASH_MODEL)
             },
             {
-                ACINONYX_MODEL: ("stable", "gemini"),
-                NEOFELIS_MODEL: ("stable", "gemini"),
+                GEMINI_FLASH_LITE_MODEL: ("stable", "gemini"),
+                GEMINI_FLASH_MODEL: ("stable", "gemini"),
             },
         )
 

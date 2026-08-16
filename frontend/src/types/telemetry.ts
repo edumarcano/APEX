@@ -89,10 +89,6 @@ export type CloudEffort =
   | 'medium'
   | 'high'
   | 'xhigh'
-  | 'light'
-  | 'focused'
-  | 'extended'
-  | string
 export type CloudProvider = 'openai' | 'gemini' | 'xai'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
@@ -234,11 +230,8 @@ export interface ModelCatalogEntry {
   stability: AgentStability
   hosted_capabilities: HostedTool[]
   pricing?: AgentPricingMetadata
-  supports_effort?: boolean
-  default_effort?: CloudEffort | null
-  effort_options?: CloudEffort[] | null
-  reasoning_options?: string[] | null
-  default_reasoning?: string | null
+  reasoning_options?: CloudEffort[] | null
+  default_reasoning?: CloudEffort | null
   context_options?: number[] | null
   default_context_window?: number | null
   high_resource_context_options?: number[] | null
@@ -263,9 +256,6 @@ export interface LocalLoadedModelStatus {
   expires_at: string | null
 }
 
-/** @deprecated Prefer LocalLoadedModelStatus */
-export type LoadedOllamaModelStatus = LocalLoadedModelStatus
-
 export interface AgentStatus {
   key: AgentKey
   description: string
@@ -277,13 +267,9 @@ export interface AgentStatus {
   sort_order: number
   capabilities: string[]
   runtime: AgentRuntime
-  tier: string
-  stability: AgentStability
   model_stability: AgentStability | null
-  effort_options: CloudEffort[] | null
-  default_effort: CloudEffort | null
-  reasoning_options?: string[] | null
-  default_reasoning?: string | null
+  reasoning_options?: CloudEffort[] | null
+  default_reasoning?: CloudEffort | null
   context_window: number | null
   context_window_options: number[] | null
   context_window_high_resource_options: number[] | null
@@ -301,7 +287,7 @@ export interface AgentStatus {
   reason: string | null
   idle_unload_remaining_seconds: number | null
   loaded_model: LocalLoadedModelStatus | null
-  model_catalog?: ModelCatalogEntry[] | null
+  model_catalog: ModelCatalogEntry[]
 }
 
 export interface AgentInitialSelection {

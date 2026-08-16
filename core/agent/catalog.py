@@ -24,7 +24,6 @@ from core.agent.providers.llama_cpp_models import (
     build_llama_cpp_profile,
     llama_cpp_runtime_config,
     model_id_for_llama_cpp_alias,
-    resolve_llama_cpp_router_alias,
 )
 from core.agent.providers.ollama_models import (
     OLLAMA_HIGH_RESOURCE_MODELS,
@@ -42,10 +41,8 @@ from core.config import (
 
 AgentKey: TypeAlias = Literal["panthera", "felis"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
-ApexEffort: TypeAlias = Literal[
-    "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
-]
 NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+ApexEffort: TypeAlias = NativeEffort
 CloudProvider: TypeAlias = Literal["openai", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
@@ -57,16 +54,6 @@ _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "llama_cpp": "llama.cpp",
     "openai": "OpenAI",
     "xai": "SpaceXAI",
-}
-
-_SCHEMA5_CLOUD_PROFILES: frozenset[str] = frozenset({"comet", "nova", "pulsar"})
-_SCHEMA5_LOCAL_PROFILES: frozenset[str] = frozenset({"felis", "acinonyx", "neofelis"})
-_SCHEMA5_ALL_PROFILES: frozenset[str] = _SCHEMA5_CLOUD_PROFILES | _SCHEMA5_LOCAL_PROFILES
-
-_APEX_TO_NATIVE_EFFORT: dict[str, str] = {
-    "light": "low",
-    "focused": "medium",
-    "extended": "high",
 }
 
 AgentModelProfile = (
@@ -120,23 +107,19 @@ AGENT_SPECS: dict[str, AgentSpec] = {
 _RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("panthera", "felis")
 
 
-def runtime_agent_order(*, dev_mode: bool | None = None) -> tuple[str, ...]:
+def runtime_agent_order() -> tuple[str, ...]:
     """Return HUD-visible Agent keys in display order."""
     return _RUNTIME_PROFILE_ORDER
 
 
-def is_agent_visible(key: str, *, dev_mode: bool | None = None) -> bool:
+def is_agent_visible(key: str) -> bool:
     return key in AGENT_SPECS
-
-
-def apex_effort_to_native(effort: str) -> str:
-    return _APEX_TO_NATIVE_EFFORT.get(effort, effort)
 
 
 def resolve_effort_for_agent(
     agent_key: str,
     requested: str | None,
-) -> tuple[str | None, str | None]:
+) -> str | None:
     """Resolve effort for the model currently selected for an Agent."""
     return resolve_effort(resolve_selected_model_profile(agent_key), requested)
 
@@ -144,17 +127,15 @@ def resolve_effort_for_agent(
 def resolve_effort(
     model_profile: ModelProfile,
     requested: str | None,
-) -> tuple[str | None, str | None]:
+) -> str | None:
     """Resolve model-native reasoning effort for a model."""
     if not model_profile.reasoning_options:
-        return None, None
+        return None
     if requested:
         cleaned = requested.strip().lower()
-        mapped = _APEX_TO_NATIVE_EFFORT.get(cleaned, cleaned)
-        if mapped in model_profile.reasoning_options:
-            return mapped, mapped
-    default = model_profile.default_reasoning
-    return default, default
+        if cleaned in model_profile.reasoning_options:
+            return cleaned
+    return model_profile.default_reasoning
 
 
 def agent_has_credentials(agent_key: str) -> bool:
@@ -359,9 +340,8 @@ def build_agent_used_metadata(
     provider: InferenceProvider,
     configured_model: str,
     resolved_model: str | None,
-    requested_effort: ApexEffort | None,
-    resolved_apex_effort: ApexEffort | None,
-    resolved_native_effort: NativeEffort | None,
+    requested_effort: NativeEffort | None,
+    resolved_effort: NativeEffort | None,
     model_stability: str | None = None,
     hosted_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
@@ -373,8 +353,7 @@ def build_agent_used_metadata(
         "configured_model": configured_model,
         "resolved_model": resolved_model or configured_model,
         "requested_effort": requested_effort,
-        "resolved_effort": resolved_native_effort,
-        "resolved_apex_effort": resolved_apex_effort,
+        "resolved_effort": resolved_effort,
         "runtime": spec.runtime,
     }
     if model_stability is not None:
@@ -391,11 +370,11 @@ def is_sandbox_query(*, sandbox_mode: bool, dev_mode: bool | None = None) -> boo
     return is_sandbox_active(sandbox_mode=sandbox_mode, dev_mode=dev_active)
 
 
-def local_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
+def local_agent_keys() -> tuple[str, ...]:
     return ("felis",)
 
 
-def cloud_agent_keys(*, dev_mode: bool | None = None) -> tuple[str, ...]:
+def cloud_agent_keys() -> tuple[str, ...]:
     return ("panthera",)
 
 
@@ -494,7 +473,7 @@ def local_model_ref_for_agent(
         )
     return LocalModelRef(
         provider=profile.provider,  # type: ignore[arg-type]
-        model=resolve_llama_cpp_router_alias(runtime_model_id),
+        model=runtime_model_id,
     )
 
 
@@ -507,14 +486,6 @@ def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
         if runtime is None:
             return frozenset()
         aliases = set(runtime.runtime_model_ids.values())
-        aliases.update(
-            legacy
-            for legacy, canonical in __import__(
-                "core.agent.providers.llama_cpp_models",
-                fromlist=["LLAMA_CPP_LEGACY_ALIAS_MAP"],
-            ).LLAMA_CPP_LEGACY_ALIAS_MAP.items()
-            if canonical in aliases
-        )
         return frozenset(
             LocalModelRef(provider="llama_cpp", model=alias) for alias in aliases
         )
@@ -532,8 +503,7 @@ def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
 
 def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
     if ref.provider == "llama_cpp":
-        normalized = resolve_llama_cpp_router_alias(ref.model)
-        if model_id_for_llama_cpp_alias(normalized) is not None:
+        if model_id_for_llama_cpp_alias(ref.model) is not None:
             return "felis"
     for model_id, profile in LOCAL_MODEL_PROFILES.items():
         if profile.provider != ref.provider:
@@ -550,79 +520,9 @@ def known_local_model_refs() -> frozenset[LocalModelRef]:
     return frozenset(refs)
 
 
-def migrate_schema5_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
-    """One-way schema-5 → 6 migration for ask_apex on-disk shape."""
-    if raw.get("mode") in {"cloud", "local"}:
-        return raw
-    if not ({"default_profile", "default_cloud_profile"} & raw.keys()):
-        return raw
-
-    migrated: dict[str, Any] = {
-        "enabled": raw.get("enabled", True),
-        "mode": "cloud",
-        "cloud_profile": "panthera",
-        "cloud_effort": "focused",
-        "local_profile": "apodemus",
-        "neofelis_google_search_enabled": bool(
-            raw.get("neofelis_google_search_enabled", True)
-        ),
-    }
-
-    legacy_profile = raw.get("default_profile") or raw.get("default_cloud_profile")
-    if isinstance(legacy_profile, str):
-        normalized = legacy_profile.strip().lower()
-        if normalized in _SCHEMA5_CLOUD_PROFILES:
-            migrated["mode"] = "cloud"
-            migrated["cloud_profile"] = "panthera"
-            migrated["cloud_effort"] = "focused"
-            migrated["local_profile"] = "apodemus"
-        elif normalized in _SCHEMA5_LOCAL_PROFILES:
-            migrated["mode"] = "local"
-            migrated["local_profile"] = "apodemus"
-            migrated["cloud_profile"] = "panthera"
-            migrated["cloud_effort"] = "focused"
-
-    if isinstance(raw.get("enabled"), bool):
-        migrated["enabled"] = raw["enabled"]
-    if "neofelis_google_search_enabled" in raw and isinstance(
-        raw["neofelis_google_search_enabled"], bool
-    ):
-        migrated["neofelis_google_search_enabled"] = raw[
-            "neofelis_google_search_enabled"
-        ]
-
-    return migrated
-
-
-def migrate_schema7_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
-    """Convert schema-7 historical ``ask_apex`` keys to schema-8 shape."""
-    if "agent" in raw or "panthera" in raw or "felis" in raw:
-        return raw
-    legacy = migrate_schema5_ask_apex(raw)
-    if "runtime" in legacy:
-        return legacy
-    key_map = {
-        "mode": "runtime",
-        "cloud_profile": "cloud_agent",
-        "cloud_effort": "effort",
-        "local_profile": "local_agent",
-    }
-    return {key_map.get(key, key): value for key, value in legacy.items()}
-
-
-def migrate_schema5_briefing(
-    raw: dict[str, Any], *, schema5: bool = True
-) -> dict[str, Any]:
-    if not schema5:
-        return raw
-    return {"default_mode": "panthera"}
-
-
 def resolve_agent_selection(
     agent_settings: Any,
-    *,
-    dev_mode: bool | None = None,
-) -> tuple[AgentRuntime, str, ApexEffort | None]:
+) -> tuple[AgentRuntime, str, NativeEffort | None]:
     """Resolve effective runtime, Agent, and effort from Agent settings."""
     agent = getattr(agent_settings, "agent", "panthera")
     if agent not in VALID_AGENT_KEYS:
@@ -632,100 +532,6 @@ def resolve_agent_selection(
         return "local", agent, None
     effort = getattr(agent_settings.panthera, "effort", "medium")
     return "cloud", agent, effort
-
-
-def migrate_schema15_ask_apex(raw: dict[str, Any]) -> dict[str, Any]:
-    """Convert historical ask_apex shapes to the model-only Agent shape."""
-    if "agent" in raw and (
-        isinstance(raw.get("panthera"), dict)
-        or isinstance(raw.get("felis"), dict)
-    ):
-        return _canonicalize_agent_routes(raw)
-    if (
-        isinstance(raw.get("panthera"), dict)
-        or isinstance(raw.get("felis"), dict)
-    ):
-        canonical = _canonicalize_agent_routes(raw)
-        agent = raw.get("agent", "panthera")
-        return {
-            "enabled": raw.get("enabled", True),
-            "agent": agent,
-            "sandbox_mode": bool(raw.get("sandbox_mode", False)),
-            "panthera": canonical.get("panthera", default_panthera_settings()),
-            "felis": canonical.get("felis", default_felis_settings()),
-        }
-
-    from core.agent.model_catalog import LEGACY_AGENT_MIGRATION
-
-    legacy = migrate_schema7_ask_apex(raw)
-    runtime = legacy.get("runtime", "cloud")
-    cloud_agent = str(legacy.get("cloud_agent", "panthera")).strip().lower()
-    local_agent = str(legacy.get("local_agent", "apodemus")).strip().lower()
-    effort = legacy.get("effort", "focused")
-
-    _, _, panthera_model = LEGACY_AGENT_MIGRATION.get(
-        cloud_agent, ("panthera", "openai", DEFAULT_PANTHERA_MODEL)
-    )
-    _, _, felis_model = LEGACY_AGENT_MIGRATION.get(
-        local_agent, ("felis", DEFAULT_FELIS_RUNTIME, DEFAULT_FELIS_MODEL)
-    )
-
-    context_window = llama_cpp_runtime_config(DEFAULT_FELIS_MODEL).default_context_window
-    reasoning_mode = "none"
-    local_context_windows = legacy.get("local_context_windows", {})
-    if isinstance(local_context_windows, dict):
-        ctx = local_context_windows.get(local_agent)
-        if isinstance(ctx, int) and not isinstance(ctx, bool):
-            context_window = ctx
-    local_reasoning_modes = legacy.get("local_reasoning_modes", {})
-    if isinstance(local_reasoning_modes, dict):
-        mode = local_reasoning_modes.get(local_agent)
-        if mode in {"none", "focused"}:
-            reasoning_mode = mode
-
-    hosted_tools = {
-        "google_search": bool(legacy.get("neofelis_google_search_enabled", True)),
-        "google_maps": bool(legacy.get("neofelis_google_maps_enabled", True)),
-        "x_search": bool(
-            legacy.get("delphinus_x_search_enabled", True)
-            or legacy.get("orcinus_x_search_enabled", True)
-        ),
-    }
-
-    agent = "felis" if runtime == "local" else "panthera"
-    sandbox_mode = cloud_agent == "acinonyx"
-    migrated: dict[str, Any] = {
-        "enabled": legacy.get("enabled", True),
-        "agent": agent,
-        "sandbox_mode": sandbox_mode,
-        "panthera": {
-            "model": panthera_model,
-            "effort": effort if effort in {"light", "focused", "extended"} else "focused",
-            "hosted_tools": hosted_tools,
-        },
-        "felis": {
-            "model": felis_model,
-            "context_window": context_window,
-            "reasoning_mode": reasoning_mode,
-        },
-    }
-    return migrated
-
-
-def _canonicalize_agent_routes(raw: dict[str, Any]) -> dict[str, Any]:
-    """Drop provider/runtime fields from historical nested Agent settings."""
-    canonical = dict(raw)
-    panthera = raw.get("panthera")
-    if isinstance(panthera, dict):
-        panthera_settings = dict(panthera)
-        panthera_settings.pop("provider", None)
-        canonical["panthera"] = panthera_settings
-    felis = raw.get("felis")
-    if isinstance(felis, dict):
-        felis_settings = dict(felis)
-        felis_settings.pop("runtime", None)
-        canonical["felis"] = felis_settings
-    return canonical
 
 
 def default_panthera_settings() -> dict[str, Any]:

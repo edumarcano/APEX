@@ -257,9 +257,6 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
   'medium',
   'high',
   'xhigh',
-  'light',
-  'focused',
-  'extended',
 ]
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {

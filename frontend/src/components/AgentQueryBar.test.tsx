@@ -21,11 +21,9 @@ const felis: AgentStatus = {
   provider: 'llama_cpp',
   version: '2.0',
   runtime: 'local',
-  tier: 'balanced',
-  stability: 'stable',
   model_stability: 'stable',
-  effort_options: null,
-  default_effort: null,
+  reasoning_options: null,
+  default_reasoning: null,
   context_window: null,
   context_window_options: null,
   context_window_high_resource_options: null,
@@ -54,6 +52,7 @@ const felis: AgentStatus = {
   reason: null,
   idle_unload_remaining_seconds: null,
   loaded_model: null,
+  model_catalog: [],
 }
 
 const catalog: ToolCatalog = {

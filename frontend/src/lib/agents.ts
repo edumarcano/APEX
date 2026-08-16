@@ -128,32 +128,8 @@ export function formatReasoningLabel(option: string | null | undefined): string 
 export function resolveModelCatalog(
   agentStatus: AgentStatus | undefined,
 ): ModelCatalogEntry[] {
-  if (!agentStatus) return []
-  if (agentStatus.model_catalog && agentStatus.model_catalog.length > 0) {
-    return agentStatus.model_catalog
-  }
-  return [
-    {
-      model_id: agentStatus.configured_model,
-      display_name: agentStatus.configured_model,
-      provider: agentStatus.provider,
-      runtime: agentStatus.runtime,
-      stability: agentStatus.model_stability ?? agentStatus.stability,
-      pricing: agentStatus.pricing,
-      supports_effort: Boolean(agentStatus.effort_options?.length),
-      default_effort: agentStatus.default_effort,
-      effort_options: agentStatus.effort_options,
-      reasoning_options: agentStatus.reasoning_options ?? agentStatus.effort_options,
-      default_reasoning: agentStatus.default_reasoning ?? agentStatus.default_effort,
-      context_options: agentStatus.context_window_options,
-      default_context_window: agentStatus.default_context_window,
-      high_resource_context_options: agentStatus.context_window_high_resource_options,
-      maximum_context_window: agentStatus.context_window,
-      reasoning_modes: agentStatus.reasoning_mode_options,
-      default_reasoning_mode: agentStatus.default_reasoning_mode,
-      hosted_capabilities: [],
-    },
-  ]
+  if (!agentStatus?.model_catalog) return []
+  return agentStatus.model_catalog
 }
 
 export function findModelCatalogEntry(
@@ -194,12 +170,14 @@ export interface BriefingModeAvailability {
 
 export function resolveBriefingModeAvailability(
   mode: BriefingMode,
-  agents: AgentStatus[],
   hydrated: boolean,
   targets?: BriefingTargetStatus[],
 ): BriefingModeAvailability {
   if (mode === 'structured_digest') {
     return { status: 'available', reason: null }
+  }
+  if (!hydrated) {
+    return { status: 'unknown', reason: 'Checking mode availability…' }
   }
   if (targets && targets.length > 0) {
     const target = targets.find((entry) => entry.mode === mode)
@@ -207,12 +185,5 @@ export function resolveBriefingModeAvailability(
       return { status: target.status, reason: target.reason }
     }
   }
-  if (!hydrated) {
-    return { status: 'unknown', reason: 'Checking mode availability…' }
-  }
-  const agentKey = mode === 'panthera' ? 'panthera' : mode === 'felis' ? 'felis' : null
-  const match = agents.find((entry) => entry.key === agentKey)
-  return match
-    ? { status: match.status, reason: match.reason }
-    : { status: 'unknown', reason: 'Mode status unavailable' }
+  return { status: 'unknown', reason: 'Mode status unavailable' }
 }

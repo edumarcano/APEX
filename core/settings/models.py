@@ -25,9 +25,7 @@ AgentKey = Literal["panthera", "felis"]
 CloudProvider = Literal["openai", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
-CloudEffort = Literal[
-    "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
-]
+CloudEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
 BriefingMode = Literal["panthera", "felis", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
@@ -38,7 +36,7 @@ VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
 VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
-    {"none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"}
+    {"none", "minimal", "low", "medium", "high", "xhigh"}
 )
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "felis", "structured_digest"}

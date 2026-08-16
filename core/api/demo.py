@@ -371,10 +371,8 @@ def run_demo_agent_query(
             detail=f"Agent {agent_key!r} is not available.",
         )
 
-    resolved_apex_effort, resolved_native_effort = resolve_effort_for_agent(
-        agent_key, payload.effort
-    )
-    agent = build_concrete_agent(agent_key, native_effort=resolved_native_effort)
+    resolved_effort = resolve_effort_for_agent(agent_key, payload.effort)
+    agent = build_concrete_agent(agent_key, native_effort=resolved_effort)
 
     prompt_lower = payload.prompt.lower()
     responses, fallback = load_mock_agent_responses()
@@ -392,8 +390,7 @@ def run_demo_agent_query(
             configured_model=agent.api_model,
             resolved_model=agent.api_model,
             requested_effort=payload.effort,
-            resolved_apex_effort=resolved_apex_effort,
-            resolved_native_effort=resolved_native_effort,
+            resolved_effort=resolved_effort,
             model_stability=getattr(agent, "stability", None),
             hosted_tools=getattr(agent, "hosted_tools", None),
         ),

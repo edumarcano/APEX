@@ -24,7 +24,7 @@ import {
 
 describe('assistant boot hydration', () => {
   it('does not reapply the saved selection after initial hydration', () => {
-    const saved = { agent: 'panthera' as const, effort: 'focused' as const }
+    const saved = { agent: 'panthera' as const, effort: 'medium' as const }
 
     expect(resolveInitialAgentSelection(false, saved, 'panthera')).toEqual(saved)
     expect(resolveInitialAgentSelection(true, saved, 'panthera')).toBeNull()
@@ -38,7 +38,7 @@ describe('assistant boot hydration', () => {
     expect(resolveAppliedAgentSelection(response, 'panthera', true)).toEqual({
       runtime: 'cloud',
       agent: 'panthera',
-      effort: 'focused',
+      effort: 'medium',
       sandboxMode: true,
     })
     expect(resolveAppliedAgentSelection(response, 'felis', true)).toEqual({
@@ -56,7 +56,7 @@ describe('assistant boot hydration', () => {
     expect(resolveAppliedAgentSelection(response, 'panthera', false)).toEqual({
       runtime: 'cloud',
       agent: 'panthera',
-      effort: 'focused',
+      effort: 'medium',
       sandboxMode: false,
     })
     expect(defaultSandboxMode(undefined)).toBe(true)
@@ -66,11 +66,11 @@ describe('assistant boot hydration', () => {
     expect(filterAgentSettingsForDevMode({
       agent: 'felis',
       sandbox_mode: true,
-      panthera: { effort: 'extended', hosted_tools: { google_search: false } },
+      panthera: { effort: 'high', hosted_tools: { google_search: false } },
       felis: { context_window: 32768, reasoning_mode: 'focused' },
     })).toEqual({
       sandbox_mode: true,
-      panthera: { effort: 'extended', hosted_tools: { google_search: false } },
+      panthera: { effort: 'high', hosted_tools: { google_search: false } },
       felis: { context_window: 32768, reasoning_mode: 'focused' },
     })
   })
@@ -102,7 +102,6 @@ describe('settings response parsing', () => {
     ['felis context window', ['settings', 'ask_apex', 'felis', 'context_window'], 0],
     ['felis reasoning mode', ['settings', 'ask_apex', 'felis', 'reasoning_mode'], 'invalid'],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
-    ['removed Apodemus briefing mode', ['settings', 'briefing', 'default_mode'], 'apodemus'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
     ['voice mode', ['settings', 'voice', 'mode'], 'invalid'],

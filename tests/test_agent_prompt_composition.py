@@ -16,15 +16,15 @@ from core.agent.model_catalog import get_model_profile
 from core.agent.types import AgentQueryRequest, AgentQueryResponse
 from core.api.cortex import _execute_agent_turn
 from tests.support.agent_fixtures import (
-    ACINONYX_MODEL,
-    APODEMUS_MODEL,
-    DELPHINUS_MODEL,
     EXPERIMENTAL_MODEL,
-    MUS_MODEL,
-    NEOFELIS_MODEL,
-    NEOTOMA_MODEL,
-    ORCINUS_MODEL,
-    SOREX_MODEL,
+    GEMINI_FLASH_LITE_MODEL,
+    GEMINI_FLASH_MODEL,
+    GEMMA_E2B_MODEL,
+    GEMMA_E4B_MODEL,
+    GROK_43_MODEL,
+    GROK_45_MODEL,
+    QWEN3_17B_MODEL,
+    QWEN3_4B_MODEL,
     build_felis_profile,
     build_panthera_profile,
 )
@@ -50,8 +50,8 @@ class AgentIdentityTests(unittest.TestCase):
         "gemini-3.5-flash-lite": "You are currently powered by Gemini 3.5 Flash Lite.",
         "qwen3:1.7b": "You are currently powered by Qwen3 1.7B.",
         "qwen3:4b-instruct": "You are currently powered by Qwen3 4B Instruct.",
-        APODEMUS_MODEL: "You are currently powered by Gemma 4 E2B.",
-        NEOTOMA_MODEL: "You are currently powered by Gemma 4 E4B.",
+        GEMMA_E2B_MODEL: "You are currently powered by Gemma 4 E2B.",
+        GEMMA_E4B_MODEL: "You are currently powered by Gemma 4 E4B.",
         EXPERIMENTAL_MODEL: "You are currently powered by Qwen3.5 4B.",
     }
 
@@ -63,14 +63,14 @@ class AgentIdentityTests(unittest.TestCase):
 
     def test_switching_model_preserves_agent_identity(self) -> None:
         cases = (
-            ("panthera", NEOFELIS_MODEL),
-            ("panthera", DELPHINUS_MODEL),
-            ("panthera", ORCINUS_MODEL),
-            ("panthera", ACINONYX_MODEL),
-            ("felis", SOREX_MODEL),
-            ("felis", MUS_MODEL),
-            ("felis", APODEMUS_MODEL),
-            ("felis", NEOTOMA_MODEL),
+            ("panthera", GEMINI_FLASH_MODEL),
+            ("panthera", GROK_43_MODEL),
+            ("panthera", GROK_45_MODEL),
+            ("panthera", GEMINI_FLASH_LITE_MODEL),
+            ("felis", QWEN3_17B_MODEL),
+            ("felis", QWEN3_4B_MODEL),
+            ("felis", GEMMA_E2B_MODEL),
+            ("felis", GEMMA_E4B_MODEL),
             ("felis", EXPERIMENTAL_MODEL),
         )
         for agent_key, model_id in cases:
@@ -95,7 +95,7 @@ class AgentIdentityTests(unittest.TestCase):
 
         cases = (
             ("panthera", "gpt-5.6-luna"),
-            ("felis", APODEMUS_MODEL),
+            ("felis", GEMMA_E2B_MODEL),
         )
         with (
             mock.patch("core.api.cortex._create_provider", return_value=mock.Mock()),
@@ -114,14 +114,13 @@ class AgentIdentityTests(unittest.TestCase):
                     profile = build_felis_profile(model=model_id)
                 model_profile = get_model_profile(model_id)
                 assert model_profile is not None
-                _apex_effort, native_effort = resolve_effort(model_profile, None)
+                native_effort = resolve_effort(model_profile, None)
                 _execute_agent_turn(
                     AgentQueryRequest(prompt="Identify yourself.", agent=agent_key),
                     profile,
                     agent_key=agent_key,
                     api_key="test",
-                    resolved_apex_effort=None,
-                    resolved_native_effort=native_effort,
+                    resolved_effort=native_effort,
                     user_designation="Chief",
                 )
                 instruction = captured_instructions[profile.display_name]

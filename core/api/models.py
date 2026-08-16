@@ -570,18 +570,6 @@ class AgentModelCatalogEntry(BaseModel):
         ),
         description="Versioned token pricing and billing basis for this model.",
     )
-    supports_effort: bool = Field(
-        default=False,
-        description="Whether this model supports reasoning effort settings.",
-    )
-    default_effort: str | None = Field(
-        default=None,
-        description="Default reasoning effort for this model.",
-    )
-    effort_options: list[str] | None = Field(
-        default=None,
-        description="Selectable reasoning effort options for this model.",
-    )
     reasoning_options: list[str] | None = Field(
         default=None,
         description="Model-native selectable reasoning options for this model.",
@@ -641,17 +629,9 @@ class AgentStatus(BaseModel):
     runtime: Literal["cloud", "local"] = Field(
         description="Whether this Agent runs in the cloud or locally.",
     )
-    tier: str = Field(description="Agent performance tier label.")
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification for this Apex Agent identity.",
-    )
     model_stability: Literal["stable", "preview", "experimental"] | None = Field(
         default=None,
         description="Release stage classification for the selected model profile.",
-    )
-    effort_options: list[str] | None = Field(
-        default=None,
-        description="Selectable model-native reasoning options; null for fixed-effort local Agents.",
     )
     reasoning_options: list[str] | None = Field(
         default=None,
@@ -688,10 +668,6 @@ class AgentStatus(BaseModel):
     default_reasoning_mode: LocalReasoningMode | None = Field(
         default=None,
         description="Default local reasoning mode when no preference is stored.",
-    )
-    default_effort: str | None = Field(
-        default=None,
-        description="Default model-native reasoning effort for this Agent.",
     )
     status: AgentAvailabilityStatus = Field(
         description="Current availability state for this Agent.",
@@ -736,16 +712,8 @@ class AgentStatus(BaseModel):
         default=None,
         description="Runtime details reported by the local provider for the loaded model.",
     )
-    available_providers: list[str] | None = Field(
-        default=None,
-        description="Selectable cloud providers or local runtimes for this Agent.",
-    )
-    available_models: list[AgentModelCatalogEntry] | None = Field(
-        default=None,
-        description="Registered models available for selection in the HUD.",
-    )
-    model_catalog: list[AgentModelCatalogEntry] | None = Field(
-        default=None,
+    model_catalog: list[AgentModelCatalogEntry] = Field(
+        default_factory=list,
         description="Authoritative model catalog entries for this Agent's runtime.",
     )
 

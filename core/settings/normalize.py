@@ -9,21 +9,14 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-from core.agent.catalog import (
-    migrate_schema15_ask_apex,
-    migrate_schema5_briefing,
-    migrate_schema7_ask_apex,
-)
 from core.agent.model_catalog import (
     DEFAULT_FELIS_MODEL,
     DEFAULT_FELIS_RUNTIME,
-    cloud_models_for_provider,
     get_model_profile,
-    local_models_for_runtime,
     reconcile_felis_context_window,
+    reconcile_felis_model,
     reconcile_felis_reasoning_mode,
-    reconcile_felis_runtime_model,
-    reconcile_panthera_provider_model,
+    reconcile_panthera_model,
     reconcile_panthera_reasoning,
 )
 from core.config import is_dev_mode
@@ -135,11 +128,6 @@ def normalize_layer(
         return {}
 
     normalized: dict[str, Any] = {}
-    agent_settings_raw = raw.get("ask_apex")
-    schema5_layer = raw.get("schema_version") == 5 or (
-        isinstance(agent_settings_raw, dict)
-        and bool({"default_profile", "default_cloud_profile"} & agent_settings_raw.keys())
-    )
 
     for key, value in raw.items():
         if key == "schema_version":
@@ -195,7 +183,7 @@ def normalize_layer(
                 normalized["tool_profiles"] = tool_profiles
         elif key == "briefing":
             briefing = _normalize_briefing(
-                value, layer_name, issues, schema5=schema5_layer
+                value, layer_name, issues
             )
             if briefing:
                 normalized["briefing"] = briefing
@@ -641,56 +629,41 @@ def _normalize_agent_settings(
             )
         return {}
 
-    migrated = migrate_schema15_ask_apex(migrate_schema7_ask_apex(value))
     result: dict[str, Any] = {}
 
-    if isinstance(migrated.get("enabled"), bool):
-        result["enabled"] = migrated["enabled"]
-    elif migrated.get("enabled") is not None:
+    if isinstance(value.get("enabled"), bool):
+        result["enabled"] = value["enabled"]
+    elif value.get("enabled") is not None:
         _record_error(errors, "ask_apex.enabled must be a boolean")
 
-    agent = migrated.get("agent", "panthera")
+    agent = value.get("agent", "panthera")
     if agent in VALID_AGENT_KEYS:
         result["agent"] = agent
     elif agent is not None:
         _record_error(errors, "ask_apex.agent is not valid")
 
-    if "sandbox_mode" in migrated:
-        if isinstance(migrated["sandbox_mode"], bool):
-            result["sandbox_mode"] = migrated["sandbox_mode"]
-        elif migrated["sandbox_mode"] is not None:
+    if "sandbox_mode" in value:
+        if isinstance(value["sandbox_mode"], bool):
+            result["sandbox_mode"] = value["sandbox_mode"]
+        elif value["sandbox_mode"] is not None:
             _record_error(errors, "ask_apex.sandbox_mode must be a boolean")
 
-    panthera_raw = migrated.get("panthera")
+    panthera_raw = value.get("panthera")
     if isinstance(panthera_raw, dict):
         panthera: dict[str, Any] = {}
-        legacy_provider = panthera_raw.get("provider")
-        if (
-            isinstance(legacy_provider, str)
-            and legacy_provider.strip().lower() in VALID_CLOUD_PROVIDERS
-        ):
-            legacy_provider = legacy_provider.strip().lower()
-        else:
-            legacy_provider = None
         model = panthera_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
             profile = get_model_profile(model.strip())
-            assert profile is not None
-            _, reconciled_model = reconcile_panthera_provider_model(
-                profile.provider,  # type: ignore[arg-type]
-                model.strip(),
-                dev_mode=is_dev_mode(),
-            )
-            panthera["model"] = reconciled_model
+            if profile is not None and profile.runtime == "cloud":
+                reconciled_model = reconcile_panthera_model(
+                    model.strip(),
+                    dev_mode=is_dev_mode(),
+                )
+                panthera["model"] = reconciled_model
+            else:
+                _record_error(errors, "ask_apex.panthera.model is not valid")
         elif model is not None:
             _record_error(errors, "ask_apex.panthera.model is not valid")
-        elif isinstance(legacy_provider, str):
-            models = cloud_models_for_provider(
-                legacy_provider,  # type: ignore[arg-type]
-                dev_mode=is_dev_mode(),
-            )
-            if models:
-                panthera["model"] = models[0].model_id
         effort = panthera_raw.get("effort")
         if isinstance(effort, str):
             effort_str = effort.strip().lower()
@@ -717,36 +690,22 @@ def _normalize_agent_settings(
         if panthera:
             result["panthera"] = panthera
 
-    felis_raw = migrated.get("felis")
+    felis_raw = value.get("felis")
     if isinstance(felis_raw, dict):
         felis: dict[str, Any] = {}
-        legacy_runtime = felis_raw.get("runtime")
-        if (
-            isinstance(legacy_runtime, str)
-            and legacy_runtime.strip().lower() in VALID_LOCAL_RUNTIMES
-        ):
-            legacy_runtime = legacy_runtime.strip().lower()
-        else:
-            legacy_runtime = None
         model = felis_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
             profile = get_model_profile(model.strip())
-            assert profile is not None
-            _, reconciled_model = reconcile_felis_runtime_model(
-                profile.provider,  # type: ignore[arg-type]
-                model.strip(),
-                dev_mode=is_dev_mode(),
-            )
-            felis["model"] = reconciled_model
+            if profile is not None and profile.runtime == "local":
+                reconciled_model = reconcile_felis_model(
+                    model.strip(),
+                    dev_mode=is_dev_mode(),
+                )
+                felis["model"] = reconciled_model
+            else:
+                _record_error(errors, "ask_apex.felis.model is not valid")
         elif model is not None:
             _record_error(errors, "ask_apex.felis.model is not valid")
-        elif isinstance(legacy_runtime, str):
-            models = local_models_for_runtime(
-                legacy_runtime,  # type: ignore[arg-type]
-                dev_mode=is_dev_mode(),
-            )
-            if models:
-                felis["model"] = models[0].model_id
         context_window = felis_raw.get("context_window")
         if isinstance(context_window, int) and not isinstance(context_window, bool):
             felis["context_window"] = context_window
@@ -785,107 +744,6 @@ def _normalize_agent_settings(
                 )
 
     return result
-
-
-def _normalize_local_context_windows(
-    value: Any,
-    layer_name: str,
-    errors: NormalizationIssues | None,
-) -> dict[str, int] | None:
-    """Normalize selectable context preferences for registered local runtimes."""
-    if not isinstance(value, dict):
-        _record_error(errors, "ask_apex.local_context_windows must be an object")
-        _LOGGER.warning(
-            "ask_apex.local_context_windows in %s must be an object; ignoring.",
-            layer_name,
-        )
-        return None
-
-    normalized: dict[str, int] = {}
-    for agent_key, context_window in value.items():
-        if not isinstance(agent_key, str):
-            _record_error(
-                errors,
-                "ask_apex.local_context_windows keys must be Agent names",
-            )
-            continue
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(agent_key.strip().lower())
-        if runtime is None:
-            _record_error(
-                errors,
-                f"ask_apex.local_context_windows has unsupported Agent {agent_key!r}",
-            )
-            continue
-        normalized_agent_key = agent_key.strip().lower()
-        context_window = _migrate_apodemus_context_window(
-            context_window,
-            agent_key=normalized_agent_key,
-        )
-        if (
-            isinstance(context_window, int)
-            and not isinstance(context_window, bool)
-            and context_window in runtime.allowed_context_windows
-        ):
-            normalized[normalized_agent_key] = context_window
-            continue
-        _record_error(
-            errors,
-            f"ask_apex.local_context_windows[{agent_key!r}] is not a supported preset",
-        )
-    return normalized
-
-
-def _migrate_apodemus_context_window(
-    context_window: Any,
-    *,
-    agent_key: str = "apodemus",
-) -> Any:
-    """Migrate the retired Apodemus 8K preference to the new 16K default."""
-    if agent_key == "apodemus" and context_window == 8192:
-        return 16384
-    return context_window
-
-
-def _normalize_local_reasoning_modes(
-    value: Any,
-    layer_name: str,
-    errors: NormalizationIssues | None,
-) -> dict[str, str] | None:
-    """Normalize local reasoning preferences using provider capabilities."""
-    if not isinstance(value, dict):
-        _record_error(errors, "ask_apex.local_reasoning_modes must be an object")
-        _LOGGER.warning(
-            "ask_apex.local_reasoning_modes in %s must be an object; ignoring.",
-            layer_name,
-        )
-        return None
-
-    from core.agent.catalog import local_reasoning_modes_for_agent
-
-    normalized: dict[str, str] = {}
-    for agent_key, reasoning_mode in value.items():
-        if not isinstance(agent_key, str):
-            _record_error(
-                errors,
-                "ask_apex.local_reasoning_modes keys must be Agent names",
-            )
-            continue
-        normalized_agent_key = agent_key.strip().lower()
-        supported = local_reasoning_modes_for_agent(normalized_agent_key)
-        if not supported:
-            _record_error(
-                errors,
-                f"ask_apex.local_reasoning_modes has unsupported Agent {agent_key!r}",
-            )
-            continue
-        if reasoning_mode in supported:
-            normalized[normalized_agent_key] = reasoning_mode
-            continue
-        _record_error(
-            errors,
-            f"ask_apex.local_reasoning_modes[{agent_key!r}] is not supported",
-        )
-    return normalized
 
 
 def _normalize_tool_profiles(
@@ -966,7 +824,7 @@ def _normalize_tool_profiles(
             for agent, profile_id in defaults_raw.items():
                 if (
                     isinstance(agent, str)
-                    and agent.strip()
+                    and agent.strip().lower() in VALID_AGENT_KEYS
                     and isinstance(profile_id, str)
                     and profile_id.strip()
                 ):
@@ -1017,8 +875,6 @@ def _normalize_briefing(
     value: Any,
     layer_name: str,
     errors: NormalizationIssues | None,
-    *,
-    schema5: bool,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if not isinstance(value, dict):
@@ -1030,11 +886,10 @@ def _normalize_briefing(
             )
         return result
 
-    migrated = migrate_schema5_briefing(value, schema5=schema5)
     for key, raw in value.items():
         if key == "default_mode":
             mode = _coerce_briefing_mode(
-                migrated.get("default_mode", raw),
+                raw,
                 layer_name=layer_name,
                 errors=errors,
             )
@@ -1044,12 +899,6 @@ def _normalize_briefing(
             _LOGGER.warning(
                 "Ignoring unknown briefing key %r in %s.", key, layer_name
             )
-    if "default_mode" not in result and "default_mode" in migrated:
-        mode = _coerce_briefing_mode(
-            migrated["default_mode"], layer_name=layer_name, errors=errors
-        )
-        if mode is not None:
-            result["default_mode"] = mode
     return result
 
 
@@ -1065,8 +914,6 @@ def _coerce_briefing_mode(
             )
         return None
     normalized = raw.strip().lower()
-    if normalized == "apodemus":
-        normalized = "felis"
     if normalized in VALID_BRIEFING_MODES:
         return normalized
     _record_error(errors, "briefing.default_mode is not a valid mode")
@@ -1165,7 +1012,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         if isinstance(merged.get("tool_profiles"), dict)
         else {}
     )
-    agent_settings = migrate_schema15_ask_apex(migrate_schema7_ask_apex(agent_settings_raw))
+    agent_settings = _normalize_agent_settings(agent_settings_raw, layer_name="snapshot", errors=None)
     tts = merged.get("tts_settings") if isinstance(merged.get("tts_settings"), dict) else {}
     mcp_raw = merged.get("mcp") if isinstance(merged.get("mcp"), dict) else {}
     mcp_servers_raw = (
@@ -1227,7 +1074,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         {
             str(agent).strip().lower(): str(profile_id).strip().lower()
             for agent, profile_id in defaults_raw.items()
-            if str(agent).strip() and str(profile_id).strip()
+            if str(agent).strip().lower() in VALID_AGENT_KEYS and str(profile_id).strip()
         }
         if isinstance(defaults_raw, dict)
         else {}
@@ -1253,10 +1100,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     briefing_raw = (
         merged.get("briefing") if isinstance(merged.get("briefing"), dict) else {}
     )
-    briefing_migrated = migrate_schema5_briefing(briefing_raw, schema5=False)
-    default_mode = briefing_migrated.get("default_mode", "panthera")
-    if default_mode == "apodemus":
-        default_mode = "felis"
+    default_mode = briefing_raw.get("default_mode", "panthera")
     if default_mode not in VALID_BRIEFING_MODES:
         default_mode = "panthera"
     briefing = BriefingSettings(

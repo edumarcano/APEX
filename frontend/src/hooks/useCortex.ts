@@ -153,9 +153,6 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
   'medium',
   'high',
   'xhigh',
-  'light',
-  'focused',
-  'extended',
 ]
 
 const VALID_AGENT_STABILITY: readonly AgentStability[] = [
@@ -327,11 +324,8 @@ function parseModelCatalog(value: unknown): ModelCatalogEntry[] | null {
           capability === 'x_search',
       ),
       pricing: record.pricing ? parseAgentPricing(record.pricing) : undefined,
-      supports_effort: typeof record.supports_effort === 'boolean' ? record.supports_effort : undefined,
-      default_effort: isCloudEffort(record.default_effort) ? record.default_effort : null,
-      effort_options: parseCloudEffortList(record.effort_options),
-      reasoning_options: Array.isArray(record.reasoning_options) ? record.reasoning_options.filter((x): x is string => typeof x === 'string') : null,
-      default_reasoning: typeof record.default_reasoning === 'string' ? record.default_reasoning : null,
+      reasoning_options: parseCloudEffortList(record.reasoning_options),
+      default_reasoning: isCloudEffort(record.default_reasoning) ? record.default_reasoning : null,
       context_options: contextOptions,
       default_context_window: parseNullableFiniteNumber(record.default_context_window),
       high_resource_context_options: highResourceContextOptions,
@@ -385,8 +379,6 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   const provider = record.provider
   const version = record.version
   const mode = record.runtime
-  const tier = record.tier
-  const stability = record.stability
   const status = record.status
 
   if (!isAgentKey(key)) {
@@ -416,30 +408,24 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   if (!isAgentRuntime(mode)) {
     return null
   }
-  if (typeof tier !== 'string') {
-    return null
-  }
-  if (!isAgentStability(stability)) {
-    return null
-  }
   if (!isAgentAvailabilityStatus(status)) {
     return null
   }
 
-  const effortOptions = parseCloudEffortList(record.effort_options)
-  if (record.effort_options !== undefined && record.effort_options !== null && effortOptions === null) {
+  const reasoningOptions = parseCloudEffortList(record.reasoning_options)
+  if (record.reasoning_options !== undefined && record.reasoning_options !== null && reasoningOptions === null) {
     return null
   }
-  const defaultEffort =
-    record.default_effort === null || record.default_effort === undefined
+  const defaultReasoning =
+    record.default_reasoning === null || record.default_reasoning === undefined
       ? null
-      : isCloudEffort(record.default_effort)
-        ? record.default_effort
+      : isCloudEffort(record.default_reasoning)
+        ? record.default_reasoning
         : null
   if (
-    record.default_effort !== undefined &&
-    record.default_effort !== null &&
-    defaultEffort === null
+    record.default_reasoning !== undefined &&
+    record.default_reasoning !== null &&
+    defaultReasoning === null
   ) {
     return null
   }
@@ -549,7 +535,7 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     return null
   }
   const modelCatalog = parseModelCatalog(record.model_catalog)
-  if (record.model_catalog !== undefined && record.model_catalog !== null && modelCatalog === null) {
+  if (!modelCatalog || modelCatalog.length === 0) {
     return null
   }
 
@@ -564,13 +550,9 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     sort_order: typeof record.sort_order === 'number' && Number.isInteger(record.sort_order) && record.sort_order >= 0 ? record.sort_order : 0,
     capabilities: Array.isArray(record.capabilities) && record.capabilities.every((item) => typeof item === 'string') ? record.capabilities : [],
     runtime: mode,
-    tier,
-    stability,
     model_stability: modelStability,
-    effort_options: effortOptions,
-    default_effort: defaultEffort,
-    reasoning_options: Array.isArray(record.reasoning_options) ? record.reasoning_options.filter((x): x is string => typeof x === 'string') : effortOptions,
-    default_reasoning: typeof record.default_reasoning === 'string' ? record.default_reasoning : defaultEffort,
+    reasoning_options: reasoningOptions,
+    default_reasoning: defaultReasoning,
     context_window: contextWindow,
     context_window_options: contextWindowOptions,
     context_window_high_resource_options: contextWindowHighResourceOptions,

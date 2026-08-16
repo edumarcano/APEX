@@ -214,25 +214,6 @@ DEFAULT_PANTHERA_MODEL = "gpt-5.6-luna"
 DEFAULT_FELIS_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
 DEFAULT_FELIS_RUNTIME: LocalRuntime = "llama_cpp"
 
-# Legacy agent key → (agent, provider/runtime, model) for schema-15 migration
-LEGACY_AGENT_MIGRATION: dict[str, tuple[str, str, str]] = {
-    "acinonyx": ("panthera", "gemini", "gemini-3.5-flash-lite"),
-    "panthera": ("panthera", "openai", "gpt-5.6-luna"),
-    "neofelis": ("panthera", "gemini", "gemini-3.6-flash"),
-    "delphinus": ("panthera", "xai", "grok-4.3"),
-    "orcinus": ("panthera", "xai", "grok-4.5"),
-    "sorex": ("felis", "ollama", "qwen3:1.7b"),
-    "mus": ("felis", "ollama", "qwen3:4b-instruct"),
-    "apodemus": ("felis", "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neotoma": ("felis", "llama_cpp", "gemma-4-E4B-Q4_K_M.gguf"),
-    "unnamed-experimental-agent": (
-        "felis",
-        "llama_cpp",
-        "Qwen3.5-4B-Q4_K_M.gguf",
-    ),
-    "felis": ("felis", "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf"),
-}
-
 
 def get_model_profile(model_id: str) -> ModelProfile | None:
     return ALL_MODEL_PROFILES.get(model_id)
@@ -291,48 +272,36 @@ def model_display_label(model_id: str) -> str:
     return profile.display_name if profile is not None else model_id
 
 
-def reconcile_panthera_provider_model(
-    provider: CloudProvider,
+def reconcile_panthera_model(
     model: str,
     *,
     dev_mode: bool = False,
-) -> tuple[CloudProvider, str]:
-    """Return a provider/model pair that agree on the same cloud route."""
+) -> str:
+    """Return a supported cloud model, falling back to the default Panthera model."""
     profile = get_model_profile(model)
-    models_for_provider = cloud_models_for_provider(provider, dev_mode=dev_mode)
     if (
         profile is not None
-        and profile.provider == provider
+        and profile.runtime == "cloud"
         and (not profile.dev_only or dev_mode)
     ):
-        return provider, model
-    if models_for_provider:
-        return provider, models_for_provider[0].model_id
-    default_profile = get_model_profile(DEFAULT_PANTHERA_MODEL)
-    assert default_profile is not None
-    return default_profile.provider, default_profile.model_id
+        return model
+    return DEFAULT_PANTHERA_MODEL
 
 
-def reconcile_felis_runtime_model(
-    runtime: LocalRuntime,
+def reconcile_felis_model(
     model: str,
     *,
     dev_mode: bool = False,
-) -> tuple[LocalRuntime, str]:
-    """Return a runtime/model pair that agree on the same local route."""
+) -> str:
+    """Return a supported local model, falling back to the default Felis model."""
     profile = get_model_profile(model)
-    models_for_runtime = local_models_for_runtime(runtime, dev_mode=dev_mode)
     if (
         profile is not None
-        and profile.provider == runtime
+        and profile.runtime == "local"
         and (not profile.dev_only or dev_mode)
     ):
-        return runtime, model
-    if models_for_runtime:
-        return runtime, models_for_runtime[0].model_id
-    default_profile = get_model_profile(DEFAULT_FELIS_MODEL)
-    assert default_profile is not None
-    return default_profile.provider, default_profile.model_id
+        return model
+    return DEFAULT_FELIS_MODEL
 
 
 def visible_cloud_providers(*, dev_mode: bool = False) -> tuple[CloudProvider, ...]:
@@ -387,14 +356,7 @@ def reconcile_panthera_reasoning(
         return None
     if reasoning in profile.reasoning_options:
         return reasoning
-    legacy_map = {"light": "low", "focused": "medium", "extended": "high"}
-    mapped = legacy_map.get(reasoning or "")
-    if mapped in profile.reasoning_options:
-        return mapped
     return profile.default_reasoning
-
-
-reconcile_panthera_effort = reconcile_panthera_reasoning
 
 
 def visible_local_runtimes(*, dev_mode: bool = False) -> tuple[LocalRuntime, ...]:

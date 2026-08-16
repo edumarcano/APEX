@@ -246,6 +246,14 @@ vi.mock('./hooks/useCortex', () => ({
       active: true,
       loading: false,
       loaded_model: null,
+      model_catalog: [{
+        model_id: appMocks.initialAgent === 'felis' ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
+        display_name: appMocks.initialAgent === 'felis' ? 'Gemma 4 E2B' : 'GPT-5.6 Luna',
+        provider: appMocks.initialAgent === 'felis' ? 'llama_cpp' : 'openai',
+        runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+        stability: 'stable',
+        hosted_capabilities: [],
+      }],
     }],
     agentsStatusHydrated: true,
     queryAgent: appMocks.queryAgent,
@@ -368,7 +376,7 @@ function settingsResponse(
         sandbox_mode: sandboxMode,
         panthera: {
           model: 'gemini-3.6-flash',
-          effort: 'focused',
+          effort: 'medium',
           hosted_tools: {
             google_search: googleSearchEnabled,
             google_maps: false,

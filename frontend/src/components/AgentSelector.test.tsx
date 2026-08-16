@@ -7,7 +7,7 @@ import type { AgentStatus } from '../types/telemetry'
 import { AgentSelector } from './AgentSelector'
 
 function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
-  const stability = overrides.stability ?? 'stable'
+  const stability = overrides.model_stability ?? 'stable'
   return {
     key: 'panthera',
     display_name: 'Apex Panthera',
@@ -19,11 +19,9 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     provider: 'openai',
     version: '2.0',
     runtime: 'cloud',
-    tier: 'balanced',
-    stability,
-    model_stability: overrides.model_stability ?? stability,
-    effort_options: ['light', 'focused', 'extended'],
-    default_effort: 'focused',
+    model_stability: stability,
+    reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    default_reasoning: 'medium',
     context_window: null,
     context_window_options: null,
     context_window_high_resource_options: null,
@@ -52,6 +50,7 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     reason: null,
     idle_unload_remaining_seconds: null,
     loaded_model: null,
+    model_catalog: [],
     ...overrides,
   }
 }
@@ -65,8 +64,8 @@ const felis = agent({
   capabilities: ['Local', 'Private'],
   provider: 'llama_cpp',
   runtime: 'local',
-  effort_options: null,
-  default_effort: null,
+  reasoning_options: null,
+  default_reasoning: null,
   status: 'available',
   status_source: 'runtime',
   pricing: {

@@ -28,7 +28,7 @@ def _concrete_profile(key: str):
     agent_key, model_id = _MODEL_PROFILES.get(key, (key, "gpt-5.6-luna"))
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
-    _apex, native = resolve_effort(model_profile, None)
+    native = resolve_effort(model_profile, None)
     return build_concrete_agent(
         agent_key,
         native_effort=native,

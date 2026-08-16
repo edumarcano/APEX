@@ -30,7 +30,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     sandbox_mode: false,
     panthera: {
       model: 'gpt-5.6-luna',
-      effort: 'focused',
+      effort: 'medium',
       hosted_tools: {
         google_search: true,
         google_maps: true,

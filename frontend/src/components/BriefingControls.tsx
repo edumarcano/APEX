@@ -171,7 +171,7 @@ export function BriefingModeSelector({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
-  const activeAvailability = resolveBriefingModeAvailability(value, agents, hydrated, targets)
+  const activeAvailability = resolveBriefingModeAvailability(value, hydrated, targets)
 
   const close = useCallback((restoreFocus = false): void => {
     setOpen(false)
@@ -299,7 +299,7 @@ export function BriefingModeSelector({
                 <ul role="group" aria-label={section.title} className="space-y-1">
                   {section.options.map((option) => {
                     const index = ALL_OPTIONS.findIndex((entry) => entry.key === option.key)
-                    const availability = resolveBriefingModeAvailability(option.key, agents, hydrated, targets)
+                    const availability = resolveBriefingModeAvailability(option.key, hydrated, targets)
                     const unavailable = !['available', 'configured', 'verified'].includes(availability.status)
                     const selected = option.key === value
                     return (

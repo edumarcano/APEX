@@ -152,7 +152,7 @@ class StableAgentErrorTests(unittest.TestCase):
             "panthera",
             native_effort=resolve_effort(
                 get_model_profile("gemini-3.6-flash"), None
-            )[1],
+            ),
             model_id="gemini-3.6-flash",
         )
         response = run_agent_loop(

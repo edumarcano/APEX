@@ -23,11 +23,9 @@ function profile(
     provider: mode === 'cloud' ? 'openai' : 'llama_cpp',
     version: '7.4',
     runtime: mode,
-    tier: 'stable',
-    stability: 'stable',
     model_stability: 'stable',
-    effort_options: mode === 'cloud' ? ['light', 'focused', 'extended'] : null,
-    default_effort: mode === 'cloud' ? 'focused' : null,
+    reasoning_options: mode === 'cloud' ? ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] : null,
+    default_reasoning: mode === 'cloud' ? 'medium' : null,
     context_window: null,
     context_window_options: null,
     context_window_high_resource_options: null,
@@ -45,6 +43,7 @@ function profile(
     reason,
     idle_unload_remaining_seconds: null,
     loaded_model: null,
+    model_catalog: [],
   }
 }
 

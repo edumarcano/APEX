@@ -20,11 +20,9 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     provider: local ? 'llama_cpp' : 'openai',
     version: '2.0',
     runtime: local ? 'local' : 'cloud',
-    tier: 'stable',
-    stability: 'stable',
     model_stability: 'stable',
-    effort_options: local ? null : ['light', 'focused', 'extended'],
-    default_effort: local ? null : 'focused',
+    reasoning_options: local ? null : ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    default_reasoning: local ? null : 'medium',
     context_window: local ? 16384 : null,
     context_window_options: local ? [4096, 16384, 32768, 131072] : null,
     context_window_high_resource_options: local ? [131072] : null,
@@ -44,6 +42,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
       long_context_cached_input_per_million: null,
     },
     active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
+    model_catalog: [],
   }
 }
 

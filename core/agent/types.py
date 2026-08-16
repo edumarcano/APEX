@@ -23,7 +23,7 @@ ToolCatalogGroupKind: TypeAlias = Literal["apex_family", "mcp_server"]
 AgentKey: TypeAlias = Literal["panthera", "felis"]
 LocalReasoningMode: TypeAlias = Literal["none", "focused"]
 ApexEffort: TypeAlias = Literal[
-    "none", "minimal", "low", "medium", "high", "xhigh", "light", "focused", "extended"
+    "none", "minimal", "low", "medium", "high", "xhigh"
 ]
 
 CostCompleteness = Literal["complete", "partial", "unavailable"]
@@ -293,7 +293,7 @@ class AgentQueryRequest(BaseModel):
     effort: ApexEffort | None = Field(
         default=None,
         description=(
-            "Optional cloud effort override (light, focused, extended). "
+            "Optional cloud reasoning effort override (none, minimal, low, medium, high, xhigh). "
             "Rejected for local Agents."
         ),
     )
@@ -307,7 +307,7 @@ class AgentQueryRequest(BaseModel):
     history_partition: Literal["production", "sandbox"] = Field(
         default="production",
         description=(
-            "Browser-owned history partition. Acinonyx history is accepted only "
+            "Browser-owned history partition. Sandbox history is accepted only "
             "when explicitly marked as sandbox history."
         ),
     )
