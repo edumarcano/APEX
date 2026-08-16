@@ -172,12 +172,12 @@ Attached context and tool results are separately marked as untrusted model data.
 
 ### Panthera and Felis
 
-APEX exposes two Apex Agents. Panthera is the cloud identity; Felis is the local identity. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. Each selected model profile determines the provider or local runtime used for execution.
+APEX runs two Agent roles. Panthera selects from registered cloud models, while Felis selects from registered local models. The selected model determines the provider or local runtime and which reasoning, hosted-tool, context, and local-runtime controls apply.
 
 | Agent | Default model | Reasoning | Maximum tool loop |
 |---|---|---|---|
-| Panthera 2.0 | OpenAI `gpt-5.6-luna` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` when supported | Up to 6 turns / 10 calls on the default model |
-| Felis 2.0 | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Fixed for local models | Up to 4 turns / 4 calls on default llama.cpp models |
+| Panthera | OpenAI `gpt-5.6-luna` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` when supported | Up to 6 turns / 10 calls on the default model |
+| Felis | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Model-supported local reasoning modes | Up to 4 turns / 4 calls on default llama.cpp models |
 
 Other registered cloud and local models keep their own loop limits and optional hosted-tool support. Development-only models appear in each Agent's model catalog only when `DEV_MODE` is active.
 
@@ -187,7 +187,7 @@ Each non-demo Agent request begins with the selected Agent's identity instructio
 
 Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `DEV_MODE` sandbox queries use a restricted non-personal allowlist instead of the full registry.
 
-`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, effort levels, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
+`GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, model-native reasoning metadata, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
 The Home command rail owns the visible briefing-mode selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
 
