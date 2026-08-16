@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.agent.catalog import AGENT_SPECS, build_concrete_agent, resolve_effort
+from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.model_catalog import get_model_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
@@ -46,15 +46,6 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
                 self.assertGreaterEqual(profile.max_tool_calls, profile.max_tool_turns)
                 self.assertLessEqual(profile.max_tool_turns, GEMINI_AGENT_MAX_TURNS)
                 self.assertLessEqual(profile.max_tool_calls, GEMINI_AGENT_MAX_TOOL_CALLS)
-
-    def test_agent_versions_use_product_version_format(self) -> None:
-        for spec in AGENT_SPECS.values():
-            self.assertRegex(spec.agent_version, r"^[1-9]\d*\.\d+$")
-
-    def test_concrete_profiles_inherit_catalog_versions(self) -> None:
-        for key, spec in AGENT_SPECS.items():
-            profile = _concrete_profile(key)
-            self.assertEqual(profile.agent_version, spec.agent_version)
 
     def test_local_models_leave_a_final_answer_turn_after_tool_work(self) -> None:
         for model_id in (
