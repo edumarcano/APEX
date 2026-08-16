@@ -82,7 +82,7 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective Agent and effort selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective Panthera or Felis selection from saved settings.
+Returns boot-time HUD values such as Agent query enablement, the effective Agent/model and reasoning selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective Panthera or Felis selection from saved settings.
 
 ### GET `/api/v1/settings`
 
@@ -103,7 +103,7 @@ Returns the resolved settings envelope. The current contract version is `16`.
       "sandbox_mode": false,
       "panthera": {
         "model": "gpt-5.6-luna",
-        "effort": "focused",
+        "effort": "medium",
         "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
       },
       "felis": {
@@ -356,7 +356,7 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
-Returns visible Apex Agents in stable product order. The response contains exactly Panthera and Felis. Each entry supplies its full display name, description, selected provider and configured model, version, runtime, model stability, selectable reasoning options and defaults, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, model catalog, versioned pricing metadata, and availability/lifecycle diagnostics.
+Returns visible Apex Agents in stable product order. The response contains exactly Panthera and Felis. Each entry supplies its full display name, description, selected provider and configured model, runtime, model stability, selectable reasoning options and defaults, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, model catalog, versioned pricing metadata, and availability/lifecycle diagnostics.
 
 Development-only models appear in each Agent's `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
@@ -405,7 +405,7 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 {
   "prompt": "What should I prioritize this afternoon?",
   "agent": "panthera",
-  "effort": "focused",
+  "effort": "medium",
   "session_id": "browser-session-id",
   "history": [],
   "history_partition": "production",
@@ -418,7 +418,7 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is the literal `production` normal-mode partition or `sandbox` for `DEV_MODE` sandbox queries; the backend discards history that crosses those partitions. Sandbox queries reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Felis. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model supports effort and is rejected for Felis. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Felis. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model exposes model-native reasoning levels and is rejected for Felis. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 
 - `400` — selected tools are invalid, outside policy, or unavailable.
 - A provider-authoritative local context overflow is returned as an actionable
