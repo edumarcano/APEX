@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom'
 
 import type { AgentStatus, AgentKey, AgentAvailabilityStatus } from '../types/telemetry'
 import { agentShortName } from '../lib/agentDisplay'
-import { providerDisplayName, runtimeDisplayName } from '../lib/agents'
+import { providerDisplayName, runtimeDisplayName, isAgentIdentitySelectable } from '../lib/agents'
 
 import { AgentMark } from './AgentMark'
 
@@ -179,7 +179,7 @@ export function AgentSelector({
   const renderCard = (agent: AgentStatus): ReactElement => {
     const selected = agent.key === activeAgent
     const isCloud = agent.runtime === 'cloud'
-    const selectable = isCloud ? agent.status !== 'disabled' : agent.status === 'available'
+    const selectable = isAgentIdentitySelectable(agent)
     const verifyPending = verifyingAgent === agent.key || agent.status === 'verifying'
     return <article key={agent.key} className={`rounded-xl border p-3 ${selected ? 'border-[#7E22CE]/55 bg-[#7E22CE]/12' : 'border-white/10 bg-white/[0.02]'}`}>
       <button type="button" disabled={!selectable} aria-pressed={selected} aria-label={`Use ${agent.display_name}`} onClick={() => selectAgent(agent.key)} className={`w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] ${!selectable ? 'cursor-not-allowed opacity-55' : ''}`}>
@@ -194,7 +194,7 @@ export function AgentSelector({
 
   const renderHomeOption = (agent: AgentStatus): ReactElement => {
     const selected = agent.key === activeAgent
-    const selectable = agent.runtime === 'cloud' ? agent.status !== 'disabled' : agent.status === 'available'
+    const selectable = isAgentIdentitySelectable(agent)
     return <li key={agent.key} role="presentation">
       <button
         type="button"

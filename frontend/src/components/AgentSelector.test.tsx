@@ -178,6 +178,32 @@ describe('AgentSelector', () => {
     expect(screen.getByText('Preview')).toBeVisible()
   })
 
+  it('allows Lynx selection when the local runtime is not yet ready', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const notReady = agent({
+      ...lynx,
+      status: 'model_not_installed',
+      reason: 'Model is not installed or configured locally',
+    })
+
+    render(
+      <AgentSelector
+        activeAgent="panthera"
+        onChange={onChange}
+        agentsStatus={[agent(), notReady]}
+        agentsStatusHydrated
+        isQuerying={false}
+        verifyingAgent={null}
+        onVerify={vi.fn(async () => true)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+    await user.click(screen.getByRole('button', { name: 'Use Apex Lynx' }))
+    expect(onChange).toHaveBeenCalledWith('lynx')
+  })
+
   it('shows experimental stability badges for any agent marked experimental', () => {
     const experimental = agent({
       key: 'panthera',

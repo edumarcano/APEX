@@ -35,6 +35,11 @@ export function isAgentKey(value: unknown): value is AgentKey {
   return isPantheraKey(value) || isLynxKey(value)
 }
 
+/** True when the operator may switch HUD focus to this Agent identity. */
+export function isAgentIdentitySelectable(_agent: Pick<AgentStatus, 'key'>): boolean {
+  return isAgentKey(_agent.key)
+}
+
 export function isLocalAgentStatus(agent: Pick<AgentStatus, 'runtime'>): boolean {
   return agent.runtime === 'local'
 }
