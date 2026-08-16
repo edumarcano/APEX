@@ -55,12 +55,7 @@ _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "xai": "SpaceXAI",
 }
 
-AgentModelProfile = (
-    GeminiModelProfile
-    | OllamaModelProfile
-    | LlamaCppModelProfile
-    | ResponsesModelProfile
-)
+AgentModelProfile = GeminiModelProfile | OllamaModelProfile | LlamaCppModelProfile | ResponsesModelProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +66,6 @@ class AgentSpec:
     display_name: str
     description: str
     identity_instruction: str
-    agent_version: str
     runtime: AgentRuntime
     capability_tags: tuple[str, ...]
 
@@ -85,7 +79,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Panthera, the cloud Apex Agent. "
             "You run through the operator's selected cloud provider and model."
         ),
-        agent_version="2.0",
         runtime="cloud",
         capability_tags=("Cloud", "Generalist", "Planning"),
     ),
@@ -97,7 +90,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Felis, the local Apex Agent. "
             "You run through the operator's selected local runtime and model."
         ),
-        agent_version="2.0",
         runtime="local",
         capability_tags=("Local", "Private", "On-device"),
     ),
@@ -115,18 +107,12 @@ def is_agent_visible(key: str) -> bool:
     return key in AGENT_SPECS
 
 
-def resolve_effort_for_agent(
-    agent_key: str,
-    requested: str | None,
-) -> str | None:
+def resolve_effort_for_agent(agent_key: str, requested: str | None) -> str | None:
     """Resolve effort for the model currently selected for an Agent."""
     return resolve_effort(resolve_selected_model_profile(agent_key), requested)
 
 
-def resolve_effort(
-    model_profile: ModelProfile,
-    requested: str | None,
-) -> str | None:
+def resolve_effort(model_profile: ModelProfile, requested: str | None) -> str | None:
     """Resolve model-native reasoning effort for a model."""
     if not model_profile.reasoning_options:
         return None
@@ -139,8 +125,7 @@ def resolve_effort(
 
 def agent_has_credentials(agent_key: str) -> bool:
     """Return whether the selected model for an Agent has credentials."""
-    profile = resolve_selected_model_profile(agent_key)
-    return model_has_credentials(profile)
+    return model_has_credentials(resolve_selected_model_profile(agent_key))
 
 
 def compose_agent_system_instruction(
@@ -153,9 +138,7 @@ def compose_agent_system_instruction(
     """Compose identity, behavior, and optional user-addressing instructions."""
     identity = AGENT_SPECS[agent_key].identity_instruction
     if model_profile is not None:
-        identity = (
-            f"{identity} You are currently powered by {model_profile.display_name}."
-        )
+        identity = f"{identity} You are currently powered by {model_profile.display_name}."
     normalized_base = base_instruction.strip()
     normalized_designation = " ".join(user_designation.split())[:80]
     designation_instruction = (
@@ -163,9 +146,7 @@ def compose_agent_system_instruction(
         if normalized_designation
         else ""
     )
-    body = "\n\n".join(
-        part for part in (normalized_base, designation_instruction) if part
-    )
+    body = "\n\n".join(part for part in (normalized_base, designation_instruction) if part)
     return f"{identity}\n\n{body}" if body else identity
 
 
@@ -203,14 +184,11 @@ def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
 
 
 def resolve_panthera_provider() -> CloudProvider:
-    profile = resolve_selected_model_profile("panthera")
-    return profile.provider  # type: ignore[return-value]
+    return resolve_selected_model_profile("panthera").provider  # type: ignore[return-value]
 
 
 def resolve_felis_runtime() -> LocalRuntime:
-    profile = resolve_selected_model_profile("felis")
-    return profile.provider  # type: ignore[return-value]
-
+    return resolve_selected_model_profile("felis").provider  # type: ignore[return-value]
 
 
 def build_concrete_agent(
@@ -241,14 +219,9 @@ def build_concrete_agent(
     )
 
     if model_profile.provider == "gemini":
-        thinking: GeminiThinkingLevel = (
-            native_effort
-            or model_profile.default_reasoning
-            or "medium"  # type: ignore[assignment]
-        )
+        thinking: GeminiThinkingLevel = native_effort or model_profile.default_reasoning or "medium"  # type: ignore[assignment]
         return GeminiModelProfile(
             display_name=spec.display_name,
-            agent_version=spec.agent_version,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             thinking_level=thinking,
@@ -264,12 +237,9 @@ def build_concrete_agent(
         )
     if model_profile.provider == "ollama":
         runtime = OLLAMA_RUNTIME_CONFIGS[model_profile.model_id]
-        resolved_reasoning_mode = _resolve_local_reasoning_mode(
-            model_profile.model_id, local_reasoning_mode
-        )
+        resolved_reasoning_mode = _resolve_local_reasoning_mode(model_profile.model_id, local_reasoning_mode)
         return OllamaModelProfile(
             display_name=spec.display_name,
-            agent_version=spec.agent_version,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             default_temperature=runtime.default_temperature,
@@ -290,13 +260,10 @@ def build_concrete_agent(
             system_instruction=system_instruction,
         )
     if model_profile.provider == "llama_cpp":
-        resolved_reasoning_mode = _resolve_local_reasoning_mode(
-            model_profile.model_id, local_reasoning_mode
-        )
+        resolved_reasoning_mode = _resolve_local_reasoning_mode(model_profile.model_id, local_reasoning_mode)
         return build_llama_cpp_profile(
             model_profile.model_id,
             display_name=spec.display_name,
-            agent_version=spec.agent_version,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             max_tool_turns=model_profile.max_tool_turns,
@@ -305,19 +272,12 @@ def build_concrete_agent(
             context_window=local_context_window,
             reasoning_mode=resolved_reasoning_mode,
         )
-    effective_effort = (
-        native_effort
-        if native_effort is not None
-        else (
-            model_profile.default_reasoning
-            if model_profile.reasoning_options
-            else None
-        )
+    effective_effort = native_effort if native_effort is not None else (
+        model_profile.default_reasoning if model_profile.reasoning_options else None
     )
     return ResponsesModelProfile(
         provider=model_profile.provider,  # type: ignore[arg-type]
         display_name=spec.display_name,
-        agent_version=spec.agent_version,
         api_model=model_profile.model_id,
         max_tool_turns=model_profile.max_tool_turns,
         max_tool_calls=model_profile.max_tool_calls,
@@ -347,7 +307,6 @@ def build_agent_used_metadata(
     spec = AGENT_SPECS[agent_key]
     metadata: dict[str, Any] = {
         "key": agent_key,
-        "version": spec.agent_version,
         "provider": provider,
         "configured_model": configured_model,
         "resolved_model": resolved_model or configured_model,
@@ -436,10 +395,7 @@ def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
     return supported[0]
 
 
-def _resolve_local_reasoning_mode(
-    model_id: str,
-    requested: LocalReasoningMode | None,
-) -> LocalReasoningMode:
+def _resolve_local_reasoning_mode(model_id: str, requested: LocalReasoningMode | None) -> LocalReasoningMode:
     supported = local_reasoning_modes_for_model(model_id)
     if requested in supported:
         return requested  # type: ignore[return-value]
@@ -453,27 +409,14 @@ def _resolve_local_reasoning_mode(
     return supported[0] if supported else "none"
 
 
-def local_model_ref_for_agent(
-    agent_key: str,
-    *,
-    local_context_window: int | None = None,
-) -> LocalModelRef:
+def local_model_ref_for_agent(agent_key: str, *, local_context_window: int | None = None) -> LocalModelRef:
     if agent_key != "felis":
         raise ValueError(f"Agent {agent_key!r} is not a local Agent")
-    profile = build_concrete_agent(
-        "felis",
-        native_effort=None,
-        local_context_window=local_context_window,
-    )
+    profile = build_concrete_agent("felis", native_effort=None, local_context_window=local_context_window)
     runtime_model_id = getattr(profile, "runtime_model_id", None)
     if not isinstance(runtime_model_id, str) or not runtime_model_id:
-        raise ValueError(
-            f"Agent {agent_key!r} concrete profile is missing runtime_model_id"
-        )
-    return LocalModelRef(
-        provider=profile.provider,  # type: ignore[arg-type]
-        model=runtime_model_id,
-    )
+        raise ValueError(f"Agent {agent_key!r} concrete profile is missing runtime_model_id")
+    return LocalModelRef(provider=profile.provider, model=runtime_model_id)  # type: ignore[arg-type]
 
 
 def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
@@ -485,25 +428,19 @@ def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
         if runtime is None:
             return frozenset()
         aliases = set(runtime.runtime_model_ids.values())
-        return frozenset(
-            LocalModelRef(provider="llama_cpp", model=alias) for alias in aliases
-        )
-    return frozenset(
-        {LocalModelRef(provider=profile.provider, model=model_id)}  # type: ignore[arg-type]
-    )
+        return frozenset(LocalModelRef(provider="llama_cpp", model=alias) for alias in aliases)
+    return frozenset({LocalModelRef(provider=profile.provider, model=model_id)})  # type: ignore[arg-type]
 
 
 def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
     if agent_key != "felis":
         return frozenset()
-    model_id = resolve_selected_model_profile("felis").model_id
-    return local_model_refs_for_model(model_id)
+    return local_model_refs_for_model(resolve_selected_model_profile("felis").model_id)
 
 
 def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
-    if ref.provider == "llama_cpp":
-        if model_id_for_llama_cpp_alias(ref.model) is not None:
-            return "felis"
+    if ref.provider == "llama_cpp" and model_id_for_llama_cpp_alias(ref.model) is not None:
+        return "felis"
     for model_id, profile in LOCAL_MODEL_PROFILES.items():
         if profile.provider != ref.provider:
             continue
@@ -519,9 +456,7 @@ def known_local_model_refs() -> frozenset[LocalModelRef]:
     return frozenset(refs)
 
 
-def resolve_agent_selection(
-    agent_settings: Any,
-) -> tuple[AgentRuntime, str, NativeEffort | None]:
+def resolve_agent_selection(agent_settings: Any) -> tuple[AgentRuntime, str, NativeEffort | None]:
     """Resolve effective runtime, Agent, and effort from Agent settings."""
     agent = getattr(agent_settings, "agent", "panthera")
     if agent not in VALID_AGENT_KEYS:
