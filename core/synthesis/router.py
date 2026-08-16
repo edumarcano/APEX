@@ -12,8 +12,10 @@ from core.agent.catalog import (
     agent_key_for_local_model_ref,
     build_concrete_agent,
     compose_agent_system_instruction,
+    local_model_refs_for_model,
     resolve_selected_model_profile,
 )
+from core.agent.model_catalog import DEFAULT_LYNX_MODEL, get_model_profile
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.local_runtime.contract import LocalModelRef
@@ -58,6 +60,7 @@ from core.settings import get_settings_store
 _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS = 512
+_LYNX_BRIEFING_MODEL = DEFAULT_LYNX_MODEL
 
 
 StateCallback = Callable[[str, str | None, str | None, str | None], None]
@@ -87,6 +90,32 @@ def resident_local_model_ref() -> LocalModelRef | None:
 def resident_agent_key() -> str | None:
     tracked = resident_local_model_ref()
     return agent_key_for_local_model_ref(tracked) if tracked is not None else None
+
+
+def _resident_lynx_briefing_model() -> LocalModelRef | None:
+    """Return the resident fixed Lynx briefing model, when it is loaded."""
+    resident = resident_local_model_ref()
+    if resident is None:
+        return None
+    return (
+        resident
+        if resident in local_model_refs_for_model(_LYNX_BRIEFING_MODEL)
+        else None
+    )
+
+
+def _lynx_briefing_provider() -> str:
+    """Return the provider for Lynx's fixed briefing model."""
+    profile = get_model_profile(_LYNX_BRIEFING_MODEL)
+    if profile is None:
+        raise RuntimeError("lynx_briefing_model_invalid")
+    return profile.provider
+
+
+def _briefing_provider_for_agent(agent_key: str) -> str:
+    if agent_key == "lynx":
+        return _lynx_briefing_provider()
+    return resolve_selected_model_profile(agent_key).provider
 
 
 def _has_unrecognized_resident_model() -> bool:
@@ -145,6 +174,7 @@ class SynthesisRouter:
                 native_effort=None,
                 local_context_window=context_window,
                 local_reasoning_mode=reasoning_mode,
+                model_id=_LYNX_BRIEFING_MODEL if agent_key == "lynx" else None,
             )
             backend = get_local_runtime_backend(agent.provider)
         except Exception:
@@ -212,12 +242,12 @@ class SynthesisRouter:
             return None
         if mode not in LOCAL_BRIEFING_AGENTS:
             return None
-        resident = resident_agent_key()
-        if resident == mode:
+        resident_ref = _resident_lynx_briefing_model() if mode == "lynx" else None
+        if resident_ref is not None:
             self._state(
                 "ready",
-                resolve_selected_model_profile(mode).provider,
-                resident,
+                _lynx_briefing_provider(),
+                mode,
                 None,
             )
             return None
@@ -297,12 +327,16 @@ class SynthesisRouter:
         *,
         resident_ref: LocalModelRef | None = None,
     ):
-        """Build the provider profile for the selected local briefing Agent."""
+        """Build the provider profile for a local briefing Agent."""
         context_window: int | None = None
         if AGENT_SPECS[agent_key].runtime == "local":
             context_window = LYNX_BRIEFING_CONTEXT_WINDOW
             if resident_ref is not None and resident_ref.provider == "llama_cpp":
-                model_id = resolve_selected_model_profile(agent_key).model_id
+                model_id = (
+                    _LYNX_BRIEFING_MODEL
+                    if agent_key == "lynx"
+                    else resolve_selected_model_profile(agent_key).model_id
+                )
                 context_window = (
                     llama_cpp_context_window_for_runtime_model_id(
                         model_id, resident_ref.model
@@ -320,6 +354,7 @@ class SynthesisRouter:
             native_effort=None,
             local_context_window=context_window,
             local_reasoning_mode="none",
+            model_id=_LYNX_BRIEFING_MODEL if agent_key == "lynx" else None,
         ).model_copy(
             update={
                 "final_answer_max_tokens": _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS,
@@ -384,11 +419,10 @@ class SynthesisRouter:
         warmup: WarmupHandle | None,
     ) -> SynthesisResult:
         """Honor an explicitly selected local Agent; never silently substitute another."""
-        resident = resident_agent_key()
         resident_ref = (
-            resident_local_model_ref() if resident == agent_key else None
+            _resident_lynx_briefing_model() if agent_key == "lynx" else None
         )
-        if resident == agent_key:
+        if resident_ref is not None:
             try:
                 result = self._local(
                     source,
@@ -418,7 +452,7 @@ class SynthesisRouter:
             )
         self._state(
             "ready",
-            resolve_selected_model_profile(agent_key).provider,
+            _briefing_provider_for_agent(agent_key),
             agent_key,
             None,
         )
@@ -436,7 +470,7 @@ class SynthesisRouter:
             return self._structured_digest_fallback(source, reason, warmup.elapsed_ms)
 
     def _synthesize_panthera(self, source: SynthesisInput) -> SynthesisResult:
-        """Route Panthera failure through Apodemus, then Structured Digest."""
+        """Route Panthera failure through Lynx, then Structured Digest."""
         fallback_steps: list[str] = []
         try:
             result = self._panthera(source)
@@ -444,7 +478,7 @@ class SynthesisRouter:
             return result
         except Exception as exc:
             _LOGGER.error(
-                "Panthera briefing synthesis failed; falling back to Apodemus/Structured Digest. "
+                "Panthera briefing synthesis failed; falling back to Lynx/Structured Digest. "
                 "error_type=%s",
                 type(exc).__name__,
             )
@@ -474,11 +508,10 @@ class SynthesisRouter:
         self, source: SynthesisInput, agent_key: str
     ) -> tuple[SynthesisResult | None, str]:
         """Attempt one ordered local fallback without substituting agents."""
-        resident = resident_agent_key()
         resident_ref = (
-            resident_local_model_ref() if resident == agent_key else None
+            _resident_lynx_briefing_model() if agent_key == "lynx" else None
         )
-        if resident == agent_key:
+        if resident_ref is not None:
             try:
                 return (
                     self._local(
@@ -503,7 +536,7 @@ class SynthesisRouter:
             return None, warmup.reason or "local_warmup_failed"
         self._state(
             "ready",
-            resolve_selected_model_profile(agent_key).provider,
+            _briefing_provider_for_agent(agent_key),
             agent_key,
             None,
         )

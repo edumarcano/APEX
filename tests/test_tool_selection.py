@@ -182,6 +182,62 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
 
+    def test_sandbox_catalog_disables_personal_native_tools(self) -> None:
+        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        snapshot = MagicMock()
+        snapshot.ask_apex = agent_settings
+        with patch("core.settings.get_settings_store") as store, patch(
+            "core.agent.tool_catalog.is_dev_mode", return_value=True
+        ), patch(
+            "core.agent.tool_catalog._native_availability",
+            return_value=(True, None),
+        ):
+            store.return_value.get_snapshot.return_value = snapshot
+            catalog = build_tool_catalog("panthera")
+
+        reminders = next(
+            tool for tool in catalog.tools if tool.name == "get_active_reminders"
+        )
+        self.assertFalse(reminders.available)
+        self.assertFalse(reminders.allowed_for_agent)
+        self.assertIn("selected Agent policy", reminders.unavailable_reason or "")
+
+    def test_sandbox_catalog_disables_configured_undiscovered_personal_mcp_tools(
+        self,
+    ) -> None:
+        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        snapshot = MagicMock()
+        snapshot.ask_apex = agent_settings
+        server = SimpleNamespace(
+            tool_risks={"search_repositories": "read"},
+        )
+        with patch("core.settings.get_settings_store") as store, patch(
+            "core.agent.tool_catalog.is_dev_mode", return_value=True
+        ), patch(
+            "core.agent.tool_catalog._configured_mcp_tools",
+            return_value={
+                "github_search_repositories": (
+                    "github",
+                    server,
+                    "search_repositories",
+                )
+            },
+        ), patch(
+            "core.agent.tool_catalog._mcp_availability",
+            return_value=(False, "The MCP tool was not discovered."),
+        ):
+            store.return_value.get_snapshot.return_value = snapshot
+            catalog = build_tool_catalog("panthera")
+
+        github_tool = next(
+            tool
+            for tool in catalog.tools
+            if tool.name == "github_search_repositories"
+        )
+        self.assertFalse(github_tool.available)
+        self.assertFalse(github_tool.allowed_for_agent)
+        self.assertIn("selected Agent policy", github_tool.unavailable_reason or "")
+
     def test_disconnected_mcp_selection_reports_runtime_reason(self) -> None:
         selection = resolve_selected_tools("panthera", ["brave_brave_web_search"])
         self.assertEqual(selection.descriptors, ())

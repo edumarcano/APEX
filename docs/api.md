@@ -217,7 +217,7 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 { "mode": "panthera" }
 ```
 
-The body is optional. Valid modes are `panthera`, `lynx`, and `structured_digest`.
+The body is optional. Valid modes are `panthera`, `lynx`, and `structured_digest`. The `lynx` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; Cortex's interactive Lynx model and runtime settings do not affect it.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.

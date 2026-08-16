@@ -70,7 +70,7 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing generation picks the weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts that may be sent to a model. Text is cleaned, limited in size, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera through the selected cloud provider and Lynx through the configured local runtime receive the same selected facts. There is no separate Ollama briefing path outside Lynx. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
+Panthera through the selected cloud provider and Lynx through its fixed Gemma E2B llama.cpp briefing path receive the same selected facts. The interactive Lynx model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Lynx requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
 
 These boundaries reduce prompt-injection risk. They do not authorize actions, and model text is never treated as approval for a write.
 

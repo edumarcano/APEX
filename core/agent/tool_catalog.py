@@ -18,6 +18,7 @@ from core.agent.capabilities import (
     list_agent_capabilities,
     namespaced_capability_name,
 )
+from core.agent.sandbox_policy import is_sandbox_active, is_sandbox_capability_allowed
 from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
@@ -314,6 +315,10 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot()
+    sandbox_active = is_sandbox_active(
+        sandbox_mode=settings.ask_apex.sandbox_mode,
+        dev_mode=is_dev_mode(),
+    )
     google_search, google_maps, x_search = (
         settings.ask_apex.panthera.hosted_tools.google_search,
         settings.ask_apex.panthera.hosted_tools.google_maps,
@@ -421,7 +426,9 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
             name, config=config, configured=configured_mcp
         )
         risk = server_config.tool_risks.get(remote_name, "read")
-        allowed_for_agent = risk == "read"
+        allowed_for_agent = risk == "read" and (
+            not sandbox_active or is_sandbox_capability_allowed(name)
+        )
         if not allowed_for_agent:
             unavailable_reason = (
                 "This tool is outside the selected Agent policy."
@@ -450,7 +457,9 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
                 continue
             server_id = server_id_for_tool(name)
             origin = "mcp" if server_id is not None else "native"
-            allowed_for_agent = True
+            allowed_for_agent = (
+                not sandbox_active or is_sandbox_capability_allowed(name)
+            )
             catalog_tools[name] = ToolCatalogTool(
                 name=name,
                 label=name.replace("_", " ").title(),

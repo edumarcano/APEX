@@ -28,6 +28,10 @@ def filter_sandbox_capabilities(
     return [
         descriptor
         for descriptor in capabilities
-        if descriptor.name in _SANDBOX_NATIVE_TOOLS
-        or descriptor.name.startswith(_SANDBOX_MCP_PREFIXES)
+        if is_sandbox_capability_allowed(descriptor.name)
     ]
+
+
+def is_sandbox_capability_allowed(name: str) -> bool:
+    """Return whether a capability name is safe for sandbox-mode queries."""
+    return name in _SANDBOX_NATIVE_TOOLS or name.startswith(_SANDBOX_MCP_PREFIXES)

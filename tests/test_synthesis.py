@@ -13,6 +13,7 @@ from core.synthesis.models import CalendarFact, F1Fact, SynthesisInput, Synthesi
 from core.synthesis.router import SynthesisRouter, WarmupHandle
 from tests.support.agent_fixtures import (
     ACINONYX_MODEL,
+    APODEMUS_MODEL,
     GEMMA_E2B_ALIAS,
     MUS_MODEL,
     NEOFELIS_MODEL,
@@ -178,6 +179,9 @@ class RoutingTests(unittest.TestCase):
         ), patch.object(
             router, "start_agent_warmup", return_value=handle
         ), patch(
+            "core.synthesis.router.resolve_selected_model_profile",
+            return_value=get_model_profile(MUS_MODEL),
+        ), patch(
             "core.synthesis.router.try_begin_local_execution", return_value=True
         ), patch("core.synthesis.router.end_local_execution"), patch(
             "core.synthesis.router.LlamaCppProvider.generate_turn",
@@ -191,6 +195,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, GEMMA_E2B_ALIAS)
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
+        self.assertEqual(profile.api_model, APODEMUS_MODEL)
         self.assertEqual(profile.runtime_model_id, GEMMA_E2B_ALIAS)
         self.assertEqual(profile.context_window, 16_384)
         self.assertEqual(profile.reasoning_mode, "none")
@@ -273,6 +278,9 @@ class RoutingTests(unittest.TestCase):
             "core.synthesis.router.get_provider_snapshot",
             return_value=snapshot,
         ), patch(
+            "core.synthesis.router.resolve_selected_model_profile",
+            return_value=get_model_profile(MUS_MODEL),
+        ), patch(
             "core.synthesis.router.is_local_model_ready", return_value=False
         ), patch(
             "core.synthesis.router.check_resource_gate",
@@ -289,6 +297,7 @@ class RoutingTests(unittest.TestCase):
             LocalModelRef(provider="llama_cpp", model=GEMMA_E2B_ALIAS),
         )
         loaded_profile = switch_model.call_args.args[0]
+        self.assertEqual(loaded_profile.api_model, APODEMUS_MODEL)
         self.assertEqual(loaded_profile.context_window, 16_384)
         self.assertEqual(loaded_profile.reasoning_mode, "none")
 

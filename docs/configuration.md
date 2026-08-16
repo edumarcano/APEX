@@ -239,13 +239,13 @@ Installed aliases come only from the router's `/models` list. A missing `gemma-4
 
 #### Local context preferences
 
-`ask_apex.lynx.context_window` stores the selected llama.cpp context preset for Lynx. The default Lynx model accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; `gemma-4-E4B-Q4_K_M.gguf` accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; `Qwen3.5-4B-Q4_K_M.gguf` accepts `4096`, `16384`, or `32768` and defaults to `16384`. The default model's `131072` and the E4B model's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time Lynx loads without triggering an automatic model load.
+`ask_apex.lynx.context_window` stores the selected llama.cpp context preset for interactive Lynx requests in Cortex. The default Lynx model accepts `4096`, `16384`, `32768`, or `131072` and defaults to `16384`; `gemma-4-E4B-Q4_K_M.gguf` accepts `4096`, `16384`, `32768`, or `65536` and defaults to `16384`; `Qwen3.5-4B-Q4_K_M.gguf` accepts `4096`, `16384`, or `32768` and defaults to `16384`. The default model's `131072` and the E4B model's `65536` presets are marked high-resource in Cortex. The Cortex inspector reads these options from Agent status metadata and changes persist to `config.local.json`; switching context applies the next time Lynx loads without triggering an automatic model load. Briefing synthesis ignores this interactive model selection and always uses `gemma-4-E2B-Q4_K_M.gguf` at its dedicated 16K context.
 
 Model maximum metadata can exceed the presets APEX exposes. The larger native maximum is not fully exposed as a selectable preset.
 
 #### Local reasoning preferences
 
-`ask_apex.lynx.reasoning_mode` stores the reasoning preference for Lynx. Lynx defaults to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. The Cortex inspector shows the Reasoning selector only when the active model advertises both modes, and a change applies to the next response without unloading the resident model.
+`ask_apex.lynx.reasoning_mode` stores the reasoning preference for interactive Lynx requests. Lynx defaults to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. The Cortex inspector shows the Reasoning selector only when the active model advertises both modes, and a change applies to the next response without unloading the resident model. Briefing synthesis always disables reasoning.
 
 For llama.cpp, `none` sends `reasoning_effort: "none"` with `chat_template_kwargs.enable_thinking` set to `false`; `focused` omits that request field and sets `enable_thinking` to `true` so the model template can use its native reasoning behavior. Focused llama.cpp profiles use a larger model-configured completion ceiling because native thinking consumes the same completion budget as the visible answer. The server preset therefore uses `reasoning = auto`. Hidden `reasoning_content` and leaked `<think>` blocks continue to be removed before a response reaches Cortex.
 
@@ -253,7 +253,7 @@ Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and p
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Lynx once before returning Structured Digest. An explicit Lynx briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Lynx cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible llama.cpp alias can be reused.
+Panthera is the default cloud briefing engine and always uses Light effort, independently of the selected interactive Agent or effort. On Panthera failure, APEX tries Lynx once before returning Structured Digest. Lynx briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Lynx model, runtime, context, or reasoning settings. An explicit Lynx briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Lynx cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
 
 ## Voice
 
