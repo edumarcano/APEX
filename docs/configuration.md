@@ -48,7 +48,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Football teams | Up to three football-data.org team IDs with display names |
 | Market symbols | Up to eight ticker symbols for the HUD monitor |
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
-| Agent queries | Global enablement switch, local context preferences, and grounding selection; Cortex owns Agent, effort, and grounding selection |
+| Agent queries | Global enablement switch; Cortex owns Agent and model selection plus the controls supported by the selected model |
 | Tool profiles | Saved custom tool profiles and per-Agent defaults; edited through Cortex Tools and persisted in `config.local.json` |
 | Briefing | Panthera, Felis, or Structured Digest mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
@@ -63,7 +63,7 @@ Prompt text remains exclusively in tracked `config.json`; it is not editable thr
 
 - Connector and sports flags are captured when telemetry collection begins.
 - The Home command rail saves the selected default briefing mode immediately; it applies to the next generation request unless that request supplies an override.
-- Agent query enablement, Agent selection, effort, and grounding are checked when a query begins; an in-flight query finishes with the settings it started with.
+- Agent query enablement, Agent and model selection, and model-supported controls are checked when a query begins; an in-flight query finishes with the settings it started with.
 - Voice engine, gender, and delivery mode bind when speech delivery begins.
 - Market enablement starts or stops HUD polling immediately; symbol changes apply on the next poll.
 - Tracked MCP preset changes reconcile after the settings write succeeds and do not require a restart.
@@ -114,7 +114,7 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 ## Briefing modes and Agents
 
-APEX exposes two Apex Agents: **Panthera** for cloud work and **Felis** for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities. The selected model profile determines Panthera's provider or Felis's local runtime automatically.
+APEX has two Apex Agents: **Panthera** for cloud work and **Felis** for local work. Model selection sits underneath the Agent. The selected model determines Panthera's provider or Felis's local runtime and controls which reasoning, hosted-tool, context, or local-runtime options are available.
 
 Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna`; `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent settings are not migrated at runtime, so update them to the Panthera/Felis model-first format.
 
@@ -309,4 +309,4 @@ FastAPI and the static HUD bind to loopback. `APEX_ALLOWED_ORIGINS` controls whi
 - Keep credentials out of `config.json` and `config.local.json`.
 - Keep personal or machine-local non-secret runtime paths in the gitignored local settings layer when APEX exposes them there.
 - Review [Privacy and Data Boundaries](privacy.md) before sending personal connector data to a cloud model.
-- Use demo mode, a local briefing Agent, or Structured Digest when cloud disclosure is inappropriate.
+- Use demo mode, Felis, or Structured Digest when cloud disclosure is inappropriate.
