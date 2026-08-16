@@ -162,5 +162,3 @@ describe('AgentSelector', () => {
     expect(screen.getByRole('radio', { name: /Apex Felis/i })).toBeDisabled()
   })
 })
-
-
