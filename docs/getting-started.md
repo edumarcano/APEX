@@ -119,13 +119,13 @@ APEX can start without most provider credentials. Enable only the integrations y
 
 | Capability | What to prepare |
 |---|---|
-| Cloud Agents | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the Panthera model you select |
+| Panthera cloud models | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the model you select |
 | Weather, news, and football data | The corresponding key from `.env.example` |
 | Market data | `ALPHA_VANTAGE_API_KEY` in `.env` plus ticker symbols in Runtime Settings |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
 | Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
-| Local inference (Ollama) | Ollama plus the desired Qwen3 model tags for development-only Felis models |
-| Local inference (llama.cpp) | Optional external or APEX-managed llama.cpp router with model-based Felis aliases |
+| Felis through Ollama | Ollama plus the desired Qwen3 model tags for development-only models |
+| Felis through llama.cpp | Optional external or APEX-managed llama.cpp router with model-based aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.ReadWrite` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
 
