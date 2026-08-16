@@ -86,6 +86,14 @@ _LOCAL_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
 _FREE_TIER_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
 _FREE_TIER_MODELS = frozenset({"gemini-3.5-flash-lite"})
 
+
+def is_free_tier_model(model: str | None) -> bool:
+    """Return whether a model is classified under free-tier pricing."""
+    if not model:
+        return False
+    return model.strip().lower() in _FREE_TIER_MODELS
+
+
 _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
     "google_search": HostedToolRate(0.014),
     "google_maps": HostedToolRate(0.025),

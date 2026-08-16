@@ -69,8 +69,35 @@ class CredentialIsolationTests(unittest.TestCase):
                 "OPENAI_API_KEY",
                 "GEMINI_API_KEY",
                 "XAI_API_KEY",
+                "GEMINI_SANDBOX_API_KEY",
             },
         )
+
+    def test_free_tier_gemini_models_route_to_sandbox_key(self) -> None:
+        from core.agent.model_catalog import (
+            ModelProfile,
+            get_model_profile,
+        )
+
+        lite_profile = get_model_profile("gemini-3.5-flash-lite")
+        self.assertIsNotNone(lite_profile)
+        self.assertEqual(lite_profile.credential_env, "GEMINI_SANDBOX_API_KEY")
+
+        # Custom/dynamic free-tier Gemini model also routes to sandbox key via __post_init__
+        custom_free_tier = ModelProfile(
+            model_id="gemini-3.5-flash-lite",
+            display_name="Custom Flash Lite",
+            provider="gemini",
+            runtime="cloud",
+            stability="experimental",
+            credential_env="GEMINI_API_KEY",
+            max_tool_turns=4,
+            max_tool_calls=6,
+            supports_encrypted_reasoning=True,
+            hosted_capabilities=frozenset(),
+        )
+        self.assertEqual(custom_free_tier.credential_env, "GEMINI_SANDBOX_API_KEY")
+
 
     def test_agent_has_credentials_is_independent_per_env(self) -> None:
         with mock.patch.dict(
@@ -295,6 +322,27 @@ class ModelNativeReasoningTests(unittest.TestCase):
         assert gemini is not None
         _apex, native = resolve_effort(gemini, "xhigh")
         self.assertEqual(native, "medium")
+
+    def test_concrete_agent_profiles_define_provider(self) -> None:
+        from core.agent.catalog import build_concrete_agent
+        from core.agent.model_catalog import (
+            CLOUD_MODEL_PROFILES,
+            LOCAL_MODEL_PROFILES,
+        )
+
+        all_models = {**CLOUD_MODEL_PROFILES, **LOCAL_MODEL_PROFILES}
+        for model_id, model_profile in all_models.items():
+            agent_key = "panthera" if model_profile.runtime == "cloud" else "lynx"
+            concrete = build_concrete_agent(
+                agent_key,
+                native_effort="medium",
+                model_id=model_id,
+            )
+            self.assertTrue(
+                hasattr(concrete, "provider"),
+                f"Concrete profile for {model_id} is missing 'provider'",
+            )
+            self.assertEqual(concrete.provider, model_profile.provider)
 
 
 if __name__ == "__main__":

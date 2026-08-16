@@ -119,7 +119,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 
 | Capability | What to prepare |
 |---|---|
-| Cloud Agents | `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY`, according to the Panthera model you select |
+| Cloud Agents | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX_API_KEY`, or `XAI_API_KEY`, according to the Panthera model you select |
 | Weather, news, and football data | The corresponding key from `.env.example` |
 | Market data | `ALPHA_VANTAGE_API_KEY` in `.env` plus ticker symbols in Runtime Settings |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |

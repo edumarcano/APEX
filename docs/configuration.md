@@ -134,7 +134,7 @@ Current default model mappings used by documentation checks are `panthera -> gpt
 | `grok-4.3` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 | `grok-4.5` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 
-Cloud models run independently of Ollama. Panthera's default model requires `OPENAI_API_KEY`; Gemini models require `GEMINI_API_KEY`; Grok models require `XAI_API_KEY`. Models that support effort expose Light, Focused, and Extended.
+Cloud models run independently of Ollama. Panthera's default model requires `OPENAI_API_KEY`; standard Gemini models require `GEMINI_API_KEY` (while free-tier Gemini models route to `GEMINI_SANDBOX_API_KEY`); Grok models require `XAI_API_KEY`. Models that support effort expose Light, Focused, and Extended.
 
 Brave MCP is the general web-search capability for Panthera when connected. Provider-hosted general web search is disabled for OpenAI and SpaceXAI. Panthera's hosted-tool toggles apply to subsequent requests only.
 

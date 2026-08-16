@@ -49,6 +49,13 @@ class ModelProfile:
     def default_effort(self) -> str | None:
         return self.default_reasoning
 
+    def __post_init__(self) -> None:
+        if self.provider == "gemini":
+            from core.agent.pricing import is_free_tier_model
+
+            if is_free_tier_model(self.model_id):
+                object.__setattr__(self, "credential_env", "GEMINI_SANDBOX_API_KEY")
+
 
 # Cloud models available under Panthera
 CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -88,7 +95,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         provider="gemini",
         runtime="cloud",
         stability="stable",
-        credential_env="GEMINI_API_KEY",
+        credential_env="GEMINI_SANDBOX_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
         reasoning_options=("minimal", "low", "medium", "high"),

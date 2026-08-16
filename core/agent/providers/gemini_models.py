@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
@@ -6,6 +6,9 @@ GeminiThinkingLevel = Literal["minimal", "low", "medium", "high"]
 
 
 class GeminiModelProfile(BaseModel):
+    provider: ClassVar[Literal["gemini"]] = "gemini"
+    runtime: ClassVar[Literal["cloud"]] = "cloud"
+
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
     agent_version: str = Field(
         description="Version of the named Apex Agent product identity."
