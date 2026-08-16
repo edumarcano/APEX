@@ -648,7 +648,7 @@ export default function App(): ReactElement {
     return () => {
       ignore = true
     }
-  }, [agentsStatusHydrated])
+  }, [agentsStatus, agentsStatusHydrated])
 
   const hasSnapshot = telemetry.snapshot !== null
   const briefingControlsBusy =

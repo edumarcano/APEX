@@ -718,8 +718,11 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
         DEFAULT_PANTHERA_MODEL,
         get_model_profile,
     )
+    from core.agent.catalog import local_model_refs_for_model
+    import core.agent.local_runtime.coordinator as coordinator
     from core.agent.local_runtime.registry import get_local_runtime_backend
-    from core.api.cortex import _model_pricing_metadata
+    from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
+    from core.api.cortex import _PROFILE_STATUS_REASONS, _model_pricing_metadata
 
     panthera_profile = get_model_profile(DEFAULT_PANTHERA_MODEL)
     openai_configured = bool(os.getenv("OPENAI_API_KEY"))
@@ -745,12 +748,33 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
         if not snapshot.get("reachable"):
             lynx_status = "provider_unreachable"
             lynx_reason = "llama.cpp is unreachable"
-        elif (
-            lynx_profile
-            and lynx_profile.model_id not in snapshot.get("installed_models", [])
-        ):
-            lynx_status = "model_not_installed"
-            lynx_reason = f"Model {lynx_profile.model_id} is not installed"
+        elif lynx_profile:
+            installed_models = set(snapshot.get("installed_models", []))
+            known_aliases = {
+                ref.model for ref in local_model_refs_for_model(lynx_profile.model_id)
+            } | {lynx_profile.model_id}
+            if not (installed_models & known_aliases):
+                lynx_status = "model_not_installed"
+                lynx_reason = f"Model {lynx_profile.model_id} is not installed"
+            else:
+                loaded_models = snapshot.get("loaded_models", [])
+                is_resident = any(
+                    (m.get("name") in known_aliases or m.get("model") in known_aliases)
+                    and m.get("state") == "loaded"
+                    for m in loaded_models
+                )
+                if not is_resident:
+                    runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(lynx_profile.model_id)
+                    ram_limit = runtime_config.ram_limit if runtime_config else 0.85
+                    cpu_limit = runtime_config.cpu_limit if runtime_config else 0.90
+                    gate_open, gate_reason = coordinator.check_resource_gate(
+                        ram_limit, cpu_limit, vitals=coordinator.get_system_vitals()
+                    )
+                    if not gate_open and gate_reason is not None:
+                        lynx_status = gate_reason
+                        lynx_reason = _PROFILE_STATUS_REASONS.get(
+                            gate_reason, f"Current {gate_reason} exceeds threshold"
+                        )
 
     lynx_pricing = (
         _model_pricing_metadata(lynx_profile) if lynx_profile else None
