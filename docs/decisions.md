@@ -182,21 +182,13 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ## Local inference
 
-### Consolidate the Agent family to Panthera and Felis
+### Keep Panthera and Felis as the two Agent roles
 
-**Decision.** APEX exposes two Apex Agents: Panthera for cloud work and Felis for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities; each model profile determines its provider or local runtime.
+**Decision.** APEX has two Apex Agents: Panthera for cloud work and Felis for local work. Models sit underneath those names, and the selected model determines the cloud provider or local runtime. The Agents do not have their own version numbers.
 
-**Why.** The earlier genus-based roster made every model/provider combination look like a separate product Agent. That was useful for experimentation, but the normal UI became broader than the roles APEX actually distinguishes today: cloud versus local.
+**Why.** The earlier Agent roster grew along with the list of models and providers. That was useful while experimenting, but it made model choices look like permanent product identities. The distinction I actually want is much simpler: Panthera is the cloud role and Felis is the local role.
 
-**Trade-off.** Former Agent keys remain as migration and development-only model entries. Documentation, settings migration, and benchmarks must treat models as configuration rather than separate Apex Agents.
-
-### Use named Agents instead of raw model IDs in the HUD
-
-**Decision.** Cortex exposes Panthera and Felis rather than raw provider model IDs. Each Agent card shows the selected model and exposes the registered model catalog underneath it.
-
-**Why.** The names communicate the cloud/local split while provider model IDs remain implementation details. An Agent identity can survive a model change as long as its role still makes sense.
-
-**Trade-off.** Agent documentation must remain synchronized with current default model mappings, stability labels, and development-only model visibility.
+**Trade-off.** The model catalog can keep growing without adding Agents, so the model metadata, settings, and documentation still need to stay in sync.
 
 ### Separate development-only models from product Agents
 
@@ -204,7 +196,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Why.** I still need safe places to try alternate cloud and local models without expanding the normal product roster again.
 
-**Trade-off.** Documentation and tests must distinguish durable Agent identities from replaceable model configuration.
+**Trade-off.** Documentation and tests must distinguish Agent roles from replaceable model configuration.
 
 ### Keep Agent sessions stateless on the server
 
@@ -232,11 +224,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Use stable runtime aliases for llama.cpp models
 
-**Decision.** Felis loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider. Legacy Agent-based alias names still resolve for existing presets.
+**Decision.** Felis loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider.
 
 **Why.** I want a small set of tested context sizes so loading, memory checks, and documentation stay predictable while model paths remain behind stable aliases.
 
-**Trade-off.** Adding a new context requires a router preset and settings migration work. High-resource presets such as `gemma-4-e2b-132k` and `gemma-4-e4b-64k` are explicitly marked as such. A model can support a larger maximum context than APEX chooses to expose.
+**Trade-off.** Adding a new context requires a router preset and matching model configuration. High-resource presets such as `gemma-4-e2b-132k` and `gemma-4-e4b-64k` are explicitly marked as such. A model can support a larger maximum context than APEX chooses to expose.
 
 ### Make local reasoning capability-driven and private
 
