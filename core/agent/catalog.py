@@ -73,7 +73,6 @@ class AgentSpec:
     identity_instruction: str
     runtime: AgentRuntime
     capability_tags: tuple[str, ...]
-    agent_version: str = ""
 
 
 AGENT_SPECS: dict[str, AgentSpec] = {
