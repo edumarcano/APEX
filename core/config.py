@@ -18,9 +18,7 @@ __all__ = [
     "GEMINI_AGENT_MAX_TURNS",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
-    "AGENT_QUERIES_ENABLED",
     "CONFIG_PATH",
-    "DEFAULT_CLOUD_AGENT",
     "MAX_SESSION_MESSAGES",
     "OLLAMA_RESOURCE_GATES",
     "OLLAMA_ENABLED",
@@ -308,9 +306,6 @@ _module_map = load_module_flags()
 MODULE_FOOTBALL: Final[bool] = bool(_module_map.get("football", False))
 MODULE_F1: Final[bool] = bool(_module_map.get("f1", False))
 
-_VALID_CLOUD_PROFILES: Final[frozenset[str]] = frozenset({"panthera"})
-
-
 def _parse_config_bool(raw: Any, *, key: str, default: bool) -> bool:
     """Coerce a config value to bool with logging on invalid input."""
     if isinstance(raw, bool):
@@ -441,43 +436,12 @@ def _parse_resource_gate(
     return ram, cpu
 
 
-def _parse_cloud_agent(raw: Any, *, key: str, default: str) -> str:
-    """Validate a cloud Agent identifier against the supported roster."""
-    if not isinstance(raw, str):
-        if raw is not None:
-            _LOGGER.warning("Config key %r must be a string; using default %r.", key, default)
-        return default
-
-    normalized = raw.strip().lower()
-    if normalized in _VALID_CLOUD_PROFILES:
-        return normalized
-
-    _LOGGER.warning(
-        "Config key %r=%r is not in %s; using default %r.",
-        key,
-        raw,
-        sorted(_VALID_CLOUD_PROFILES),
-        default,
-    )
-    return default
-
-
 try:
     _agent_settings_cfg = _CONFIG_DATA.get("ask_apex", {})
     if not isinstance(_agent_settings_cfg, dict):
         _LOGGER.warning('Config key "ask_apex" must be a JSON object; using defaults.')
         _agent_settings_cfg = {}
 
-    AGENT_QUERIES_ENABLED: Final[bool] = _parse_config_bool(
-        _agent_settings_cfg.get("enabled"),
-        key="ask_apex.enabled",
-        default=True,
-    )
-    DEFAULT_CLOUD_AGENT: Final[str] = _parse_cloud_agent(
-        _agent_settings_cfg.get("cloud_agent") or _agent_settings_cfg.get("agent"),
-        key="ask_apex.agent",
-        default="panthera",
-    )
     MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
         _agent_settings_cfg.get("max_session_messages"),
         key="ask_apex.max_session_messages",
@@ -487,8 +451,6 @@ try:
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
-    AGENT_QUERIES_ENABLED = True
-    DEFAULT_CLOUD_AGENT = "panthera"
     MAX_SESSION_MESSAGES = 6
 
 try:

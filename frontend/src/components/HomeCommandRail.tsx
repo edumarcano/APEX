@@ -140,9 +140,7 @@ export function HomeCommandRail({
           <BriefingModeSelector
             value={briefingMode}
             onChange={onBriefingModeChange}
-            agents={agentsStatus}
             targets={briefingTargets}
-            hydrated={agentsStatusHydrated}
             disabled={briefingControlsBusy}
             className="col-span-2 justify-self-center w-full max-w-[20rem]"
           />
@@ -199,9 +197,7 @@ export function HomeCommandRail({
             <BriefingModeSelector
               value={briefingMode}
               onChange={onBriefingModeChange}
-              agents={agentsStatus}
               targets={briefingTargets}
-              hydrated={agentsStatusHydrated}
               disabled={briefingControlsBusy}
               className="home-command-grid__briefing min-w-0"
             />

@@ -170,14 +170,10 @@ export interface BriefingModeAvailability {
 
 export function resolveBriefingModeAvailability(
   mode: BriefingMode,
-  hydrated: boolean,
   targets?: BriefingTargetStatus[],
 ): BriefingModeAvailability {
   if (mode === 'structured_digest') {
     return { status: 'available', reason: null }
-  }
-  if (!hydrated) {
-    return { status: 'unknown', reason: 'Checking mode availability…' }
   }
   if (targets && targets.length > 0) {
     const target = targets.find((entry) => entry.mode === mode)

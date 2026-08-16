@@ -18,10 +18,6 @@ CloudProvider = Literal["openai", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 HostedTool = Literal["google_search", "google_maps", "x_search"]
 
-VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
-VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
-
-
 @dataclass(frozen=True, slots=True)
 class ModelProfile:
     """Replaceable provider/runtime model configuration."""
@@ -40,14 +36,6 @@ class ModelProfile:
     default_reasoning: str | None = None
     dev_only: bool = False
     maximum_context_window: int | None = None
-
-    @property
-    def supports_effort(self) -> bool:
-        return bool(self.reasoning_options)
-
-    @property
-    def default_effort(self) -> str | None:
-        return self.default_reasoning
 
     def __post_init__(self) -> None:
         if self.provider == "gemini":
@@ -219,30 +207,6 @@ def get_model_profile(model_id: str) -> ModelProfile | None:
     return ALL_MODEL_PROFILES.get(model_id)
 
 
-def cloud_models_for_provider(
-    provider: CloudProvider,
-    *,
-    dev_mode: bool = False,
-) -> tuple[ModelProfile, ...]:
-    return tuple(
-        profile
-        for profile in CLOUD_MODEL_PROFILES.values()
-        if profile.provider == provider and (not profile.dev_only or dev_mode)
-    )
-
-
-def local_models_for_runtime(
-    runtime: LocalRuntime,
-    *,
-    dev_mode: bool = False,
-) -> tuple[ModelProfile, ...]:
-    return tuple(
-        profile
-        for profile in LOCAL_MODEL_PROFILES.values()
-        if profile.provider == runtime and (not profile.dev_only or dev_mode)
-    )
-
-
 def visible_cloud_models(*, dev_mode: bool = False) -> tuple[ModelProfile, ...]:
     return tuple(
         profile
@@ -304,17 +268,6 @@ def reconcile_felis_model(
     return DEFAULT_FELIS_MODEL
 
 
-def visible_cloud_providers(*, dev_mode: bool = False) -> tuple[CloudProvider, ...]:
-    providers: list[CloudProvider] = []
-    seen: set[str] = set()
-    for profile in visible_cloud_models(dev_mode=dev_mode):
-        if profile.provider in seen:
-            continue
-        seen.add(profile.provider)
-        providers.append(profile.provider)
-    return tuple(providers)
-
-
 def reconcile_felis_context_window(
     runtime: LocalRuntime,
     model: str,
@@ -357,14 +310,3 @@ def reconcile_panthera_reasoning(
     if reasoning in profile.reasoning_options:
         return reasoning
     return profile.default_reasoning
-
-
-def visible_local_runtimes(*, dev_mode: bool = False) -> tuple[LocalRuntime, ...]:
-    runtimes: list[LocalRuntime] = []
-    seen: set[str] = set()
-    for profile in visible_local_models(dev_mode=dev_mode):
-        if profile.provider in seen:
-            continue
-        seen.add(profile.provider)
-        runtimes.append(profile.provider)
-    return tuple(runtimes)

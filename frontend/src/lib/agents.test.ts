@@ -9,8 +9,10 @@ import {
   isFelisKey,
   isPantheraKey,
   providerDisplayName,
+  resolveBriefingModeAvailability,
   usesSandboxHistory,
 } from './agents'
+import type { BriefingTargetStatus } from '../types/telemetry'
 
 describe('agents helpers', () => {
   it('exposes only Panthera and Felis agent keys', () => {
@@ -76,5 +78,33 @@ describe('agents helpers', () => {
         status: 'available',
       }),
     ).toBe(false)
+  })
+
+  it('uses briefing targets as the sole source of model-mode availability', () => {
+    const panthera: BriefingTargetStatus = {
+      mode: 'panthera',
+      label: 'Apex Panthera',
+      description: 'Cloud briefing',
+      model_id: 'gpt-5.6-luna',
+      model_display_name: 'GPT-5.6 Luna',
+      provider: 'openai',
+      runtime: 'cloud',
+      status: 'configured',
+      reason: 'Credentials configured',
+      pricing: null,
+    }
+
+    expect(resolveBriefingModeAvailability('structured_digest')).toEqual({
+      status: 'available',
+      reason: null,
+    })
+    expect(resolveBriefingModeAvailability('panthera', [panthera])).toEqual({
+      status: 'configured',
+      reason: 'Credentials configured',
+    })
+    expect(resolveBriefingModeAvailability('felis', [panthera])).toEqual({
+      status: 'unknown',
+      reason: 'Mode status unavailable',
+    })
   })
 })

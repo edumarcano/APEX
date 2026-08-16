@@ -44,9 +44,7 @@ from core.agent.model_catalog import (
     ModelProfile,
     model_has_credentials,
     visible_cloud_models,
-    visible_cloud_providers,
     visible_local_models,
-    visible_local_runtimes,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.sandbox_context import get_masked_briefing

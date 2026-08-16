@@ -48,6 +48,8 @@ class SandboxPolicyTests(unittest.TestCase):
 
     def test_sandbox_panthera_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
+        selected_model = get_model_profile("gpt-5.6-luna")
+        assert selected_model is not None
 
         def capture_execution(payload, *_args, **kwargs):
             captured.update(
@@ -72,8 +74,13 @@ class SandboxPolicyTests(unittest.TestCase):
             mock.patch(
                 "core.api.cortex._execute_agent_turn", side_effect=capture_execution
             ),
-            mock.patch.dict(
-                "os.environ", {"GEMINI_API_KEY": "sandbox"}, clear=False
+            mock.patch(
+                "core.api.cortex.resolve_selected_model_profile",
+                return_value=selected_model,
+            ),
+            mock.patch(
+                "core.agent.catalog.resolve_selected_model_profile",
+                return_value=selected_model,
             ),
         ):
             store_mock.return_value.get_snapshot.return_value.ask_apex = ask_apex

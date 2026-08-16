@@ -24,8 +24,6 @@ from core.settings.models import (
     VALID_AGENT_KEYS,
     VALID_BRIEFING_MODES,
     VALID_CLOUD_EFFORTS,
-    VALID_CLOUD_PROVIDERS,
-    VALID_LOCAL_RUNTIMES,
     VALID_VOICE_ENGINES,
     VALID_VOICE_GENDERS,
     VALID_VOICE_MODES,
@@ -629,6 +627,21 @@ def _normalize_agent_settings(
             )
         return {}
 
+    _record_unsupported_agent_fields(
+        value,
+        allowed={
+            "enabled",
+            "agent",
+            "sandbox_mode",
+            "panthera",
+            "felis",
+            "max_session_messages",
+            "apodemus_context_window",
+        },
+        path="ask_apex",
+        layer_name=layer_name,
+        errors=errors,
+    )
     result: dict[str, Any] = {}
 
     if isinstance(value.get("enabled"), bool):
@@ -650,6 +663,13 @@ def _normalize_agent_settings(
 
     panthera_raw = value.get("panthera")
     if isinstance(panthera_raw, dict):
+        _record_unsupported_agent_fields(
+            panthera_raw,
+            allowed={"model", "effort", "hosted_tools"},
+            path="ask_apex.panthera",
+            layer_name=layer_name,
+            errors=errors,
+        )
         panthera: dict[str, Any] = {}
         model = panthera_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
@@ -681,17 +701,35 @@ def _normalize_agent_settings(
                 panthera["effort"] = reconciled_effort
         hosted_raw = panthera_raw.get("hosted_tools")
         if isinstance(hosted_raw, dict):
+            _record_unsupported_agent_fields(
+                hosted_raw,
+                allowed={"google_search", "google_maps", "x_search"},
+                path="ask_apex.panthera.hosted_tools",
+                layer_name=layer_name,
+                errors=errors,
+            )
             hosted: dict[str, bool] = {}
             for key in ("google_search", "google_maps", "x_search"):
                 if isinstance(hosted_raw.get(key), bool):
                     hosted[key] = hosted_raw[key]
             if hosted:
                 panthera["hosted_tools"] = hosted
+        elif hosted_raw is not None:
+            _record_error(errors, "ask_apex.panthera.hosted_tools must be an object")
         if panthera:
             result["panthera"] = panthera
+    elif panthera_raw is not None:
+        _record_error(errors, "ask_apex.panthera must be an object")
 
     felis_raw = value.get("felis")
     if isinstance(felis_raw, dict):
+        _record_unsupported_agent_fields(
+            felis_raw,
+            allowed={"model", "context_window", "reasoning_mode"},
+            path="ask_apex.felis",
+            layer_name=layer_name,
+            errors=errors,
+        )
         felis: dict[str, Any] = {}
         model = felis_raw.get("model")
         if isinstance(model, str) and get_model_profile(model.strip()) is not None:
@@ -718,6 +756,8 @@ def _normalize_agent_settings(
             _record_error(errors, "ask_apex.felis.reasoning_mode is not valid")
         if felis:
             result["felis"] = felis
+    elif felis_raw is not None:
+        _record_error(errors, "ask_apex.felis must be an object")
 
     felis_result = result.get("felis")
     if isinstance(felis_result, dict):
@@ -744,6 +784,29 @@ def _normalize_agent_settings(
                 )
 
     return result
+
+
+def _record_unsupported_agent_fields(
+    value: dict[str, Any],
+    *,
+    allowed: set[str],
+    path: str,
+    layer_name: str,
+    errors: NormalizationIssues | None,
+) -> None:
+    """Reject stale Agent/provider/runtime keys instead of silently dropping them."""
+    local_override = layer_name == "config.local.json"
+    for key in sorted(set(value) - allowed):
+        if local_override:
+            _record_error(
+                errors,
+                f"unsupported Agent settings format; reset local settings ({path}.{key})",
+            )
+            _LOGGER.warning(
+                "Unsupported Agent settings field %r in %s; reset local settings.",
+                f"{path}.{key}",
+                layer_name,
+            )
 
 
 def _normalize_tool_profiles(

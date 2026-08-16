@@ -42,7 +42,6 @@ from core.config import (
 AgentKey: TypeAlias = Literal["panthera", "felis"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
-ApexEffort: TypeAlias = NativeEffort
 CloudProvider: TypeAlias = Literal["openai", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 

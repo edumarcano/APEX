@@ -21,7 +21,6 @@ import { createPortal } from 'react-dom'
 
 import type { BriefingMode } from '../types/settings'
 import type {
-  AgentStatus,
   AgentAvailabilityStatus,
   BriefingTargetStatus,
 } from '../types/telemetry'
@@ -110,7 +109,7 @@ function compactRate(value: number): string {
   return `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
 }
 
-function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[], agents?: AgentStatus[]): string {
+function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[]): string {
   if (mode === 'structured_digest') return 'No model cost'
   const target = targets?.find((entry) => entry.mode === mode)
   if (target?.pricing) {
@@ -118,15 +117,6 @@ function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[], agents?:
     if (target.pricing.billing_basis === 'free_tier') return 'Free tier'
     return `In ${compactRate(target.pricing.input_per_million)} · Out ${compactRate(target.pricing.output_per_million)} / 1M`
   }
-  if (agents && agents.length > 0) {
-    const agent = agents.find((entry) => entry.key === mode)
-    if (agent) {
-      if (agent.pricing.billing_basis === 'local') return 'No provider token charge'
-      return `In ${compactRate(agent.pricing.input_per_million)} · Out ${compactRate(agent.pricing.output_per_million)} / 1M`
-    }
-  }
-  if (mode === 'felis') return 'No provider token charge'
-  if (mode === 'panthera') return 'In $0.20 · Out $1.20 / 1M'
   return 'Pricing unavailable'
 }
 
@@ -150,9 +140,7 @@ function dropdownPosition(trigger: HTMLButtonElement): CSSProperties {
 export interface BriefingModeSelectorProps {
   value: BriefingMode
   onChange: (mode: BriefingMode) => void
-  agents: AgentStatus[]
   targets?: BriefingTargetStatus[]
-  hydrated: boolean
   disabled: boolean
   className?: string
 }
@@ -160,9 +148,7 @@ export interface BriefingModeSelectorProps {
 export function BriefingModeSelector({
   value,
   onChange,
-  agents,
   targets,
-  hydrated,
   disabled,
   className = '',
 }: BriefingModeSelectorProps): ReactElement {
@@ -171,7 +157,7 @@ export function BriefingModeSelector({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
-  const activeAvailability = resolveBriefingModeAvailability(value, hydrated, targets)
+  const activeAvailability = resolveBriefingModeAvailability(value, targets)
 
   const close = useCallback((restoreFocus = false): void => {
     setOpen(false)
@@ -299,7 +285,7 @@ export function BriefingModeSelector({
                 <ul role="group" aria-label={section.title} className="space-y-1">
                   {section.options.map((option) => {
                     const index = ALL_OPTIONS.findIndex((entry) => entry.key === option.key)
-                    const availability = resolveBriefingModeAvailability(option.key, hydrated, targets)
+                    const availability = resolveBriefingModeAvailability(option.key, targets)
                     const unavailable = !['available', 'configured', 'verified'].includes(availability.status)
                     const selected = option.key === value
                     return (
@@ -327,7 +313,7 @@ export function BriefingModeSelector({
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
                             <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key, targets)}</span>
-                            <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets, agents)}</span>
+                            <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
                           </span>
                           {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
                         </button>

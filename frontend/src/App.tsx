@@ -648,7 +648,7 @@ export default function App(): ReactElement {
     return () => {
       ignore = true
     }
-  }, [agentsStatus, agentsStatusHydrated])
+  }, [agentsStatus])
 
   const hasSnapshot = telemetry.snapshot !== null
   const briefingControlsBusy =
@@ -656,11 +656,10 @@ export default function App(): ReactElement {
   const briefingModeAvailable = useMemo(() => {
     const availability = resolveBriefingModeAvailability(
       briefingMode,
-      agentsStatusHydrated,
       briefingTargets,
     )
     return ['available', 'configured', 'verified'].includes(availability.status)
-  }, [briefingMode, agentsStatusHydrated, briefingTargets])
+  }, [briefingMode, briefingTargets])
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
     [isRefreshingAll, telemetry.refreshingConnectors],

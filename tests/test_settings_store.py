@@ -288,6 +288,25 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(store.local_file_present)
         self.assertTrue(store.local_override_active)
 
+    def test_legacy_agent_shape_discards_local_override_with_clear_warning(self) -> None:
+        _write_json(
+            self.local_path,
+            {
+                "ask_apex": {
+                    "cloud_agent": "panthera",
+                    "panthera": {"provider": "openai"},
+                    "felis": {"runtime": "llama_cpp"},
+                }
+            },
+        )
+
+        store = self._store()
+
+        self.assertFalse(store.local_override_active)
+        self.assertIn("unsupported Agent settings format", store.load_warning or "")
+        self.assertIn("reset local settings", store.load_warning or "")
+        self.assertEqual(store.get_snapshot().ask_apex.agent, "panthera")
+
 
 class SettingsStorePatchTests(unittest.TestCase):
     def setUp(self) -> None:
