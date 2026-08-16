@@ -30,8 +30,6 @@ _LOGGER = logging.getLogger(__name__)
 
 ResponsesProviderKind = Literal["openai", "xai"]
 
-# Native hosted tools that must never be attached by APEX adapters in v1.19
-# branch 1 (Brave remains the general search path when connected later).
 _FORBIDDEN_NATIVE_TOOLS = frozenset(
     {
         "web_search",
@@ -50,7 +48,6 @@ class ResponsesModelProfile:
         *,
         provider: ResponsesProviderKind,
         display_name: str,
-        agent_version: str,
         api_model: str,
         max_tool_turns: int,
         max_tool_calls: int,
@@ -63,7 +60,6 @@ class ResponsesModelProfile:
     ) -> None:
         self.provider = provider
         self.display_name = display_name
-        self.agent_version = agent_version
         self.api_model = api_model
         self.max_tool_turns = max_tool_turns
         self.max_tool_calls = max_tool_calls
@@ -76,7 +72,6 @@ class ResponsesModelProfile:
         return {
             "provider": self.provider,
             "display_name": self.display_name,
-            "agent_version": self.agent_version,
             "api_model": self.api_model,
             "max_tool_turns": self.max_tool_turns,
             "max_tool_calls": self.max_tool_calls,
@@ -132,8 +127,6 @@ def _messages_to_responses_input(
             if message.provider_output_items:
                 items.extend(message.provider_output_items)
                 continue
-            # Fallback reconstruction when opaque items are unavailable
-            # (e.g. browser-trimmed history without provider payloads).
             if message.content:
                 items.append(
                     {
@@ -258,8 +251,6 @@ def _parse_usage(raw_usage: Any) -> TokenUsage | None:
 
     visible_output = output_tokens if isinstance(output_tokens, int) else None
     if visible_output is not None and isinstance(reasoning, int):
-        # The Responses API nests reasoning inside output_tokens; TokenUsage
-        # keeps them separate so cost is not charged twice.
         visible_output = max(visible_output - reasoning, 0)
 
     return TokenUsage(
@@ -274,7 +265,6 @@ def _parse_usage(raw_usage: Any) -> TokenUsage | None:
 def _extract_citations(output_items: list[dict[str, Any]]) -> list[Citation]:
     citations: list[Citation] = []
     for item in output_items:
-        # Provider-hosted search annotations appear on message content parts.
         content = item.get("content")
         if not isinstance(content, list):
             continue
@@ -405,8 +395,6 @@ class ResponsesApiProvider:
         if request_tools:
             request["tools"] = request_tools
         if profile.reasoning_effort:
-            # Only reasoning models accept these fields; sending them to a
-            # non-reasoning model is rejected by the API.
             request["reasoning"] = {"effort": profile.reasoning_effort}
             if profile.supports_encrypted_reasoning:
                 request["include"] = ["reasoning.encrypted_content"]
