@@ -129,7 +129,7 @@ Current default model mappings used by documentation checks are `panthera -> gpt
 | Model ID | Provider | Stability | Notes |
 |---|---|---|---|
 | `gpt-5.6-luna` | OpenAI | Stable | Default Panthera model |
-| `gemini-3.6-flash` | Google | Stable | Optional Google Search and Maps grounding |
+| `gemini-3.6-flash` | Google | Stable | Optional Google Search and Maps grounding; `DEV_MODE` only |
 | `gemini-3.5-flash-lite` | Google | Experimental | `DEV_MODE` only |
 | `grok-4.3` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 | `grok-4.5` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
@@ -149,7 +149,7 @@ Brave MCP is the general web-search capability for Panthera when connected. Prov
 | Model ID | Runtime | Stability | Notes |
 |---|---|---|---|
 | `gemma-4-E2B-Q4_K_M.gguf` | llama.cpp | Stable | Default Lynx model |
-| `gemma-4-E4B-Q4_K_M.gguf` | llama.cpp | Preview | Larger local option |
+| `gemma-4-E4B-Q4_K_M.gguf` | llama.cpp | Experimental | Larger local option |
 | `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | `DEV_MODE` only |
 | `qwen3:1.7b` | Ollama | Stable | Lightweight option; `DEV_MODE` only |
 | `qwen3:4b-instruct` | Ollama | Stable | Balanced option; `DEV_MODE` only |
@@ -177,7 +177,7 @@ For repeatable Lynx and candidate-model comparisons, see [Local Model Benchmarki
 | `llama_cpp.manual_unload_enabled` | `true` | No | Allows HUD unload |
 | `llama_cpp.request_timeout_seconds` | `180` | No | Generation and load wait budget |
 | `llama_cpp.resource_gates` entry for `gemma-4-E2B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the default Lynx model |
-| `llama_cpp.resource_gates` entry for `gemma-4-E4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the preview Lynx model |
+| `llama_cpp.resource_gates` entry for `gemma-4-E4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the experimental Lynx model |
 | `llama_cpp.resource_gates` entry for `Qwen3.5-4B-Q4_K_M.gguf` | RAM/CPU limits | No | Cold-load gates for the development-only evaluation model |
 
 Optional router authentication uses `LLAMA_CPP_API_KEY` in `.env` only. APEX sends `Authorization: Bearer …` when the variable is set and never writes the key into settings or docs examples beyond a placeholder.

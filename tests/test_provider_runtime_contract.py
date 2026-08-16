@@ -503,7 +503,7 @@ class PricingRegistryTests(unittest.TestCase):
                 ProviderToolEvent(name="unknown_hosted", status="ok", billable_units=1),
             ],
         )
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 9.0, places=4)
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 4.5, places=4)
         self.assertAlmostEqual(estimate.hosted_tool_cost or 0.0, 0.028, places=4)
         self.assertEqual(estimate.completeness, "partial")
         self.assertEqual(estimate.pricing_version, PRICING_VERSION)
@@ -540,9 +540,9 @@ class PricingRegistryTests(unittest.TestCase):
                 output_tokens=1_000_000,
             ),
         )
-        # 0.6M uncached at 1.50 + 0.4M cached at 0.15 + 1M reasoning and 1M
-        # output at the 7.50 output rate.
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 15.96, places=4)
+        # 0.6M uncached at 0.75 + 0.4M cached at 0.075 + 1M reasoning and 1M
+        # output at the 3.75 output rate.
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 7.98, places=4)
 
     def test_experimental_gemini_model_pricing_uses_free_tier(self) -> None:
         estimate = estimate_inference_cost(

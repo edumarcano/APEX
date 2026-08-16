@@ -21,6 +21,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/trigger` | Full refresh-and-briefing compatibility flow |
 | POST | `/api/v1/briefings/generate` | Brief from the current snapshot |
 | GET | `/api/v1/briefings/history` | Recent briefing ledger |
+| GET | `/api/v1/briefings/targets` | Briefing synthesis target metadata |
 | GET | `/api/v1/reminders` | Active reminders |
 | GET | `/api/v1/reminders/task` | Exact selected-list task detail (`id=todo:…`) |
 | GET | `/api/v1/reminders/completed` | Live bounded completed reminders |
@@ -240,6 +241,10 @@ Normal-mode generation persists the result. Demo mode uses static behavior and d
 
 Returns up to 50 newest briefing records with transcript, digest, runtime metadata, and digest-quality status. Malformed legacy records are classified rather than allowed to break the whole ledger response. Demo mode returns a static mock ledger.
 
+### GET `/api/v1/briefings/targets`
+
+Returns live availability and metadata for fixed briefing synthesis targets (`panthera`, `lynx`, `structured_digest`).
+
 ## Reminders
 
 ### GET `/api/v1/reminders`
@@ -357,7 +362,7 @@ Development-only models appear in each Agent's `available_models` list only when
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Lynx publishes its selected context and reasoning values, options, and defaults when the selected model supports them. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
-Registered cloud models under Panthera include `gpt-5.6-luna`, `gemini-3.6-flash`, and development-only `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Lynx include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b`, `qwen3:4b-instruct`, and `Qwen3.5-4B-Q4_K_M.gguf`.
+Registered cloud models under Panthera include `gpt-5.6-luna`, and development-only `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Lynx include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b`, `qwen3:4b-instruct`, and `Qwen3.5-4B-Q4_K_M.gguf`.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 

@@ -55,7 +55,7 @@ class RoutingTests(unittest.TestCase):
             result = router.synthesize(sample_input(), "cloud")
         self.assertEqual(result, expected)
 
-    def test_panthera_uses_openai_at_fixed_light_effort_without_tools(self) -> None:
+    def test_panthera_uses_openai_at_fixed_none_effort_without_tools(self) -> None:
         router = SynthesisRouter()
         turn = ProviderTurnResult(
             message=AgentMessage(
@@ -72,7 +72,7 @@ class RoutingTests(unittest.TestCase):
         messages, tools, profile = generate.call_args.args
         self.assertEqual(messages[0].role, "user")
         self.assertEqual(tools, [])
-        self.assertEqual(profile.reasoning_effort, "low")
+        self.assertEqual(profile.reasoning_effort, "none")
         self.assertTrue(
             generate.call_args.kwargs["system_instruction_override"].startswith(
                 "You are Apex Panthera"

@@ -289,7 +289,7 @@ class SynthesisRouter:
         return result
 
     def _panthera(self, source: SynthesisInput) -> SynthesisResult:
-        """Synthesize with the fixed-Light Panthera briefing agent."""
+        """Synthesize with the fixed-None Panthera briefing agent."""
         import os
 
         api_key = os.getenv("OPENAI_API_KEY")
@@ -297,7 +297,7 @@ class SynthesisRouter:
             raise RuntimeError("openai_unavailable")
         agent = build_concrete_agent(
             "panthera",
-            native_effort="low",
+            native_effort="none",
             model_id=_PANTHERA_BRIEFING_MODEL,
         )
         self._state("generating", "openai", "panthera", None)

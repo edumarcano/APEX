@@ -79,6 +79,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset({"google_search", "google_maps"}),
+        dev_only=True,
         maximum_context_window=1_048_576,
     ),
     "gemini-3.5-flash-lite": ModelProfile(
@@ -176,7 +177,7 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         display_name="Gemma 4 E4B",
         provider="llama_cpp",
         runtime="local",
-        stability="preview",
+        stability="experimental",
         credential_env=None,
         max_tool_turns=4,
         max_tool_calls=4,

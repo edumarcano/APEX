@@ -52,7 +52,7 @@ class HostedToolRate:
 # Standard paid rates, reconciled against provider documentation on 2026-08-02.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
     "gemini-3.5-flash-lite": ModelTokenRates(0.30, 2.50, 0.03),
-    "gemini-3.6-flash": ModelTokenRates(1.50, 7.50, 0.15),
+    "gemini-3.6-flash": ModelTokenRates(0.75, 3.75, 0.075),
     "gpt-5.6-luna": ModelTokenRates(
         0.20,
         1.20,
