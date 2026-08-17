@@ -6,6 +6,7 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   ThreadListPrimitive,
+  ThreadListItemPrimitive,
   useAui,
   useAuiState,
   useLocalRuntime,
@@ -79,6 +80,15 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) throw new Error(`APEX request failed (${response.status})`)
   return response.json() as Promise<T>
+}
+
+async function persistActiveLeaf(remoteId: string | undefined, messageId: string): Promise<void> {
+  if (!remoteId) return
+  await requestJson(API_ENDPOINTS.cortexConversation(remoteId), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active_leaf_message_id: messageId }),
+  })
 }
 
 function ThreadHistory({ children }: { children?: ReactNode }): ReactNode {
@@ -205,10 +215,14 @@ export function ApexAssistantError(): ReactNode {
   return typeof apex?.error === 'string' ? <p className="mt-2 text-xs text-red-300" role="alert">{apex.error}</p> : null
 }
 
-function ApexAssistantMessage(): ReactNode {
+function ApexAssistantMessage({ renderAgent }: { renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode }): ReactNode {
+  const aui = useAui()
   const role = useAuiState((state) => state.message.role)
   const content = useAuiState((state) => state.message.content)
   const status = useAuiState((state) => state.message.status)
+  const branchCount = useAuiState((state) => state.message.branchCount)
+  const branchNumber = useAuiState((state) => state.message.branchNumber)
+  const metadata = useAuiState((state) => state.message.metadata.custom?.apex as Record<string, unknown> | undefined) ?? {}
   const text = content
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
@@ -217,17 +231,22 @@ function ApexAssistantMessage(): ReactNode {
     <div className={role === 'user'
       ? 'max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white'
       : 'rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3 text-sm leading-relaxed text-zinc-200'}>
-      {role === 'assistant' ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : text}
+      {role === 'assistant' ? renderAgent?.(text, metadata) ?? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : text}
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}
+      <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-zinc-500">
+        <button type="button" onClick={() => void navigator.clipboard?.writeText(text)} className="hover:text-white">Copy</button>
+        {role === 'user' ? <button type="button" onClick={() => aui.message().composer().beginEdit()} className="hover:text-white">Edit</button> : <button type="button" onClick={() => aui.message().reload()} className="hover:text-white">Retry</button>}
+        {branchCount > 1 ? <><button type="button" onClick={() => { aui.message().switchToBranch({ position: 'previous' }); queueMicrotask(() => { void persistActiveLeaf(aui.threadListItem.getState().remoteId, aui.thread.getState().messages.at(-1)?.id ?? '') }) }} className="hover:text-white">‹</button><span>{branchNumber + 1}/{branchCount}</span><button type="button" onClick={() => { aui.message().switchToBranch({ position: 'next' }); queueMicrotask(() => { void persistActiveLeaf(aui.threadListItem.getState().remoteId, aui.thread.getState().messages.at(-1)?.id ?? '') }) }} className="hover:text-white">›</button></> : null}
+      </div>
     </div>
   </MessagePrimitive.Root>
 }
 
 /** APEX-owned presentation built from assistant-ui primitives, not its starter kit. */
-export function ApexAssistantThread({ disabled = false }: { disabled?: boolean }): ReactNode {
+export function ApexAssistantThread({ disabled = false, renderAgent }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode }): ReactNode {
   return <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
     <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll>
-      <ThreadPrimitive.Messages components={{ Message: ApexAssistantMessage }} />
+      <ThreadPrimitive.Messages components={{ Message: () => <ApexAssistantMessage renderAgent={renderAgent} /> }} />
     </ThreadPrimitive.Viewport>
     <ComposerPrimitive.Root className="border-t border-white/10 bg-black/20 p-3 sm:p-4">
       <div className="flex items-end gap-2">
@@ -242,6 +261,24 @@ export function ApexAssistantThread({ disabled = false }: { disabled?: boolean }
       </div>
     </ComposerPrimitive.Root>
   </ThreadPrimitive.Root>
+}
+
+function ApexConversationRailItem(): ReactNode {
+  const aui = useAui()
+  const [renaming, setRenaming] = useState(false)
+  const [title, setTitle] = useState('')
+  const archived = useAuiState((state) => state.threadListItem.status === 'archived')
+  const currentTitle = useAuiState((state) => state.threadListItem.title ?? 'Untitled conversation')
+  return <ThreadListItemPrimitive.Root className="group flex items-center gap-1 rounded-md px-2 py-1 hover:bg-white/5">
+    {renaming ? <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter' && title.trim()) { void aui.threadListItem.rename(title.trim()); setRenaming(false) } }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <ThreadListItemPrimitive.Trigger className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300"><ThreadListItemPrimitive.Title /></ThreadListItemPrimitive.Trigger>}
+    {!renaming ? <button type="button" aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="hidden text-zinc-500 group-hover:block hover:text-white">✎</button> : null}
+    {archived ? <ThreadListItemPrimitive.Unarchive className="hidden text-zinc-500 group-hover:block hover:text-white">Restore</ThreadListItemPrimitive.Unarchive> : <ThreadListItemPrimitive.Archive className="hidden text-zinc-500 group-hover:block hover:text-white">Archive</ThreadListItemPrimitive.Archive>}
+  </ThreadListItemPrimitive.Root>
+}
+
+export function ApexConversationRail({ className = 'hidden xl:block' }: { className?: string }): ReactNode {
+  const [archived, setArchived] = useState(false)
+  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation /></div><div className="mb-2 flex gap-2"><button type="button" onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white">Active</button><button type="button" onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white">Archived</button></div><ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={{ ThreadListItem: ApexConversationRailItem }} /></ThreadListPrimitive.Root></aside>
 }
 
 export function ApexAssistantNewConversation({ disabled = false }: { disabled?: boolean }): ReactNode {

@@ -102,7 +102,7 @@ export interface AgentQueryMetadata {
   toolSelection: ToolSelectionDiagnostics | null
 }
 
-interface AgentQueryResponseBody {
+export interface AgentQueryResponseBody {
   answer?: string
   tool_trace?: ToolTraceItem[]
   tool_outputs?: ToolOutputItem[]
@@ -772,7 +772,7 @@ function parseToolOutputItem(value: unknown): ToolOutputItem | null {
   }
 }
 
-function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
+export function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   if (!body || typeof body !== 'object') {
     return {}
   }
