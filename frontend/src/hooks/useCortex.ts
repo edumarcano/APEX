@@ -833,6 +833,11 @@ function usesSandboxPartition(
 export interface UseCortexResult {
   cortexHistory: AgentMessage[]
   cortexConversationId: string | null
+  conversationPreferences: {
+    agent: AgentKey
+    selectedToolNames: string[] | null
+    toolProfileId: string | null
+  } | null
   isCortexQuerying: boolean
   activeQueryAgent: AgentKey | null
   cortexLatestTrace: ToolTraceItem[]
@@ -854,6 +859,11 @@ export interface UseCortexResult {
       effort?: CloudEffort | null
     },
   ) => Promise<void>
+  patchConversation: (updates: {
+    agent?: AgentKey
+    selectedToolNames?: string[] | null
+    toolProfileId?: string | null
+  }) => Promise<boolean>
   unloadLocalModel: () => Promise<boolean>
   loadLocalModel: () => Promise<boolean>
   verifyCloudAgent: (agent: 'panthera') => Promise<boolean>
@@ -873,6 +883,7 @@ export function useCortex(
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
   const [sandboxHistory, setSandboxHistory] = useState<AgentMessage[]>([])
   const [cortexConversationId, setCortexConversationId] = useState<string | null>(null)
+  const [conversationPreferences, setConversationPreferences] = useState<UseCortexResult['conversationPreferences']>(null)
   const [isCortexQuerying, setIsCortexQuerying] = useState(false)
   const [activeQueryAgent, setActiveQueryAgent] = useState<AgentKey | null>(null)
   const [cortexLatestTrace, setCortexLatestTrace] = useState<ToolTraceItem[]>([])
@@ -888,6 +899,7 @@ export function useCortex(
   const sandboxHistoryRef = useRef<AgentMessage[]>([])
   const conversationIdRef = useRef<string | null>(null)
   const activeLeafRef = useRef<string | null>(null)
+  const conversationGenerationRef = useRef(0)
 
   useEffect(() => {
     productionHistoryRef.current = productionHistory
@@ -924,11 +936,22 @@ export function useCortex(
       if (message.role === 'user') return [{ role: 'user', content: message.content }]
       if (message.role !== 'agent') return []
       const response = parseAgentQueryResponse(message.response_metadata ?? {})
+      if (response.error) setCortexError(response.error)
       return [{ role: 'agent', content: message.content, tool_outputs: response.tool_outputs, ...(response.tool_trace?.length ? { tool_trace: response.tool_trace } : {}), ...(response.metadata ? { metadata: response.metadata } : {}) }]
     })
     conversationIdRef.current = record.id
     activeLeafRef.current = typeof record.active_leaf_message_id === 'string' ? record.active_leaf_message_id : null
     setCortexConversationId(record.id)
+    const agent = record.agent === 'panthera' || record.agent === 'felis' ? record.agent : null
+    if (agent) {
+      setConversationPreferences({
+        agent,
+        selectedToolNames: Array.isArray(record.selected_tool_names)
+          ? record.selected_tool_names.filter((name): name is string => typeof name === 'string')
+          : null,
+        toolProfileId: typeof record.tool_profile_id === 'string' ? record.tool_profile_id : null,
+      })
+    }
     if (usesSandboxPartition(devModeActive, sandboxMode)) {
       sandboxHistoryRef.current = history
       setSandboxHistory(history)
@@ -938,18 +961,45 @@ export function useCortex(
     }
   }, [devModeActive, sandboxMode])
 
-  const createConversation = useCallback(async (): Promise<void> => {
+  const createConversation = useCallback(async (generation?: number): Promise<void> => {
     const response = await fetch(API_ENDPOINTS.cortexConversations, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ origin: 'hud' }) })
     if (!response.ok) throw new Error(`Conversation creation failed (${response.status})`)
-    const summary = await response.json() as { id?: unknown }
+    const summary = await response.json() as {
+      id?: unknown
+      agent?: unknown
+      selected_tool_names?: unknown
+      tool_profile_id?: unknown
+    }
     if (typeof summary.id !== 'string') throw new Error('APEX returned an invalid conversation.')
+    if (generation !== undefined && conversationGenerationRef.current !== generation) return
     conversationIdRef.current = summary.id
     activeLeafRef.current = null
     setCortexConversationId(summary.id)
+    setConversationPreferences({
+      agent: summary.agent === 'panthera' || summary.agent === 'felis' ? summary.agent : 'panthera',
+      selectedToolNames: Array.isArray(summary.selected_tool_names)
+        ? summary.selected_tool_names.filter((name): name is string => typeof name === 'string')
+        : null,
+      toolProfileId: typeof summary.tool_profile_id === 'string' ? summary.tool_profile_id : null,
+    })
   }, [])
 
   useEffect(() => {
+    const generation = ++conversationGenerationRef.current
     let cancelled = false
+    conversationIdRef.current = null
+    activeLeafRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Partition hydration must invalidate the previous durable conversation immediately.
+    setCortexConversationId(null)
+    setConversationPreferences(null)
+    if (usesSandboxPartition(devModeActive, sandboxMode)) {
+      sandboxHistoryRef.current = []
+      setSandboxHistory([])
+    } else {
+      productionHistoryRef.current = []
+      setProductionHistory([])
+    }
+    setIsCortexQuerying(false)
     const hydrate = async (): Promise<void> => {
       try {
         const response = await fetch(API_ENDPOINTS.cortexConversations)
@@ -958,10 +1008,10 @@ export function useCortex(
         const latest = conversations[0]
         if (latest && typeof latest.id === 'string') {
           const detail = await fetch(API_ENDPOINTS.cortexConversation(latest.id))
-          if (detail.ok && !cancelled) applyConversationDetail(await detail.json())
+          if (detail.ok && !cancelled && conversationGenerationRef.current === generation) applyConversationDetail(await detail.json())
           return
         }
-        if (!cancelled) await createConversation()
+        if (!cancelled && conversationGenerationRef.current === generation) await createConversation(generation)
       } catch (error) {
         if (!cancelled) setCortexError(error instanceof Error ? error.message : 'Failed to load conversations.')
       }
@@ -969,6 +1019,55 @@ export function useCortex(
     void hydrate()
     return () => { cancelled = true }
   }, [applyConversationDetail, createConversation, devModeActive, sandboxMode])
+
+  const reloadConversationDetail = useCallback(async (
+    conversationId: string,
+    generation: number,
+  ): Promise<void> => {
+    try {
+      const response = await fetch(API_ENDPOINTS.cortexConversation(conversationId))
+      if (!response.ok || conversationGenerationRef.current !== generation || conversationIdRef.current !== conversationId) {
+        return
+      }
+      applyConversationDetail(await response.json())
+    } catch {
+      // Preserve the original transport or HTTP error when reconciliation is unavailable.
+    }
+  }, [applyConversationDetail])
+
+  const patchConversation = useCallback(async (updates: {
+    agent?: AgentKey
+    selectedToolNames?: string[] | null
+    toolProfileId?: string | null
+  }): Promise<boolean> => {
+    const conversationId = conversationIdRef.current
+    const generation = conversationGenerationRef.current
+    if (!conversationId) return false
+    const body: Record<string, unknown> = {}
+    if (updates.agent !== undefined) body.agent = updates.agent
+    if (updates.selectedToolNames !== undefined) body.selected_tool_names = updates.selectedToolNames
+    if (updates.toolProfileId !== undefined) body.tool_profile_id = updates.toolProfileId
+    try {
+      const response = await fetch(API_ENDPOINTS.cortexConversation(conversationId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok || conversationGenerationRef.current !== generation || conversationIdRef.current !== conversationId) return false
+      setConversationPreferences((current) => current ? {
+        agent: updates.agent ?? current.agent,
+        selectedToolNames: updates.selectedToolNames !== undefined
+          ? updates.selectedToolNames
+          : current.selectedToolNames,
+        toolProfileId: updates.toolProfileId !== undefined
+          ? updates.toolProfileId
+          : current.toolProfileId,
+      } : current)
+      return true
+    } catch {
+      return false
+    }
+  }, [])
 
   // Mirrors isCortexQuerying for the poll loop without restarting it on
   // every query state transition.
@@ -1141,6 +1240,7 @@ export function useCortex(
 
       const useSandboxStore = usesSandboxPartition(devModeActive, sandboxMode)
       const conversationId = conversationIdRef.current
+      const generation = conversationGenerationRef.current
       if (!conversationId) {
         setCortexError('Conversation is still loading.')
         return
@@ -1175,7 +1275,7 @@ export function useCortex(
             ...(context?.selectedToolNames !== undefined
               ? { selected_tool_names: context.selectedToolNames ?? [] }
               : {}),
-            ...(context?.toolProfileId
+            ...(context?.toolProfileId !== undefined
               ? { tool_profile_id: context.toolProfileId }
               : {}),
           }),
@@ -1222,6 +1322,8 @@ export function useCortex(
           } catch {
             // Keep default message when error body is not JSON.
           }
+          await reloadConversationDetail(conversationId, generation)
+          if (conversationGenerationRef.current !== generation) return
           setCortexError(message)
           return
         }
@@ -1238,6 +1340,7 @@ export function useCortex(
           ...(body.metadata ? { metadata: body.metadata } : {}),
         }
 
+        if (conversationGenerationRef.current !== generation || conversationIdRef.current !== conversationId) return
         if (useSandboxStore) {
           setSandboxHistory((prev) => [...prev, modelMsg])
         } else {
@@ -1251,19 +1354,23 @@ export function useCortex(
           setCortexError(body.error)
         }
       } catch (fetchError) {
+        await reloadConversationDetail(conversationId, generation)
+        if (conversationGenerationRef.current !== generation) return
         const message =
           fetchError instanceof Error
             ? fetchError.message
             : 'Failed to reach APEX.'
         setCortexError(message)
       } finally {
-        isCortexQueryingRef.current = false
-        setIsCortexQuerying(false)
-        setActiveQueryAgent(null)
-        void fetchAgentsStatus()
+        if (conversationGenerationRef.current === generation) {
+          isCortexQueryingRef.current = false
+          setIsCortexQuerying(false)
+          setActiveQueryAgent(null)
+          void fetchAgentsStatus()
+        }
       }
     },
-    [devModeActive, fetchAgentsStatus, sandboxMode],
+    [devModeActive, fetchAgentsStatus, reloadConversationDetail, sandboxMode],
   )
 
   const clearCortexSession = useCallback((): void => {
@@ -1280,7 +1387,9 @@ export function useCortex(
     conversationIdRef.current = null
     activeLeafRef.current = null
     setCortexConversationId(null)
-    void createConversation().catch((error: unknown) => setCortexError(error instanceof Error ? error.message : 'Failed to create conversation.'))
+    setConversationPreferences(null)
+    const generation = ++conversationGenerationRef.current
+    void createConversation(generation).catch((error: unknown) => setCortexError(error instanceof Error ? error.message : 'Failed to create conversation.'))
   }, [createConversation, devModeActive, sandboxMode])
 
   const resetCortexSession = useCallback((): void => {
@@ -1296,6 +1405,7 @@ export function useCortex(
   return {
     cortexHistory,
     cortexConversationId,
+    conversationPreferences,
     isCortexQuerying,
     activeQueryAgent,
     cortexLatestTrace,
@@ -1307,6 +1417,7 @@ export function useCortex(
     verifyingCloudAgent,
     refreshAgentsStatus: fetchAgentsStatus,
     queryAgent,
+    patchConversation,
     unloadLocalModel,
     loadLocalModel,
     verifyCloudAgent,

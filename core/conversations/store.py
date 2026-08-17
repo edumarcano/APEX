@@ -242,7 +242,13 @@ class ConversationStore:
                 if message.conversation_id != conversation_id or message.parent_message_id != user_id or message.role != "agent" or message.agent != agent or _json(message.request_metadata) != canonical:
                     raise ConversationConflictError("Message IDs cannot be reused with different turn content.")
                 existing_user = conn.execute("SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE id = ?", (str(user_id),)).fetchone()
-                if existing_user is None or self._message(existing_user).content != prompt:
+                if (
+                    existing_user is None
+                    or self._message(existing_user).conversation_id != conversation_id
+                    or self._message(existing_user).role != "user"
+                    or self._message(existing_user).parent_message_id != parent_id
+                    or self._message(existing_user).content != prompt
+                ):
                     raise ConversationConflictError("Message IDs cannot be reused with different turn content.")
                 if message.status == "pending":
                     raise ConversationBusyError("turn_in_progress")

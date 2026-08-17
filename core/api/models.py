@@ -757,6 +757,8 @@ class BriefingTargetStatus(BaseModel):
 class ToolPreflightRequest(BaseModel):
     """Inputs for the next-request tool/context token estimate."""
 
+    model_config = ConfigDict(extra="forbid")
+
     agent: AgentKey = "panthera"
     selected_tool_names: list[str] | None = None
     tool_profile_id: str | None = None

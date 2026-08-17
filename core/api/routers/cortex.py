@@ -119,7 +119,13 @@ def tool_catalog(agent: AgentKey = "panthera") -> ToolCatalogResponse:
 def tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
     """Estimate the next request using model-facing selected tool schemas."""
     _ensure_agent_api_access(payload.agent)
-    return build_tool_preflight(payload)
+    try:
+        return build_tool_preflight(payload)
+    except ConversationNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation was not found.",
+        ) from exc
 
 
 def _conversation_error(error: Exception) -> HTTPException:

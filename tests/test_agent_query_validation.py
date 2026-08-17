@@ -12,10 +12,15 @@ from core.agent.capabilities import CapabilityDescriptor
 from core.agent.model_catalog import get_model_profile
 from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
 from core.agent.types import AgentMessage, AgentQueryRequest, AgentQueryResponse
+from core.api.models import ToolPreflightRequest
 from core.api.cortex import query_agent
 
 
 class LocalEffortRejectionTests(unittest.TestCase):
+    def test_tool_preflight_rejects_removed_history_fields(self) -> None:
+        with self.assertRaises(ValueError):
+            ToolPreflightRequest.model_validate({"history": [], "prompt": "status"})
+
     def test_local_agent_rejects_effort_with_400(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
             "core.api.cortex.is_dev_mode", return_value=True

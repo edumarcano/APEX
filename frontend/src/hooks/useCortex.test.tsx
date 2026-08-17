@@ -3,7 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useCortex } from './useCortex'
 
-const conversation = { id: '00000000-0000-4000-8000-000000000001', active_leaf_message_id: null, messages: [] }
+const conversation = {
+  id: '00000000-0000-4000-8000-000000000001',
+  agent: 'panthera',
+  selected_tool_names: [],
+  tool_profile_id: null,
+  active_leaf_message_id: null,
+  messages: [],
+}
 
 describe('useCortex', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -34,18 +41,50 @@ describe('useCortex', () => {
   })
 
   it('keeps an optimistic user message when a durable turn fails', async () => {
+    let detailRequests = 0
+    const failedDetail = {
+      ...conversation,
+      active_leaf_message_id: '00000000-0000-4000-8000-000000000003',
+      messages: [
+        {
+          id: '00000000-0000-4000-8000-000000000002',
+          conversation_id: conversation.id,
+          parent_message_id: null,
+          role: 'user',
+          content: 'Keep this question',
+          status: 'completed',
+          created_at: '2026-08-17T00:00:00Z',
+          updated_at: '2026-08-17T00:00:00Z',
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000003',
+          conversation_id: conversation.id,
+          parent_message_id: '00000000-0000-4000-8000-000000000002',
+          role: 'agent',
+          content: '',
+          status: 'failed',
+          response_metadata: { error: 'Durable turn failed.' },
+          created_at: '2026-08-17T00:00:01Z',
+          updated_at: '2026-08-17T00:00:01Z',
+        },
+      ],
+    }
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
       if (url.endsWith('/conversations') && !init?.method) return new Response(JSON.stringify([conversation]))
-      if (url.endsWith(conversation.id) && !init?.method) return new Response(JSON.stringify(conversation))
+      if (url.endsWith(conversation.id) && !init?.method) {
+        detailRequests += 1
+        return new Response(JSON.stringify(detailRequests === 1 ? conversation : failedDetail))
+      }
       if (url.endsWith('/turns')) throw new Error('Network unavailable')
       return new Response(JSON.stringify([]))
     })
     const { result } = renderHook(() => useCortex(false))
     await waitFor(() => expect(result.current.cortexConversationId).toBe(conversation.id))
     await act(async () => { await result.current.queryAgent('Keep this question', 'panthera') })
-    expect(result.current.cortexHistory).toEqual([{ role: 'user', content: 'Keep this question' }])
+    expect(result.current.cortexHistory[0]).toEqual({ role: 'user', content: 'Keep this question' })
     expect(result.current.cortexError).toContain('Network unavailable')
+    expect(detailRequests).toBe(2)
   })
 
   it('creates a distinct durable conversation for a new session', async () => {
@@ -65,5 +104,31 @@ describe('useCortex', () => {
     act(() => result.current.clearCortexSession())
     await waitFor(() => expect(created).toBe(1))
     expect(result.current.cortexHistory).toEqual([])
+  })
+
+  it('hydrates conversation preferences and sends nullable profile patches', async () => {
+    const patchBodies: Record<string, unknown>[] = []
+    const detail = {
+      ...conversation,
+      agent: 'felis',
+      selected_tool_names: ['tool_a'],
+      tool_profile_id: 'profile_a',
+    }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/conversations') && !init?.method) return new Response(JSON.stringify([detail]))
+      if (url.endsWith(detail.id) && init?.method === 'PATCH') {
+        patchBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        return new Response(JSON.stringify(detail))
+      }
+      if (url.endsWith(detail.id) && !init?.method) return new Response(JSON.stringify(detail))
+      return new Response(JSON.stringify([]))
+    })
+    const { result } = renderHook(() => useCortex(false))
+    await waitFor(() => expect(result.current.conversationPreferences?.agent).toBe('felis'))
+    await act(async () => {
+      await result.current.patchConversation({ toolProfileId: null })
+    })
+    expect(patchBodies).toEqual([{ tool_profile_id: null }])
   })
 })

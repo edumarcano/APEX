@@ -80,6 +80,31 @@ class ConversationStoreTests(unittest.TestCase):
         with self.assertRaises(ConversationConflictError):
             self._begin(user_id=user_id, agent_id=agent_id, prompt="Different")
 
+    def test_replay_rejects_conflicting_parent(self) -> None:
+        user_id, agent_id = uuid4(), uuid4()
+        user, agent, _, _ = self._begin(user_id=user_id, agent_id=agent_id)
+        self.store.finalize(
+            conversation_id=self.conversation_id,
+            agent_id=agent.id,
+            answer="Hi",
+            status="completed",
+            response_metadata={},
+        )
+        with self.assertRaises(ConversationConflictError):
+            self.store.begin_turn(
+                conversation_id=self.conversation_id,
+                partition="production",
+                user_id=user_id,
+                agent_id=agent_id,
+                parent_id=uuid4(),
+                prompt=user.content,
+                agent="panthera",
+                request_metadata={"selected_tool_names": None},
+                selected_tool_names=None,
+                tool_profile_id=None,
+                history_limit=6,
+            )
+
     def test_rejects_parallel_turn_and_recovers_pending_turn(self) -> None:
         _, agent, _, _ = self._begin()
         with self.assertRaises(ConversationBusyError):

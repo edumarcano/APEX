@@ -18,6 +18,7 @@ from core.api.models import (
     LocalUnloadResponse,
 )
 from core.reminders.service import ReminderServiceError
+from core.conversations.store import ConversationNotFoundError
 
 
 class ApiPackageCompatibilityTests(unittest.TestCase):
@@ -263,6 +264,24 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/agent/profiles").status_code, 404)
         self.assertEqual(self.client.post("/api/v1/agent/query").status_code, 404)
         self.assertEqual(self.client.post("/api/v1/cortex/query", json={"prompt": "Status?"}).status_code, 404)
+
+    def test_preflight_conversation_miss_is_not_an_internal_error(self) -> None:
+        with mock.patch(
+            "core.api.routers.cortex.build_tool_preflight",
+            side_effect=ConversationNotFoundError("missing"),
+        ):
+            response = self.client.post(
+                "/api/v1/cortex/tool-preflight",
+                json={"prompt": "Status?", "conversation_id": "00000000-0000-4000-8000-000000000001"},
+            )
+        self.assertEqual(response.status_code, 404)
+
+    def test_preflight_rejects_removed_history_payload(self) -> None:
+        response = self.client.post(
+            "/api/v1/cortex/tool-preflight",
+            json={"prompt": "Status?", "history": []},
+        )
+        self.assertEqual(response.status_code, 422)
 
 
 if __name__ == "__main__":

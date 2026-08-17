@@ -269,6 +269,7 @@ export default function App(): ReactElement {
   const {
     cortexHistory,
     cortexConversationId,
+    conversationPreferences,
     isCortexQuerying,
     activeQueryAgent,
     cortexLatestTrace,
@@ -277,6 +278,7 @@ export default function App(): ReactElement {
     agentsStatus,
     agentsStatusHydrated,
     queryAgent,
+    patchConversation,
     isLocalModelActionPending,
     verifyingCloudAgent,
     loadLocalModel,
@@ -315,6 +317,70 @@ export default function App(): ReactElement {
   })
 
   const agentSelectionHydratedRef = useRef(false)
+  const conversationHydrationRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!cortexConversationId || !conversationPreferences) {
+      conversationHydrationRef.current = null
+      return
+    }
+    if (conversationHydrationRef.current === cortexConversationId) return
+    if (conversationPreferences.agent !== activeAgent) {
+      activeAgentRef.current = conversationPreferences.agent
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Conversation hydration selects the durable Agent before catalog hydration.
+      setAgent(conversationPreferences.agent)
+      return
+    }
+    if (
+      !toolCatalogState.selectionReady ||
+      toolCatalogState.catalog?.agent !== activeAgent
+    ) {
+      return
+    }
+    toolCatalogState.setToolSelection(
+      conversationPreferences.selectedToolNames ?? [],
+      conversationPreferences.toolProfileId,
+    )
+    conversationHydrationRef.current = cortexConversationId
+  }, [
+    activeAgent,
+    conversationPreferences,
+    cortexConversationId,
+    toolCatalogState.catalog?.agent,
+    toolCatalogState.selectionReady,
+    toolCatalogState.setToolSelection,
+    toolCatalogState,
+  ])
+
+  useEffect(() => {
+    if (
+      !cortexConversationId ||
+      conversationHydrationRef.current !== cortexConversationId
+    ) {
+      return
+    }
+    if (
+      conversationPreferences &&
+      conversationPreferences.agent === activeAgent &&
+      (conversationPreferences.selectedToolNames ?? []).length === toolCatalogState.selectedToolNames.length &&
+      (conversationPreferences.selectedToolNames ?? []).every((name) => toolCatalogState.selectedToolNames.includes(name)) &&
+      conversationPreferences.toolProfileId === toolCatalogState.activeToolProfileId
+    ) {
+      return
+    }
+    void patchConversation({
+      agent: activeAgent,
+      selectedToolNames: toolCatalogState.selectedToolNames,
+      toolProfileId: toolCatalogState.activeToolProfileId,
+    })
+  }, [
+    activeAgent,
+    cortexConversationId,
+    conversationPreferences,
+    patchConversation,
+    toolCatalogState.activeToolProfileId,
+    toolCatalogState.selectedToolNames,
+  ])
 
   // Hydrate backend defaults once; later agent changes belong to the active session.
   useEffect(() => {
