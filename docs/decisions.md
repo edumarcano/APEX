@@ -182,13 +182,13 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Trade-off.** Documentation and tests must distinguish Agent roles from replaceable model configuration.
 
-### Keep Agent sessions stateless on the server
+### Keep Agent execution stateless while storing conversations
 
-**Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend.
+**Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend, while each Agent turn remains one synchronous request with no server-side model session.
 
 **Why.** The browser tab already owns this single-user interaction. A server store would add expiry, cleanup, multi-tab conflicts, and another sensitive persistence surface.
 
-**Trade-off.** Conversation text and client-visible response metadata are retained in unencrypted local SQLite, while only bounded history reaches a model.
+**Trade-off.** Conversation text and client-visible response metadata are retained in unencrypted local SQLite, while only bounded history reaches a model. The frontend must reconcile assistant-ui's transient branch state with the durable active leaf.
 
 ### Keep assistant-ui replaceable and behind an APEX adapter
 
@@ -197,6 +197,8 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 **Why.** APEX already owns message-tree persistence, execution, tools, actions, preflight, and runtime policy. Keeping that boundary narrow permits editing and branch interaction without duplicating a second durable conversation system.
 
 **Trade-off.** The adapter must carry focused conversion coverage whenever the pinned assistant-ui release changes, particularly because its message and thread identifiers are not a stable public contract.
+
+The adapter boundary is intentionally isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, title generation, or permanent deletion; these features would imply backend capabilities that do not exist in this beta.
 
 ### Enforce one resident model and non-blocking admission
 

@@ -43,7 +43,7 @@ flowchart TB
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
 | Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Felis/llama.cpp, or Structured Digest |
-| Cortex query | User prompt | Browser history plus backend turn execution | No chat-session store | Selected Agent and approved capabilities |
+| Cortex query | User prompt | `ApexAssistantRuntime` bridge plus backend turn execution | SQLite conversation tree and response metadata | Selected Agent and approved capabilities |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
 
@@ -105,15 +105,16 @@ The HUD and `uv run apex` CLI are separate clients of the same loopback API. The
 | `useTelemetrySnapshot` | Current process-local telemetry snapshot and refresh state |
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useCortex` | Agent status, verification, polling, local-model lifecycle, and returned tool rendering inputs |
-| `ApexAssistantRuntime` | Replaceable assistant-ui thread state and presentation adapter; translates APEX conversation trees and one-turn requests without becoming a persistence authority |
+| `useCortex` | Agent status, verification, polling, and local-model lifecycle |
+| `ApexAssistantRuntime` | Replaceable assistant-ui thread state, conversation navigation, preference bridge, one-turn submission, branch persistence, and response metadata; it never becomes a persistence authority |
+| `CortexWorkspace` | APEX composer chrome and response rendering, including Markdown, citations, metrics, traces, tool cards, and action proposals |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
 | `useToolCatalog` | Agent-specific tool catalog, profile application, and session-persistent selection |
 | `useToolPreflight` | Debounced next-request tool and context token estimates |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
-The browser holds activation state and transient assistant-ui thread state, while APEX owns Cortex conversations in SQLite. `ApexAssistantRuntime` pins assistant-ui and contains its runtime-specific identifier handling: only UUIDs cross into the APEX turn API, and response metadata remains APEX data. Reloading Cortex rehydrates the authoritative branch from the current server-derived partition.
+The browser holds activation state and transient assistant-ui thread state, while APEX owns Cortex conversations in SQLite. `ApexAssistantRuntime` pins `@assistant-ui/react` to `0.15.1` and contains every assistant-ui-specific and unstable-identifier reference: only canonical UUIDs cross into the APEX turn API, and response metadata remains APEX data. Reloading Cortex rehydrates the authoritative branch from the current server-derived partition. Home and Cortex submit through this same bridge, so only one synchronous APEX turn can run at a time; assistant-ui cancellation is intentionally not exposed until the backend has a stop protocol.
 
 When Cortex is visible in normal mode, its inspector owns action review. `useActions` reads the newest 50 durable actions, fetches audit detail only for an expanded item, and polls every five seconds only while the browser tab remains visible. It submits the backend-provided action version for approval, rejection, and verification retry, then refetches the current ledger state. Conversation cards only identify newly proposed actions and direct the operator to the inspector; they never resolve an action themselves. Demo mode does not access the action API.
 
@@ -162,6 +163,8 @@ The four-stage path is supported behavior, but it is no longer the only way to u
 ## Cortex Engine execution
 
 `POST /api/v1/cortex/conversations/{conversation_id}/turns` performs one bounded Cortex Engine turn. The backend stores a pending Agent placeholder, reconstructs the selected branch, and persists the final client-visible response metadata after execution.
+
+The frontend runtime loads every stored message node, including parent IDs, timestamps, statuses, response metadata, and the persisted active leaf. Editing creates a new user sibling; retrying reuses the user node and creates a new Agent sibling. Selecting a branch patches the terminal leaf back to APEX and reloads the thread if that patch fails. Individual message callbacks do not write to the backend because the turn endpoint commits the user and Agent pair transactionally.
 
 HUD context is explicit:
 

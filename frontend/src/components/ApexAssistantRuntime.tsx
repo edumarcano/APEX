@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -19,9 +20,14 @@ import {
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { createAssistantStream } from 'assistant-stream'
 
 import { API_ENDPOINTS } from '../lib/api'
 import type { AgentKey, CloudEffort } from '../types/telemetry'
+import { AgentMark } from './AgentMark'
+import { CortexErrorFeedback, CortexQueryRim } from './AgentQueryBar'
+import { ToolsSelector, type ToolsSelectorProps } from './ToolsSelector'
+import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 
 type ConversationSummary = {
   id: string
@@ -48,6 +54,13 @@ type ConversationDetail = ConversationSummary & {
   messages: ConversationMessage[]
 }
 
+export type ApexAssistantConversationPreferences = Pick<ConversationSummary, 'agent' | 'selected_tool_names' | 'tool_profile_id'>
+
+export type ApexAssistantRuntimeHandle = {
+  submitPrompt: (prompt: string) => Promise<boolean>
+  patchPreferences: (updates: { agent?: AgentKey; selectedToolNames?: string[] | null; toolProfileId?: string | null }) => Promise<boolean>
+}
+
 export type ApexAssistantRunConfig = {
   agent: AgentKey
   effort: CloudEffort | null
@@ -57,12 +70,22 @@ export type ApexAssistantRunConfig = {
   briefingId?: number | null
 }
 
+export type ApexAssistantComposerProps = {
+  activeAgent: AgentKey
+  activeAgentName: string
+  tools: ToolsSelectorProps
+  error?: string | null
+  disabled?: boolean
+}
+
 type Props = {
   config: ApexAssistantRunConfig
   children: ReactNode
   beforeRun?: (config: ApexAssistantRunConfig) => Promise<boolean>
   onConversationChange?: (conversation: ConversationSummary | null) => void
   onRunningChange?: (running: boolean, agent: AgentKey | null) => void
+  onResponseChange?: (response: Record<string, unknown> | null, error: string | null) => void
+  runtimeRef?: React.MutableRefObject<ApexAssistantRuntimeHandle | null>
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -78,7 +101,16 @@ function canonicalId(value: string, ids: Map<string, string>): string {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
-  if (!response.ok) throw new Error(`APEX request failed (${response.status})`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as unknown
+    const detail = body && typeof body === 'object' && 'detail' in body ? (body as { detail?: unknown }).detail : null
+    const detailMessage = typeof detail === 'string'
+      ? detail
+      : detail && typeof detail === 'object' && 'message' in detail && typeof (detail as { message?: unknown }).message === 'string'
+        ? (detail as { message: string }).message
+        : null
+    throw new Error(detailMessage ?? `APEX request failed (${response.status})`)
+  }
   return response.json() as Promise<T>
 }
 
@@ -91,13 +123,17 @@ async function persistActiveLeaf(remoteId: string | undefined, messageId: string
   })
 }
 
-function ThreadHistory({ children }: { children?: ReactNode }): ReactNode {
+function ThreadHistory({ children, getThreadIds, onConversationChange }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChange?: (conversation: ConversationSummary | null) => void }): ReactNode {
   const aui = useAui()
   const history = useMemo<ThreadHistoryAdapter>(() => ({
     async load() {
       const remoteId = aui.threadListItem.getState().remoteId
       if (!remoteId) return ExportedMessageRepository.fromBranchableArray([])
       const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
+      onConversationChange?.(detail)
+      // A reload is authoritative: loaded backend UUIDs supersede any opaque
+      // assistant-ui IDs that were generated during the previous local run.
+      getThreadIds(remoteId).clear()
       return ExportedMessageRepository.fromBranchableArray(
         detail.messages.map((message) => ({
           parentId: message.parent_message_id,
@@ -117,7 +153,9 @@ function ThreadHistory({ children }: { children?: ReactNode }): ReactNode {
                 createdAt: new Date(message.created_at),
                 status: message.status === 'completed'
                   ? { type: 'complete' as const, reason: 'stop' as const }
-                  : { type: 'incomplete' as const, reason: 'error' as const, error: String(message.response_metadata?.error ?? message.status) },
+                  : message.status === 'pending'
+                    ? { type: 'running' as const }
+                    : { type: 'incomplete' as const, reason: 'error' as const, error: String(message.response_metadata?.error ?? message.status) },
                 metadata: { custom: { apex: message.response_metadata ?? {} } },
               },
         })),
@@ -126,29 +164,148 @@ function ThreadHistory({ children }: { children?: ReactNode }): ReactNode {
     },
     async append() {},
     async update() {},
-  }), [aui])
+  }), [aui, getThreadIds, onConversationChange])
   return <RuntimeAdapterProvider adapters={{ history }}>{children}</RuntimeAdapterProvider>
 }
 
-export function ApexAssistantRuntime({ config, children, beforeRun, onConversationChange, onRunningChange }: Props): ReactNode {
+type ApexAssistantComposerContextValue = {
+  configRef: React.MutableRefObject<ApexAssistantRunConfig>
+  beforeRun?: (config: ApexAssistantRunConfig) => Promise<boolean>
+  markPreflightPassed: () => void
+  persistActiveLeaf: (messageId: string) => Promise<void>
+  threadListError: string | null
+}
+
+const ApexAssistantComposerContext = createContext<ApexAssistantComposerContextValue | null>(null)
+
+export function useApexAssistantComposer(): {
+  submit: () => Promise<boolean>
+  isRunning: boolean
+} {
+  const aui = useAui()
+  const context = useContext(ApexAssistantComposerContext)
+  const beforeRun = context?.beforeRun
+  const configRef = context?.configRef
+  const markPreflightPassed = context?.markPreflightPassed
+  const isRunning = useAuiState((state) => state.thread.isRunning)
+  const isLoading = useAuiState((state) => state.thread.isLoading)
+  if (!context) throw new Error('useApexAssistantComposer must be used inside ApexAssistantRuntime.')
+  const submit = useCallback(async (): Promise<boolean> => {
+    const text = aui.composer.getState().text.trim()
+    if (!text || isRunning || isLoading) return false
+    if (beforeRun && configRef && !await beforeRun(configRef.current)) return false
+    markPreflightPassed?.()
+    aui.composer.send()
+    return true
+  }, [aui, beforeRun, configRef, isLoading, isRunning, markPreflightPassed])
+  return { submit, isRunning }
+}
+
+function ApexAssistantController({ runtimeRef, branchPersistRef, getThreadIds }: { runtimeRef?: React.MutableRefObject<ApexAssistantRuntimeHandle | null>; branchPersistRef: React.MutableRefObject<(messageId: string) => Promise<void>>; getThreadIds: (remoteId: string) => Map<string, string> }): ReactNode {
+  const aui = useAui()
+  const { submit } = useApexAssistantComposer()
+  const persistBranch = useCallback(async (messageId: string): Promise<void> => {
+    const remoteId = aui.threadListItem.getState().remoteId
+    if (!remoteId || !messageId) return
+    const canonicalMessageId = canonicalId(messageId, getThreadIds(remoteId))
+    try {
+      await persistActiveLeaf(remoteId, canonicalMessageId)
+    } catch (error) {
+      // Reconcile the client with the server before surfacing the failure. A
+      // branch selection must never remain a client-only state.
+      await aui.threads.reloadMainThread()
+      throw error
+    }
+  }, [aui, getThreadIds])
+  useEffect(() => {
+    branchPersistRef.current = persistBranch
+    if (!runtimeRef) return
+    runtimeRef.current = {
+      submitPrompt: async (prompt: string): Promise<boolean> => {
+        const text = prompt.trim()
+        if (!text) return false
+        if (!aui.threadListItem.getState().remoteId) {
+          await aui.threads.getLoadThreadsPromise()
+          const firstThread = aui.threads.getState().threadIds[0]
+          if (firstThread) await aui.threads.switchToThread(firstThread)
+        }
+        if (!aui.threadListItem.getState().remoteId) return false
+        if (aui.thread().getState().isLoading) return false
+        aui.thread.composer().setText(text)
+        return submit()
+      },
+      patchPreferences: async (updates): Promise<boolean> => {
+        const remoteId = aui.threadListItem.getState().remoteId
+        if (!remoteId) return false
+        try {
+          await requestJson(API_ENDPOINTS.cortexConversation(remoteId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...(updates.agent !== undefined ? { agent: updates.agent } : {}),
+              ...(updates.selectedToolNames !== undefined ? { selected_tool_names: updates.selectedToolNames } : {}),
+              ...(updates.toolProfileId !== undefined ? { tool_profile_id: updates.toolProfileId } : {}),
+            }),
+          })
+          return true
+        } catch {
+          return false
+        }
+      },
+    }
+    return () => { runtimeRef.current = null; branchPersistRef.current = async () => {} }
+  }, [aui, branchPersistRef, persistBranch, runtimeRef, submit])
+  return null
+}
+
+export function ApexAssistantRuntime({ config, children, beforeRun, onConversationChange, onRunningChange, onResponseChange, runtimeRef }: Props): ReactNode {
   const configRef = useRef(config)
   useEffect(() => {
     configRef.current = config
   }, [config])
-  const ids = useRef(new Map<string, string>())
+  const threadIds = useRef(new Map<string, Map<string, string>>())
+  const getThreadIds = useCallback((remoteId: string): Map<string, string> => {
+    let map = threadIds.current.get(remoteId)
+    if (!map) {
+      map = new Map<string, string>()
+      threadIds.current.set(remoteId, map)
+    }
+    return map
+  }, [])
   const remoteByLocal = useRef(new Map<string, string>())
+  const preflightPassedRef = useRef(false)
+  const branchPersistRef = useRef<(messageId: string) => Promise<void>>(async () => {})
+  const [threadListError, setThreadListError] = useState<string | null>(null)
   const [threadId, setThreadId] = useState<string | undefined>()
 
   const adapter = useMemo<RemoteThreadListAdapter>(() => ({
     async list() {
-      const [regular, archived] = await Promise.all([
-        requestJson<ConversationSummary[]>(API_ENDPOINTS.cortexConversations),
-        requestJson<ConversationSummary[]>(`${API_ENDPOINTS.cortexConversations}?archived=true`),
-      ])
-      return { threads: [...regular, ...archived].map((item) => ({
-        remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title,
-        lastMessageAt: new Date(item.updated_at), custom: item,
-      })) }
+      setThreadListError(null)
+      try {
+        const [initialRegular, archived] = await Promise.all([
+          requestJson<ConversationSummary[]>(API_ENDPOINTS.cortexConversations),
+          requestJson<ConversationSummary[]>(`${API_ENDPOINTS.cortexConversations}?archived=true`),
+        ])
+        let regular = initialRegular
+        if (regular.length === 0) {
+          const current = configRef.current
+          const created = await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversations, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin: 'hud', agent: current.agent, selected_tool_names: current.selectedToolNames, tool_profile_id: current.toolProfileId }),
+          })
+          regular = [created]
+          setThreadId(created.id)
+          onConversationChange?.(created)
+        }
+        if (regular[0]) setThreadId((current) => current ?? regular[0].id)
+        return { threads: [...regular, ...archived].map((item) => ({
+          remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title,
+          lastMessageAt: new Date(item.updated_at), custom: item,
+        })) }
+      } catch (error) {
+        setThreadListError(error instanceof Error ? error.message : 'Conversation list failed to load.')
+        throw error
+      }
     },
     async initialize(localId) {
       const current = configRef.current
@@ -164,14 +321,17 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     async archive(remoteId) { await requestJson(API_ENDPOINTS.cortexConversation(remoteId), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) }) },
     async unarchive(remoteId) { await requestJson(API_ENDPOINTS.cortexConversation(remoteId), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: false }) }) },
     async delete() { throw new Error('APEX does not support permanent conversation deletion.') },
-    async generateTitle() { throw new Error('APEX does not generate conversation titles.') },
+    // assistant-ui may request title generation after a run. APEX titles are
+    // operator-controlled, so this intentionally remains a no-op rather than
+    // surfacing an unsupported automatic-title failure.
+    async generateTitle() { return createAssistantStream(() => {}) },
     async fetch(remoteId) {
       const item = await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversation(remoteId))
       onConversationChange?.(item)
       return { remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title, lastMessageAt: new Date(item.updated_at), custom: item }
     },
-    unstable_Provider: ThreadHistory,
-  }), [onConversationChange])
+    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory getThreadIds={getThreadIds} onConversationChange={onConversationChange}>{children}</ThreadHistory>,
+  }), [getThreadIds, onConversationChange])
 
   const runtimeHook = useCallback(() => {
     const model: ChatModelAdapter = {
@@ -181,33 +341,54 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
         const user = options.messages.at(-1)
         if (!remoteId || !user || user.role !== 'user' || !options.unstable_assistantMessageId) throw new Error('Conversation is not ready.')
         const current = configRef.current
-        if (beforeRun && !await beforeRun(current)) throw new Error('This request did not pass APEX preflight.')
+        if (beforeRun && !preflightPassedRef.current && !await beforeRun(current)) throw new Error('This request did not pass APEX preflight.')
+        preflightPassedRef.current = false
         onRunningChange?.(true, current.agent)
         try {
           const response = await requestJson<Record<string, unknown>>(API_ENDPOINTS.cortexConversationTurns(remoteId), {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               prompt: user.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
-              user_message_id: canonicalId(user.id, ids.current),
-              agent_message_id: canonicalId(options.unstable_assistantMessageId, ids.current),
+              user_message_id: canonicalId(user.id, getThreadIds(remoteId)),
+              agent_message_id: canonicalId(options.unstable_assistantMessageId, getThreadIds(remoteId)),
               ...(options.messages.at(-2)?.id
-                ? { parent_message_id: canonicalId(options.messages.at(-2)!.id, ids.current) }
+                ? { parent_message_id: canonicalId(options.messages.at(-2)!.id, getThreadIds(remoteId)) }
                 : {}),
               agent: current.agent, effort: current.effort, selected_tool_names: current.selectedToolNames,
               tool_profile_id: current.toolProfileId, snapshot_id: current.snapshotId, briefing_id: current.briefingId ?? undefined,
             }),
           })
-          return { content: [{ type: 'text' as const, text: String(response.answer ?? '') }], metadata: { custom: { apex: response } } }
+          const responseError = typeof response.error === 'string' ? response.error : null
+          const responseStatus = response.message_status ?? response.status
+          const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
+          const persistedError = responseError ?? (typeof responseStatus === 'string' ? responseStatus : 'Agent turn did not complete.')
+          onResponseChange?.(response, incomplete ? persistedError : null)
+          return {
+            content: [{ type: 'text' as const, text: String(response.answer ?? '') }],
+            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
+            metadata: { custom: { apex: response } },
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'APEX request failed.'
+          onResponseChange?.(null, message)
+          throw error
         } finally { onRunningChange?.(false, null) }
       },
     }
     // assistant-ui invokes this callback as a hook host for each active thread.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     return useLocalRuntime(model, { maxSteps: 1 })
-  }, [beforeRun, onRunningChange, threadId])
+  }, [beforeRun, getThreadIds, onResponseChange, onRunningChange, threadId])
 
-  const runtime = useRemoteThreadListRuntime({ runtimeHook, adapter, threadId, onThreadIdChange: setThreadId })
-  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
+  const handleThreadIdChange = useCallback((nextThreadId: string | undefined): void => {
+    setThreadId(nextThreadId)
+    if (!nextThreadId) onConversationChange?.(null)
+  }, [onConversationChange])
+  const runtime = useRemoteThreadListRuntime({ runtimeHook, adapter, threadId, onThreadIdChange: handleThreadIdChange })
+  const markPreflightPassed = useCallback(() => { preflightPassedRef.current = true }, [])
+  const composerContext = useMemo(() => ({ configRef, beforeRun, markPreflightPassed }), [beforeRun, markPreflightPassed])
+  const runtimeContext = useMemo(() => ({ ...composerContext, persistActiveLeaf: (messageId: string) => branchPersistRef.current(messageId), threadListError }), [composerContext, threadListError])
+  return <AssistantRuntimeProvider runtime={runtime}><ApexAssistantComposerContext.Provider value={runtimeContext}><ApexAssistantController branchPersistRef={branchPersistRef} getThreadIds={getThreadIds} runtimeRef={runtimeRef} />{children}</ApexAssistantComposerContext.Provider></AssistantRuntimeProvider>
 }
 
 export function ApexAssistantError(): ReactNode {
@@ -215,74 +396,171 @@ export function ApexAssistantError(): ReactNode {
   return typeof apex?.error === 'string' ? <p className="mt-2 text-xs text-red-300" role="alert">{apex.error}</p> : null
 }
 
-function ApexAssistantMessage({ renderAgent }: { renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode }): ReactNode {
+function GatedComposer({
+  disabled = false,
+  edit = false,
+  composer,
+}: {
+  disabled?: boolean
+  edit?: boolean
+  composer?: ApexAssistantComposerProps
+}): ReactNode {
+  const { submit } = useApexAssistantComposer()
+  const queryActive = useAuiState((state) => state.thread.isRunning)
+  const threadLoading = useAuiState((state) => state.thread.isLoading)
+  const error = composer?.error ?? null
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    void submit()
+  }
+  const blocked = disabled || threadLoading
+  return <ComposerPrimitive.Root onSubmit={handleSubmit} className="relative border-t border-white/10 bg-black/20 p-3 sm:p-4">
+    {composer && queryActive ? <CortexQueryRim /> : null}
+    <div className="flex items-end gap-2">
+      <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : 'Ask APEX…'} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45" />
+      {composer ? <ToolsSelector {...composer.tools} compact disabled={blocked || queryActive} /> : null}
+      {composer ? <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-zinc-400" aria-label={`Active agent ${composer.activeAgentName}`}><AgentMark agent={composer.activeAgent} /><span className="hidden sm:inline">{composer.activeAgentName}</span></span> : null}
+      {edit ? <ComposerPrimitive.Cancel disabled={blocked} className="rounded-lg border border-white/10 px-3 py-2 font-mono text-xs text-zinc-400 hover:text-white disabled:opacity-45">Cancel</ComposerPrimitive.Cancel> : null}
+      <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#E9D5FF] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+    </div>
+    {composer && error ? <CortexErrorFeedback error={error} /> : null}
+  </ComposerPrimitive.Root>
+}
+
+function ApexAssistantMessage({ renderAgent, composer }: { renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps }): ReactNode {
   const aui = useAui()
+  const context = useContext(ApexAssistantComposerContext)
+  const [branchError, setBranchError] = useState<string | null>(null)
   const role = useAuiState((state) => state.message.role)
   const content = useAuiState((state) => state.message.content)
   const status = useAuiState((state) => state.message.status)
   const branchCount = useAuiState((state) => state.message.branchCount)
   const branchNumber = useAuiState((state) => state.message.branchNumber)
+  const editing = useAuiState((state) => state.composer.isEditing)
   const metadata = useAuiState((state) => state.message.metadata.custom?.apex as Record<string, unknown> | undefined) ?? {}
   const text = content
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n')
+  const selectBranch = (position: 'previous' | 'next'): void => {
+    setBranchError(null)
+    aui.message().switchToBranch({ position })
+    queueMicrotask(() => {
+      const selectedId = aui.thread().getState().messages.at(-1)?.id
+      if (!selectedId || !context) return
+      void context.persistActiveLeaf(selectedId).catch((error: unknown) => {
+        setBranchError(error instanceof Error ? error.message : 'Unable to persist branch selection.')
+      })
+    })
+  }
   return <MessagePrimitive.Root className={role === 'user' ? 'flex justify-end' : 'max-w-5xl'}>
+    {editing && role === 'user' ? <GatedComposer edit disabled={composer?.disabled} composer={composer} /> : null}
+    {editing && role === 'user' ? null : <>
     <div className={role === 'user'
       ? 'max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white'
       : 'rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3 text-sm leading-relaxed text-zinc-200'}>
       {role === 'assistant' ? renderAgent?.(text, metadata) ?? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : text}
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}
+      {branchError ? <p className="mt-2 text-xs text-red-300" role="alert">{branchError}</p> : null}
       <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-zinc-500">
         <button type="button" onClick={() => void navigator.clipboard?.writeText(text)} className="hover:text-white">Copy</button>
         {role === 'user' ? <button type="button" onClick={() => aui.message().composer().beginEdit()} className="hover:text-white">Edit</button> : <button type="button" onClick={() => aui.message().reload()} className="hover:text-white">Retry</button>}
-        {branchCount > 1 ? <><button type="button" onClick={() => { aui.message().switchToBranch({ position: 'previous' }); queueMicrotask(() => { void persistActiveLeaf(aui.threadListItem.getState().remoteId, aui.thread.getState().messages.at(-1)?.id ?? '') }) }} className="hover:text-white">‹</button><span>{branchNumber + 1}/{branchCount}</span><button type="button" onClick={() => { aui.message().switchToBranch({ position: 'next' }); queueMicrotask(() => { void persistActiveLeaf(aui.threadListItem.getState().remoteId, aui.thread.getState().messages.at(-1)?.id ?? '') }) }} className="hover:text-white">›</button></> : null}
+        {branchCount > 1 ? <><button type="button" aria-label="Previous branch" onClick={() => selectBranch('previous')} className="hover:text-white">‹</button><span>{branchNumber + 1}/{branchCount}</span><button type="button" aria-label="Next branch" onClick={() => selectBranch('next')} className="hover:text-white">›</button></> : null}
       </div>
     </div>
+    </>}
   </MessagePrimitive.Root>
 }
 
 /** APEX-owned presentation built from assistant-ui primitives, not its starter kit. */
-export function ApexAssistantThread({ disabled = false, renderAgent }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode }): ReactNode {
+export function ApexAssistantThread({ disabled = false, renderAgent, composer }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps }): ReactNode {
+  const running = useAuiState((state) => state.thread.isRunning)
   return <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
     <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll>
-      <ThreadPrimitive.Messages components={{ Message: () => <ApexAssistantMessage renderAgent={renderAgent} /> }} />
+      <ThreadPrimitive.Empty><div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p><div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <ThreadPrimitive.Suggestion key={chip.label} prompt={chip.query} send={false} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</ThreadPrimitive.Suggestion>)}</div></div></ThreadPrimitive.Empty>
+      <ThreadPrimitive.Messages components={{ Message: () => <ApexAssistantMessage renderAgent={renderAgent} composer={composer} /> }} />
+      {running ? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC]" aria-hidden />Apex {composer?.activeAgentName ?? 'Agent'} working</div> : null}
     </ThreadPrimitive.Viewport>
-    <ComposerPrimitive.Root className="border-t border-white/10 bg-black/20 p-3 sm:p-4">
-      <div className="flex items-end gap-2">
-        <ComposerPrimitive.Input
-          disabled={disabled}
-          placeholder="Ask APEX…"
-          className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
-        />
-        <ComposerPrimitive.Send disabled={disabled} className="rounded-lg border border-[#0F4DB8]/60 bg-[#0F4DB8]/20 px-3 py-2 font-mono text-xs uppercase tracking-wider text-white hover:bg-[#0F4DB8]/35 disabled:cursor-not-allowed disabled:opacity-45">
-          Send
-        </ComposerPrimitive.Send>
-      </div>
-    </ComposerPrimitive.Root>
+    <GatedComposer disabled={disabled} composer={composer} />
   </ThreadPrimitive.Root>
 }
 
-function ApexConversationRailItem(): ReactNode {
+function ApexConversationRailItem({ disabled = false }: { disabled?: boolean }): ReactNode {
   const aui = useAui()
+  const renameTriggerRef = useRef<HTMLButtonElement>(null)
+  const wasRenaming = useRef(false)
   const [renaming, setRenaming] = useState(false)
   const [title, setTitle] = useState('')
+  const [actionError, setActionError] = useState<string | null>(null)
   const archived = useAuiState((state) => state.threadListItem.status === 'archived')
   const currentTitle = useAuiState((state) => state.threadListItem.title ?? 'Untitled conversation')
+  useEffect(() => {
+    if (!renaming && wasRenaming.current) renameTriggerRef.current?.focus()
+    wasRenaming.current = renaming
+  }, [renaming])
+  const archive = async (): Promise<void> => {
+    setActionError(null)
+    try {
+      if (archived) {
+        await aui.threadListItem.unarchive()
+        return
+      }
+      await aui.threadListItem.archive()
+      await aui.threads.reload()
+      const newestRemaining = aui.threads.getState().threadIds[0]
+      if (newestRemaining) await aui.threads.switchToThread(newestRemaining)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Conversation update failed.')
+    }
+  }
+  const rename = async (): Promise<void> => {
+    if (!title.trim()) return
+    setActionError(null)
+    try {
+      await aui.threadListItem.rename(title.trim())
+      setRenaming(false)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Conversation rename failed.')
+    }
+  }
   return <ThreadListItemPrimitive.Root className="group flex items-center gap-1 rounded-md px-2 py-1 hover:bg-white/5">
-    {renaming ? <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter' && title.trim()) { void aui.threadListItem.rename(title.trim()); setRenaming(false) } }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <ThreadListItemPrimitive.Trigger className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300"><ThreadListItemPrimitive.Title /></ThreadListItemPrimitive.Trigger>}
-    {!renaming ? <button type="button" aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="hidden text-zinc-500 group-hover:block hover:text-white">✎</button> : null}
-    {archived ? <ThreadListItemPrimitive.Unarchive className="hidden text-zinc-500 group-hover:block hover:text-white">Restore</ThreadListItemPrimitive.Unarchive> : <ThreadListItemPrimitive.Archive className="hidden text-zinc-500 group-hover:block hover:text-white">Archive</ThreadListItemPrimitive.Archive>}
+    {renaming ? <input autoFocus disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void rename() }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <ThreadListItemPrimitive.Trigger disabled={disabled} className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300"><ThreadListItemPrimitive.Title /></ThreadListItemPrimitive.Trigger>}
+    {!renaming ? <button ref={renameTriggerRef} type="button" disabled={disabled} aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">✎</button> : null}
+    <button type="button" disabled={disabled} onClick={() => void archive()} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">{archived ? 'Restore' : 'Archive'}</button>
+    {actionError ? <span role="alert" className="max-w-28 truncate text-[10px] text-red-300" title={actionError}>{actionError}</span> : null}
   </ThreadListItemPrimitive.Root>
 }
 
-export function ApexConversationRail({ className = 'hidden xl:block' }: { className?: string }): ReactNode {
+export function ApexConversationRail({ className = 'hidden xl:block', disabled = false }: { className?: string; disabled?: boolean }): ReactNode {
+  const aui = useAui()
   const [archived, setArchived] = useState(false)
-  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation /></div><div className="mb-2 flex gap-2"><button type="button" onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white">Active</button><button type="button" onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white">Archived</button></div><ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={{ ThreadListItem: ApexConversationRailItem }} /></ThreadListPrimitive.Root></aside>
+  const threadLoading = useAuiState((state) => state.thread.isLoading)
+  const interactionDisabled = disabled || threadLoading
+  const isLoading = useAuiState((state) => state.threads.isLoading)
+  const threadCount = useAuiState((state) => (archived ? state.threads.archivedThreadIds.length : state.threads.threadIds.length))
+  const context = useContext(ApexAssistantComposerContext)
+  const threadListError = context?.threadListError ?? null
+  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void aui.threads.reload()} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : threadCount === 0 ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div> : <ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={{ ThreadListItem: () => <ApexConversationRailItem disabled={interactionDisabled} /> }} /></ThreadListPrimitive.Root>}</aside>
 }
 
 export function ApexAssistantNewConversation({ disabled = false }: { disabled?: boolean }): ReactNode {
-  return <ThreadListPrimitive.New disabled={disabled} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40">
-    New conversation
-  </ThreadListPrimitive.New>
+  const aui = useAui()
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const create = async (): Promise<void> => {
+    if (disabled || creating) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      await aui.threads.switchToNewThread()
+      if (!aui.threadListItem.getState().remoteId) await aui.threadListItem.initialize()
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Conversation creation failed.')
+    } finally {
+      setCreating(false)
+    }
+  }
+  return <span className="inline-flex items-center gap-2"><button type="button" disabled={disabled || creating} aria-busy={creating} onClick={() => void create()} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40">
+    {creating ? 'Creating…' : 'New conversation'}
+  </button>{createError ? <span role="alert" className="max-w-32 truncate text-[10px] text-red-300" title={createError}>{createError}</span> : null}</span>
 }

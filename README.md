@@ -65,7 +65,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
 - **Cloud, local, and model-free briefings:** APEX can use Panthera, Felis, or Structured Digest and always keeps Structured Digest as the final fallback.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, and the durable action ledger. Browser-held Agent conversations disappear on reload.
+- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, the durable action ledger, and Cortex conversation trees with response metadata. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
 - **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 

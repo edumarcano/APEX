@@ -26,7 +26,7 @@ import type {
   ToolPreflightEstimate,
 } from '../types/telemetry'
 
-interface ToolsSelectorProps {
+export interface ToolsSelectorProps {
   compact?: boolean
   catalog: ToolCatalog | null
   selectedToolNames: string[]

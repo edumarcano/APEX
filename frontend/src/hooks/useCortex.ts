@@ -876,10 +876,12 @@ export function useCortex(
   options: {
     devModeActive?: boolean
     sandboxMode?: boolean
+    manageConversations?: boolean
   } = {},
 ): UseCortexResult {
   const devModeActive = options.devModeActive ?? false
   const sandboxMode = options.sandboxMode ?? false
+  const manageConversations = options.manageConversations ?? true
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
   const [sandboxHistory, setSandboxHistory] = useState<AgentMessage[]>([])
   const [cortexConversationId, setCortexConversationId] = useState<string | null>(null)
@@ -996,11 +998,20 @@ export function useCortex(
   }, [])
 
   useEffect(() => {
+    if (!manageConversations) {
+      conversationIdRef.current = null
+      activeLeafRef.current = null
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- External assistant runtime owns conversation hydration in the application shell.
+      setCortexConversationId(null)
+      setConversationPreferences(null)
+      setProductionHistory([])
+      setSandboxHistory([])
+      return
+    }
     const generation = ++conversationGenerationRef.current
     let cancelled = false
     conversationIdRef.current = null
     activeLeafRef.current = null
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Partition hydration must invalidate the previous durable conversation immediately.
     setCortexConversationId(null)
     setConversationPreferences(null)
     if (usesSandboxPartition(devModeActive, sandboxMode)) {
@@ -1031,7 +1042,7 @@ export function useCortex(
     }
     void hydrate()
     return () => { cancelled = true }
-  }, [applyConversationDetail, createConversation, devModeActive, sandboxMode])
+  }, [applyConversationDetail, createConversation, devModeActive, manageConversations, sandboxMode])
 
   const reloadConversationDetail = useCallback(async (
     conversationId: string,
