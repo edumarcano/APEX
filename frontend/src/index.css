@@ -149,8 +149,21 @@
 }
 
 @media (max-height: 820px) {
+  .hud-layout-fullscreen {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
   .hud-app-shell {
     --hud-panel-pad: 1rem;
+  }
+
+  .hud-main-shell,
+  .hud-body-layout {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: max-content;
+    overflow: visible;
   }
 
   .hud-digest-wrapper {

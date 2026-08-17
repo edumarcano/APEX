@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApexAssistantRuntime, ApexAssistantThread } from './ApexAssistantRuntime'
+import { ApexAssistantRuntime, ApexAssistantThread, ApexConversationRail } from './ApexAssistantRuntime'
 
 const conversationId = '00000000-0000-4000-8000-000000000001'
 const summary = {
@@ -64,6 +64,80 @@ describe('ApexAssistantRuntime', () => {
 
     await waitFor(() => expect(screen.getByText('There are three active reminders.')).toBeInTheDocument())
     expect(beforeRun).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('does not reload the remote thread list when host callbacks change identity', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    let regularListCalls = 0
+    let archivedListCalls = 0
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) {
+        archivedListCalls += 1
+        return response([])
+      }
+      if (url.endsWith('/api/v1/cortex/conversations')) {
+        regularListCalls += 1
+        return response([summary])
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) {
+        return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { rerender } = render(
+      <ApexAssistantRuntime
+        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        onConversationChange={() => undefined}
+        onRunningChange={() => undefined}
+        onResponseChange={() => undefined}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+    const callsBeforeRerender = { regular: regularListCalls, archived: archivedListCalls }
+    rerender(
+      <ApexAssistantRuntime
+        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        onConversationChange={() => undefined}
+        onRunningChange={() => undefined}
+        onResponseChange={() => undefined}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect({ regular: regularListCalls, archived: archivedListCalls }).toEqual(callsBeforeRerender)
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('coalesces transient list failures until an explicit retry', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    let calls = 0
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      calls += 1
+      throw new TypeError('offline')
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument())
+    const initialCalls = calls
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(calls).toBe(initialCalls)
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(calls).toBeGreaterThan(initialCalls))
+    expect(calls).toBe(initialCalls + 2)
     expect(fetchMock).toHaveBeenCalled()
   })
 })

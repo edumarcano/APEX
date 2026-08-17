@@ -1307,6 +1307,33 @@ export default function App(): ReactElement {
     return accepted
   }, [])
 
+  const handleAssistantConversationChange = useCallback((summary: {
+    id: string
+    agent: AgentKey
+    selected_tool_names: string[] | null
+    tool_profile_id: string | null
+  } | null): void => {
+    setAssistantConversationId(summary?.id ?? null)
+    setAssistantConversationPreferences(summary ? {
+      agent: summary.agent,
+      selected_tool_names: summary.selected_tool_names,
+      tool_profile_id: summary.tool_profile_id,
+    } : null)
+    setConversationHydrating(Boolean(summary))
+    setAssistantResponse(null)
+    setAssistantResponseError(null)
+  }, [])
+
+  const handleAssistantRunningChange = useCallback((running: boolean, agent: AgentKey | null): void => {
+    setAssistantRunning(running)
+    setAssistantRunningAgent(agent)
+  }, [])
+
+  const handleAssistantResponseChange = useCallback((response: Record<string, unknown> | null, error: string | null): void => {
+    setAssistantResponse(response)
+    setAssistantResponseError(error)
+  }, [])
+
   return (
     <main
       className="hud-app-shell hud-layout-fullscreen relative isolate flex h-dvh w-full min-h-0 flex-col overflow-x-hidden bg-[var(--hud-bg)] p-4 md:p-6"
@@ -1378,25 +1405,9 @@ export default function App(): ReactElement {
           }}
           beforeRun={runAssistantPreflight}
           runtimeRef={assistantRuntimeRef}
-          onConversationChange={(summary) => {
-            setAssistantConversationId(summary?.id ?? null)
-            setAssistantConversationPreferences(summary ? {
-              agent: summary.agent,
-              selected_tool_names: summary.selected_tool_names,
-              tool_profile_id: summary.tool_profile_id,
-            } : null)
-            setConversationHydrating(Boolean(summary))
-            setAssistantResponse(null)
-            setAssistantResponseError(null)
-          }}
-          onRunningChange={(running, agent) => {
-            setAssistantRunning(running)
-            setAssistantRunningAgent(agent)
-          }}
-          onResponseChange={(response, error) => {
-            setAssistantResponse(response)
-            setAssistantResponseError(error)
-          }}
+          onConversationChange={handleAssistantConversationChange}
+          onRunningChange={handleAssistantRunningChange}
+          onResponseChange={handleAssistantResponseChange}
         >
         {workspace === 'home' ? (
           <>
