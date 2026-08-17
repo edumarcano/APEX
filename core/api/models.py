@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from core.agent.types import (
     AgentKey,
-    AgentMessage,
     CostEstimate,
     LocalReasoningMode,
     TokenUsage,
@@ -762,8 +761,7 @@ class ToolPreflightRequest(BaseModel):
     selected_tool_names: list[str] | None = None
     tool_profile_id: str | None = None
     prompt: str = ""
-    history: list[AgentMessage] = Field(default_factory=list)
-    history_partition: Literal["production", "sandbox"] = "production"
+    conversation_id: str | None = None
     snapshot_id: str | None = None
     briefing_id: int | None = Field(default=None, ge=1)
 

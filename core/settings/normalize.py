@@ -635,7 +635,7 @@ def _normalize_agent_settings(
             "sandbox_mode",
             "panthera",
             "felis",
-            "max_session_messages",
+            "max_recent_conversation_messages",
         },
         path="ask_apex",
         layer_name=layer_name,

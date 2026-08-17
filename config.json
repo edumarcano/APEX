@@ -46,7 +46,7 @@
       "context_window": 16384,
       "reasoning_mode": "none"
     },
-    "max_session_messages": 6
+    "max_recent_conversation_messages": 6
   },
   "gemini": {
     "agent_max_turns": 6,

@@ -226,48 +226,6 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["key"], "panthera")
 
-        query_response = AgentQueryResponse(
-            answer="Ready.",
-            agent_used={"key": "panthera"},
-            session_id="session-1",
-        )
-        with mock.patch(
-            "core.api.routers.cortex.query_agent",
-            return_value=query_response,
-        ) as query_agent:
-            response = self.client.post(
-                "/api/v1/cortex/query",
-                json={
-                    "prompt": "Status?",
-                    "agent": "panthera",
-                    "session_id": "session-1",
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["answer"], "Ready.")
-        query_agent.assert_called_once()
-
-        with (
-            mock.patch(
-                "core.api.routers.cortex.resolve_agent_selection",
-                return_value=("local", "felis", None),
-            ) as resolve_selection,
-            mock.patch(
-                "core.api.routers.cortex.query_agent",
-                return_value=query_response,
-            ) as omitted_query_agent,
-        ):
-            response = self.client.post(
-                "/api/v1/cortex/query",
-                json={"prompt": "Use my saved Agent."},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        resolve_selection.assert_called_once()
-        omitted_query_agent.assert_called_once()
-        self.assertEqual(omitted_query_agent.call_args.args[0].agent, "felis")
-
         with mock.patch(
             "core.api.routers.cortex.unload_active_local_model_endpoint",
             return_value=LocalUnloadResponse(),
@@ -304,11 +262,7 @@ class ExtractedRouterHttpTests(unittest.TestCase):
     def test_removed_agent_routes_and_profile_payload_are_rejected(self) -> None:
         self.assertEqual(self.client.get("/api/v1/agent/profiles").status_code, 404)
         self.assertEqual(self.client.post("/api/v1/agent/query").status_code, 404)
-        response = self.client.post(
-            "/api/v1/cortex/query",
-            json={"prompt": "Status?", "profile": "panthera"},
-        )
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.client.post("/api/v1/cortex/query", json={"prompt": "Status?"}).status_code, 404)
 
 
 if __name__ == "__main__":

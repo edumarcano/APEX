@@ -19,7 +19,7 @@ __all__ = [
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
     "CONFIG_PATH",
-    "MAX_SESSION_MESSAGES",
+    "MAX_RECENT_CONVERSATION_MESSAGES",
     "OLLAMA_RESOURCE_GATES",
     "OLLAMA_ENABLED",
     "OLLAMA_HOST",
@@ -442,16 +442,16 @@ try:
         _LOGGER.warning('Config key "ask_apex" must be a JSON object; using defaults.')
         _agent_settings_cfg = {}
 
-    MAX_SESSION_MESSAGES: Final[int] = _parse_config_int(
-        _agent_settings_cfg.get("max_session_messages"),
-        key="ask_apex.max_session_messages",
+    MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = _parse_config_int(
+        _agent_settings_cfg.get("max_recent_conversation_messages"),
+        key="ask_apex.max_recent_conversation_messages",
         default=6,
         min_value=2,
         max_value=20,
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
-    MAX_SESSION_MESSAGES = 6
+    MAX_RECENT_CONVERSATION_MESSAGES = 6
 
 try:
     _gemini_cfg = _CONFIG_DATA.get("gemini", {})

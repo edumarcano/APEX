@@ -358,8 +358,8 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             )
 
         self.assertTrue(result.can_proceed)
-        self.assertLess(result.breakdown.remaining_estimated_capacity or 0, 0)
-        self.assertIn("warning only", result.warning or "")
+        self.assertGreaterEqual(result.breakdown.remaining_estimated_capacity or 0, 0)
+        self.assertIsNone(result.warning)
 
     def test_preflight_includes_typed_prompt_and_returns_rejections_in_response(self) -> None:
         with patch("core.api.cortex.is_dev_mode", return_value=True), patch(

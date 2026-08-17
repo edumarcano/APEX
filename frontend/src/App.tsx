@@ -81,7 +81,6 @@ import type {
   SettingsResponse,
   VoiceMode,
 } from './types/settings'
-import { resolveHistoryPartition } from './lib/settings'
 import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 interface ParsedEmail {
@@ -207,9 +206,6 @@ export default function App(): ReactElement {
   const submissionPendingRef = useRef(false)
   const [toolProfileFeedback, setToolProfileFeedback] = useState<string | null>(null)
   const [toolProfileError, setToolProfileError] = useState<string | null>(null)
-  const [cortexSessionId, setCortexSessionId] = useState(() =>
-    globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
-  )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isReminderReviewOpen, setIsReminderReviewOpen] = useState(false)
   const [isCompletedRemindersOpen, setIsCompletedRemindersOpen] = useState(false)
@@ -272,6 +268,7 @@ export default function App(): ReactElement {
 
   const {
     cortexHistory,
+    cortexConversationId,
     isCortexQuerying,
     activeQueryAgent,
     cortexLatestTrace,
@@ -307,9 +304,8 @@ export default function App(): ReactElement {
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
     prompt: draftPrompt,
-    history: cortexHistory,
+    conversationId: cortexConversationId,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-    historyPartition: resolveHistoryPartition(devModeActive, sandboxMode),
     enabled: Boolean(
       agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
@@ -903,7 +899,6 @@ export default function App(): ReactElement {
           selectedToolNames,
           toolProfileId,
           effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
-          sessionId: cortexSessionId,
         })
         return true
       } finally {
@@ -918,7 +913,6 @@ export default function App(): ReactElement {
       agentsStatus,
       cloudEffort,
       snapshotAttached,
-      cortexSessionId,
       toolCatalogState.catalog,
       toolCatalogState.selectionReady,
     ],
@@ -1205,7 +1199,6 @@ export default function App(): ReactElement {
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession()
     setSnapshotAttached(false)
-    setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
   }, [clearCortexSession])
 
   const handleHomeSubmit = useCallback(async (

@@ -23,12 +23,12 @@ from core.actions.microsoft_todo import (
     MicrosoftTodoTaskMutationVerifier,
 )
 from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
-from core.config import ENV_PATH
-from core.config import DEMO_MODE
+from core.config import DEMO_MODE, ENV_PATH, MAX_RECENT_CONVERSATION_MESSAGES
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database, speaker
+from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
@@ -48,6 +48,7 @@ async def _app_lifespan(_app: FastAPI):
     mcp_manager: MCPClientManager | None = None
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
     microsoft_todo_client: MicrosoftTodoClient | None = None
+    conversation_store: ConversationStore | None = None
     if not DEMO_MODE:
         microsoft_auth = MicrosoftTodoAuthenticationService()
         await microsoft_auth.initialize()
@@ -55,6 +56,15 @@ async def _app_lifespan(_app: FastAPI):
         set_microsoft_auth_service(microsoft_auth)
         set_microsoft_todo_client(microsoft_todo_client)
     database.initialize_db(include_actions=not DEMO_MODE)
+    conversation_store = ConversationStore(None if DEMO_MODE else database.DB_NAME)
+    conversation_store.initialize()
+    conversation_service = ConversationService(
+        conversation_store,
+        history_limit=MAX_RECENT_CONVERSATION_MESSAGES,
+    )
+    if not DEMO_MODE:
+        conversation_service.recover_interrupted()
+    set_conversation_service(conversation_service)
     if not DEMO_MODE:
         assert microsoft_todo_client is not None
         action_service = ActionService()
@@ -150,6 +160,9 @@ async def _app_lifespan(_app: FastAPI):
                                 set_connector_http_sessions(None)
                                 set_action_service(None)
                                 set_reminder_service(None)
+                                set_conversation_service(None)
+                                if conversation_store is not None:
+                                    conversation_store.close()
                                 if idle_model_task is not None:
                                     idle_model_task.cancel()
                                     try:

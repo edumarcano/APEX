@@ -20,7 +20,6 @@ import type {
 import { usesSandboxHistory } from '../lib/agents'
 import { API_ENDPOINTS } from '../lib/api'
 
-const AGENT_QUERY_ENDPOINT = API_ENDPOINTS.cortexQuery
 const AGENT_PROFILES_ENDPOINT = API_ENDPOINTS.agents
 const AGENT_LOCAL_UNLOAD_ENDPOINT = API_ENDPOINTS.cortexLocalModelUnload
 const AGENT_LOCAL_LOAD_ENDPOINT = API_ENDPOINTS.cortexLocalModelLoad
@@ -833,6 +832,7 @@ function usesSandboxPartition(
 
 export interface UseCortexResult {
   cortexHistory: AgentMessage[]
+  cortexConversationId: string | null
   isCortexQuerying: boolean
   activeQueryAgent: AgentKey | null
   cortexLatestTrace: ToolTraceItem[]
@@ -852,7 +852,6 @@ export interface UseCortexResult {
       selectedToolNames?: string[] | null
       toolProfileId?: string | null
       effort?: CloudEffort | null
-      sessionId?: string | null
     },
   ) => Promise<void>
   unloadLocalModel: () => Promise<boolean>
@@ -873,6 +872,7 @@ export function useCortex(
   const sandboxMode = options.sandboxMode ?? false
   const [productionHistory, setProductionHistory] = useState<AgentMessage[]>([])
   const [sandboxHistory, setSandboxHistory] = useState<AgentMessage[]>([])
+  const [cortexConversationId, setCortexConversationId] = useState<string | null>(null)
   const [isCortexQuerying, setIsCortexQuerying] = useState(false)
   const [activeQueryAgent, setActiveQueryAgent] = useState<AgentKey | null>(null)
   const [cortexLatestTrace, setCortexLatestTrace] = useState<ToolTraceItem[]>([])
@@ -886,6 +886,8 @@ export function useCortex(
 
   const productionHistoryRef = useRef<AgentMessage[]>([])
   const sandboxHistoryRef = useRef<AgentMessage[]>([])
+  const conversationIdRef = useRef<string | null>(null)
+  const activeLeafRef = useRef<string | null>(null)
 
   useEffect(() => {
     productionHistoryRef.current = productionHistory
@@ -900,6 +902,73 @@ export function useCortex(
     () => (useSandboxStore ? sandboxHistory : productionHistory),
     [useSandboxStore, sandboxHistory, productionHistory],
   )
+
+  const applyConversationDetail = useCallback((detail: unknown): void => {
+    if (!detail || typeof detail !== 'object') return
+    const record = detail as Record<string, unknown>
+    if (typeof record.id !== 'string' || !Array.isArray(record.messages)) return
+    const messages = record.messages.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    const byId = new Map(messages.filter((message) => typeof message.id === 'string').map((message) => [String(message.id), message]))
+    const path: Record<string, unknown>[] = []
+    const seen = new Set<string>()
+    let current = typeof record.active_leaf_message_id === 'string' ? record.active_leaf_message_id : null
+    while (current && !seen.has(current)) {
+      seen.add(current)
+      const message = byId.get(current)
+      if (!message) break
+      path.push(message)
+      current = typeof message.parent_message_id === 'string' ? message.parent_message_id : null
+    }
+    const history = path.reverse().flatMap((message): AgentMessage[] => {
+      if (message.status === 'pending' || typeof message.content !== 'string') return []
+      if (message.role === 'user') return [{ role: 'user', content: message.content }]
+      if (message.role !== 'agent') return []
+      const response = parseAgentQueryResponse(message.response_metadata ?? {})
+      return [{ role: 'agent', content: message.content, tool_outputs: response.tool_outputs, ...(response.tool_trace?.length ? { tool_trace: response.tool_trace } : {}), ...(response.metadata ? { metadata: response.metadata } : {}) }]
+    })
+    conversationIdRef.current = record.id
+    activeLeafRef.current = typeof record.active_leaf_message_id === 'string' ? record.active_leaf_message_id : null
+    setCortexConversationId(record.id)
+    if (usesSandboxPartition(devModeActive, sandboxMode)) {
+      sandboxHistoryRef.current = history
+      setSandboxHistory(history)
+    } else {
+      productionHistoryRef.current = history
+      setProductionHistory(history)
+    }
+  }, [devModeActive, sandboxMode])
+
+  const createConversation = useCallback(async (): Promise<void> => {
+    const response = await fetch(API_ENDPOINTS.cortexConversations, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ origin: 'hud' }) })
+    if (!response.ok) throw new Error(`Conversation creation failed (${response.status})`)
+    const summary = await response.json() as { id?: unknown }
+    if (typeof summary.id !== 'string') throw new Error('APEX returned an invalid conversation.')
+    conversationIdRef.current = summary.id
+    activeLeafRef.current = null
+    setCortexConversationId(summary.id)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const hydrate = async (): Promise<void> => {
+      try {
+        const response = await fetch(API_ENDPOINTS.cortexConversations)
+        if (!response.ok || cancelled) return
+        const conversations = await response.json() as Array<{ id?: unknown }>
+        const latest = conversations[0]
+        if (latest && typeof latest.id === 'string') {
+          const detail = await fetch(API_ENDPOINTS.cortexConversation(latest.id))
+          if (detail.ok && !cancelled) applyConversationDetail(await detail.json())
+          return
+        }
+        if (!cancelled) await createConversation()
+      } catch (error) {
+        if (!cancelled) setCortexError(error instanceof Error ? error.message : 'Failed to load conversations.')
+      }
+    }
+    void hydrate()
+    return () => { cancelled = true }
+  }, [applyConversationDetail, createConversation, devModeActive, sandboxMode])
 
   // Mirrors isCortexQuerying for the poll loop without restarting it on
   // every query state transition.
@@ -1063,7 +1132,6 @@ export function useCortex(
         selectedToolNames?: string[] | null
         toolProfileId?: string | null
         effort?: CloudEffort | null
-        sessionId?: string | null
       },
     ): Promise<void> => {
       const trimmedPrompt = prompt.trim()
@@ -1072,10 +1140,11 @@ export function useCortex(
       }
 
       const useSandboxStore = usesSandboxPartition(devModeActive, sandboxMode)
-      const priorHistory = useSandboxStore
-        ? sandboxHistoryRef.current
-        : productionHistoryRef.current
-
+      const conversationId = conversationIdRef.current
+      if (!conversationId) {
+        setCortexError('Conversation is still loading.')
+        return
+      }
       isCortexQueryingRef.current = true
       setIsCortexQuerying(true)
       setActiveQueryAgent(agent)
@@ -1089,14 +1158,17 @@ export function useCortex(
       }
 
       try {
-        const response = await fetch(AGENT_QUERY_ENDPOINT, {
+        const userMessageId = globalThis.crypto?.randomUUID?.() ?? `user-${Date.now()}`
+        const agentMessageId = globalThis.crypto?.randomUUID?.() ?? `agent-${Date.now()}`
+        const response = await fetch(API_ENDPOINTS.cortexConversationTurns(conversationId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: trimmedPrompt,
             agent,
-            history: priorHistory,
-            history_partition: useSandboxStore ? 'sandbox' : 'production',
+            user_message_id: userMessageId,
+            agent_message_id: agentMessageId,
+            ...(activeLeafRef.current ? { parent_message_id: activeLeafRef.current } : {}),
             ...(context?.effort ? { effort: context.effort } : {}),
             ...(context?.snapshotId ? { snapshot_id: context.snapshotId } : {}),
             ...(context?.briefingId != null ? { briefing_id: context.briefingId } : {}),
@@ -1106,7 +1178,6 @@ export function useCortex(
             ...(context?.toolProfileId
               ? { tool_profile_id: context.toolProfileId }
               : {}),
-            ...(context?.sessionId ? { session_id: context.sessionId } : {}),
           }),
         })
 
@@ -1174,6 +1245,7 @@ export function useCortex(
         }
         setCortexLatestTrace(body.tool_trace ?? [])
         setCortexContextUsage(body.local_context_usage ?? null)
+        activeLeafRef.current = agentMessageId
 
         if (body.error) {
           setCortexError(body.error)
@@ -1205,7 +1277,11 @@ export function useCortex(
     setCortexLatestTrace([])
     setCortexError(null)
     setCortexContextUsage(null)
-  }, [devModeActive, sandboxMode])
+    conversationIdRef.current = null
+    activeLeafRef.current = null
+    setCortexConversationId(null)
+    void createConversation().catch((error: unknown) => setCortexError(error instanceof Error ? error.message : 'Failed to create conversation.'))
+  }, [createConversation, devModeActive, sandboxMode])
 
   const resetCortexSession = useCallback((): void => {
     productionHistoryRef.current = []
@@ -1219,6 +1295,7 @@ export function useCortex(
 
   return {
     cortexHistory,
+    cortexConversationId,
     isCortexQuerying,
     activeQueryAgent,
     cortexLatestTrace,

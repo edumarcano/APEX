@@ -88,7 +88,7 @@ def get_global_config() -> dict[str, Any]:
         "default_agent": agent,
         "ask_apex_enabled": snapshot.ask_apex.enabled,
         "market_enabled": snapshot.features.market,
-        "max_session_messages": config.MAX_SESSION_MESSAGES,
+        "max_recent_conversation_messages": config.MAX_RECENT_CONVERSATION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
         "synthesis_strategy": (

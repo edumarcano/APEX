@@ -6,11 +6,10 @@ import re
 
 from fastapi import APIRouter, HTTPException, status
 
-from core.agent.catalog import AGENT_SPECS, resolve_agent_selection
+from core.agent.catalog import AGENT_SPECS
 from core.agent.types import (
     AgentKey,
     AgentQueryRequest,
-    AgentQueryResponse,
     ToolCatalogResponse,
     ToolProfileMetadata,
     ToolPreflightResponse,
@@ -30,6 +29,20 @@ from core.api.cortex import (
     query_agent,
     unload_active_local_model_endpoint,
     verify_cloud_agent_endpoint,
+)
+from core.conversations import get_conversation_service
+from core.conversations.models import (
+    ConversationCreateRequest,
+    ConversationDetail,
+    ConversationPatchRequest,
+    ConversationSummary,
+    ConversationTurnRequest,
+    ConversationTurnResult,
+)
+from core.conversations.store import (
+    ConversationBusyError,
+    ConversationConflictError,
+    ConversationNotFoundError,
 )
 from core.api.models import (
     AgentStatus,
@@ -55,15 +68,6 @@ def _ensure_agent_api_access(agent_key: str) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Requested Agent is not available.",
         )
-
-
-def _resolve_omitted_agent(payload: AgentQueryRequest) -> AgentQueryRequest:
-    """Apply the saved Agent selection when the caller omitted ``agent``."""
-    if "agent" in payload.model_fields_set:
-        return payload
-    snapshot = get_settings_store().get_snapshot()
-    _runtime, agent, _effort = resolve_agent_selection(snapshot.ask_apex)
-    return payload.model_copy(update={"agent": agent})
 
 
 def _normalize_profile_id(value: str) -> str:
@@ -116,6 +120,157 @@ def tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
     """Estimate the next request using model-facing selected tool schemas."""
     _ensure_agent_api_access(payload.agent)
     return build_tool_preflight(payload)
+
+
+def _conversation_error(error: Exception) -> HTTPException:
+    if isinstance(error, ConversationNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+    if isinstance(error, ConversationBusyError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="turn_in_progress")
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+
+
+@router.get("/api/v1/cortex/conversations", response_model=list[ConversationSummary])
+def list_conversations(archived: bool = False) -> list[ConversationSummary]:
+    return get_conversation_service().list(archived)
+
+
+@router.post(
+    "/api/v1/cortex/conversations",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_conversation(payload: ConversationCreateRequest) -> ConversationSummary:
+    return get_conversation_service().create(payload)
+
+
+@router.get(
+    "/api/v1/cortex/conversations/{conversation_id}",
+    response_model=ConversationDetail,
+)
+def get_conversation(conversation_id: str) -> ConversationDetail:
+    from uuid import UUID
+
+    try:
+        return get_conversation_service().detail(UUID(conversation_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
+    except (ConversationNotFoundError, ConversationConflictError) as exc:
+        raise _conversation_error(exc) from exc
+
+
+@router.patch(
+    "/api/v1/cortex/conversations/{conversation_id}",
+    response_model=ConversationSummary,
+)
+def patch_conversation(conversation_id: str, payload: ConversationPatchRequest) -> ConversationSummary:
+    from uuid import UUID
+
+    try:
+        return get_conversation_service().patch(UUID(conversation_id), payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
+    except (ConversationNotFoundError, ConversationConflictError) as exc:
+        raise _conversation_error(exc) from exc
+
+
+def _turn_result(conversation_id, user, agent) -> ConversationTurnResult:
+    metadata = agent.response_metadata or {}
+    return ConversationTurnResult(
+        conversation_id=conversation_id,
+        user_message_id=user.id,
+        agent_message_id=agent.id,
+        active_leaf_message_id=agent.id,
+        message_status=agent.status,
+        answer=agent.content,
+        **metadata,
+    )
+
+
+@router.post(
+    "/api/v1/cortex/conversations/{conversation_id}/turns",
+    response_model=ConversationTurnResult,
+)
+def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) -> ConversationTurnResult:
+    from uuid import UUID
+
+    try:
+        parsed_id = UUID(conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
+    service = get_conversation_service()
+    try:
+        detail = service.detail(parsed_id)
+        agent_key = payload.agent or detail.agent
+        selected_tools = (
+            payload.selected_tool_names
+            if "selected_tool_names" in payload.model_fields_set
+            else detail.selected_tool_names
+        )
+        tool_profile_id = (
+            payload.tool_profile_id
+            if "tool_profile_id" in payload.model_fields_set
+            else detail.tool_profile_id
+        )
+        request_metadata = {
+            "effort": payload.effort,
+            "selected_tool_names": selected_tools,
+            "tool_profile_id": tool_profile_id,
+            "snapshot_id": payload.snapshot_id,
+            "briefing_id": payload.briefing_id,
+        }
+        user, agent_message, history, replayed = service.begin_turn(
+            parsed_id,
+            user_id=payload.user_message_id,
+            agent_id=payload.agent_message_id,
+            parent_id=payload.parent_message_id,
+            prompt=payload.prompt,
+            agent=agent_key,
+            request_metadata=request_metadata,
+            selected_tool_names=selected_tools,
+            tool_profile_id=tool_profile_id,
+        )
+        if replayed:
+            return _turn_result(parsed_id, user, agent_message)
+    except (ConversationNotFoundError, ConversationConflictError) as exc:
+        raise _conversation_error(exc) from exc
+
+    execution_kwargs = {
+        "prompt": payload.prompt,
+        "agent": agent_key,
+        "effort": payload.effort,
+        "history": history,
+        "history_partition": service.partition(),
+        "tool_profile_id": tool_profile_id,
+        "snapshot_id": payload.snapshot_id,
+        "briefing_id": payload.briefing_id,
+    }
+    if selected_tools is not None:
+        execution_kwargs["selected_tool_names"] = selected_tools
+    execution_payload = AgentQueryRequest(
+        **execution_kwargs,
+    )
+    try:
+        response = query_agent(execution_payload)
+    except HTTPException as exc:
+        failed = service.finalize(
+            parsed_id,
+            payload.agent_message_id,
+            answer="",
+            status="failed",
+            response_metadata={"error": str(exc.detail)},
+        )
+        _ = failed
+        raise
+    response_data = response.model_dump(mode="json", exclude={"answer", "session_id"})
+    completed = service.finalize(
+        parsed_id,
+        payload.agent_message_id,
+        answer=response.answer,
+        status="failed" if response.error else "completed",
+        response_metadata=response_data,
+    )
+    return _turn_result(parsed_id, user, completed)
 
 
 def _profile_response(
@@ -351,25 +506,3 @@ def unload_local_model() -> LocalUnloadResponse:
 def load_local_model(payload: LocalLoadRequest) -> LocalLoadResponse:
     """Pre-warm a selected local Agent and confirm it is resident."""
     return load_local_model_endpoint(payload.agent)
-
-
-@router.post(
-    "/api/v1/cortex/query",
-    response_model=AgentQueryResponse,
-    operation_id="cortex_query_api_v1_cortex_query_post",
-    summary="Query Agent",
-)
-def cortex_query(payload: AgentQueryRequest) -> AgentQueryResponse:
-    """
-    Execute one Cortex Engine turn for the selected Apex Agent.
-
-    Runs synchronously so uvicorn can offload blocking provider I/O to a
-    worker thread. Local Agent queries pass an admission gate first:
-    a non-blocking execution slot (429 when busy), a host resource gate for
-    cold loads/switches (503 with the gate reason), and a coordinated model
-    switch (503 on load failure). Already-loaded target models bypass the
-    resource gate because their memory footprint is already present.
-    """
-    effective_payload = _resolve_omitted_agent(payload)
-    _ensure_agent_api_access(effective_payload.agent)
-    return query_agent(effective_payload)

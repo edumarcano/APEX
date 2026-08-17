@@ -48,7 +48,11 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/agents/{agent_key}/verify` | Explicit non-generative cloud access check |
 | POST | `/api/v1/cortex/local-model/load` | Pre-warm a selected local model |
 | POST | `/api/v1/cortex/local-model/unload` | Unload the active local model |
-| POST | `/api/v1/cortex/query` | Run one Cortex Engine turn |
+| GET | `/api/v1/cortex/conversations` | List durable Cortex conversations |
+| POST | `/api/v1/cortex/conversations` | Create a durable Cortex conversation |
+| GET | `/api/v1/cortex/conversations/{conversation_id}` | Read one conversation |
+| PATCH | `/api/v1/cortex/conversations/{conversation_id}` | Update one conversation |
+| POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | Run one durable Cortex turn |
 | GET | `/api/v1/market` | Independent EOD market data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
 | GET | `/api/v1/llama-cpp/status` | Sanitized llama.cpp server ownership status |
@@ -313,8 +317,9 @@ policy when `DEV_MODE` and `ask_apex.sandbox_mode` are active.
 
 ### POST `/api/v1/cortex/tool-preflight`
 
-Accepts an Agent, selected stable names, optional profile, prompt, bounded
-history, and explicit snapshot/briefing attachment IDs. It returns estimates for
+Accepts an Agent, selected stable names, optional profile, prompt, optional
+conversation ID, and explicit snapshot/briefing attachment IDs. The backend reconstructs
+the bounded active branch when a conversation ID is present. It returns estimates for
 system instructions, conversation history, HUD context, selected schemas,
 prompt, total, configured context, reserved response capacity, and remaining
 capacity. Every value is marked as an estimate by the response contract.
@@ -397,18 +402,37 @@ It also rejects a competing lifecycle action, and reports a failed post-action v
 - `409` — local generation or lifecycle action is in progress.
 - `503` — the unload request or post-action residency verification failed.
 
-### POST `/api/v1/cortex/query`
+### GET `/api/v1/cortex/conversations`
 
-Runs one Cortex Engine turn. The browser supplies history on every request; the server does not persist a session.
+Lists conversations in the current server-derived partition. Pass `archived=true` to list archived conversations instead of active ones.
+
+### POST `/api/v1/cortex/conversations`
+
+Creates a durable `hud` or `cli` conversation.
+
+### GET `/api/v1/cortex/conversations/{conversation_id}`
+
+Returns one conversation and every stored message node in stable creation order.
+
+### PATCH `/api/v1/cortex/conversations/{conversation_id}`
+
+Updates title, archive state, active branch, or saved Agent/tool-selection state.
+
+### Cortex turns
+
+APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. They are never permanently deleted by this API.
+
+`GET /api/v1/cortex/conversations` lists the current server-derived partition. `POST /api/v1/cortex/conversations` creates a `hud` or `cli` conversation. `GET` and `PATCH /api/v1/cortex/conversations/{conversation_id}` read or update title, archive state, active branch, and saved Agent/tool state.
+
+`POST /api/v1/cortex/conversations/{conversation_id}/turns` runs one Cortex Engine turn. Clients send generated user and Agent message UUIDs, an optional parent ID, and the current turn inputs.
 
 ```json
 {
   "prompt": "What should I prioritize this afternoon?",
   "agent": "panthera",
   "effort": "medium",
-  "session_id": "browser-session-id",
-  "history": [],
-  "history_partition": "production",
+  "user_message_id": "6dce6f5e-9f1e-4b2f-9930-0ca2668bd248",
+  "agent_message_id": "d0b972df-2af6-42d3-9371-0433ccf9bd0a",
   "snapshot_id": "optional-current-snapshot-id",
   "briefing_id": 42,
   "selected_tool_names": [],
@@ -416,7 +440,7 @@ Runs one Cortex Engine turn. The browser supplies history on every request; the 
 }
 ```
 
-`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. `history_partition` is the literal `production` normal-mode partition or `sandbox` for `DEV_MODE` sandbox queries; the backend discards history that crosses those partitions. Sandbox queries reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
+`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Sandbox turns reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
 
 The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Felis. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model exposes model-native reasoning levels and is rejected for Felis. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
 

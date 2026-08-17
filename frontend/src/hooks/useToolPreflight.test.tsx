@@ -50,7 +50,7 @@ describe('useToolPreflight', () => {
         selectedToolNames: noSelectedTools,
         toolProfileId: 'no_tools',
         prompt: '  typed draft  ',
-        historyPartition: 'production',
+        conversationId: '00000000-0000-4000-8000-000000000001',
         enabled: true,
       }),
     )
@@ -64,7 +64,7 @@ describe('useToolPreflight', () => {
       prompt: '  typed draft  ',
       selected_tool_names: [],
       tool_profile_id: 'no_tools',
-      history_partition: 'production',
+      conversation_id: '00000000-0000-4000-8000-000000000001',
     })
   })
 

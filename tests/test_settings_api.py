@@ -367,7 +367,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(payload["default_agent"], "felis")
         self.assertEqual(payload["agent_initial_selection"]["agent"], "felis")
         self.assertFalse(payload["ask_apex_enabled"])
-        self.assertIn("max_session_messages", payload)
+        self.assertIn("max_recent_conversation_messages", payload)
         self.assertIn("dev_mode_active", payload)
         self.assertIn("demo_mode_active", payload)
 

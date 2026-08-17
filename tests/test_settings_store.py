@@ -451,7 +451,7 @@ class SettingsStorePatchTests(unittest.TestCase):
             self.local_path,
             {
                 "legacy_prompt": "preserve me",
-                "ask_apex": {"max_session_messages": 12},
+                "ask_apex": {"max_recent_conversation_messages": 12},
                 "future_section": {"enabled": True},
             },
         )
@@ -461,7 +461,7 @@ class SettingsStorePatchTests(unittest.TestCase):
 
         written = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertEqual(written["legacy_prompt"], "preserve me")
-        self.assertEqual(written["ask_apex"]["max_session_messages"], 12)
+        self.assertEqual(written["ask_apex"]["max_recent_conversation_messages"], 12)
         self.assertEqual(written["future_section"], {"enabled": True})
         self.assertTrue(written["features"]["sports"])
 

@@ -20,7 +20,7 @@ uv run apex actions reject <action-id>
 uv run apex actions verify <action-id>
 ```
 
-`status` checks backend readiness, including configuration and database access, and shows the effective saved Agent and runtime that an `ask` command will use when `--agent` is omitted. `agents` lists the visible Agents and their current availability. `ask` performs one turn only: it does not retain terminal conversation history or attach the current HUD snapshot. When `--profile` is omitted, the backend chooses the saved default profile for the selected Agent.
+`status` checks backend readiness, including configuration and database access, and shows the effective saved Agent and runtime that an `ask` command will use when `--agent` is omitted. `agents` lists the visible Agents and their current availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. When `--profile` is omitted, the backend chooses the saved default profile for the selected Agent.
 
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved briefing default; supported overrides are `panthera`, `felis`, and `structured_digest`.
 

@@ -766,7 +766,7 @@ def _prepare_agent_payload(
     prepared = payload.model_copy(
         update={
             "history": _trim_agent_history(
-                payload.history, config.MAX_SESSION_MESSAGES
+                payload.history, config.MAX_RECENT_CONVERSATION_MESSAGES
             )
         }
     )
@@ -1117,12 +1117,25 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         google_maps_enabled=google_maps,
         x_search_enabled=x_search,
     )
+    history: list[AgentMessage] = []
+    history_partition = "production"
+    if payload.conversation_id:
+        from uuid import UUID
+        from core.conversations import get_conversation_service
+
+        try:
+            conversation_id = UUID(payload.conversation_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="conversation_id must be a UUID.") from exc
+        service = get_conversation_service()
+        history = service.active_history(conversation_id)
+        history_partition = service.partition()
     query_payload_kwargs: dict[str, Any] = {
         "prompt": payload.prompt,
         "agent": agent_key,
         "tool_profile_id": payload.tool_profile_id,
-        "history": list(payload.history),
-        "history_partition": payload.history_partition,
+        "history": history,
+        "history_partition": history_partition,
         "snapshot_id": payload.snapshot_id,
         "briefing_id": payload.briefing_id,
     }

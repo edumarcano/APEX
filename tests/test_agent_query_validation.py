@@ -44,7 +44,7 @@ class SandboxPolicyTests(unittest.TestCase):
                 "/api/v1/cortex/query",
                 json={"prompt": "hello", "agent": "acinonyx"},
             )
-        self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.status_code, 404)
 
     def test_sandbox_panthera_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
