@@ -18,7 +18,6 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
     capabilities: [],
     native_tools: {},
     provider: local ? 'llama_cpp' : 'openai',
-    version: '2.0',
     runtime: local ? 'local' : 'cloud',
     model_stability: 'stable',
     reasoning_options: local ? null : ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],

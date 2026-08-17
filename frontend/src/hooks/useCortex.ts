@@ -377,7 +377,6 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
   const description = record.description
   const configuredModel = record.configured_model
   const provider = record.provider
-  const version = record.version
   const mode = record.runtime
   const status = record.status
 
@@ -400,9 +399,6 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     return null
   }
   if (!isProvider(provider)) {
-    return null
-  }
-  if (typeof version !== 'string') {
     return null
   }
   if (!isAgentRuntime(mode)) {
@@ -546,7 +542,6 @@ function parseAgentStatus(value: unknown): AgentStatus | null {
     configured_model: configuredModel,
     native_tools: nativeToolsRecord as Record<string, boolean>,
     provider,
-    version,
     sort_order: typeof record.sort_order === 'number' && Number.isInteger(record.sort_order) && record.sort_order >= 0 ? record.sort_order : 0,
     capabilities: Array.isArray(record.capabilities) && record.capabilities.every((item) => typeof item === 'string') ? record.capabilities : [],
     runtime: mode,

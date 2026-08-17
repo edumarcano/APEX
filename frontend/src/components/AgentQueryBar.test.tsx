@@ -19,7 +19,6 @@ const felis: AgentStatus = {
   capabilities: ['Larger model'],
   native_tools: {},
   provider: 'llama_cpp',
-  version: '2.0',
   runtime: 'local',
   model_stability: 'stable',
   reasoning_options: null,
